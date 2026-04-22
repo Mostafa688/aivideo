@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "ffmpeg", "python3", "python3Packages.pip", "python3Packages.setuptools"]
+nixPkgs = ["nodejs_20", "ffmpeg", "python3", "python3Packages.pip", "python3Packages.setuptools", "dejavu_fonts"]
 
 [phases.install]
 cmds = ["npm ci", "pip install --break-system-packages edge-tts"]
