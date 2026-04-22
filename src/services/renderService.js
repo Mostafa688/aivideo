@@ -7,8 +7,8 @@ import { execSync } from 'child_process';
 
 const OUTPUTS_DIR = 'outputs';
 const TEMP_DIR = 'temp';
-const FONT_PATH = 'C\\:/Windows/Fonts/arial.ttf';
-const FONT_BOLD_PATH = 'C\\:/Windows/Fonts/arialbd.ttf';
+const FONT_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arial.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+const FONT_BOLD_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arialbd.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 
 const RATIOS = {
   '16:9': { w: 1280, h: 720 },
@@ -29,25 +29,24 @@ const DURATION_SCENES = {
 
 const CAPTION_STYLES = {
   classic: {
-    fontsize: 40, fontcolor: 'white', borderw: 2, bordercolor: 'black',
-    box: 1, boxcolor: '0x00000088', getY: () => 'h-text_h-80', maxChars: 70,
+    fontsize: 28, fontcolor: 'white', borderw: 2, bordercolor: 'black',
+    box: 1, boxcolor: '0x00000088', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60', maxChars: 50,
   },
   bold_yellow: {
-    fontsize: 52, fontcolor: 'yellow', borderw: 4, bordercolor: 'black',
-    box: 0, boxcolor: '0x00000000', getY: () => 'h*0.85', maxChars: 50,
-    fontfile: 'C\\:/Windows/Fonts/arialbd.ttf',
+    fontsize: 32, fontcolor: 'yellow', borderw: 3, bordercolor: 'black',
+    box: 0, boxcolor: '0x00000000', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82', maxChars: 40,
   },
   center_box: {
-    fontsize: 44, fontcolor: 'white', borderw: 0, bordercolor: 'black',
-    box: 1, boxcolor: '0x0a0a2ecc', getY: () => 'h*0.85', maxChars: 60,
+    fontsize: 30, fontcolor: 'white', borderw: 0, bordercolor: 'black',
+    box: 1, boxcolor: '0x0a0a2ecc', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82', maxChars: 45,
   },
   documentary: {
-    fontsize: 36, fontcolor: '0x00ff88', borderw: 2, bordercolor: '0x003322',
-    box: 1, boxcolor: '0x00000099', getY: () => 'h-text_h-60', maxChars: 75,
+    fontsize: 26, fontcolor: '0x00ff88', borderw: 2, bordercolor: '0x003322',
+    box: 1, boxcolor: '0x00000099', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-50', maxChars: 55,
   },
   clean_white: {
-    fontsize: 46, fontcolor: 'white', borderw: 3, bordercolor: '0x00000077',
-    box: 0, boxcolor: '0x00000000', getY: () => 'h-text_h-100', maxChars: 65,
+    fontsize: 30, fontcolor: 'white', borderw: 2, bordercolor: '0x00000077',
+    box: 0, boxcolor: '0x00000000', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60', maxChars: 50,
   },
 };
 
@@ -267,7 +266,7 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
   });
 }
 
-function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null) {
+function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9') {
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
   const fontfile = style.fontfile || FONT_PATH;
@@ -285,7 +284,7 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       .replace(/\\/g, '')
       .replace(/\n/g, ' ')
       .trim();
-    const yExpr = style.getY();
+    const yExpr = style.getY(ratio);
 
     return `drawtext=fontfile='${fontfile}'`
       + `:text='${text}'`
@@ -602,7 +601,7 @@ export async function renderVideo({
     const totalDur = audioDuration || (secPerScene * scenes.length);
     const perScene = totalDur / scenes.length;
     const sceneDurations = scenes.map(() => perScene);
-    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle);
+    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
       console.log('[Watermark] Applied (free plan)');
