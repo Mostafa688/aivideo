@@ -6,7 +6,7 @@ import { mkdir } from 'fs/promises';
 import { execSync } from 'child_process';
 
 const OUTPUTS_DIR = 'outputs';
-const TEMP_DIR = 'temp';
+const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const FONT_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arial.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
 const FONT_BOLD_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arialbd.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 
