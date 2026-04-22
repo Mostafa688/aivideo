@@ -577,8 +577,10 @@ export async function renderVideo({
   const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
   if (captions) {
     const captionTemp = path.resolve(TEMP_DIR, `captions_${id}.mp4`);
-    const perScene = audioDuration / scenes.length;
-    const sceneDurations = scenes.map(() => perScene);
+    // Calculate scene durations based on word count (proportional to speech time)
+    const wordCounts = scenes.map(s => s.text.trim().split(/\s+/).length);
+    const totalWords = wordCounts.reduce((a, b) => a + b, 0);
+    const sceneDurations = wordCounts.map(wc => (wc / totalWords) * audioDuration);
     await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
