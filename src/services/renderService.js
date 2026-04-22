@@ -7,20 +7,27 @@ import { execSync } from 'child_process';
 
 const OUTPUTS_DIR = 'outputs';
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
-const FONT_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arial.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
-const FONT_BOLD_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arialbd.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
-const FONT_ARABIC_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arial.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+
+const FONT_PATH = process.platform === 'win32'
+  ? 'C\\:/Windows/Fonts/arial.ttf'
+  : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+
+const FONT_BOLD_PATH = process.platform === 'win32'
+  ? 'C\\:/Windows/Fonts/arialbd.ttf'
+  : '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 
 function getFontPath(videoLanguage) {
   if (process.platform === 'win32') return FONT_PATH;
-  const notoBase = '/usr/share/fonts/truetype/noto';
+  // Try Noto fonts first, fallback to DejaVu
+  const notoArabic = '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf';
+  const notoCJK    = '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc';
+  const dejaVu     = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
   switch (videoLanguage) {
-    case 'ar': return `${notoBase}/NotoSansArabic-Regular.ttf`;
-    case 'ja': return `${notoBase}/NotoSansCJK-Regular.ttc`;
-    case 'zh': return `${notoBase}/NotoSansCJK-Regular.ttc`;
-    case 'ko': return `${notoBase}/NotoSansCJK-Regular.ttc`;
-    case 'ru': return '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
-    default:   return '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+    case 'ar': return fs.existsSync(notoArabic) ? notoArabic : dejaVu;
+    case 'ja':
+    case 'zh':
+    case 'ko': return fs.existsSync(notoCJK) ? notoCJK : dejaVu;
+    default:   return dejaVu;
   }
 }
 
@@ -44,23 +51,33 @@ const DURATION_SCENES = {
 const CAPTION_STYLES = {
   classic: {
     fontsize: 28, fontcolor: 'white', borderw: 2, bordercolor: 'black',
-    box: 1, boxcolor: '0x00000088', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60', maxChars: 50,
+    box: 1, boxcolor: '0x00000088',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60',
+    maxChars: 50,
   },
   bold_yellow: {
     fontsize: 32, fontcolor: 'yellow', borderw: 3, bordercolor: 'black',
-    box: 0, boxcolor: '0x00000000', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82', maxChars: 40,
+    box: 0, boxcolor: '0x00000000',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82',
+    maxChars: 40,
   },
   center_box: {
     fontsize: 30, fontcolor: 'white', borderw: 0, bordercolor: 'black',
-    box: 1, boxcolor: '0x0a0a2ecc', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82', maxChars: 45,
+    box: 1, boxcolor: '0x0a0a2ecc',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82',
+    maxChars: 45,
   },
   documentary: {
     fontsize: 26, fontcolor: '0x00ff88', borderw: 2, bordercolor: '0x003322',
-    box: 1, boxcolor: '0x00000099', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-50', maxChars: 55,
+    box: 1, boxcolor: '0x00000099',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-50',
+    maxChars: 55,
   },
   clean_white: {
     fontsize: 30, fontcolor: 'white', borderw: 2, bordercolor: '0x00000077',
-    box: 0, boxcolor: '0x00000000', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60', maxChars: 50,
+    box: 0, boxcolor: '0x00000000',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60',
+    maxChars: 50,
   },
 };
 
@@ -114,15 +131,10 @@ function trimAndScale(input, output, duration, w, h) {
       .duration(duration)
       .videoFilters(scaleFilter)
       .outputOptions([
-        '-an',
-        '-r', '30',
-        '-c:v', 'libx264',
-        '-crf', '23',
-        '-preset', 'ultrafast',
-        '-profile:v', 'baseline',
-        '-level', '3.1',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
+        '-an', '-r', '30',
+        '-c:v', 'libx264', '-crf', '23', '-preset', 'ultrafast',
+        '-profile:v', 'baseline', '-level', '3.1',
+        '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
       ])
       .output(output)
       .on('end', resolve)
@@ -135,17 +147,11 @@ function generateColorSlide(scene, output, duration, w, h) {
   const colors = { hook: '0x1a1a2e', body: '0x16213e', ending: '0x0f3460' };
   const color = colors[scene.type] || colors.body;
   const args = [
-    '-f', 'lavfi',
-    '-i', `color=c=${color}:size=${w}x${h}:rate=30`,
+    '-f', 'lavfi', '-i', `color=c=${color}:size=${w}x${h}:rate=30`,
     '-t', String(duration),
-    '-c:v', 'libx264',
-    '-crf', '23',
-    '-preset', 'ultrafast',
-    '-profile:v', 'baseline',
-    '-level', '3.1',
-    '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart',
-    '-y', output,
+    '-c:v', 'libx264', '-crf', '23', '-preset', 'ultrafast',
+    '-profile:v', 'baseline', '-level', '3.1',
+    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-y', output,
   ];
   return new Promise((resolve, reject) => {
     try { execSync('ffmpeg ' + args.join(' '), { stdio: 'pipe' }); resolve(); }
@@ -153,21 +159,15 @@ function generateColorSlide(scene, output, duration, w, h) {
   });
 }
 
-function concatVideos(listFile, output, audioDuration = null) {
+function concatVideos(listFile, output) {
   return new Promise((resolve, reject) => {
-    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg()
       .input(listFile)
       .inputOptions(['-f', 'concat', '-safe', '0'])
       .outputOptions([
-        ...durationOpts,
-        '-c:v', 'libx264',
-        '-crf', '23',
-        '-preset', 'ultrafast',
-        '-profile:v', 'baseline',
-        '-level', '3.1',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
+        '-c:v', 'libx264', '-crf', '23', '-preset', 'ultrafast',
+        '-profile:v', 'baseline', '-level', '3.1',
+        '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
       ])
       .output(output)
       .on('end', resolve)
@@ -176,17 +176,14 @@ function concatVideos(listFile, output, audioDuration = null) {
   });
 }
 
-async function concatWithTransitions(slideFiles, output, id, secPerScene, audioDuration = null) {
+async function concatWithTransitions(slideFiles, output, id, secPerScene) {
   if (slideFiles.length === 1) {
     fs.copyFileSync(slideFiles[0], output);
     return;
   }
-
   let current = slideFiles[0];
-
   for (let i = 1; i < slideFiles.length; i++) {
     const transOut = path.join(TEMP_DIR, 'trans_' + id + '_' + i + '.mp4');
-
     let currentDuration = secPerScene;
     try {
       const result = execSync(
@@ -195,10 +192,8 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene, audioD
       ).trim();
       currentDuration = parseFloat(result) || secPerScene;
     } catch {}
-
     const offset = Math.max(currentDuration - 0.5, 0.5);
-
-    const transTypes = ['fade', 'slideleft', 'slideright', 'slideup', 'dissolve', 'wipeleft', 'wiperight', 'circlecrop', 'rectcrop', 'distance'];
+    const transTypes = ['fade', 'slideleft', 'slideright', 'slideup', 'dissolve', 'wipeleft', 'wiperight', 'circlecrop'];
     const transType = transTypes[i % transTypes.length];
     try {
       execSync(
@@ -228,20 +223,18 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene, audioD
       }
     }
   }
-
   fs.copyFileSync(current, output);
 }
 
-function mixAudio(videoFile, audioFile, output) {
+function mixAudio(videoFile, audioFile, output, audioDuration) {
   return new Promise((resolve, reject) => {
+    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg()
       .input(videoFile).input(audioFile)
       .outputOptions([
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-shortest',
-        '-movflags', '+faststart',
+        ...durationOpts,
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+        '-shortest', '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
   });
@@ -252,19 +245,16 @@ function addMusicOnly(videoFile, musicFile, output, musicVolume = 0.08) {
     ffmpeg()
       .input(videoFile).input(musicFile)
       .outputOptions([
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-shortest',
-        '-af', `volume=${musicVolume}`,
-        '-movflags', '+faststart',
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+        '-shortest', '-af', `volume=${musicVolume}`, '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
   });
 }
 
-function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume = 0.07) {
+function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume = 0.07, audioDuration) {
   return new Promise((resolve, reject) => {
+    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg()
       .input(videoFile).input(voiceFile).input(musicFile)
       .complexFilter([
@@ -272,13 +262,10 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
         '[1:a][music]amix=inputs=2:duration=longest[aout]',
       ])
       .outputOptions([
-        '-map', '0:v',
-        '-map', '[aout]',
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-shortest',
-        '-movflags', '+faststart',
+        ...durationOpts,
+        '-map', '0:v', '-map', '[aout]',
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+        '-shortest', '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
   });
@@ -287,9 +274,8 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
 function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9', videoLanguage = 'en') {
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
-  const fontfile = style.fontfile || getFontPath(videoLanguage);
+  const fontfile = getFontPath(videoLanguage);
 
-  // Split text into chunks of 3 words max for better readability
   function splitIntoChunks(text, wordsPerChunk = 3) {
     const words = text.replace(/[':]/g, '').replace(/\\/g, '').replace(/\n/g, ' ').trim().split(/\s+/);
     const chunks = [];
@@ -307,7 +293,6 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
     const sceneDur = sceneDurations[i] || 7;
     const end = start + sceneDur;
     currentTime = end;
-
     const chunks = splitIntoChunks(scene.text, 3);
     const chunkDur = sceneDur / chunks.length;
     const yExpr = style.getY(ratio);
@@ -315,10 +300,11 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
     chunks.forEach((chunk, j) => {
       const chunkStart = start + j * chunkDur;
       const chunkEnd = chunkStart + chunkDur;
-
+      const safeChunk = chunk.replace(/\\/g, '').replace(/'/g, '').replace(/:/g, '').trim();
+      if (!safeChunk) return;
       filters.push(
         `drawtext=fontfile='${fontfile}'`
-        + `:text='${chunk}'`
+        + `:text='${safeChunk}'`
         + `:fontsize=${style.fontsize}`
         + `:fontcolor=${style.fontcolor}`
         + `:borderw=${style.borderw}`
@@ -331,22 +317,23 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
     });
   });
 
-  const filterStr = filters.join(',');
+  if (filters.length === 0) {
+    fs.copyFileSync(videoFile, output);
+    return Promise.resolve();
+  }
 
-  return new Promise((resolve, reject) => {
+  const filterStr = filters.join(',');
+  const absOutput = path.resolve(output);
+
+  return new Promise((resolve) => {
     ffmpeg(videoFile)
       .videoFilters(filterStr)
       .outputOptions([
-        '-c:a', 'copy',
-        '-c:v', 'libx264',
-        '-crf', '23',
-        '-preset', 'ultrafast',
-        '-profile:v', 'baseline',
-        '-level', '3.1',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
+        '-c:a', 'copy', '-c:v', 'libx264', '-crf', '23', '-preset', 'ultrafast',
+        '-profile:v', 'baseline', '-level', '3.1',
+        '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
       ])
-      .output(path.resolve(output))
+      .output(absOutput)
       .on('end', resolve)
       .on('error', (err) => {
         console.warn('Captions failed:', err.message);
@@ -363,18 +350,13 @@ function applyVideoEffect(videoFile, output, effectName) {
     fs.copyFileSync(videoFile, output);
     return Promise.resolve();
   }
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     ffmpeg(videoFile)
       .videoFilters(filter)
       .outputOptions([
-        '-c:a', 'copy',
-        '-c:v', 'libx264',
-        '-crf', '23',
-        '-preset', 'ultrafast',
-        '-profile:v', 'baseline',
-        '-level', '3.1',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
+        '-c:a', 'copy', '-c:v', 'libx264', '-crf', '23', '-preset', 'ultrafast',
+        '-profile:v', 'baseline', '-level', '3.1',
+        '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
       ])
       .output(output)
       .on('end', resolve)
@@ -392,10 +374,8 @@ async function addSoundEffects(videoFile, introSound, outroSound, whooshSound, s
     let filterInputs = `-i "${videoFile}"`;
     let amixInputs = '[0:a]';
     let inputCount = 1;
-
     if (introSound) { filterInputs += ` -i "${introSound}"`; amixInputs += `[${inputCount}:a]`; inputCount++; }
     if (outroSound)  { filterInputs += ` -i "${outroSound}"`;  amixInputs += `[${inputCount}:a]`; inputCount++; }
-
     const cmd = `ffmpeg ${filterInputs}`
       + ` -filter_complex "${amixInputs}amix=inputs=${inputCount}:duration=first:weights=1 ${sfxVolume}[aout]"`
       + ` -map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k -movflags +faststart -y "${output}"`;
@@ -418,34 +398,12 @@ function getAudioDuration(audioFile) {
   }
 }
 
-// ✅ WATERMARK FUNCTION - بتضيف Erivion watermark على كل الفيديوهات
 function addWatermark(inputFile, outputFile) {
   const watermarkText = 'Erivion';
-
-  // بنستخدم execSync مباشرة عشان نتحكم في الـ filter بدقة
-  // بدون angle عشان بيسبب مشاكل في بعض versions الـ FFmpeg
   const filterStr = [
-    // نص كبير في النص - شفافية 18% ثابت طول الفيديو
-    `drawtext=fontfile='${FONT_BOLD_PATH}'` +
-    `:text='${watermarkText}'` +
-    `:fontsize=90` +
-    `:fontcolor=white@0.18` +
-    `:x=(w-text_w)/2` +
-    `:y=(h-text_h)/2` +
-    `:borderw=2` +
-    `:bordercolor=black@0.10`,
-
-    // نص صغير © Erivion في أعلى يمين - شفافية 65%
-    `drawtext=fontfile='${FONT_PATH}'` +
-    `:text='© ${watermarkText}'` +
-    `:fontsize=26` +
-    `:fontcolor=white@0.65` +
-    `:x=w-text_w-24` +
-    `:y=20` +
-    `:borderw=1` +
-    `:bordercolor=black@0.40`,
+    `drawtext=fontfile='${FONT_BOLD_PATH}':text='${watermarkText}':fontsize=90:fontcolor=white@0.18:x=(w-text_w)/2:y=(h-text_h)/2:borderw=2:bordercolor=black@0.10`,
+    `drawtext=fontfile='${FONT_PATH}':text='© ${watermarkText}':fontsize=26:fontcolor=white@0.65:x=w-text_w-24:y=20:borderw=1:bordercolor=black@0.40`,
   ].join(',');
-
   return new Promise((resolve) => {
     try {
       execSync(
@@ -471,7 +429,6 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
     const slideFile = path.join(TEMP_DIR, `slide_${id}_${i}.mp4`);
-
     if (scene.aiVideo) {
       const aiVideoPath = path.join(process.cwd(), scene.aiVideo.replace('/outputs/', 'outputs/'));
       if (fs.existsSync(aiVideoPath)) {
@@ -497,7 +454,7 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
 
   const concatFile = path.join(TEMP_DIR, `concat_${id}.mp4`);
   if (transitions && slideFiles.length > 1) {
-    await concatWithTransitions(slideFiles, concatFile, id, secPerScene, audioDuration);
+    await concatWithTransitions(slideFiles, concatFile, id, secPerScene);
   } else {
     const listFile = path.join(TEMP_DIR, `list_${id}.txt`);
     const listContent = slideFiles.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n');
@@ -505,60 +462,30 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
     await concatVideos(listFile, concatFile);
   }
 
-  return { concatFile, slideFiles, secPerScene, audioDuration };
+  return { concatFile, slideFiles, secPerScene };
 }
 
-function finalizeVideo(inputFile, output, audioDuration = null) {
+function trimVideoToAudio(inputFile, output, audioDuration) {
   return new Promise((resolve, reject) => {
-    // ✅ FIX: trim to audio duration to prevent last frame freeze
-    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg(inputFile)
       .outputOptions([
-        ...durationOpts,
+        '-t', String(audioDuration),
         '-c', 'copy',
         '-movflags', '+faststart',
       ])
       .output(output)
       .on('end', resolve)
-      .on('error', (err) => {
-        ffmpeg(inputFile)
-          .outputOptions([
-            ...durationOpts,
-            '-c:v', 'libx264',
-            '-c:a', 'aac',
-            '-crf', '23',
-            '-preset', 'ultrafast',
-            '-profile:v', 'baseline',
-            '-level', '3.1',
-            '-pix_fmt', 'yuv420p',
-            '-movflags', '+faststart',
-          ])
-          .output(output)
-          .on('end', resolve)
-          .on('error', reject)
-          .run();
-      })
+      .on('error', reject)
       .run();
   });
 }
 
 export async function renderVideo({
-  scenes,
-  audioUrl,
-  ratio = '16:9',
-  jobId,
-  duration = 'auto',
-  music = false,
-  captions = false,
-  transitions = false,
-  soundEffects = false,
-  videoType = 'education',
-  captionStyle = null,
-  musicVolume = 0.07,
-  sfxVolume = 0.4,
-  videoEffect = 'none',
-  applyWatermark = true,
-  videoLanguage = 'en',
+  scenes, audioUrl, ratio = '16:9', jobId, duration = 'auto',
+  music = false, captions = false, transitions = false,
+  soundEffects = false, videoType = 'education', captionStyle = null,
+  musicVolume = 0.07, sfxVolume = 0.4, videoEffect = 'none',
+  applyWatermark = true, videoLanguage = 'en',
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -584,7 +511,6 @@ export async function renderVideo({
     audioDuration = getAudioDuration(audioPath);
     console.log(`[Render] Audio duration: ${audioDuration?.toFixed(1)}s`);
   }
-
   if (!audioDuration) {
     const durationMap = {
       '30s': 30, '1min': 60, '2min': 120, '3min': 180,
@@ -598,19 +524,20 @@ export async function renderVideo({
     scenes, audioDuration, w, h, id, transitions
   );
 
+  // Step 3: Mix audio
   const step3 = path.join(TEMP_DIR, `step3_${id}.mp4`);
   const musicPath = music ? findMusicFile() : null;
-
   if (audioPath && musicPath) {
-    await mixAudioAndMusic(concatFile, audioPath, musicPath, step3, musicVolume);
+    await mixAudioAndMusic(concatFile, audioPath, musicPath, step3, musicVolume, audioDuration);
   } else if (audioPath) {
-    await mixAudio(concatFile, audioPath, step3);
+    await mixAudio(concatFile, audioPath, step3, audioDuration);
   } else if (musicPath) {
     await addMusicOnly(concatFile, musicPath, step3, musicVolume);
   } else {
     fs.copyFileSync(concatFile, step3);
   }
 
+  // Step 4: Sound effects
   const step4 = path.join(TEMP_DIR, `step4_${id}.mp4`);
   if (soundEffects) {
     const introSound = findSoundFile('intro');
@@ -621,6 +548,7 @@ export async function renderVideo({
     fs.copyFileSync(step3, step4);
   }
 
+  // Step 5: Video effect
   const step5 = path.join(TEMP_DIR, `step5_${id}.mp4`);
   if (videoEffect && videoEffect !== 'none') {
     await applyVideoEffect(step4, step5, videoEffect);
@@ -628,17 +556,17 @@ export async function renderVideo({
     fs.copyFileSync(step4, step5);
   }
 
-  // ✅ WATERMARK STEP - بيتضاف بس للـ free plan
-  const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
+  // Step 5.5: Trim to exact audio duration
+  const step55 = path.join(TEMP_DIR, `step55_${id}.mp4`);
+  await trimVideoToAudio(step5, step55, audioDuration);
 
+  // Step 6: Captions + Watermark
+  const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
   if (captions) {
-    await mkdir(TEMP_DIR, { recursive: true });
     const captionTemp = path.resolve(TEMP_DIR, `captions_${id}.mp4`);
-    // ✅ FIX: use actual audio duration for caption timing, not estimated
-    const totalDur = audioDuration || (secPerScene * scenes.length);
-    const perScene = totalDur / scenes.length;
+    const perScene = audioDuration / scenes.length;
     const sceneDurations = scenes.map(() => perScene);
-    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
+    await addCaptionsWithTiming(step55, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
       console.log('[Watermark] Applied (free plan)');
@@ -649,20 +577,20 @@ export async function renderVideo({
     try { if (fs.existsSync(captionTemp)) fs.unlinkSync(captionTemp); } catch {}
   } else {
     if (applyWatermark) {
-      await addWatermark(step5, step6);
+      await addWatermark(step55, step6);
       console.log('[Watermark] Applied (free plan)');
     } else {
-      fs.copyFileSync(step5, step6);
+      fs.copyFileSync(step55, step6);
       console.log('[Watermark] Skipped (paid plan)');
     }
   }
 
-  // الـ output النهائي من step6
-  await finalizeVideo(step6, outputPath, audioDuration);
+  // Final output
+  fs.copyFileSync(step6, outputPath);
 
-  // ✅ Cleanup بعد دقيقة
+  // Cleanup
   setTimeout(() => {
-    [...slideFiles, concatFile, step3, step4, step5, step6].forEach(f => {
+    [...slideFiles, concatFile, step3, step4, step5, step55, step6].forEach(f => {
       try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
     });
     slideFiles.forEach((_, i) => {
