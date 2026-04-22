@@ -1,2 +1,5 @@
 [phases.setup]
-nixPkgs = ["ffmpeg", "python3", "python311Packages.edge-tts"]
+nixPkgs = ["ffmpeg", "python3", "python3Packages.pip", "python3Packages.setuptools"]
+
+[phases.install]
+cmds = ["pip install --break-system-packages edge-tts"]
