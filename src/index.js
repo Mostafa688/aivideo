@@ -12,6 +12,7 @@ import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, canUserRender, getUserCredits } from './services/authService.js';
 
 const app = express();
+app.set('trust proxy', 1); // ✅ Required for Railway (reverse proxy)
 const PORT = process.env.PORT || 3001;
 
 app.use(helmet({
