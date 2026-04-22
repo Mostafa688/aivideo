@@ -139,12 +139,14 @@ function generateColorSlide(scene, output, duration, w, h) {
   });
 }
 
-function concatVideos(listFile, output) {
+function concatVideos(listFile, output, audioDuration = null) {
   return new Promise((resolve, reject) => {
+    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg()
       .input(listFile)
       .inputOptions(['-f', 'concat', '-safe', '0'])
       .outputOptions([
+        ...durationOpts,
         '-c:v', 'libx264',
         '-crf', '23',
         '-preset', 'ultrafast',
@@ -184,8 +186,10 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
 
     try {
       execSync(
+        const transTypes = ['fade', 'slideleft', 'slideright', 'slideup', 'dissolve', 'wipeleft', 'wiperight', 'circlecrop', 'rectcrop', 'distance'];
+        const transType = transTypes[i % transTypes.length];
         `ffmpeg -i "${current}" -i "${slideFiles[i]}"` +
-        ` -filter_complex "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=${offset}[v]"` +
+        ` -filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=0.5:offset=${offset}[v]"` +
         ` -map "[v]" -r 30 -c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${transOut}"`,
         { stdio: 'pipe' }
       );
@@ -619,6 +623,7 @@ export async function renderVideo({
   const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
 
   if (captions) {
+    await mkdir(TEMP_DIR, { recursive: true });
     const captionTemp = path.join(TEMP_DIR, `captions_${id}.mp4`);
     // ✅ FIX: use actual audio duration for caption timing, not estimated
     const totalDur = audioDuration || (secPerScene * scenes.length);
