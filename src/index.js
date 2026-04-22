@@ -75,7 +75,7 @@ app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) 
   if (!idea && !script) return res.status(400).json({ error: 'idea or script is required' });
 
   // ✅ Plan enforcement
-  const user = getUserById(req.user.userId);
+  const user = await getUserById(req.user.userId);
   const planData = PLANS[user?.plan || 'free'];
   const DURATION_LIMITS = {
     free: ['30s', 'auto'],
@@ -169,13 +169,13 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
 
   // ✅ Plan enforcement for render features
-  const user = getUserById(req.user.userId);
+  const user = await getUserById(req.user.userId);
   const planData = PLANS[user?.plan || 'free'];
 
   // ✅ Credit & video limit check
-  const renderCheck = canUserRender(req.user.userId);
+  const renderCheck = await canUserRender(req.user.userId);
   if (!renderCheck.allowed) {
-    const credits = getUserCredits(req.user.userId);
+    const credits = await getUserCredits(req.user.userId);
 
     // حساب نهاية الأسبوع (السبت القادم)
     const now = new Date();
