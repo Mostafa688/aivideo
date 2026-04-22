@@ -338,7 +338,7 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
       ])
-      .output(output)
+      .output(path.resolve(output))
       .on('end', resolve)
       .on('error', (err) => {
         console.warn('Captions failed:', err.message);
@@ -624,7 +624,7 @@ export async function renderVideo({
 
   if (captions) {
     await mkdir(TEMP_DIR, { recursive: true });
-    const captionTemp = path.join(TEMP_DIR, `captions_${id}.mp4`);
+    const captionTemp = path.resolve(TEMP_DIR, `captions_${id}.mp4`);
     // ✅ FIX: use actual audio duration for caption timing, not estimated
     const totalDur = audioDuration || (secPerScene * scenes.length);
     const perScene = totalDur / scenes.length;
