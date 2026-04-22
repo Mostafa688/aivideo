@@ -101,8 +101,8 @@ async function runEdgeTTS(text, voiceName, rateStr, pitch, outputFile) {
   const safeText = text.replace(/"/g, "'").replace(/\n/g, ' ').trim();
   const cmd = EDGE_TTS_CMD
     + ' --voice ' + voiceName
-    + ' --rate "' + rateStr + '"'
-    + ' --pitch "' + pitch + '"'
+    + ' --rate ' + rateStr
+    + ' --pitch ' + pitch
     + ' --text "' + safeText + '"'
     + ' --write-media "' + outputFile + '"';
 
