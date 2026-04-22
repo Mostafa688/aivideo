@@ -1,15 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { mkdir } from 'fs/promises';
-import { execSync } from 'child_process';
 import { LANGUAGE_DEFAULT_VOICES } from './scriptService.js';
 
 const OUTPUTS_DIR = 'outputs';
-
-// ✅ يشتغل على Windows وعلى Railway (Linux) تلقائياً
-const EDGE_TTS = process.platform === 'win32'
-  ? '"C:\\Users\\Dell\\AppData\\Local\\Programs\\Python\\Python314\\Scripts\\edge-tts.exe"'
-  : './node_modules/.bin/edge-tts';
 
 export const VOICE_OPTIONS = {
   'male_wise':       { name: 'Wise Man',         voice: 'en-US-ChristopherNeural', gender: 'male'   },
@@ -50,7 +44,7 @@ function resolveVoice(voiceKey, videoType, videoLanguage) {
         else if (voiceKey === 'male') gender = 'male';
       }
       const selectedVoice = langVoices[gender] || langVoices.male;
-      console.log(`[TTS] Language ${lang} → Auto voice: ${selectedVoice} (${gender})`);
+      console.log(`[TTS] Language ${lang} -> Auto voice: ${selectedVoice} (${gender})`);
       return { voice: selectedVoice, gender, name: `${lang} ${gender}` };
     }
   }
@@ -78,7 +72,7 @@ export async function generateVoiceover(text, voiceKey = 'male_american', videoT
 
   console.log(`[TTS] Voice: ${voiceName} | Lang: ${videoLanguage} | Rate: ${rateStr} | Pitch: ${pitch}`);
 
-  // ElevenLabs fallback (إنجليزي فقط)
+  // ElevenLabs fallback
   if (videoLanguage === 'en' && process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_API_KEY !== 'your_elevenlabs_key_here') {
     try {
       const { default: fetch } = await import('node-fetch');
@@ -98,21 +92,18 @@ export async function generateVoiceover(text, voiceKey = 'male_american', videoT
     }
   }
 
-  // Edge TTS
+  // Edge TTS via npm package API
   try {
-    const tmpFile = path.join(OUTPUTS_DIR, 'tmp_' + Date.now() + '.mp3');
-    const safeText = text.replace(/"/g, "'").replace(/\n/g, ' ');
-    const cmd = EDGE_TTS
-      + ' --voice ' + voiceName
-      + ' --rate "' + rateStr + '"'
-      + ' --pitch "' + pitch + '"'
-      + ' --text "' + safeText + '"'
-      + ' --write-media "' + tmpFile + '"';
+    const { EdgeTTS } = await import('edge-tts');
+    const tts = new EdgeTTS();
+    await tts.tts(text, voiceName, {
+      rate: rateStr,
+      pitch: pitch,
+      outputFile: filepath,
+    });
 
-    execSync(cmd, { stdio: 'pipe', timeout: 60000 });
-
-    if (fs.existsSync(tmpFile) && fs.statSync(tmpFile).size > 1000) {
-      fs.renameSync(tmpFile, filepath);
+    if (fs.existsSync(filepath) && fs.statSync(filepath).size > 1000) {
+      console.log(`[TTS] Success: ${filename}`);
       return filename;
     } else {
       console.warn('[TTS] Edge TTS produced empty file');
