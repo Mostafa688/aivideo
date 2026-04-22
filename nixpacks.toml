@@ -2,7 +2,4 @@
 nixPkgs = ["nodejs_20", "ffmpeg", "python3", "python3Packages.pip", "python3Packages.setuptools"]
 
 [phases.install]
-cmds = ["npm ci", "pip install --break-system-packages edge-tts"]
-
-[start]
-cmd = "export PATH=$PATH:/root/.local/bin && node src/index.js"
+cmds = ["npm ci", "pip install --break-system-packages edge-tts", "which edge-tts || find / -name edge-tts 2>/dev/null | head -5"]
