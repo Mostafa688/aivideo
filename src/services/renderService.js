@@ -184,10 +184,10 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
 
     const offset = Math.max(currentDuration - 0.5, 0.5);
 
+    const transTypes = ['fade', 'slideleft', 'slideright', 'slideup', 'dissolve', 'wipeleft', 'wiperight', 'circlecrop', 'rectcrop', 'distance'];
+    const transType = transTypes[i % transTypes.length];
     try {
       execSync(
-        const transTypes = ['fade', 'slideleft', 'slideright', 'slideup', 'dissolve', 'wipeleft', 'wiperight', 'circlecrop', 'rectcrop', 'distance'];
-        const transType = transTypes[i % transTypes.length];
         `ffmpeg -i "${current}" -i "${slideFiles[i]}"` +
         ` -filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=0.5:offset=${offset}[v]"` +
         ` -map "[v]" -r 30 -c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${transOut}"`,
