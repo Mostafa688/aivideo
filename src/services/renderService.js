@@ -9,6 +9,20 @@ const OUTPUTS_DIR = 'outputs';
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const FONT_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arial.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
 const FONT_BOLD_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arialbd.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+const FONT_ARABIC_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arial.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+
+function getFontPath(videoLanguage) {
+  if (process.platform === 'win32') return FONT_PATH;
+  const notoBase = '/usr/share/fonts/truetype/noto';
+  switch (videoLanguage) {
+    case 'ar': return `${notoBase}/NotoSansArabic-Regular.ttf`;
+    case 'ja': return `${notoBase}/NotoSansCJK-Regular.ttc`;
+    case 'zh': return `${notoBase}/NotoSansCJK-Regular.ttc`;
+    case 'ko': return `${notoBase}/NotoSansCJK-Regular.ttc`;
+    case 'ru': return '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+    default:   return '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+  }
+}
 
 const RATIOS = {
   '16:9': { w: 1280, h: 720 },
@@ -162,7 +176,7 @@ function concatVideos(listFile, output, audioDuration = null) {
   });
 }
 
-async function concatWithTransitions(slideFiles, output, id, secPerScene) {
+async function concatWithTransitions(slideFiles, output, id, secPerScene, audioDuration = null) {
   if (slideFiles.length === 1) {
     fs.copyFileSync(slideFiles[0], output);
     return;
@@ -270,10 +284,10 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
   });
 }
 
-function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9') {
+function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9', videoLanguage = 'en') {
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
-  const fontfile = style.fontfile || FONT_PATH;
+  const fontfile = style.fontfile || getFontPath(videoLanguage);
 
   // Split text into chunks of 3 words max for better readability
   function splitIntoChunks(text, wordsPerChunk = 3) {
@@ -483,7 +497,7 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
 
   const concatFile = path.join(TEMP_DIR, `concat_${id}.mp4`);
   if (transitions && slideFiles.length > 1) {
-    await concatWithTransitions(slideFiles, concatFile, id, secPerScene);
+    await concatWithTransitions(slideFiles, concatFile, id, secPerScene, audioDuration);
   } else {
     const listFile = path.join(TEMP_DIR, `list_${id}.txt`);
     const listContent = slideFiles.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n');
@@ -491,7 +505,7 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
     await concatVideos(listFile, concatFile);
   }
 
-  return { concatFile, slideFiles, secPerScene };
+  return { concatFile, slideFiles, secPerScene, audioDuration };
 }
 
 function finalizeVideo(inputFile, output, audioDuration = null) {
@@ -544,6 +558,7 @@ export async function renderVideo({
   sfxVolume = 0.4,
   videoEffect = 'none',
   applyWatermark = true,
+  videoLanguage = 'en',
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -623,7 +638,7 @@ export async function renderVideo({
     const totalDur = audioDuration || (secPerScene * scenes.length);
     const perScene = totalDur / scenes.length;
     const sceneDurations = scenes.map(() => perScene);
-    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio);
+    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
       console.log('[Watermark] Applied (free plan)');
