@@ -520,8 +520,12 @@ export async function renderVideo({
     console.log(`[Render] No audio - using estimated duration: ${audioDuration}s`);
   }
 
+  // Add transition duration compensation
+  const transitionCompensation = transitions && scenes.length > 1 ? (scenes.length - 1) * 0.5 : 0;
+  const adjustedDuration = audioDuration + transitionCompensation;
+
   const { concatFile, slideFiles, secPerScene } = await buildVideoFromScenes(
-    scenes, audioDuration, w, h, id, transitions
+    scenes, adjustedDuration, w, h, id, transitions
   );
 
   // Step 3: Mix audio
@@ -558,7 +562,7 @@ export async function renderVideo({
 
   // Step 5.5: Trim to exact audio duration
   const step55 = path.join(TEMP_DIR, `step55_${id}.mp4`);
-  await trimVideoToAudio(step5, step55, audioDuration);
+  await trimVideoToAudio(step5, step55, audioDuration); // trim to exact audio duration
 
   // Step 6: Captions + Watermark
   const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
