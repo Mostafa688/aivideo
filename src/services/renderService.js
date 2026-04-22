@@ -302,17 +302,11 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       const chunkStart = start + j * chunkDur;
       const chunkEnd = chunkStart + chunkDur;
 
-      // Alpha fade animation: fade in for 0.15s, fade out for 0.15s
-      const fadeAlpha = `if(lt(t-${chunkStart.toFixed(3)},0.15),` +
-        `(t-${chunkStart.toFixed(3)})/0.15,` +
-        `if(gt(t,${(chunkEnd - 0.15).toFixed(3)}),` +
-        `(${chunkEnd.toFixed(3)}-t)/0.15,1))`;
-
       filters.push(
         `drawtext=fontfile='${fontfile}'`
         + `:text='${chunk}'`
         + `:fontsize=${style.fontsize}`
-        + `:fontcolor=${style.fontcolor}@${fadeAlpha}`
+        + `:fontcolor=${style.fontcolor}`
         + `:borderw=${style.borderw}`
         + `:bordercolor=${style.bordercolor}`
         + (style.box ? `:box=1:boxcolor=${style.boxcolor}:boxborderw=8` : '')
