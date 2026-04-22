@@ -1,2 +1,5 @@
-'[phases.setup]' 
-'nixPkgs = ["ffmpeg"]' 
+[phases.setup]
+nixPkgs = ["ffmpeg", "python3", "python3Packages.pip"]
+
+[phases.install]
+cmds = ["pip install edge-tts"]

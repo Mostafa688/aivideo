@@ -5,7 +5,11 @@ import { execSync } from 'child_process';
 import { LANGUAGE_DEFAULT_VOICES } from './scriptService.js';
 
 const OUTPUTS_DIR = 'outputs';
-const EDGE_TTS = '"C:\\Users\\Dell\\AppData\\Local\\Programs\\Python\\Python314\\Scripts\\edge-tts.exe"';
+
+// ✅ يشتغل على Windows وعلى Railway (Linux) تلقائياً
+const EDGE_TTS = process.platform === 'win32'
+  ? '"C:\\Users\\Dell\\AppData\\Local\\Programs\\Python\\Python314\\Scripts\\edge-tts.exe"'
+  : 'edge-tts';
 
 export const VOICE_OPTIONS = {
   'male_wise':       { name: 'Wise Man',         voice: 'en-US-ChristopherNeural', gender: 'male'   },
