@@ -233,7 +233,6 @@ function mixAudio(videoFile, audioFile, output, audioDuration) {
       .outputOptions([
         '-map', '0:v', '-map', '1:a',
         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-        '-t', String(audioDuration),
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
