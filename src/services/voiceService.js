@@ -65,6 +65,51 @@ function resolveVoice(voiceKey, videoType, videoLanguage) {
   return voiceData;
 }
 
+// Split text into chunks of max 200 chars at sentence boundaries
+function splitTextIntoChunks(text, maxChars = 200) {
+  const sentences = text.replace(/([.!?؟])\s+/g, '$1|').split('|');
+  const chunks = [];
+  let current = '';
+
+  for (const sentence of sentences) {
+    if ((current + ' ' + sentence).trim().length <= maxChars) {
+      current = (current + ' ' + sentence).trim();
+    } else {
+      if (current) chunks.push(current);
+      current = sentence;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.filter(Boolean);
+}
+
+// Merge multiple mp3 files using ffmpeg
+function mergeAudioFiles(files, output) {
+  if (files.length === 1) {
+    fs.renameSync(files[0], output);
+    return;
+  }
+  const listFile = output + '_list.txt';
+  const listContent = files.map(f => `file '${path.resolve(f)}'`).join('\n');
+  fs.writeFileSync(listFile, listContent);
+  execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c copy -y "${output}"`, { stdio: 'pipe' });
+  fs.unlinkSync(listFile);
+  files.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+}
+
+async function runEdgeTTS(text, voiceName, rateStr, pitch, outputFile) {
+  const safeText = text.replace(/"/g, "'").replace(/\n/g, ' ').trim();
+  const cmd = EDGE_TTS_CMD
+    + ' --voice ' + voiceName
+    + ' --rate "' + rateStr + '"'
+    + ' --pitch "' + pitch + '"'
+    + ' --text "' + safeText + '"'
+    + ' --write-media "' + outputFile + '"';
+
+  execSync(cmd, { stdio: 'pipe', timeout: 90000 });
+  return fs.existsSync(outputFile) && fs.statSync(outputFile).size > 1000;
+}
+
 export async function generateVoiceover(text, voiceKey = 'male_american', videoType = 'education', speed = 0, videoLanguage = 'en') {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   const filename = 'voice_' + Date.now() + '.mp3';
@@ -99,25 +144,34 @@ export async function generateVoiceover(text, voiceKey = 'male_american', videoT
     }
   }
 
-  // Edge TTS
+  // Edge TTS with chunking for long texts
   try {
-    const tmpFile = path.join(OUTPUTS_DIR, 'tmp_' + Date.now() + '.mp3');
-    const safeText = text.replace(/"/g, "'").replace(/\n/g, ' ');
-    const cmd = EDGE_TTS_CMD
-      + ' --voice ' + voiceName
-      + ' --rate "' + rateStr + '"'
-      + ' --pitch "' + pitch + '"'
-      + ' --text "' + safeText + '"'
-      + ' --write-media "' + tmpFile + '"';
+    const chunks = splitTextIntoChunks(text, 200);
+    console.log(`[TTS] Split into ${chunks.length} chunks`);
 
-    console.log(`[TTS] CMD: ${cmd.substring(0, 80)}...`);
-    execSync(cmd, { stdio: 'pipe', timeout: 60000 });
+    const chunkFiles = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkFile = path.join(OUTPUTS_DIR, `tmp_chunk_${Date.now()}_${i}.mp3`);
+      const ok = await runEdgeTTS(chunks[i], voiceName, rateStr, pitch, chunkFile);
+      if (ok) {
+        chunkFiles.push(chunkFile);
+      } else {
+        console.warn(`[TTS] Chunk ${i} failed`);
+      }
+    }
 
-    if (fs.existsSync(tmpFile) && fs.statSync(tmpFile).size > 1000) {
-      fs.renameSync(tmpFile, filepath);
+    if (chunkFiles.length === 0) {
+      console.warn('[TTS] All chunks failed');
+      return null;
+    }
+
+    mergeAudioFiles(chunkFiles, filepath);
+
+    if (fs.existsSync(filepath) && fs.statSync(filepath).size > 1000) {
+      console.log(`[TTS] Success: ${filename}`);
       return filename;
     } else {
-      console.warn('[TTS] Edge TTS produced empty file');
+      console.warn('[TTS] Merged file empty');
       return null;
     }
   } catch (e) {
