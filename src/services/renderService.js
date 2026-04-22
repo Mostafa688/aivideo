@@ -18,17 +18,25 @@ const FONT_BOLD_PATH = process.platform === 'win32'
 
 function getFontPath(videoLanguage) {
   if (process.platform === 'win32') return FONT_PATH;
-  // Try Noto fonts first, fallback to DejaVu
   const notoArabic = '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf';
   const notoCJK    = '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc';
   const dejaVu     = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
   switch (videoLanguage) {
     case 'ar': return fs.existsSync(notoArabic) ? notoArabic : dejaVu;
-    case 'ja':
-    case 'zh':
-    case 'ko': return fs.existsSync(notoCJK) ? notoCJK : dejaVu;
+    case 'ja': case 'zh': case 'ko': return fs.existsSync(notoCJK) ? notoCJK : dejaVu;
     default:   return dejaVu;
   }
+}
+
+// Keywords that get bigger/colored treatment
+const POWER_WORDS = ['never', 'always', 'stop', 'start', 'now', 'today', 'must', 'only', 'every',
+  'best', 'worst', 'first', 'last', 'most', 'least', 'free', 'new', 'amazing', 'incredible',
+  'powerful', 'secret', 'truth', 'real', 'fake', 'dead', 'alive', 'win', 'lose', 'love', 'hate',
+  'fear', 'brave', 'strong', 'weak', 'rich', 'poor', 'success', 'fail', 'rise', 'fall'];
+
+function hasPowerWord(text) {
+  const lower = text.toLowerCase();
+  return POWER_WORDS.some(w => lower.includes(w));
 }
 
 const RATIOS = {
@@ -53,31 +61,26 @@ const CAPTION_STYLES = {
     fontsize: 28, fontcolor: 'white', borderw: 2, bordercolor: 'black',
     box: 1, boxcolor: '0x00000088',
     getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60',
-    maxChars: 50,
   },
   bold_yellow: {
-    fontsize: 32, fontcolor: 'yellow', borderw: 3, bordercolor: 'black',
+    fontsize: 34, fontcolor: 'yellow', borderw: 3, bordercolor: 'black',
     box: 0, boxcolor: '0x00000000',
     getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82',
-    maxChars: 40,
   },
   center_box: {
     fontsize: 30, fontcolor: 'white', borderw: 0, bordercolor: 'black',
     box: 1, boxcolor: '0x0a0a2ecc',
     getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82',
-    maxChars: 45,
   },
   documentary: {
     fontsize: 26, fontcolor: '0x00ff88', borderw: 2, bordercolor: '0x003322',
     box: 1, boxcolor: '0x00000099',
     getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-50',
-    maxChars: 55,
   },
   clean_white: {
     fontsize: 30, fontcolor: 'white', borderw: 2, bordercolor: '0x00000077',
     box: 0, boxcolor: '0x00000000',
     getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60',
-    maxChars: 50,
   },
 };
 
@@ -226,15 +229,14 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
   fs.copyFileSync(current, output);
 }
 
-function mixAudio(videoFile, audioFile, output, audioDuration) {
+function mixAudio(videoFile, audioFile, output) {
   return new Promise((resolve, reject) => {
     ffmpeg()
       .input(videoFile).input(audioFile)
       .outputOptions([
         '-map', '0:v', '-map', '1:a',
         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-        '-shortest',
-        '-movflags', '+faststart',
+        '-shortest', '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
   });
@@ -252,9 +254,8 @@ function addMusicOnly(videoFile, musicFile, output, musicVolume = 0.08) {
   });
 }
 
-function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume = 0.07, audioDuration) {
+function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume = 0.07) {
   return new Promise((resolve, reject) => {
-    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg()
       .input(videoFile).input(voiceFile).input(musicFile)
       .complexFilter([
@@ -262,7 +263,6 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
         '[1:a][music]amix=inputs=2:duration=longest[aout]',
       ])
       .outputOptions([
-        ...durationOpts,
         '-map', '0:v', '-map', '[aout]',
         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
         '-shortest', '-movflags', '+faststart',
@@ -275,6 +275,8 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
   const fontfile = getFontPath(videoLanguage);
+  const boldFont = process.platform === 'win32' ? FONT_BOLD_PATH : fontfile;
+  const isMotivational = videoType === 'motivational';
 
   function splitIntoChunks(text, wordsPerChunk = 3) {
     const words = text.replace(/[':]/g, '').replace(/\\/g, '').replace(/\n/g, ' ').trim().split(/\s+/);
@@ -293,6 +295,11 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
     const sceneDur = sceneDurations[i] || 7;
     const end = start + sceneDur;
     currentTime = end;
+
+    const isHook = scene.type === 'hook';
+    const isEnding = scene.type === 'ending';
+    const isPowerful = hasPowerWord(scene.text);
+
     const chunks = splitIntoChunks(scene.text, 3);
     const chunkDur = sceneDur / chunks.length;
     const yExpr = style.getY(ratio);
@@ -302,11 +309,35 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       const chunkEnd = chunkStart + chunkDur;
       const safeChunk = chunk.replace(/\\/g, '').replace(/'/g, '').replace(/:/g, '').trim();
       if (!safeChunk) return;
+
+      // Motivational: bigger font for hook/powerful chunks
+      let fontSize = style.fontsize;
+      let fontColor = style.fontcolor;
+      let useBold = false;
+
+      if (isMotivational) {
+        if (isHook && j === 0) {
+          fontSize = style.fontsize + 8;
+          fontColor = 'white';
+          useBold = true;
+        } else if (isPowerful && hasPowerWord(chunk)) {
+          fontSize = style.fontsize + 4;
+          fontColor = 'yellow';
+          useBold = true;
+        } else if (isEnding && j === chunks.length - 1) {
+          fontSize = style.fontsize + 4;
+          fontColor = '0x00ff88';
+          useBold = true;
+        }
+      }
+
+      const useFont = useBold ? boldFont : fontfile;
+
       filters.push(
-        `drawtext=fontfile='${fontfile}'`
+        `drawtext=fontfile='${useFont}'`
         + `:text='${safeChunk}'`
-        + `:fontsize=${style.fontsize}`
-        + `:fontcolor=${style.fontcolor}`
+        + `:fontsize=${fontSize}`
+        + `:fontcolor=${fontColor}`
         + `:borderw=${style.borderw}`
         + `:bordercolor=${style.bordercolor}`
         + (style.box ? `:box=1:boxcolor=${style.boxcolor}:boxborderw=8` : '')
@@ -465,21 +496,6 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
   return { concatFile, slideFiles, secPerScene };
 }
 
-function trimVideoToAudio(inputFile, output, audioDuration) {
-  return new Promise((resolve, reject) => {
-    ffmpeg(inputFile)
-      .outputOptions([
-        '-t', String(audioDuration),
-        '-c', 'copy',
-        '-movflags', '+faststart',
-      ])
-      .output(output)
-      .on('end', resolve)
-      .on('error', reject)
-      .run();
-  });
-}
-
 export async function renderVideo({
   scenes, audioUrl, ratio = '16:9', jobId, duration = 'auto',
   music = false, captions = false, transitions = false,
@@ -520,20 +536,18 @@ export async function renderVideo({
     console.log(`[Render] No audio - using estimated duration: ${audioDuration}s`);
   }
 
-  // Build video with 3 seconds buffer to ensure video is always longer than audio
-  const videoBuildDuration = audioDuration + 3;
-
+  // Build video 3s longer than audio to avoid freeze
   const { concatFile, slideFiles, secPerScene } = await buildVideoFromScenes(
-    scenes, videoBuildDuration, w, h, id, transitions
+    scenes, audioDuration + 3, w, h, id, transitions
   );
 
-  // Step 3: Mix audio
+  // Step 3: Mix audio — -shortest stops video at audio end
   const step3 = path.join(TEMP_DIR, `step3_${id}.mp4`);
   const musicPath = music ? findMusicFile() : null;
   if (audioPath && musicPath) {
-    await mixAudioAndMusic(concatFile, audioPath, musicPath, step3, musicVolume, audioDuration);
+    await mixAudioAndMusic(concatFile, audioPath, musicPath, step3, musicVolume);
   } else if (audioPath) {
-    await mixAudio(concatFile, audioPath, step3, audioDuration);
+    await mixAudio(concatFile, audioPath, step3);
   } else if (musicPath) {
     await addMusicOnly(concatFile, musicPath, step3, musicVolume);
   } else {
@@ -559,17 +573,13 @@ export async function renderVideo({
     fs.copyFileSync(step4, step5);
   }
 
-  // Step 5.5: copy step5 to step55
-  const step55 = path.join(TEMP_DIR, `step55_${id}.mp4`);
-  fs.copyFileSync(step5, step55);
-
   // Step 6: Captions + Watermark
   const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
   if (captions) {
     const captionTemp = path.resolve(TEMP_DIR, `captions_${id}.mp4`);
     const perScene = audioDuration / scenes.length;
     const sceneDurations = scenes.map(() => perScene);
-    await addCaptionsWithTiming(step55, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
+    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
       console.log('[Watermark] Applied (free plan)');
@@ -580,20 +590,18 @@ export async function renderVideo({
     try { if (fs.existsSync(captionTemp)) fs.unlinkSync(captionTemp); } catch {}
   } else {
     if (applyWatermark) {
-      await addWatermark(step55, step6);
+      await addWatermark(step5, step6);
       console.log('[Watermark] Applied (free plan)');
     } else {
-      fs.copyFileSync(step55, step6);
+      fs.copyFileSync(step5, step6);
       console.log('[Watermark] Skipped (paid plan)');
     }
   }
 
-  // Final output
   fs.copyFileSync(step6, outputPath);
 
-  // Cleanup
   setTimeout(() => {
-    [...slideFiles, concatFile, step3, step4, step5, step55, step6].forEach(f => {
+    [...slideFiles, concatFile, step3, step4, step5, step6].forEach(f => {
       try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
     });
     slideFiles.forEach((_, i) => {
