@@ -1,16 +1,15 @@
-import Database from 'better-sqlite3';
+import pkg from 'pg';
+const { Pool } = pkg;
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import nodemailer from 'nodemailer';
-import path from 'path';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'erivion.db');
 const JWT_SECRET = process.env.JWT_SECRET || 'erivion_secret_2026';
 
-import { mkdirSync } from 'fs';
-mkdirSync(path.join(process.cwd(), 'data'), { recursive: true });
-
-const db = new Database(DB_PATH);
+// ✅ PostgreSQL connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
+});
 
 export const PLANS = {
   free: {
@@ -35,68 +34,59 @@ export const PLANS = {
   },
 };
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    name TEXT,
-    verified INTEGER DEFAULT 0,
-    plan TEXT DEFAULT 'free',
-    plan_billing TEXT DEFAULT 'monthly',
-    plan_expires_at TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS verification_codes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL,
-    code TEXT NOT NULL,
-    expires_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS videos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    filename TEXT NOT NULL,
-    title TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-  CREATE TABLE IF NOT EXISTS user_usage (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL UNIQUE,
-    credits_used INTEGER DEFAULT 0,
-    videos_this_week INTEGER DEFAULT 0,
-    last_reset TEXT DEFAULT (date('now')),
-    week_reset TEXT DEFAULT (date('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-  CREATE TABLE IF NOT EXISTS payment_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    user_email TEXT NOT NULL,
-    plan TEXT NOT NULL,
-    billing TEXT NOT NULL,
-    amount INTEGER NOT NULL,
-    screenshot_path TEXT,
-    screenshot_data TEXT,
-    status TEXT DEFAULT 'pending',
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-`);
+// ✅ Initialize tables
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      name TEXT,
+      google_id TEXT,
+      avatar TEXT,
+      verified INTEGER DEFAULT 0,
+      plan TEXT DEFAULT 'free',
+      plan_billing TEXT DEFAULT 'monthly',
+      plan_expires_at TEXT,
+      created_at TEXT DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS verification_codes (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at BIGINT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS videos (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      filename TEXT NOT NULL,
+      title TEXT,
+      created_at TEXT DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS user_usage (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+      credits_used INTEGER DEFAULT 0,
+      videos_this_week INTEGER DEFAULT 0,
+      last_reset TEXT DEFAULT CURRENT_DATE,
+      week_reset TEXT DEFAULT CURRENT_DATE
+    );
+    CREATE TABLE IF NOT EXISTS payment_requests (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      user_email TEXT NOT NULL,
+      plan TEXT NOT NULL,
+      billing TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      screenshot_data TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT NOW()
+    );
+  `);
+  console.log('[DB] PostgreSQL tables ready');
+}
 
-const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
-if (!userCols.includes('plan'))            db.exec("ALTER TABLE users ADD COLUMN plan TEXT");
-if (!userCols.includes('plan_billing'))    db.exec("ALTER TABLE users ADD COLUMN plan_billing TEXT");
-if (!userCols.includes('plan_expires_at')) db.exec("ALTER TABLE users ADD COLUMN plan_expires_at TEXT");
-if (!userCols.includes('name'))            db.exec("ALTER TABLE users ADD COLUMN name TEXT");
-if (!userCols.includes('google_id'))       db.exec("ALTER TABLE users ADD COLUMN google_id TEXT");
-if (!userCols.includes('avatar'))          db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
-
-const usageCols = db.prepare("PRAGMA table_info(user_usage)").all().map(c => c.name);
-if (!usageCols.includes('videos_this_week')) db.exec("ALTER TABLE user_usage ADD COLUMN videos_this_week INTEGER");
-if (!usageCols.includes('week_reset'))       db.exec("ALTER TABLE user_usage ADD COLUMN week_reset TEXT");
-if (!usageCols.includes('credits_used'))     db.exec("ALTER TABLE user_usage ADD COLUMN credits_used INTEGER");
+initDB().catch(err => console.error('[DB] Init error:', err.message));
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -111,43 +101,40 @@ function getWeekStart() {
   return sat.toISOString().split('T')[0];
 }
 
-// ✅ Check if paid plan expired → revert to free automatically
-function checkPlanExpiry(userId) {
-  const user = db.prepare('SELECT plan, plan_expires_at FROM users WHERE id = ?').get(userId);
+async function checkPlanExpiry(userId) {
+  const { rows } = await pool.query('SELECT plan, plan_expires_at FROM users WHERE id = $1', [userId]);
+  const user = rows[0];
   if (!user || user.plan === 'free' || !user.plan_expires_at) return;
-  const now = new Date();
-  const expires = new Date(user.plan_expires_at);
-  if (now > expires) {
-    db.prepare("UPDATE users SET plan = 'free', plan_billing = 'monthly', plan_expires_at = NULL WHERE id = ?").run(userId);
-    console.log(`[Plan] User ${userId} plan expired → reverted to free`);
+  if (new Date() > new Date(user.plan_expires_at)) {
+    await pool.query("UPDATE users SET plan = 'free', plan_billing = 'monthly', plan_expires_at = NULL WHERE id = $1", [userId]);
   }
 }
 
-function checkAndResetUsage(userId) {
-  // ✅ Check plan expiry first
-  checkPlanExpiry(userId);
-
+async function checkAndResetUsage(userId) {
+  await checkPlanExpiry(userId);
   const weekStart = getWeekStart();
-  let row = db.prepare('SELECT * FROM user_usage WHERE user_id = ?').get(userId);
-  if (!row) {
-    db.prepare('INSERT INTO user_usage (user_id, credits_used, videos_this_week, last_reset, week_reset) VALUES (?, 0, 0, ?, ?)').run(userId, weekStart, weekStart);
+  const { rows } = await pool.query('SELECT * FROM user_usage WHERE user_id = $1', [userId]);
+  if (rows.length === 0) {
+    await pool.query('INSERT INTO user_usage (user_id, credits_used, videos_this_week, last_reset, week_reset) VALUES ($1, 0, 0, $2, $2)', [userId, weekStart]);
     return { credits_used: 0, videos_this_week: 0 };
   }
+  const row = rows[0];
   if (row.week_reset !== weekStart) {
-    db.prepare('UPDATE user_usage SET credits_used = 0, videos_this_week = 0, week_reset = ?, last_reset = ? WHERE user_id = ?').run(weekStart, weekStart, userId);
+    await pool.query('UPDATE user_usage SET credits_used = 0, videos_this_week = 0, week_reset = $1, last_reset = $1 WHERE user_id = $2', [weekStart, userId]);
     return { credits_used: 0, videos_this_week: 0 };
   }
   return { credits_used: row.credits_used || 0, videos_this_week: row.videos_this_week || 0 };
 }
 
-export function getUserById(userId) {
-  return db.prepare('SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, created_at FROM users WHERE id = ?').get(userId);
+export async function getUserById(userId) {
+  const { rows } = await pool.query('SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, created_at FROM users WHERE id = $1', [userId]);
+  return rows[0] || null;
 }
 
-export function getUserCredits(userId) {
-  const user = getUserById(userId);
+export async function getUserCredits(userId) {
+  const user = await getUserById(userId);
   const plan = PLANS[user?.plan || 'free'];
-  const { credits_used, videos_this_week } = checkAndResetUsage(userId);
+  const { credits_used, videos_this_week } = await checkAndResetUsage(userId);
   const weeklyLimit = plan.credits_weekly;
   const remaining = Math.max(0, weeklyLimit - credits_used);
   return {
@@ -158,33 +145,29 @@ export function getUserCredits(userId) {
   };
 }
 
-export function addUserTokens(userId, tokensUsed) {
-  checkAndResetUsage(userId);
-  db.prepare('UPDATE user_usage SET credits_used = credits_used + ? WHERE user_id = ?').run(tokensUsed, userId);
+export async function addUserTokens(userId, tokensUsed) {
+  await checkAndResetUsage(userId);
+  await pool.query('UPDATE user_usage SET credits_used = credits_used + $1 WHERE user_id = $2', [tokensUsed, userId]);
 }
 
-export function incrementVideoCount(userId) {
-  checkAndResetUsage(userId);
-  db.prepare('UPDATE user_usage SET videos_this_week = videos_this_week + 1 WHERE user_id = ?').run(userId);
+export async function incrementVideoCount(userId) {
+  await checkAndResetUsage(userId);
+  await pool.query('UPDATE user_usage SET videos_this_week = videos_this_week + 1 WHERE user_id = $1', [userId]);
 }
 
-export function canUserRender(userId) {
-  const user = getUserById(userId);
+export async function canUserRender(userId) {
+  const user = await getUserById(userId);
   const plan = PLANS[user?.plan || 'free'];
-  const { credits_used, videos_this_week } = checkAndResetUsage(userId);
+  const { credits_used, videos_this_week } = await checkAndResetUsage(userId);
   if (credits_used >= plan.credits_weekly) return { allowed: false, reason: 'credits_exhausted' };
   if (plan.videos_weekly !== null && videos_this_week >= plan.videos_weekly) return { allowed: false, reason: 'videos_limit_reached' };
   return { allowed: true };
 }
 
 async function sendVerificationEmail(email, code) {
-  // ✅ Using Resend API (works on Railway - no SMTP blocking)
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + process.env.RESEND_API_KEY,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from: 'Erivion <noreply@erivion.net>',
       to: email,
@@ -192,10 +175,7 @@ async function sendVerificationEmail(email, code) {
       html: `<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">Erivion</h2><p>Your verification code is:</p><div style="font-size:36px;font-weight:700;letter-spacing:8px;color:#7c6af7;margin:24px 0">${code}</div><p style="color:#888;font-size:13px">This code expires in 10 minutes.</p></div>`,
     }),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error('Email send failed: ' + (err.message || JSON.stringify(err)));
-  }
+  if (!res.ok) { const err = await res.json(); throw new Error('Email send failed: ' + (err.message || JSON.stringify(err))); }
 }
 
 export async function sendPaymentRequestEmail(paymentData) {
@@ -203,114 +183,112 @@ export async function sendPaymentRequestEmail(paymentData) {
   const planData = PLANS[plan];
   const billingLabel = billing === 'yearly' ? 'Yearly' : 'Monthly';
   const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
-
-  // Build attachments array for Resend
   const attachments = [];
   if (screenshotBase64) {
     const base64Data = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
     const ext = screenshotBase64.includes('png') ? 'png' : 'jpg';
     attachments.push({ filename: `payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
   }
-
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + process.env.RESEND_API_KEY,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from: 'Erivion Payments <noreply@erivion.net>',
       to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
       subject: `💰 Payment Request - ${planData.name} Plan - ${userEmail}`,
-      html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">💰 New Payment Request</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#7c6af7;font-weight:700">${planData.name}</td></tr><tr><td style="color:#888;padding:8px 0">Billing</td><td style="color:#fff">${billingLabel}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><p style="color:#888;font-size:13px">Screenshot attached (if provided). Please verify and approve or reject below.</p><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&billing=${billing}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve - Open ${planData.name} Plan</a> <a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(userEmail)}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
+      html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">💰 New Payment Request</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#7c6af7;font-weight:700">${planData.name}</td></tr><tr><td style="color:#888;padding:8px 0">Billing</td><td style="color:#fff">${billingLabel}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><p style="color:#888;font-size:13px">Please verify and approve or reject below.</p><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&billing=${billing}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a> <a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(userEmail)}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
       attachments: attachments.length > 0 ? attachments : undefined,
     }),
   });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error('Payment email failed: ' + (err.message || JSON.stringify(err)));
-  }
+  if (!res.ok) { const err = await res.json(); throw new Error('Payment email failed: ' + (err.message || JSON.stringify(err))); }
 }
 
-export function activateUserPlan(email, plan, billing = 'monthly') {
+export async function activateUserPlan(email, plan, billing = 'monthly') {
   const expiresAt = new Date();
   if (billing === 'yearly') expiresAt.setFullYear(expiresAt.getFullYear() + 1);
   else expiresAt.setMonth(expiresAt.getMonth() + 1);
-  db.prepare('UPDATE users SET plan = ?, plan_billing = ?, plan_expires_at = ? WHERE email = ?').run(plan, billing, expiresAt.toISOString(), email);
+  await pool.query('UPDATE users SET plan = $1, plan_billing = $2, plan_expires_at = $3 WHERE email = $4', [plan, billing, expiresAt.toISOString(), email]);
   return { success: true, plan, expires_at: expiresAt.toISOString() };
 }
 
-export function createPaymentRequest(userId, userEmail, plan, billing, amount, screenshotData) {
-  const result = db.prepare('INSERT INTO payment_requests (user_id, user_email, plan, billing, amount, screenshot_data, status) VALUES (?, ?, ?, ?, ?, ?, ?)').run(userId, userEmail, plan, billing, amount, screenshotData || null, 'pending');
-  return result.lastInsertRowid;
-}
-
-export function getAllPaymentRequests(status = null) {
-  if (status) return db.prepare('SELECT * FROM payment_requests WHERE status = ? ORDER BY created_at DESC').all(status);
-  return db.prepare('SELECT * FROM payment_requests ORDER BY created_at DESC').all();
+export async function createPaymentRequest(userId, userEmail, plan, billing, amount, screenshotData) {
+  const { rows } = await pool.query('INSERT INTO payment_requests (user_id, user_email, plan, billing, amount, screenshot_data, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [userId, userEmail, plan, billing, amount, screenshotData || null, 'pending']);
+  return rows[0].id;
 }
 
 export async function signUp(email, password) {
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-  if (existing) throw new Error('Email already registered');
+  const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  if (rows.length > 0) throw new Error('Email already registered');
   const hashed = await bcrypt.hash(password, 10);
   const code = generateCode();
   const expires = Date.now() + 10 * 60 * 1000;
-  db.prepare('INSERT INTO users (email, password, plan) VALUES (?, ?, ?)').run(email, hashed, 'free');
-  db.prepare('DELETE FROM verification_codes WHERE email = ?').run(email);
-  db.prepare('INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)').run(email, code, expires);
+  await pool.query('INSERT INTO users (email, password, plan) VALUES ($1, $2, $3)', [email, hashed, 'free']);
+  await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]);
+  await pool.query('INSERT INTO verification_codes (email, code, expires_at) VALUES ($1, $2, $3)', [email, code, expires]);
   await sendVerificationEmail(email, code);
   return { message: 'Verification code sent' };
 }
 
 export async function verifyCode(email, code) {
-  const row = db.prepare('SELECT * FROM verification_codes WHERE email = ? AND code = ?').get(email, code.toUpperCase());
-  if (!row) throw new Error('Invalid code');
-  if (Date.now() > row.expires_at) throw new Error('Code expired');
-  db.prepare('UPDATE users SET verified = 1 WHERE email = ?').run(email);
-  db.prepare('DELETE FROM verification_codes WHERE email = ?').run(email);
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  checkAndResetUsage(user.id);
+  const { rows } = await pool.query('SELECT * FROM verification_codes WHERE email = $1 AND code = $2', [email, code.toUpperCase()]);
+  if (rows.length === 0) throw new Error('Invalid code');
+  if (Date.now() > rows[0].expires_at) throw new Error('Code expired');
+  await pool.query('UPDATE users SET verified = 1 WHERE email = $1', [email]);
+  await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]);
+  const { rows: users } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  const user = users[0];
+  await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '30d' });
   return { token, email, plan: user.plan || 'free', isNewUser: true };
 }
 
 export async function login(email, password) {
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user) throw new Error('Invalid email or password');
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  if (rows.length === 0) throw new Error('Invalid email or password');
+  const user = rows[0];
   if (!user.verified) throw new Error('Please verify your email first');
   const match = await bcrypt.compare(password, user.password);
   if (!match) throw new Error('Invalid email or password');
-  checkAndResetUsage(user.id);
+  await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '30d' });
-  return { token, email, plan: user.plan || 'free', isNewUser: !user.plan || user.plan === null };
+  return { token, email, plan: user.plan || 'free', isNewUser: false };
 }
 
-// ✅ Google OAuth - login or create user automatically
-export function loginOrCreateGoogleUser({ googleId, email, name, avatar }) {
-  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+export async function loginOrCreateGoogleUser({ googleId, email, name, avatar }) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  let user = rows[0];
   if (user) {
     if (!user.google_id) {
-      db.prepare('UPDATE users SET google_id = ?, avatar = ?, verified = 1 WHERE id = ?').run(googleId, avatar, user.id);
+      await pool.query('UPDATE users SET google_id = $1, avatar = $2, verified = 1 WHERE id = $3', [googleId, avatar, user.id]);
     }
   } else {
-    db.prepare('INSERT INTO users (email, password, name, google_id, avatar, verified, plan) VALUES (?, ?, ?, ?, ?, 1, ?)').run(email, 'GOOGLE_AUTH_NO_PASSWORD', name || email.split('@')[0], googleId, avatar || null, 'free');
-    user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    await pool.query('INSERT INTO users (email, password, name, google_id, avatar, verified, plan) VALUES ($1, $2, $3, $4, $5, 1, $6)', [email, 'GOOGLE_AUTH_NO_PASSWORD', name || email.split('@')[0], googleId, avatar || null, 'free']);
+    const { rows: newRows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    user = newRows[0];
   }
-  checkAndResetUsage(user.id);
+  await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-  return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: !user.plan || user.plan === 'free' };
+  return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: false };
 }
 
 export function verifyToken(token) {
   return jwt.verify(token, JWT_SECRET);
 }
 
-export function saveVideo(userId, filename, title) {
-  db.prepare('INSERT INTO videos (user_id, filename, title) VALUES (?, ?, ?)').run(userId, filename, title || filename);
+export async function saveVideo(userId, filename, title) {
+  await pool.query('INSERT INTO videos (user_id, filename, title) VALUES ($1, $2, $3)', [userId, filename, title || filename]);
 }
 
-export function getUserVideos(userId) {
-  return db.prepare('SELECT * FROM videos WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+export async function getUserVideos(userId) {
+  const { rows } = await pool.query('SELECT * FROM videos WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+  return rows;
+}
+
+export async function getAllPaymentRequests(status = null) {
+  if (status) {
+    const { rows } = await pool.query('SELECT * FROM payment_requests WHERE status = $1 ORDER BY created_at DESC', [status]);
+    return rows;
+  }
+  const { rows } = await pool.query('SELECT * FROM payment_requests ORDER BY created_at DESC');
+  return rows;
 }
