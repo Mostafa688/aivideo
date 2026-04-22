@@ -271,36 +271,59 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
   const fontfile = style.fontfile || FONT_PATH;
 
+  // Split text into chunks of 3 words max for better readability
+  function splitIntoChunks(text, wordsPerChunk = 3) {
+    const words = text.replace(/[':]/g, '').replace(/\\/g, '').replace(/\n/g, ' ').trim().split(/\s+/);
+    const chunks = [];
+    for (let i = 0; i < words.length; i += wordsPerChunk) {
+      chunks.push(words.slice(i, i + wordsPerChunk).join(' '));
+    }
+    return chunks.filter(Boolean);
+  }
+
   let currentTime = 0;
-  const filters = scenes.map((scene, i) => {
+  const filters = [];
+
+  scenes.forEach((scene, i) => {
     const start = currentTime;
     const sceneDur = sceneDurations[i] || 7;
     const end = start + sceneDur;
     currentTime = end;
 
-    const text = scene.text
-      .substring(0, style.maxChars)
-      .replace(/[':]/g, '')
-      .replace(/\\/g, '')
-      .replace(/\n/g, ' ')
-      .trim();
+    const chunks = splitIntoChunks(scene.text, 3);
+    const chunkDur = sceneDur / chunks.length;
     const yExpr = style.getY(ratio);
 
-    return `drawtext=fontfile='${fontfile}'`
-      + `:text='${text}'`
-      + `:fontsize=${style.fontsize}`
-      + `:fontcolor=${style.fontcolor}`
-      + `:borderw=${style.borderw}`
-      + `:bordercolor=${style.bordercolor}`
-      + (style.box ? `:box=1:boxcolor=${style.boxcolor}:boxborderw=10` : '')
-      + `:x=(w-text_w)/2`
-      + `:y=${yExpr}`
-      + `:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'`;
-  }).join(',');
+    chunks.forEach((chunk, j) => {
+      const chunkStart = start + j * chunkDur;
+      const chunkEnd = chunkStart + chunkDur;
+
+      // Alpha fade animation: fade in for 0.15s, fade out for 0.15s
+      const fadeAlpha = `if(lt(t-${chunkStart.toFixed(3)},0.15),` +
+        `(t-${chunkStart.toFixed(3)})/0.15,` +
+        `if(gt(t,${(chunkEnd - 0.15).toFixed(3)}),` +
+        `(${chunkEnd.toFixed(3)}-t)/0.15,1))`;
+
+      filters.push(
+        `drawtext=fontfile='${fontfile}'`
+        + `:text='${chunk}'`
+        + `:fontsize=${style.fontsize}`
+        + `:fontcolor=${style.fontcolor}@${fadeAlpha}`
+        + `:borderw=${style.borderw}`
+        + `:bordercolor=${style.bordercolor}`
+        + (style.box ? `:box=1:boxcolor=${style.boxcolor}:boxborderw=8` : '')
+        + `:x=(w-text_w)/2`
+        + `:y=${yExpr}`
+        + `:enable='between(t,${chunkStart.toFixed(3)},${chunkEnd.toFixed(3)})'`
+      );
+    });
+  });
+
+  const filterStr = filters.join(',');
 
   return new Promise((resolve, reject) => {
     ffmpeg(videoFile)
-      .videoFilters(filters)
+      .videoFilters(filterStr)
       .outputOptions([
         '-c:a', 'copy',
         '-c:v', 'libx264',
