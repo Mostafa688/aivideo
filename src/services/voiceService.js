@@ -1,9 +1,16 @@
 import fs from 'fs';
 import path from 'path';
 import { mkdir } from 'fs/promises';
+import { execSync } from 'child_process';
 import { LANGUAGE_DEFAULT_VOICES } from './scriptService.js';
 
 const OUTPUTS_DIR = 'outputs';
+
+// Windows: exe مباشر | Linux: python3 -m edge_tts
+const IS_WIN = process.platform === 'win32';
+const EDGE_TTS_CMD = IS_WIN
+  ? '"C:\\Users\\Dell\\AppData\\Local\\Programs\\Python\\Python314\\Scripts\\edge-tts.exe"'
+  : 'python3 -m edge_tts';
 
 export const VOICE_OPTIONS = {
   'male_wise':       { name: 'Wise Man',         voice: 'en-US-ChristopherNeural', gender: 'male'   },
@@ -92,18 +99,22 @@ export async function generateVoiceover(text, voiceKey = 'male_american', videoT
     }
   }
 
-  // Edge TTS via npm package API
+  // Edge TTS
   try {
-    const { EdgeTTS } = await import('edge-tts');
-    const tts = new EdgeTTS();
-    await tts.tts(text, voiceName, {
-      rate: rateStr,
-      pitch: pitch,
-      outputFile: filepath,
-    });
+    const tmpFile = path.join(OUTPUTS_DIR, 'tmp_' + Date.now() + '.mp3');
+    const safeText = text.replace(/"/g, "'").replace(/\n/g, ' ');
+    const cmd = EDGE_TTS_CMD
+      + ' --voice ' + voiceName
+      + ' --rate "' + rateStr + '"'
+      + ' --pitch "' + pitch + '"'
+      + ' --text "' + safeText + '"'
+      + ' --write-media "' + tmpFile + '"';
 
-    if (fs.existsSync(filepath) && fs.statSync(filepath).size > 1000) {
-      console.log(`[TTS] Success: ${filename}`);
+    console.log(`[TTS] CMD: ${cmd.substring(0, 80)}...`);
+    execSync(cmd, { stdio: 'pipe', timeout: 60000 });
+
+    if (fs.existsSync(tmpFile) && fs.statSync(tmpFile).size > 1000) {
+      fs.renameSync(tmpFile, filepath);
       return filename;
     } else {
       console.warn('[TTS] Edge TTS produced empty file');
