@@ -519,12 +519,11 @@ export async function renderVideo({
     console.log(`[Render] No audio - using estimated duration: ${audioDuration}s`);
   }
 
-  // Add transition duration compensation
-  const transitionCompensation = transitions && scenes.length > 1 ? (scenes.length - 1) * 0.5 : 0;
-  const adjustedDuration = audioDuration + transitionCompensation;
+  // Build video with 3 seconds buffer to ensure video is always longer than audio
+  const videoBuildDuration = audioDuration + 3;
 
   const { concatFile, slideFiles, secPerScene } = await buildVideoFromScenes(
-    scenes, adjustedDuration + 1, w, h, id, transitions
+    scenes, videoBuildDuration, w, h, id, transitions
   );
 
   // Step 3: Mix audio
