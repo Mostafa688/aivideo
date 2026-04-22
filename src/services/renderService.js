@@ -525,7 +525,7 @@ export async function renderVideo({
   const adjustedDuration = audioDuration + transitionCompensation;
 
   const { concatFile, slideFiles, secPerScene } = await buildVideoFromScenes(
-    scenes, adjustedDuration, w, h, id, transitions
+    scenes, adjustedDuration + 1, w, h, id, transitions
   );
 
   // Step 3: Mix audio
