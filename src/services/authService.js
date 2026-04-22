@@ -178,16 +178,24 @@ export function canUserRender(userId) {
 }
 
 async function sendVerificationEmail(email, code) {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+  // ✅ Using Resend API (works on Railway - no SMTP blocking)
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + process.env.RESEND_API_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'Erivion <onboarding@resend.dev>',
+      to: email,
+      subject: 'Your Erivion verification code',
+      html: `<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">Erivion</h2><p>Your verification code is:</p><div style="font-size:36px;font-weight:700;letter-spacing:8px;color:#7c6af7;margin:24px 0">${code}</div><p style="color:#888;font-size:13px">This code expires in 10 minutes.</p></div>`,
+    }),
   });
-  await transporter.sendMail({
-    from: '"Erivion" <' + process.env.EMAIL_USER + '>',
-    to: email,
-    subject: 'Your Erivion verification code',
-    html: `<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">Erivion</h2><p>Your verification code is:</p><div style="font-size:36px;font-weight:700;letter-spacing:8px;color:#7c6af7;margin:24px 0">${code}</div><p style="color:#888;font-size:13px">This code expires in 10 minutes.</p></div>`,
-  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error('Email send failed: ' + (err.message || JSON.stringify(err)));
+  }
 }
 
 export async function sendPaymentRequestEmail(paymentData) {
