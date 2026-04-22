@@ -228,13 +228,13 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
 
 function mixAudio(videoFile, audioFile, output, audioDuration) {
   return new Promise((resolve, reject) => {
-    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg()
       .input(videoFile).input(audioFile)
       .outputOptions([
-        ...durationOpts,
+        '-map', '0:v', '-map', '1:a',
         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-        '-shortest', '-movflags', '+faststart',
+        '-t', String(audioDuration),
+        '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
   });
@@ -560,9 +560,9 @@ export async function renderVideo({
     fs.copyFileSync(step4, step5);
   }
 
-  // Step 5.5: Trim to exact audio duration
+  // Step 5.5: copy step5 to step55
   const step55 = path.join(TEMP_DIR, `step55_${id}.mp4`);
-  await trimVideoToAudio(step5, step55, audioDuration); // trim to exact audio duration
+  fs.copyFileSync(step5, step55);
 
   // Step 6: Captions + Watermark
   const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
