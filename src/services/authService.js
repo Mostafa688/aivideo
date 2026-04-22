@@ -186,7 +186,7 @@ async function sendVerificationEmail(email, code) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Erivion <onboarding@resend.dev>',
+      from: 'Erivion <noreply@erivion.net>',
       to: email,
       subject: 'Your Erivion verification code',
       html: `<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">Erivion</h2><p>Your verification code is:</p><div style="font-size:36px;font-weight:700;letter-spacing:8px;color:#7c6af7;margin:24px 0">${code}</div><p style="color:#888;font-size:13px">This code expires in 10 minutes.</p></div>`,
