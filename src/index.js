@@ -67,6 +67,20 @@ app.use('/api/auth', authLimiter, authRouter);
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/api/voices', (req, res) => res.json({ voices: VOICE_OPTIONS }));
 
+// ✅ Sitemap for Google Search Console
+app.get('/sitemap.xml', (req, res) => {
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://erivion.net/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`;
+  res.header('Content-Type', 'application/xml');
+  res.send(sitemap);
+});
+
 app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) => {
   const { idea, script, tone, duration, mode, videoLanguage } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script is required' });
