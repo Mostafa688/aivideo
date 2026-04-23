@@ -160,14 +160,12 @@ function generateColorSlide(scene, output, duration, w, h) {
   });
 }
 
-function concatVideos(listFile, output, audioDuration = null) {
+function concatVideos(listFile, output) {
   return new Promise((resolve, reject) => {
-    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg()
       .input(listFile)
       .inputOptions(['-f', 'concat', '-safe', '0'])
       .outputOptions([
-        ...durationOpts,
         '-c:v', 'libx264',
         '-crf', '23',
         '-preset', 'ultrafast',
@@ -475,7 +473,10 @@ function addWatermark(inputFile, outputFile) {
 
 async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions) {
   const sceneCount = scenes.length;
-  const secPerScene = audioDuration / sceneCount;
+  // ✅ FIX: نضيف 3 ثواني buffer عشان الـ audio مش يبقى أطول من الفيديو
+  const videoDuration = audioDuration + 3;
+  const secPerScene = videoDuration / sceneCount;
+  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
   console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
 
   const slideFiles = [];
@@ -513,8 +514,7 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
     const listFile = path.join(TEMP_DIR, `list_${id}.txt`);
     const listContent = slideFiles.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n');
     fs.writeFileSync(listFile, listContent);
-    await concatVideos(listFile, concatFile);
-  }
+    await concatVideos(listFile, concatFile);  }
 
   return { concatFile, slideFiles, secPerScene };
 }
