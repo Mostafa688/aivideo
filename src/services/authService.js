@@ -102,11 +102,43 @@ function getWeekStart() {
 }
 
 async function checkPlanExpiry(userId) {
-  const { rows } = await pool.query('SELECT plan, plan_expires_at FROM users WHERE id = $1', [userId]);
+  const { rows } = await pool.query('SELECT id, email, plan, plan_billing, plan_expires_at FROM users WHERE id = $1', [userId]);
   const user = rows[0];
   if (!user || user.plan === 'free' || !user.plan_expires_at) return;
   if (new Date() > new Date(user.plan_expires_at)) {
+    const oldPlan = user.plan;
     await pool.query("UPDATE users SET plan = 'free', plan_billing = 'monthly', plan_expires_at = NULL WHERE id = $1", [userId]);
+    // ✅ بعت إيميل للمستخدم إن اشتراكه انتهى
+    try {
+      const planData = PLANS[oldPlan];
+      const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion <noreply@erivion.net>',
+          to: user.email,
+          subject: `Your Erivion ${planData?.name || oldPlan} plan has expired`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px">
+            <div style="text-align:center;margin-bottom:28px">
+              <div style="font-size:56px;margin-bottom:12px">⏰</div>
+              <h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Your subscription has expired</h2>
+              <p style="color:#9ca3af;font-size:14px;margin:0">Your ${planData?.name || oldPlan} plan has ended. You've been moved to the Free plan.</p>
+            </div>
+            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
+              <p style="color:#d1d5db;font-size:14px;line-height:1.7;margin:0">
+                To continue enjoying all features, renew your subscription and keep creating amazing videos with Erivion.
+              </p>
+            </div>
+            <div style="text-align:center">
+              <a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Renew Subscription →</a>
+            </div>
+          </div>`,
+        }),
+      });
+    } catch (e) {
+      console.warn('[PlanExpiry] Email failed:', e.message);
+    }
   }
 }
 
