@@ -519,12 +519,10 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
   return { concatFile, slideFiles, secPerScene };
 }
 
-function finalizeVideo(inputFile, output, audioDuration = null) {
+function finalizeVideo(inputFile, output) {
   return new Promise((resolve, reject) => {
-    const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg(inputFile)
       .outputOptions([
-        ...durationOpts,
         '-c', 'copy',
         '-movflags', '+faststart',
       ])
@@ -533,7 +531,6 @@ function finalizeVideo(inputFile, output, audioDuration = null) {
       .on('error', (err) => {
         ffmpeg(inputFile)
           .outputOptions([
-            ...durationOpts,
             '-c:v', 'libx264',
             '-c:a', 'aac',
             '-crf', '23',
@@ -666,7 +663,7 @@ export async function renderVideo({
     }
   }
 
-  await finalizeVideo(step6, outputPath, audioDuration);
+  await finalizeVideo(step6, outputPath);
 
   setTimeout(() => {
     [...slideFiles, concatFile, step3, step4, step5, step6].forEach(f => {
