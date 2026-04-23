@@ -29,13 +29,14 @@ const generalLimiter = rateLimit({
   skip: (req) => req.path === '/health', // skip health checks
 });
 
-// ✅ Auth limiter - stricter for login/signup
+// ✅ Auth limiter - stricter for login/signup only (not Google OAuth callback)
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 15,
+  max: 50,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many auth attempts, please try again later.' },
+  skip: (req) => req.path === '/google/callback' || req.path === '/google',
 });
 
 // ✅ Render limiter - heavy endpoint
