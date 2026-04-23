@@ -10,6 +10,27 @@ const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const FONT_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arial.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
 const FONT_BOLD_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arialbd.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 
+function getFontPath(videoLanguage) {
+  if (process.platform === 'win32') return FONT_PATH;
+  const dejaVu = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+  const langCode = { ar:'ar', ja:'ja', zh:'zh', ko:'ko', ru:'ru', de:'de', fr:'fr', es:'es', pt:'pt' }[videoLanguage];
+  if (!langCode) return dejaVu;
+  try {
+    const result = execSync(
+      `fc-list :lang=${langCode} | grep -v '\\[' | head -1`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    ).trim().split(':')[0].trim();
+    if (result && fs.existsSync(result)) {
+      console.log('[Font] Using:', result);
+      return result;
+    }
+  } catch (e) {
+    console.warn('[Font] fc-list failed:', e.message);
+  }
+  console.warn('[Font] Fallback DejaVu for:', videoLanguage);
+  return dejaVu;
+}
+
 const RATIOS = {
   '16:9': { w: 1280, h: 720 },
   '9:16': { w: 720, h: 1280 },
@@ -223,9 +244,11 @@ function mixAudio(videoFile, audioFile, output) {
     ffmpeg()
       .input(videoFile).input(audioFile)
       .outputOptions([
-        '-map', '0:v', '-map', '1:a',
-        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-        '-shortest', '-movflags', '+faststart',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-shortest',
+        '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
   });
@@ -268,10 +291,10 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
   });
 }
 
-function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9', videoLanguage = 'en') {
+function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9') {
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
-  const fontfile = getFontPath(videoLanguage);
+  const fontfile = style.fontfile || FONT_PATH;
 
   // Split text into chunks of 3 words max for better readability
   function splitIntoChunks(text, wordsPerChunk = 3) {
@@ -300,11 +323,9 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       const chunkStart = start + j * chunkDur;
       const chunkEnd = chunkStart + chunkDur;
 
-      const safeChunk = chunk.replace(/\\/g, '').replace(/'/g, '').replace(/:/g, '').trim();
-      if (!safeChunk) return;
       filters.push(
         `drawtext=fontfile='${fontfile}'`
-        + `:text='${safeChunk}'`
+        + `:text='${chunk}'`
         + `:fontsize=${style.fontsize}`
         + `:fontcolor=${style.fontcolor}`
         + `:borderw=${style.borderw}`
@@ -544,7 +565,6 @@ export async function renderVideo({
   sfxVolume = 0.4,
   videoEffect = 'none',
   applyWatermark = true,
-  videoLanguage = 'en',
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -581,7 +601,7 @@ export async function renderVideo({
   }
 
   const { concatFile, slideFiles, secPerScene } = await buildVideoFromScenes(
-    scenes, audioDuration + 3, w, h, id, transitions
+    scenes, audioDuration, w, h, id, transitions
   );
 
   const step3 = path.join(TEMP_DIR, `step3_${id}.mp4`);
@@ -621,10 +641,10 @@ export async function renderVideo({
     await mkdir(TEMP_DIR, { recursive: true });
     const captionTemp = path.resolve(TEMP_DIR, `captions_${id}.mp4`);
     // ✅ FIX: use actual audio duration for caption timing, not estimated
-    const wordCounts = scenes.map(s => s.text.trim().split(/\s+/).length);
-    const totalWords = wordCounts.reduce((a, b) => a + b, 0);
-    const sceneDurations = wordCounts.map(wc => (wc / totalWords) * audioDuration);
-    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
+    const totalDur = audioDuration || (secPerScene * scenes.length);
+    const perScene = totalDur / scenes.length;
+    const sceneDurations = scenes.map(() => perScene);
+    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
       console.log('[Watermark] Applied (free plan)');
