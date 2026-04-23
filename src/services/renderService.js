@@ -291,17 +291,26 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
   });
 }
 
-function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9') {
+// ✅ FIX: إضافة videoLanguage parameter عشان يختار الفونت الصح
+function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9', videoLanguage = 'en') {
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
-  const fontfile = style.fontfile || FONT_PATH;
+  // ✅ FIX: استخدم getFontPath بدل FONT_PATH الثابت
+  const fontfile = style.fontfile || getFontPath(videoLanguage);
 
-  // Split text into chunks of 3 words max for better readability
+  // للعربي: نعكس الكلمات عشان FFmpeg drawtext مش بيدعم RTL
+  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
+
   function splitIntoChunks(text, wordsPerChunk = 3) {
     const words = text.replace(/[':]/g, '').replace(/\\/g, '').replace(/\n/g, ' ').trim().split(/\s+/);
     const chunks = [];
     for (let i = 0; i < words.length; i += wordsPerChunk) {
-      chunks.push(words.slice(i, i + wordsPerChunk).join(' '));
+      let chunk = words.slice(i, i + wordsPerChunk).join(' ');
+      // للـ RTL نعكس ترتيب الكلمات في الـ chunk
+      if (isRTL) {
+        chunk = words.slice(i, i + wordsPerChunk).reverse().join(' ');
+      }
+      chunks.push(chunk);
     }
     return chunks.filter(Boolean);
   }
@@ -425,14 +434,10 @@ function getAudioDuration(audioFile) {
   }
 }
 
-// ✅ WATERMARK FUNCTION - بتضيف Erivion watermark على كل الفيديوهات
 function addWatermark(inputFile, outputFile) {
   const watermarkText = 'Erivion';
 
-  // بنستخدم execSync مباشرة عشان نتحكم في الـ filter بدقة
-  // بدون angle عشان بيسبب مشاكل في بعض versions الـ FFmpeg
   const filterStr = [
-    // نص كبير في النص - شفافية 18% ثابت طول الفيديو
     `drawtext=fontfile='${FONT_BOLD_PATH}'` +
     `:text='${watermarkText}'` +
     `:fontsize=90` +
@@ -442,7 +447,6 @@ function addWatermark(inputFile, outputFile) {
     `:borderw=2` +
     `:bordercolor=black@0.10`,
 
-    // نص صغير © Erivion في أعلى يمين - شفافية 65%
     `drawtext=fontfile='${FONT_PATH}'` +
     `:text='© ${watermarkText}'` +
     `:fontsize=26` +
@@ -517,7 +521,6 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
 
 function finalizeVideo(inputFile, output, audioDuration = null) {
   return new Promise((resolve, reject) => {
-    // ✅ FIX: trim to audio duration to prevent last frame freeze
     const durationOpts = audioDuration ? ['-t', String(audioDuration)] : [];
     ffmpeg(inputFile)
       .outputOptions([
@@ -565,6 +568,7 @@ export async function renderVideo({
   sfxVolume = 0.4,
   videoEffect = 'none',
   applyWatermark = true,
+  videoLanguage = 'en',
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -574,7 +578,7 @@ export async function renderVideo({
   const outputFile = 'video_' + id + '.mp4';
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
 
-  console.log(`[Render] START | ${scenes.length} scenes | ${ratio} (${w}x${h}) | effect: ${videoEffect}`);
+  console.log(`[Render] START | ${scenes.length} scenes | ${ratio} (${w}x${h}) | effect: ${videoEffect} | lang: ${videoLanguage}`);
 
   let audioPath = null;
   if (audioUrl) {
@@ -634,17 +638,16 @@ export async function renderVideo({
     fs.copyFileSync(step4, step5);
   }
 
-  // ✅ WATERMARK STEP - بيتضاف بس للـ free plan
   const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
 
   if (captions) {
     await mkdir(TEMP_DIR, { recursive: true });
     const captionTemp = path.resolve(TEMP_DIR, `captions_${id}.mp4`);
-    // ✅ FIX: use actual audio duration for caption timing, not estimated
     const totalDur = audioDuration || (secPerScene * scenes.length);
     const perScene = totalDur / scenes.length;
     const sceneDurations = scenes.map(() => perScene);
-    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio);
+    // ✅ FIX: بنبعت videoLanguage للـ captions
+    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
       console.log('[Watermark] Applied (free plan)');
@@ -663,10 +666,8 @@ export async function renderVideo({
     }
   }
 
-  // الـ output النهائي من step6
   await finalizeVideo(step6, outputPath, audioDuration);
 
-  // ✅ Cleanup بعد دقيقة
   setTimeout(() => {
     [...slideFiles, concatFile, step3, step4, step5, step6].forEach(f => {
       try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}

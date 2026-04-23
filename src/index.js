@@ -257,6 +257,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
       sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4,
       videoEffect: videoEffect || 'none',
       applyWatermark,
+      videoLanguage: req.body.videoLanguage || 'en',
     });
     res.json({ videoUrl: '/outputs/' + videoPath });
   } catch (err) {
