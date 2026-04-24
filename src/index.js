@@ -330,6 +330,11 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
 });
 
 app.get('/api/render-status/:jobId', authMiddleware, (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const job = renderJobs.get(String(req.params.jobId));
   if (!job || job.userId !== req.user.userId) {
     return res.status(404).json({ error: 'Render job not found' });
