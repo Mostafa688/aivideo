@@ -61,6 +61,24 @@ app.use(generalLimiter);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ✅ FIX: Force all /api/* responses to be JSON (except admin HTML pages)
+app.use('/api', (req, res, next) => {
+  const isAdminRoute = req.path.includes('/admin/approve') || req.path.includes('/admin/reject');
+  if (isAdminRoute) return next();
+
+  const originalSend = res.send.bind(res);
+  res.send = (body) => {
+    if (typeof body === 'string' && body.trim().startsWith('<!')) {
+      // HTML response في API route = خطأ، نحوّله لـ JSON
+      console.error('[API JSON Fix] HTML response intercepted on:', req.path);
+      res.setHeader('Content-Type', 'application/json');
+      return originalSend(JSON.stringify({ error: 'Server error. Please try again.' }));
+    }
+    return originalSend(body);
+  };
+  next();
+});
 app.use('/outputs', express.static('outputs'));
 app.use('/api/auth', authLimiter, authRouter);
 
@@ -85,24 +103,28 @@ app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) 
   const { idea, script, tone, duration, mode, videoLanguage } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script is required' });
 
-  // ✅ Plan enforcement
-  const user = await getUserById(req.user.userId);
-  const planData = PLANS[user?.plan || 'free'];
-  const DURATION_LIMITS = {
-    free: ['30s', 'auto'],
-    pro:  ['30s', 'auto', '1min', '2min'],
-    plus: ['30s', 'auto', '1min', '2min', '3min', '4min', '5min'],
-    max:  ['30s', 'auto', '1min', '2min', '3min', '4min', '5min', '8min', '10min'],
-  };
-  const allowedDurations = DURATION_LIMITS[user?.plan || 'free'] || DURATION_LIMITS.free;
-  if (duration && !allowedDurations.includes(duration)) {
-    return res.status(403).json({ error: `Your plan does not support ${duration} duration. Upgrade to unlock longer videos.` });
-  }
-  if (!planData.all_languages && videoLanguage) {
-    const allowed = planData.languages || ['en', 'ar'];
-    if (!allowed.includes(videoLanguage)) {
-      return res.status(403).json({ error: `Your plan only supports: ${allowed.join(', ')}. Upgrade to use more languages.` });
+  // ✅ FIX: Plan enforcement جوه try/catch
+  try {
+    const user = await getUserById(req.user.userId);
+    const planData = PLANS[user?.plan || 'free'];
+    const DURATION_LIMITS = {
+      free: ['30s', 'auto'],
+      pro:  ['30s', 'auto', '1min', '2min'],
+      plus: ['30s', 'auto', '1min', '2min', '3min', '4min', '5min'],
+      max:  ['30s', 'auto', '1min', '2min', '3min', '4min', '5min', '8min', '10min'],
+    };
+    const allowedDurations = DURATION_LIMITS[user?.plan || 'free'] || DURATION_LIMITS.free;
+    if (duration && !allowedDurations.includes(duration)) {
+      return res.status(403).json({ error: `Your plan does not support ${duration} duration. Upgrade to unlock longer videos.` });
     }
+    if (!planData.all_languages && videoLanguage) {
+      const allowed = planData.languages || ['en', 'ar'];
+      if (!allowed.includes(videoLanguage)) {
+        return res.status(403).json({ error: `Your plan only supports: ${allowed.join(', ')}. Upgrade to use more languages.` });
+      }
+    }
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to check plan: ' + err.message });
   }
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -169,6 +191,9 @@ app.post('/api/generate-voice', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
+  // ✅ FIX: تأكد إن الـ response دايماً JSON
+  res.setHeader('Content-Type', 'application/json');
+
   const {
     scenes, audioUrl, ratio, jobId, duration,
     music, captions, transitions, soundEffects,
@@ -179,75 +204,76 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   console.log('Render | Scenes:', scenes?.length, '| Ratio:', ratio, '| Duration:', duration, '| Effect:', videoEffect);
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
 
-  // ✅ Plan enforcement for render features
-  const user = await getUserById(req.user.userId);
-  const planData = PLANS[user?.plan || 'free'];
+  // ✅ FIX: كل الكود جوه try/catch واحد عشان أي خطأ يرجع JSON مش HTML
+  try {
+    // ✅ Plan enforcement for render features
+    const user = await getUserById(req.user.userId);
+    const planData = PLANS[user?.plan || 'free'];
 
-  // ✅ Credit & video limit check
-  const renderCheck = await canUserRender(req.user.userId);
-  if (!renderCheck.allowed) {
-    const credits = await getUserCredits(req.user.userId);
+    // ✅ Credit & video limit check
+    const renderCheck = await canUserRender(req.user.userId);
+    if (!renderCheck.allowed) {
+      const credits = await getUserCredits(req.user.userId);
 
-    // حساب نهاية الأسبوع (السبت القادم)
-    const now = new Date();
-    const daysUntilSat = (6 - now.getDay() + 7) % 7 || 7;
-    const nextSat = new Date(now);
-    nextSat.setDate(now.getDate() + daysUntilSat);
-    const resetDate = nextSat.toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' });
+      // حساب نهاية الأسبوع (السبت القادم)
+      const now = new Date();
+      const daysUntilSat = (6 - now.getDay() + 7) % 7 || 7;
+      const nextSat = new Date(now);
+      nextSat.setDate(now.getDate() + daysUntilSat);
+      const resetDate = nextSat.toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' });
 
-    const isMaxPlan = user?.plan === 'max';
-    const planName = planData.name;
+      const isMaxPlan = user?.plan === 'max';
+      const planName = planData.name;
 
-    if (renderCheck.reason === 'credits_exhausted') {
-      if (isMaxPlan) {
+      if (renderCheck.reason === 'credits_exhausted') {
+        if (isMaxPlan) {
+          return res.status(403).json({
+            error: 'credits_exhausted',
+            message: `You've used all your ${credits.limit.toLocaleString()} credits this week. Your credits reset on ${resetDate}. You can re-subscribe to get credits immediately.`,
+            reset_date: resetDate,
+            action: 'resubscribe',
+            plan: user?.plan,
+          });
+        }
         return res.status(403).json({
           error: 'credits_exhausted',
-          message: `You've used all your ${credits.limit.toLocaleString()} credits this week. Your credits reset on ${resetDate}. You can re-subscribe to get credits immediately.`,
+          message: `You've used all your ${credits.limit.toLocaleString()} weekly credits on the ${planName} plan. Your credits reset on ${resetDate}. Upgrade to a higher plan to get more credits now.`,
           reset_date: resetDate,
-          action: 'resubscribe',
+          action: 'upgrade_or_wait',
           plan: user?.plan,
         });
       }
-      return res.status(403).json({
-        error: 'credits_exhausted',
-        message: `You've used all your ${credits.limit.toLocaleString()} weekly credits on the ${planName} plan. Your credits reset on ${resetDate}. Upgrade to a higher plan to get more credits now.`,
-        reset_date: resetDate,
-        action: 'upgrade_or_wait',
-        plan: user?.plan,
-      });
-    }
 
-    if (renderCheck.reason === 'videos_limit_reached') {
-      if (isMaxPlan) {
+      if (renderCheck.reason === 'videos_limit_reached') {
+        if (isMaxPlan) {
+          return res.status(403).json({
+            error: 'videos_limit_reached',
+            message: `You've reached your video limit this week. Your limit resets on ${resetDate}. You can re-subscribe to continue now.`,
+            reset_date: resetDate,
+            action: 'resubscribe',
+            plan: user?.plan,
+          });
+        }
         return res.status(403).json({
           error: 'videos_limit_reached',
-          message: `You've reached your video limit this week. Your limit resets on ${resetDate}. You can re-subscribe to continue now.`,
+          message: `You've reached your ${credits.videos_limit} videos/week limit on the ${planName} plan. Your limit resets on ${resetDate}. Upgrade to a higher plan for more videos.`,
           reset_date: resetDate,
-          action: 'resubscribe',
+          action: 'upgrade_or_wait',
           plan: user?.plan,
         });
       }
-      return res.status(403).json({
-        error: 'videos_limit_reached',
-        message: `You've reached your ${credits.videos_limit} videos/week limit on the ${planName} plan. Your limit resets on ${resetDate}. Upgrade to a higher plan for more videos.`,
-        reset_date: resetDate,
-        action: 'upgrade_or_wait',
-        plan: user?.plan,
-      });
     }
-  }
 
-  if (soundEffects && !planData.sound_effects) {
-    return res.status(403).json({ error: 'Sound effects require Plus plan or higher. Upgrade to unlock.' });
-  }
-  if (videoEffect && videoEffect !== 'none' && !planData.video_effects) {
-    return res.status(403).json({ error: 'Video effects require Max plan. Upgrade to unlock.' });
-  }
+    if (soundEffects && !planData.sound_effects) {
+      return res.status(403).json({ error: 'Sound effects require Plus plan or higher. Upgrade to unlock.' });
+    }
+    if (videoEffect && videoEffect !== 'none' && !planData.video_effects) {
+      return res.status(403).json({ error: 'Video effects require Max plan. Upgrade to unlock.' });
+    }
 
-  // watermark: always true for free, always false for paid
-  const applyWatermark = planData.watermark !== false;
+    // watermark: always true for free, always false for paid
+    const applyWatermark = planData.watermark !== false;
 
-  try {
     const videoPath = await renderVideo({
       scenes, audioUrl, ratio, jobId, duration,
       music, captions, transitions, soundEffects,
@@ -259,9 +285,15 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
       applyWatermark,
       videoLanguage: req.body.videoLanguage || 'en',
     });
+
     res.json({ videoUrl: '/outputs/' + videoPath });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    // ✅ FIX: أي خطأ غير متوقع يرجع JSON مش HTML
+    console.error('[Render] Unhandled error:', err.message, err.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Render failed. Please try again.' });
+    }
   }
 });
 
@@ -361,11 +393,25 @@ app.listen(PORT, () => {
   console.log('AI Video Backend running on http://localhost:' + PORT);
 });
 
+// ✅ FIX: Global error handler - يرجع JSON دايماً مش HTML
+app.use((err, req, res, next) => {
+  console.error('[Global Error]', err);
+  if (req.path.startsWith('/api')) {
+    return res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+  next(err);
+});
+
 // ✅ Catch-all: أي route مش API يرجع الـ React app
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 app.use(express.static(join(__dirname, '..', 'dist')));
+
+// ✅ FIX: الـ catch-all مش بتشتغل على /api routes
 app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
   res.sendFile(join(__dirname, '..', 'dist', 'index.html'));
 });
