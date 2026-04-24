@@ -473,11 +473,11 @@ function addWatermark(inputFile, outputFile) {
 
 async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions) {
   const sceneCount = scenes.length;
-  // ✅ FIX: نضيف 3 ثواني buffer عشان الـ audio مش يبقى أطول من الفيديو
-  const videoDuration = audioDuration + 3;
+  // ✅ FIX: buffer نسبي — 5% من المدة أو 3 ثواني على الأقل
+  const buffer = Math.max(audioDuration * 0.05, 3);
+  const videoDuration = audioDuration + buffer;
   const secPerScene = videoDuration / sceneCount;
   console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
-  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
 
   const slideFiles = [];
   for (let i = 0; i < scenes.length; i++) {
