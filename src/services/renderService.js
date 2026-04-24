@@ -245,7 +245,6 @@ function mixAudio(videoFile, audioFile, output) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -260,7 +259,6 @@ function addMusicOnly(videoFile, musicFile, output, musicVolume = 0.08) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '128k',
-        '-shortest',
         '-af', `volume=${musicVolume}`,
         '-movflags', '+faststart',
       ])
@@ -282,7 +280,6 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
