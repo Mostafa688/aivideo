@@ -193,6 +193,8 @@ app.post('/api/generate-voice', authMiddleware, async (req, res) => {
 app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   // ✅ FIX: تأكد إن الـ response دايماً JSON
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('X-Accel-Buffering', 'no');
 
   const {
     scenes, audioUrl, ratio, jobId, duration,
@@ -203,6 +205,19 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
 
   console.log('Render | Scenes:', scenes?.length, '| Ratio:', ratio, '| Duration:', duration, '| Effect:', videoEffect);
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
+
+  const keepAlive = setInterval(() => {
+    if (!res.writableEnded) {
+      try { res.write(' '); } catch {}
+    }
+  }, 15000);
+
+  const sendJson = (statusCode, payload) => {
+    clearInterval(keepAlive);
+    if (!res.writableEnded) {
+      res.status(statusCode).end(JSON.stringify(payload));
+    }
+  };
 
   // ✅ FIX: كل الكود جوه try/catch واحد عشان أي خطأ يرجع JSON مش HTML
   try {
@@ -227,7 +242,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
 
       if (renderCheck.reason === 'credits_exhausted') {
         if (isMaxPlan) {
-          return res.status(403).json({
+          return sendJson(403, {
             error: 'credits_exhausted',
             message: `You've used all your ${credits.limit.toLocaleString()} credits this week. Your credits reset on ${resetDate}. You can re-subscribe to get credits immediately.`,
             reset_date: resetDate,
@@ -235,7 +250,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
             plan: user?.plan,
           });
         }
-        return res.status(403).json({
+        return sendJson(403, {
           error: 'credits_exhausted',
           message: `You've used all your ${credits.limit.toLocaleString()} weekly credits on the ${planName} plan. Your credits reset on ${resetDate}. Upgrade to a higher plan to get more credits now.`,
           reset_date: resetDate,
@@ -246,7 +261,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
 
       if (renderCheck.reason === 'videos_limit_reached') {
         if (isMaxPlan) {
-          return res.status(403).json({
+          return sendJson(403, {
             error: 'videos_limit_reached',
             message: `You've reached your video limit this week. Your limit resets on ${resetDate}. You can re-subscribe to continue now.`,
             reset_date: resetDate,
@@ -254,7 +269,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
             plan: user?.plan,
           });
         }
-        return res.status(403).json({
+        return sendJson(403, {
           error: 'videos_limit_reached',
           message: `You've reached your ${credits.videos_limit} videos/week limit on the ${planName} plan. Your limit resets on ${resetDate}. Upgrade to a higher plan for more videos.`,
           reset_date: resetDate,
@@ -265,10 +280,10 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     }
 
     if (soundEffects && !planData.sound_effects) {
-      return res.status(403).json({ error: 'Sound effects require Plus plan or higher. Upgrade to unlock.' });
+      return sendJson(403, { error: 'Sound effects require Plus plan or higher. Upgrade to unlock.' });
     }
     if (videoEffect && videoEffect !== 'none' && !planData.video_effects) {
-      return res.status(403).json({ error: 'Video effects require Max plan. Upgrade to unlock.' });
+      return sendJson(403, { error: 'Video effects require Max plan. Upgrade to unlock.' });
     }
 
     // watermark: always true for free, always false for paid
@@ -286,14 +301,12 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
       videoLanguage: req.body.videoLanguage || 'en',
     });
 
-    res.json({ videoUrl: '/outputs/' + videoPath });
+    sendJson(200, { videoUrl: '/outputs/' + videoPath });
 
   } catch (err) {
     // ✅ FIX: أي خطأ غير متوقع يرجع JSON مش HTML
     console.error('[Render] Unhandled error:', err.message, err.stack);
-    if (!res.headersSent) {
-      res.status(500).json({ error: err.message || 'Render failed. Please try again.' });
-    }
+    sendJson(500, { error: err.message || 'Render failed. Please try again.' });
   }
 });
 
