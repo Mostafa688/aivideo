@@ -14,6 +14,15 @@ import { getUserById, PLANS, canUserRender, getUserCredits } from './services/au
 const app = express();
 app.set('trust proxy', 1); // ✅ Required for Railway (reverse proxy)
 const PORT = process.env.PORT || 3001;
+const renderJobs = new Map();
+
+function setRenderJob(jobId, data) {
+  renderJobs.set(String(jobId), { ...renderJobs.get(String(jobId)), ...data });
+}
+
+function scheduleRenderJobCleanup(jobId, delayMs = 60 * 60 * 1000) {
+  setTimeout(() => renderJobs.delete(String(jobId)), delayMs);
+}
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -192,10 +201,6 @@ app.post('/api/generate-voice', authMiddleware, async (req, res) => {
 
 app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   // ✅ FIX: تأكد إن الـ response دايماً JSON
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('X-Accel-Buffering', 'no');
-
   const {
     scenes, audioUrl, ratio, jobId, duration,
     music, captions, transitions, soundEffects,
@@ -203,21 +208,9 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     musicVolume, sfxVolume, videoEffect,
   } = req.body;
 
+  const renderJobId = String(jobId || Date.now());
   console.log('Render | Scenes:', scenes?.length, '| Ratio:', ratio, '| Duration:', duration, '| Effect:', videoEffect);
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
-
-  const keepAlive = setInterval(() => {
-    if (!res.writableEnded) {
-      try { res.write(' '); } catch {}
-    }
-  }, 15000);
-
-  const sendJson = (statusCode, payload) => {
-    clearInterval(keepAlive);
-    if (!res.writableEnded) {
-      res.status(statusCode).end(JSON.stringify(payload));
-    }
-  };
 
   // ✅ FIX: كل الكود جوه try/catch واحد عشان أي خطأ يرجع JSON مش HTML
   try {
@@ -242,7 +235,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
 
       if (renderCheck.reason === 'credits_exhausted') {
         if (isMaxPlan) {
-          return sendJson(403, {
+          return res.status(403).json({
             error: 'credits_exhausted',
             message: `You've used all your ${credits.limit.toLocaleString()} credits this week. Your credits reset on ${resetDate}. You can re-subscribe to get credits immediately.`,
             reset_date: resetDate,
@@ -250,7 +243,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
             plan: user?.plan,
           });
         }
-        return sendJson(403, {
+        return res.status(403).json({
           error: 'credits_exhausted',
           message: `You've used all your ${credits.limit.toLocaleString()} weekly credits on the ${planName} plan. Your credits reset on ${resetDate}. Upgrade to a higher plan to get more credits now.`,
           reset_date: resetDate,
@@ -261,7 +254,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
 
       if (renderCheck.reason === 'videos_limit_reached') {
         if (isMaxPlan) {
-          return sendJson(403, {
+          return res.status(403).json({
             error: 'videos_limit_reached',
             message: `You've reached your video limit this week. Your limit resets on ${resetDate}. You can re-subscribe to continue now.`,
             reset_date: resetDate,
@@ -269,7 +262,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
             plan: user?.plan,
           });
         }
-        return sendJson(403, {
+        return res.status(403).json({
           error: 'videos_limit_reached',
           message: `You've reached your ${credits.videos_limit} videos/week limit on the ${planName} plan. Your limit resets on ${resetDate}. Upgrade to a higher plan for more videos.`,
           reset_date: resetDate,
@@ -280,34 +273,77 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     }
 
     if (soundEffects && !planData.sound_effects) {
-      return sendJson(403, { error: 'Sound effects require Plus plan or higher. Upgrade to unlock.' });
+      return res.status(403).json({ error: 'Sound effects require Plus plan or higher. Upgrade to unlock.' });
     }
     if (videoEffect && videoEffect !== 'none' && !planData.video_effects) {
-      return sendJson(403, { error: 'Video effects require Max plan. Upgrade to unlock.' });
+      return res.status(403).json({ error: 'Video effects require Max plan. Upgrade to unlock.' });
     }
 
-    // watermark: always true for free, always false for paid
     const applyWatermark = planData.watermark !== false;
 
-    const videoPath = await renderVideo({
-      scenes, audioUrl, ratio, jobId, duration,
-      music, captions, transitions, soundEffects,
-      videoType: videoType || 'education',
-      captionStyle: captionStyle || null,
-      musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07,
-      sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4,
-      videoEffect: videoEffect || 'none',
-      applyWatermark,
-      videoLanguage: req.body.videoLanguage || 'en',
+    setRenderJob(renderJobId, {
+      status: 'processing',
+      userId: req.user.userId,
+      createdAt: Date.now(),
+      error: null,
+      videoUrl: null,
     });
 
-    sendJson(200, { videoUrl: '/outputs/' + videoPath });
+    res.status(202).json({ jobId: renderJobId, status: 'processing' });
+
+    (async () => {
+      try {
+        const videoPath = await renderVideo({
+          scenes, audioUrl, ratio, jobId: renderJobId, duration,
+          music, captions, transitions, soundEffects,
+          videoType: videoType || 'education',
+          captionStyle: captionStyle || null,
+          musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07,
+          sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4,
+          videoEffect: videoEffect || 'none',
+          applyWatermark,
+          videoLanguage: req.body.videoLanguage || 'en',
+        });
+
+        setRenderJob(renderJobId, {
+          status: 'done',
+          videoUrl: '/outputs/' + videoPath,
+          completedAt: Date.now(),
+        });
+      } catch (jobErr) {
+        console.error('[Render Job] Failed:', jobErr.message, jobErr.stack);
+        setRenderJob(renderJobId, {
+          status: 'failed',
+          error: jobErr.message || 'Render failed. Please try again.',
+          completedAt: Date.now(),
+        });
+      } finally {
+        scheduleRenderJobCleanup(renderJobId);
+      }
+    })();
 
   } catch (err) {
     // ✅ FIX: أي خطأ غير متوقع يرجع JSON مش HTML
     console.error('[Render] Unhandled error:', err.message, err.stack);
-    sendJson(500, { error: err.message || 'Render failed. Please try again.' });
+    res.status(500).json({ error: err.message || 'Render failed. Please try again.' });
   }
+});
+
+app.get('/api/render-status/:jobId', authMiddleware, (req, res) => {
+  const job = renderJobs.get(String(req.params.jobId));
+  if (!job || job.userId !== req.user.userId) {
+    return res.status(404).json({ error: 'Render job not found' });
+  }
+
+  if (job.status === 'failed') {
+    return res.json({ status: 'failed', error: job.error || 'Render failed. Please try again.' });
+  }
+
+  if (job.status === 'done') {
+    return res.json({ status: 'done', videoUrl: job.videoUrl });
+  }
+
+  res.json({ status: 'processing' });
 });
 
 app.post('/api/generate-ai-video', authMiddleware, async (req, res) => {
