@@ -62,7 +62,6 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/outputs', express.static('outputs'));
-app.use(express.static('dist'));
 app.use('/api/auth', authLimiter, authRouter);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
@@ -366,6 +365,7 @@ app.listen(PORT, () => {
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
+app.use(express.static(join(__dirname, '..', 'dist')));
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, '..', 'dist', 'index.html'));
 });
