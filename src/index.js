@@ -515,12 +515,9 @@ app.get('/favicon.ico', (req, res) => {
   res.sendFile(join(__dirname, '..', 'dist', 'favicon.png'));
 });
 
-// ✅ Logo fix: نرجع الـ logo من frontend/public مباشرة (مش من dist عشان هو في gitignore)
+// ✅ Logo fix
 app.get('/logo.png', (req, res) => {
-  const fromDist   = join(__dirname, '..', 'dist', 'logo.png');
-  const fromPublic = join(__dirname, '..', 'frontend', 'public', 'logo.png');
-  if (fs.existsSync(fromDist)) return res.sendFile(fromDist);
-  res.sendFile(fromPublic);
+  res.sendFile(join(__dirname, 'logo.png'));
 });
 
 app.get('*', (req, res) => {
