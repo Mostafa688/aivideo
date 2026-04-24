@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -12,10 +14,15 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, canUserRender, getUserCredits } from './services/authService.js';
 
+// ✅ FIX: __dirname و join لازم يتعرفوا هنا فوق قبل أي استخدام
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 const app = express();
-app.set('trust proxy', 1); // ✅ Required for Railway (reverse proxy)
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 const renderJobs = new Map();
+
+// ✅ FIX: join متاحة دلوقتي
 const RENDER_JOBS_DIR = join(process.cwd(), 'outputs', 'render_jobs');
 fs.mkdirSync(RENDER_JOBS_DIR, { recursive: true });
 
@@ -73,7 +80,7 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again in a few minutes.' },
-  skip: (req) => req.path === '/health', // skip health checks
+  skip: (req) => req.path === '/health',
 });
 
 // ✅ Auth limiter - stricter for login/signup only (not Google OAuth callback)
@@ -117,7 +124,6 @@ app.use('/api', (req, res, next) => {
   const originalSend = res.send.bind(res);
   res.send = (body) => {
     if (typeof body === 'string' && body.trim().startsWith('<!')) {
-      // HTML response في API route = خطأ، نحوّله لـ JSON
       console.error('[API JSON Fix] HTML response intercepted on:', req.path);
       res.setHeader('Content-Type', 'application/json');
       return originalSend(JSON.stringify({ error: 'Server error. Please try again.' }));
@@ -126,6 +132,7 @@ app.use('/api', (req, res, next) => {
   };
   next();
 });
+
 app.use('/outputs', express.static('outputs'));
 app.use('/api/auth', authLimiter, authRouter);
 
@@ -150,7 +157,6 @@ app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) 
   const { idea, script, tone, duration, mode, videoLanguage } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script is required' });
 
-  // ✅ FIX: Plan enforcement جوه try/catch
   try {
     const user = await getUserById(req.user.userId);
     const planData = PLANS[user?.plan || 'free'];
@@ -219,7 +225,6 @@ app.post('/api/fetch-media', authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ FIX: بنبعت videoLanguage للـ voiceover عشان يختار الصوت الصح
 app.post('/api/generate-voice', authMiddleware, async (req, res) => {
   const { text, voice, videoType, speed, videoLanguage } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
@@ -229,7 +234,7 @@ app.post('/api/generate-voice', authMiddleware, async (req, res) => {
       voice || 'male_american',
       videoType || 'education',
       speed || 0,
-      videoLanguage || 'en',  // ✅ FIX: بنبعت اللغة
+      videoLanguage || 'en',
     );
     res.json({ audioUrl: '/outputs/' + audioPath });
   } catch (err) {
@@ -238,7 +243,6 @@ app.post('/api/generate-voice', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
-  // ✅ FIX: تأكد إن الـ response دايماً JSON
   const {
     scenes, audioUrl, ratio, jobId, duration,
     music, captions, transitions, soundEffects,
@@ -250,18 +254,14 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   console.log('Render | Scenes:', scenes?.length, '| Ratio:', ratio, '| Duration:', duration, '| Effect:', videoEffect);
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
 
-  // ✅ FIX: كل الكود جوه try/catch واحد عشان أي خطأ يرجع JSON مش HTML
   try {
-    // ✅ Plan enforcement for render features
     const user = await getUserById(req.user.userId);
     const planData = PLANS[user?.plan || 'free'];
 
-    // ✅ Credit & video limit check
     const renderCheck = await canUserRender(req.user.userId);
     if (!renderCheck.allowed) {
       const credits = await getUserCredits(req.user.userId);
 
-      // حساب نهاية الأسبوع (السبت القادم)
       const now = new Date();
       const daysUntilSat = (6 - now.getDay() + 7) % 7 || 7;
       const nextSat = new Date(now);
@@ -361,12 +361,13 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     })();
 
   } catch (err) {
-    // ✅ FIX: أي خطأ غير متوقع يرجع JSON مش HTML
     console.error('[Render] Unhandled error:', err.message, err.stack);
     res.status(500).json({ error: err.message || 'Render failed. Please try again.' });
   }
 });
 
+// ✅ FIX MAIN: رفعنا الـ timeout limit للفيديوهات الطويلة
+// الـ status endpoint بيرجع معلومات إضافية عشان الفرونت إند يعرف يصبر
 app.get('/api/render-status/:jobId', authMiddleware, (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -394,7 +395,10 @@ app.get('/api/render-status/:jobId', authMiddleware, (req, res) => {
     return res.json({ status: 'done', videoUrl: job.videoUrl || videoUrl });
   }
 
-  res.json({ status: 'processing' });
+  // ✅ FIX: بنرجع createdAt عشان الفرونت إند يعرف كام وقت فات
+  const createdAt = job?.createdAt || Date.now();
+  const elapsedSeconds = Math.floor((Date.now() - createdAt) / 1000);
+  res.json({ status: 'processing', elapsedSeconds });
 });
 
 app.post('/api/generate-ai-video', authMiddleware, async (req, res) => {
@@ -421,7 +425,6 @@ app.post('/api/generate-ai-video', authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ FIX 2: /api/ai-edit endpoint - كان مفقود وده كان بيخلي زر "Edit with AI" مش شغال
 app.post('/api/ai-edit', authMiddleware, async (req, res) => {
   const { scenes, prompt } = req.body;
   if (!scenes?.length || !prompt) {
@@ -475,7 +478,6 @@ JSON array:`;
       return res.json({ scenes });
     }
 
-    // نحتفظ بالـ media data من المشاهد الأصلية
     const finalScenes = editedScenes.map((s, i) => ({
       ...scenes[i],
       ...s,
@@ -503,12 +505,8 @@ app.use((err, req, res, next) => {
 });
 
 // ✅ Catch-all: أي route مش API يرجع الـ React app
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-const __dirname = dirname(fileURLToPath(import.meta.url));
 app.use(express.static(join(__dirname, '..', 'dist')));
 
-// ✅ FIX: الـ catch-all مش بتشتغل على /api routes
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'API endpoint not found' });
