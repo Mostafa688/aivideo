@@ -245,7 +245,6 @@ function mixAudio(videoFile, audioFile, output) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -260,7 +259,6 @@ function addMusicOnly(videoFile, musicFile, output, musicVolume = 0.08) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '128k',
-        '-shortest',
         '-af', `volume=${musicVolume}`,
         '-movflags', '+faststart',
       ])
@@ -282,7 +280,6 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -518,10 +515,12 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
   return { concatFile, slideFiles, secPerScene };
 }
 
-function finalizeVideo(inputFile, output) {
+function finalizeVideo(inputFile, output, exactDuration = null) {
   return new Promise((resolve, reject) => {
+    const durationOpts = exactDuration ? ['-t', String(exactDuration)] : [];
     ffmpeg(inputFile)
       .outputOptions([
+        ...durationOpts,
         '-c', 'copy',
         '-movflags', '+faststart',
       ])
@@ -530,6 +529,7 @@ function finalizeVideo(inputFile, output) {
       .on('error', (err) => {
         ffmpeg(inputFile)
           .outputOptions([
+            ...durationOpts,
             '-c:v', 'libx264',
             '-c:a', 'aac',
             '-crf', '23',
@@ -667,7 +667,7 @@ export async function renderVideo({
     fs.copyFileSync(step6, step7);
   }
 
-  await finalizeVideo(step7, outputPath);
+  await finalizeVideo(step7, outputPath, audioPath ? getAudioDuration(audioPath) : null);
 
   setTimeout(() => {
     [...slideFiles, concatFile, step3, step4, step5, step6, step7].forEach(f => {
