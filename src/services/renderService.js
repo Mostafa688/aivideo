@@ -245,7 +245,10 @@ function mixAudio(videoFile, audioFile, output) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        '-shortest',
+        // ✅ FIX: حذف -shortest عشان الفيديو ميتقطعش
+        // بدلها بنخلي الفيديو هو اللي بيحدد المدة (الفيديو دايماً أطول)
+        '-map', '0:v:0',
+        '-map', '1:a:0',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -282,7 +285,7 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        '-shortest',
+        // ✅ FIX: حذف -shortest عشان الفيديو ميتقطعش
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -473,9 +476,12 @@ function addWatermark(inputFile, outputFile) {
 
 async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions) {
   const sceneCount = scenes.length;
-  const videoDuration = audioDuration + 3;
+  // ✅ FIX: الفيديو دايماً أطول من الصوت بثانية
+  // لو transitions مفعلة بتاكل 0.5s بين كل scene، فلازم نعوضها
+  const transitionLoss = transitions ? (sceneCount - 1) * 0.5 : 0;
+  const videoDuration = audioDuration + 1 + transitionLoss;
   const secPerScene = videoDuration / sceneCount;
-  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
+  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s | transitionLoss: ${transitionLoss.toFixed(1)}s`);
 
   const slideFiles = [];
   for (let i = 0; i < scenes.length; i++) {
