@@ -88,6 +88,8 @@ const VIDEO_EFFECTS = {
   cinematic:  'colorchannelmixer=.9:0:0:0:0:.9:0:0:0:0:.8:0,eq=contrast=1.1:saturation=0.85',
 };
 
+const TRANSITION_DURATION = 0.5;
+
 function findMusicFile() {
   const dir = path.join(process.cwd(), 'assets', 'music');
   if (!fs.existsSync(dir)) return null;
@@ -201,14 +203,14 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
       currentDuration = parseFloat(result) || secPerScene;
     } catch {}
 
-    const offset = Math.max(currentDuration - 0.5, 0.5);
+    const offset = Math.max(currentDuration - TRANSITION_DURATION, TRANSITION_DURATION);
 
     const transTypes = ['fade', 'slideleft', 'slideright', 'slideup', 'dissolve', 'wipeleft', 'wiperight', 'circlecrop', 'rectcrop', 'distance'];
     const transType = transTypes[i % transTypes.length];
     try {
       execSync(
         `ffmpeg -i "${current}" -i "${slideFiles[i]}"` +
-        ` -filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=0.5:offset=${offset}[v]"` +
+        ` -filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=${TRANSITION_DURATION}:offset=${offset}[v]"` +
         ` -map "[v]" -r 30 -c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${transOut}"`,
         { stdio: 'pipe' }
       );
@@ -474,7 +476,10 @@ function addWatermark(inputFile, outputFile) {
 async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions) {
   const sceneCount = scenes.length;
   const videoDuration = audioDuration + 3;
-  const secPerScene = videoDuration / sceneCount;
+  const totalTransitionOverlap = transitions && sceneCount > 1
+    ? (sceneCount - 1) * TRANSITION_DURATION
+    : 0;
+  const secPerScene = (videoDuration + totalTransitionOverlap) / sceneCount;
   console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
 
   const slideFiles = [];
