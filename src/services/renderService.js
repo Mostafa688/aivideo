@@ -608,15 +608,9 @@ export async function renderVideo({
   const step3 = path.join(TEMP_DIR, `step3_${id}.mp4`);
   const musicPath = music ? findMusicFile() : null;
 
-  if (audioPath && musicPath) {
-    await mixAudioAndMusic(concatFile, audioPath, musicPath, step3, musicVolume);
-  } else if (audioPath) {
-    await mixAudio(concatFile, audioPath, step3);
-  } else if (musicPath) {
-    await addMusicOnly(concatFile, musicPath, step3, musicVolume);
-  } else {
-    fs.copyFileSync(concatFile, step3);
-  }
+  // ✅ FIX: نعمل كل الـ processing على الـ video بدون audio
+  // وبعدين نضيف الـ audio في آخر خطوة بـ -shortest عشان يقطع بالصوت بالظبط
+  fs.copyFileSync(concatFile, step3);
 
   const step4 = path.join(TEMP_DIR, `step4_${id}.mp4`);
   if (soundEffects) {
@@ -643,7 +637,6 @@ export async function renderVideo({
     const totalDur = audioDuration || (secPerScene * scenes.length);
     const perScene = totalDur / scenes.length;
     const sceneDurations = scenes.map(() => perScene);
-    // ✅ FIX: بنبعت videoLanguage للـ captions
     await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
@@ -663,10 +656,22 @@ export async function renderVideo({
     }
   }
 
-  await finalizeVideo(step6, outputPath);
+  // ✅ FIX: نضيف الـ audio في آخر خطوة بـ -shortest
+  const step7 = path.join(TEMP_DIR, `step7_${id}.mp4`);
+  if (audioPath && musicPath) {
+    await mixAudioAndMusic(step6, audioPath, musicPath, step7, musicVolume);
+  } else if (audioPath) {
+    await mixAudio(step6, audioPath, step7);
+  } else if (musicPath) {
+    await addMusicOnly(step6, musicPath, step7, musicVolume);
+  } else {
+    fs.copyFileSync(step6, step7);
+  }
+
+  await finalizeVideo(step7, outputPath);
 
   setTimeout(() => {
-    [...slideFiles, concatFile, step3, step4, step5, step6].forEach(f => {
+    [...slideFiles, concatFile, step3, step4, step5, step6, step7].forEach(f => {
       try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
     });
     slideFiles.forEach((_, i) => {
