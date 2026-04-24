@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import fs from 'fs';
 import { generateScenesStream } from './services/scriptService.js';
 import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/mediaService.js';
 import { generateVoiceover, VOICE_OPTIONS } from './services/voiceService.js';
@@ -15,13 +16,50 @@ const app = express();
 app.set('trust proxy', 1); // ✅ Required for Railway (reverse proxy)
 const PORT = process.env.PORT || 3001;
 const renderJobs = new Map();
+const RENDER_JOBS_DIR = join(process.cwd(), 'outputs', 'render_jobs');
+fs.mkdirSync(RENDER_JOBS_DIR, { recursive: true });
+
+function getRenderJobFile(jobId) {
+  return join(RENDER_JOBS_DIR, `${String(jobId)}.json`);
+}
 
 function setRenderJob(jobId, data) {
-  renderJobs.set(String(jobId), { ...renderJobs.get(String(jobId)), ...data });
+  const key = String(jobId);
+  const nextJob = { ...renderJobs.get(key), ...data };
+  renderJobs.set(key, nextJob);
+  try {
+    fs.writeFileSync(getRenderJobFile(key), JSON.stringify(nextJob, null, 2));
+  } catch (err) {
+    console.error('[Render Job] Could not persist state:', err.message);
+  }
+}
+
+function getRenderJob(jobId) {
+  const key = String(jobId);
+  if (renderJobs.has(key)) return renderJobs.get(key);
+  try {
+    const file = getRenderJobFile(key);
+    if (!fs.existsSync(file)) return null;
+    const job = JSON.parse(fs.readFileSync(file, 'utf8'));
+    renderJobs.set(key, job);
+    return job;
+  } catch (err) {
+    console.error('[Render Job] Could not read persisted state:', err.message);
+    return null;
+  }
 }
 
 function scheduleRenderJobCleanup(jobId, delayMs = 60 * 60 * 1000) {
-  setTimeout(() => renderJobs.delete(String(jobId)), delayMs);
+  setTimeout(() => {
+    const key = String(jobId);
+    renderJobs.delete(key);
+    try {
+      const file = getRenderJobFile(key);
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+    } catch (err) {
+      console.error('[Render Job] Cleanup failed:', err.message);
+    }
+  }, delayMs);
 }
 
 app.use(helmet({
@@ -335,7 +373,7 @@ app.get('/api/render-status/:jobId', authMiddleware, (req, res) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
-  const job = renderJobs.get(String(req.params.jobId));
+  const job = getRenderJob(String(req.params.jobId));
   if (!job || job.userId !== req.user.userId) {
     return res.status(404).json({ error: 'Render job not found' });
   }
