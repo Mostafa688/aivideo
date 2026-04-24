@@ -515,6 +515,14 @@ app.get('/favicon.ico', (req, res) => {
   res.sendFile(join(__dirname, '..', 'dist', 'favicon.png'));
 });
 
+// ✅ Logo fix: نرجع الـ logo من frontend/public مباشرة (مش من dist عشان هو في gitignore)
+app.get('/logo.png', (req, res) => {
+  const fromDist   = join(__dirname, '..', 'dist', 'logo.png');
+  const fromPublic = join(__dirname, '..', 'frontend', 'public', 'logo.png');
+  if (fs.existsSync(fromDist)) return res.sendFile(fromDist);
+  res.sendFile(fromPublic);
+});
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'API endpoint not found' });
