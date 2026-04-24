@@ -71,6 +71,18 @@ function scheduleRenderJobCleanup(jobId, delayMs = 60 * 60 * 1000) {
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", "https://api.pexels.com", "https://api.groq.com", "https://api.anthropic.com"],
+      mediaSrc: ["'self'", "blob:"],
+      workerSrc: ["'self'", "blob:"],
+      fontSrc: ["'self'", "data:", "https:"],
+    }
+  }
 }));
 
 // ✅ General limiter - 200 requests per 15 min per IP
@@ -515,9 +527,12 @@ app.get('/favicon.ico', (req, res) => {
   res.sendFile(join(__dirname, '..', 'dist', 'favicon.png'));
 });
 
-// ✅ Logo fix
+// ✅ Logo fix: نرجع الـ logo من frontend/public مباشرة (مش من dist عشان هو في gitignore)
 app.get('/logo.png', (req, res) => {
-  res.sendFile(join(__dirname, 'logo.png'));
+  const fromDist   = join(__dirname, '..', 'dist', 'logo.png');
+  const fromPublic = join(__dirname, '..', 'frontend', 'public', 'logo.png');
+  if (fs.existsSync(fromDist)) return res.sendFile(fromDist);
+  res.sendFile(fromPublic);
 });
 
 app.get('*', (req, res) => {
