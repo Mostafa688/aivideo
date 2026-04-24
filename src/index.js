@@ -373,17 +373,25 @@ app.get('/api/render-status/:jobId', authMiddleware, (req, res) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
-  const job = getRenderJob(String(req.params.jobId));
-  if (!job || job.userId !== req.user.userId) {
+  const jobId = String(req.params.jobId);
+  const videoUrl = '/outputs/' + `video_${jobId}.mp4`;
+  const videoPath = join(process.cwd(), 'outputs', `video_${jobId}.mp4`);
+
+  if (fs.existsSync(videoPath) && fs.statSync(videoPath).size > 0) {
+    return res.json({ status: 'done', videoUrl });
+  }
+
+  const job = getRenderJob(jobId);
+  if (job && job.userId && job.userId !== req.user.userId) {
     return res.status(404).json({ error: 'Render job not found' });
   }
 
-  if (job.status === 'failed') {
+  if (job?.status === 'failed') {
     return res.json({ status: 'failed', error: job.error || 'Render failed. Please try again.' });
   }
 
-  if (job.status === 'done') {
-    return res.json({ status: 'done', videoUrl: job.videoUrl });
+  if (job?.status === 'done') {
+    return res.json({ status: 'done', videoUrl: job.videoUrl || videoUrl });
   }
 
   res.json({ status: 'processing' });
