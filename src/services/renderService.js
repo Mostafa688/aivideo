@@ -260,6 +260,7 @@ function addMusicOnly(videoFile, musicFile, output, musicVolume = 0.08) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '128k',
+        '-shortest',
         '-af', `volume=${musicVolume}`,
         '-movflags', '+faststart',
       ])
@@ -281,6 +282,7 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
+        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -471,10 +473,9 @@ function addWatermark(inputFile, outputFile) {
 
 async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions) {
   const sceneCount = scenes.length;
-  // ✅ الفيديو بالظبط زي الصوت
-  const videoDuration = audioDuration;
+  const videoDuration = audioDuration + 3;
   const secPerScene = videoDuration / sceneCount;
-  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
+  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
 
   const slideFiles = [];
   for (let i = 0; i < scenes.length; i++) {
@@ -605,9 +606,15 @@ export async function renderVideo({
   const step3 = path.join(TEMP_DIR, `step3_${id}.mp4`);
   const musicPath = music ? findMusicFile() : null;
 
-  // ✅ FIX: نعمل كل الـ processing على الـ video بدون audio
-  // وبعدين نضيف الـ audio في آخر خطوة بـ -shortest عشان يقطع بالصوت بالظبط
-  fs.copyFileSync(concatFile, step3);
+  if (audioPath && musicPath) {
+    await mixAudioAndMusic(concatFile, audioPath, musicPath, step3, musicVolume);
+  } else if (audioPath) {
+    await mixAudio(concatFile, audioPath, step3);
+  } else if (musicPath) {
+    await addMusicOnly(concatFile, musicPath, step3, musicVolume);
+  } else {
+    fs.copyFileSync(concatFile, step3);
+  }
 
   const step4 = path.join(TEMP_DIR, `step4_${id}.mp4`);
   if (soundEffects) {
@@ -634,6 +641,7 @@ export async function renderVideo({
     const totalDur = audioDuration || (secPerScene * scenes.length);
     const perScene = totalDur / scenes.length;
     const sceneDurations = scenes.map(() => perScene);
+    // ✅ FIX: بنبعت videoLanguage للـ captions
     await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
@@ -653,22 +661,10 @@ export async function renderVideo({
     }
   }
 
-  // ✅ FIX: نضيف الـ audio في آخر خطوة بـ -shortest
-  const step7 = path.join(TEMP_DIR, `step7_${id}.mp4`);
-  if (audioPath && musicPath) {
-    await mixAudioAndMusic(step6, audioPath, musicPath, step7, musicVolume);
-  } else if (audioPath) {
-    await mixAudio(step6, audioPath, step7);
-  } else if (musicPath) {
-    await addMusicOnly(step6, musicPath, step7, musicVolume);
-  } else {
-    fs.copyFileSync(step6, step7);
-  }
-
-  await finalizeVideo(step7, outputPath);
+  await finalizeVideo(step6, outputPath);
 
   setTimeout(() => {
-    [...slideFiles, concatFile, step3, step4, step5, step6, step7].forEach(f => {
+    [...slideFiles, concatFile, step3, step4, step5, step6].forEach(f => {
       try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
     });
     slideFiles.forEach((_, i) => {
