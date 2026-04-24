@@ -245,6 +245,7 @@ function mixAudio(videoFile, audioFile, output) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
+        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -259,6 +260,7 @@ function addMusicOnly(videoFile, musicFile, output, musicVolume = 0.08) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '128k',
+        '-shortest',
         '-af', `volume=${musicVolume}`,
         '-movflags', '+faststart',
       ])
@@ -280,6 +282,7 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
+        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -470,11 +473,10 @@ function addWatermark(inputFile, outputFile) {
 
 async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions) {
   const sceneCount = scenes.length;
-  // ✅ FIX: buffer نسبي — 5% من المدة أو 3 ثواني على الأقل
-  const buffer = Math.max(audioDuration * 0.05, 3);
-  const videoDuration = audioDuration + buffer;
+  // ✅ الفيديو بالظبط زي الصوت
+  const videoDuration = audioDuration;
   const secPerScene = videoDuration / sceneCount;
-  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
+  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
 
   const slideFiles = [];
   for (let i = 0; i < scenes.length; i++) {
