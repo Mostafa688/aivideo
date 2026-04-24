@@ -507,6 +507,14 @@ app.use((err, req, res, next) => {
 // ✅ Catch-all: أي route مش API يرجع الـ React app
 app.use(express.static(join(__dirname, '..', 'dist')));
 
+// ✅ Favicon fix: نرجع الملف مباشرة قبل ما الـ catch-all يمسكه
+app.get('/favicon.png', (req, res) => {
+  res.sendFile(join(__dirname, '..', 'dist', 'favicon.png'));
+});
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(join(__dirname, '..', 'dist', 'favicon.png'));
+});
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'API endpoint not found' });
