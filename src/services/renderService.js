@@ -245,10 +245,7 @@ function mixAudio(videoFile, audioFile, output) {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        // ✅ FIX: حذف -shortest عشان الفيديو ميتقطعش
-        // بدلها بنخلي الفيديو هو اللي بيحدد المدة (الفيديو دايماً أطول)
-        '-map', '0:v:0',
-        '-map', '1:a:0',
+        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -285,7 +282,7 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        // ✅ FIX: حذف -shortest عشان الفيديو ميتقطعش
+        '-shortest',
         '-movflags', '+faststart',
       ])
       .output(output).on('end', resolve).on('error', reject).run();
@@ -476,10 +473,7 @@ function addWatermark(inputFile, outputFile) {
 
 async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions) {
   const sceneCount = scenes.length;
-  // ✅ FIX: الفيديو أطول من الصوت بثانية واحدة بس
-  // secPerScene بيحسب على أساس إن كل scene بتشغل مدتها كاملة
-  // الـ transitions بتاخد من مدة كل scene مش بتضيف وقت جديد
-  const videoDuration = audioDuration + 1;
+  const videoDuration = audioDuration + 3;
   const secPerScene = videoDuration / sceneCount;
   console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
 
