@@ -47,28 +47,23 @@ async function generateImage(prompt, ratio = '16:9') {
 // ── Ken Burns zoom effect على صورة واحدة ──────────────────────────────────
 function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
   const fps = 30;
-  const frames = duration * fps;
-  // نبدأ بـ scale 1.3 ونخليه يتحرك — ده بيدي zoom واضح
-  const startScale = 1.3;
-  const endScale   = 1.0;
   const W = w, H = h;
-  const SW = Math.round(W * startScale);
-  const SH = Math.round(H * startScale);
+  const SW = Math.round(W * 1.3);
+  const SH = Math.round(H * 1.3);
+  const maxX = SW - W;
+  const maxY = SH - H;
+  const totalFrames = duration * fps;
 
-  const effects = [
-    // Zoom in from center: نبدأ crop صغير وبيكبر
-    `scale=${SW}:${SH},crop=w='${W}+((${SW}-${W})*max(0,(${frames}-on))/${frames})':h='${H}+((${SH}-${H})*max(0,(${frames}-on))/${frames})':x='(${SW}-ow)/2':y='(${SH}-oh)/2',scale=${W}:${H},setsar=1`,
-    // Zoom out: نبدأ crop كبير وبيصغر
-    `scale=${SW}:${SH},crop=w='${W}+((${SW}-${W})*on/${frames})':h='${H}+((${SH}-${H})*on/${frames})':x='(${SW}-ow)/2':y='(${SH}-oh)/2',scale=${W}:${H},setsar=1`,
-    // Pan left to right مع zoom ثابت
-    `scale=${SW}:${SH},crop=${W}:${H}:x='(${SW}-${W})*on/${frames}':y='(${SH}-${H})/2',scale=${W}:${H},setsar=1`,
-    // Pan right to left مع zoom ثابت
-    `scale=${SW}:${SH},crop=${W}:${H}:x='(${SW}-${W})*(1-on/${frames})':y='(${SH}-${H})/2',scale=${W}:${H},setsar=1`,
-    // Pan top to bottom مع zoom ثابت
-    `scale=${SW}:${SH},crop=${W}:${H}:x='(${SW}-${W})/2':y='(${SH}-${H})*on/${frames}',scale=${W}:${H},setsar=1`,
+  // Pan effects - بيديك zoom واضح (الصورة أكبر بـ 30% والـ crop بيتحرك)
+  const panEffects = [
+    `scale=${SW}:${SH},crop=${W}:${H}:x='${maxX}*on/${totalFrames}':y='${Math.round(maxY/2)}',setsar=1`,
+    `scale=${SW}:${SH},crop=${W}:${H}:x='${maxX}*(1-on/${totalFrames})':y='${Math.round(maxY/2)}',setsar=1`,
+    `scale=${SW}:${SH},crop=${W}:${H}:x='${Math.round(maxX/2)}':y='${maxY}*on/${totalFrames}',setsar=1`,
+    `scale=${SW}:${SH},crop=${W}:${H}:x='${Math.round(maxX/2)}':y='${maxY}*(1-on/${totalFrames})',setsar=1`,
+    `scale=${SW}:${SH},crop=${W}:${H}:x='${maxX}/2+${maxX}/2*sin(on/${totalFrames}*3.14)':y='${Math.round(maxY/2)}',setsar=1`,
   ];
 
-  const effect = effects[index % effects.length];
+  const effect = panEffects[index % panEffects.length];
 
   try {
     execSync(
@@ -78,9 +73,10 @@ function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
       { stdio: 'pipe' }
     );
   } catch(e) {
-    // fallback: static with slight zoom
+    console.warn('[Model3] Ken Burns failed, static fallback:', e.message.slice(0, 80));
     execSync(
-      `ffmpeg -loop 1 -i "${imagePath}" -vf "scale=${SW}:${SH},crop=${W}:${H}:x='(${SW}-${W})/2':y='(${SH}-${H})/2',setsar=1" ` +
+      `ffmpeg -loop 1 -i "${imagePath}" ` +
+      `-vf "scale=${SW}:${SH},crop=${W}:${H}:x=${Math.round(maxX/2)}:y=${Math.round(maxY/2)},setsar=1" ` +
       `-t ${duration} -r ${fps} -c:v libx264 -crf 23 -preset ultrafast ` +
       `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
@@ -164,21 +160,27 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'en')
       .slice(0, 80); // max 80 chars per chunk
   }
 
-  function splitIntoChunks(text, wordsPerChunk = 3) {
+  function splitIntoChunks(text, wordsPerChunk = 4) {
     const clean = sanitizeText(text);
     const words = clean.split(/\s+/).filter(Boolean);
-    // لو الكلمات قليلة - خليهم chunk واحد أو اتنين بس
-    const maxChunks = Math.min(3, Math.ceil(words.length / 2));
-    const actualWordsPerChunk = Math.ceil(words.length / maxChunks);
     const chunks = [];
-    for (let i = 0; i < words.length; i += actualWordsPerChunk) {
-      const chunk = words.slice(i, i + actualWordsPerChunk).join(' ');
+    for (let i = 0; i < words.length; i += wordsPerChunk) {
+      const chunk = words.slice(i, i + wordsPerChunk).join(' ');
       chunks.push(chunk);
     }
     return chunks.filter(Boolean);
   }
 
-  const secPerScene = 10;
+  // احسب مدة كل scene من الـ audio الفعلي
+  let totalVideoDuration = 0;
+  try {
+    const dur = execSync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`,
+      { encoding: 'utf8' }
+    ).trim();
+    totalVideoDuration = parseFloat(dur) || 0;
+  } catch {}
+  const secPerScene = totalVideoDuration > 0 ? totalVideoDuration / scenes.length : 10;
   const filters = [];
   let currentTime = 0;
 
