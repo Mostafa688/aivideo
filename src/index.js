@@ -536,7 +536,7 @@ app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async
         max_tokens: 3000,
         temperature: 0.5,
         messages: [
-          { role: 'system', content: 'You are a JSON array generator. Output ONLY a raw JSON array starting with [ and ending with ]. No markdown, no code blocks, no explanation.' },
+          { role: 'system', content: 'You are a JSON array generator. Output ONLY a raw JSON array starting with [ and ending with ]. No markdown, no code blocks, no explanation. CRITICAL: The "prompt" field MUST ALWAYS be in English only - never Arabic or any other language. Only the "text" field can be in the target language.' },
           { role: 'user', content: batchPrompt },
         ],
       }),
@@ -559,10 +559,19 @@ app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async
       let batchPrompt;
       if (isIdeaMode) {
         batchPrompt = `Video topic: "${idea}"
-Style: ${styleHint} | Language: ${videoLanguage}
+Style: ${styleHint}
 
 Generate EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).
-Return a JSON array of ${batchCount} objects: [{"index":${batchStart},"prompt":"cinematic English image description, no faces, 30-50 words, ${styleHint}","text":"2-sentence narration in ${videoLanguage}"},...]`;
+Return a JSON array of ${batchCount} objects.
+
+RULES:
+- "index": starts from ${batchStart}
+- "prompt": MUST be in ENGLISH ONLY - cinematic image description, no human faces, 30-50 words, style: ${styleHint}
+- "text": narration in ${videoLanguage} language, 1-2 sentences
+
+Example: [{"index":${batchStart},"prompt":"Ancient Egyptian pyramid at golden sunset, dramatic shadows, cinematic photography, no people","text":"narration here in ${videoLanguage}"}]
+
+Output ONLY the JSON array:`;
       } else {
         const portion = script.slice(
           Math.floor((batchStart - 1) / imageCount * script.length),
@@ -572,7 +581,16 @@ Return a JSON array of ${batchCount} objects: [{"index":${batchStart},"prompt":"
 Style: ${styleHint}
 
 Split into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).
-Return a JSON array of ${batchCount} objects: [{"index":${batchStart},"prompt":"cinematic English image description, no faces, 30-50 words","text":"narration from script"},...]`;
+Return a JSON array of ${batchCount} objects.
+
+RULES:
+- "index": starts from ${batchStart}
+- "prompt": MUST be in ENGLISH ONLY - cinematic image description matching the scene, no human faces, 30-50 words, style: ${styleHint}
+- "text": narration taken from the script portion, keep original language
+
+Example: [{"index":${batchStart},"prompt":"Cinematic shot of ancient ruins at dawn, dramatic lighting, no people, ${styleHint}","text":"text from script here"}]
+
+Output ONLY the JSON array:`;
       }
 
       let batchScenes = [];
