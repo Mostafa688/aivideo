@@ -109,7 +109,8 @@ router.post('/save-video', authMiddleware, async (req, res) => {
 router.get('/credits', authMiddleware, async (req, res) => {
   try {
     const credits = await getUserCredits(req.user.userId);
-    res.json(credits);
+    const user = await getUserById(req.user.userId);
+    res.json({ ...credits, model3_access: user?.model3_access || 0 });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -11,6 +11,7 @@ import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/med
 import { generateVoiceover, VOICE_OPTIONS } from './services/voiceService.js';
 import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
+import { renderModel3Video } from './services/stabilityService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, canUserRender, getUserCredits } from './services/authService.js';
 
@@ -501,6 +502,128 @@ JSON array:`;
     console.error('[AI Edit] Error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Model 3 Routes ─────────────────────────────────────────────────────────
+async function checkModel3Access(req, res, next) {
+  try {
+    const user = await getUserById(req.user.userId);
+    if (!user || !user.model3_access) {
+      return res.status(403).json({ error: 'Model 3 access required. Please contact support to activate.' });
+    }
+    next();
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async (req, res) => {
+  const { idea, script, inputMode, imageCount, videoLanguage, styleSuffix } = req.body;
+  if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
+
+  const isIdeaMode = inputMode === 'idea';
+  const styleHint  = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic';
+
+  try {
+    const prompt = isIdeaMode
+      ? `You are a professional video scriptwriter and AI image prompt engineer.
+
+Create exactly ${imageCount} scenes for an AI image video based on this idea:
+"${idea}"
+
+Rules:
+- Return ONLY a valid JSON array, no markdown
+- Each item: { "index": number, "prompt": string, "text": string }
+- "prompt": English image prompt (40-70 words, style: ${styleHint}, no human faces)
+- "text": narration in ${videoLanguage} language (2-3 sentences per scene)
+- Tell a story with clear beginning, middle, end
+
+JSON array:`
+      : `You are a professional video scriptwriter and AI image prompt engineer.
+
+Split this script into exactly ${imageCount} scenes for an AI image video.
+
+Script:
+${script}
+
+Rules:
+- Return ONLY a valid JSON array, no markdown
+- Each item: { "index": number, "prompt": string, "text": string }
+- "prompt": English image prompt (40-70 words, style: ${styleHint}, no human faces)
+- "text": narration taken from the script, keep original language
+
+JSON array:`;
+
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    const claudeData = await claudeRes.json();
+    const textContent = claudeData.content?.find(c => c.type === 'text')?.text || '';
+    const cleaned = textContent.replace(/```json\n?|\n?```/g, '').trim();
+    const scenes = JSON.parse(cleaned);
+
+    res.json({ scenes });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter, async (req, res) => {
+  const { scenes, audioUrl, ratio, captions, transitions, music, videoLanguage } = req.body;
+  if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
+
+  const renderJobId = String(Date.now());
+
+  setRenderJob(renderJobId, {
+    status: 'processing',
+    userId: req.user.userId,
+    createdAt: Date.now(),
+    error: null,
+    videoUrl: null,
+  });
+
+  res.status(202).json({ jobId: renderJobId, status: 'processing' });
+
+  (async () => {
+    try {
+      const videoPath = await renderModel3Video({
+        scenes,
+        audioUrl,
+        ratio: ratio || '16:9',
+        jobId: renderJobId,
+        captions: captions || false,
+        transitions: transitions !== false,
+        music: music || false,
+        videoLanguage: videoLanguage || 'en',
+      });
+
+      setRenderJob(renderJobId, {
+        status: 'done',
+        videoUrl: '/outputs/' + videoPath,
+        completedAt: Date.now(),
+      });
+    } catch (jobErr) {
+      console.error('[Model3 Render] Failed:', jobErr.message);
+      setRenderJob(renderJobId, {
+        status: 'failed',
+        error: jobErr.message || 'Render failed.',
+        completedAt: Date.now(),
+      });
+    } finally {
+      scheduleRenderJobCleanup(renderJobId);
+    }
+  })();
 });
 
 app.listen(PORT, () => {

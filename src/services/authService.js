@@ -45,6 +45,7 @@ async function initDB() {
       google_id TEXT,
       avatar TEXT,
       verified INTEGER DEFAULT 0,
+      model3_access INTEGER DEFAULT 0,
       plan TEXT DEFAULT 'free',
       plan_billing TEXT DEFAULT 'monthly',
       plan_expires_at TEXT,
@@ -159,7 +160,7 @@ async function checkAndResetUsage(userId) {
 }
 
 export async function getUserById(userId) {
-  const { rows } = await pool.query('SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, created_at FROM users WHERE id = $1', [userId]);
+  const { rows } = await pool.query('SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, created_at FROM users WHERE id = $1', [userId]);
   return rows[0] || null;
 }
 
