@@ -111,14 +111,27 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'en')
     FONT_PATH = isRTL ? 'C\\:/Windows/Fonts/arial.ttf' : 'C\\:/Windows/Fonts/arial.ttf';
   } else {
     if (isRTL) {
-      // جرب fonts تدعم العربي على Linux
+      // Noto fonts للعربي على Railway (nixpacks)
       const arabicFonts = [
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+        '/run/current-system/sw/share/X11/fonts/NotoNaskhArabic-Regular.ttf',
+        '/run/current-system/sw/share/X11/fonts/NotoSansArabic-Regular.ttf',
+        '/run/current-system/sw/share/X11/fonts/NotoSans-Regular.ttf',
+        '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf',
+        '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf',
         '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        '/usr/share/fonts/noto/NotoSansArabic-Regular.ttf',
+        '/usr/share/fonts/noto/NotoNaskhArabic-Regular.ttf',
       ];
-      FONT_PATH = arabicFonts.find(f => fs.existsSync(f)) || '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+      // ابحث عن الـ font بـ fc-list
+      let foundFont = null;
+      try {
+        const fcResult = execSync('fc-list :lang=ar | head -3', { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] }).trim();
+        if (fcResult) {
+          foundFont = fcResult.split('\n')[0].split(':')[0].trim();
+        }
+      } catch {}
+      FONT_PATH = foundFont || arabicFonts.find(f => fs.existsSync(f)) || '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+      console.log('[Model3] Arabic font:', FONT_PATH);
     } else {
       FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
     }

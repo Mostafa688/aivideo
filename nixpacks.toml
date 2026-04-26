@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "ffmpeg", "python3", "python3Packages.pip", "python3Packages.setuptools", "noto-fonts", "noto-fonts-extra", "noto-fonts-cjk-sans", "noto-fonts-emoji", "dejavu_fonts", "fontconfig"]
+nixPkgs = ["nodejs_20", "ffmpeg", "python3", "python3Packages.pip", "python3Packages.setuptools", "noto-fonts", "noto-fonts-extra", "noto-fonts-cjk-sans", "noto-fonts-emoji", "dejavu_fonts", "fontconfig", "cairo", "pango"]
 
 [phases.install]
 cmds = ["npm ci", "pip install --break-system-packages edge-tts", "fc-cache -f -v", "fc-list | grep -i arabic || echo 'NO ARABIC FONTS'"]
