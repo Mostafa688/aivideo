@@ -523,107 +523,74 @@ app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async
 
   const isIdeaMode = inputMode === 'idea';
   const styleHint  = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic';
+  const BATCH_SIZE = 5;
+  const allScenes  = [];
+  const totalBatches = Math.ceil(imageCount / BATCH_SIZE);
+
+  async function groqBatch(batchPrompt) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 3000,
+        temperature: 0.5,
+        messages: [
+          { role: 'system', content: 'You are a JSON array generator. Output ONLY a raw JSON array starting with [ and ending with ]. No markdown, no code blocks, no explanation.' },
+          { role: 'user', content: batchPrompt },
+        ],
+      }),
+    });
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    const clean = raw.replace(/^[^[]*/, '').replace(/[^\]]*$/, '').trim();
+    try { return JSON.parse(clean); } catch {
+      const m = raw.match(/\[[\s\S]*\]/);
+      return m ? JSON.parse(m[0]) : [];
+    }
+  }
 
   try {
-    const prompt = isIdeaMode
-      ? `You are a professional video scriptwriter and AI image prompt engineer.
-
-Create exactly ${imageCount} scenes for an AI image video based on this idea:
-"${idea}"
-
-Rules:
-- Return ONLY a valid JSON array, no markdown
-- Each item: { "index": number, "prompt": string, "text": string }
-- "prompt": English image prompt (40-70 words, style: ${styleHint}, no human faces)
-- "text": narration in ${videoLanguage} language (2-3 sentences per scene)
-- Tell a story with clear beginning, middle, end
-
-JSON array:`
-      : `You are a professional video scriptwriter and AI image prompt engineer.
-
-Split this script into exactly ${imageCount} scenes for an AI image video.
-
-Script:
-${script}
-
-Rules:
-- Return ONLY a valid JSON array, no markdown
-- Each item: { "index": number, "prompt": string, "text": string }
-- "prompt": English image prompt (40-70 words, style: ${styleHint}, no human faces)
-- "text": narration taken from the script, keep original language
-
-JSON array:`;
-
-    // نقسم الـ scenes على batches عشان Groq ميتخنقش
-    const BATCH_SIZE = 10;
-    const allScenes = [];
-    const totalBatches = Math.ceil(imageCount / BATCH_SIZE);
-
     for (let b = 0; b < totalBatches; b++) {
       const batchStart = b * BATCH_SIZE + 1;
-      const batchEnd = Math.min((b + 1) * BATCH_SIZE, imageCount);
+      const batchEnd   = Math.min((b + 1) * BATCH_SIZE, imageCount);
       const batchCount = batchEnd - batchStart + 1;
 
-      const batchPrompt = isIdeaMode
-        ? `Generate scenes ${batchStart} to ${batchEnd} (${batchCount} scenes) for an AI image video about: "${idea}"
+      let batchPrompt;
+      if (isIdeaMode) {
+        batchPrompt = `Video topic: "${idea}"
+Style: ${styleHint} | Language: ${videoLanguage}
+
+Generate EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).
+Return a JSON array of ${batchCount} objects: [{"index":${batchStart},"prompt":"cinematic English image description, no faces, 30-50 words, ${styleHint}","text":"2-sentence narration in ${videoLanguage}"},...]`;
+      } else {
+        const portion = script.slice(
+          Math.floor((batchStart - 1) / imageCount * script.length),
+          Math.floor(batchEnd / imageCount * script.length)
+        );
+        batchPrompt = `Script portion: "${portion}"
 Style: ${styleHint}
-Language for text: ${videoLanguage}
 
-Return ONLY a JSON array with exactly ${batchCount} items. Each item: {"index": number, "prompt": "English image prompt 40-60 words", "text": "narration in ${videoLanguage}"}
-Start indexes from ${batchStart}.`
-        : `Split the following script into scenes ${batchStart} to ${batchEnd} (${batchCount} scenes).
-Script excerpt (use proportional part): ${script.slice(Math.floor((batchStart-1)/imageCount * script.length), Math.floor(batchEnd/imageCount * script.length))}
-Style: ${styleHint}
-
-Return ONLY a JSON array with exactly ${batchCount} items. Each item: {"index": number, "prompt": "English image prompt 40-60 words", "text": "narration text"}
-Start indexes from ${batchStart}.`;
-
-      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + process.env.GROQ_API_KEY,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          max_tokens: 4000,
-          temperature: 0.7,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a JSON generator. Return ONLY a valid JSON array, no markdown, no explanation.',
-            },
-            { role: 'user', content: batchPrompt },
-          ],
-        }),
-      });
-
-      const groqData = await groqRes.json();
-      const textContent = groqData.choices?.[0]?.message?.content || '';
-      const cleaned = textContent.replace(/```json[\n]?|[\n]?```/g, '').trim();
-
-      let batchScenes;
-      try {
-        batchScenes = JSON.parse(cleaned);
-      } catch(parseErr) {
-        const match = cleaned.match(/\[[\s\S]*\]/);
-        if (match) {
-          batchScenes = JSON.parse(match[0]);
-        } else {
-          console.warn(`Batch ${b+1} parse failed, skipping:`, parseErr.message);
-          continue;
-        }
+Split into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).
+Return a JSON array of ${batchCount} objects: [{"index":${batchStart},"prompt":"cinematic English image description, no faces, 30-50 words","text":"narration from script"},...]`;
       }
 
-      if (Array.isArray(batchScenes)) {
+      let batchScenes = [];
+      try {
+        batchScenes = await groqBatch(batchPrompt);
+        console.log(`[Model3] Batch ${b+1}/${totalBatches}: got ${batchScenes.length} scenes`);
+      } catch(e) {
+        console.warn(`[Model3] Batch ${b+1} failed:`, e.message);
+      }
+
+      if (Array.isArray(batchScenes) && batchScenes.length > 0) {
         allScenes.push(...batchScenes);
       }
     }
 
-    if (allScenes.length === 0) {
-      throw new Error('No scenes returned from AI');
-    }
+    if (allScenes.length === 0) throw new Error('No scenes returned from AI');
 
+    console.log(`[Model3] Total scenes generated: ${allScenes.length}/${imageCount}`);
     res.json({ scenes: allScenes });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -120,7 +120,7 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'en')
     return chunks.filter(Boolean);
   }
 
-  const secPerScene = 5;
+  const secPerScene = 10;
   const filters = [];
   let currentTime = 0;
 
@@ -179,7 +179,7 @@ export async function renderModel3Video({
   const id = jobId || Date.now();
   const outputFile = 'video_' + id + '.mp4';
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
-  const SEC_PER_IMAGE = 5;
+  const SEC_PER_IMAGE = 10;
   const totalImages = scenes.length;
 
   console.log(`[Model3] START | ${totalImages} images | ratio: ${ratio} | ${w}x${h}`);
