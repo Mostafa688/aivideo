@@ -554,49 +554,79 @@ Rules:
 
 JSON array:`;
 
-    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + process.env.GROQ_API_KEY,
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        max_tokens: 32000,
-        temperature: 0.7,
-        messages: [
-          {
-            role: 'system',
-            content: `You are a JSON generator. You MUST return exactly ${imageCount} items in a JSON array. No markdown, no explanation, just the raw JSON array starting with [ and ending with ]. Each item must have: index (number), prompt (string in English, 40-60 words), text (string in target language).`,
-          },
-          { role: 'user', content: prompt },
-        ],
-      }),
-    });
+    // نقسم الـ scenes على batches عشان Groq ميتخنقش
+    const BATCH_SIZE = 10;
+    const allScenes = [];
+    const totalBatches = Math.ceil(imageCount / BATCH_SIZE);
 
-    const groqData = await groqRes.json();
-    const textContent = groqData.choices?.[0]?.message?.content || '';
-    const cleaned = textContent.replace(/\`\`\`json\n?|\n?\`\`\`/g, '').trim();
+    for (let b = 0; b < totalBatches; b++) {
+      const batchStart = b * BATCH_SIZE + 1;
+      const batchEnd = Math.min((b + 1) * BATCH_SIZE, imageCount);
+      const batchCount = batchEnd - batchStart + 1;
 
-    let scenes;
-    try {
-      scenes = JSON.parse(cleaned);
-    } catch(parseErr) {
-      // محاولة استخراج الـ JSON من الـ response
-      const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
-      if (match) {
-        scenes = JSON.parse(match[0]);
-      } else {
-        throw new Error('Failed to parse scenes JSON: ' + parseErr.message);
+      const batchPrompt = isIdeaMode
+        ? `Generate scenes ${batchStart} to ${batchEnd} (${batchCount} scenes) for an AI image video about: "${idea}"
+Style: ${styleHint}
+Language for text: ${videoLanguage}
+
+Return ONLY a JSON array with exactly ${batchCount} items. Each item: {"index": number, "prompt": "English image prompt 40-60 words", "text": "narration in ${videoLanguage}"}
+Start indexes from ${batchStart}.`
+        : `Split the following script into scenes ${batchStart} to ${batchEnd} (${batchCount} scenes).
+Script excerpt (use proportional part): ${script.slice(Math.floor((batchStart-1)/imageCount * script.length), Math.floor(batchEnd/imageCount * script.length))}
+Style: ${styleHint}
+
+Return ONLY a JSON array with exactly ${batchCount} items. Each item: {"index": number, "prompt": "English image prompt 40-60 words", "text": "narration text"}
+Start indexes from ${batchStart}.`;
+
+      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + process.env.GROQ_API_KEY,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          max_tokens: 4000,
+          temperature: 0.7,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a JSON generator. Return ONLY a valid JSON array, no markdown, no explanation.',
+            },
+            { role: 'user', content: batchPrompt },
+          ],
+        }),
+      });
+
+      const groqData = await groqRes.json();
+      const textContent = groqData.choices?.[0]?.message?.content || '';
+      const cleaned = textContent.replace(/```json
+?|
+?```/g, '').trim();
+
+      let batchScenes;
+      try {
+        batchScenes = JSON.parse(cleaned);
+      } catch(parseErr) {
+        const match = cleaned.match(/\[[\s\S]*\]/);
+        if (match) {
+          batchScenes = JSON.parse(match[0]);
+        } else {
+          console.warn(`Batch ${b+1} parse failed, skipping:`, parseErr.message);
+          continue;
+        }
+      }
+
+      if (Array.isArray(batchScenes)) {
+        allScenes.push(...batchScenes);
       }
     }
 
-    // تأكد إن عندنا العدد الصح
-    if (!Array.isArray(scenes) || scenes.length === 0) {
+    if (allScenes.length === 0) {
       throw new Error('No scenes returned from AI');
     }
 
-    res.json({ scenes });
+    res.json({ scenes: allScenes });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
