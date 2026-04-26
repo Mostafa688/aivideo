@@ -562,16 +562,39 @@ JSON array:`;
       },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
-        max_tokens: 8000,
+        max_tokens: 32000,
         temperature: 0.7,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          {
+            role: 'system',
+            content: `You are a JSON generator. You MUST return exactly ${imageCount} items in a JSON array. No markdown, no explanation, just the raw JSON array starting with [ and ending with ]. Each item must have: index (number), prompt (string in English, 40-60 words), text (string in target language).`,
+          },
+          { role: 'user', content: prompt },
+        ],
       }),
     });
 
     const groqData = await groqRes.json();
     const textContent = groqData.choices?.[0]?.message?.content || '';
-    const cleaned = textContent.replace(/```json\n?|\n?```/g, '').trim();
-    const scenes = JSON.parse(cleaned);
+    const cleaned = textContent.replace(/\`\`\`json\n?|\n?\`\`\`/g, '').trim();
+
+    let scenes;
+    try {
+      scenes = JSON.parse(cleaned);
+    } catch(parseErr) {
+      // محاولة استخراج الـ JSON من الـ response
+      const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (match) {
+        scenes = JSON.parse(match[0]);
+      } else {
+        throw new Error('Failed to parse scenes JSON: ' + parseErr.message);
+      }
+    }
+
+    // تأكد إن عندنا العدد الصح
+    if (!Array.isArray(scenes) || scenes.length === 0) {
+      throw new Error('No scenes returned from AI');
+    }
 
     res.json({ scenes });
   } catch (e) {
