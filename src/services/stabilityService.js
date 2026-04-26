@@ -103,19 +103,43 @@ function applyTransition(clip1, clip2, outputPath, duration1, transitionDuration
 
 // ── إضافة captions على الفيديو ────────────────────────────────────────────
 function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'en') {
-  const FONT_PATH = process.platform === 'win32'
-    ? 'C\\:/Windows/Fonts/arial.ttf'
-    : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
-
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
 
+  // اختيار الفونت المناسب للغة
+  let FONT_PATH;
+  if (process.platform === 'win32') {
+    FONT_PATH = isRTL ? 'C\\:/Windows/Fonts/arial.ttf' : 'C\\:/Windows/Fonts/arial.ttf';
+  } else {
+    if (isRTL) {
+      // جرب fonts تدعم العربي على Linux
+      const arabicFonts = [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+      ];
+      FONT_PATH = arabicFonts.find(f => fs.existsSync(f)) || '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+    } else {
+      FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+    }
+  }
+
+  function sanitizeText(text) {
+    return text
+      .replace(/['"`:;\\<>{}|]/g, '')
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 80); // max 80 chars per chunk
+  }
+
   function splitIntoChunks(text, wordsPerChunk = 4) {
-    const words = text.replace(/[':]/g, '').replace(/\\/g, '').replace(/\n/g, ' ').trim().split(/\s+/);
+    const clean = sanitizeText(text);
+    const words = clean.split(/\s+/).filter(Boolean);
     const chunks = [];
     for (let i = 0; i < words.length; i += wordsPerChunk) {
-      let chunk = words.slice(i, i + wordsPerChunk);
-      if (isRTL) chunk = chunk.reverse();
-      chunks.push(chunk.join(' '));
+      const chunk = words.slice(i, i + wordsPerChunk).join(' ');
+      chunks.push(chunk);
     }
     return chunks.filter(Boolean);
   }
@@ -271,49 +295,64 @@ export async function renderModel3Video({
   const withAudioPath = path.join(TEMP_DIR, `m3_audio_${id}.mp4`);
 
   if (audioPath) {
-    // دمج الـ audio مع الفيديو
-    let musicCmd = '';
-    if (music) {
-      const musicDir = path.join(process.cwd(), 'assets', 'music');
-      if (fs.existsSync(musicDir)) {
-        const files = fs.readdirSync(musicDir).filter(f => f.endsWith('.mp3') || f.endsWith('.wav'));
-        if (files.length > 0) {
-          const musicFile = path.join(musicDir, files[Math.floor(Math.random() * files.length)]);
-          try {
-            execSync(
-              `ffmpeg -i "${mergedPath}" -i "${audioPath}" -i "${musicFile}" ` +
-              `-filter_complex "[2:a]volume=0.07[music];[1:a][music]amix=inputs=2:duration=longest[aout]" ` +
-              `-map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
-              { stdio: 'pipe' }
-            );
-          } catch {
-            execSync(
-              `ffmpeg -i "${mergedPath}" -i "${audioPath}" ` +
-              `-c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
-              { stdio: 'pipe' }
-            );
-          }
-        } else {
-          execSync(
-            `ffmpeg -i "${mergedPath}" -i "${audioPath}" ` +
-            `-c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
-            { stdio: 'pipe' }
-          );
-        }
-      } else {
+    // احسب مدة الـ audio الحقيقية
+    let audioDuration = null;
+    try {
+      const dur = execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`,
+        { encoding: 'utf8' }
+      ).trim();
+      audioDuration = parseFloat(dur);
+    } catch {}
+
+    // لو الـ audio أطول من الفيديو — نطول الفيديو بثانية زيادة
+    const videoExtended = path.join(TEMP_DIR, `m3_extended_${id}.mp4`);
+    if (audioDuration && audioDuration > 0) {
+      const targetDuration = audioDuration + 1;
+      try {
         execSync(
-          `ffmpeg -i "${mergedPath}" -i "${audioPath}" ` +
+          `ffmpeg -stream_loop -1 -i "${mergedPath}" -t ${targetDuration} ` +
+          `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+          `-pix_fmt yuv420p -movflags +faststart -y "${videoExtended}"`,
+          { stdio: 'pipe' }
+        );
+      } catch {
+        fs.copyFileSync(mergedPath, videoExtended);
+      }
+    } else {
+      fs.copyFileSync(mergedPath, videoExtended);
+    }
+
+    // دمج الـ audio مع الفيديو المطول
+    const musicDir = path.join(process.cwd(), 'assets', 'music');
+    const musicFiles = music && fs.existsSync(musicDir)
+      ? fs.readdirSync(musicDir).filter(f => f.endsWith('.mp3') || f.endsWith('.wav'))
+      : [];
+
+    if (music && musicFiles.length > 0) {
+      const musicFile = path.join(musicDir, musicFiles[Math.floor(Math.random() * musicFiles.length)]);
+      try {
+        execSync(
+          `ffmpeg -i "${videoExtended}" -i "${audioPath}" -i "${musicFile}" ` +
+          `-filter_complex "[2:a]volume=0.07[music];[1:a][music]amix=inputs=2:duration=longest[aout]" ` +
+          `-map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
+          { stdio: 'pipe' }
+        );
+      } catch {
+        execSync(
+          `ffmpeg -i "${videoExtended}" -i "${audioPath}" ` +
           `-c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
           { stdio: 'pipe' }
         );
       }
     } else {
       execSync(
-        `ffmpeg -i "${mergedPath}" -i "${audioPath}" ` +
+        `ffmpeg -i "${videoExtended}" -i "${audioPath}" ` +
         `-c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
         { stdio: 'pipe' }
       );
     }
+    try { if (fs.existsSync(videoExtended)) fs.unlinkSync(videoExtended); } catch {}
   } else {
     fs.copyFileSync(mergedPath, withAudioPath);
   }
