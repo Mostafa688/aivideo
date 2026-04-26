@@ -13,7 +13,7 @@ import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, canUserRender, getUserCredits } from './services/authService.js';
+import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video } from './services/authService.js';
 
 // ✅ FIX: __dirname و join لازم يتعرفوا هنا فوق قبل أي استخدام
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -616,8 +616,19 @@ Output ONLY the JSON array:`;
 });
 
 app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter, async (req, res) => {
-  const { scenes, audioUrl, ratio, captions, transitions, music, videoLanguage, duration } = req.body;
+  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
+
+  // تحقق من الكوتا
+  const quotaCheck = await canUserMakeModel3Video(req.user.userId, duration || '1min');
+  if (!quotaCheck.allowed) {
+    return res.status(403).json({
+      error: quotaCheck.reason,
+      message: quotaCheck.reason === 'quota_exceeded'
+        ? `خلصت حصتك من فيديوهات ${duration} (${quotaCheck.used}/${quotaCheck.quota}). اشترك تاني أو ترقّى لخطة أعلى.`
+        : `مدة ${duration} مش متاحة في خطتك. ترقّى لخطة أعلى.`,
+    });
+  }
 
   const renderJobId = String(Date.now());
 
@@ -638,11 +649,15 @@ app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter,
         audioUrl,
         ratio: ratio || '16:9',
         jobId: renderJobId,
+        duration: duration || '1min',
         captions: captions || false,
-        transitions: transitions !== false,
+        transitions: false,
         music: music || false,
         videoLanguage: videoLanguage || 'en',
       });
+
+      // زود العداد بعد النجاح
+      await incrementModel3Video(req.user.userId, duration || '1min');
 
       setRenderJob(renderJobId, {
         status: 'done',

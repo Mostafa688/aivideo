@@ -5,6 +5,7 @@ import {
   getUserVideos, saveVideo, getUserCredits, getUserById,
   createPaymentRequest, sendPaymentRequestEmail, activateUserPlan,
   loginOrCreateGoogleUser, PLANS,
+  getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS,
 } from './authService.js';
 
 const router = express.Router();
@@ -110,10 +111,15 @@ router.get('/credits', authMiddleware, async (req, res) => {
   try {
     const credits = await getUserCredits(req.user.userId);
     const user = await getUserById(req.user.userId);
+    const model3Usage = user?.model3_access ? await getModel3Usage(req.user.userId) : null;
+    const plan = user?.model3_plan || 'm3_starter';
+    const quotas = user?.model3_access ? (MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter) : null;
     res.json({
       ...credits,
       model3_access: user?.model3_access || 0,
-      model3_plan: user?.model3_plan || null,
+      model3_plan: plan,
+      model3_usage: model3Usage,
+      model3_quotas: quotas,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -214,6 +220,18 @@ router.post('/support', async (req, res) => {
 
 router.post('/referral', authMiddleware, async (req, res) => {
   res.json({ ok: true });
+});
+
+router.get('/model3-usage', authMiddleware, async (req, res) => {
+  try {
+    const user = await getUserById(req.user.userId);
+    const usage = await getModel3Usage(req.user.userId);
+    const plan = user?.model3_plan || 'm3_starter';
+    const quotas = MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter;
+    res.json({ usage, quotas, plan });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Model 3 Payment Request ─────────────────────────────────────────────────

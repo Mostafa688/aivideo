@@ -85,6 +85,17 @@ async function initDB() {
       created_at TEXT DEFAULT NOW()
     );
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS model3_usage (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+      videos_30s INTEGER DEFAULT 0,
+      videos_1min INTEGER DEFAULT 0,
+      videos_3min INTEGER DEFAULT 0,
+      videos_5min INTEGER DEFAULT 0,
+      last_reset TEXT DEFAULT CURRENT_DATE
+    );
+  `);
   console.log('[DB] PostgreSQL tables ready');
 }
 
@@ -316,6 +327,40 @@ export async function saveVideo(userId, filename, title) {
 export async function getUserVideos(userId) {
   const { rows } = await pool.query('SELECT * FROM videos WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
   return rows;
+}
+
+// ── Model 3 Usage Tracking ─────────────────────────────────────────────────
+export const MODEL3_PLAN_QUOTAS = {
+  m3_starter: { '30s': 5,  '1min': 10, '3min': 0,  '5min': 0  },
+  m3_pro:     { '30s': 5,  '1min': 5,  '3min': 10, '5min': 0  },
+  m3_max:     { '30s': 0,  '1min': 5,  '3min': 5,  '5min': 10 },
+};
+
+export async function getModel3Usage(userId) {
+  const { rows } = await pool.query('SELECT * FROM model3_usage WHERE user_id = $1', [userId]);
+  if (rows.length === 0) {
+    await pool.query('INSERT INTO model3_usage (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]);
+    return { videos_30s: 0, videos_1min: 0, videos_3min: 0, videos_5min: 0 };
+  }
+  return rows[0];
+}
+
+export async function incrementModel3Video(userId, duration) {
+  const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : duration === '3min' ? 'videos_3min' : 'videos_5min';
+  await pool.query(`INSERT INTO model3_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model3_usage.${col} + 1`, [userId]);
+}
+
+export async function canUserMakeModel3Video(userId, duration) {
+  const user = await getUserById(userId);
+  const plan = user?.model3_plan || 'm3_starter';
+  const quotas = MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter;
+  const quota = quotas[duration] || 0;
+  if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
+  const usage = await getModel3Usage(userId);
+  const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : duration === '3min' ? 'videos_3min' : 'videos_5min';
+  const used = usage[col] || 0;
+  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
+  return { allowed: true, quota, used, remaining: quota - used };
 }
 
 export async function getAllPaymentRequests(status = null) {

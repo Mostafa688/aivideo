@@ -46,31 +46,46 @@ async function generateImage(prompt, ratio = '16:9') {
 
 // ── Ken Burns zoom effect على صورة واحدة ──────────────────────────────────
 function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
-  const frames = duration * 30;
+  const fps = 30;
+  const frames = duration * fps;
+  // نبدأ بـ scale 1.3 ونخليه يتحرك — ده بيدي zoom واضح
+  const startScale = 1.3;
+  const endScale   = 1.0;
   const W = w, H = h;
+  const SW = Math.round(W * startScale);
+  const SH = Math.round(H * startScale);
 
-  // كل effect بيستخدم scale + crop مع تحريك تدريجي — بدون zoompan عشان مفيش freeze
   const effects = [
-    // Zoom in from center
-    `scale=${W*2}:${H*2},crop=${W}:${H}:'(iw-${W})/2+(iw-${W})/2*on/${frames}':'(ih-${H})/2+(ih-${H})/2*on/${frames}',scale=${W}:${H}`,
-    // Zoom out to center
-    `scale=${W*2}:${H*2},crop=${W}:${H}:'(iw-${W})/2-(iw-${W})/2*on/${frames}':'(ih-${H})/2-(ih-${H})/2*on/${frames}',scale=${W}:${H}`,
-    // Pan left to right
-    `scale=${W*2}:${H*2},crop=${W}:${H}:'on/${frames}*(iw-${W})':${H/2},scale=${W}:${H}`,
-    // Pan right to left
-    `scale=${W*2}:${H*2},crop=${W}:${H}:'(iw-${W})-(on/${frames}*(iw-${W}))':${H/2},scale=${W}:${H}`,
-    // Pan top to bottom
-    `scale=${W*2}:${H*2},crop=${W}:${H}:${W/2}:'on/${frames}*(ih-${H})',scale=${W}:${H}`,
+    // Zoom in from center: نبدأ crop صغير وبيكبر
+    `scale=${SW}:${SH},crop=w='${W}+((${SW}-${W})*max(0,(${frames}-on))/${frames})':h='${H}+((${SH}-${H})*max(0,(${frames}-on))/${frames})':x='(${SW}-ow)/2':y='(${SH}-oh)/2',scale=${W}:${H},setsar=1`,
+    // Zoom out: نبدأ crop كبير وبيصغر
+    `scale=${SW}:${SH},crop=w='${W}+((${SW}-${W})*on/${frames})':h='${H}+((${SH}-${H})*on/${frames})':x='(${SW}-ow)/2':y='(${SH}-oh)/2',scale=${W}:${H},setsar=1`,
+    // Pan left to right مع zoom ثابت
+    `scale=${SW}:${SH},crop=${W}:${H}:x='(${SW}-${W})*on/${frames}':y='(${SH}-${H})/2',scale=${W}:${H},setsar=1`,
+    // Pan right to left مع zoom ثابت
+    `scale=${SW}:${SH},crop=${W}:${H}:x='(${SW}-${W})*(1-on/${frames})':y='(${SH}-${H})/2',scale=${W}:${H},setsar=1`,
+    // Pan top to bottom مع zoom ثابت
+    `scale=${SW}:${SH},crop=${W}:${H}:x='(${SW}-${W})/2':y='(${SH}-${H})*on/${frames}',scale=${W}:${H},setsar=1`,
   ];
 
   const effect = effects[index % effects.length];
 
-  execSync(
-    `ffmpeg -loop 1 -i "${imagePath}" -vf "${effect},setsar=1" ` +
-    `-t ${duration} -r 30 -c:v libx264 -crf 23 -preset ultrafast ` +
-    `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
-    { stdio: 'pipe' }
-  );
+  try {
+    execSync(
+      `ffmpeg -loop 1 -i "${imagePath}" -vf "${effect}" ` +
+      `-t ${duration} -r ${fps} -c:v libx264 -crf 23 -preset ultrafast ` +
+      `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+      { stdio: 'pipe' }
+    );
+  } catch(e) {
+    // fallback: static with slight zoom
+    execSync(
+      `ffmpeg -loop 1 -i "${imagePath}" -vf "scale=${SW}:${SH},crop=${W}:${H}:x='(${SW}-${W})/2':y='(${SH}-${H})/2',setsar=1" ` +
+      `-t ${duration} -r ${fps} -c:v libx264 -crf 23 -preset ultrafast ` +
+      `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+      { stdio: 'pipe' }
+    );
+  }
 }
 
 // ── Transition بين كليبين ──────────────────────────────────────────────────
@@ -149,12 +164,15 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'en')
       .slice(0, 80); // max 80 chars per chunk
   }
 
-  function splitIntoChunks(text, wordsPerChunk = 4) {
+  function splitIntoChunks(text, wordsPerChunk = 3) {
     const clean = sanitizeText(text);
     const words = clean.split(/\s+/).filter(Boolean);
+    // لو الكلمات قليلة - خليهم chunk واحد أو اتنين بس
+    const maxChunks = Math.min(3, Math.ceil(words.length / 2));
+    const actualWordsPerChunk = Math.ceil(words.length / maxChunks);
     const chunks = [];
-    for (let i = 0; i < words.length; i += wordsPerChunk) {
-      const chunk = words.slice(i, i + wordsPerChunk).join(' ');
+    for (let i = 0; i < words.length; i += actualWordsPerChunk) {
+      const chunk = words.slice(i, i + actualWordsPerChunk).join(' ');
       chunks.push(chunk);
     }
     return chunks.filter(Boolean);
