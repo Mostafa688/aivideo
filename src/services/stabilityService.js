@@ -47,23 +47,23 @@ async function generateImage(prompt, ratio = '16:9') {
 // ── Ken Burns zoom effect على صورة واحدة ──────────────────────────────────
 function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
   const fps = 30;
-  const W = w, H = h;
-  const SW = Math.round(W * 1.3);
-  const SH = Math.round(H * 1.3);
-  const maxX = SW - W;
-  const maxY = SH - H;
-  const totalFrames = duration * fps;
+  const d = duration * fps;
 
-  // Pan effects - بيديك zoom واضح (الصورة أكبر بـ 30% والـ crop بيتحرك)
-  const panEffects = [
-    `scale=${SW}:${SH},crop=${W}:${H}:x='${maxX}*on/${totalFrames}':y='${Math.round(maxY/2)}',setsar=1`,
-    `scale=${SW}:${SH},crop=${W}:${H}:x='${maxX}*(1-on/${totalFrames})':y='${Math.round(maxY/2)}',setsar=1`,
-    `scale=${SW}:${SH},crop=${W}:${H}:x='${Math.round(maxX/2)}':y='${maxY}*on/${totalFrames}',setsar=1`,
-    `scale=${SW}:${SH},crop=${W}:${H}:x='${Math.round(maxX/2)}':y='${maxY}*(1-on/${totalFrames})',setsar=1`,
-    `scale=${SW}:${SH},crop=${W}:${H}:x='${maxX}/2+${maxX}/2*sin(on/${totalFrames}*3.14)':y='${Math.round(maxY/2)}',setsar=1`,
+  // zoompan - الطريقة الصح مع -loop 1
+  const effects = [
+    // Zoom in slow
+    `zoompan=z='min(zoom+0.0008,1.3)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${d}:s=${w}x${h}:fps=${fps}`,
+    // Zoom out
+    `zoompan=z='if(lte(zoom,1.0),1.3,max(1.0,zoom-0.0008))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${d}:s=${w}x${h}:fps=${fps}`,
+    // Pan left zoom
+    `zoompan=z=1.2:x='if(lte(on,1),0,min(x+0.5,iw/5))':y='ih/2-(ih/zoom/2)':d=${d}:s=${w}x${h}:fps=${fps}`,
+    // Pan right zoom
+    `zoompan=z=1.2:x='if(lte(on,1),iw/5,max(0,x-0.5))':y='ih/2-(ih/zoom/2)':d=${d}:s=${w}x${h}:fps=${fps}`,
+    // Zoom in top
+    `zoompan=z='min(zoom+0.0008,1.3)':x='iw/2-(iw/zoom/2)':y='0':d=${d}:s=${w}x${h}:fps=${fps}`,
   ];
 
-  const effect = panEffects[index % panEffects.length];
+  const effect = effects[index % effects.length];
 
   try {
     execSync(
@@ -73,10 +73,11 @@ function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
       { stdio: 'pipe' }
     );
   } catch(e) {
-    console.warn('[Model3] Ken Burns failed, static fallback:', e.message.slice(0, 80));
+    console.warn('[Model3] Ken Burns failed:', e.message.slice(0, 60));
+    // fallback بسيط بدون حركة
     execSync(
       `ffmpeg -loop 1 -i "${imagePath}" ` +
-      `-vf "scale=${SW}:${SH},crop=${W}:${H}:x=${Math.round(maxX/2)}:y=${Math.round(maxY/2)},setsar=1" ` +
+      `-vf "scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1" ` +
       `-t ${duration} -r ${fps} -c:v libx264 -crf 23 -preset ultrafast ` +
       `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
