@@ -600,9 +600,7 @@ Start indexes from ${batchStart}.`;
 
       const groqData = await groqRes.json();
       const textContent = groqData.choices?.[0]?.message?.content || '';
-      const cleaned = textContent.replace(/```json
-?|
-?```/g, '').trim();
+      const cleaned = textContent.replace(/```json[\n]?|[\n]?```/g, '').trim();
 
       let batchScenes;
       try {
