@@ -203,6 +203,7 @@ export async function renderModel3Video({
   audioUrl,
   ratio = '16:9',
   jobId,
+  duration = '1min',
   music = false,
   captions = false,
   transitions = true,
@@ -216,8 +217,14 @@ export async function renderModel3Video({
   const id = jobId || Date.now();
   const outputFile = 'video_' + id + '.mp4';
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
-  const SEC_PER_IMAGE = 10;
   const totalImages = scenes.length;
+  // نحسب مدة كل صورة بناءً على المدة الإجمالية المطلوبة
+  const DURATION_MAP = { '30s': 30, '1min': 60, '3min': 180, '5min': 300 };
+  const targetVideoDuration = DURATION_MAP[duration] || (totalImages * 10);
+  const TRANSITION_DURATION = 0.5;
+  const totalTransitionLoss = transitions && totalImages > 1 ? (totalImages - 1) * TRANSITION_DURATION : 0;
+  const SEC_PER_IMAGE = Math.ceil((targetVideoDuration + totalTransitionLoss) / totalImages);
+  console.log(`[Model3] Target: ${targetVideoDuration}s | ${totalImages} images | ${SEC_PER_IMAGE}s each | transitions loss: ${totalTransitionLoss}s`);
 
   console.log(`[Model3] START | ${totalImages} images | ratio: ${ratio} | ${w}x${h}`);
 
@@ -319,8 +326,22 @@ export async function renderModel3Video({
     } catch {}
 
     // لو الـ audio أطول من الفيديو — نطول الفيديو بثانية زيادة
-    // مش بنلف الفيديو — الـ audio هو اللي بيتقصر عشان يتناسب مع الفيديو
-    const videoExtended = mergedPath;
+    const videoExtended = path.join(TEMP_DIR, `m3_extended_${id}.mp4`);
+    if (audioDuration && audioDuration > 0) {
+      const targetDuration = audioDuration + 1;
+      try {
+        execSync(
+          `ffmpeg -stream_loop -1 -i "${mergedPath}" -t ${targetDuration} ` +
+          `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+          `-pix_fmt yuv420p -movflags +faststart -y "${videoExtended}"`,
+          { stdio: 'pipe' }
+        );
+      } catch {
+        fs.copyFileSync(mergedPath, videoExtended);
+      }
+    } else {
+      fs.copyFileSync(mergedPath, videoExtended);
+    }
 
     // دمج الـ audio مع الفيديو المطول
     const musicDir = path.join(process.cwd(), 'assets', 'music');
