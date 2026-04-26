@@ -46,18 +46,21 @@ async function generateImage(prompt, ratio = '16:9') {
 
 // ── Ken Burns zoom effect على صورة واحدة ──────────────────────────────────
 function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
-  // نتنوع بين zoom in و zoom out وpan
+  const frames = duration * 30;
+  const W = w, H = h;
+
+  // كل effect بيستخدم scale + crop مع تحريك تدريجي — بدون zoompan عشان مفيش freeze
   const effects = [
     // Zoom in from center
-    `scale=iw*2:ih*2,zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${w}x${h}`,
-    // Zoom out
-    `scale=iw*2:ih*2,zoompan=z='if(lte(zoom,1.0),1.5,max(1.0,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${w}x${h}`,
+    `scale=${W*2}:${H*2},crop=${W}:${H}:'(iw-${W})/2+(iw-${W})/2*on/${frames}':'(ih-${H})/2+(ih-${H})/2*on/${frames}',scale=${W}:${H}`,
+    // Zoom out to center
+    `scale=${W*2}:${H*2},crop=${W}:${H}:'(iw-${W})/2-(iw-${W})/2*on/${frames}':'(ih-${H})/2-(ih-${H})/2*on/${frames}',scale=${W}:${H}`,
     // Pan left to right
-    `scale=iw*2:ih*2,zoompan=z=1.3:x='if(lte(on,1),0,x+1.5)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${w}x${h}`,
+    `scale=${W*2}:${H*2},crop=${W}:${H}:'on/${frames}*(iw-${W})':${H/2},scale=${W}:${H}`,
     // Pan right to left
-    `scale=iw*2:ih*2,zoompan=z=1.3:x='if(lte(on,1),iw,x-1.5)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${w}x${h}`,
-    // Zoom in top-left
-    `scale=iw*2:ih*2,zoompan=z='min(zoom+0.001,1.4)':x='0':y='0':d=${duration * 30}:s=${w}x${h}`,
+    `scale=${W*2}:${H*2},crop=${W}:${H}:'(iw-${W})-(on/${frames}*(iw-${W}))':${H/2},scale=${W}:${H}`,
+    // Pan top to bottom
+    `scale=${W*2}:${H*2},crop=${W}:${H}:${W/2}:'on/${frames}*(ih-${H})',scale=${W}:${H}`,
   ];
 
   const effect = effects[index % effects.length];
@@ -218,13 +221,9 @@ export async function renderModel3Video({
   const outputFile = 'video_' + id + '.mp4';
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
   const totalImages = scenes.length;
-  // نحسب مدة كل صورة بناءً على المدة الإجمالية المطلوبة
   const DURATION_MAP = { '30s': 30, '1min': 60, '3min': 180, '5min': 300 };
   const targetVideoDuration = DURATION_MAP[duration] || (totalImages * 10);
-  const TRANSITION_DURATION = 0.5;
-  const totalTransitionLoss = transitions && totalImages > 1 ? (totalImages - 1) * TRANSITION_DURATION : 0;
-  const SEC_PER_IMAGE = Math.ceil((targetVideoDuration + totalTransitionLoss) / totalImages);
-  console.log(`[Model3] Target: ${targetVideoDuration}s | ${totalImages} images | ${SEC_PER_IMAGE}s each | transitions loss: ${totalTransitionLoss}s`);
+  console.log(`[Model3] Target: ${targetVideoDuration}s | ${totalImages} images`);
 
   console.log(`[Model3] START | ${totalImages} images | ratio: ${ratio} | ${w}x${h}`);
 
@@ -252,6 +251,32 @@ export async function renderModel3Video({
     }
   }
 
+  // ── Step 1.5: احسب مدة الـ audio الأول عشان نحدد SEC_PER_IMAGE ──────────
+  let audioPathEarly = null;
+  if (audioUrl) {
+    const audioBasename = path.basename(audioUrl);
+    const candidate = path.join(OUTPUTS_DIR, audioBasename);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).size > 1000) {
+      audioPathEarly = candidate;
+    }
+  }
+
+  let audioDurationEarly = null;
+  if (audioPathEarly) {
+    try {
+      const dur = execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPathEarly}"`,
+        { encoding: 'utf8' }
+      ).trim();
+      audioDurationEarly = parseFloat(dur);
+    } catch {}
+  }
+
+  // نستخدم مدة الـ audio لو موجودة، وإلا نستخدم الـ target
+  const actualDuration = audioDurationEarly || targetVideoDuration;
+  const SEC_PER_IMAGE = Math.ceil((actualDuration + 1) / totalImages);
+  console.log(`[Model3] Audio: ${audioDurationEarly?.toFixed(1) || 'none'}s | SEC_PER_IMAGE: ${SEC_PER_IMAGE}s`);
+
   // ── Step 2: Ken Burns على كل صورة ────────────────────────────────────
   const clipPaths = [];
   for (let i = 0; i < imagePaths.length; i++) {
@@ -264,7 +289,6 @@ export async function renderModel3Video({
       clipPaths.push(clipPath);
     } catch (e) {
       console.error(`[Model3] Ken Burns ${i + 1} failed:`, e.message);
-      // fallback: static image as video
       execSync(
         `ffmpeg -loop 1 -i "${imagePaths[i]}" -t ${SEC_PER_IMAGE} -r 30 ` +
         `-vf "scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1" ` +
