@@ -319,22 +319,8 @@ export async function renderModel3Video({
     } catch {}
 
     // لو الـ audio أطول من الفيديو — نطول الفيديو بثانية زيادة
-    const videoExtended = path.join(TEMP_DIR, `m3_extended_${id}.mp4`);
-    if (audioDuration && audioDuration > 0) {
-      const targetDuration = audioDuration + 1;
-      try {
-        execSync(
-          `ffmpeg -stream_loop -1 -i "${mergedPath}" -t ${targetDuration} ` +
-          `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
-          `-pix_fmt yuv420p -movflags +faststart -y "${videoExtended}"`,
-          { stdio: 'pipe' }
-        );
-      } catch {
-        fs.copyFileSync(mergedPath, videoExtended);
-      }
-    } else {
-      fs.copyFileSync(mergedPath, videoExtended);
-    }
+    // مش بنلف الفيديو — الـ audio هو اللي بيتقصر عشان يتناسب مع الفيديو
+    const videoExtended = mergedPath;
 
     // دمج الـ audio مع الفيديو المطول
     const musicDir = path.join(process.cwd(), 'assets', 'music');
