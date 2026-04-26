@@ -110,7 +110,11 @@ router.get('/credits', authMiddleware, async (req, res) => {
   try {
     const credits = await getUserCredits(req.user.userId);
     const user = await getUserById(req.user.userId);
-    res.json({ ...credits, model3_access: user?.model3_access || 0 });
+    res.json({
+      ...credits,
+      model3_access: user?.model3_access || 0,
+      model3_plan: user?.model3_plan || null,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -273,7 +277,7 @@ router.get('/model3-approve', async (req, res) => {
     // تفعيل model3_access في الداتابيز
     const { rows } = await import('pg').then(m => {
       const pool = new m.default.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false });
-      return pool.query('UPDATE users SET model3_access = 1 WHERE email = $1 RETURNING id', [email]);
+      return pool.query('UPDATE users SET model3_access = 1, model3_plan = $2 WHERE email = $1 RETURNING id', [email, plan || 'm3_starter']);
     });
 
     // إرسال إيميل للمستخدم

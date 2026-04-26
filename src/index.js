@@ -574,11 +574,11 @@ app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async
 
   const isIdeaMode = inputMode === 'idea';
   const styleHint  = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic';
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 3;
   const allScenes  = [];
   const totalBatches = Math.ceil(imageCount / BATCH_SIZE);
 
-  async function groqBatch(batchPrompt) {
+  async function groqBatch(batchPrompt, expectedCount) {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
@@ -587,18 +587,23 @@ app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async
         max_tokens: 3000,
         temperature: 0.5,
         messages: [
-          { role: 'system', content: 'You are a JSON array generator. Output ONLY a raw JSON array starting with [ and ending with ]. No markdown, no code blocks, no explanation. CRITICAL: The "prompt" field MUST ALWAYS be in English only - never Arabic or any other language. Only the "text" field can be in the target language.' },
+          {
+            role: 'system',
+            content: `You are a strict JSON generator. Output EXACTLY ${expectedCount} objects in a JSON array. CRITICAL: "prompt" field MUST be in English ONLY. "text" can be in any language. Output raw JSON array only, no markdown.`
+          },
           { role: 'user', content: batchPrompt },
         ],
       }),
     });
     const data = await res.json();
     const raw = data.choices?.[0]?.message?.content || '';
-    const clean = raw.replace(/^[^[]*/, '').replace(/[^\]]*$/, '').trim();
-    try { return JSON.parse(clean); } catch {
-      const m = raw.match(/\[[\s\S]*\]/);
-      return m ? JSON.parse(m[0]) : [];
-    }
+    const startIdx = raw.indexOf('[');
+    const endIdx = raw.lastIndexOf(']');
+    if (startIdx === -1 || endIdx === -1) return [];
+    try {
+      const parsed = JSON.parse(raw.slice(startIdx, endIdx + 1));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
   }
 
   try {
@@ -646,7 +651,7 @@ Output ONLY the JSON array:`;
 
       let batchScenes = [];
       try {
-        batchScenes = await groqBatch(batchPrompt);
+        batchScenes = await groqBatch(batchPrompt, batchCount);
         console.log(`[Model3] Batch ${b+1}/${totalBatches}: got ${batchScenes.length} scenes`);
       } catch(e) {
         console.warn(`[Model3] Batch ${b+1} failed:`, e.message);
