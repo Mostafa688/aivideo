@@ -212,4 +212,113 @@ router.post('/referral', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Model 3 Payment Request ─────────────────────────────────────────────────
+router.post('/model3-payment', authMiddleware, async (req, res) => {
+  try {
+    const { plan, planName, amount, userEmail, screenshot } = req.body;
+    if (!plan || !amount || !userEmail || !screenshot) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
+    const adminSecret = process.env.ADMIN_SECRET || '';
+
+    // صورة التحويل كـ attachment
+    const attachments = [];
+    if (screenshot) {
+      const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '');
+      const ext = screenshot.includes('png') ? 'png' : 'jpg';
+      attachments.push({ filename: `m3_payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
+    }
+
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion Model 3 <noreply@erivion.net>',
+        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+        subject: `🖼️ Model 3 Payment - ${planName} - ${userEmail}`,
+        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h2 style="color:#f59e0b">🖼️ New Model 3 Payment Request</h2>
+          <table style="width:100%;border-collapse:collapse;margin:20px 0">
+            <tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Account Email</td><td style="color:#fff">${user.email}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f59e0b;font-weight:700">${planName}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr>
+          </table>
+          <div style="margin-top:24px;display:flex;gap:12px">
+            <a href="${backendUrl}/api/auth/model3-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
+            <a href="${backendUrl}/api/auth/model3-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
+          </div>
+        </div>`,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      }),
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Model3 Payment]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Model 3 Admin Approve ───────────────────────────────────────────────────
+router.get('/model3-approve', async (req, res) => {
+  const { email, plan, secret } = req.query;
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  if (!email) return res.status(400).send('Missing email');
+  try {
+    // تفعيل model3_access في الداتابيز
+    const { rows } = await import('pg').then(m => {
+      const pool = new m.default.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false });
+      return pool.query('UPDATE users SET model3_access = 1 WHERE email = $1 RETURNING id', [email]);
+    });
+
+    // إرسال إيميل للمستخدم
+    try {
+      const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion <noreply@erivion.net>',
+          to: email,
+          subject: '🎉 تم تفعيل Model 3 - AI Image Video!',
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center">
+            <div style="font-size:64px;margin-bottom:16px">🎉</div>
+            <h2 style="color:#f59e0b;font-size:22px">تم تفعيل اشتراكك!</h2>
+            <p style="color:#9ca3af;font-size:14px;line-height:1.8">اشتراك Model 3 اتفعّل على حسابك. دلوقتي تقدر تعمل فيديوهات AI احترافية!</p>
+            <a href="${frontendUrl}" style="display:inline-block;margin-top:24px;background:#f59e0b;color:#000;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">ابدأ الإنتاج →</a>
+          </div>`,
+        }),
+      });
+    } catch {}
+
+    res.send('<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><div style="font-size:64px">✅</div><h2 style="color:#22c55e">Model 3 Activated!</h2><p style="color:#9ca3af">' + email + '</p></div></body></html>');
+  } catch (e) {
+    res.status(500).send('Error: ' + e.message);
+  }
+});
+
+// ── Model 3 Admin Reject ────────────────────────────────────────────────────
+router.get('/model3-reject', async (req, res) => {
+  const { email, secret } = req.query;
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: email,
+        subject: 'طلب الاشتراك في Model 3',
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:64px">❌</div><h2 style="color:#ef4444">لم نتمكن من التحقق من التحويل</h2><p style="color:#9ca3af">تواصل معنا على digidelight33@gmail.com</p></div>`,
+      }),
+    });
+  } catch {}
+  res.send('<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><div style="font-size:64px">❌</div><h2 style="color:#ef4444">Rejected</h2></div></body></html>');
+});
+
 export default router;
