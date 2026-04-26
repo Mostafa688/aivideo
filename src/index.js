@@ -504,57 +504,6 @@ JSON array:`;
   }
 });
 
-// ── Model 3 Payment Route ──────────────────────────────────────────────────
-app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
-  try {
-    const { plan, planName, amount, userEmail, screenshot } = req.body;
-    if (!plan || !amount || !userEmail || !screenshot) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    const user = await getUserById(req.user.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
-    const adminSecret = process.env.ADMIN_SECRET || '';
-
-    const attachments = [];
-    if (screenshot) {
-      const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '');
-      const ext = screenshot.includes('png') ? 'png' : 'jpg';
-      attachments.push({ filename: `m3_payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
-    }
-
-    await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'Erivion Model 3 <noreply@erivion.net>',
-        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
-        subject: `🖼️ Model 3 Payment - ${planName} - ${userEmail}`,
-        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
-          <h2 style="color:#f59e0b">🖼️ New Model 3 Payment Request</h2>
-          <table style="width:100%;border-collapse:collapse;margin:20px 0">
-            <tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Account</td><td style="color:#fff">${user.email}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f59e0b;font-weight:700">${planName}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr>
-          </table>
-          <div style="margin-top:24px;display:flex;gap:12px">
-            <a href="${backendUrl}/api/auth/model3-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
-            <a href="${backendUrl}/api/auth/model3-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
-          </div>
-        </div>`,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      }),
-    });
-
-    res.json({ success: true });
-  } catch (e) {
-    console.error('[Model3 Payment]', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ── Model 3 Routes ─────────────────────────────────────────────────────────
 async function checkModel3Access(req, res, next) {
   try {
@@ -574,83 +523,92 @@ app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async
 
   const isIdeaMode = inputMode === 'idea';
   const styleHint  = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic';
+  const BATCH_SIZE = 5;
   const allScenes  = [];
+  const totalBatches = Math.ceil(imageCount / BATCH_SIZE);
 
-  // نولد scene واحدة في كل request عشان Groq يرجع بالظبط واحدة
-  async function generateOneScene(index, contextText) {
-    const userPrompt = isIdeaMode
-      ? `Video about: "${idea}" | Style: ${styleHint} | Language for text: ${videoLanguage}
-
-Generate scene number ${index} of ${imageCount}.
-Return a JSON object (NOT array) with:
-- "index": ${index}
-- "prompt": English only, cinematic image, no faces, 30-50 words, style: ${styleHint}
-- "text": 1-2 sentence narration in ${videoLanguage}
-
-Output ONLY the JSON object, nothing else:`
-      : `Script: "${contextText}" | Style: ${styleHint}
-
-Generate scene number ${index} of ${imageCount} from this script portion.
-Return a JSON object (NOT array) with:
-- "index": ${index}
-- "prompt": English only, cinematic image matching script, no faces, 30-50 words
-- "text": narration from script in original language
-
-Output ONLY the JSON object, nothing else:`;
-
+  async function groqBatch(batchPrompt) {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
-        max_tokens: 500,
-        temperature: 0.4,
+        max_tokens: 3000,
+        temperature: 0.5,
         messages: [
-          { role: 'system', content: 'You output a single JSON object only. No markdown, no arrays, no explanation. Just the raw JSON object.' },
-          { role: 'user', content: userPrompt },
+          { role: 'system', content: 'You are a JSON array generator. Output ONLY a raw JSON array starting with [ and ending with ]. No markdown, no code blocks, no explanation. CRITICAL: The "prompt" field MUST ALWAYS be in English only - never Arabic or any other language. Only the "text" field can be in the target language.' },
+          { role: 'user', content: batchPrompt },
         ],
       }),
     });
     const data = await res.json();
     const raw = data.choices?.[0]?.message?.content || '';
-    const startIdx = raw.indexOf('{');
-    const endIdx = raw.lastIndexOf('}');
-    if (startIdx === -1 || endIdx === -1) return null;
-    try {
-      return JSON.parse(raw.slice(startIdx, endIdx + 1));
-    } catch { return null; }
+    const clean = raw.replace(/^[^[]*/, '').replace(/[^\]]*$/, '').trim();
+    try { return JSON.parse(clean); } catch {
+      const m = raw.match(/\[[\s\S]*\]/);
+      return m ? JSON.parse(m[0]) : [];
+    }
   }
 
   try {
-    for (let i = 1; i <= imageCount; i++) {
-      let contextText = '';
-      if (!isIdeaMode) {
-        const start = Math.floor((i - 1) / imageCount * script.length);
-        const end   = Math.floor(i / imageCount * script.length);
-        contextText = script.slice(start, end) || script.slice(0, 200);
-      }
+    for (let b = 0; b < totalBatches; b++) {
+      const batchStart = b * BATCH_SIZE + 1;
+      const batchEnd   = Math.min((b + 1) * BATCH_SIZE, imageCount);
+      const batchCount = batchEnd - batchStart + 1;
 
-      let scene = null;
-      let attempts = 0;
-      while (!scene && attempts < 3) {
-        attempts++;
-        try { scene = await generateOneScene(i, contextText); } catch {}
-      }
+      let batchPrompt;
+      if (isIdeaMode) {
+        batchPrompt = `Video topic: "${idea}"
+Style: ${styleHint}
 
-      if (scene) {
-        allScenes.push({ index: i, prompt: scene.prompt || '', text: scene.text || '' });
+Generate EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).
+Return a JSON array of ${batchCount} objects.
+
+RULES:
+- "index": starts from ${batchStart}
+- "prompt": MUST be in ENGLISH ONLY - cinematic image description, no human faces, 30-50 words, style: ${styleHint}
+- "text": narration in ${videoLanguage} language, 1-2 sentences
+
+Example: [{"index":${batchStart},"prompt":"Ancient Egyptian pyramid at golden sunset, dramatic shadows, cinematic photography, no people","text":"narration here in ${videoLanguage}"}]
+
+Output ONLY the JSON array:`;
       } else {
-        // fallback scene
-        allScenes.push({
-          index: i,
-          prompt: `Cinematic shot, scene ${i}, ${styleHint}, dramatic lighting, no people`,
-          text: isIdeaMode ? idea.slice(0, 100) : (contextText.slice(0, 100) || `Scene ${i}`),
-        });
+        const portion = script.slice(
+          Math.floor((batchStart - 1) / imageCount * script.length),
+          Math.floor(batchEnd / imageCount * script.length)
+        );
+        batchPrompt = `Script portion: "${portion}"
+Style: ${styleHint}
+
+Split into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).
+Return a JSON array of ${batchCount} objects.
+
+RULES:
+- "index": starts from ${batchStart}
+- "prompt": MUST be in ENGLISH ONLY - cinematic image description matching the scene, no human faces, 30-50 words, style: ${styleHint}
+- "text": narration taken from the script portion, keep original language
+
+Example: [{"index":${batchStart},"prompt":"Cinematic shot of ancient ruins at dawn, dramatic lighting, no people, ${styleHint}","text":"text from script here"}]
+
+Output ONLY the JSON array:`;
       }
-      console.log(`[Model3] Scene ${i}/${imageCount} done`);
+
+      let batchScenes = [];
+      try {
+        batchScenes = await groqBatch(batchPrompt);
+        console.log(`[Model3] Batch ${b+1}/${totalBatches}: got ${batchScenes.length} scenes`);
+      } catch(e) {
+        console.warn(`[Model3] Batch ${b+1} failed:`, e.message);
+      }
+
+      if (Array.isArray(batchScenes) && batchScenes.length > 0) {
+        allScenes.push(...batchScenes);
+      }
     }
 
-    console.log(`[Model3] Total: ${allScenes.length}/${imageCount} scenes`);
+    if (allScenes.length === 0) throw new Error('No scenes returned from AI');
+
+    console.log(`[Model3] Total scenes generated: ${allScenes.length}/${imageCount}`);
     res.json({ scenes: allScenes });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -658,7 +616,7 @@ Output ONLY the JSON object, nothing else:`;
 });
 
 app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter, async (req, res) => {
-  const { scenes, audioUrl, ratio, captions, transitions, music, videoLanguage } = req.body;
+  const { scenes, audioUrl, ratio, captions, transitions, music, videoLanguage, duration } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
 
   const renderJobId = String(Date.now());
@@ -680,7 +638,6 @@ app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter,
         audioUrl,
         ratio: ratio || '16:9',
         jobId: renderJobId,
-        duration: duration || '1min',
         captions: captions || false,
         transitions: transitions !== false,
         music: music || false,
