@@ -253,12 +253,31 @@ export async function activateUserPlan(email, plan, billing = 'monthly') {
   if (billing === 'yearly') expiresAt.setFullYear(expiresAt.getFullYear() + 1);
   else expiresAt.setMonth(expiresAt.getMonth() + 1);
   await pool.query('UPDATE users SET plan = $1, plan_billing = $2, plan_expires_at = $3 WHERE email = $4', [plan, billing, expiresAt.toISOString(), email]);
+  await pool.query(
+    "UPDATE payment_requests SET status = 'approved' WHERE user_email = $1 AND plan = $2 AND status = 'pending'",
+    [email, plan]
+  );
   return { success: true, plan, expires_at: expiresAt.toISOString() };
 }
 
 export async function createPaymentRequest(userId, userEmail, plan, billing, amount, screenshotData) {
   const { rows } = await pool.query('INSERT INTO payment_requests (user_id, user_email, plan, billing, amount, screenshot_data, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [userId, userEmail, plan, billing, amount, screenshotData || null, 'pending']);
   return rows[0].id;
+}
+
+export async function getLatestPaymentRequestForUser(userId) {
+  const { rows } = await pool.query(
+    'SELECT id, plan, billing, amount, status, created_at FROM payment_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+export async function markLatestPaymentRequestRejected(email) {
+  await pool.query(
+    "UPDATE payment_requests SET status = 'rejected' WHERE id = (SELECT id FROM payment_requests WHERE user_email = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1)",
+    [email]
+  );
 }
 
 export async function signUp(email, password) {

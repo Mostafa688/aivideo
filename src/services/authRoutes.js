@@ -4,6 +4,7 @@ import {
   signUp, verifyCode, login, verifyToken,
   getUserVideos, saveVideo, getUserCredits, getUserById,
   createPaymentRequest, sendPaymentRequestEmail, activateUserPlan,
+  getLatestPaymentRequestForUser, markLatestPaymentRequestRejected,
   loginOrCreateGoogleUser, PLANS,
   getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS,
 } from './authService.js';
@@ -141,6 +142,15 @@ router.post('/payment/request', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/payment/status', authMiddleware, async (req, res) => {
+  try {
+    const latestRequest = await getLatestPaymentRequestForUser(req.user.userId);
+    res.json({ request: latestRequest });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/admin/approve', async (req, res) => {
   const { email, plan, billing, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
@@ -177,6 +187,13 @@ router.get('/admin/approve', async (req, res) => {
 router.get('/admin/reject', async (req, res) => {
   const { email, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  if (email) {
+    try {
+      await markLatestPaymentRequestRejected(email);
+    } catch (dbErr) {
+      console.error('[Reject] Could not update payment request status:', dbErr.message);
+    }
+  }
   if (email) {
     try {
       await fetch('https://api.resend.com/emails', {
