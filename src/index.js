@@ -713,6 +713,57 @@ app.get('*', (req, res) => {
   res.sendFile(join(__dirname, '..', 'dist', 'index.html'));
 });
 
+// ── Model 3 Payment Request ────────────────────────────────────────────────
+app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
+  try {
+    const { plan, planName, amount, userEmail, screenshot } = req.body;
+    if (!plan || !amount || !userEmail || !screenshot) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
+    const adminSecret = process.env.ADMIN_SECRET || '';
+
+    const attachments = [];
+    if (screenshot) {
+      const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '');
+      const ext = screenshot.includes('png') ? 'png' : 'jpg';
+      attachments.push({ filename: `m3_payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
+    }
+
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion Model 3 <noreply@erivion.net>',
+        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+        subject: `🖼️ Model 3 Payment - ${planName} - ${userEmail}`,
+        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h2 style="color:#f59e0b">🖼️ New Model 3 Payment Request</h2>
+          <table style="width:100%;border-collapse:collapse;margin:20px 0">
+            <tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Account</td><td style="color:#fff">${user.email}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f59e0b;font-weight:700">${planName}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr>
+          </table>
+          <div style="margin-top:24px;display:flex;gap:12px">
+            <a href="${backendUrl}/api/auth/model3-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
+            <a href="${backendUrl}/api/auth/model3-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
+          </div>
+        </div>`,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      }),
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Model3 Payment]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log('AI Video Backend running on http://localhost:' + PORT);
 });
