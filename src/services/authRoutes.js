@@ -185,7 +185,7 @@ router.get('/admin/approve', async (req, res) => {
 });
 
 router.get('/admin/reject', async (req, res) => {
-  const { email, secret } = req.query;
+  const { email, plan, billing, amount, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (email) {
     try {
@@ -196,14 +196,54 @@ router.get('/admin/reject', async (req, res) => {
   }
   if (email) {
     try {
+      const planData = PLANS[plan] || null;
+      const planName = planData?.name || plan || 'your selected plan';
+      const billingLabel = billing === 'yearly' ? 'Yearly' : 'Monthly';
+      const amountText = amount ? `${amount} EGP` : '';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from: 'Erivion <noreply@erivion.net>',
           to: email,
-          subject: 'Your payment request could not be verified',
-          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">❌</div><h2 style="color:#ef4444;font-size:22px;margin:0 0 8px">Payment Not Verified</h2></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.7;margin:0">We could not verify your payment. Please contact us at <a href="mailto:digidelight33@gmail.com" style="color:#7c6af7">digidelight33@gmail.com</a></p></div></div>`,
+          subject: `Regarding your ${planName} subscription request`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px">
+            <div style="text-align:center;margin-bottom:28px">
+              <div style="font-size:56px;margin-bottom:12px">⚠️</div>
+              <h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Subscription Request Update</h2>
+              <p style="color:#9ca3af;font-size:14px;margin:0">We were unable to verify your payment</p>
+            </div>
+            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:20px">
+              <table style="width:100%;border-collapse:collapse">
+                ${planName ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Plan Requested</td><td style="color:#7c6af7;font-weight:700;text-align:right">${planName}${billing ? ' · ' + billingLabel : ''}</td></tr>` : ''}
+                ${amountText ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Amount</td><td style="color:#fff;font-weight:600;text-align:right">${amountText}</td></tr>` : ''}
+                <tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Status</td><td style="color:#ef4444;font-weight:700;text-align:right">Not Approved</td></tr>
+              </table>
+            </div>
+            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
+              <p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0 0 12px">
+                Unfortunately, we could not confirm your payment transfer. This may be due to:
+              </p>
+              <ul style="color:#9ca3af;font-size:13px;line-height:2;padding-left:18px;margin:0">
+                <li>The screenshot was unclear or incomplete</li>
+                <li>The transfer amount did not match the plan price</li>
+                <li>The payment was sent to an incorrect number</li>
+              </ul>
+              ${amountText ? `<div style="margin-top:16px;padding:12px 16px;background:#0f0f1a;border-radius:8px;border:1px solid #374151">
+                <p style="color:#22c55e;font-size:14px;font-weight:700;margin:0">💸 Refund Notice</p>
+                <p style="color:#d1d5db;font-size:13px;line-height:1.7;margin:8px 0 0">If a transfer was made, the amount of <strong>${amountText}</strong> will be refunded to your InstaPay account within <strong>24 hours</strong>.</p>
+              </div>` : ''}
+            </div>
+            <div style="text-align:center;margin-bottom:20px">
+              <p style="color:#9ca3af;font-size:13px;margin:0 0 16px">Need help or want to try again? Contact us:</p>
+              <a href="mailto:digidelight33@gmail.com" style="color:#7c6af7;font-size:14px;font-weight:600;text-decoration:none">digidelight33@gmail.com</a>
+            </div>
+            <div style="text-align:center">
+              <a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">Try Again →</a>
+            </div>
+          </div>`,
         }),
       });
     } catch (mailErr) {
