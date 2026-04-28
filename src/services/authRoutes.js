@@ -222,6 +222,40 @@ router.post('/referral', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ✅ Visitor notification - بيبعت إيميل للأدمين لما أي حد يزور الموقع
+router.post('/visitor-ping', async (req, res) => {
+  try {
+    const { page = 'landing', userAgent = '', referrer = '' } = req.body;
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+    const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
+
+    // بعت إيميل بدون await عشان مش يبطئ الـ response
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion Visitors <noreply@erivion.net>',
+        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+        subject: `👁️ New Visitor on Erivion - ${now}`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h3 style="color:#7c6af7;margin:0 0 16px">👁️ New Visitor</h3>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="color:#6b7280;padding:6px 0;font-size:13px">Time (Cairo)</td><td style="color:#fff;font-size:13px">${now}</td></tr>
+            <tr><td style="color:#6b7280;padding:6px 0;font-size:13px">Page</td><td style="color:#7c6af7;font-size:13px;font-weight:600">${page}</td></tr>
+            <tr><td style="color:#6b7280;padding:6px 0;font-size:13px">IP</td><td style="color:#fff;font-size:13px">${ip}</td></tr>
+            <tr><td style="color:#6b7280;padding:6px 0;font-size:13px">Referrer</td><td style="color:#9ca3af;font-size:12px">${referrer || 'Direct'}</td></tr>
+            <tr><td style="color:#6b7280;padding:6px 0;font-size:13px">Browser</td><td style="color:#9ca3af;font-size:11px">${userAgent.slice(0, 80)}</td></tr>
+          </table>
+        </div>`,
+      }),
+    }).catch(() => {}); // ignore email errors
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: true }); // دايمًا رجّع ok عشان مش يأثر على الـ frontend
+  }
+});
+
 router.get('/model3-usage', authMiddleware, async (req, res) => {
   try {
     const user = await getUserById(req.user.userId);
