@@ -50,6 +50,30 @@ router.post('/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
     const result = await login(email, password);
+
+    // ✅ إشعار للأدمن بالإيميل (fire & forget)
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+    const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion Visitors <noreply@erivion.net>',
+        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+        subject: `🔐 User Login — ${email}`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h3 style="color:#7c6af7;margin:0 0 16px">🔐 User Logged In</h3>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${email}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${result.plan || 'free'}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Email & Password</td></tr>
+          </table>
+        </div>`,
+      }),
+    }).catch(() => {});
+
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -85,6 +109,30 @@ router.get('/google/callback', async (req, res) => {
     const googleUser = await userRes.json();
     if (!googleUser.email) throw new Error('Could not get user email from Google');
     const authData = await loginOrCreateGoogleUser({ googleId: googleUser.id, email: googleUser.email, name: googleUser.name, avatar: googleUser.picture });
+    // ✅ إشعار للأدمن (fire & forget)
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+    const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion Visitors <noreply@erivion.net>',
+        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+        subject: `🔐 User Login — ${authData.email}`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h3 style="color:#7c6af7;margin:0 0 16px">🔐 User Logged In</h3>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${authData.email}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Name</td><td style="color:#d1d5db;font-size:13px">${authData.name || '—'}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${authData.plan || 'free'}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr>
+            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Google OAuth</td></tr>
+          </table>
+        </div>`,
+      }),
+    }).catch(() => {});
+
     res.redirect(`${frontendUrl}?google_token=${authData.token}&email=${encodeURIComponent(authData.email)}&plan=${authData.plan}&name=${encodeURIComponent(authData.name || '')}`);
   } catch (err) {
     console.error('[Google OAuth] Error:', err.message);
