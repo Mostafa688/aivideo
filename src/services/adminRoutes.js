@@ -21,7 +21,6 @@ function adminAuth(req, res, next) {
 }
 
 // ── GET /api/admin/stats ───────────────────────────────────────────────────
-// إحصائيات عامة للموقع
 router.get('/stats', adminAuth, async (req, res) => {
   try {
     const [
@@ -34,54 +33,34 @@ router.get('/stats', adminAuth, async (req, res) => {
       pendingPayments,
       weeklySignups,
       model3Users,
+      videosPerDay,
+      topUsers,
     ] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM users'),
-      pool.query('SELECT COUNT(*) FROM users WHERE verified = 1'),
-      pool.query("SELECT plan, COUNT(*) as count FROM users GROUP BY plan"),
+      pool.query('SELECT COUNT(*) FROM users WHERE verified = 1 OR verified = true'),
+      pool.query('SELECT plan, COUNT(*) as count FROM users GROUP BY plan'),
       pool.query('SELECT COUNT(*) FROM videos'),
+      pool.query('SELECT id, email, plan, model3_access, created_at, verified FROM users ORDER BY id DESC LIMIT 20'),
+      pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM payment_requests WHERE status = 'approved'"),
+      pool.query("SELECT COUNT(*) FROM payment_requests WHERE status = 'pending'"),
+      pool.query("SELECT COUNT(*) FROM users WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'"),
+      pool.query('SELECT COUNT(*) FROM users WHERE model3_access = 1 OR model3_access = true'),
       pool.query(`
-        SELECT id, email, plan, model3_access, created_at, verified
-        FROM users
-        ORDER BY id DESC
-        LIMIT 20
+        SELECT DATE(created_at::timestamp) as day, COUNT(*) as count
+        FROM videos
+        WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'
+        GROUP BY DATE(created_at::timestamp)
+        ORDER BY day ASC
       `),
       pool.query(`
-        SELECT COALESCE(SUM(amount), 0) as total
-        FROM payment_requests
-        WHERE status = 'approved'
-      `),
-      pool.query(`
-        SELECT COUNT(*) FROM payment_requests WHERE status = 'pending'
-      `),
-      pool.query(`
-        SELECT COUNT(*) FROM users
-        WHERE created_at >= NOW() - INTERVAL '7 days'
-      `),
-      pool.query(`
-        SELECT COUNT(*) FROM users WHERE model3_access = 1
+        SELECT u.email, u.plan, COUNT(v.id) as video_count
+        FROM users u
+        LEFT JOIN videos v ON v.user_id = u.id
+        GROUP BY u.id, u.email, u.plan
+        ORDER BY video_count DESC
+        LIMIT 5
       `),
     ]);
-
-    // إحصائيات الفيديوهات آخر 7 أيام
-    const videosPerDay = await pool.query(`
-      SELECT
-        DATE(created_at::timestamp) as day,
-        COUNT(*) as count
-      FROM videos
-      WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'
-      GROUP BY DATE(created_at::timestamp)
-      ORDER BY day ASC
-    `);
-
-    // top users بالفيديوهات
-    const topUsers = await pool.query(`
-      SELECT u.email, u.plan, COUNT(v.id) as video_count
-      FROM users u
-      LEFT JOIN videos v ON v.user_id = u.id
-      GROUP BY u.id, u.email, u.plan
-      ORDER BY video_count DESC
-      LIMIT 5
-    `);
 
     res.json({
       overview: {
@@ -144,7 +123,7 @@ router.get('/users', adminAuth, async (req, res) => {
       LEFT JOIN user_usage uu ON uu.user_id = u.id
       LEFT JOIN videos v ON v.user_id = u.id
       ${whereClause}
-      GROUP BY u.id, uu.credits_used, uu.videos_this_week
+      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.created_at, uu.credits_used, uu.videos_this_week
       ORDER BY u.id DESC
       LIMIT $${idx}
     `, [...params, parseInt(limit)]);
