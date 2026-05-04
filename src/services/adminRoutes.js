@@ -37,14 +37,14 @@ router.get('/stats', adminAuth, async (req, res) => {
       topUsers,
     ] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM users'),
-      pool.query('SELECT COUNT(*) FROM users WHERE verified = 1 OR verified = true'),
+      pool.query('SELECT COUNT(*) FROM users WHERE verified = 1'),
       pool.query('SELECT plan, COUNT(*) as count FROM users GROUP BY plan'),
       pool.query('SELECT COUNT(*) FROM videos'),
       pool.query('SELECT id, email, plan, model3_access, created_at, verified FROM users ORDER BY id DESC LIMIT 20'),
       pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM payment_requests WHERE status = 'approved'"),
       pool.query("SELECT COUNT(*) FROM payment_requests WHERE status = 'pending'"),
       pool.query("SELECT COUNT(*) FROM users WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'"),
-      pool.query('SELECT COUNT(*) FROM users WHERE model3_access = 1 OR model3_access = true'),
+      pool.query('SELECT COUNT(*) FROM users WHERE model3_access = 1'),
       pool.query(`
         SELECT DATE(created_at::timestamp) as day, COUNT(*) as count
         FROM videos
