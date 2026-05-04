@@ -14,6 +14,7 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video } from './services/authService.js';
+import adminRouter from './services/adminRoutes.js';
 
 // ✅ FIX: __dirname و join لازم يتعرفوا هنا فوق قبل أي استخدام
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -148,6 +149,7 @@ app.use('/api', (req, res, next) => {
 
 app.use('/outputs', express.static('outputs'));
 app.use('/api/auth', authLimiter, authRouter);
+app.use('/api/admin', adminRouter);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/api/voices', (req, res) => res.json({ voices: VOICE_OPTIONS }));
