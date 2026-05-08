@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
 import fs from 'fs';
 import { generateScenesStream } from './services/scriptService.js';
 import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/mediaService.js';
@@ -15,8 +16,8 @@ import { renderModel3Video } from './services/stabilityService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
+import { transcribeAudio } from './services/transcribeService.js';
 
-// ✅ FIX: __dirname و join لازم يتعرفوا هنا فوق قبل أي استخدام
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
@@ -24,7 +25,12 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 const renderJobs = new Map();
 
-// ✅ FIX: join متاحة دلوقتي
+// ✅ Voice upload — memory storage, 25MB max
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
 const RENDER_JOBS_DIR = join(process.cwd(), 'outputs', 'render_jobs');
 fs.mkdirSync(RENDER_JOBS_DIR, { recursive: true });
 
@@ -87,7 +93,6 @@ app.use(helmet({
   }
 }));
 
-// ✅ General limiter - 200 requests per 15 min per IP
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
@@ -97,7 +102,6 @@ const generalLimiter = rateLimit({
   skip: (req) => req.path === '/health',
 });
 
-// ✅ Auth limiter - stricter for login/signup only (not Google OAuth callback)
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 50,
@@ -107,7 +111,6 @@ const authLimiter = rateLimit({
   skip: (req) => req.path === '/google/callback' || req.path === '/google',
 });
 
-// ✅ Render limiter - heavy endpoint
 const renderLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
@@ -116,7 +119,6 @@ const renderLimiter = rateLimit({
   message: { error: 'Render limit reached. Please wait before rendering again.' },
 });
 
-// ✅ Scene generation limiter
 const sceneLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 30,
@@ -130,11 +132,9 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ✅ FIX: Force all /api/* responses to be JSON (except admin HTML pages)
 app.use('/api', (req, res, next) => {
   const isAdminRoute = req.path.includes('/admin/approve') || req.path.includes('/admin/reject');
   if (isAdminRoute) return next();
-
   const originalSend = res.send.bind(res);
   res.send = (body) => {
     if (typeof body === 'string' && body.trim().startsWith('<!')) {
@@ -151,10 +151,48 @@ app.use('/outputs', express.static('outputs'));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
 
+// ── Voice to Video: Transcription + Audio Save ─────────────────────────────
+app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Audio file required' });
+
+  const MAX_SIZE = 25 * 1024 * 1024;
+  if (req.file.size > MAX_SIZE) {
+    return res.status(400).json({ error: 'File too large. Max size is 25MB.' });
+  }
+
+  const ext = req.file.originalname.split('.').pop()?.toLowerCase();
+  const allowedExts = ['mp3', 'mp4', 'm4a', 'wav', 'webm', 'ogg', 'flac'];
+  const allowedTypes = ['audio/mpeg','audio/mp4','audio/wav','audio/webm','audio/ogg','audio/flac','video/mp4','audio/x-m4a','audio/mp3','audio/x-wav'];
+  if (!allowedTypes.includes(req.file.mimetype) && !allowedExts.includes(ext)) {
+    return res.status(400).json({ error: 'Unsupported format. Use MP3, MP4, WAV, WebM, OGG, or FLAC.' });
+  }
+
+  try {
+    // 1) Transcribe
+    const language = req.body.language || null;
+    const text = await transcribeAudio(req.file.buffer, req.file.originalname, language);
+
+    // 2) احفظ الملف الصوتي في outputs عشان يتستخدم في الـ render
+    const audioFilename = `voice_upload_${req.user.userId}_${Date.now()}.${ext || 'mp3'}`;
+    const audioSavePath = join(process.cwd(), 'outputs', audioFilename);
+    fs.writeFileSync(audioSavePath, req.file.buffer);
+    console.log(`[Transcribe] Audio saved: ${audioFilename}`);
+
+    // 3) ارجع النص + الـ audioUrl
+    res.json({
+      text,
+      audioUrl: '/outputs/' + audioFilename,
+      filename: req.file.originalname,
+    });
+  } catch (err) {
+    console.error('[Transcribe]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/api/voices', (req, res) => res.json({ voices: VOICE_OPTIONS }));
 
-// ✅ Sitemap for Google Search Console
 app.get('/sitemap.xml', (req, res) => {
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -276,52 +314,25 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     const renderCheck = await canUserRender(req.user.userId);
     if (!renderCheck.allowed) {
       const credits = await getUserCredits(req.user.userId);
-
       const now = new Date();
       const daysUntilSat = (6 - now.getDay() + 7) % 7 || 7;
       const nextSat = new Date(now);
       nextSat.setDate(now.getDate() + daysUntilSat);
       const resetDate = nextSat.toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' });
-
       const isMaxPlan = user?.plan === 'max';
       const planName = planData.name;
 
       if (renderCheck.reason === 'credits_exhausted') {
         if (isMaxPlan) {
-          return res.status(403).json({
-            error: 'credits_exhausted',
-            message: `You've used all your ${credits.limit.toLocaleString()} credits this week. Your credits reset on ${resetDate}. You can re-subscribe to get credits immediately.`,
-            reset_date: resetDate,
-            action: 'resubscribe',
-            plan: user?.plan,
-          });
+          return res.status(403).json({ error: 'credits_exhausted', message: `You've used all your ${credits.limit.toLocaleString()} credits this week. Your credits reset on ${resetDate}. You can re-subscribe to get credits immediately.`, reset_date: resetDate, action: 'resubscribe', plan: user?.plan });
         }
-        return res.status(403).json({
-          error: 'credits_exhausted',
-          message: `You've used all your ${credits.limit.toLocaleString()} weekly credits on the ${planName} plan. Your credits reset on ${resetDate}. Upgrade to a higher plan to get more credits now.`,
-          reset_date: resetDate,
-          action: 'upgrade_or_wait',
-          plan: user?.plan,
-        });
+        return res.status(403).json({ error: 'credits_exhausted', message: `You've used all your ${credits.limit.toLocaleString()} weekly credits on the ${planName} plan. Your credits reset on ${resetDate}. Upgrade to a higher plan to get more credits now.`, reset_date: resetDate, action: 'upgrade_or_wait', plan: user?.plan });
       }
-
       if (renderCheck.reason === 'videos_limit_reached') {
         if (isMaxPlan) {
-          return res.status(403).json({
-            error: 'videos_limit_reached',
-            message: `You've reached your video limit this week. Your limit resets on ${resetDate}. You can re-subscribe to continue now.`,
-            reset_date: resetDate,
-            action: 'resubscribe',
-            plan: user?.plan,
-          });
+          return res.status(403).json({ error: 'videos_limit_reached', message: `You've reached your video limit this week. Your limit resets on ${resetDate}. You can re-subscribe to continue now.`, reset_date: resetDate, action: 'resubscribe', plan: user?.plan });
         }
-        return res.status(403).json({
-          error: 'videos_limit_reached',
-          message: `You've reached your ${credits.videos_limit} videos/week limit on the ${planName} plan. Your limit resets on ${resetDate}. Upgrade to a higher plan for more videos.`,
-          reset_date: resetDate,
-          action: 'upgrade_or_wait',
-          plan: user?.plan,
-        });
+        return res.status(403).json({ error: 'videos_limit_reached', message: `You've reached your ${credits.videos_limit} videos/week limit on the ${planName} plan. Your limit resets on ${resetDate}. Upgrade to a higher plan for more videos.`, reset_date: resetDate, action: 'upgrade_or_wait', plan: user?.plan });
       }
     }
 
@@ -334,14 +345,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
 
     const applyWatermark = planData.watermark !== false;
 
-    setRenderJob(renderJobId, {
-      status: 'processing',
-      userId: req.user.userId,
-      createdAt: Date.now(),
-      error: null,
-      videoUrl: null,
-    });
-
+    setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
     res.status(202).json({ jobId: renderJobId, status: 'processing' });
 
     (async () => {
@@ -357,19 +361,10 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
           applyWatermark,
           videoLanguage: req.body.videoLanguage || 'en',
         });
-
-        setRenderJob(renderJobId, {
-          status: 'done',
-          videoUrl: '/outputs/' + videoPath,
-          completedAt: Date.now(),
-        });
+        setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
       } catch (jobErr) {
         console.error('[Render Job] Failed:', jobErr.message, jobErr.stack);
-        setRenderJob(renderJobId, {
-          status: 'failed',
-          error: jobErr.message || 'Render failed. Please try again.',
-          completedAt: Date.now(),
-        });
+        setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed. Please try again.', completedAt: Date.now() });
       } finally {
         scheduleRenderJobCleanup(renderJobId);
       }
@@ -381,8 +376,6 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   }
 });
 
-// ✅ FIX MAIN: رفعنا الـ timeout limit للفيديوهات الطويلة
-// الـ status endpoint بيرجع معلومات إضافية عشان الفرونت إند يعرف يصبر
 app.get('/api/render-status/:jobId', authMiddleware, (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -401,16 +394,13 @@ app.get('/api/render-status/:jobId', authMiddleware, (req, res) => {
   if (job && job.userId && job.userId !== req.user.userId) {
     return res.status(404).json({ error: 'Render job not found' });
   }
-
   if (job?.status === 'failed') {
     return res.json({ status: 'failed', error: job.error || 'Render failed. Please try again.' });
   }
-
   if (job?.status === 'done') {
     return res.json({ status: 'done', videoUrl: job.videoUrl || videoUrl });
   }
 
-  // ✅ FIX: بنرجع createdAt عشان الفرونت إند يعرف كام وقت فات
   const createdAt = job?.createdAt || Date.now();
   const elapsedSeconds = Math.floor((Date.now() - createdAt) / 1000);
   res.json({ status: 'processing', elapsedSeconds });
@@ -445,63 +435,28 @@ app.post('/api/ai-edit', authMiddleware, async (req, res) => {
   if (!scenes?.length || !prompt) {
     return res.status(400).json({ error: 'scenes and prompt required' });
   }
-
   try {
     const scenesText = scenes.map((s, i) => `Scene ${i + 1}: ${s.text}`).join('\n');
-    const editPrompt = `You are a professional video script editor. You understand both English and Arabic instructions.
-
-Current scenes:
-${scenesText}
-
-User instruction (may be in English or Arabic): ${prompt}
-
-TASK: Edit the scenes exactly as requested. Apply the instruction faithfully.
-
-Rules:
-- Return ONLY a valid JSON array, no markdown, no extra text
-- Same number of scenes as input
-- Each scene: { "index": number, "type": "hook"|"body"|"ending", "text": string, "keywords": string[] }
-- Keywords must always be in English
-- Scene text should match the language of the original scenes
-- Apply the requested changes completely and accurately
-
-JSON array:`;
+    const editPrompt = `You are a professional video script editor. You understand both English and Arabic instructions.\n\nCurrent scenes:\n${scenesText}\n\nUser instruction (may be in English or Arabic): ${prompt}\n\nTASK: Edit the scenes exactly as requested. Apply the instruction faithfully.\n\nRules:\n- Return ONLY a valid JSON array, no markdown, no extra text\n- Same number of scenes as input\n- Each scene: { "index": number, "type": "hook"|"body"|"ending", "text": string, "keywords": string[] }\n- Keywords must always be in English\n- Scene text should match the language of the original scenes\n- Apply the requested changes completely and accurately\n\nJSON array:`;
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 6000,
-        messages: [{ role: 'user', content: editPrompt }],
-      }),
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 6000, messages: [{ role: 'user', content: editPrompt }] }),
     });
 
     const claudeData = await claudeRes.json();
     const textContent = claudeData.content?.find(c => c.type === 'text')?.text || '';
-
     let editedScenes;
     try {
       const cleaned = textContent.replace(/```json\n?|\n?```/g, '').trim();
       editedScenes = JSON.parse(cleaned);
     } catch {
-      console.warn('[AI Edit] Could not parse response, returning original scenes');
       return res.json({ scenes });
     }
-
-    const finalScenes = editedScenes.map((s, i) => ({
-      ...scenes[i],
-      ...s,
-      keywords: s.keywords || scenes[i]?.keywords || [],
-    }));
-
+    const finalScenes = editedScenes.map((s, i) => ({ ...scenes[i], ...s, keywords: s.keywords || scenes[i]?.keywords || [] }));
     res.json({ scenes: finalScenes });
   } catch (err) {
-    console.error('[AI Edit] Error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -533,15 +488,7 @@ app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        max_tokens: 3000,
-        temperature: 0.5,
-        messages: [
-          { role: 'system', content: 'You are a JSON array generator. Output ONLY a raw JSON array starting with [ and ending with ]. No markdown, no code blocks, no explanation. CRITICAL: The "prompt" field MUST ALWAYS be in English only - never Arabic or any other language. Only the "text" field can be in the target language.' },
-          { role: 'user', content: batchPrompt },
-        ],
-      }),
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.5, messages: [{ role: 'system', content: 'You are a JSON array generator. Output ONLY a raw JSON array starting with [ and ending with ]. No markdown, no code blocks, no explanation. CRITICAL: The "prompt" field MUST ALWAYS be in English only - never Arabic or any other language. Only the "text" field can be in the target language.' }, { role: 'user', content: batchPrompt }] }),
     });
     const data = await res.json();
     const raw = data.choices?.[0]?.message?.content || '';
@@ -557,60 +504,18 @@ app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async
       const batchStart = b * BATCH_SIZE + 1;
       const batchEnd   = Math.min((b + 1) * BATCH_SIZE, imageCount);
       const batchCount = batchEnd - batchStart + 1;
-
       let batchPrompt;
       if (isIdeaMode) {
-        batchPrompt = `Video topic: "${idea}"
-Style: ${styleHint}
-
-Generate EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).
-Return a JSON array of ${batchCount} objects.
-
-RULES:
-- "index": starts from ${batchStart}
-- "prompt": MUST be in ENGLISH ONLY - cinematic image description, no human faces, 30-50 words, style: ${styleHint}
-- "text": narration in ${videoLanguage} language, 1-2 sentences
-
-Example: [{"index":${batchStart},"prompt":"Ancient Egyptian pyramid at golden sunset, dramatic shadows, cinematic photography, no people","text":"narration here in ${videoLanguage}"}]
-
-Output ONLY the JSON array:`;
+        batchPrompt = `Video topic: "${idea}"\nStyle: ${styleHint}\n\nGenerate EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).\nReturn a JSON array of ${batchCount} objects.\n\nRULES:\n- "index": starts from ${batchStart}\n- "prompt": MUST be in ENGLISH ONLY - cinematic image description, no human faces, 30-50 words, style: ${styleHint}\n- "text": narration in ${videoLanguage} language, 1-2 sentences\n\nOutput ONLY the JSON array:`;
       } else {
-        const portion = script.slice(
-          Math.floor((batchStart - 1) / imageCount * script.length),
-          Math.floor(batchEnd / imageCount * script.length)
-        );
-        batchPrompt = `Script portion: "${portion}"
-Style: ${styleHint}
-
-Split into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).
-Return a JSON array of ${batchCount} objects.
-
-RULES:
-- "index": starts from ${batchStart}
-- "prompt": MUST be in ENGLISH ONLY - cinematic image description matching the scene, no human faces, 30-50 words, style: ${styleHint}
-- "text": narration taken from the script portion, keep original language
-
-Example: [{"index":${batchStart},"prompt":"Cinematic shot of ancient ruins at dawn, dramatic lighting, no people, ${styleHint}","text":"text from script here"}]
-
-Output ONLY the JSON array:`;
+        const portion = script.slice(Math.floor((batchStart - 1) / imageCount * script.length), Math.floor(batchEnd / imageCount * script.length));
+        batchPrompt = `Script portion: "${portion}"\nStyle: ${styleHint}\n\nSplit into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).\nReturn a JSON array of ${batchCount} objects.\n\nRULES:\n- "index": starts from ${batchStart}\n- "prompt": MUST be in ENGLISH ONLY - cinematic image description matching the scene, no human faces, 30-50 words, style: ${styleHint}\n- "text": narration taken from the script portion, keep original language\n\nOutput ONLY the JSON array:`;
       }
-
       let batchScenes = [];
-      try {
-        batchScenes = await groqBatch(batchPrompt);
-        console.log(`[Model3] Batch ${b+1}/${totalBatches}: got ${batchScenes.length} scenes`);
-      } catch(e) {
-        console.warn(`[Model3] Batch ${b+1} failed:`, e.message);
-      }
-
-      if (Array.isArray(batchScenes) && batchScenes.length > 0) {
-        allScenes.push(...batchScenes);
-      }
+      try { batchScenes = await groqBatch(batchPrompt); } catch(e) { console.warn(`[Model3] Batch ${b+1} failed:`, e.message); }
+      if (Array.isArray(batchScenes) && batchScenes.length > 0) allScenes.push(...batchScenes);
     }
-
     if (allScenes.length === 0) throw new Error('No scenes returned from AI');
-
-    console.log(`[Model3] Total scenes generated: ${allScenes.length}/${imageCount}`);
     res.json({ scenes: allScenes });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -621,7 +526,6 @@ app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter,
   const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
 
-  // تحقق من الكوتا
   const quotaCheck = await canUserMakeModel3Video(req.user.userId, duration || '1min');
   if (!quotaCheck.allowed) {
     return res.status(403).json({
@@ -633,53 +537,23 @@ app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter,
   }
 
   const renderJobId = String(Date.now());
-
-  setRenderJob(renderJobId, {
-    status: 'processing',
-    userId: req.user.userId,
-    createdAt: Date.now(),
-    error: null,
-    videoUrl: null,
-  });
-
+  setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing' });
 
   (async () => {
     try {
-      const videoPath = await renderModel3Video({
-        scenes,
-        audioUrl,
-        ratio: ratio || '16:9',
-        jobId: renderJobId,
-        duration: duration || '1min',
-        captions: captions || false,
-        transitions: false,
-        music: music || false,
-        videoLanguage: videoLanguage || 'en',
-      });
-
-      // زود العداد بعد النجاح
+      const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en' });
       await incrementModel3Video(req.user.userId, duration || '1min');
-
-      setRenderJob(renderJobId, {
-        status: 'done',
-        videoUrl: '/outputs/' + videoPath,
-        completedAt: Date.now(),
-      });
+      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       console.error('[Model3 Render] Failed:', jobErr.message);
-      setRenderJob(renderJobId, {
-        status: 'failed',
-        error: jobErr.message || 'Render failed.',
-        completedAt: Date.now(),
-      });
+      setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
     } finally {
       scheduleRenderJobCleanup(renderJobId);
     }
   })();
 });
 
-// ✅ FIX: Global error handler - يرجع JSON دايماً مش HTML
 app.use((err, req, res, next) => {
   console.error('[Global Error]', err);
   if (req.path.startsWith('/api')) {
@@ -688,15 +562,8 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// ✅ Favicon fix: نرجع الملف مباشرة قبل ما الـ catch-all يمسكه
-app.get('/favicon.png', (req, res) => {
-  res.sendFile(join(__dirname, '..', 'dist', 'favicon.png'));
-});
-app.get('/favicon.ico', (req, res) => {
-  res.sendFile(join(__dirname, '..', 'dist', 'favicon.png'));
-});
-
-// ✅ Logo fix
+app.get('/favicon.png', (req, res) => { res.sendFile(join(__dirname, '..', 'dist', 'favicon.png')); });
+app.get('/favicon.ico', (req, res) => { res.sendFile(join(__dirname, '..', 'dist', 'favicon.png')); });
 app.get('/logo.png', (req, res) => {
   const fromDist   = join(__dirname, '..', 'dist', 'logo.png');
   const fromPublic = join(__dirname, '..', 'frontend', 'public', 'logo.png');
@@ -704,10 +571,8 @@ app.get('/logo.png', (req, res) => {
   res.sendFile(fromPublic);
 });
 
-// ✅ Serve React app static files
 app.use(express.static(join(__dirname, '..', 'dist')));
 
-// ✅ Catch-all: أي route مش API يرجع الـ React app
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'API endpoint not found' });
@@ -715,7 +580,6 @@ app.get('*', (req, res) => {
   res.sendFile(join(__dirname, '..', 'dist', 'index.html'));
 });
 
-// ── Model 3 Payment Request ────────────────────────────────────────────────
 app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
   try {
     const { plan, planName, amount, userEmail, screenshot } = req.body;
@@ -724,41 +588,19 @@ app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
     }
     const user = await getUserById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-
     const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
     const adminSecret = process.env.ADMIN_SECRET || '';
-
     const attachments = [];
     if (screenshot) {
       const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '');
       const ext = screenshot.includes('png') ? 'png' : 'jpg';
       attachments.push({ filename: `m3_payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
     }
-
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'Erivion Model 3 <noreply@erivion.net>',
-        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
-        subject: `🖼️ Model 3 Payment - ${planName} - ${userEmail}`,
-        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
-          <h2 style="color:#f59e0b">🖼️ New Model 3 Payment Request</h2>
-          <table style="width:100%;border-collapse:collapse;margin:20px 0">
-            <tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Account</td><td style="color:#fff">${user.email}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f59e0b;font-weight:700">${planName}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr>
-          </table>
-          <div style="margin-top:24px;display:flex;gap:12px">
-            <a href="${backendUrl}/api/auth/model3-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
-            <a href="${backendUrl}/api/auth/model3-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
-          </div>
-        </div>`,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      }),
+      body: JSON.stringify({ from: 'Erivion Model 3 <noreply@erivion.net>', to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com', subject: `🖼️ Model 3 Payment - ${planName} - ${userEmail}`, html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#f59e0b">🖼️ New Model 3 Payment Request</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Account</td><td style="color:#fff">${user.email}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f59e0b;font-weight:700">${planName}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/model3-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/model3-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`, attachments: attachments.length > 0 ? attachments : undefined }),
     });
-
     res.json({ success: true });
   } catch (e) {
     console.error('[Model3 Payment]', e.message);
