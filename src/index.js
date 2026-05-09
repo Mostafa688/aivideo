@@ -535,12 +535,34 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
 
   (async () => {
     try {
+      // ── توليد الـ voiceover لو idea/script mode ────────────────────────
+      let finalAudioUrl = audioUrl; // لو voice mode — استخدم الصوت المرفوع
+      if (!audioUrl && scenes?.length > 0) {
+        try {
+          const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
+          if (fullText.trim()) {
+            const voiceKey = videoLanguage === 'ar' ? 'male_arabic' : 'male_american';
+            const audioFilename = await generateVoiceover(fullText, voiceKey, 'education', 0, videoLanguage || 'en');
+            if (audioFilename) {
+              finalAudioUrl = '/outputs/' + audioFilename;
+              console.log(`[Model4] Voiceover generated: ${audioFilename}`);
+            }
+          }
+        } catch (voiceErr) {
+          console.warn('[Model4] Voiceover failed, continuing without audio:', voiceErr.message);
+        }
+      }
+
       const videoPath = await renderModel4Video({
-        scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId,
-        captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en',
+        scenes,
+        audioUrl: finalAudioUrl,
+        ratio: ratio || '16:9',
+        jobId: renderJobId,
+        captions: captions || false,
+        music: music || false,
+        videoLanguage: videoLanguage || 'en',
       });
 
-      // لو كانت trial — سجّل إنه اتستخدم
       if (quotaCheck.is_trial) {
         await markModel4TrialUsed(req.user.userId);
       } else {
