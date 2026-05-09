@@ -4,7 +4,7 @@ import path from 'path';
 import { mkdir } from 'fs/promises';
 import { execSync } from 'child_process';
 
-const ATLAS_API_KEY = process.env.ATLAS_CLOUD_API_KEY;
+const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 const OUTPUTS_DIR = 'outputs';
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
@@ -14,39 +14,52 @@ const RATIOS = {
   '1:1':  { w: 720,  h: 720  },
 };
 
-// ── توليد فيديو واحد 5 ثواني من Seedance v1.5 Fast ─────────────────────────
+// ── توليد كليب 5 ثواني من Seedance v1 Pro Fast على Replicate ───────────────
 async function generateSeedanceClip(prompt, ratio = '16:9') {
-  if (!ATLAS_API_KEY) throw new Error('ATLAS_CLOUD_API_KEY not set');
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
 
-  const aspectMap = { '16:9': '16:9', '9:16': '9:16', '1:1': '1:1' };
+  const headers = {
+    'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'wait',
+  };
 
-  // 1) أرسل طلب التوليد
-  const submitRes = await fetch('https://api.atlascloud.ai/v1/video/generate', {
+  // Step 1: Submit
+  const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${ATLAS_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
-      model: 'seedance-v1-5-lite-t2v-250428',
-      prompt,
-      duration: 5,
-      aspect_ratio: aspectMap[ratio] || '16:9',
+      input: {
+        prompt,
+        aspect_ratio: ratio,
+        resolution: '720p',
+        duration: 5,
+        fps: 24,
+        camera_fixed: false,
+      },
     }),
   });
 
   if (!submitRes.ok) {
     const err = await submitRes.text();
-    throw new Error(`Seedance submit error ${submitRes.status}: ${err}`);
+    throw new Error(`Replicate submit error ${submitRes.status}: ${err}`);
   }
 
-  const submitData = await submitRes.json();
-  const requestId = submitData.request_id || submitData.id;
-  if (!requestId) throw new Error('No request_id returned from Seedance API');
+  const prediction = await submitRes.json();
 
-  console.log(`[Model4] Seedance job submitted: ${requestId}`);
+  // لو رجع مباشرة (Prefer: wait)
+  if (prediction.status === 'succeeded' && prediction.output) {
+    const videoUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+    console.log(`[Model4] Done immediately: ${videoUrl}`);
+    return videoUrl;
+  }
 
-  // 2) Polling حتى يخلص (max 3 دقائق)
+  const predictionId = prediction.id;
+  if (!predictionId) throw new Error(`No prediction ID: ${JSON.stringify(prediction)}`);
+
+  console.log(`[Model4] Replicate job submitted: ${predictionId}`);
+
+  // Step 2: Polling (max 3 دقائق)
   const maxWait = 180_000;
   const pollInterval = 5_000;
   const startTime = Date.now();
@@ -54,123 +67,99 @@ async function generateSeedanceClip(prompt, ratio = '16:9') {
   while (Date.now() - startTime < maxWait) {
     await new Promise(r => setTimeout(r, pollInterval));
 
-    const statusRes = await fetch(`https://api.atlascloud.ai/v1/video/status/${requestId}`, {
-      headers: { 'Authorization': `Bearer ${ATLAS_API_KEY}` },
-    });
+    const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
 
-    if (!statusRes.ok) continue;
+    if (!statusRes.ok) {
+      console.warn(`[Model4] Poll error ${statusRes.status}, retrying...`);
+      continue;
+    }
 
     const statusData = await statusRes.json();
     const status = statusData.status;
+    console.log(`[Model4] Status: ${status} (${Math.round((Date.now() - startTime) / 1000)}s)`);
 
-    if (status === 'completed' || status === 'succeeded') {
-      const videoUrl = statusData.video_url || statusData.output?.video_url || statusData.result?.video_url;
-      if (!videoUrl) throw new Error('Seedance returned no video_url');
-      console.log(`[Model4] Seedance done: ${videoUrl}`);
+    if (status === 'succeeded') {
+      const videoUrl = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
+      if (!videoUrl) throw new Error('No video URL in output');
+      console.log(`[Model4] Done: ${videoUrl}`);
       return videoUrl;
     }
 
-    if (status === 'failed' || status === 'error') {
-      throw new Error(`Seedance generation failed: ${statusData.error || 'unknown'}`);
+    if (status === 'failed' || status === 'canceled') {
+      throw new Error(`Replicate generation failed: ${statusData.error || 'unknown'}`);
     }
-
-    console.log(`[Model4] Seedance status: ${status} (${Math.round((Date.now() - startTime) / 1000)}s)`);
   }
 
-  throw new Error('Seedance generation timed out after 3 minutes');
+  throw new Error('Replicate generation timed out after 3 minutes');
 }
 
-// ── تحميل الفيديو من URL وحفظه ──────────────────────────────────────────────
+// ── تحميل الفيديو من URL ──────────────────────────────────────────────────
 async function downloadVideo(url, outputPath) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to download video: ${res.status}`);
-  const buffer = await res.arrayBuffer();
-  fs.writeFileSync(outputPath, Buffer.from(buffer));
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
 }
 
-// ── FFmpeg: إبطاء الفيديو من 5 ثواني لـ 7 ثواني ────────────────────────────
+// ── FFmpeg: إبطاء الكليب من 5s لـ 7s ────────────────────────────────────
 function slowDownClip(inputPath, outputPath) {
-  // setpts=1.4 يعني 5s * 1.4 = 7s
   try {
-    execSync(
-      `ffmpeg -i "${inputPath}" -vf "setpts=1.4*PTS" -af "atempo=0.714" ` +
-      `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
-      `-pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
-      { stdio: 'pipe' }
-    );
-  } catch (e) {
-    // fallback بدون audio filter لو مفيش audio
     execSync(
       `ffmpeg -i "${inputPath}" -vf "setpts=1.4*PTS" ` +
       `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
       `-pix_fmt yuv420p -movflags +faststart -an -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
+  } catch {
+    fs.copyFileSync(inputPath, outputPath);
   }
 }
 
-// ── إضافة captions ────────────────────────────────────────────────────────
-function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'en') {
+// ── إضافة Captions ────────────────────────────────────────────────────────
+function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar') {
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
-
   let FONT_PATH;
   if (process.platform === 'win32') {
     FONT_PATH = 'C\\:/Windows/Fonts/arial.ttf';
   } else {
     if (isRTL) {
-      let foundFont = null;
+      let found = null;
       try {
-        const fcResult = execSync('fc-list :lang=ar | head -3', { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] }).trim();
-        if (fcResult) foundFont = fcResult.split('\n')[0].split(':')[0].trim();
+        const fc = execSync('fc-list :lang=ar | head -1', { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] }).trim();
+        if (fc) found = fc.split(':')[0].trim();
       } catch {}
-      const arabicFonts = [
+      const fonts = [
         '/run/current-system/sw/share/X11/fonts/NotoNaskhArabic-Regular.ttf',
         '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf',
-        '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf',
         '/usr/share/fonts/noto/NotoSansArabic-Regular.ttf',
       ];
-      FONT_PATH = foundFont || arabicFonts.find(f => fs.existsSync(f)) || '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+      FONT_PATH = found || fonts.find(f => fs.existsSync(f)) || '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
     } else {
       FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
     }
   }
 
-  function sanitizeText(text) {
-    return text.replace(/['"`:;\\<>{}|]/g, '').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
-  }
+  const sanitize = t => t.replace(/['"`:;\\<>{}|]/g, '').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const chunkWords = (text, n = 4) => {
+    const w = sanitize(text).split(/\s+/).filter(Boolean);
+    const out = [];
+    for (let i = 0; i < w.length; i += n) out.push(w.slice(i, i + n).join(' '));
+    return out.filter(Boolean);
+  };
 
-  function splitIntoChunks(text, wordsPerChunk = 4) {
-    const words = sanitizeText(text).split(/\s+/).filter(Boolean);
-    const chunks = [];
-    for (let i = 0; i < words.length; i += wordsPerChunk) {
-      chunks.push(words.slice(i, i + wordsPerChunk).join(' '));
-    }
-    return chunks.filter(Boolean);
-  }
-
-  // كل مشهد = 7 ثواني (بعد الـ slowdown)
-  const secPerScene = 7;
   const filters = [];
-  let currentTime = 0;
+  let t = 0;
+  const yExpr = ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60';
 
-  scenes.forEach((scene) => {
-    const start = currentTime;
-    const end = start + secPerScene;
-    currentTime = end;
-    const chunks = splitIntoChunks(scene.text, 4);
-    const chunkDur = secPerScene / Math.max(chunks.length, 1);
-    const yExpr = ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60';
-
-    chunks.forEach((chunk, j) => {
-      const chunkStart = start + j * chunkDur;
-      const chunkEnd = chunkStart + chunkDur;
+  scenes.forEach(scene => {
+    const start = t; t += 7;
+    const ch = chunkWords(scene.text, 4);
+    const chDur = 7 / Math.max(ch.length, 1);
+    ch.forEach((c, j) => {
+      const cs = start + j * chDur, ce = cs + chDur;
       filters.push(
-        `drawtext=fontfile='${FONT_PATH}'` +
-        `:text='${chunk}'` +
-        `:fontsize=28:fontcolor=white:borderw=2:bordercolor=black` +
-        `:box=1:boxcolor=0x00000088:boxborderw=8` +
-        `:x=(w-text_w)/2:y=${yExpr}` +
-        `:enable='between(t,${chunkStart.toFixed(3)},${chunkEnd.toFixed(3)})'`
+        `drawtext=fontfile='${FONT_PATH}':text='${c}':fontsize=28:fontcolor=white` +
+        `:borderw=2:bordercolor=black:box=1:boxcolor=0x00000088:boxborderw=8` +
+        `:x=(w-text_w)/2:y=${yExpr}:enable='between(t,${cs.toFixed(3)},${ce.toFixed(3)})'`
       );
     });
   });
@@ -182,13 +171,12 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'en')
       `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
-  } catch (e) {
-    console.warn('[Model4] Captions failed, skipping:', e.message);
+  } catch {
     fs.copyFileSync(videoPath, outputPath);
   }
 }
 
-// ── الـ Pipeline الرئيسي لـ Model 4 ───────────────────────────────────────
+// ── Pipeline الرئيسي لـ Model 4 ───────────────────────────────────────────
 export async function renderModel4Video({
   scenes,
   audioUrl,
@@ -196,7 +184,7 @@ export async function renderModel4Video({
   jobId,
   music = false,
   captions = false,
-  videoLanguage = 'en',
+  videoLanguage = 'ar',
   onProgress = null,
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
@@ -206,60 +194,45 @@ export async function renderModel4Video({
   const id = jobId || Date.now();
   const outputFile = 'video_' + id + '.mp4';
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
-  const totalScenes = scenes.length;
+  const total = scenes.length;
 
-  console.log(`[Model4] START | ${totalScenes} scenes | ratio: ${ratio} | ${w}x${h}`);
+  console.log(`[Model4] START | ${total} scenes | ${ratio}`);
 
-  // ── Step 1: توليد كليبات Seedance (5 ثواني لكل مشهد) ──────────────────
-  const rawClipPaths = [];
+  // Step 1: Generate clips
+  const rawPaths = [];
   for (let i = 0; i < scenes.length; i++) {
-    const scene = scenes[i];
     const rawPath = path.join(TEMP_DIR, `m4_raw_${id}_${i}.mp4`);
-
     try {
-      if (onProgress) onProgress({ step: 'generating', current: i + 1, total: totalScenes });
-      console.log(`[Model4] Generating clip ${i + 1}/${totalScenes}`);
-
-      const videoUrl = await generateSeedanceClip(scene.prompt || scene.text, ratio);
-      await downloadVideo(videoUrl, rawPath);
-      rawClipPaths.push(rawPath);
+      if (onProgress) onProgress({ step: 'generating', current: i + 1, total });
+      console.log(`[Model4] Generating clip ${i + 1}/${total}`);
+      const url = await generateSeedanceClip(scenes[i].prompt || scenes[i].text, ratio);
+      await downloadVideo(url, rawPath);
     } catch (e) {
       console.error(`[Model4] Clip ${i + 1} failed:`, e.message);
-      // fallback: فيديو أسود
       execSync(
         `ffmpeg -f lavfi -i color=c=0x1a1a2e:size=${w}x${h}:rate=24 -t 5 ` +
         `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
         `-pix_fmt yuv420p -movflags +faststart -y "${rawPath}"`,
         { stdio: 'pipe' }
       );
-      rawClipPaths.push(rawPath);
     }
+    rawPaths.push(rawPath);
   }
 
-  // ── Step 2: إبطاء كل كليب من 5s لـ 7s ────────────────────────────────
-  const slowClipPaths = [];
-  for (let i = 0; i < rawClipPaths.length; i++) {
+  // Step 2: Slow down 5s → 7s
+  const slowPaths = [];
+  for (let i = 0; i < rawPaths.length; i++) {
     const slowPath = path.join(TEMP_DIR, `m4_slow_${id}_${i}.mp4`);
-    if (onProgress) onProgress({ step: 'processing', current: i + 1, total: totalScenes });
-    console.log(`[Model4] Slowing down clip ${i + 1}/${totalScenes}`);
-    try {
-      slowDownClip(rawClipPaths[i], slowPath);
-      slowClipPaths.push(slowPath);
-    } catch (e) {
-      console.warn(`[Model4] Slowdown ${i + 1} failed, using raw:`, e.message);
-      slowClipPaths.push(rawClipPaths[i]);
-    }
+    if (onProgress) onProgress({ step: 'processing', current: i + 1, total });
+    slowDownClip(rawPaths[i], slowPath);
+    slowPaths.push(slowPath);
   }
 
-  // ── Step 3: Concat (بدون transitions كما طلبت) ────────────────────────
+  // Step 3: Concat
   if (onProgress) onProgress({ step: 'merging', current: 1, total: 1 });
-  console.log('[Model4] Concatenating clips...');
-
   const mergedPath = path.join(TEMP_DIR, `m4_merged_${id}.mp4`);
-  const listContent = slowClipPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n');
   const listFile = path.join(TEMP_DIR, `m4_list_${id}.txt`);
-  fs.writeFileSync(listFile, listContent);
-
+  fs.writeFileSync(listFile, slowPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
   execSync(
     `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
     `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
@@ -267,81 +240,69 @@ export async function renderModel4Video({
     { stdio: 'pipe' }
   );
 
-  // ── Step 4: إضافة Audio ───────────────────────────────────────────────
+  // Step 4: Audio
   let audioPath = null;
   if (audioUrl) {
-    const audioBasename = path.basename(audioUrl);
-    const candidate = path.join(OUTPUTS_DIR, audioBasename);
-    if (fs.existsSync(candidate) && fs.statSync(candidate).size > 1000) {
-      audioPath = candidate;
-    }
+    const c = path.join(OUTPUTS_DIR, path.basename(audioUrl));
+    if (fs.existsSync(c) && fs.statSync(c).size > 1000) audioPath = c;
   }
 
   const withAudioPath = path.join(TEMP_DIR, `m4_audio_${id}.mp4`);
-
   if (audioPath) {
-    // احسب مدة الـ audio
-    let audioDuration = null;
+    let audioDur = null;
     try {
-      const dur = execSync(
+      audioDur = parseFloat(execSync(
         `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`,
         { encoding: 'utf8' }
-      ).trim();
-      audioDuration = parseFloat(dur);
+      ).trim());
     } catch {}
 
-    // لو الـ audio أطول من الفيديو — loop الفيديو
-    const videoExtended = path.join(TEMP_DIR, `m4_extended_${id}.mp4`);
-    if (audioDuration && audioDuration > 0) {
+    const ext = path.join(TEMP_DIR, `m4_ext_${id}.mp4`);
+    if (audioDur) {
       try {
         execSync(
-          `ffmpeg -stream_loop -1 -i "${mergedPath}" -t ${audioDuration + 1} ` +
+          `ffmpeg -stream_loop -1 -i "${mergedPath}" -t ${audioDur + 1} ` +
           `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
-          `-pix_fmt yuv420p -movflags +faststart -y "${videoExtended}"`,
+          `-pix_fmt yuv420p -movflags +faststart -y "${ext}"`,
           { stdio: 'pipe' }
         );
-      } catch {
-        fs.copyFileSync(mergedPath, videoExtended);
-      }
+      } catch { fs.copyFileSync(mergedPath, ext); }
     } else {
-      fs.copyFileSync(mergedPath, videoExtended);
+      fs.copyFileSync(mergedPath, ext);
     }
 
-    // دمج مع music لو موجود
     const musicDir = path.join(process.cwd(), 'assets', 'music');
     const musicFiles = music && fs.existsSync(musicDir)
       ? fs.readdirSync(musicDir).filter(f => f.endsWith('.mp3') || f.endsWith('.wav'))
       : [];
 
     if (music && musicFiles.length > 0) {
-      const musicFile = path.join(musicDir, musicFiles[Math.floor(Math.random() * musicFiles.length)]);
+      const mf = path.join(musicDir, musicFiles[Math.floor(Math.random() * musicFiles.length)]);
       try {
         execSync(
-          `ffmpeg -i "${videoExtended}" -i "${audioPath}" -i "${musicFile}" ` +
+          `ffmpeg -i "${ext}" -i "${audioPath}" -i "${mf}" ` +
           `-filter_complex "[2:a]volume=0.07[music];[1:a][music]amix=inputs=2:duration=longest[aout]" ` +
           `-map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
           { stdio: 'pipe' }
         );
       } catch {
         execSync(
-          `ffmpeg -i "${videoExtended}" -i "${audioPath}" ` +
-          `-c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
+          `ffmpeg -i "${ext}" -i "${audioPath}" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
           { stdio: 'pipe' }
         );
       }
     } else {
       execSync(
-        `ffmpeg -i "${videoExtended}" -i "${audioPath}" ` +
-        `-c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
+        `ffmpeg -i "${ext}" -i "${audioPath}" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
         { stdio: 'pipe' }
       );
     }
-    try { if (fs.existsSync(videoExtended)) fs.unlinkSync(videoExtended); } catch {}
+    try { if (fs.existsSync(ext)) fs.unlinkSync(ext); } catch {}
   } else {
     fs.copyFileSync(mergedPath, withAudioPath);
   }
 
-  // ── Step 5: Captions ──────────────────────────────────────────────────
+  // Step 5: Captions
   const withCaptionsPath = path.join(TEMP_DIR, `m4_captions_${id}.mp4`);
   if (captions) {
     addCaptions(withAudioPath, scenes, withCaptionsPath, ratio, videoLanguage);
@@ -349,19 +310,16 @@ export async function renderModel4Video({
     fs.copyFileSync(withAudioPath, withCaptionsPath);
   }
 
-  // ── Step 6: Final output ──────────────────────────────────────────────
+  // Step 6: Final output
   try {
-    execSync(
-      `ffmpeg -i "${withCaptionsPath}" -c copy -movflags +faststart -y "${outputPath}"`,
-      { stdio: 'pipe' }
-    );
+    execSync(`ffmpeg -i "${withCaptionsPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' });
   } catch {
     fs.copyFileSync(withCaptionsPath, outputPath);
   }
 
-  // ── Cleanup ───────────────────────────────────────────────────────────
+  // Cleanup
   setTimeout(() => {
-    [...rawClipPaths, ...slowClipPaths, mergedPath, withAudioPath, withCaptionsPath, listFile].forEach(f => {
+    [...rawPaths, ...slowPaths, mergedPath, withAudioPath, withCaptionsPath, listFile].forEach(f => {
       try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
     });
   }, 60000);
