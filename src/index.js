@@ -15,7 +15,7 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import { renderModel4Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed } from './services/authService.js';
+import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 
@@ -424,18 +424,25 @@ app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter,
     return res.status(403).json({
       error: quotaCheck.reason,
       message: quotaCheck.reason === 'quota_exceeded'
-        ? `You've used all your ${duration} videos (${quotaCheck.used}/${quotaCheck.quota}).`
+        ? `You've used all your ${duration} videos (${quotaCheck.used}/${quotaCheck.quota}). Subscribe again to continue.`
+        : quotaCheck.reason === 'no_access'
+        ? 'subscribe_required'
         : `${duration} is not available on your plan.`,
+      show_upgrade: true,
     });
   }
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
-  res.status(202).json({ jobId: renderJobId, status: 'processing' });
+  res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false });
   (async () => {
     try {
       const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en' });
-      await incrementModel3Video(req.user.userId, duration || '1min');
-      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
+      if (quotaCheck.is_trial) {
+        await markModel3TrialUsed(req.user.userId);
+      } else {
+        await incrementModel3Video(req.user.userId, duration || '1min');
+      }
+      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), is_trial: quotaCheck.is_trial || false });
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
     } finally {

@@ -161,6 +161,7 @@ router.get('/credits', authMiddleware, async (req, res) => {
       model4_usage: model4Usage,
       model4_plan_data: m4planData,
       model4_trial_used: user?.model4_trial_used || 0,
+      model3_trial_used: user?.model3_trial_used || 0,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

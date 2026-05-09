@@ -105,6 +105,7 @@ async function initDB() {
     );
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_access INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model3_trial_used INTEGER DEFAULT 0`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_plan TEXT DEFAULT NULL`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_trial_used INTEGER DEFAULT 0`);
   console.log('[DB] PostgreSQL tables ready');
@@ -167,7 +168,7 @@ async function checkAndResetUsage(userId) {
 
 export async function getUserById(userId) {
   const { rows } = await pool.query(
-    'SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model4_access, model4_plan, model4_trial_used, created_at FROM users WHERE id = $1',
+    'SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model3_trial_used, model4_access, model4_plan, model4_trial_used, created_at FROM users WHERE id = $1',
     [userId]
   );
   return rows[0] || null;
@@ -373,15 +374,30 @@ export async function incrementModel3Video(userId, duration) {
 
 export async function canUserMakeModel3Video(userId, duration) {
   const user = await getUserById(userId);
-  const plan = user?.model3_plan || 'm3_starter';
-  const quotas = MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter;
-  const quota = quotas[duration] || 0;
-  if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
-  const usage = await getModel3Usage(userId);
-  const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : duration === '3min' ? 'videos_3min' : 'videos_5min';
-  const used = usage[col] || 0;
-  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
-  return { allowed: true, quota, used, remaining: quota - used };
+
+  // لو عنده subscription
+  if (user?.model3_access) {
+    const plan = user?.model3_plan || 'm3_starter';
+    const quotas = MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter;
+    const quota = quotas[duration] || 0;
+    if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
+    const usage = await getModel3Usage(userId);
+    const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : duration === '3min' ? 'videos_3min' : 'videos_5min';
+    const used = usage[col] || 0;
+    if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
+    return { allowed: true, quota, used, remaining: quota - used };
+  }
+
+  // Free trial: فيديو واحد 30 ثانية فقط
+  if (duration === '30s' && !user?.model3_trial_used) {
+    return { allowed: true, is_trial: true };
+  }
+
+  return { allowed: false, reason: 'no_access' };
+}
+
+export async function markModel3TrialUsed(userId) {
+  await pool.query('UPDATE users SET model3_trial_used = 1 WHERE id = $1', [userId]);
 }
 
 export async function getAllPaymentRequests(status = null) {
