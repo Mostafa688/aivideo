@@ -416,7 +416,7 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/api/model3/render', authMiddleware, checkModel3Access, renderLimiter, async (req, res) => {
+app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const quotaCheck = await canUserMakeModel3Video(req.user.userId, duration || '1min');
