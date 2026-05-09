@@ -196,31 +196,9 @@ export async function renderModel4Video({
 
   console.log(`[Model4] START | ${total} scenes | ${ratio}`);
 
-  // ── Step 1.5: احسب مدة الصوت قبل أي حاجة (زي Model 3) ─────────────────
-  let audioPathEarly = null;
-  if (audioUrl) {
-    const candidate = path.join(OUTPUTS_DIR, path.basename(audioUrl));
-    if (fs.existsSync(candidate) && fs.statSync(candidate).size > 1000) {
-      audioPathEarly = candidate;
-    }
-  }
-
-  let audioDurationEarly = null;
-  if (audioPathEarly) {
-    try {
-      const dur = execSync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPathEarly}"`,
-        { encoding: 'utf8' }
-      ).trim();
-      audioDurationEarly = parseFloat(dur);
-    } catch {}
-  }
-
-  // SEC_PER_CLIP = (مدة الصوت + 1) / عدد المشاهد — زي Model 3 بالظبط
-  const SEC_PER_CLIP = audioDurationEarly
-    ? Math.ceil((audioDurationEarly + 1) / total)
-    : 7;
-  console.log(`[Model4] Audio: ${audioDurationEarly?.toFixed(1) || 'none'}s | SEC_PER_CLIP: ${SEC_PER_CLIP}s`);
+  // كل مشهد = 7 ثواني ثابت — الصوت بيتقطع قبل نهاية الفيديو بثانيتين
+  const SEC_PER_CLIP = 7;
+  console.log(`[Model4] SEC_PER_CLIP: ${SEC_PER_CLIP}s | Total video: ${total * SEC_PER_CLIP}s`);
 
   // ── Step 1: Generate clips ────────────────────────────────────────────
   const rawPaths = [];

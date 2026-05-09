@@ -514,7 +514,7 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration } = req.body;
+  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, inputMode } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
 
   const quotaCheck = await canUserMakeModel4Video(req.user.userId, duration || '30s');
@@ -522,10 +522,20 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
     return res.status(403).json({
       error: quotaCheck.reason,
       message: quotaCheck.reason === 'quota_exceeded'
-        ? `You've used all your ${duration} videos (${quotaCheck.used}/${quotaCheck.quota}). Subscribe to continue.`
+        ? `You've used all your videos for this plan. Please subscribe to a new plan to continue.`
         : quotaCheck.reason === 'plan_not_support'
         ? `${duration} videos are not available on your plan. Upgrade to unlock.`
         : 'subscribe_required',
+      show_upgrade: true,
+    });
+  }
+
+  // التجربة المجانية = idea فقط — script و voice بتطلب اشتراك
+  if (quotaCheck.is_trial && inputMode !== 'idea') {
+    return res.status(403).json({
+      error: 'trial_idea_only',
+      message: 'Free trial is only available for Idea mode. Subscribe to use Script and Voice modes.',
+      show_upgrade: true,
     });
   }
 
@@ -542,7 +552,18 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
           const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
           if (fullText.trim()) {
             const voiceKey = videoLanguage === 'ar' ? 'male_arabic' : 'male_american';
-            const audioFilename = await generateVoiceover(fullText, voiceKey, 'education', 0, videoLanguage || 'en');
+
+            // كل مشهد = 7 ثواني، الصوت max = (scenes × 7) - 2 ثانية
+            // معدل الكلام ≈ 2.5 كلمة/ثانية
+            const maxAudioSeconds = (scenes.length * 7) - 2;
+            const maxWords = Math.floor(maxAudioSeconds * 2.5);
+            const words = fullText.trim().split(/\s+/);
+            const trimmedText = words.length > maxWords
+              ? words.slice(0, maxWords).join(' ')
+              : fullText.trim();
+            console.log(`[Model4] Text: ${words.length} words trimmed to ${trimmedText.split(/\s+/).length} (max ${maxWords} for ${maxAudioSeconds}s)`);
+
+            const audioFilename = await generateVoiceover(trimmedText, voiceKey, 'education', 0, videoLanguage || 'en');
             if (audioFilename) {
               finalAudioUrl = '/outputs/' + audioFilename;
               console.log(`[Model4] Voiceover generated: ${audioFilename}`);
