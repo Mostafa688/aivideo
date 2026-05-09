@@ -374,7 +374,7 @@ async function checkModel3Access(req, res, next) {
   }
 }
 
-app.post('/api/model3/generate-scenes', authMiddleware, checkModel3Access, async (req, res) => {
+app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, script, inputMode, imageCount, videoLanguage, styleSuffix } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
   const isIdeaMode = inputMode === 'idea';
