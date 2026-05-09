@@ -14,7 +14,6 @@ import {
 
 const router = express.Router();
 
-// pool مشترك للـ admin routes
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
@@ -273,9 +272,7 @@ router.post('/support', async (req, res) => {
   }
 });
 
-router.post('/referral', authMiddleware, async (req, res) => {
-  res.json({ ok: true });
-});
+router.post('/referral', authMiddleware, async (req, res) => { res.json({ ok: true }); });
 
 router.get('/model3-usage', authMiddleware, async (req, res) => {
   try {
@@ -335,8 +332,8 @@ router.get('/model3-approve', async (req, res) => {
         body: JSON.stringify({
           from: 'Erivion <noreply@erivion.net>',
           to: email,
-          subject: '🎉 تم تفعيل Model 3 - AI Image Video!',
-          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:64px;margin-bottom:16px">🎉</div><h2 style="color:#f59e0b;font-size:22px">تم تفعيل اشتراكك!</h2><p style="color:#9ca3af;font-size:14px;line-height:1.8">اشتراك Model 3 اتفعّل على حسابك. دلوقتي تقدر تعمل فيديوهات AI احترافية!</p><a href="${frontendUrl}" style="display:inline-block;margin-top:24px;background:#f59e0b;color:#000;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">ابدأ الإنتاج →</a></div>`,
+          subject: '🎉 Model 3 Subscription Activated!',
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:64px;margin-bottom:16px">🎉</div><h2 style="color:#f59e0b;font-size:22px">Your subscription is active!</h2><p style="color:#9ca3af;font-size:14px;line-height:1.8">Model 3 has been activated on your account. Start creating professional AI videos now!</p><a href="${frontendUrl}" style="display:inline-block;margin-top:24px;background:#f59e0b;color:#000;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Start Creating →</a></div>`,
         }),
       });
     } catch {}
@@ -356,21 +353,23 @@ router.get('/model3-reject', async (req, res) => {
       body: JSON.stringify({
         from: 'Erivion <noreply@erivion.net>',
         to: email,
-        subject: 'طلب الاشتراك في Model 3',
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:64px">❌</div><h2 style="color:#ef4444">لم نتمكن من التحقق من التحويل</h2><p style="color:#9ca3af">تواصل معنا على digidelight33@gmail.com</p></div>`,
+        subject: 'Your Model 3 Subscription Request',
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:64px">❌</div><h2 style="color:#ef4444">We could not verify your payment</h2><p style="color:#9ca3af">Please contact us at digidelight33@gmail.com</p></div>`,
       }),
     });
   } catch {}
   res.send('<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><div style="font-size:64px">❌</div><h2 style="color:#ef4444">Rejected</h2></div></body></html>');
 });
 
-// ── Model 4 Approve ───────────────────────────────────────────────────────
+// ── Model 4 Approve ─────────────────────────────────────────────────────────
 router.get('/model4-approve', async (req, res) => {
   const { email, plan, secret } = req.query;
-  if (secret !== (process.env.ADMIN_SECRET || '')) return res.status(403).send('Unauthorized');
+  // ✅ الـ fix: نفس pattern الـ Model 3
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  if (!email) return res.status(400).send('Missing email');
   try {
     await pool.query('UPDATE users SET model4_access = 1, model4_plan = $1 WHERE email = $2', [plan || 'm4_plan1', email]);
-    const planNames = { m4_plan1: 'خطة 1', m4_plan2: 'خطة 2', m4_plan3: 'خطة 3' };
+    const planLabels = { m4_plan1: 'Plan 1 — 10 videos/30s', m4_plan2: 'Plan 2 — 10 videos/1min', m4_plan3: 'Plan 3 — 10 videos/3min' };
     const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -378,20 +377,36 @@ router.get('/model4-approve', async (req, res) => {
       body: JSON.stringify({
         from: 'Erivion <noreply@erivion.net>',
         to: email,
-        subject: '✅ تم تفعيل اشتراك Model 4 بتاعك!',
-        html: `<div dir="rtl" style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:right"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">🎬</div><h2 style="color:#a855f7;font-size:22px;margin:0 0 8px">تم تفعيل اشتراكك!</h2><p style="color:#9ca3af;font-size:14px;margin:0">اشتراك Model 4 — ${planNames[plan] || plan}</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">تم تفعيل اشتراكك في Model 4 بنجاح. دلوقتي تقدر تولد فيديوهات AI احترافية بموديل Seedance. ادخل الموقع وابدأ!</p></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#a855f7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">ابدأ دلوقتي →</a></div></div>`,
+        subject: '✅ Your Model 4 — Seedance AI subscription is active!',
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px">
+          <div style="text-align:center;margin-bottom:28px">
+            <div style="font-size:56px;margin-bottom:12px">🎬</div>
+            <h2 style="color:#a855f7;font-size:22px;margin:0 0 8px">Model 4 Activated!</h2>
+            <p style="color:#9ca3af;font-size:14px;margin:0">${planLabels[plan] || plan}</p>
+          </div>
+          <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
+            <p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">
+              Your Model 4 subscription has been successfully activated. You can now generate real AI videos using Seedance — not just images, but full cinematic video clips from your ideas, scripts, or voice recordings.
+            </p>
+          </div>
+          <div style="text-align:center">
+            <a href="${frontendUrl}" style="display:inline-block;background:#a855f7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Start Generating Now →</a>
+          </div>
+        </div>`,
       }),
     });
-    res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#22c55e">✅ Approved!</h2><p style="color:#9ca3af">Model 4 activated for <strong>${email}</strong> — Plan: ${plan}</p></body></html>`);
+    res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#22c55e">✅ Model 4 Approved!</h2><p style="color:#9ca3af">Activated for <strong>${email}</strong></p><p style="color:#a855f7;font-weight:700">${planLabels[plan] || plan}</p></body></html>`);
   } catch (e) {
     res.status(500).send('Error: ' + e.message);
   }
 });
 
-// ── Model 4 Reject ────────────────────────────────────────────────────────
+// ── Model 4 Reject ──────────────────────────────────────────────────────────
 router.get('/model4-reject', async (req, res) => {
   const { email, secret } = req.query;
-  if (secret !== (process.env.ADMIN_SECRET || '')) return res.status(403).send('Unauthorized');
+  // ✅ الـ fix
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  if (!email) return res.status(400).send('Missing email');
   try {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -399,8 +414,12 @@ router.get('/model4-reject', async (req, res) => {
       body: JSON.stringify({
         from: 'Erivion <noreply@erivion.net>',
         to: email,
-        subject: '❌ تم رفض طلب اشتراك Model 4',
-        html: `<div dir="rtl" style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:right"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">❌</div><h2 style="color:#ef4444;font-size:22px;margin:0 0 8px">تم رفض الطلب</h2></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">للأسف مش قدرنا نتحقق من الدفع. لو في مشكلة تواصل معانا على <a href="mailto:digidelight33@gmail.com" style="color:#a855f7">digidelight33@gmail.com</a></p></div></div>`,
+        subject: '❌ Your Model 4 Subscription Request',
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center">
+          <div style="font-size:56px;margin-bottom:12px">❌</div>
+          <h2 style="color:#ef4444">Payment Not Verified</h2>
+          <p style="color:#9ca3af;font-size:14px;line-height:1.8">Unfortunately we could not verify your payment transfer. Please contact us at <a href="mailto:digidelight33@gmail.com" style="color:#a855f7">digidelight33@gmail.com</a> and we'll help you sort it out.</p>
+        </div>`,
       }),
     });
   } catch {}
