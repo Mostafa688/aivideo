@@ -100,13 +100,21 @@ async function downloadVideo(url, outputPath) {
   fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
 }
 
-// ── FFmpeg: إبطاء الكليب من 5s لـ 7s ────────────────────────────────────
-function slowDownClip(inputPath, outputPath) {
+// ── FFmpeg: إبطاء الكليب لمدة مطلوبة (dynamic) ─────────────────────────
+function slowDownClip(inputPath, outputPath, targetDuration = 7) {
+  let originalDur = 5;
+  try {
+    originalDur = parseFloat(execSync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputPath}"`,
+      { encoding: 'utf8' }
+    ).trim()) || 5;
+  } catch {}
+  const pts = targetDuration / originalDur;
   try {
     execSync(
-      `ffmpeg -i "${inputPath}" -vf "setpts=1.4*PTS" ` +
+      `ffmpeg -i "${inputPath}" -vf "setpts=${pts.toFixed(4)}*PTS" ` +
       `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
-      `-pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+      `-pix_fmt yuv420p -movflags +faststart -an -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
   } catch {
@@ -219,12 +227,30 @@ export async function renderModel4Video({
     rawPaths.push(rawPath);
   }
 
-  // Step 2: Slow down 5s → 7s
+  // Step 2: احسب مدة الصوت وقسّمها على المشاهد
+  let targetDurationPerScene = 7; // default
+  const audioPathEarly = audioUrl ? path.join(OUTPUTS_DIR, path.basename(audioUrl)) : null;
+  if (audioPathEarly && fs.existsSync(audioPathEarly)) {
+    try {
+      const audioDurEarly = parseFloat(execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPathEarly}"`,
+        { encoding: 'utf8' }
+      ).trim());
+      if (audioDurEarly > 0) {
+        // الفيديو يكون أطول من الصوت بثانيتين على الأقل
+        targetDurationPerScene = Math.ceil((audioDurEarly + 2) / total);
+        targetDurationPerScene = Math.max(targetDurationPerScene, 6); // minimum 6s per scene
+        console.log(`[Model4] Audio: ${audioDurEarly.toFixed(1)}s | Target per scene: ${targetDurationPerScene}s`);
+      }
+    } catch {}
+  }
+
+  // Step 2: Slow down to targetDuration per scene
   const slowPaths = [];
   for (let i = 0; i < rawPaths.length; i++) {
     const slowPath = path.join(TEMP_DIR, `m4_slow_${id}_${i}.mp4`);
     if (onProgress) onProgress({ step: 'processing', current: i + 1, total });
-    slowDownClip(rawPaths[i], slowPath);
+    slowDownClip(rawPaths[i], slowPath, targetDurationPerScene);
     slowPaths.push(slowPath);
   }
 
