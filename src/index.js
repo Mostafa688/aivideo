@@ -530,18 +530,11 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
     });
   }
 
-  // التجربة المجانية = idea فقط — script و voice بتطلب اشتراك
-  if (quotaCheck.is_trial && inputMode !== 'idea') {
-    return res.status(403).json({
-      error: 'trial_idea_only',
-      message: 'Free trial is only available for Idea mode. Subscribe to use Script and Voice modes.',
-      show_upgrade: true,
-    });
-  }
+
 
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
-  res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false });
+  res.status(202).json({ jobId: renderJobId, status: 'processing' });
 
   (async () => {
     try {
@@ -584,13 +577,8 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
         videoLanguage: videoLanguage || 'en',
       });
 
-      if (quotaCheck.is_trial) {
-        await markModel4TrialUsed(req.user.userId);
-      } else {
-        await incrementModel4Video(req.user.userId, duration || '30s');
-      }
-
-      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), is_trial: quotaCheck.is_trial || false });
+      await incrementModel4Video(req.user.userId, duration || '30s');
+      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       console.error('[Model4 Render] Failed:', jobErr.message);
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });

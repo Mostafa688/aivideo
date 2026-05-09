@@ -427,34 +427,23 @@ export async function incrementModel4Video(userId, duration) {
   );
 }
 
-// ── canUserMakeModel4Video — يدعم free trial ───────────────────────────────
+// ── canUserMakeModel4Video — subscription only ─────────────────────────────
 export async function canUserMakeModel4Video(userId, duration) {
   const user = await getUserById(userId);
-  if (!user) return { allowed: false, reason: 'no_access' };
+  if (!user || !user.model4_access) return { allowed: false, reason: 'no_access' };
 
-  // لو عنده subscription كاملة
-  if (user.model4_access) {
-    const plan = user.model4_plan || 'm4_plan1';
-    const planData = MODEL4_PLANS[plan];
-    if (!planData) return { allowed: false, reason: 'invalid_plan' };
-    const quotaKey = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
-    const quota = planData[quotaKey] || 0;
-    if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
-    const usage = await getModel4Usage(userId);
-    const used = usage[quotaKey] || 0;
-    if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
-    return { allowed: true, quota, used, remaining: quota - used };
-  }
-
-  // Free trial: فيديو واحد 30 ثانية فقط
-  if (duration === '30s' && !user.model4_trial_used) {
-    return { allowed: true, is_trial: true };
-  }
-
-  return { allowed: false, reason: 'no_access' };
+  const plan = user.model4_plan || 'm4_plan1';
+  const planData = MODEL4_PLANS[plan];
+  if (!planData) return { allowed: false, reason: 'invalid_plan' };
+  const quotaKey = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
+  const quota = planData[quotaKey] || 0;
+  if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
+  const usage = await getModel4Usage(userId);
+  const used = usage[quotaKey] || 0;
+  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
+  return { allowed: true, quota, used, remaining: quota - used };
 }
 
-// ── تسجيل استخدام الـ trial ───────────────────────────────────────────────
 export async function markModel4TrialUsed(userId) {
-  await pool.query('UPDATE users SET model4_trial_used = 1 WHERE id = $1', [userId]);
+  // kept for compatibility, trial disabled
 }
