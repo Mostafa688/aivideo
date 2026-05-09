@@ -96,6 +96,19 @@ async function initDB() {
       last_reset TEXT DEFAULT CURRENT_DATE
     );
   `);
+  // ── Model 4 ───────────────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS model4_usage (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+      videos_30s INTEGER DEFAULT 0,
+      videos_1min INTEGER DEFAULT 0,
+      videos_3min INTEGER DEFAULT 0,
+      last_reset TEXT DEFAULT CURRENT_DATE
+    );
+  `);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_access INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_plan TEXT DEFAULT NULL`);
   console.log('[DB] PostgreSQL tables ready');
 }
 
@@ -121,7 +134,6 @@ async function checkPlanExpiry(userId) {
   if (new Date() > new Date(user.plan_expires_at)) {
     const oldPlan = user.plan;
     await pool.query("UPDATE users SET plan = 'free', plan_billing = 'monthly', plan_expires_at = NULL WHERE id = $1", [userId]);
-    // ✅ بعت إيميل للمستخدم إن اشتراكه انتهى
     try {
       const planData = PLANS[oldPlan];
       const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
@@ -172,7 +184,7 @@ async function checkAndResetUsage(userId) {
 }
 
 export async function getUserById(userId) {
-  const { rows } = await pool.query('SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, created_at FROM users WHERE id = $1', [userId]);
+  const { rows } = await pool.query('SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model4_access, model4_plan, created_at FROM users WHERE id = $1', [userId]);
   return rows[0] || null;
 }
 
@@ -316,7 +328,6 @@ export async function login(email, password) {
   await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '30d' });
 
-  // ✅ إيميل تسويقي عند الدخول (fire & forget - مش بيأثر على السرعة)
   const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
   const userName = user.name || email.split('@')[0];
   const currentPlan = user.plan || 'free';
@@ -331,69 +342,8 @@ export async function login(email, password) {
         ? `🚀 ${userName}, your next video is ONE click away`
         : `Welcome back, ${userName} — keep creating! 🎬`,
       html: isOnFree
-        ? `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px">
-            <div style="text-align:center;margin-bottom:32px">
-              <div style="font-size:52px;margin-bottom:12px">🚀</div>
-              <h2 style="color:#7c6af7;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2>
-              <p style="color:#9ca3af;font-size:14px;margin:0">You're on the Free plan — here's what you're missing:</p>
-            </div>
-            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:14px;padding:24px;margin-bottom:24px">
-              <table style="width:100%;border-collapse:collapse">
-                <tr>
-                  <td style="padding:10px 0;font-size:14px">
-                    <span style="color:#ef4444;margin-right:8px">✗</span>
-                    <span style="color:#6b7280">Free</span>
-                  </td>
-                  <td style="padding:10px 0;font-size:14px">
-                    <span style="color:#22c55e;margin-right:8px">✓</span>
-                    <span style="color:#d1d5db">Pro & above</span>
-                  </td>
-                </tr>
-                <tr style="border-top:1px solid #1f2937">
-                  <td style="padding:10px 0;color:#6b7280;font-size:13px">Watermark on every video</td>
-                  <td style="padding:10px 0;color:#d1d5db;font-size:13px">No watermark — clean, professional</td>
-                </tr>
-                <tr style="border-top:1px solid #1f2937">
-                  <td style="padding:10px 0;color:#6b7280;font-size:13px">Max 30 seconds</td>
-                  <td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to 10 minutes per video</td>
-                </tr>
-                <tr style="border-top:1px solid #1f2937">
-                  <td style="padding:10px 0;color:#6b7280;font-size:13px">3 videos / week</td>
-                  <td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to unlimited videos</td>
-                </tr>
-                <tr style="border-top:1px solid #1f2937">
-                  <td style="padding:10px 0;color:#6b7280;font-size:13px">1,600 credits / week</td>
-                  <td style="padding:10px 0;color:#d1d5db;font-size:13px;font-weight:600;color:#22c55e">Up to 100,000 credits / week</td>
-                </tr>
-              </table>
-            </div>
-            <div style="background:linear-gradient(135deg,#1a1a3e,#0f0f2a);border:1px solid #7c6af7;border-radius:14px;padding:20px;margin-bottom:24px;text-align:center">
-              <p style="color:#c4b5fd;font-size:13px;margin:0 0 4px">🔥 First month offer</p>
-              <p style="color:#fff;font-size:22px;font-weight:800;margin:0">Pro plan — only <span style="color:#7c6af7">25 EGP</span> first month</p>
-              <p style="color:#9ca3af;font-size:12px;margin:6px 0 0">Then 50 EGP/month. Cancel anytime.</p>
-            </div>
-            <div style="text-align:center">
-              <a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.3px">See All Plans →</a>
-              <p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in to Erivion. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p>
-            </div>
-          </div>`
-        : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px">
-            <div style="text-align:center;margin-bottom:28px">
-              <div style="font-size:52px;margin-bottom:12px">🎬</div>
-              <h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2>
-              <p style="color:#9ca3af;font-size:14px;margin:0">Your <strong style="color:#7c6af7">${PLANS[currentPlan]?.name || currentPlan}</strong> plan is active — let's make something great.</p>
-            </div>
-            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
-              <p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">
-                💡 <strong>Pro Tip:</strong> The best-performing AI videos are ones with a clear script and strong scene transitions. 
-                Head to the <a href="${frontendUrl}" style="color:#7c6af7;font-weight:600">dashboard</a> and start a new project today.
-              </p>
-            </div>
-            <div style="text-align:center">
-              <a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a>
-              <p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p>
-            </div>
-          </div>`,
+        ? `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:32px"><div style="font-size:52px;margin-bottom:12px">🚀</div><h2 style="color:#7c6af7;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2><p style="color:#9ca3af;font-size:14px;margin:0">You're on the Free plan — here's what you're missing:</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:14px;padding:24px;margin-bottom:24px"><table style="width:100%;border-collapse:collapse"><tr><td style="padding:10px 0;font-size:14px"><span style="color:#ef4444;margin-right:8px">✗</span><span style="color:#6b7280">Free</span></td><td style="padding:10px 0;font-size:14px"><span style="color:#22c55e;margin-right:8px">✓</span><span style="color:#d1d5db">Pro & above</span></td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">Watermark on every video</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">No watermark — clean, professional</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">Max 30 seconds</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to 10 minutes per video</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">3 videos / week</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to unlimited videos</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">1,600 credits / week</td><td style="padding:10px 0;color:#22c55e;font-size:13px;font-weight:600">Up to 100,000 credits / week</td></tr></table></div><div style="background:linear-gradient(135deg,#1a1a3e,#0f0f2a);border:1px solid #7c6af7;border-radius:14px;padding:20px;margin-bottom:24px;text-align:center"><p style="color:#c4b5fd;font-size:13px;margin:0 0 4px">🔥 First month offer</p><p style="color:#fff;font-size:22px;font-weight:800;margin:0">Pro plan — only <span style="color:#7c6af7">25 EGP</span> first month</p><p style="color:#9ca3af;font-size:12px;margin:6px 0 0">Then 50 EGP/month. Cancel anytime.</p></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">See All Plans →</a><p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in to Erivion. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p></div></div>`
+        : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:52px;margin-bottom:12px">🎬</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2><p style="color:#9ca3af;font-size:14px;margin:0">Your <strong style="color:#7c6af7">${PLANS[currentPlan]?.name || currentPlan}</strong> plan is active — let's make something great.</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">💡 <strong>Pro Tip:</strong> The best-performing AI videos are ones with a clear script and strong scene transitions. Head to the <a href="${frontendUrl}" style="color:#7c6af7;font-weight:600">dashboard</a> and start a new project today.</p></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a><p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p></div></div>`,
     }),
   }).catch(e => console.warn('[Login] Marketing email failed:', e.message));
 
@@ -415,7 +365,6 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
   await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
 
-  // ✅ إيميل تسويقي عند الدخول بجوجل (fire & forget)
   const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
   const userName = user.name || user.email.split('@')[0];
   const currentPlan = user.plan || 'free';
@@ -430,63 +379,8 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
         ? `🚀 ${userName}, your next video is ONE click away`
         : `Welcome back, ${userName} — keep creating! 🎬`,
       html: isOnFree
-        ? `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px">
-            <div style="text-align:center;margin-bottom:32px">
-              <div style="font-size:52px;margin-bottom:12px">🚀</div>
-              <h2 style="color:#7c6af7;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2>
-              <p style="color:#9ca3af;font-size:14px;margin:0">You're on the Free plan — here's what you're missing:</p>
-            </div>
-            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:14px;padding:24px;margin-bottom:24px">
-              <table style="width:100%;border-collapse:collapse">
-                <tr>
-                  <td style="padding:10px 0;font-size:14px"><span style="color:#ef4444;margin-right:8px">✗</span><span style="color:#6b7280">Free</span></td>
-                  <td style="padding:10px 0;font-size:14px"><span style="color:#22c55e;margin-right:8px">✓</span><span style="color:#d1d5db">Pro & above</span></td>
-                </tr>
-                <tr style="border-top:1px solid #1f2937">
-                  <td style="padding:10px 0;color:#6b7280;font-size:13px">Watermark on every video</td>
-                  <td style="padding:10px 0;color:#d1d5db;font-size:13px">No watermark — clean, professional</td>
-                </tr>
-                <tr style="border-top:1px solid #1f2937">
-                  <td style="padding:10px 0;color:#6b7280;font-size:13px">Max 30 seconds</td>
-                  <td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to 10 minutes per video</td>
-                </tr>
-                <tr style="border-top:1px solid #1f2937">
-                  <td style="padding:10px 0;color:#6b7280;font-size:13px">3 videos / week</td>
-                  <td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to unlimited videos</td>
-                </tr>
-                <tr style="border-top:1px solid #1f2937">
-                  <td style="padding:10px 0;color:#6b7280;font-size:13px">1,600 credits / week</td>
-                  <td style="padding:10px 0;color:#22c55e;font-size:13px;font-weight:600">Up to 100,000 credits / week</td>
-                </tr>
-              </table>
-            </div>
-            <div style="background:linear-gradient(135deg,#1a1a3e,#0f0f2a);border:1px solid #7c6af7;border-radius:14px;padding:20px;margin-bottom:24px;text-align:center">
-              <p style="color:#c4b5fd;font-size:13px;margin:0 0 4px">🔥 First month offer</p>
-              <p style="color:#fff;font-size:22px;font-weight:800;margin:0">Pro plan — only <span style="color:#7c6af7">25 EGP</span> first month</p>
-              <p style="color:#9ca3af;font-size:12px;margin:6px 0 0">Then 50 EGP/month. Cancel anytime.</p>
-            </div>
-            <div style="text-align:center">
-              <a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">See All Plans →</a>
-              <p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in to Erivion. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p>
-            </div>
-          </div>`
-        : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px">
-            <div style="text-align:center;margin-bottom:28px">
-              <div style="font-size:52px;margin-bottom:12px">🎬</div>
-              <h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2>
-              <p style="color:#9ca3af;font-size:14px;margin:0">Your <strong style="color:#7c6af7">${PLANS[currentPlan]?.name || currentPlan}</strong> plan is active — let's make something great.</p>
-            </div>
-            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
-              <p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">
-                💡 <strong>Pro Tip:</strong> The best-performing AI videos are ones with a clear script and strong scene transitions.
-                Head to the <a href="${frontendUrl}" style="color:#7c6af7;font-weight:600">dashboard</a> and start a new project today.
-              </p>
-            </div>
-            <div style="text-align:center">
-              <a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a>
-              <p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p>
-            </div>
-          </div>`,
+        ? `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:32px"><div style="font-size:52px;margin-bottom:12px">🚀</div><h2 style="color:#7c6af7;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2><p style="color:#9ca3af;font-size:14px;margin:0">You're on the Free plan — here's what you're missing:</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:14px;padding:24px;margin-bottom:24px"><table style="width:100%;border-collapse:collapse"><tr><td style="padding:10px 0;font-size:14px"><span style="color:#ef4444;margin-right:8px">✗</span><span style="color:#6b7280">Free</span></td><td style="padding:10px 0;font-size:14px"><span style="color:#22c55e;margin-right:8px">✓</span><span style="color:#d1d5db">Pro & above</span></td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">Watermark on every video</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">No watermark — clean, professional</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">Max 30 seconds</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to 10 minutes per video</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">3 videos / week</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to unlimited videos</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">1,600 credits / week</td><td style="padding:10px 0;color:#22c55e;font-size:13px;font-weight:600">Up to 100,000 credits / week</td></tr></table></div><div style="background:linear-gradient(135deg,#1a1a3e,#0f0f2a);border:1px solid #7c6af7;border-radius:14px;padding:20px;margin-bottom:24px;text-align:center"><p style="color:#c4b5fd;font-size:13px;margin:0 0 4px">🔥 First month offer</p><p style="color:#fff;font-size:22px;font-weight:800;margin:0">Pro plan — only <span style="color:#7c6af7">25 EGP</span> first month</p><p style="color:#9ca3af;font-size:12px;margin:6px 0 0">Then 50 EGP/month. Cancel anytime.</p></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">See All Plans →</a><p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in to Erivion. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p></div></div>`
+        : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:52px;margin-bottom:12px">🎬</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2><p style="color:#9ca3af;font-size:14px;margin:0">Your <strong style="color:#7c6af7">${PLANS[currentPlan]?.name || currentPlan}</strong> plan is active — let's make something great.</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">💡 <strong>Pro Tip:</strong> The best-performing AI videos are ones with a clear script and strong scene transitions. Head to the <a href="${frontendUrl}" style="color:#7c6af7;font-weight:600">dashboard</a> and start a new project today.</p></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a><p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p></div></div>`,
     }),
   }).catch(e => console.warn('[Google Login] Marketing email failed:', e.message));
 
@@ -547,4 +441,56 @@ export async function getAllPaymentRequests(status = null) {
   }
   const { rows } = await pool.query('SELECT * FROM payment_requests ORDER BY created_at DESC');
   return rows;
+}
+
+// ── Model 4 Usage Tracking ─────────────────────────────────────────────────
+export const MODEL4_PLANS = {
+  m4_plan1: {
+    name: 'خطة 1', name_en: 'Plan 1', price: 600,
+    videos_30s: 10, videos_1min: 1, videos_3min: 0,
+    features: ['captions', 'music', 'voiceover'],
+  },
+  m4_plan2: {
+    name: 'خطة 2', name_en: 'Plan 2', price: 1000, price_offer: 800,
+    videos_30s: 3, videos_1min: 10, videos_3min: 0,
+    features: ['captions', 'music', 'voiceover'],
+  },
+  m4_plan3: {
+    name: 'خطة 3', name_en: 'Plan 3', price: 2500,
+    videos_30s: 3, videos_1min: 3, videos_3min: 10,
+    features: ['captions', 'music', 'voiceover'],
+  },
+};
+
+export async function getModel4Usage(userId) {
+  const { rows } = await pool.query('SELECT * FROM model4_usage WHERE user_id = $1', [userId]);
+  if (rows.length === 0) {
+    await pool.query('INSERT INTO model4_usage (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]);
+    return { videos_30s: 0, videos_1min: 0, videos_3min: 0 };
+  }
+  return rows[0];
+}
+
+export async function incrementModel4Video(userId, duration) {
+  const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
+  await pool.query(
+    `INSERT INTO model4_usage (user_id, ${col}) VALUES ($1, 1)
+     ON CONFLICT (user_id) DO UPDATE SET ${col} = model4_usage.${col} + 1`,
+    [userId]
+  );
+}
+
+export async function canUserMakeModel4Video(userId, duration) {
+  const user = await getUserById(userId);
+  if (!user || !user.model4_access) return { allowed: false, reason: 'no_access' };
+  const plan = user.model4_plan || 'm4_plan1';
+  const planData = MODEL4_PLANS[plan];
+  if (!planData) return { allowed: false, reason: 'invalid_plan' };
+  const quotaKey = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
+  const quota = planData[quotaKey] || 0;
+  if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
+  const usage = await getModel4Usage(userId);
+  const used = usage[quotaKey] || 0;
+  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
+  return { allowed: true, quota, used, remaining: quota - used };
 }

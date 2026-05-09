@@ -1,5 +1,7 @@
 import express from 'express';
 import fetch from 'node-fetch';
+import pkg from 'pg';
+const { Pool } = pkg;
 import {
   signUp, verifyCode, login, verifyToken,
   getUserVideos, saveVideo, getUserCredits, getUserById,
@@ -7,9 +9,16 @@ import {
   getLatestPaymentRequestForUser, markLatestPaymentRequestRejected,
   loginOrCreateGoogleUser, PLANS,
   getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS,
+  getModel4Usage, MODEL4_PLANS,
 } from './authService.js';
 
 const router = express.Router();
+
+// pool مشترك للـ admin routes
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
+});
 
 export function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
@@ -50,8 +59,6 @@ router.post('/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
     const result = await login(email, password);
-
-    // ✅ إشعار للأدمن بالإيميل (fire & forget)
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
     const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
     fetch('https://api.resend.com/emails', {
@@ -61,19 +68,9 @@ router.post('/login', async (req, res) => {
         from: 'Erivion Visitors <noreply@erivion.net>',
         to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
         subject: `🔐 User Login — ${email}`,
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px">
-          <h3 style="color:#7c6af7;margin:0 0 16px">🔐 User Logged In</h3>
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${email}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${result.plan || 'free'}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Email & Password</td></tr>
-          </table>
-        </div>`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#7c6af7;margin:0 0 16px">🔐 User Logged In</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${result.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Email & Password</td></tr></table></div>`,
       }),
     }).catch(() => {});
-
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -109,7 +106,6 @@ router.get('/google/callback', async (req, res) => {
     const googleUser = await userRes.json();
     if (!googleUser.email) throw new Error('Could not get user email from Google');
     const authData = await loginOrCreateGoogleUser({ googleId: googleUser.id, email: googleUser.email, name: googleUser.name, avatar: googleUser.picture });
-    // ✅ إشعار للأدمن (fire & forget)
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
     const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
     fetch('https://api.resend.com/emails', {
@@ -119,20 +115,9 @@ router.get('/google/callback', async (req, res) => {
         from: 'Erivion Visitors <noreply@erivion.net>',
         to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
         subject: `🔐 User Login — ${authData.email}`,
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px">
-          <h3 style="color:#7c6af7;margin:0 0 16px">🔐 User Logged In</h3>
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${authData.email}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Name</td><td style="color:#d1d5db;font-size:13px">${authData.name || '—'}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${authData.plan || 'free'}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr>
-            <tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Google OAuth</td></tr>
-          </table>
-        </div>`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#7c6af7;margin:0 0 16px">🔐 User Logged In</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${authData.email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Name</td><td style="color:#d1d5db;font-size:13px">${authData.name || '—'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${authData.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Google OAuth</td></tr></table></div>`,
       }),
     }).catch(() => {});
-
     res.redirect(`${frontendUrl}?google_token=${authData.token}&email=${encodeURIComponent(authData.email)}&plan=${authData.plan}&name=${encodeURIComponent(authData.name || '')}`);
   } catch (err) {
     console.error('[Google OAuth] Error:', err.message);
@@ -163,12 +148,19 @@ router.get('/credits', authMiddleware, async (req, res) => {
     const model3Usage = user?.model3_access ? await getModel3Usage(req.user.userId) : null;
     const plan = user?.model3_plan || 'm3_starter';
     const quotas = user?.model3_access ? (MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter) : null;
+    const model4Usage = user?.model4_access ? await getModel4Usage(req.user.userId) : null;
+    const m4plan = user?.model4_plan || 'm4_plan1';
+    const m4planData = user?.model4_access ? (MODEL4_PLANS[m4plan] || MODEL4_PLANS.m4_plan1) : null;
     res.json({
       ...credits,
       model3_access: user?.model3_access || 0,
       model3_plan: plan,
       model3_usage: model3Usage,
       model3_quotas: quotas,
+      model4_access: user?.model4_access || 0,
+      model4_plan: m4plan,
+      model4_usage: model4Usage,
+      model4_plan_data: m4planData,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -209,8 +201,6 @@ router.get('/admin/approve', async (req, res) => {
     const planName = planData?.name || plan;
     const expiresFormatted = new Date(result.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const frontendUrl = process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
-
-    // Send approval email via Resend
     try {
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -225,7 +215,6 @@ router.get('/admin/approve', async (req, res) => {
     } catch (mailErr) {
       console.error('[Approve] Email error:', mailErr.message);
     }
-
     res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">✅</div><h2 style="color:#22c55e;margin-bottom:8px">Plan Activated!</h2><p style="color:#9ca3af">${email}</p><p style="color:#7c6af7;font-weight:700;font-size:18px">${plan.toUpperCase()}</p><p style="color:#6b7280;font-size:13px">Expires: ${expiresFormatted}</p></div></body></html>`);
   } catch (e) {
     res.status(500).send('Error: ' + e.message);
@@ -236,11 +225,7 @@ router.get('/admin/reject', async (req, res) => {
   const { email, plan, billing, amount, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (email) {
-    try {
-      await markLatestPaymentRequestRejected(email);
-    } catch (dbErr) {
-      console.error('[Reject] Could not update payment request status:', dbErr.message);
-    }
+    try { await markLatestPaymentRequestRejected(email); } catch (dbErr) { console.error('[Reject] DB error:', dbErr.message); }
   }
   if (email) {
     try {
@@ -249,7 +234,6 @@ router.get('/admin/reject', async (req, res) => {
       const billingLabel = billing === 'yearly' ? 'Yearly' : 'Monthly';
       const amountText = amount ? `${amount} EGP` : '';
       const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
-
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
@@ -257,41 +241,7 @@ router.get('/admin/reject', async (req, res) => {
           from: 'Erivion <noreply@erivion.net>',
           to: email,
           subject: `Regarding your ${planName} subscription request`,
-          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px">
-            <div style="text-align:center;margin-bottom:28px">
-              <div style="font-size:56px;margin-bottom:12px">⚠️</div>
-              <h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Subscription Request Update</h2>
-              <p style="color:#9ca3af;font-size:14px;margin:0">We were unable to verify your payment</p>
-            </div>
-            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:20px">
-              <table style="width:100%;border-collapse:collapse">
-                ${planName ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Plan Requested</td><td style="color:#7c6af7;font-weight:700;text-align:right">${planName}${billing ? ' · ' + billingLabel : ''}</td></tr>` : ''}
-                ${amountText ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Amount</td><td style="color:#fff;font-weight:600;text-align:right">${amountText}</td></tr>` : ''}
-                <tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Status</td><td style="color:#ef4444;font-weight:700;text-align:right">Not Approved</td></tr>
-              </table>
-            </div>
-            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
-              <p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0 0 12px">
-                Unfortunately, we could not confirm your payment transfer. This may be due to:
-              </p>
-              <ul style="color:#9ca3af;font-size:13px;line-height:2;padding-left:18px;margin:0">
-                <li>The screenshot was unclear or incomplete</li>
-                <li>The transfer amount did not match the plan price</li>
-                <li>The payment was sent to an incorrect number</li>
-              </ul>
-              ${amountText ? `<div style="margin-top:16px;padding:12px 16px;background:#0f0f1a;border-radius:8px;border:1px solid #374151">
-                <p style="color:#22c55e;font-size:14px;font-weight:700;margin:0">💸 Refund Notice</p>
-                <p style="color:#d1d5db;font-size:13px;line-height:1.7;margin:8px 0 0">If a transfer was made, the amount of <strong>${amountText}</strong> will be refunded to your InstaPay account within <strong>24 hours</strong>.</p>
-              </div>` : ''}
-            </div>
-            <div style="text-align:center;margin-bottom:20px">
-              <p style="color:#9ca3af;font-size:13px;margin:0 0 16px">Need help or want to try again? Contact us:</p>
-              <a href="mailto:digidelight33@gmail.com" style="color:#7c6af7;font-size:14px;font-weight:600;text-decoration:none">digidelight33@gmail.com</a>
-            </div>
-            <div style="text-align:center">
-              <a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">Try Again →</a>
-            </div>
-          </div>`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">⚠️</div><h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Subscription Request Update</h2><p style="color:#9ca3af;font-size:14px;margin:0">We were unable to verify your payment</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:20px"><table style="width:100%;border-collapse:collapse">${planName ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Plan Requested</td><td style="color:#7c6af7;font-weight:700;text-align:right">${planName}${billing ? ' · ' + billingLabel : ''}</td></tr>` : ''}${amountText ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Amount</td><td style="color:#fff;font-weight:600;text-align:right">${amountText}</td></tr>` : ''}<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Status</td><td style="color:#ef4444;font-weight:700;text-align:right">Not Approved</td></tr></table></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">Try Again →</a></div></div>`,
         }),
       });
     } catch (mailErr) {
@@ -327,7 +277,6 @@ router.post('/referral', authMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
-
 router.get('/model3-usage', authMiddleware, async (req, res) => {
   try {
     const user = await getUserById(req.user.userId);
@@ -340,27 +289,20 @@ router.get('/model3-usage', authMiddleware, async (req, res) => {
   }
 });
 
-// ── Model 3 Payment Request ─────────────────────────────────────────────────
 router.post('/model3-payment', authMiddleware, async (req, res) => {
   try {
     const { plan, planName, amount, userEmail, screenshot } = req.body;
-    if (!plan || !amount || !userEmail || !screenshot) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
+    if (!plan || !amount || !userEmail || !screenshot) return res.status(400).json({ error: 'Missing required fields' });
     const user = await getUserById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-
     const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
     const adminSecret = process.env.ADMIN_SECRET || '';
-
-    // صورة التحويل كـ attachment
     const attachments = [];
     if (screenshot) {
       const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '');
       const ext = screenshot.includes('png') ? 'png' : 'jpg';
       attachments.push({ filename: `m3_payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
     }
-
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
@@ -368,23 +310,10 @@ router.post('/model3-payment', authMiddleware, async (req, res) => {
         from: 'Erivion Model 3 <noreply@erivion.net>',
         to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
         subject: `🖼️ Model 3 Payment - ${planName} - ${userEmail}`,
-        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
-          <h2 style="color:#f59e0b">🖼️ New Model 3 Payment Request</h2>
-          <table style="width:100%;border-collapse:collapse;margin:20px 0">
-            <tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Account Email</td><td style="color:#fff">${user.email}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f59e0b;font-weight:700">${planName}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr>
-          </table>
-          <div style="margin-top:24px;display:flex;gap:12px">
-            <a href="${backendUrl}/api/auth/model3-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
-            <a href="${backendUrl}/api/auth/model3-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
-          </div>
-        </div>`,
+        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#f59e0b">🖼️ New Model 3 Payment Request</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Account Email</td><td style="color:#fff">${user.email}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f59e0b;font-weight:700">${planName}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/model3-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/model3-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
         attachments: attachments.length > 0 ? attachments : undefined,
       }),
     });
-
     res.json({ success: true });
   } catch (e) {
     console.error('[Model3 Payment]', e.message);
@@ -392,19 +321,12 @@ router.post('/model3-payment', authMiddleware, async (req, res) => {
   }
 });
 
-// ── Model 3 Admin Approve ───────────────────────────────────────────────────
 router.get('/model3-approve', async (req, res) => {
   const { email, plan, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (!email) return res.status(400).send('Missing email');
   try {
-    // تفعيل model3_access في الداتابيز
-    const { rows } = await import('pg').then(m => {
-      const pool = new m.default.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false });
-      return pool.query('UPDATE users SET model3_access = 1, model3_plan = $2 WHERE email = $1 RETURNING id', [email, plan || 'm3_starter']);
-    });
-
-    // إرسال إيميل للمستخدم
+    await pool.query('UPDATE users SET model3_access = 1, model3_plan = $2 WHERE email = $1', [email, plan || 'm3_starter']);
     try {
       const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
       await fetch('https://api.resend.com/emails', {
@@ -414,23 +336,16 @@ router.get('/model3-approve', async (req, res) => {
           from: 'Erivion <noreply@erivion.net>',
           to: email,
           subject: '🎉 تم تفعيل Model 3 - AI Image Video!',
-          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center">
-            <div style="font-size:64px;margin-bottom:16px">🎉</div>
-            <h2 style="color:#f59e0b;font-size:22px">تم تفعيل اشتراكك!</h2>
-            <p style="color:#9ca3af;font-size:14px;line-height:1.8">اشتراك Model 3 اتفعّل على حسابك. دلوقتي تقدر تعمل فيديوهات AI احترافية!</p>
-            <a href="${frontendUrl}" style="display:inline-block;margin-top:24px;background:#f59e0b;color:#000;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">ابدأ الإنتاج →</a>
-          </div>`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:64px;margin-bottom:16px">🎉</div><h2 style="color:#f59e0b;font-size:22px">تم تفعيل اشتراكك!</h2><p style="color:#9ca3af;font-size:14px;line-height:1.8">اشتراك Model 3 اتفعّل على حسابك. دلوقتي تقدر تعمل فيديوهات AI احترافية!</p><a href="${frontendUrl}" style="display:inline-block;margin-top:24px;background:#f59e0b;color:#000;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">ابدأ الإنتاج →</a></div>`,
         }),
       });
     } catch {}
-
     res.send('<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><div style="font-size:64px">✅</div><h2 style="color:#22c55e">Model 3 Activated!</h2><p style="color:#9ca3af">' + email + '</p></div></body></html>');
   } catch (e) {
     res.status(500).send('Error: ' + e.message);
   }
 });
 
-// ── Model 3 Admin Reject ────────────────────────────────────────────────────
 router.get('/model3-reject', async (req, res) => {
   const { email, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
@@ -447,6 +362,49 @@ router.get('/model3-reject', async (req, res) => {
     });
   } catch {}
   res.send('<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><div style="font-size:64px">❌</div><h2 style="color:#ef4444">Rejected</h2></div></body></html>');
+});
+
+// ── Model 4 Approve ───────────────────────────────────────────────────────
+router.get('/model4-approve', async (req, res) => {
+  const { email, plan, secret } = req.query;
+  if (secret !== (process.env.ADMIN_SECRET || '')) return res.status(403).send('Unauthorized');
+  try {
+    await pool.query('UPDATE users SET model4_access = 1, model4_plan = $1 WHERE email = $2', [plan || 'm4_plan1', email]);
+    const planNames = { m4_plan1: 'خطة 1', m4_plan2: 'خطة 2', m4_plan3: 'خطة 3' };
+    const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: email,
+        subject: '✅ تم تفعيل اشتراك Model 4 بتاعك!',
+        html: `<div dir="rtl" style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:right"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">🎬</div><h2 style="color:#a855f7;font-size:22px;margin:0 0 8px">تم تفعيل اشتراكك!</h2><p style="color:#9ca3af;font-size:14px;margin:0">اشتراك Model 4 — ${planNames[plan] || plan}</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">تم تفعيل اشتراكك في Model 4 بنجاح. دلوقتي تقدر تولد فيديوهات AI احترافية بموديل Seedance. ادخل الموقع وابدأ!</p></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#a855f7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">ابدأ دلوقتي →</a></div></div>`,
+      }),
+    });
+    res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#22c55e">✅ Approved!</h2><p style="color:#9ca3af">Model 4 activated for <strong>${email}</strong> — Plan: ${plan}</p></body></html>`);
+  } catch (e) {
+    res.status(500).send('Error: ' + e.message);
+  }
+});
+
+// ── Model 4 Reject ────────────────────────────────────────────────────────
+router.get('/model4-reject', async (req, res) => {
+  const { email, secret } = req.query;
+  if (secret !== (process.env.ADMIN_SECRET || '')) return res.status(403).send('Unauthorized');
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: email,
+        subject: '❌ تم رفض طلب اشتراك Model 4',
+        html: `<div dir="rtl" style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:right"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">❌</div><h2 style="color:#ef4444;font-size:22px;margin:0 0 8px">تم رفض الطلب</h2></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">للأسف مش قدرنا نتحقق من الدفع. لو في مشكلة تواصل معانا على <a href="mailto:digidelight33@gmail.com" style="color:#a855f7">digidelight33@gmail.com</a></p></div></div>`,
+      }),
+    });
+  } catch {}
+  res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#ef4444">❌ Rejected</h2><p style="color:#9ca3af">${email}</p></body></html>`);
 });
 
 export default router;
