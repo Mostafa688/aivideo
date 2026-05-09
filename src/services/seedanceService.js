@@ -106,7 +106,7 @@ function slowDownClip(inputPath, outputPath) {
     execSync(
       `ffmpeg -i "${inputPath}" -vf "setpts=1.4*PTS" ` +
       `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
-      `-pix_fmt yuv420p -movflags +faststart -an -y "${outputPath}"`,
+      `-pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
   } catch {
