@@ -125,7 +125,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use('/api', (req, res, next) => {
-  const isAdminRoute = req.path.includes('/admin/approve') || req.path.includes('/admin/reject');
+  const isAdminRoute = req.path.includes('/admin/approve') || req.path.includes('/admin/reject') || req.path.includes('/model3-approve') || req.path.includes('/model3-reject') || req.path.includes('/model4-approve') || req.path.includes('/model4-reject');
   if (isAdminRoute) return next();
   const originalSend = res.send.bind(res);
   res.send = (body) => {
