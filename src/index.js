@@ -18,6 +18,7 @@ import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
+import affiliateRouter from './services/affiliateRoutes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -149,6 +150,7 @@ app.use('/api', (req, res, next) => {
 app.use('/outputs', express.static('outputs'));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/affiliate', affiliateRouter);
 
 // ── Transcribe ─────────────────────────────────────────────────────────────
 app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, res) => {

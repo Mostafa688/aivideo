@@ -11,6 +11,7 @@ import {
   getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS,
   getModel4Usage, MODEL4_PLANS,
 } from './authService.js';
+import { trackAffiliateSignup } from './affiliateRoutes.js';
 
 const router = express.Router();
 
@@ -47,6 +48,13 @@ router.post('/verify', async (req, res) => {
   if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
   try {
     const result = await verifyCode(email, code);
+    // ── Affiliate tracking: لما حد يكمّل التسجيل ─────────────────────────
+    if (result?.userId) {
+      const refCode = req.body.ref_code || null;
+      if (refCode) {
+        trackAffiliateSignup(result.userId, email, refCode).catch(() => {});
+      }
+    }
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -105,6 +113,13 @@ router.get('/google/callback', async (req, res) => {
     const googleUser = await userRes.json();
     if (!googleUser.email) throw new Error('Could not get user email from Google');
     const authData = await loginOrCreateGoogleUser({ googleId: googleUser.id, email: googleUser.email, name: googleUser.name, avatar: googleUser.picture });
+    // ── Affiliate tracking للـ Google signup ─────────────────────────────
+    if (authData?.isNew && authData?.userId) {
+      const refCode = req.query.state || null;
+      if (refCode) {
+        trackAffiliateSignup(authData.userId, authData.email, refCode).catch(() => {});
+      }
+    }
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
     const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
     fetch('https://api.resend.com/emails', {
