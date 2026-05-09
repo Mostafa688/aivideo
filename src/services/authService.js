@@ -5,7 +5,6 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'erivion_secret_2026';
 
-// ✅ PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
@@ -34,7 +33,6 @@ export const PLANS = {
   },
 };
 
-// ✅ Initialize tables
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -96,7 +94,6 @@ async function initDB() {
       last_reset TEXT DEFAULT CURRENT_DATE
     );
   `);
-  // ── Model 4 ───────────────────────────────────────────────────────────────
   await pool.query(`
     CREATE TABLE IF NOT EXISTS model4_usage (
       id SERIAL PRIMARY KEY,
@@ -109,6 +106,7 @@ async function initDB() {
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_access INTEGER DEFAULT 0`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_plan TEXT DEFAULT NULL`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_trial_used INTEGER DEFAULT 0`);
   console.log('[DB] PostgreSQL tables ready');
 }
 
@@ -144,26 +142,10 @@ async function checkPlanExpiry(userId) {
           from: 'Erivion <noreply@erivion.net>',
           to: user.email,
           subject: `Your Erivion ${planData?.name || oldPlan} plan has expired`,
-          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px">
-            <div style="text-align:center;margin-bottom:28px">
-              <div style="font-size:56px;margin-bottom:12px">⏰</div>
-              <h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Your subscription has expired</h2>
-              <p style="color:#9ca3af;font-size:14px;margin:0">Your ${planData?.name || oldPlan} plan has ended. You've been moved to the Free plan.</p>
-            </div>
-            <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
-              <p style="color:#d1d5db;font-size:14px;line-height:1.7;margin:0">
-                To continue enjoying all features, renew your subscription and keep creating amazing videos with Erivion.
-              </p>
-            </div>
-            <div style="text-align:center">
-              <a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Renew Subscription →</a>
-            </div>
-          </div>`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">⏰</div><h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Your subscription has expired</h2></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Renew Subscription →</a></div></div>`,
         }),
       });
-    } catch (e) {
-      console.warn('[PlanExpiry] Email failed:', e.message);
-    }
+    } catch (e) { console.warn('[PlanExpiry] Email failed:', e.message); }
   }
 }
 
@@ -184,7 +166,10 @@ async function checkAndResetUsage(userId) {
 }
 
 export async function getUserById(userId) {
-  const { rows } = await pool.query('SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model4_access, model4_plan, created_at FROM users WHERE id = $1', [userId]);
+  const { rows } = await pool.query(
+    'SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model4_access, model4_plan, model4_trial_used, created_at FROM users WHERE id = $1',
+    [userId]
+  );
   return rows[0] || null;
 }
 
@@ -253,7 +238,7 @@ export async function sendPaymentRequestEmail(paymentData) {
       from: 'Erivion Payments <noreply@erivion.net>',
       to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
       subject: `💰 Payment Request - ${planData.name} Plan - ${userEmail}`,
-      html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">💰 New Payment Request</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#7c6af7;font-weight:700">${planData.name}</td></tr><tr><td style="color:#888;padding:8px 0">Billing</td><td style="color:#fff">${billingLabel}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><p style="color:#888;font-size:13px">Please verify and approve or reject below.</p><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&billing=${billing}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a> <a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(userEmail)}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
+      html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">💰 New Payment Request</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">User</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#7c6af7;font-weight:700">${planData.name}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&billing=${billing}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(userEmail)}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
       attachments: attachments.length > 0 ? attachments : undefined,
     }),
   });
@@ -265,10 +250,7 @@ export async function activateUserPlan(email, plan, billing = 'monthly') {
   if (billing === 'yearly') expiresAt.setFullYear(expiresAt.getFullYear() + 1);
   else expiresAt.setMonth(expiresAt.getMonth() + 1);
   await pool.query('UPDATE users SET plan = $1, plan_billing = $2, plan_expires_at = $3 WHERE email = $4', [plan, billing, expiresAt.toISOString(), email]);
-  await pool.query(
-    "UPDATE payment_requests SET status = 'approved' WHERE user_email = $1 AND plan = $2 AND status = 'pending'",
-    [email, plan]
-  );
+  await pool.query("UPDATE payment_requests SET status = 'approved' WHERE user_email = $1 AND plan = $2 AND status = 'pending'", [email, plan]);
   return { success: true, plan, expires_at: expiresAt.toISOString() };
 }
 
@@ -278,18 +260,12 @@ export async function createPaymentRequest(userId, userEmail, plan, billing, amo
 }
 
 export async function getLatestPaymentRequestForUser(userId) {
-  const { rows } = await pool.query(
-    'SELECT id, plan, billing, amount, status, created_at FROM payment_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-    [userId]
-  );
+  const { rows } = await pool.query('SELECT id, plan, billing, amount, status, created_at FROM payment_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1', [userId]);
   return rows[0] || null;
 }
 
 export async function markLatestPaymentRequestRejected(email) {
-  await pool.query(
-    "UPDATE payment_requests SET status = 'rejected' WHERE id = (SELECT id FROM payment_requests WHERE user_email = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1)",
-    [email]
-  );
+  await pool.query("UPDATE payment_requests SET status = 'rejected' WHERE id = (SELECT id FROM payment_requests WHERE user_email = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 1)", [email]);
 }
 
 export async function signUp(email, password) {
@@ -327,7 +303,6 @@ export async function login(email, password) {
   if (!match) throw new Error('Invalid email or password');
   await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '30d' });
-
   const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
   const userName = user.name || email.split('@')[0];
   const currentPlan = user.plan || 'free';
@@ -338,15 +313,12 @@ export async function login(email, password) {
     body: JSON.stringify({
       from: 'Erivion <noreply@erivion.net>',
       to: email,
-      subject: isOnFree
-        ? `🚀 ${userName}, your next video is ONE click away`
-        : `Welcome back, ${userName} — keep creating! 🎬`,
+      subject: isOnFree ? `🚀 ${userName}, your next video is ONE click away` : `Welcome back, ${userName} — keep creating! 🎬`,
       html: isOnFree
-        ? `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:32px"><div style="font-size:52px;margin-bottom:12px">🚀</div><h2 style="color:#7c6af7;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2><p style="color:#9ca3af;font-size:14px;margin:0">You're on the Free plan — here's what you're missing:</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:14px;padding:24px;margin-bottom:24px"><table style="width:100%;border-collapse:collapse"><tr><td style="padding:10px 0;font-size:14px"><span style="color:#ef4444;margin-right:8px">✗</span><span style="color:#6b7280">Free</span></td><td style="padding:10px 0;font-size:14px"><span style="color:#22c55e;margin-right:8px">✓</span><span style="color:#d1d5db">Pro & above</span></td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">Watermark on every video</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">No watermark — clean, professional</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">Max 30 seconds</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to 10 minutes per video</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">3 videos / week</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to unlimited videos</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">1,600 credits / week</td><td style="padding:10px 0;color:#22c55e;font-size:13px;font-weight:600">Up to 100,000 credits / week</td></tr></table></div><div style="background:linear-gradient(135deg,#1a1a3e,#0f0f2a);border:1px solid #7c6af7;border-radius:14px;padding:20px;margin-bottom:24px;text-align:center"><p style="color:#c4b5fd;font-size:13px;margin:0 0 4px">🔥 First month offer</p><p style="color:#fff;font-size:22px;font-weight:800;margin:0">Pro plan — only <span style="color:#7c6af7">25 EGP</span> first month</p><p style="color:#9ca3af;font-size:12px;margin:6px 0 0">Then 50 EGP/month. Cancel anytime.</p></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">See All Plans →</a><p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in to Erivion. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p></div></div>`
-        : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:52px;margin-bottom:12px">🎬</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2><p style="color:#9ca3af;font-size:14px;margin:0">Your <strong style="color:#7c6af7">${PLANS[currentPlan]?.name || currentPlan}</strong> plan is active — let's make something great.</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">💡 <strong>Pro Tip:</strong> The best-performing AI videos are ones with a clear script and strong scene transitions. Head to the <a href="${frontendUrl}" style="color:#7c6af7;font-weight:600">dashboard</a> and start a new project today.</p></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a><p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p></div></div>`,
+        ? `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:32px"><div style="font-size:52px;margin-bottom:12px">🚀</div><h2 style="color:#7c6af7;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Start Creating →</a></div></div>`
+        : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:52px;margin-bottom:12px">🎬</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a></div></div>`,
     }),
   }).catch(e => console.warn('[Login] Marketing email failed:', e.message));
-
   return { token, email, plan: user.plan || 'free', isNewUser: false };
 }
 
@@ -354,9 +326,7 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
   const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
   let user = rows[0];
   if (user) {
-    if (!user.google_id) {
-      await pool.query('UPDATE users SET google_id = $1, avatar = $2, verified = 1 WHERE id = $3', [googleId, avatar, user.id]);
-    }
+    if (!user.google_id) await pool.query('UPDATE users SET google_id = $1, avatar = $2, verified = 1 WHERE id = $3', [googleId, avatar, user.id]);
   } else {
     await pool.query('INSERT INTO users (email, password, name, google_id, avatar, verified, plan) VALUES ($1, $2, $3, $4, $5, 1, $6)', [email, 'GOOGLE_AUTH_NO_PASSWORD', name || email.split('@')[0], googleId, avatar || null, 'free']);
     const { rows: newRows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -364,26 +334,6 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
   }
   await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-
-  const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
-  const userName = user.name || user.email.split('@')[0];
-  const currentPlan = user.plan || 'free';
-  const isOnFree = currentPlan === 'free';
-  fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'Erivion <noreply@erivion.net>',
-      to: user.email,
-      subject: isOnFree
-        ? `🚀 ${userName}, your next video is ONE click away`
-        : `Welcome back, ${userName} — keep creating! 🎬`,
-      html: isOnFree
-        ? `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:32px"><div style="font-size:52px;margin-bottom:12px">🚀</div><h2 style="color:#7c6af7;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2><p style="color:#9ca3af;font-size:14px;margin:0">You're on the Free plan — here's what you're missing:</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:14px;padding:24px;margin-bottom:24px"><table style="width:100%;border-collapse:collapse"><tr><td style="padding:10px 0;font-size:14px"><span style="color:#ef4444;margin-right:8px">✗</span><span style="color:#6b7280">Free</span></td><td style="padding:10px 0;font-size:14px"><span style="color:#22c55e;margin-right:8px">✓</span><span style="color:#d1d5db">Pro & above</span></td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">Watermark on every video</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">No watermark — clean, professional</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">Max 30 seconds</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to 10 minutes per video</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">3 videos / week</td><td style="padding:10px 0;color:#d1d5db;font-size:13px">Up to unlimited videos</td></tr><tr style="border-top:1px solid #1f2937"><td style="padding:10px 0;color:#6b7280;font-size:13px">1,600 credits / week</td><td style="padding:10px 0;color:#22c55e;font-size:13px;font-weight:600">Up to 100,000 credits / week</td></tr></table></div><div style="background:linear-gradient(135deg,#1a1a3e,#0f0f2a);border:1px solid #7c6af7;border-radius:14px;padding:20px;margin-bottom:24px;text-align:center"><p style="color:#c4b5fd;font-size:13px;margin:0 0 4px">🔥 First month offer</p><p style="color:#fff;font-size:22px;font-weight:800;margin:0">Pro plan — only <span style="color:#7c6af7">25 EGP</span> first month</p><p style="color:#9ca3af;font-size:12px;margin:6px 0 0">Then 50 EGP/month. Cancel anytime.</p></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">See All Plans →</a><p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in to Erivion. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p></div></div>`
-        : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:52px;margin-bottom:12px">🎬</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2><p style="color:#9ca3af;font-size:14px;margin:0">Your <strong style="color:#7c6af7">${PLANS[currentPlan]?.name || currentPlan}</strong> plan is active — let's make something great.</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">💡 <strong>Pro Tip:</strong> The best-performing AI videos are ones with a clear script and strong scene transitions. Head to the <a href="${frontendUrl}" style="color:#7c6af7;font-weight:600">dashboard</a> and start a new project today.</p></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a><p style="color:#6b7280;font-size:11px;margin-top:20px">You're getting this because you just logged in. <a href="mailto:digidelight33@gmail.com" style="color:#4b5563">Unsubscribe</a></p></div></div>`,
-    }),
-  }).catch(e => console.warn('[Google Login] Marketing email failed:', e.message));
-
   return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: false };
 }
 
@@ -400,7 +350,7 @@ export async function getUserVideos(userId) {
   return rows;
 }
 
-// ── Model 3 Usage Tracking ─────────────────────────────────────────────────
+// ── Model 3 ────────────────────────────────────────────────────────────────
 export const MODEL3_PLAN_QUOTAS = {
   m3_starter: { '30s': 5,  '1min': 10, '3min': 0,  '5min': 0  },
   m3_pro:     { '30s': 5,  '1min': 5,  '3min': 10, '5min': 0  },
@@ -443,22 +393,19 @@ export async function getAllPaymentRequests(status = null) {
   return rows;
 }
 
-// ── Model 4 Usage Tracking ─────────────────────────────────────────────────
+// ── Model 4 ────────────────────────────────────────────────────────────────
 export const MODEL4_PLANS = {
   m4_plan1: {
-    name: 'خطة 1', name_en: 'Plan 1', price: 600,
+    name: 'Starter', price: 600,
     videos_30s: 10, videos_1min: 1, videos_3min: 0,
-    features: ['captions', 'music', 'voiceover'],
   },
   m4_plan2: {
-    name: 'خطة 2', name_en: 'Plan 2', price: 1000, price_offer: 800,
+    name: 'Creator', price: 1000, price_offer: 800,
     videos_30s: 3, videos_1min: 10, videos_3min: 0,
-    features: ['captions', 'music', 'voiceover'],
   },
   m4_plan3: {
-    name: 'خطة 3', name_en: 'Plan 3', price: 2500,
+    name: 'Pro', price: 2500,
     videos_30s: 3, videos_1min: 3, videos_3min: 10,
-    features: ['captions', 'music', 'voiceover'],
   },
 };
 
@@ -480,17 +427,34 @@ export async function incrementModel4Video(userId, duration) {
   );
 }
 
+// ── canUserMakeModel4Video — يدعم free trial ───────────────────────────────
 export async function canUserMakeModel4Video(userId, duration) {
   const user = await getUserById(userId);
-  if (!user || !user.model4_access) return { allowed: false, reason: 'no_access' };
-  const plan = user.model4_plan || 'm4_plan1';
-  const planData = MODEL4_PLANS[plan];
-  if (!planData) return { allowed: false, reason: 'invalid_plan' };
-  const quotaKey = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
-  const quota = planData[quotaKey] || 0;
-  if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
-  const usage = await getModel4Usage(userId);
-  const used = usage[quotaKey] || 0;
-  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
-  return { allowed: true, quota, used, remaining: quota - used };
+  if (!user) return { allowed: false, reason: 'no_access' };
+
+  // لو عنده subscription كاملة
+  if (user.model4_access) {
+    const plan = user.model4_plan || 'm4_plan1';
+    const planData = MODEL4_PLANS[plan];
+    if (!planData) return { allowed: false, reason: 'invalid_plan' };
+    const quotaKey = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
+    const quota = planData[quotaKey] || 0;
+    if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
+    const usage = await getModel4Usage(userId);
+    const used = usage[quotaKey] || 0;
+    if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
+    return { allowed: true, quota, used, remaining: quota - used };
+  }
+
+  // Free trial: فيديو واحد 30 ثانية فقط
+  if (duration === '30s' && !user.model4_trial_used) {
+    return { allowed: true, is_trial: true };
+  }
+
+  return { allowed: false, reason: 'no_access' };
+}
+
+// ── تسجيل استخدام الـ trial ───────────────────────────────────────────────
+export async function markModel4TrialUsed(userId) {
+  await pool.query('UPDATE users SET model4_trial_used = 1 WHERE id = $1', [userId]);
 }
