@@ -11,7 +11,7 @@ import {
   getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS,
   getModel4Usage, MODEL4_PLANS,
 } from './authService.js';
-import { trackAffiliateSignup } from './affiliateRoutes.js';
+import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
 const router = express.Router();
 
@@ -207,6 +207,11 @@ router.get('/payment/status', authMiddleware, async (req, res) => {
   }
 });
 
+// ── أسعار الباقات للـ affiliate ───────────────────────────────────────────
+const PLAN_PRICES    = { pro: 50, plus: 100, max: 250 };
+const MODEL3_PRICES  = { m3_starter: 800, m3_pro: 1800, m3_max: 2500 };
+const MODEL4_PRICES  = { m4_plan1: 600, m4_plan2: 1000, m4_plan3: 2500, m4_starter: 600, m4_creator: 1000, m4_pro: 2500 };
+
 router.get('/admin/approve', async (req, res) => {
   const { email, plan, billing, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
@@ -217,6 +222,16 @@ router.get('/admin/approve', async (req, res) => {
     const planName = planData?.name || plan;
     const expiresFormatted = new Date(result.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const frontendUrl = process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
+
+    // ── Affiliate payment tracking ─────────────────────────────────────
+    try {
+      const userRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      if (userRow.rows.length > 0) {
+        const amountEgp = PLAN_PRICES[plan] || 0;
+        if (amountEgp > 0) trackAffiliatePayment(userRow.rows[0].id, email, plan, amountEgp).catch(() => {});
+      }
+    } catch {}
+
     try {
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -341,6 +356,16 @@ router.get('/model3-approve', async (req, res) => {
   if (!email) return res.status(400).send('Missing email');
   try {
     await pool.query('UPDATE users SET model3_access = 1, model3_plan = $2 WHERE email = $1', [email, plan || 'm3_starter']);
+
+    // ── Affiliate payment tracking ─────────────────────────────────────
+    try {
+      const userRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      if (userRow.rows.length > 0) {
+        const amountEgp = MODEL3_PRICES[plan] || 800;
+        trackAffiliatePayment(userRow.rows[0].id, email, plan || 'm3_starter', amountEgp).catch(() => {});
+      }
+    } catch {}
+
     try {
       const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
       await fetch('https://api.resend.com/emails', {
@@ -381,11 +406,20 @@ router.get('/model3-reject', async (req, res) => {
 // ── Model 4 Approve ─────────────────────────────────────────────────────────
 router.get('/model4-approve', async (req, res) => {
   const { email, plan, secret } = req.query;
-  // ✅ الـ fix: نفس pattern الـ Model 3
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (!email) return res.status(400).send('Missing email');
   try {
     await pool.query('UPDATE users SET model4_access = 1, model4_plan = $1 WHERE email = $2', [plan || 'm4_plan1', email]);
+
+    // ── Affiliate payment tracking ─────────────────────────────────────
+    try {
+      const userRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      if (userRow.rows.length > 0) {
+        const amountEgp = MODEL4_PRICES[plan] || 600;
+        trackAffiliatePayment(userRow.rows[0].id, email, plan || 'm4_plan1', amountEgp).catch(() => {});
+      }
+    } catch {}
+
     const planLabels = { m4_plan1: 'Plan 1 — 10 videos/30s', m4_plan2: 'Plan 2 — 10 videos/1min', m4_plan3: 'Plan 3 — 10 videos/3min' };
     const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
     await fetch('https://api.resend.com/emails', {
@@ -395,21 +429,7 @@ router.get('/model4-approve', async (req, res) => {
         from: 'Erivion <noreply@erivion.net>',
         to: email,
         subject: '✅ Your Model 4 — Seedance AI subscription is active!',
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px">
-          <div style="text-align:center;margin-bottom:28px">
-            <div style="font-size:56px;margin-bottom:12px">🎬</div>
-            <h2 style="color:#a855f7;font-size:22px;margin:0 0 8px">Model 4 Activated!</h2>
-            <p style="color:#9ca3af;font-size:14px;margin:0">${planLabels[plan] || plan}</p>
-          </div>
-          <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
-            <p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">
-              Your Model 4 subscription has been successfully activated. You can now generate real AI videos using Seedance — not just images, but full cinematic video clips from your ideas, scripts, or voice recordings.
-            </p>
-          </div>
-          <div style="text-align:center">
-            <a href="${frontendUrl}" style="display:inline-block;background:#a855f7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Start Generating Now →</a>
-          </div>
-        </div>`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">🎬</div><h2 style="color:#a855f7;font-size:22px;margin:0 0 8px">Model 4 Activated!</h2><p style="color:#9ca3af;font-size:14px;margin:0">${planLabels[plan] || plan}</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px"><p style="color:#d1d5db;font-size:14px;line-height:1.8;margin:0">Your Model 4 subscription has been successfully activated. You can now generate real AI videos using Seedance.</p></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#a855f7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Start Generating Now →</a></div></div>`,
       }),
     });
     res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#22c55e">✅ Model 4 Approved!</h2><p style="color:#9ca3af">Activated for <strong>${email}</strong></p><p style="color:#a855f7;font-weight:700">${planLabels[plan] || plan}</p></body></html>`);
@@ -421,7 +441,6 @@ router.get('/model4-approve', async (req, res) => {
 // ── Model 4 Reject ──────────────────────────────────────────────────────────
 router.get('/model4-reject', async (req, res) => {
   const { email, secret } = req.query;
-  // ✅ الـ fix
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (!email) return res.status(400).send('Missing email');
   try {
@@ -432,11 +451,7 @@ router.get('/model4-reject', async (req, res) => {
         from: 'Erivion <noreply@erivion.net>',
         to: email,
         subject: '❌ Your Model 4 Subscription Request',
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center">
-          <div style="font-size:56px;margin-bottom:12px">❌</div>
-          <h2 style="color:#ef4444">Payment Not Verified</h2>
-          <p style="color:#9ca3af;font-size:14px;line-height:1.8">Unfortunately we could not verify your payment transfer. Please contact us at <a href="mailto:digidelight33@gmail.com" style="color:#a855f7">digidelight33@gmail.com</a> and we'll help you sort it out.</p>
-        </div>`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px;margin-bottom:12px">❌</div><h2 style="color:#ef4444">Payment Not Verified</h2><p style="color:#9ca3af;font-size:14px;line-height:1.8">Unfortunately we could not verify your payment. Please contact us at <a href="mailto:digidelight33@gmail.com" style="color:#a855f7">digidelight33@gmail.com</a></p></div>`,
       }),
     });
   } catch {}
