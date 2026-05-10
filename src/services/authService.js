@@ -226,12 +226,25 @@ export async function sendPaymentRequestEmail(paymentData) {
   const planData = PLANS[plan];
   const billingLabel = billing === 'yearly' ? 'Yearly' : 'Monthly';
   const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
+
+  // ── جيب الـ ref_code بتاع المستخدم من الـ database ──────────────────────
+  let refCode = null;
+  try {
+    const { rows } = await pool.query('SELECT ref_code FROM users WHERE email = $1', [userEmail]);
+    refCode = rows[0]?.ref_code || null;
+  } catch {}
+
   const attachments = [];
   if (screenshotBase64) {
     const base64Data = screenshotBase64.replace(/^data:image\/\w+;base64,/, '');
     const ext = screenshotBase64.includes('png') ? 'png' : 'jpg';
     attachments.push({ filename: `payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
   }
+
+  const affiliateRow = refCode
+    ? `<tr><td style="color:#888;padding:8px 0">🤝 Affiliate</td><td style="color:#f59e0b;font-weight:700">${refCode}</td></tr>`
+    : '';
+
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
@@ -239,7 +252,7 @@ export async function sendPaymentRequestEmail(paymentData) {
       from: 'Erivion Payments <noreply@erivion.net>',
       to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
       subject: `💰 Payment Request - ${planData.name} Plan - ${userEmail}`,
-      html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">💰 New Payment Request</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">User</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#7c6af7;font-weight:700">${planData.name}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&billing=${billing}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(userEmail)}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
+      html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">💰 New Payment Request</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">User</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#7c6af7;font-weight:700">${planData.name}</td></tr><tr><td style="color:#888;padding:8px 0">Billing</td><td style="color:#fff">${billingLabel}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr>${affiliateRow}</table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&billing=${billing}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(userEmail)}&secret=${process.env.ADMIN_SECRET || ''}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
       attachments: attachments.length > 0 ? attachments : undefined,
     }),
   });
@@ -374,8 +387,6 @@ export async function incrementModel3Video(userId, duration) {
 
 export async function canUserMakeModel3Video(userId, duration) {
   const user = await getUserById(userId);
-
-  // لو عنده subscription
   if (user?.model3_access) {
     const plan = user?.model3_plan || 'm3_starter';
     const quotas = MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter;
@@ -387,12 +398,9 @@ export async function canUserMakeModel3Video(userId, duration) {
     if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
     return { allowed: true, quota, used, remaining: quota - used };
   }
-
-  // Free trial: فيديو واحد 30 ثانية فقط
   if (duration === '30s' && !user?.model3_trial_used) {
     return { allowed: true, is_trial: true };
   }
-
   return { allowed: false, reason: 'no_access' };
 }
 
@@ -411,18 +419,9 @@ export async function getAllPaymentRequests(status = null) {
 
 // ── Model 4 ────────────────────────────────────────────────────────────────
 export const MODEL4_PLANS = {
-  m4_plan1: {
-    name: 'Starter', price: 600,
-    videos_30s: 10, videos_1min: 1, videos_3min: 0,
-  },
-  m4_plan2: {
-    name: 'Creator', price: 1000, price_offer: 800,
-    videos_30s: 3, videos_1min: 10, videos_3min: 0,
-  },
-  m4_plan3: {
-    name: 'Pro', price: 2500,
-    videos_30s: 3, videos_1min: 3, videos_3min: 10,
-  },
+  m4_plan1: { name: 'Starter', price: 600, videos_30s: 10, videos_1min: 1, videos_3min: 0 },
+  m4_plan2: { name: 'Creator', price: 1000, price_offer: 800, videos_30s: 3, videos_1min: 10, videos_3min: 0 },
+  m4_plan3: { name: 'Pro', price: 2500, videos_30s: 3, videos_1min: 3, videos_3min: 10 },
 };
 
 export async function getModel4Usage(userId) {
@@ -437,17 +436,14 @@ export async function getModel4Usage(userId) {
 export async function incrementModel4Video(userId, duration) {
   const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
   await pool.query(
-    `INSERT INTO model4_usage (user_id, ${col}) VALUES ($1, 1)
-     ON CONFLICT (user_id) DO UPDATE SET ${col} = model4_usage.${col} + 1`,
+    `INSERT INTO model4_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model4_usage.${col} + 1`,
     [userId]
   );
 }
 
-// ── canUserMakeModel4Video — subscription only ─────────────────────────────
 export async function canUserMakeModel4Video(userId, duration) {
   const user = await getUserById(userId);
   if (!user || !user.model4_access) return { allowed: false, reason: 'no_access' };
-
   const plan = user.model4_plan || 'm4_plan1';
   const planData = MODEL4_PLANS[plan];
   if (!planData) return { allowed: false, reason: 'invalid_plan' };
