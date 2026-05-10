@@ -9,8 +9,6 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
 });
 
-// ── Admin secret check ─────────────────────────────────────────────────────
-// بيتحقق من الـ secret في كل request
 function adminAuth(req, res, next) {
   const secret = req.headers['x-admin-secret'] || req.query.secret;
   const ADMIN_SECRET = process.env.ADMIN_SECRET || 'erivion_admin_2026';
@@ -20,21 +18,11 @@ function adminAuth(req, res, next) {
   next();
 }
 
-// ── GET /api/admin/stats ───────────────────────────────────────────────────
 router.get('/stats', adminAuth, async (req, res) => {
   try {
     const [
-      totalUsers,
-      verifiedUsers,
-      planDist,
-      totalVideos,
-      recentUsers,
-      totalRevenue,
-      pendingPayments,
-      weeklySignups,
-      model3Users,
-      videosPerDay,
-      topUsers,
+      totalUsers, verifiedUsers, planDist, totalVideos, recentUsers,
+      totalRevenue, pendingPayments, weeklySignups, model3Users, videosPerDay, topUsers,
     ] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM users'),
       pool.query('SELECT COUNT(*) FROM users WHERE verified = 1'),
@@ -45,23 +33,9 @@ router.get('/stats', adminAuth, async (req, res) => {
       pool.query("SELECT COUNT(*) FROM payment_requests WHERE status = 'pending'"),
       pool.query("SELECT COUNT(*) FROM users WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'"),
       pool.query('SELECT COUNT(*) FROM users WHERE model3_access = 1'),
-      pool.query(`
-        SELECT DATE(created_at::timestamp) as day, COUNT(*) as count
-        FROM videos
-        WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'
-        GROUP BY DATE(created_at::timestamp)
-        ORDER BY day ASC
-      `),
-      pool.query(`
-        SELECT u.email, u.plan, COUNT(v.id) as video_count
-        FROM users u
-        LEFT JOIN videos v ON v.user_id = u.id
-        GROUP BY u.id, u.email, u.plan
-        ORDER BY video_count DESC
-        LIMIT 5
-      `),
+      pool.query(`SELECT DATE(created_at::timestamp) as day, COUNT(*) as count FROM videos WHERE created_at::timestamp >= NOW() - INTERVAL '7 days' GROUP BY DATE(created_at::timestamp) ORDER BY day ASC`),
+      pool.query(`SELECT u.email, u.plan, COUNT(v.id) as video_count FROM users u LEFT JOIN videos v ON v.user_id = u.id GROUP BY u.id, u.email, u.plan ORDER BY video_count DESC LIMIT 5`),
     ]);
-
     res.json({
       overview: {
         total_users: parseInt(totalUsers.rows[0].count),
@@ -83,8 +57,6 @@ router.get('/stats', adminAuth, async (req, res) => {
   }
 });
 
-// ── GET /api/admin/payments ────────────────────────────────────────────────
-// كل الـ payment requests
 router.get('/payments', adminAuth, async (req, res) => {
   try {
     const { status } = req.query;
@@ -101,21 +73,17 @@ router.get('/payments', adminAuth, async (req, res) => {
   }
 });
 
-// ── GET /api/admin/users ───────────────────────────────────────────────────
-// قائمة المستخدمين مع فلترة
 router.get('/users', adminAuth, async (req, res) => {
   try {
     const { plan, search, limit = 50 } = req.query;
     let where = [];
     let params = [];
     let idx = 1;
-
     if (plan) { where.push(`plan = $${idx++}`); params.push(plan); }
     if (search) { where.push(`(email ILIKE $${idx++} OR name ILIKE $${idx - 1})`); params.push(`%${search}%`); }
-
     const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
     const { rows } = await pool.query(`
-      SELECT u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.created_at,
+      SELECT u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.ref_code, u.created_at,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
              COUNT(v.id) as total_videos
@@ -123,19 +91,16 @@ router.get('/users', adminAuth, async (req, res) => {
       LEFT JOIN user_usage uu ON uu.user_id = u.id
       LEFT JOIN videos v ON v.user_id = u.id
       ${whereClause}
-      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.created_at, uu.credits_used, uu.videos_this_week
+      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.ref_code, u.created_at, uu.credits_used, uu.videos_this_week
       ORDER BY u.id DESC
       LIMIT $${idx}
     `, [...params, parseInt(limit)]);
-
     res.json({ users: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── GET /api/admin/videos ──────────────────────────────────────────────────
-// آخر الفيديوهات اللي اتعملت
 router.get('/videos', adminAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -151,28 +116,22 @@ router.get('/videos', adminAuth, async (req, res) => {
   }
 });
 
-// ── POST /api/admin/user/plan ──────────────────────────────────────────────
-// تغيير خطة مستخدم يدوياً من الـ dashboard
 router.post('/user/plan', adminAuth, async (req, res) => {
   try {
     const { email, plan, model3_access, model3_plan } = req.body;
     if (!email || !plan) return res.status(400).json({ error: 'email and plan required' });
-
     const expiresAt = new Date();
     expiresAt.setMonth(expiresAt.getMonth() + 1);
-
     await pool.query(
       'UPDATE users SET plan = $1, plan_expires_at = $2 WHERE email = $3',
       [plan, plan === 'free' ? null : expiresAt.toISOString(), email]
     );
-
     if (model3_access !== undefined) {
       await pool.query(
         'UPDATE users SET model3_access = $1, model3_plan = $2 WHERE email = $3',
         [model3_access ? 1 : 0, model3_plan || null, email]
       );
     }
-
     res.json({ success: true, message: `Updated ${email} to ${plan}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
