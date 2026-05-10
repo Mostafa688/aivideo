@@ -292,7 +292,7 @@ export async function verifyCode(email, code) {
   const user = users[0];
   await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '30d' });
-  return { token, email, plan: user.plan || 'free', isNewUser: true };
+  return { token, email, plan: user.plan || 'free', isNewUser: true, userId: user.id };
 }
 
 export async function login(email, password) {
