@@ -2,6 +2,7 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'erivion_secret_2026';
 
@@ -113,8 +114,9 @@ async function initDB() {
 
 initDB().catch(err => console.error('[DB] Init error:', err.message));
 
+// ✅ Secure random code using crypto
 function generateCode() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  return crypto.randomInt(100000, 999999).toString();
 }
 
 function getWeekStart() {
@@ -227,7 +229,6 @@ export async function sendPaymentRequestEmail(paymentData) {
   const billingLabel = billing === 'yearly' ? 'Yearly' : 'Monthly';
   const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
 
-  // ── جيب الـ ref_code بتاع المستخدم من الـ database ──────────────────────
   let refCode = null;
   try {
     const { rows } = await pool.query('SELECT ref_code FROM users WHERE email = $1', [userEmail]);
