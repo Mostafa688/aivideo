@@ -126,7 +126,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use('/api', (req, res, next) => {
-  // ✅ الـ fix: كل admin/approve routes مش بتتحول لـ JSON
   const isAdminRoute =
     req.path.includes('/admin/approve') ||
     req.path.includes('/admin/reject') ||
@@ -179,10 +178,43 @@ app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, 
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/api/voices', (req, res) => res.json({ voices: VOICE_OPTIONS }));
 
+// ── Sitemap ────────────────────────────────────────────────────────────────
 app.get('/sitemap.xml', (req, res) => {
-  const sitemap = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://erivion.net/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url></urlset>`;
+  const base = 'https://erivion.net';
+  const now = new Date().toISOString().split('T')[0];
+  const urls = [
+    { loc: `${base}/`,          priority: '1.0', changefreq: 'weekly'  },
+    { loc: `${base}/pricing`,   priority: '0.9', changefreq: 'weekly'  },
+    { loc: `${base}/login`,     priority: '0.8', changefreq: 'monthly' },
+    { loc: `${base}/affiliate`, priority: '0.7', changefreq: 'monthly' },
+  ];
+  const urlTags = urls.map(u => `
+  <url>
+    <loc>${u.loc}</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('');
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urlTags}
+</urlset>`;
   res.header('Content-Type', 'application/xml');
   res.send(sitemap);
+});
+
+// ── Robots.txt ─────────────────────────────────────────────────────────────
+app.get('/robots.txt', (req, res) => {
+  res.header('Content-Type', 'text/plain');
+  res.send(`User-agent: *
+Allow: /
+Allow: /pricing
+Allow: /login
+Allow: /affiliate
+Disallow: /api/
+Disallow: /outputs/
+Disallow: /admin
+
+Sitemap: https://erivion.net/sitemap.xml`);
 });
 
 app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) => {
@@ -479,7 +511,6 @@ app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
 });
 
 // ── Model 4 Routes ─────────────────────────────────────────────────────────
-// بدون checkModel4Access — كل user يقدر يدخل، الـ canUserMakeModel4Video بتتحكم
 app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, script, inputMode, sceneCount, videoLanguage } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
@@ -525,7 +556,6 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
 app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, inputMode } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
-
   const quotaCheck = await canUserMakeModel4Video(req.user.userId, duration || '30s');
   if (!quotaCheck.allowed) {
     return res.status(403).json({
@@ -538,33 +568,22 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
       show_upgrade: true,
     });
   }
-
-
-
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing' });
-
   (async () => {
     try {
-      // ── توليد الـ voiceover لو idea/script mode ────────────────────────
-      let finalAudioUrl = audioUrl; // لو voice mode — استخدم الصوت المرفوع
+      let finalAudioUrl = audioUrl;
       if (!audioUrl && scenes?.length > 0) {
         try {
           const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
           if (fullText.trim()) {
             const voiceKey = videoLanguage === 'ar' ? 'male_arabic' : 'male_american';
-
-            // كل مشهد = 7 ثواني، الصوت max = (scenes × 7) - 2 ثانية
-            // معدل الكلام ≈ 2.5 كلمة/ثانية
             const maxAudioSeconds = (scenes.length * 7) - 2;
             const maxWords = Math.floor(maxAudioSeconds * 2.5);
             const words = fullText.trim().split(/\s+/);
-            const trimmedText = words.length > maxWords
-              ? words.slice(0, maxWords).join(' ')
-              : fullText.trim();
+            const trimmedText = words.length > maxWords ? words.slice(0, maxWords).join(' ') : fullText.trim();
             console.log(`[Model4] Text: ${words.length} words trimmed to ${trimmedText.split(/\s+/).length} (max ${maxWords} for ${maxAudioSeconds}s)`);
-
             const audioFilename = await generateVoiceover(trimmedText, voiceKey, 'education', 0, videoLanguage || 'en');
             if (audioFilename) {
               finalAudioUrl = '/outputs/' + audioFilename;
@@ -575,17 +594,7 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
           console.warn('[Model4] Voiceover failed, continuing without audio:', voiceErr.message);
         }
       }
-
-      const videoPath = await renderModel4Video({
-        scenes,
-        audioUrl: finalAudioUrl,
-        ratio: ratio || '16:9',
-        jobId: renderJobId,
-        captions: captions || false,
-        music: music || false,
-        videoLanguage: videoLanguage || 'en',
-      });
-
+      const videoPath = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en' });
       await incrementModel4Video(req.user.userId, duration || '30s');
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
@@ -614,13 +623,7 @@ app.post('/api/model4/payment-request', authMiddleware, async (req, res) => {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'Erivion Model 4 <noreply@erivion.net>',
-        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
-        subject: `🎬 Model 4 Payment - ${planName} - ${userEmail}`,
-        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#a855f7">🎬 New Model 4 Payment</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Account</td><td style="color:#fff">${user.email}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#a855f7;font-weight:700">${planName}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/model4-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/model4-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      }),
+      body: JSON.stringify({ from: 'Erivion Model 4 <noreply@erivion.net>', to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com', subject: `🎬 Model 4 Payment - ${planName} - ${userEmail}`, html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#a855f7">🎬 New Model 4 Payment</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Account</td><td style="color:#fff">${user.email}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#a855f7;font-weight:700">${planName}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/model4-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/model4-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`, attachments: attachments.length > 0 ? attachments : undefined }),
     });
     res.json({ success: true });
   } catch (e) {
@@ -632,26 +635,15 @@ app.get('/api/model4/usage', authMiddleware, async (req, res) => {
   try {
     const user = await getUserById(req.user.userId);
     const trialUsed = user?.model4_trial_used || 0;
-
-    if (!user?.model4_access) {
-      return res.json({ access: false, trial_used: trialUsed });
-    }
-
+    if (!user?.model4_access) return res.json({ access: false, trial_used: trialUsed });
     const usage = await getModel4Usage(req.user.userId);
     const plan = user.model4_plan || 'm4_plan1';
     const planData = MODEL4_PLANS[plan];
-    res.json({
-      access: true, plan, planData, trial_used: trialUsed,
-      usage: { videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0, videos_3min: usage.videos_3min || 0 },
-      quota: { videos_30s: planData?.videos_30s || 0, videos_1min: planData?.videos_1min || 0, videos_3min: planData?.videos_3min || 0 },
-    });
+    res.json({ access: true, plan, planData, trial_used: trialUsed, usage: { videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0, videos_3min: usage.videos_3min || 0 }, quota: { videos_30s: planData?.videos_30s || 0, videos_1min: planData?.videos_1min || 0, videos_3min: planData?.videos_3min || 0 } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
-
-// ── Credits endpoint ────────────────────────────────────────────────────────
-// (موجود في authRoutes بس نضيف trial_used هنا للـ App.jsx)
 
 // ── Global Error Handler ───────────────────────────────────────────────────
 app.use((err, req, res, next) => {
