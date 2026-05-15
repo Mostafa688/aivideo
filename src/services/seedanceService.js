@@ -14,7 +14,6 @@ const RATIOS = {
   '1:1':  { w: 720,  h: 720  },
 };
 
-// ── توليد كليب 5 ثواني من Seedance v1 Pro Fast على Replicate ──────────────
 async function generateSeedanceClip(prompt, ratio = '16:9') {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
 
@@ -41,13 +40,13 @@ async function generateSeedanceClip(prompt, ratio = '16:9') {
 
   if (prediction.status === 'succeeded' && prediction.output) {
     const videoUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-    console.log(`[Model4] Done immediately: ${videoUrl}`);
+    console.log(`[Seedance] Done immediately: ${videoUrl}`);
     return videoUrl;
   }
 
   const predictionId = prediction.id;
   if (!predictionId) throw new Error(`No prediction ID: ${JSON.stringify(prediction)}`);
-  console.log(`[Model4] Job submitted: ${predictionId}`);
+  console.log(`[Seedance] Job submitted: ${predictionId}`);
 
   const maxWait = 180_000;
   const pollInterval = 5_000;
@@ -56,10 +55,10 @@ async function generateSeedanceClip(prompt, ratio = '16:9') {
   while (Date.now() - startTime < maxWait) {
     await new Promise(r => setTimeout(r, pollInterval));
     const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
-    if (!statusRes.ok) { console.warn(`[Model4] Poll ${statusRes.status}, retry...`); continue; }
+    if (!statusRes.ok) { console.warn(`[Seedance] Poll ${statusRes.status}, retry...`); continue; }
     const statusData = await statusRes.json();
     const status = statusData.status;
-    console.log(`[Model4] Status: ${status} (${Math.round((Date.now() - startTime) / 1000)}s)`);
+    console.log(`[Seedance] Status: ${status} (${Math.round((Date.now() - startTime) / 1000)}s)`);
     if (status === 'succeeded') {
       const videoUrl = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
       if (!videoUrl) throw new Error('No video URL in output');
@@ -72,14 +71,12 @@ async function generateSeedanceClip(prompt, ratio = '16:9') {
   throw new Error('Replicate timed out after 3 minutes');
 }
 
-// ── تحميل الفيديو ────────────────────────────────────────────────────────
 async function downloadVideo(url, outputPath) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
 }
 
-// ── FFmpeg: إبطاء الكليب لمدة مطلوبة ────────────────────────────────────
 function slowDownClip(inputPath, outputPath, targetDuration) {
   let originalDur = 5;
   try {
@@ -101,7 +98,6 @@ function slowDownClip(inputPath, outputPath, targetDuration) {
   }
 }
 
-// ── إضافة Captions ────────────────────────────────────────────────────────
 function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar', secPerScene = 7) {
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
   let FONT_PATH;
@@ -125,7 +121,6 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar',
     }
   }
 
-  // ── احسب مدة الفيديو الفعلية من الـ ffprobe ──
   let totalVideoDuration = 0;
   try {
     const dur = execSync(
@@ -174,7 +169,7 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar',
   }
 }
 
-// ── Pipeline الرئيسي لـ Model 4 ───────────────────────────────────────────
+// ── Pipeline Model 4 ───────────────────────────────────────────────────────
 export async function renderModel4Video({
   scenes,
   audioUrl,
@@ -196,11 +191,9 @@ export async function renderModel4Video({
 
   console.log(`[Model4] START | ${total} scenes | ${ratio}`);
 
-  // كل مشهد = 7 ثواني ثابت — الصوت بيتقطع قبل نهاية الفيديو بثانيتين
   const SEC_PER_CLIP = 7;
   console.log(`[Model4] SEC_PER_CLIP: ${SEC_PER_CLIP}s | Total video: ${total * SEC_PER_CLIP}s`);
 
-  // ── Step 1: Generate clips ────────────────────────────────────────────
   const rawPaths = [];
   for (let i = 0; i < scenes.length; i++) {
     const rawPath = path.join(TEMP_DIR, `m4_raw_${id}_${i}.mp4`);
@@ -221,7 +214,6 @@ export async function renderModel4Video({
     rawPaths.push(rawPath);
   }
 
-  // ── Step 2: Slow down كل كليب لـ SEC_PER_CLIP ────────────────────────
   const slowPaths = [];
   for (let i = 0; i < rawPaths.length; i++) {
     const slowPath = path.join(TEMP_DIR, `m4_slow_${id}_${i}.mp4`);
@@ -230,7 +222,6 @@ export async function renderModel4Video({
     slowPaths.push(slowPath);
   }
 
-  // ── Step 3: Concat ────────────────────────────────────────────────────
   if (onProgress) onProgress({ step: 'merging', current: 1, total: 1 });
   const mergedPath = path.join(TEMP_DIR, `m4_merged_${id}.mp4`);
   const listFile = path.join(TEMP_DIR, `m4_list_${id}.txt`);
@@ -242,7 +233,6 @@ export async function renderModel4Video({
     { stdio: 'pipe' }
   );
 
-  // ── Step 4: Audio ─────────────────────────────────────────────────────
   let audioPath = null;
   if (audioUrl) {
     const c = path.join(OUTPUTS_DIR, path.basename(audioUrl));
@@ -260,7 +250,6 @@ export async function renderModel4Video({
       ).trim());
     } catch {}
 
-    // لو الفيديو أقصر من الصوت — نطوله زي Model 3
     const videoExtended = path.join(TEMP_DIR, `m4_extended_${id}.mp4`);
     if (audioDur && audioDur > 0) {
       const targetDur = audioDur + 1;
@@ -307,7 +296,6 @@ export async function renderModel4Video({
     fs.copyFileSync(mergedPath, withAudioPath);
   }
 
-  // ── Step 5: Captions ─────────────────────────────────────────────────
   const withCaptionsPath = path.join(TEMP_DIR, `m4_captions_${id}.mp4`);
   if (captions) {
     addCaptions(withAudioPath, scenes, withCaptionsPath, ratio, videoLanguage, SEC_PER_CLIP);
@@ -315,14 +303,12 @@ export async function renderModel4Video({
     fs.copyFileSync(withAudioPath, withCaptionsPath);
   }
 
-  // ── Step 6: Final output ──────────────────────────────────────────────
   try {
     execSync(`ffmpeg -i "${withCaptionsPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' });
   } catch {
     fs.copyFileSync(withCaptionsPath, outputPath);
   }
 
-  // ── Cleanup ───────────────────────────────────────────────────────────
   setTimeout(() => {
     [...rawPaths, ...slowPaths, mergedPath, withAudioPath, withCaptionsPath, listFile].forEach(f => {
       try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
@@ -330,5 +316,81 @@ export async function renderModel4Video({
   }, 60000);
 
   console.log(`[Model4] DONE → ${outputPath}`);
+  return outputFile;
+}
+
+// ── Pipeline Model 5 (Cinematic) — 5s per clip, original Seedance audio ───
+export async function renderModel5Video({
+  scenes,
+  ratio = '9:16',
+  jobId,
+}) {
+  await mkdir(OUTPUTS_DIR, { recursive: true });
+  await mkdir(TEMP_DIR, { recursive: true });
+
+  const { w, h } = RATIOS[ratio] || RATIOS['9:16'];
+  const id = jobId || Date.now();
+  const outputFile = 'video_' + id + '.mp4';
+  const outputPath = path.join(OUTPUTS_DIR, outputFile);
+  const total = scenes.length;
+
+  console.log(`[Model5] START | ${total} scenes | ${ratio} | 5s per clip (original audio)`);
+
+  // Generate clips — مش بنعمل slow down، بناخد الكليب زي ما هو بالصوت الأصلي
+  const rawPaths = [];
+  for (let i = 0; i < scenes.length; i++) {
+    const rawPath = path.join(TEMP_DIR, `m5_raw_${id}_${i}.mp4`);
+    try {
+      console.log(`[Model5] Generating clip ${i + 1}/${total}: ${(scenes[i].prompt || '').slice(0, 60)}...`);
+      const url = await generateSeedanceClip(scenes[i].prompt || scenes[i].text, ratio);
+      await downloadVideo(url, rawPath);
+    } catch (e) {
+      console.error(`[Model5] Clip ${i + 1} failed:`, e.message);
+      execSync(
+        `ffmpeg -f lavfi -i color=c=0x060208:size=${w}x${h}:rate=24 -t 5 ` +
+        `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+        `-pix_fmt yuv420p -movflags +faststart -y "${rawPath}"`,
+        { stdio: 'pipe' }
+      );
+    }
+    rawPaths.push(rawPath);
+  }
+
+  // Concat الكليبات مع الصوت الأصلي من Seedance
+  const mergedPath = path.join(TEMP_DIR, `m5_merged_${id}.mp4`);
+  const listFile = path.join(TEMP_DIR, `m5_list_${id}.txt`);
+  fs.writeFileSync(listFile, rawPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
+
+  try {
+    execSync(
+      `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
+      `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+      `-pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart -y "${mergedPath}"`,
+      { stdio: 'pipe' }
+    );
+  } catch {
+    // fallback بدون صوت
+    execSync(
+      `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
+      `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+      `-pix_fmt yuv420p -an -movflags +faststart -y "${mergedPath}"`,
+      { stdio: 'pipe' }
+    );
+  }
+
+  // Final output
+  try {
+    execSync(`ffmpeg -i "${mergedPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' });
+  } catch {
+    fs.copyFileSync(mergedPath, outputPath);
+  }
+
+  setTimeout(() => {
+    [...rawPaths, mergedPath, listFile].forEach(f => {
+      try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+    });
+  }, 60000);
+
+  console.log(`[Model5] DONE → ${outputPath}`);
   return outputFile;
 }

@@ -13,7 +13,7 @@ import { generateVoiceover, VOICE_OPTIONS } from './services/voiceService.js';
 import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
-import { renderModel4Video, renderModel4Video as renderModel5Video } from './services/seedanceService.js';
+import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
@@ -669,15 +669,14 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
     try { return JSON.parse(clean); } catch { const m = raw.match(/\[[\s\S]*\]/); return m ? JSON.parse(m[0]) : []; }
   }
   try {
-    const charInstruction = characterRef ? `
-CHARACTER REFERENCE (include in every scene prompt): ${characterRef}` : '';
-    const batchPrompt = `Cinematic video story: "${idea}"${charInstruction}
-
-Generate EXACTLY ${sceneCount} scenes. Each scene is 5 seconds, NO voiceover, visual storytelling only.
-- "index": 1 to ${sceneCount}
-- "prompt": ENGLISH ONLY, cinematic video scene, 30-50 words, include character description if provided, dramatic lighting, photorealistic, no text overlay
-- "text": short scene description matching the story
-
+    const { videoStyle, styleSuffix } = req.body;
+    const styleInstruction = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic';
+    const charInstruction = characterRef ? `CHARACTER (include in EVERY scene): ${characterRef}` : '';
+    const batchPrompt = `Cinematic video: "${idea}"
+${charInstruction ? charInstruction + '\n' : ''}STYLE: ${styleInstruction}
+Generate EXACTLY ${sceneCount} scenes. Each = 5 seconds, no voiceover.
+- "prompt": ENGLISH, 30-50 words, MUST include character + style every scene, if dialogue: add 'and says "[text]"'
+- "text": short scene title
 Output ONLY JSON array:`;
     const scenes = await groqBatch(batchPrompt);
     if (!scenes || scenes.length === 0) throw new Error('No scenes generated');
