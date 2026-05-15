@@ -654,8 +654,7 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, characters, duration, videoStyle, styleSuffix } = req.body;
   if (!idea) return res.status(400).json({ error: 'idea required' });
   const sceneCount = duration === '1min' ? 12 : duration === '30s' ? 6 : 3;
-  const { videoStyle, styleSuffix } = req.body;
-  const characterRef = characters && characters.length > 0
+    const characterRef = characters && characters.length > 0
     ? characters.map((c, i) => `Character ${i+1}: ${c.prompt}`).join('. ')
     : '';
   async function groqBatch(prompt) {
