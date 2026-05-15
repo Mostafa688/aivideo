@@ -85,11 +85,11 @@ async function generateSeedance2Clip(prompt, ratio = '9:16', duration = 5) {
     'Content-Type': 'application/json',
     'Prefer': 'wait',
   };
-  const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-lite/predictions', {
+  const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      input: { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24, model_variant: 'non_video_in' },
+      input: { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24 },
     }),
   });
   if (!submitRes.ok) {
