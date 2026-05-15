@@ -13,9 +13,9 @@ import { generateVoiceover, VOICE_OPTIONS } from './services/voiceService.js';
 import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
-import { renderModel4Video } from './services/seedanceService.js';
+import { renderModel4Video, renderModel4Video as renderModel5Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed } from './services/authService.js';
+import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
@@ -187,6 +187,7 @@ app.get('/sitemap.xml', (req, res) => {
     { loc: `${base}/pricing`,   priority: '0.9', changefreq: 'weekly'  },
     { loc: `${base}/login`,     priority: '0.8', changefreq: 'monthly' },
     { loc: `${base}/affiliate`, priority: '0.7', changefreq: 'monthly' },
+    { loc: `${base}/cinematic`,  priority: '0.8', changefreq: 'weekly'  },
   ];
   const urlTags = urls.map(u => `
   <url>
@@ -210,6 +211,7 @@ Allow: /
 Allow: /pricing
 Allow: /login
 Allow: /affiliate
+Allow: /cinematic
 Disallow: /api/
 Disallow: /outputs/
 Disallow: /admin
@@ -640,6 +642,118 @@ app.get('/api/model4/usage', authMiddleware, async (req, res) => {
     const plan = user.model4_plan || 'm4_plan1';
     const planData = MODEL4_PLANS[plan];
     res.json({ access: true, plan, planData, trial_used: trialUsed, usage: { videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0, videos_3min: usage.videos_3min || 0 }, quota: { videos_30s: planData?.videos_30s || 0, videos_1min: planData?.videos_1min || 0, videos_3min: planData?.videos_3min || 0 } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ── Model 5 (Cinematic) Routes ────────────────────────────────────────────
+app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
+  const { idea, characters, duration } = req.body;
+  if (!idea) return res.status(400).json({ error: 'idea required' });
+  const sceneCount = duration === '1min' ? 12 : 6;
+  const characterRef = characters && characters.length > 0
+    ? characters.map((c, i) => `Character ${i+1}: ${c.prompt}`).join('. ')
+    : '';
+  async function groqBatch(prompt) {
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.5, messages: [{ role: 'system', content: 'JSON array generator. "prompt" MUST be English only. No voiceover. Cinematic scenes.' }, { role: 'user', content: prompt }] }),
+    });
+    const data = await r.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    const clean = raw.replace(/^[^[]*/, '').replace(/[^\]]*$/, '').trim();
+    try { return JSON.parse(clean); } catch { const m = raw.match(/\[[\s\S]*\]/); return m ? JSON.parse(m[0]) : []; }
+  }
+  try {
+    const charInstruction = characterRef ? `
+CHARACTER REFERENCE (include in every scene prompt): ${characterRef}` : '';
+    const batchPrompt = `Cinematic video story: "${idea}"${charInstruction}
+
+Generate EXACTLY ${sceneCount} scenes. Each scene is 5 seconds, NO voiceover, visual storytelling only.
+- "index": 1 to ${sceneCount}
+- "prompt": ENGLISH ONLY, cinematic video scene, 30-50 words, include character description if provided, dramatic lighting, photorealistic, no text overlay
+- "text": short scene description matching the story
+
+Output ONLY JSON array:`;
+    const scenes = await groqBatch(batchPrompt);
+    if (!scenes || scenes.length === 0) throw new Error('No scenes generated');
+    res.json({ scenes: scenes.slice(0, sceneCount) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) => {
+  const { scenes, ratio, duration } = req.body;
+  if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
+  const quotaCheck = await canUserMakeModel5Video(req.user.userId, duration || '30s');
+  if (!quotaCheck.allowed) {
+    return res.status(403).json({
+      error: quotaCheck.reason,
+      message: quotaCheck.reason === 'quota_exceeded'
+        ? `You've used all your ${duration} videos for this plan.`
+        : quotaCheck.reason === 'plan_not_support'
+        ? `${duration} is not available on your plan.`
+        : 'subscribe_required',
+      show_upgrade: true,
+    });
+  }
+  const renderJobId = String(Date.now());
+  setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+  res.status(202).json({ jobId: renderJobId, status: 'processing' });
+  (async () => {
+    try {
+      const videoPath = await renderModel5Video({ scenes, audioUrl: null, ratio: ratio || '9:16', jobId: renderJobId, captions: false, music: false, videoLanguage: 'en' });
+      await incrementModel5Video(req.user.userId, duration || '30s');
+      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
+    } catch (jobErr) {
+      setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
+    } finally {
+      scheduleRenderJobCleanup(renderJobId);
+    }
+  })();
+});
+
+app.post('/api/model5/payment-request', authMiddleware, async (req, res) => {
+  try {
+    const { plan, planName, amount, userEmail, screenshot } = req.body;
+    if (!plan || !amount || !userEmail || !screenshot) return res.status(400).json({ error: 'Missing required fields' });
+    const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
+    const adminSecret = process.env.ADMIN_SECRET || '';
+    const attachments = [];
+    if (screenshot) {
+      const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '');
+      const ext = screenshot.includes('png') ? 'png' : 'jpg';
+      attachments.push({ filename: `m5_payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
+    }
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion Cinematic <noreply@erivion.net>',
+        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+        subject: `🎬 Cinematic Payment - ${planName} - ${userEmail}`,
+        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#e11d48">🎬 New Cinematic Payment</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#e11d48;font-weight:700">${planName}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/model5-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/model5-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      }),
+    });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/model5/usage', authMiddleware, async (req, res) => {
+  try {
+    const user = await getUserById(req.user.userId);
+    if (!user?.model5_access) return res.json({ access: false });
+    const usage = await getModel5Usage(req.user.userId);
+    const plan = user.model5_plan || 'mc_starter';
+    const planData = MODEL5_PLANS[plan];
+    res.json({ access: true, plan, planData, usage: { videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0 }, quota: { videos_30s: planData?.videos_30s || 0, videos_1min: planData?.videos_1min || 0 } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

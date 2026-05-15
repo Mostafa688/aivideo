@@ -10,6 +10,8 @@ import {
   loginOrCreateGoogleUser, PLANS,
   getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS,
   getModel4Usage, MODEL4_PLANS,
+  getModel5Usage, MODEL5_PLANS,
+} from './authService.js';
 } from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
@@ -177,6 +179,8 @@ router.get('/credits', authMiddleware, async (req, res) => {
       model4_plan_data: m4planData,
       model4_trial_used: user?.model4_trial_used || 0,
       model3_trial_used: user?.model3_trial_used || 0,
+      model5_access: user?.model5_access || 0,
+      model5_plan: user?.model5_plan || 'mc_starter',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -211,7 +215,7 @@ router.get('/payment/status', authMiddleware, async (req, res) => {
 const PLAN_PRICES    = { pro: 50, plus: 100, max: 250 };
 const MODEL3_PRICES  = { m3_starter: 800, m3_pro: 1800, m3_max: 2500 };
 const MODEL4_PRICES  = { m4_plan1: 600, m4_plan2: 1000, m4_plan3: 2500, m4_starter: 600, m4_creator: 1000, m4_pro: 2500 };
-
+const MODEL5_PRICES = { mc_starter: 500, mc_pro: 900, mc_max: 1800 };
 router.get('/admin/approve', async (req, res) => {
   const { email, plan, billing, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
@@ -457,5 +461,32 @@ router.get('/model4-reject', async (req, res) => {
   } catch {}
   res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#ef4444">❌ Rejected</h2><p style="color:#9ca3af">${email}</p></body></html>`);
 });
+router.get('/model5-approve', async (req, res) => {
+  const { email, plan, secret } = req.query;
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  if (!email) return res.status(400).send('Missing email');
+  try {
+    await pool.query('UPDATE users SET model5_access = 1, model5_plan = $1 WHERE email = $2', [plan || 'mc_starter', email]);
+    const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'Erivion <noreply@erivion.net>', to: email, subject: '🎬 Erivion Cinematic Activated!', html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px">🎬</div><h2 style="color:#e11d48">Cinematic Activated!</h2><p style="color:#9ca3af">Start creating cinematic AI videos now.</p><a href="${frontendUrl}" style="display:inline-block;margin-top:20px;background:#e11d48;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700">Start Creating →</a></div>` }),
+    });
+    res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#22c55e">✅ Cinematic Activated!</h2><p style="color:#9ca3af">${email}</p></body></html>`);
+  } catch (e) { res.status(500).send('Error: ' + e.message); }
+});
 
+router.get('/model5-reject', async (req, res) => {
+  const { email, secret } = req.query;
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'Erivion <noreply@erivion.net>', to: email, subject: '❌ Cinematic Payment Not Verified', html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px">❌</div><h2 style="color:#ef4444">Payment Not Verified</h2><p style="color:#9ca3af">Contact us at digidelight33@gmail.com</p></div>` }),
+    });
+  } catch {}
+  res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#ef4444">❌ Rejected</h2><p>${email}</p></body></html>`);
+});
 export default router;

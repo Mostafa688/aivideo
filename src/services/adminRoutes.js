@@ -12,9 +12,7 @@ const pool = new Pool({
 function adminAuth(req, res, next) {
   const secret = req.headers['x-admin-secret'] || req.query.secret;
   const ADMIN_SECRET = process.env.ADMIN_SECRET || 'erivion_admin_2026';
-  if (!secret || secret !== ADMIN_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  if (!secret || secret !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
@@ -28,7 +26,7 @@ router.get('/stats', adminAuth, async (req, res) => {
       pool.query('SELECT COUNT(*) FROM users WHERE verified = 1'),
       pool.query('SELECT plan, COUNT(*) as count FROM users GROUP BY plan'),
       pool.query('SELECT COUNT(*) FROM videos'),
-      pool.query('SELECT id, email, plan, model3_access, created_at, verified FROM users ORDER BY id DESC LIMIT 20'),
+      pool.query('SELECT id, email, plan, model3_access, model5_access, created_at, verified FROM users ORDER BY id DESC LIMIT 20'),
       pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM payment_requests WHERE status = 'approved'"),
       pool.query("SELECT COUNT(*) FROM payment_requests WHERE status = 'pending'"),
       pool.query("SELECT COUNT(*) FROM users WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'"),
@@ -62,10 +60,7 @@ router.get('/payments', adminAuth, async (req, res) => {
     const { status } = req.query;
     let query = 'SELECT * FROM payment_requests ORDER BY created_at DESC LIMIT 50';
     let params = [];
-    if (status) {
-      query = 'SELECT * FROM payment_requests WHERE status = $1 ORDER BY created_at DESC LIMIT 50';
-      params = [status];
-    }
+    if (status) { query = 'SELECT * FROM payment_requests WHERE status = $1 ORDER BY created_at DESC LIMIT 50'; params = [status]; }
     const { rows } = await pool.query(query, params);
     res.json({ payments: rows });
   } catch (err) {
@@ -76,14 +71,12 @@ router.get('/payments', adminAuth, async (req, res) => {
 router.get('/users', adminAuth, async (req, res) => {
   try {
     const { plan, search, limit = 50 } = req.query;
-    let where = [];
-    let params = [];
-    let idx = 1;
+    let where = [], params = [], idx = 1;
     if (plan) { where.push(`plan = $${idx++}`); params.push(plan); }
     if (search) { where.push(`(email ILIKE $${idx++} OR name ILIKE $${idx - 1})`); params.push(`%${search}%`); }
     const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
     const { rows } = await pool.query(`
-      SELECT u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.ref_code, u.created_at,
+      SELECT u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
              COUNT(v.id) as total_videos
@@ -91,7 +84,7 @@ router.get('/users', adminAuth, async (req, res) => {
       LEFT JOIN user_usage uu ON uu.user_id = u.id
       LEFT JOIN videos v ON v.user_id = u.id
       ${whereClause}
-      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.ref_code, u.created_at, uu.credits_used, uu.videos_this_week
+      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at, uu.credits_used, uu.videos_this_week
       ORDER BY u.id DESC
       LIMIT $${idx}
     `, [...params, parseInt(limit)]);
@@ -105,10 +98,8 @@ router.get('/videos', adminAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT v.id, v.filename, v.title, v.created_at, u.email, u.plan
-      FROM videos v
-      JOIN users u ON u.id = v.user_id
-      ORDER BY v.created_at DESC
-      LIMIT 50
+      FROM videos v JOIN users u ON u.id = v.user_id
+      ORDER BY v.created_at DESC LIMIT 50
     `);
     res.json({ videos: rows });
   } catch (err) {
@@ -122,17 +113,26 @@ router.post('/user/plan', adminAuth, async (req, res) => {
     if (!email || !plan) return res.status(400).json({ error: 'email and plan required' });
     const expiresAt = new Date();
     expiresAt.setMonth(expiresAt.getMonth() + 1);
-    await pool.query(
-      'UPDATE users SET plan = $1, plan_expires_at = $2 WHERE email = $3',
-      [plan, plan === 'free' ? null : expiresAt.toISOString(), email]
-    );
+    await pool.query('UPDATE users SET plan = $1, plan_expires_at = $2 WHERE email = $3', [plan, plan === 'free' ? null : expiresAt.toISOString(), email]);
     if (model3_access !== undefined) {
-      await pool.query(
-        'UPDATE users SET model3_access = $1, model3_plan = $2 WHERE email = $3',
-        [model3_access ? 1 : 0, model3_plan || null, email]
-      );
+      await pool.query('UPDATE users SET model3_access = $1, model3_plan = $2 WHERE email = $3', [model3_access ? 1 : 0, model3_plan || null, email]);
     }
     res.json({ success: true, message: `Updated ${email} to ${plan}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Model 5 (Cinematic) Admin ──────────────────────────────────────────────
+router.post('/user/model5', adminAuth, async (req, res) => {
+  try {
+    const { email, model5_access, model5_plan } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+    await pool.query(
+      'UPDATE users SET model5_access = $1, model5_plan = $2 WHERE email = $3',
+      [model5_access ? 1 : 0, model5_plan || 'mc_starter', email]
+    );
+    res.json({ success: true, message: `Model 5 Cinematic updated for ${email}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

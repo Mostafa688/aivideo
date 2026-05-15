@@ -170,7 +170,7 @@ async function checkAndResetUsage(userId) {
 
 export async function getUserById(userId) {
   const { rows } = await pool.query(
-    'SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model3_trial_used, model4_access, model4_plan, model4_trial_used, created_at FROM users WHERE id = $1',
+    'SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model3_trial_used, model4_access, model4_plan, model4_trial_used, model5_access, model5_plan, created_at FROM users WHERE id = $1',
     [userId]
   );
   return rows[0] || null;
@@ -459,4 +459,59 @@ export async function canUserMakeModel4Video(userId, duration) {
 
 export async function markModel4TrialUsed(userId) {
   // kept for compatibility, trial disabled
+}
+// ── Model 5 (Cinematic) ────────────────────────────────────────────────────
+export const MODEL5_PLANS = {
+  mc_starter: { name: 'Starter', price: 500,  videos_30s: 5,  videos_1min: 0  },
+  mc_pro:     { name: 'Pro',     price: 900,  videos_30s: 3,  videos_1min: 5  },
+  mc_max:     { name: 'Max',     price: 1800, videos_30s: 5,  videos_1min: 10 },
+};
+
+export async function initModel5DB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS model5_usage (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+      videos_30s INTEGER DEFAULT 0,
+      videos_1min INTEGER DEFAULT 0,
+      last_reset TEXT DEFAULT CURRENT_DATE
+    );
+  `);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model5_access INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model5_plan TEXT DEFAULT NULL`);
+  console.log('[DB] Model 5 tables ready');
+}
+
+initModel5DB().catch(err => console.error('[DB] Model 5 init error:', err.message));
+
+export async function getModel5Usage(userId) {
+  const { rows } = await pool.query('SELECT * FROM model5_usage WHERE user_id = $1', [userId]);
+  if (rows.length === 0) {
+    await pool.query('INSERT INTO model5_usage (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]);
+    return { videos_30s: 0, videos_1min: 0 };
+  }
+  return rows[0];
+}
+
+export async function incrementModel5Video(userId, duration) {
+  const col = duration === '30s' ? 'videos_30s' : 'videos_1min';
+  await pool.query(
+    `INSERT INTO model5_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model5_usage.${col} + 1`,
+    [userId]
+  );
+}
+
+export async function canUserMakeModel5Video(userId, duration) {
+  const user = await getUserById(userId);
+  if (!user || !user.model5_access) return { allowed: false, reason: 'no_access' };
+  const plan = user.model5_plan || 'mc_starter';
+  const planData = MODEL5_PLANS[plan];
+  if (!planData) return { allowed: false, reason: 'invalid_plan' };
+  const quotaKey = duration === '30s' ? 'videos_30s' : 'videos_1min';
+  const quota = planData[quotaKey] || 0;
+  if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
+  const usage = await getModel5Usage(userId);
+  const used = usage[quotaKey] || 0;
+  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
+  return { allowed: true, quota, used, remaining: quota - used };
 }
