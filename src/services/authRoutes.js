@@ -12,7 +12,6 @@ import {
   getModel4Usage, MODEL4_PLANS,
   getModel5Usage, MODEL5_PLANS,
 } from './authService.js';
-} from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
 const router = express.Router();
