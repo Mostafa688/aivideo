@@ -77,6 +77,52 @@ async function downloadVideo(url, outputPath) {
   fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
 }
 
+// ── Seedance 2.0 Fast for Model 5 ────────────────────────────────────────
+async function generateSeedance2Clip(prompt, ratio = '9:16', duration = 5) {
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+  const headers = {
+    'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'wait',
+  };
+  const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-lite/predictions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      input: { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24, model_variant: 'non_video_in' },
+    }),
+  });
+  if (!submitRes.ok) {
+    const err = await submitRes.text();
+    throw new Error(`Seedance2 error ${submitRes.status}: ${err}`);
+  }
+  const prediction = await submitRes.json();
+  if (prediction.status === 'succeeded' && prediction.output) {
+    return Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  }
+  const predictionId = prediction.id;
+  if (!predictionId) throw new Error(`No prediction ID`);
+  const maxWait = 300_000;
+  const pollInterval = 5_000;
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWait) {
+    await new Promise(r => setTimeout(r, pollInterval));
+    const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
+    if (!statusRes.ok) continue;
+    const statusData = await statusRes.json();
+    console.log(`[Model5] Status: ${statusData.status} (${Math.round((Date.now()-startTime)/1000)}s)`);
+    if (statusData.status === 'succeeded') {
+      const url = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
+      if (!url) throw new Error('No video URL');
+      return url;
+    }
+    if (statusData.status === 'failed' || statusData.status === 'canceled') {
+      throw new Error(`Seedance2 failed: ${statusData.error || 'unknown'}`);
+    }
+  }
+  throw new Error('Seedance2 timed out');
+}
+
 function slowDownClip(inputPath, outputPath, targetDuration) {
   let originalDur = 5;
   try {
@@ -319,11 +365,13 @@ export async function renderModel4Video({
   return outputFile;
 }
 
-// ── Pipeline Model 5 (Cinematic) — 5s per clip, original Seedance audio ───
+// ── Pipeline Model 5 (Cinematic) — Seedance 2.0 Fast, with audio ──────────
+// Duration: 15s (3 clips), 30s (6 clips), 1min (12 clips) — each clip = 5s
 export async function renderModel5Video({
   scenes,
   ratio = '9:16',
   jobId,
+  duration = '30s',
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -333,21 +381,22 @@ export async function renderModel5Video({
   const outputFile = 'video_' + id + '.mp4';
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
   const total = scenes.length;
+  const CLIP_SEC = 5;
 
-  console.log(`[Model5] START | ${total} scenes | ${ratio} | 5s per clip (original audio)`);
+  console.log(`[Model5] START | ${total} scenes | ${ratio} | ${duration} | Seedance 2.0`);
 
-  // Generate clips — مش بنعمل slow down، بناخد الكليب زي ما هو بالصوت الأصلي
+  // Step 1: Generate clips بـ Seedance 2.0 مع الصوت الأصلي
   const rawPaths = [];
   for (let i = 0; i < scenes.length; i++) {
     const rawPath = path.join(TEMP_DIR, `m5_raw_${id}_${i}.mp4`);
     try {
-      console.log(`[Model5] Generating clip ${i + 1}/${total}: ${(scenes[i].prompt || '').slice(0, 60)}...`);
-      const url = await generateSeedanceClip(scenes[i].prompt || scenes[i].text, ratio);
+      console.log(`[Model5] Clip ${i + 1}/${total}: ${(scenes[i].prompt || '').slice(0, 60)}...`);
+      const url = await generateSeedance2Clip(scenes[i].prompt || scenes[i].text, ratio, CLIP_SEC);
       await downloadVideo(url, rawPath);
     } catch (e) {
       console.error(`[Model5] Clip ${i + 1} failed:`, e.message);
       execSync(
-        `ffmpeg -f lavfi -i color=c=0x060208:size=${w}x${h}:rate=24 -t 5 ` +
+        `ffmpeg -f lavfi -i color=c=0x060208:size=${w}x${h}:rate=24 -t ${CLIP_SEC} ` +
         `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
         `-pix_fmt yuv420p -movflags +faststart -y "${rawPath}"`,
         { stdio: 'pipe' }
@@ -356,7 +405,7 @@ export async function renderModel5Video({
     rawPaths.push(rawPath);
   }
 
-  // Concat الكليبات مع الصوت الأصلي من Seedance
+  // Step 2: Concat مع الصوت الأصلي
   const mergedPath = path.join(TEMP_DIR, `m5_merged_${id}.mp4`);
   const listFile = path.join(TEMP_DIR, `m5_list_${id}.txt`);
   fs.writeFileSync(listFile, rawPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
@@ -365,11 +414,10 @@ export async function renderModel5Video({
     execSync(
       `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
       `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
-      `-pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart -y "${mergedPath}"`,
+      `-pix_fmt yuv420p -c:a aac -b:a 192k -ar 44100 -ac 2 -movflags +faststart -y "${mergedPath}"`,
       { stdio: 'pipe' }
     );
   } catch {
-    // fallback بدون صوت
     execSync(
       `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
       `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
@@ -378,7 +426,7 @@ export async function renderModel5Video({
     );
   }
 
-  // Final output
+  // Step 3: Final output
   try {
     execSync(`ffmpeg -i "${mergedPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' });
   } catch {

@@ -651,9 +651,10 @@ app.get('/api/model4/usage', authMiddleware, async (req, res) => {
 
 // ── Model 5 (Cinematic) Routes ────────────────────────────────────────────
 app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
-  const { idea, characters, duration } = req.body;
+  const { idea, characters, duration, videoStyle, styleSuffix } = req.body;
   if (!idea) return res.status(400).json({ error: 'idea required' });
-  const sceneCount = duration === '1min' ? 12 : 6;
+  const sceneCount = duration === '1min' ? 12 : duration === '30s' ? 6 : 3;
+  const { videoStyle, styleSuffix } = req.body;
   const characterRef = characters && characters.length > 0
     ? characters.map((c, i) => `Character ${i+1}: ${c.prompt}`).join('. ')
     : '';
@@ -706,7 +707,7 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   res.status(202).json({ jobId: renderJobId, status: 'processing' });
   (async () => {
     try {
-      const videoPath = await renderModel5Video({ scenes, audioUrl: null, ratio: ratio || '9:16', jobId: renderJobId, captions: false, music: false, videoLanguage: 'en' });
+      const videoPath = await renderModel5Video({ scenes, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s' });
       await incrementModel5Video(req.user.userId, duration || '30s');
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
@@ -753,7 +754,7 @@ app.get('/api/model5/usage', authMiddleware, async (req, res) => {
     const usage = await getModel5Usage(req.user.userId);
     const plan = user.model5_plan || 'mc_starter';
     const planData = MODEL5_PLANS[plan];
-    res.json({ access: true, plan, planData, usage: { videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0 }, quota: { videos_30s: planData?.videos_30s || 0, videos_1min: planData?.videos_1min || 0 } });
+    res.json({ access: true, plan, planData, usage: { videos_15s: usage.videos_15s || 0, videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0 }, quota: { videos_15s: planData?.videos_15s || 0, videos_30s: planData?.videos_30s || 0, videos_1min: planData?.videos_1min || 0 } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

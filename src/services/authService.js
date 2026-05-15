@@ -462,9 +462,9 @@ export async function markModel4TrialUsed(userId) {
 }
 // ── Model 5 (Cinematic) ────────────────────────────────────────────────────
 export const MODEL5_PLANS = {
-  mc_starter: { name: 'Starter', price: 500,  videos_30s: 5,  videos_1min: 0  },
-  mc_pro:     { name: 'Pro',     price: 900,  videos_30s: 3,  videos_1min: 5  },
-  mc_max:     { name: 'Max',     price: 1800, videos_30s: 5,  videos_1min: 10 },
+  mc_starter: { name: 'Starter', price: 400,  videos_15s: 5, videos_30s: 0, videos_1min: 0 },
+  mc_pro:     { name: 'Pro',     price: 750,  videos_15s: 0, videos_30s: 5, videos_1min: 0 },
+  mc_max:     { name: 'Max',     price: 1500, videos_15s: 0, videos_30s: 0, videos_1min: 5 },
 };
 
 export async function initModel5DB() {
@@ -472,10 +472,12 @@ export async function initModel5DB() {
     CREATE TABLE IF NOT EXISTS model5_usage (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+      videos_15s INTEGER DEFAULT 0,
       videos_30s INTEGER DEFAULT 0,
       videos_1min INTEGER DEFAULT 0,
       last_reset TEXT DEFAULT CURRENT_DATE
     );
+    ALTER TABLE model5_usage ADD COLUMN IF NOT EXISTS videos_15s INTEGER DEFAULT 0;
   `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model5_access INTEGER DEFAULT 0`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model5_plan TEXT DEFAULT NULL`);
@@ -494,7 +496,7 @@ export async function getModel5Usage(userId) {
 }
 
 export async function incrementModel5Video(userId, duration) {
-  const col = duration === '30s' ? 'videos_30s' : 'videos_1min';
+  const col = duration === '15s' ? 'videos_15s' : duration === '30s' ? 'videos_30s' : 'videos_1min';
   await pool.query(
     `INSERT INTO model5_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model5_usage.${col} + 1`,
     [userId]
@@ -507,7 +509,7 @@ export async function canUserMakeModel5Video(userId, duration) {
   const plan = user.model5_plan || 'mc_starter';
   const planData = MODEL5_PLANS[plan];
   if (!planData) return { allowed: false, reason: 'invalid_plan' };
-  const quotaKey = duration === '30s' ? 'videos_30s' : 'videos_1min';
+  const quotaKey = duration === '15s' ? 'videos_15s' : duration === '30s' ? 'videos_30s' : 'videos_1min';
   const quota = planData[quotaKey] || 0;
   if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
   const usage = await getModel5Usage(userId);
