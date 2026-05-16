@@ -1,21 +1,17 @@
 import express from 'express';
 import pkg from 'pg';
 const { Pool } = pkg;
-
 const router = express.Router();
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
 });
-
 function adminAuth(req, res, next) {
   const secret = req.headers['x-admin-secret'] || req.query.secret;
   const ADMIN_SECRET = process.env.ADMIN_SECRET || 'erivion_admin_2026';
   if (!secret || secret !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
-
 router.get('/stats', adminAuth, async (req, res) => {
   try {
     const [
@@ -54,7 +50,6 @@ router.get('/stats', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 router.get('/payments', adminAuth, async (req, res) => {
   try {
     const { status } = req.query;
@@ -67,7 +62,6 @@ router.get('/payments', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 router.get('/users', adminAuth, async (req, res) => {
   try {
     const { plan, search, limit = 50 } = req.query;
@@ -76,7 +70,7 @@ router.get('/users', adminAuth, async (req, res) => {
     if (search) { where.push(`(email ILIKE $${idx++} OR name ILIKE $${idx - 1})`); params.push(`%${search}%`); }
     const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
     const { rows } = await pool.query(`
-      SELECT u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at,
+      SELECT u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model4_access, u.model4_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
              COUNT(v.id) as total_videos
@@ -84,7 +78,7 @@ router.get('/users', adminAuth, async (req, res) => {
       LEFT JOIN user_usage uu ON uu.user_id = u.id
       LEFT JOIN videos v ON v.user_id = u.id
       ${whereClause}
-      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at, uu.credits_used, uu.videos_this_week
+      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model4_access, u.model4_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at, uu.credits_used, uu.videos_this_week
       ORDER BY u.id DESC
       LIMIT $${idx}
     `, [...params, parseInt(limit)]);
@@ -93,7 +87,6 @@ router.get('/users', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 router.get('/videos', adminAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -106,7 +99,6 @@ router.get('/videos', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 router.post('/user/plan', adminAuth, async (req, res) => {
   try {
     const { email, plan, model3_access, model3_plan } = req.body;
@@ -122,20 +114,46 @@ router.post('/user/plan', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
+// ── Model 3 Admin ──────────────────────────────────────────────────────────
+router.post('/user/model3', adminAuth, async (req, res) => {
+  try {
+    const { email, access, plan } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+    await pool.query(
+      'UPDATE users SET model3_access = $1, model3_plan = $2 WHERE email = $3',
+      [access ? 1 : 0, plan || 'm3_starter', email]
+    );
+    res.json({ success: true, message: `Model 3 updated for ${email}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// ── Model 4 Admin ──────────────────────────────────────────────────────────
+router.post('/user/model4', adminAuth, async (req, res) => {
+  try {
+    const { email, access, plan } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+    await pool.query(
+      'UPDATE users SET model4_access = $1, model4_plan = $2 WHERE email = $3',
+      [access ? 1 : 0, plan || 'm4_plan1', email]
+    );
+    res.json({ success: true, message: `Model 4 updated for ${email}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // ── Model 5 (Cinematic) Admin ──────────────────────────────────────────────
 router.post('/user/model5', adminAuth, async (req, res) => {
   try {
-    const { email, model5_access, model5_plan } = req.body;
+    const { email, access, plan } = req.body;
     if (!email) return res.status(400).json({ error: 'email required' });
     await pool.query(
       'UPDATE users SET model5_access = $1, model5_plan = $2 WHERE email = $3',
-      [model5_access ? 1 : 0, model5_plan || 'mc_starter', email]
+      [access ? 1 : 0, plan || 'mc_starter', email]
     );
     res.json({ success: true, message: `Model 5 Cinematic updated for ${email}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 export default router;
