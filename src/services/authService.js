@@ -386,6 +386,16 @@ export async function incrementModel3Video(userId, duration) {
   await pool.query(`INSERT INTO model3_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model3_usage.${col} + 1`, [userId]);
 }
 
+export async function resetModel3Usage(userId) {
+  await pool.query(
+    `INSERT INTO model3_usage (user_id, videos_30s, videos_1min, videos_3min, videos_5min)
+     VALUES ($1, 0, 0, 0, 0)
+     ON CONFLICT (user_id) DO UPDATE SET
+       videos_30s = 0, videos_1min = 0, videos_3min = 0, videos_5min = 0`,
+    [userId]
+  );
+}
+
 export async function canUserMakeModel3Video(userId, duration) {
   const user = await getUserById(userId);
   if (user?.model3_access) {
@@ -438,6 +448,16 @@ export async function incrementModel4Video(userId, duration) {
   const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
   await pool.query(
     `INSERT INTO model4_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model4_usage.${col} + 1`,
+    [userId]
+  );
+}
+
+export async function resetModel4Usage(userId) {
+  await pool.query(
+    `INSERT INTO model4_usage (user_id, videos_30s, videos_1min, videos_3min)
+     VALUES ($1, 0, 0, 0)
+     ON CONFLICT (user_id) DO UPDATE SET
+       videos_30s = 0, videos_1min = 0, videos_3min = 0`,
     [userId]
   );
 }
@@ -499,6 +519,16 @@ export async function incrementModel5Video(userId, duration) {
   const col = duration === '15s' ? 'videos_15s' : duration === '30s' ? 'videos_30s' : 'videos_1min';
   await pool.query(
     `INSERT INTO model5_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model5_usage.${col} + 1`,
+    [userId]
+  );
+}
+
+export async function resetModel5Usage(userId) {
+  await pool.query(
+    `INSERT INTO model5_usage (user_id, videos_15s, videos_30s, videos_1min)
+     VALUES ($1, 0, 0, 0)
+     ON CONFLICT (user_id) DO UPDATE SET
+       videos_15s = 0, videos_30s = 0, videos_1min = 0`,
     [userId]
   );
 }

@@ -11,6 +11,7 @@ import {
   getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS,
   getModel4Usage, MODEL4_PLANS,
   getModel5Usage, MODEL5_PLANS,
+  resetModel3Usage, resetModel4Usage, resetModel5Usage,
 } from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
@@ -359,6 +360,11 @@ router.get('/model3-approve', async (req, res) => {
   if (!email) return res.status(400).send('Missing email');
   try {
     await pool.query('UPDATE users SET model3_access = 1, model3_plan = $2 WHERE email = $1', [email, plan || 'm3_starter']);
+    // Reset usage عشان لو اشترى خطة جديدة يتجدد العداد
+    try {
+      const uRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      if (uRow.rows.length > 0) await resetModel3Usage(uRow.rows[0].id);
+    } catch {}
 
     // ── Affiliate payment tracking ─────────────────────────────────────
     try {
@@ -413,6 +419,11 @@ router.get('/model4-approve', async (req, res) => {
   if (!email) return res.status(400).send('Missing email');
   try {
     await pool.query('UPDATE users SET model4_access = 1, model4_plan = $1 WHERE email = $2', [plan || 'm4_plan1', email]);
+    // Reset usage عشان لو اشترى خطة جديدة يتجدد العداد
+    try {
+      const uRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      if (uRow.rows.length > 0) await resetModel4Usage(uRow.rows[0].id);
+    } catch {}
 
     // ── Affiliate payment tracking ─────────────────────────────────────
     try {
@@ -466,6 +477,11 @@ router.get('/model5-approve', async (req, res) => {
   if (!email) return res.status(400).send('Missing email');
   try {
     await pool.query('UPDATE users SET model5_access = 1, model5_plan = $1 WHERE email = $2', [plan || 'mc_starter', email]);
+    // Reset usage عشان لو اشترى خطة جديدة يتجدد العداد
+    try {
+      const uRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      if (uRow.rows.length > 0) await resetModel5Usage(uRow.rows[0].id);
+    } catch {}
     const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
