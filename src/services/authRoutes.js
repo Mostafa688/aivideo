@@ -417,6 +417,83 @@ router.get('/intl-reject', async (req, res) => {
   res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">❌</div><h2 style="color:#ef4444">Request Rejected</h2><p style="color:#9ca3af">${email || ''}</p></div></body></html>`);
 });
 
+router.post('/gumroad-ping', async (req, res) => {
+  try {
+    const data = req.body;
+    const sellerEmail = data?.email || data?.buyer_email || '';
+    const productPermalink = data?.product_permalink || '';
+    const refunded = data?.refunded === 'true' || data?.refunded === true;
+    const subscriptionCancelled = data?.subscription_cancelled === 'true' || data?.subscription_cancelled === true;
+    const subscriptionEnded = data?.subscription_ended === 'true' || data?.subscription_ended === true;
+
+    console.log('[Gumroad Ping]', JSON.stringify(data));
+
+    // Map Gumroad product permalink to plan key
+    const PERMALINK_TO_PLAN = {
+      sesmk: 'pro',
+      skpwha: 'plus',
+      kmiguq: 'max',
+      osibu: 'm3_starter',
+      zfdge: 'm3_pro',
+      fgydww: 'm3_max',
+      hqsejc: 'm4_plan1',
+      ckvlgo: 'm4_plan2',
+      vmzubx: 'm4_plan3',
+      dnkam: 'mc_starter',
+    };
+
+    const planKey = PERMALINK_TO_PLAN[productPermalink];
+
+    // Cancellation or refund → downgrade to free
+    if ((subscriptionCancelled || subscriptionEnded || refunded) && sellerEmail) {
+      try {
+        await pool.query(
+          'UPDATE users SET plan = $1, plan_expires_at = NULL WHERE email = $2',
+          ['free', sellerEmail]
+        );
+        console.log(`[Gumroad] Downgraded ${sellerEmail} to free`);
+
+        // Email to user
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Erivion <noreply@erivion.net>',
+            to: sellerEmail,
+            subject: 'Your Erivion subscription has ended',
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">👋</div><h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Subscription Ended</h2><p style="color:#9ca3af;font-size:14px;margin:0">Your plan has been downgraded to Free</p></div><p style="color:#9ca3af;font-size:13px;text-align:center">You can resubscribe anytime from the <a href="${process.env.FRONTEND_URL || 'https://erivion.net'}/pricing" style="color:#7c6af7">pricing page</a>.</p></div>`,
+          }),
+        });
+      } catch(e) { console.error('[Gumroad Ping] Downgrade error:', e.message); }
+      return res.json({ ok: true });
+    }
+
+    // New sale → activate plan
+    if (planKey && sellerEmail && !refunded) {
+      try {
+        await activateUserPlan(sellerEmail, planKey, 'monthly');
+        console.log(`[Gumroad] Activated ${planKey} for ${sellerEmail}`);
+
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Erivion <noreply@erivion.net>',
+            to: sellerEmail,
+            subject: '🎉 Your Erivion plan is now active!',
+            html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">🎉</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Plan Activated!</h2><p style="color:#9ca3af;font-size:14px;margin:0">Your Gumroad payment was verified</p></div><div style="text-align:center"><a href="${process.env.FRONTEND_URL || 'https://erivion.net'}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Start Creating Videos →</a></div></div>`,
+          }),
+        });
+      } catch(e) { console.error('[Gumroad Ping] Activate error:', e.message); }
+    }
+
+    res.json({ ok: true });
+  } catch(e) {
+    console.error('[Gumroad Ping] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post('/referral', authMiddleware, async (req, res) => { res.json({ ok: true }); });
 
 router.get('/model3-usage', authMiddleware, async (req, res) => {
