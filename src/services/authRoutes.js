@@ -308,6 +308,115 @@ router.post('/support', async (req, res) => {
   }
 });
 
+router.post('/intl-payment/request', authMiddleware, async (req, res) => {
+  try {
+    const { planKey, planName, usdPrice } = req.body;
+    if (!planKey || !planName) return res.status(400).json({ error: 'Missing fields' });
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'https://erivion.net';
+    const adminSecret = process.env.ADMIN_SECRET || '';
+
+    // Email to admin
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: 'digidelight33@gmail.com',
+        subject: `🌐 New International Payment Request — ${planName}`,
+        html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h2 style="color:#22c55e">🌐 International Payment Request</h2>
+          <table style="width:100%;border-collapse:collapse;margin:20px 0">
+            <tr><td style="color:#888;padding:8px 0">User Email</td><td style="color:#fff;font-weight:600">${user.email}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f59e0b;font-weight:700">${planName}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Price</td><td style="color:#22c55e;font-weight:700">$${usdPrice} USD</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Payment</td><td style="color:#86efac">Gumroad (verify on dashboard)</td></tr>
+          </table>
+          <p style="color:#9ca3af;font-size:13px">Please check your Gumroad dashboard to verify payment, then approve or reject:</p>
+          <div style="margin-top:20px;display:flex;gap:12px">
+            <a href="${backendUrl}/api/auth/intl-approve?email=${encodeURIComponent(user.email)}&plan=${planKey}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
+            <a href="${backendUrl}/api/auth/intl-reject?email=${encodeURIComponent(user.email)}&plan=${planKey}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
+          </div>
+        </div>`,
+      }),
+    });
+
+    // Email to user
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: user.email,
+        subject: `⏳ Your ${planName} request is under review`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px">
+          <div style="text-align:center;margin-bottom:28px">
+            <div style="font-size:56px;margin-bottom:12px">⏳</div>
+            <h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Payment Under Review</h2>
+            <p style="color:#9ca3af;font-size:14px;margin:0">We received your subscription request</p>
+          </div>
+          <div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:24px">
+            <table style="width:100%;border-collapse:collapse">
+              <tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Plan</td><td style="color:#f59e0b;font-weight:700;text-align:right">${planName}</td></tr>
+              <tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Amount</td><td style="color:#22c55e;font-weight:700;text-align:right">$${usdPrice} USD</td></tr>
+              <tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Status</td><td style="color:#f59e0b;font-weight:700;text-align:right">Under Review</td></tr>
+            </table>
+          </div>
+          <p style="color:#9ca3af;font-size:13px;text-align:center">We'll verify your Gumroad payment and send you a confirmation email within <strong style="color:#fff">24 hours</strong>.</p>
+        </div>`,
+      }),
+    });
+
+    res.json({ success: true });
+  } catch(e) {
+    console.error('[IntlPayment]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/intl-approve', async (req, res) => {
+  const { email, plan, secret } = req.query;
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  if (!email || !plan) return res.status(400).send('Missing fields');
+  try {
+    await activateUserPlan(email, plan, 'monthly');
+    const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: email,
+        subject: `🎉 Your plan is now active!`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">🎉</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Payment Approved!</h2><p style="color:#9ca3af;font-size:14px;margin:0">Your international subscription has been activated</p></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Start Creating Videos →</a></div></div>`,
+      }),
+    });
+    res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">✅</div><h2 style="color:#22c55e">International Plan Activated!</h2><p style="color:#9ca3af">${email}</p><p style="color:#7c6af7;font-weight:700;font-size:18px">${plan.toUpperCase()}</p></div></body></html>`);
+  } catch(e) { res.status(500).send('Error: ' + e.message); }
+});
+
+router.get('/intl-reject', async (req, res) => {
+  const { email, plan, secret } = req.query;
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  if (email) {
+    try {
+      const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion <noreply@erivion.net>',
+          to: email,
+          subject: `Regarding your subscription request`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">⚠️</div><h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Payment Not Verified</h2><p style="color:#9ca3af;font-size:14px;margin:0">We could not verify your Gumroad payment</p></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">Try Again →</a></div></div>`,
+        }),
+      });
+    } catch(e) { console.error('[IntlReject]', e.message); }
+  }
+  res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">❌</div><h2 style="color:#ef4444">Request Rejected</h2><p style="color:#9ca3af">${email || ''}</p></div></body></html>`);
+});
+
 router.post('/referral', authMiddleware, async (req, res) => { res.json({ ok: true }); });
 
 router.get('/model3-usage', authMiddleware, async (req, res) => {
