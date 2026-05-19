@@ -381,6 +381,16 @@ router.get('/intl-approve', async (req, res) => {
   if (!email || !plan) return res.status(400).send('Missing fields');
   try {
     await activateUserPlan(email, plan, 'monthly');
+    // Reset usage for M3/M4/M5 plans
+    try {
+      const uRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      if (uRow.rows.length > 0) {
+        const uid = uRow.rows[0].id;
+        if (plan.startsWith('m3_')) { await pool.query('UPDATE users SET model3_access = 1, model3_plan = $1 WHERE id = $2', [plan, uid]); await resetModel3Usage(uid); }
+        else if (plan.startsWith('m4_')) { await pool.query('UPDATE users SET model4_access = 1, model4_plan = $1 WHERE id = $2', [plan, uid]); await resetModel4Usage(uid); }
+        else if (plan.startsWith('mc_')) { await pool.query('UPDATE users SET model5_access = 1, model5_plan = $1 WHERE id = $2', [plan, uid]); await resetModel5Usage(uid); }
+      }
+    } catch(re) { console.error('[IntlApprove] Reset error:', re.message); }
     const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -473,6 +483,16 @@ router.post('/gumroad-ping', async (req, res) => {
       try {
         await activateUserPlan(sellerEmail, planKey, 'monthly');
         console.log(`[Gumroad] Activated ${planKey} for ${sellerEmail}`);
+        // Reset usage for M3/M4/M5 plans
+        try {
+          const uRow = await pool.query('SELECT id FROM users WHERE email = $1', [sellerEmail]);
+          if (uRow.rows.length > 0) {
+            const uid = uRow.rows[0].id;
+            if (planKey.startsWith('m3_')) { await pool.query('UPDATE users SET model3_access = 1, model3_plan = $1 WHERE id = $2', [planKey, uid]); await resetModel3Usage(uid); }
+            else if (planKey.startsWith('m4_')) { await pool.query('UPDATE users SET model4_access = 1, model4_plan = $1 WHERE id = $2', [planKey, uid]); await resetModel4Usage(uid); }
+            else if (planKey.startsWith('mc_')) { await pool.query('UPDATE users SET model5_access = 1, model5_plan = $1 WHERE id = $2', [planKey, uid]); await resetModel5Usage(uid); }
+          }
+        } catch(re) { console.error('[GumroadPing] Reset error:', re.message); }
 
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
