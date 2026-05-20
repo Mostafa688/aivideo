@@ -222,6 +222,22 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   updateStatus(jobId, { progress: 30, log: ['✅ Voiceover ready', '🗺️ Generating map frames...'] });
 
+  // Get actual audio duration and add 4 seconds buffer
+  let actualAudioDuration = durationSecs;
+  if (audioPath && fs.existsSync(audioPath)) {
+    try {
+      const { execSync } = await import('child_process');
+      const result = execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`,
+        { encoding: 'utf8' }
+      ).trim();
+      actualAudioDuration = parseFloat(result) || durationSecs;
+      console.log(`[MapVideo] Actual audio duration: ${actualAudioDuration.toFixed(1)}s`);
+    } catch(e) {
+      console.warn('[MapVideo] Could not get audio duration:', e.message);
+    }
+  }
+
   // 3. Generate frames
   const baseSvg = fs.readFileSync(MAP_SVG_PATH, 'utf8');
   const framesDir = path.join(jobDir, 'frames');
@@ -275,7 +291,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   };
 
   // Add 4 extra seconds at end so video is longer than audio
-  const totalSecs = durationSecs + 4;
+  const totalSecs = Math.ceil(actualAudioDuration) + 4;
 
   // Helper: interpolate colors for smooth transition
   const interpolateColor = (hex1, hex2, t) => {
@@ -373,7 +389,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   }
   ffmpegCmd += ` -vf "${zpFilter}" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast`;
   if (audioPath && fs.existsSync(audioPath)) {
-    ffmpegCmd += ` -map 0:v:0 -map 1:a:0 -shortest`;
+    ffmpegCmd += ` -map 0:v:0 -map 1:a:0`;
   }
   ffmpegCmd += ` "${outputPath}"`;
 
