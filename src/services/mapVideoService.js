@@ -9,7 +9,6 @@ import { generateVoiceover } from './voiceService.js';
 const execAsync = promisify(exec);
 const MAP_SVG_PATH = path.join(process.cwd(), 'public', 'maps', 'world.svg');
 
-// ── Style definitions ──────────────────────────────────────────────────────
 const STYLES = {
   dark:     { ocean: '#0f0f1f', land: '#1e2044', border: '#2d3561', text: '#ffffff' },
   classic:  { ocean: '#4a90d9', land: '#f5e6c8', border: '#c8a96e', text: '#333333' },
@@ -17,7 +16,6 @@ const STYLES = {
   clean:    { ocean: '#e8f4f8', land: '#ffffff',  border: '#cccccc', text: '#333333' },
 };
 
-// ── Country ISO code lookup (name → ISO2) ──────────────────────────────────
 const COUNTRY_ISO = {
   'afghanistan': 'AF', 'albania': 'AL', 'algeria': 'DZ', 'angola': 'AO',
   'argentina': 'AR', 'armenia': 'AM', 'australia': 'AU', 'austria': 'AT',
@@ -53,7 +51,6 @@ const COUNTRY_ISO = {
   'roman empire': null, 'byzantine empire': null, 'mongol empire': null,
 };
 
-// Country bounding boxes [x, y, width, height] in SVG 2000x857 space
 const COUNTRY_BBOX = {
   'US': [200, 150, 450, 250], 'CA': [150, 50, 500, 280], 'MX': [200, 320, 200, 180],
   'BR': [420, 380, 350, 320], 'AR': [450, 580, 200, 280], 'CL': [420, 480, 80, 350],
@@ -68,7 +65,6 @@ const COUNTRY_BBOX = {
   'LY': [1040, 270, 110, 100],
 };
 
-// ── Parse timeline from Groq ───────────────────────────────────────────────
 export async function parseMapTimeline(script, idea, mode, language) {
   const prompt = `You are a geographic historian AI. Analyze this ${mode === 'idea' ? 'topic idea' : 'narration script'} and extract a precise timeline of geographic events for an animated map video.
 
@@ -103,16 +99,8 @@ Rules:
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 3000,
-      temperature: 0.3,
-    }),
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 3000, temperature: 0.3 }),
   });
 
   const data = await res.json();
@@ -121,7 +109,6 @@ Rules:
   return JSON.parse(clean);
 }
 
-// ── Zoom regions ───────────────────────────────────────────────────────────
 const ZOOM_REGIONS = {
   'world':       { x: 0,    y: 0,   w: 2000, h: 857 },
   'europe':      { x: 850,  y: 80,  w: 500,  h: 400 },
@@ -131,28 +118,8 @@ const ZOOM_REGIONS = {
   'americas':    { x: 100,  y: 50,  w: 700,  h: 750 },
 };
 
-// ── Generate one SVG frame ────────────────────────────────────────────────
-export function generateSVGFrame({ baseSvg, highlights, style }) {
-  const colors = STYLES[style] || STYLES.dark;
-
-  let cssRules = `path { fill: ${colors.land}; stroke: ${colors.border}; stroke-width: 0.4; transition: fill 0.5s; }`;
-  for (const [iso, color] of Object.entries(highlights)) {
-    cssRules += `#${iso}, [class="${iso}"] { fill: ${color} !important; }`;
-  }
-
-  const pathMatches = baseSvg.match(/<path[\s\S]*?(?:\/>|<\/path>)/g) || [];
-  const paths = pathMatches.join('\n');
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 857" width="2000" height="857">
-  <style>${cssRules}</style>
-  <rect width="2000" height="857" fill="${colors.ocean}"/>
-  ${paths}
-</svg>`;
-}
-
-// ── Compute zoompan params for a zone ─────────────────────────────────────
-function getZoompanForZone(zone, w, h, durationSecs) {
+// ✅ حساب الـ viewBox لكل zone — الـ zoom بيتعمل في الـ SVG مباشرة
+function getViewBoxForZone(zone, w, h) {
   let region;
   if (zone && zone.length === 2 && COUNTRY_BBOX[zone]) {
     const [bx, by, bw, bh] = COUNTRY_BBOX[zone];
@@ -167,37 +134,61 @@ function getZoompanForZone(zone, w, h, durationSecs) {
   const rw = Math.min(2000 - rx, region.w);
   const rh = Math.min(857 - ry, region.h);
 
-  const scale = 1;
-  const zoomX = (w / (rw * scale));
-  const zoomY = (h / (rh * scale));
-  const zoom = Math.min(zoomX, zoomY, 4);
+  // نحسب الـ viewBox بحيث يحافظ على نسبة الـ output
+  const outputAspect = w / h;
+  const regionAspect = rw / rh;
 
-  const cx = (rx + rw / 2) * scale;
-  const cy = (ry + rh / 2) * scale;
+  let vbx, vby, vbw, vbh;
+  if (regionAspect > outputAspect) {
+    vbw = rw;
+    vbh = rw / outputAspect;
+    vbx = rx;
+    vby = ry + (rh - vbh) / 2;
+  } else {
+    vbh = rh;
+    vbw = rh * outputAspect;
+    vby = ry;
+    vbx = rx + (rw - vbw) / 2;
+  }
 
-  const zpx = Math.max(0, cx - (w / zoom) / 2);
-  const zpy = Math.max(0, cy - (h / zoom) / 2);
+  vbx = Math.max(0, vbx);
+  vby = Math.max(0, vby);
 
-  return { zoom: zoom.toFixed(4), x: Math.round(zpx), y: Math.round(zpy) };
+  return `${Math.round(vbx)} ${Math.round(vby)} ${Math.round(vbw)} ${Math.round(vbh)}`;
 }
 
-// ── Helper: resolve uploadedAudioUrl to disk path ─────────────────────────
+// ✅ توليد SVG مع viewBox للـ zoom — بدون zoompan في FFmpeg
+export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h }) {
+  const colors = STYLES[style] || STYLES.dark;
+
+  let cssRules = `path { fill: ${colors.land}; stroke: ${colors.border}; stroke-width: 0.4; }`;
+  for (const [iso, color] of Object.entries(highlights)) {
+    cssRules += `#${iso}, [class="${iso}"] { fill: ${color} !important; }`;
+  }
+
+  const pathMatches = baseSvg.match(/<path[\s\S]*?(?:\/>|<\/path>)/g) || [];
+  const paths = pathMatches.join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${w}" height="${h}">
+  <style>${cssRules}</style>
+  <rect width="2000" height="857" fill="${colors.ocean}"/>
+  ${paths}
+</svg>`;
+}
+
 function resolveAudioPath(uploadedAudioUrl) {
   if (!uploadedAudioUrl) return null;
-  // لو full path موجود على الـ disk استخدمه مباشرة
   if (fs.existsSync(uploadedAudioUrl)) return uploadedAudioUrl;
-  // لو URL زي /outputs/audio_xxx.mp3 حوّله لـ full path
   const basename = path.basename(uploadedAudioUrl);
   const candidate = path.join(process.cwd(), 'outputs', basename);
   if (fs.existsSync(candidate)) return candidate;
-  // محاولة أخيرة بإزالة الـ leading slash
   const stripped = uploadedAudioUrl.startsWith('/') ? uploadedAudioUrl.slice(1) : uploadedAudioUrl;
   const candidate2 = path.join(process.cwd(), stripped);
   if (fs.existsSync(candidate2)) return candidate2;
   return null;
 }
 
-// ── Main render job ────────────────────────────────────────────────────────
 export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) {
   const { mode, idea, script, voice, duration, ratio, language, mapStyle, uploadedAudioUrl } = formData;
 
@@ -208,20 +199,14 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   updateStatus(jobId, { progress: 10, log: ['🧠 Parsing story with AI...'] });
 
-  // 1. Parse timeline
   const timeline = await parseMapTimeline(script, idea, mode, language);
   updateStatus(jobId, { progress: 20, log: ['✅ Timeline created — ' + timeline.events?.length + ' events found', '🎙️ Generating voiceover...'] });
 
-  // 2. Resolve audio path
   let audioPath = null;
   if (uploadedAudioUrl) {
-    // ✅ FIX: تحويل الـ URL لـ full disk path
     audioPath = resolveAudioPath(uploadedAudioUrl);
-    if (!audioPath) {
-      console.warn('[MapVideo] Could not resolve uploaded audio path:', uploadedAudioUrl);
-    } else {
-      console.log('[MapVideo] Resolved uploaded audio:', audioPath);
-    }
+    if (!audioPath) console.warn('[MapVideo] Could not resolve uploaded audio path:', uploadedAudioUrl);
+    else console.log('[MapVideo] Resolved uploaded audio:', audioPath);
   } else {
     try {
       const audioFilename = await generateVoiceover(timeline.script, voice || 'male_american', 'education', 0, language || 'en');
@@ -233,27 +218,50 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   updateStatus(jobId, { progress: 30, log: ['✅ Voiceover ready', '🗺️ Generating map frames...'] });
 
-  // 3. Get actual audio duration
   let actualAudioDuration = durationSecs;
-  if (audioPath && fs.existsSync(audioPath)) {
-    try {
-      const { execSync } = await import('child_process');
-      const result = execSync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`,
-        { encoding: 'utf8' }
-      ).trim();
-      actualAudioDuration = parseFloat(result) || durationSecs;
-      console.log(`[MapVideo] Actual audio duration: ${actualAudioDuration.toFixed(1)}s`);
-    } catch(e) {
-      console.warn('[MapVideo] Could not get audio duration:', e.message);
+  const { execSync: execSyncDur } = await import('child_process');
+
+  // ✅ لو في uploaded audio، نحاول نقرأ مدته بكل الطرق الممكنة
+  const audioTarget = audioPath || uploadedAudioUrl;
+  if (audioTarget) {
+    // حاول resolve الـ path بطرق إضافية
+    const tryPaths = [
+      audioTarget,
+      audioTarget && path.join(process.cwd(), 'outputs', path.basename(audioTarget)),
+      audioTarget && path.join(process.cwd(), audioTarget.replace(/^\//, '')),
+    ].filter(Boolean);
+
+    for (const tryPath of tryPaths) {
+      if (tryPath && fs.existsSync(tryPath)) {
+        try {
+          const result = execSyncDur(
+            `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tryPath}"`,
+            { encoding: 'utf8' }
+          ).trim();
+          const parsed = parseFloat(result);
+          if (parsed > 0) {
+            actualAudioDuration = parsed;
+            audioPath = tryPath; // تأكد إن audioPath صح
+            console.log(`[MapVideo] Audio duration: ${actualAudioDuration.toFixed(1)}s from ${tryPath}`);
+            break;
+          }
+        } catch(e) {
+          console.warn('[MapVideo] ffprobe failed on:', tryPath, e.message);
+        }
+      }
+    }
+
+    // لو لسه مش عارف يقرأ المدة وفي uploaded audio، استخدم مدة كبيرة
+    if (actualAudioDuration === durationSecs && uploadedAudioUrl) {
+      console.warn('[MapVideo] Could not read audio duration, using large default for uploaded audio');
+      actualAudioDuration = Math.max(durationSecs, 600); // 10 دقايق max fallback
     }
   }
 
-  // ✅ FIX: totalSecs = أكبر قيمة بين مدة الصوت+4 أو المدة المختارة
+  // ✅ totalSecs = مدة الصوت + 4 ثواني buffer
   const totalSecs = Math.max(Math.ceil(actualAudioDuration) + 4, durationSecs);
-  console.log(`[MapVideo] totalSecs: ${totalSecs} (audio: ${actualAudioDuration.toFixed(1)}s, durationSecs: ${durationSecs}s)`);
+  console.log(`[MapVideo] totalSecs: ${totalSecs}`);
 
-  // 4. Generate frames
   const baseSvg = fs.readFileSync(MAP_SVG_PATH, 'utf8');
   const framesDir = path.join(jobDir, 'frames');
   fs.mkdirSync(framesDir, { recursive: true });
@@ -263,9 +271,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
     for (const event of (timeline.events || [])) {
       if (t >= event.time && t < event.time + event.duration) {
         for (const iso of (event.countries || [])) {
-          if (iso && iso.length === 2) {
-            highlights[iso] = event.color || '#e11d48';
-          }
+          if (iso && iso.length === 2) highlights[iso] = event.color || '#e11d48';
         }
       }
     }
@@ -274,9 +280,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   const getZoneAtTime = (t) => {
     for (const event of (timeline.events || [])) {
-      if (t >= event.time && t < event.time + event.duration) {
-        return event.zoom || 'world';
-      }
+      if (t >= event.time && t < event.time + event.duration) return event.zoom || 'world';
     }
     return 'world';
   };
@@ -288,36 +292,44 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
     return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
   };
 
+  // ✅ توليد الـ frames مع الـ zoom مدمج في الـ SVG viewBox
   let prevHighlights = {};
+  let prevViewBox = getViewBoxForZone('world', w, h);
 
   for (let sec = 0; sec <= totalSecs; sec++) {
-    const highlights = sec <= durationSecs ? getHighlightsAtTime(sec) : getHighlightsAtTime(durationSecs);
+    const t = Math.min(sec, durationSecs);
+    const highlights = getHighlightsAtTime(t);
+    const zone = getZoneAtTime(t);
+    const viewBox = getViewBoxForZone(zone, w, h);
 
     const allKeys = [...new Set([...Object.keys(prevHighlights), ...Object.keys(highlights)])];
     const COLORS = STYLES[mapStyle] || STYLES.dark;
 
     for (let tf = 0; tf < TRANSITION_FRAMES; tf++) {
-      const t = tf / TRANSITION_FRAMES;
+      const progress = tf / TRANSITION_FRAMES;
       const transHighlights = {};
       for (const iso of allKeys) {
         const from = prevHighlights[iso] || COLORS.land;
         const to = highlights[iso] || COLORS.land;
-        if (from !== to) {
-          transHighlights[iso] = interpolateColor(from, to, t);
-        } else if (highlights[iso]) {
-          transHighlights[iso] = highlights[iso];
-        }
+        if (from !== to) transHighlights[iso] = interpolateColor(from, to, progress);
+        else if (highlights[iso]) transHighlights[iso] = highlights[iso];
       }
-      const svgContent = generateSVGFrame({ baseSvg, highlights: transHighlights, style: mapStyle });
+
+      // interpolate viewBox للـ smooth zoom transition
+      const parseVB = (vb) => vb.split(' ').map(Number);
+      const fromVB = parseVB(prevViewBox);
+      const toVB = parseVB(viewBox);
+      const curVB = fromVB.map((v, i) => Math.round(v + (toVB[i] - v) * progress));
+      const curViewBox = curVB.join(' ');
+
+      const svgContent = generateSVGFrame({ baseSvg, highlights: transHighlights, style: mapStyle, viewBox: curViewBox, w, h });
       const frameNum = sec * TRANSITION_FRAMES + tf;
       const pngPath = path.join(framesDir, `frame_${String(frameNum).padStart(6, '0')}.png`);
-      await sharp(Buffer.from(svgContent))
-        .resize(2000, 857, { fit: 'fill' })
-        .png()
-        .toFile(pngPath);
+      await sharp(Buffer.from(svgContent)).resize(w, h, { fit: 'fill' }).png().toFile(pngPath);
     }
 
     prevHighlights = { ...highlights };
+    prevViewBox = viewBox;
 
     if (sec % 5 === 0) {
       const pct = 30 + Math.round((sec / totalSecs) * 40);
@@ -327,7 +339,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   updateStatus(jobId, { progress: 72, log: ['✅ All frames generated', '🎬 Assembling video with FFmpeg...'] });
 
-  // 5. Assemble with FFmpeg
+  // ✅ Frame list
   const listPath = path.join(framesDir, 'frames.txt');
   let listContent = '';
   const totalFrameCount = (totalSecs + 1) * TRANSITION_FRAMES;
@@ -341,41 +353,18 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   const outputPath = path.join(jobDir, 'output.mp4');
 
-  // Build zoompan expressions
-  let zExpr = '';
-  let xExpr = '';
-  let yExpr = '';
-
-  for (let sec = 0; sec <= totalSecs; sec++) {
-    const zone = getZoneAtTime(Math.min(sec, durationSecs));
-    const zp = getZoompanForZone(zone, w, h, 1);
-    const f0 = sec * TRANSITION_FRAMES;
-    const f1 = (sec + 1) * TRANSITION_FRAMES - 1;
-    zExpr += `if(between(on,${f0},${f1}),${zp.zoom},`;
-    xExpr += `if(between(on,${f0},${f1}),${zp.x},`;
-    yExpr += `if(between(on,${f0},${f1}),${zp.y},`;
-  }
-  const worldZp = getZoompanForZone('world', w, h, 1);
-  const closing = ')'.repeat(totalSecs + 1);
-  zExpr += worldZp.zoom + closing;
-  xExpr += worldZp.x + closing;
-  yExpr += worldZp.y + closing;
-
-  const zpFilter = `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=${w}x${h}:fps=${FPS}`;
-
-  // ✅ FIX: بناء FFmpeg command مع الصوت المرفوع بشكل صح
+  // ✅ FFmpeg بسيط بدون zoompan expression — الـ zoom بيجي من الـ frames نفسها
   let ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i "${listPath}"`;
   if (audioPath && fs.existsSync(audioPath)) {
     ffmpegCmd += ` -i "${audioPath}"`;
   }
-  ffmpegCmd += ` -vf "${zpFilter}" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast`;
+  ffmpegCmd += ` -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast -r ${FPS}`;
   if (audioPath && fs.existsSync(audioPath)) {
-    // -shortest: الفيديو بيخلص لما الصوت يخلص
     ffmpegCmd += ` -map 0:v:0 -map 1:a:0 -c:a aac -b:a 192k -shortest`;
   }
   ffmpegCmd += ` "${outputPath}"`;
 
-  console.log('[MapVideo] FFmpeg cmd:', ffmpegCmd.slice(0, 200));
+  console.log('[MapVideo] FFmpeg cmd:', ffmpegCmd.slice(0, 150));
   await execAsync(ffmpegCmd);
 
   updateStatus(jobId, { progress: 95, log: ['✅ Video assembled!', '📤 Uploading...'] });
