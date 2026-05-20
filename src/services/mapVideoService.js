@@ -154,9 +154,8 @@ export function generateSVGFrame({
 
   // Build clean SVG wrapping the original paths
   // Extract just the path elements from baseSvg
-  const pathMatches = baseSvg.match(/<path[^/]*\/?>(?:<\/path>)?|<path[\s\S]*?<\/path>/g) || [];
-  const paths = pathMatches.join('
-');
+  const pathMatches = baseSvg.match(/<path[\s\S]*?(?:\/>|<\/path>)/g) || [];
+  const paths = pathMatches.join('\n');
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${W}" height="${H}">
