@@ -147,7 +147,7 @@ export function generateSVGFrame({ baseSvg, highlights, style }) {
   const paths = pathMatches.join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 857" width="4000" height="1714">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 857" width="2000" height="857">
   <style>${cssRules}</style>
   <rect width="2000" height="857" fill="${colors.ocean}"/>
   ${paths}
@@ -173,8 +173,8 @@ function getZoompanForZone(zone, w, h, durationSecs) {
   const rw = Math.min(2000 - rx, region.w);
   const rh = Math.min(857 - ry, region.h);
 
-  // Scale factor (rendered at 4000x1714 = 2x)
-  const scale = 2;
+  // Scale factor (rendered at 2000x857 = 1x)
+  const scale = 1;
 
   // Zoom level: how much of the 4000x1714 image to show
   // zoom = output_width / region_width_in_pixels
@@ -197,9 +197,9 @@ function getZoompanForZone(zone, w, h, durationSecs) {
 export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) {
   const { mode, idea, script, voice, duration, ratio, language, mapStyle, uploadedAudioUrl } = formData;
 
-  const FPS = 24;
+  const FPS = 12;
   const durationSecs = duration === '30s' ? 30 : duration === '1min' ? 60 : duration === '2min' ? 120 : duration === '3min' ? 180 : 300;
-  const [w, h] = ratio === '16:9' ? [1920, 1080] : [1080, 1920];
+  const [w, h] = ratio === '16:9' ? [1280, 720] : [720, 1280];
 
   updateStatus(jobId, { progress: 10, log: ['🧠 Parsing story with AI...'] });
 
@@ -283,7 +283,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
     // Render at 4000x1714 (2x for quality zoom)
     await sharp(Buffer.from(svgContent))
-      .resize(4000, 1714, { fit: 'fill' })
+      .resize(2000, 857, { fit: 'fill' })
       .png()
       .toFile(pngPath);
 
@@ -311,65 +311,33 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   const outputPath = path.join(jobDir, 'output.mp4');
 
-  // Build zoompan filter - smooth zoom/pan per event
-  // Each second = FPS frames, build zoompan expression
-  // We'll create a simpler approach: one video per segment, then concat
-  const segmentsDir = path.join(jobDir, 'segments');
-  fs.mkdirSync(segmentsDir, { recursive: true });
+  // Build zoompan expressions per second
+  let zExpr = '';
+  let xExpr = '';
+  let yExpr = '';
 
-  const segmentFiles = [];
-  
-  // Group consecutive seconds with same zone
-  let segments = [];
-  let currentZone = null;
-  let segStart = 0;
   for (let sec = 0; sec <= durationSecs; sec++) {
     const zone = getZoneAtTime(sec);
-    if (zone !== currentZone) {
-      if (currentZone !== null) segments.push({ zone: currentZone, start: segStart, end: sec - 1 });
-      currentZone = zone;
-      segStart = sec;
-    }
+    const zp = getZoompanForZone(zone, w, h, 1);
+    const f0 = sec * FPS;
+    const f1 = (sec + 1) * FPS - 1;
+    zExpr += `if(between(on,${f0},${f1}),${zp.zoom},`;
+    xExpr += `if(between(on,${f0},${f1}),${zp.x},`;
+    yExpr += `if(between(on,${f0},${f1}),${zp.y},`;
   }
-  if (currentZone !== null) segments.push({ zone: currentZone, start: segStart, end: durationSecs });
+  const worldZp = getZoompanForZone('world', w, h, 1);
+  const closing = ')'.repeat(durationSecs + 1);
+  zExpr += worldZp.zoom + closing;
+  xExpr += worldZp.x + closing;
+  yExpr += worldZp.y + closing;
 
-  for (let si = 0; si < segments.length; si++) {
-    const seg = segments[si];
-    const segDur = seg.end - seg.start + 1;
-    const zp = getZoompanForZone(seg.zone, w, h, segDur);
-    
-    // Build frame list for this segment
-    const segListPath = path.join(segmentsDir, `seg_${si}.txt`);
-    let segList = '';
-    for (let sec = seg.start; sec <= seg.end; sec++) {
-      const pngPath = path.join(framesDir, `frame_${String(sec).padStart(5, '0')}.png`);
-      if (fs.existsSync(pngPath)) {
-        for (let f = 0; f < FPS; f++) {
-          segList += `file '${pngPath}'\nduration ${(1/FPS).toFixed(4)}\n`;
-        }
-      }
-    }
-    fs.writeFileSync(segListPath, segList);
+  const zpFilter = `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=${w}x${h}:fps=${FPS}`;
 
-    const segOut = path.join(segmentsDir, `seg_${si}.mp4`);
-    segmentFiles.push(segOut);
-
-    // zoompan: zoom in smoothly, pan to center
-    const zpFilter = `zoompan=z='if(eq(on,1),${zp.zoom},zoom)':x='if(eq(on,1),${zp.x},x)':y='if(eq(on,1),${zp.y},y)':d=${segDur * FPS}:s=${w}x${h}:fps=${FPS}`;
-    
-    const segCmd = `ffmpeg -y -f concat -safe 0 -i "${segListPath}" -vf "${zpFilter},scale=${w}:${h}" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast "${segOut}"`;
-    await execAsync(segCmd);
-  }
-
-  // Concat all segments
-  const concatList = path.join(jobDir, 'concat.txt');
-  fs.writeFileSync(concatList, segmentFiles.map(f => `file '${f}'`).join('\n'));
-
-  let ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i "${concatList}"`;
+  let ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i "${listPath}" -vf "${zpFilter}" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast`;
   if (audioPath && fs.existsSync(audioPath)) {
     ffmpegCmd += ` -i "${audioPath}" -map 0:v:0 -map 1:a:0 -shortest`;
   }
-  ffmpegCmd += ` -c:v libx264 -pix_fmt yuv420p -crf 20 -preset fast "${outputPath}"`;
+  ffmpegCmd += ` "${outputPath}"`;
 
   await execAsync(ffmpegCmd);
 
