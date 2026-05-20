@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { authMiddleware } from './authService.js';
+import { authMiddleware } from './authRoutes.js';
 import { renderMapVideo } from './mapVideoService.js';
 
 const router = express.Router();
