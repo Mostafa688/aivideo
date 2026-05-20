@@ -137,31 +137,33 @@ export function generateSVGFrame({
   baseSvg, highlights, style, viewBox, width, height,
 }) {
   const colors = STYLES[style] || STYLES.dark;
-  let svg = baseSvg;
 
-  // Set background/ocean color
-  svg = svg.replace(/fill="#ececec"/g, `fill="${colors.land}"`);
-  svg = svg.replace(/stroke="black"/g, `stroke="${colors.border}"`);
-
-  // Background rect for ocean
-  const bgRect = `<rect width="2000" height="857" fill="${colors.ocean}"/>`;
-  svg = svg.replace('<svg', `<svg><${bgRect}`).replace('<svg><', '<svg>').replace('<svg>', `<svg>${bgRect}`);
-
-  // Apply highlights
+  // Build CSS overrides for highlighted countries
+  let cssRules = `
+    path { fill: ${colors.land}; stroke: ${colors.border}; stroke-width: 0.3; }
+  `;
   for (const [iso, color] of Object.entries(highlights)) {
-    // Match by id
-    const idRegex = new RegExp(`(id="${iso}"[^>]*>)`, 'g');
-    svg = svg.replace(idRegex, (match) => {
-      return match.replace('>', ` style="fill:${color};"`).replace(`style="fill:${color};" style="fill:${color};"`, `style="fill:${color};"`);
-    });
+    cssRules += `#${iso}, .${iso} { fill: ${color} !important; }
+`;
   }
 
-  // Set viewBox for zoom
-  if (viewBox) {
-    svg = svg.replace(/viewbox="[^"]*"/i, `viewBox="${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}"`);
-    svg = svg.replace(/width="[^"]*"/, `width="${width}"`);
-    svg = svg.replace(/height="[^"]*"/, `height="${height}"`);
-  }
+  // Fix viewBox
+  const vb = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 2000 857';
+  const W = width || 1920;
+  const H = height || 1080;
+
+  // Build clean SVG wrapping the original paths
+  // Extract just the path elements from baseSvg
+  const pathMatches = baseSvg.match(/<path[^/]*\/?>(?:<\/path>)?|<path[\s\S]*?<\/path>/g) || [];
+  const paths = pathMatches.join('
+');
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${W}" height="${H}">
+  <style>${cssRules}</style>
+  <rect width="2000" height="857" fill="${colors.ocean}"/>
+  ${paths}
+</svg>`;
 
   return svg;
 }
