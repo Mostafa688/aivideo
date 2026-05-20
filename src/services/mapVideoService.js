@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fetch from 'node-fetch';
 import sharp from 'sharp';
+import { generateVoiceover } from './voiceService.js';
 
 const execAsync = promisify(exec);
 const MAP_SVG_PATH = path.join(process.cwd(), 'public', 'maps', 'world.svg');
@@ -185,15 +186,8 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
     audioPath = uploadedAudioUrl;
   } else {
     try {
-      const ttsRes = await fetch(`http://localhost:${process.env.PORT || 8080}/api/render/tts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: timeline.script, voice: voice || 'male_american', language }),
-      });
-      if (ttsRes.ok) {
-        const ttsData = await ttsRes.json();
-        audioPath = ttsData.audioPath;
-      }
+      const audioFilename = await generateVoiceover(timeline.script, voice || 'male_american', 'education', 0, language || 'en');
+      audioPath = path.join(process.cwd(), 'outputs', audioFilename);
     } catch(e) {
       console.warn('[MapVideo] TTS failed, continuing without audio:', e.message);
     }
