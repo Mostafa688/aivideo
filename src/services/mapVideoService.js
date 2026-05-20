@@ -184,14 +184,18 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   if (uploadedAudioUrl) {
     audioPath = uploadedAudioUrl;
   } else {
-    const ttsRes = await fetch(`${process.env.BACKEND_URL || 'http://localhost:3000'}/api/render/tts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.INTERNAL_TOKEN },
-      body: JSON.stringify({ text: timeline.script, voice: voice || 'male_american', language }),
-    });
-    if (ttsRes.ok) {
-      const ttsData = await ttsRes.json();
-      audioPath = ttsData.audioPath;
+    try {
+      const ttsRes = await fetch(`http://localhost:${process.env.PORT || 8080}/api/render/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: timeline.script, voice: voice || 'male_american', language }),
+      });
+      if (ttsRes.ok) {
+        const ttsData = await ttsRes.json();
+        audioPath = ttsData.audioPath;
+      }
+    } catch(e) {
+      console.warn('[MapVideo] TTS failed, continuing without audio:', e.message);
     }
   }
 
