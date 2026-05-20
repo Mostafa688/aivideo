@@ -1,11 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync, exec } from 'child_process';
+import { exec } from 'child_process';
 import { promisify } from 'util';
 import fetch from 'node-fetch';
-import { createCanvas } from 'canvas';
 import sharp from 'sharp';
-import { JSDOM } from 'jsdom';
 
 const execAsync = promisify(exec);
 const MAP_SVG_PATH = path.join(process.cwd(), 'public', 'maps', 'world.svg');
