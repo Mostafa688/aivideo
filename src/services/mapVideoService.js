@@ -132,39 +132,65 @@ const ZOOM_REGIONS = {
   'americas':    { x: 100,  y: 50,  w: 700,  h: 750 },
 };
 
-// ── Generate one SVG frame ─────────────────────────────────────────────────
-export function generateSVGFrame({
-  baseSvg, highlights, style, viewBox, width, height,
-}) {
+// ── Generate one SVG frame (full map, no crop) ────────────────────────────
+export function generateSVGFrame({ baseSvg, highlights, style }) {
   const colors = STYLES[style] || STYLES.dark;
 
-  // Build CSS overrides for highlighted countries
-  let cssRules = `
-    path { fill: ${colors.land}; stroke: ${colors.border}; stroke-width: 0.3; }
-  `;
+  // CSS: base land color + per-country highlights
+  let cssRules = `path { fill: ${colors.land}; stroke: ${colors.border}; stroke-width: 0.4; transition: fill 0.5s; }`;
   for (const [iso, color] of Object.entries(highlights)) {
-    cssRules += `#${iso}, .${iso} { fill: ${color} !important; }
-`;
+    cssRules += `#${iso}, [class="${iso}"] { fill: ${color} !important; }`;
   }
 
-  // Fix viewBox
-  const vb = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 2000 857';
-  const W = width || 1920;
-  const H = height || 1080;
-
-  // Build clean SVG wrapping the original paths
-  // Extract just the path elements from baseSvg
+  // Extract path elements only
   const pathMatches = baseSvg.match(/<path[\s\S]*?(?:\/>|<\/path>)/g) || [];
   const paths = pathMatches.join('\n');
 
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" width="${W}" height="${H}">
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 857" width="4000" height="1714">
   <style>${cssRules}</style>
   <rect width="2000" height="857" fill="${colors.ocean}"/>
   ${paths}
 </svg>`;
+}
 
-  return svg;
+// ── Compute zoompan params for a zone ─────────────────────────────────────
+// SVG is rendered at 4000x1714 (2x scale), output is w x h
+function getZoompanForZone(zone, w, h, durationSecs) {
+  // Get target region in SVG coords (0-2000 x 0-857)
+  let region;
+  if (zone && zone.length === 2 && COUNTRY_BBOX[zone]) {
+    const [bx, by, bw, bh] = COUNTRY_BBOX[zone];
+    const pad = Math.max(bw, bh) * 0.5;
+    region = { x: bx - pad, y: by - pad, w: bw + pad * 2, h: bh + pad * 2 };
+  } else {
+    region = ZOOM_REGIONS[zone] || ZOOM_REGIONS['world'];
+  }
+
+  // Clamp to SVG bounds
+  const rx = Math.max(0, region.x);
+  const ry = Math.max(0, region.y);
+  const rw = Math.min(2000 - rx, region.w);
+  const rh = Math.min(857 - ry, region.h);
+
+  // Scale factor (rendered at 4000x1714 = 2x)
+  const scale = 2;
+
+  // Zoom level: how much of the 4000x1714 image to show
+  // zoom = output_width / region_width_in_pixels
+  const zoomX = (w / (rw * scale));
+  const zoomY = (h / (rh * scale));
+  const zoom = Math.min(zoomX, zoomY, 4); // cap at 4x
+
+  // Center of region in 4000x1714 pixels
+  const cx = (rx + rw / 2) * scale;
+  const cy = (ry + rh / 2) * scale;
+
+  // zoompan x/y: top-left of crop in source image
+  const zpx = Math.max(0, cx - (w / zoom) / 2);
+  const zpy = Math.max(0, cy - (h / zoom) / 2);
+
+  return { zoom: zoom.toFixed(4), x: Math.round(zpx), y: Math.round(zpy) };
 }
 
 // ── Main render job ────────────────────────────────────────────────────────
@@ -238,25 +264,30 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
     return ZOOM_REGIONS[zone] || ZOOM_REGIONS['world'];
   };
 
-  // Generate a frame every FPS (keyframe every second, then duplicate for speed)
+  // Build zone timeline for zoompan
+  const getZoneAtTime = (t) => {
+    for (const event of (timeline.events || [])) {
+      if (t >= event.time && t < event.time + event.duration) {
+        return event.zoom || 'world';
+      }
+    }
+    return 'world';
+  };
+
+  // Generate one PNG per second (full map, highlights only)
   for (let sec = 0; sec <= durationSecs; sec++) {
     const highlights = getHighlightsAtTime(sec);
-    const viewBox = getViewBoxAtTime(sec);
+    const svgContent = generateSVGFrame({ baseSvg, highlights, style: mapStyle });
 
-    const svgContent = generateSVGFrame({ baseSvg, highlights, style: mapStyle, viewBox, width: w, height: h });
-
-    const svgPath = path.join(framesDir, `frame_${String(sec).padStart(5, '0')}.svg`);
     const pngPath = path.join(framesDir, `frame_${String(sec).padStart(5, '0')}.png`);
 
-    fs.writeFileSync(svgPath, svgContent);
-
-    // Convert SVG to PNG using sharp
+    // Render at 4000x1714 (2x for quality zoom)
     await sharp(Buffer.from(svgContent))
-      .resize(w, h, { fit: 'fill' })
+      .resize(4000, 1714, { fit: 'fill' })
       .png()
       .toFile(pngPath);
 
-    if (sec % 10 === 0) {
+    if (sec % 5 === 0) {
       const pct = 30 + Math.round((sec / durationSecs) * 40);
       updateStatus(jobId, { progress: pct, log: [`🖼️ Generating frames... ${sec}/${durationSecs}s`] });
     }
@@ -280,12 +311,65 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   const outputPath = path.join(jobDir, 'output.mp4');
 
-  let ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i "${listPath}"`;
-  if (audioPath && (audioPath.startsWith('http') || fs.existsSync(audioPath))) {
-    const audioInput = audioPath.startsWith('http') ? audioPath : audioPath;
-    ffmpegCmd += ` -i "${audioInput}" -map 0:v:0 -map 1:a:0 -shortest`;
+  // Build zoompan filter - smooth zoom/pan per event
+  // Each second = FPS frames, build zoompan expression
+  // We'll create a simpler approach: one video per segment, then concat
+  const segmentsDir = path.join(jobDir, 'segments');
+  fs.mkdirSync(segmentsDir, { recursive: true });
+
+  const segmentFiles = [];
+  
+  // Group consecutive seconds with same zone
+  let segments = [];
+  let currentZone = null;
+  let segStart = 0;
+  for (let sec = 0; sec <= durationSecs; sec++) {
+    const zone = getZoneAtTime(sec);
+    if (zone !== currentZone) {
+      if (currentZone !== null) segments.push({ zone: currentZone, start: segStart, end: sec - 1 });
+      currentZone = zone;
+      segStart = sec;
+    }
   }
-  ffmpegCmd += ` -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast "${outputPath}"`;
+  if (currentZone !== null) segments.push({ zone: currentZone, start: segStart, end: durationSecs });
+
+  for (let si = 0; si < segments.length; si++) {
+    const seg = segments[si];
+    const segDur = seg.end - seg.start + 1;
+    const zp = getZoompanForZone(seg.zone, w, h, segDur);
+    
+    // Build frame list for this segment
+    const segListPath = path.join(segmentsDir, `seg_${si}.txt`);
+    let segList = '';
+    for (let sec = seg.start; sec <= seg.end; sec++) {
+      const pngPath = path.join(framesDir, `frame_${String(sec).padStart(5, '0')}.png`);
+      if (fs.existsSync(pngPath)) {
+        for (let f = 0; f < FPS; f++) {
+          segList += `file '${pngPath}'\nduration ${(1/FPS).toFixed(4)}\n`;
+        }
+      }
+    }
+    fs.writeFileSync(segListPath, segList);
+
+    const segOut = path.join(segmentsDir, `seg_${si}.mp4`);
+    segmentFiles.push(segOut);
+
+    // zoompan: zoom in smoothly, pan to center
+    const zpFilter = `zoompan=z='if(eq(on,1),${zp.zoom},zoom)':x='if(eq(on,1),${zp.x},x)':y='if(eq(on,1),${zp.y},y)':d=${segDur * FPS}:s=${w}x${h}:fps=${FPS}`;
+    
+    const segCmd = `ffmpeg -y -f concat -safe 0 -i "${segListPath}" -vf "${zpFilter},scale=${w}:${h}" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast "${segOut}"`;
+    await execAsync(segCmd);
+  }
+
+  // Concat all segments
+  const concatList = path.join(jobDir, 'concat.txt');
+  fs.writeFileSync(concatList, segmentFiles.map(f => `file '${f}'`).join('\n'));
+
+  let ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i "${concatList}"`;
+  if (audioPath && fs.existsSync(audioPath)) {
+    ffmpegCmd += ` -i "${audioPath}" -map 0:v:0 -map 1:a:0 -shortest`;
+  }
+  ffmpegCmd += ` -c:v libx264 -pix_fmt yuv420p -crf 20 -preset fast "${outputPath}"`;
 
   await execAsync(ffmpegCmd);
 
