@@ -291,7 +291,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   };
 
   // Add 4 extra seconds at end so video is longer than audio
-  const totalSecs = Math.ceil(actualAudioDuration) + 4;
+  const totalSecs = Math.max(Math.ceil(actualAudioDuration) + 4, durationSecs);
 
   // Helper: interpolate colors for smooth transition
   const interpolateColor = (hex1, hex2, t) => {
@@ -389,7 +389,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   }
   ffmpegCmd += ` -vf "${zpFilter}" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast`;
   if (audioPath && fs.existsSync(audioPath)) {
-    ffmpegCmd += ` -map 0:v:0 -map 1:a:0`;
+    ffmpegCmd += ` -map 0:v:0 -map 1:a:0 -shortest`;
   }
   ffmpegCmd += ` "${outputPath}"`;
 
