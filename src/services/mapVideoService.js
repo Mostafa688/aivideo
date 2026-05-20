@@ -333,9 +333,13 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   const zpFilter = `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=${w}x${h}:fps=${FPS}`;
 
-  let ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i "${listPath}" -vf "${zpFilter}" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast`;
+  let ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i "${listPath}"`;
   if (audioPath && fs.existsSync(audioPath)) {
-    ffmpegCmd += ` -i "${audioPath}" -map 0:v:0 -map 1:a:0 -shortest`;
+    ffmpegCmd += ` -i "${audioPath}"`;
+  }
+  ffmpegCmd += ` -vf "${zpFilter}" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset fast`;
+  if (audioPath && fs.existsSync(audioPath)) {
+    ffmpegCmd += ` -map 0:v:0 -map 1:a:0 -shortest`;
   }
   ffmpegCmd += ` "${outputPath}"`;
 
