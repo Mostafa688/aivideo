@@ -19,6 +19,7 @@ import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Vid
 import adminRouter from './services/adminRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
+import mapVideoRouter from './services/mapVideoRoutes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -151,6 +152,7 @@ app.use('/outputs', express.static('outputs'));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/affiliate', affiliateRouter);
+app.use('/api/map-video', mapVideoRouter);
 
 // ── Transcribe ─────────────────────────────────────────────────────────────
 app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, res) => {
