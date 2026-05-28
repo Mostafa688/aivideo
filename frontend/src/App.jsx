@@ -256,6 +256,7 @@ export default function App() {
       case 'about':      setPage('about'); break;
       case 'templates':  setPage('templates'); break;
       case 'home':       setPage('input'); break;
+      default:           setPage('input'); break;
     }
   };
 
@@ -405,7 +406,16 @@ export default function App() {
         />
       )}
 
-      <div style={{ paddingTop: 54 }}>
+      {/* ── Bottom Videos Bar ── */}
+      <div style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:99, background:'var(--bg)', borderTop:'1px solid var(--border)', padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <button onClick={() => setShowVideos(true)} style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(124,106,247,0.1)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:10, padding:'7px 14px', cursor:'pointer', color:'#a78bfa', fontSize:13, fontWeight:600 }}>
+          <span>🎬</span>
+          <span>My Videos</span>
+        </button>
+        <span style={{ fontSize:11, color:'var(--text3)' }}>Erivion © 2026</span>
+      </div>
+
+      <div style={{ paddingTop: 54, paddingBottom: 52 }}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
         {page === 'input' && <InputPage
