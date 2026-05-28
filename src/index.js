@@ -839,3 +839,10 @@ app.post('/api/templates/delete', async (req, res) => {
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Serve Frontend ────────────────────────────────────────────────────────────
+const FRONTEND_DIST = join(__dirname, '../frontend/dist');
+app.use(express.static(FRONTEND_DIST));
+app.get('*', (req, res) => {
+  res.sendFile(join(FRONTEND_DIST, 'index.html'));
+});
