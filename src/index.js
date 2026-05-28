@@ -780,6 +780,99 @@ app.get('/logo.png', (req, res) => {
   res.sendFile(fromPublic);
 });
 
+// ── Templates API ──────────────────────────────────────────────────────────────
+const tPool = new _TPool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
+});
+tPool.query(`
+  CREATE TABLE IF NOT EXISTS templates (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    prompt TEXT,
+    script TEXT,
+    model_key TEXT NOT NULL,
+    video_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+`).then(() =>
+  tPool.query(`ALTER TABLE templates ADD COLUMN IF NOT EXISTS script TEXT;`)
+).catch(e => console.error('[Templates] DB init error:', e.message));
+
+const ADMIN_SECRET_TPL = process.env.ADMIN_SECRET || 'Sosa6892Midbok';
+
+function templateAdminAuth(req, res, next) {
+  if (req.headers['x-admin-secret'] !== ADMIN_SECRET_TPL) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+
+// GET /api/templates — public, returns all templates ordered by model
+app.get('/api/templates', async (req, res) => {
+  try {
+    const { rows } = await tPool.query('SELECT * FROM templates ORDER BY model_key, created_at DESC');
+    res.json({ templates: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/templates — admin only, create a new template
+app.post('/api/templates', templateAdminAuth, async (req, res) => {
+  const { title, description, prompt, script, model_key, video_url } = req.body;
+  if (!title || !model_key) return res.status(400).json({ error: 'title and model_key required' });
+  try {
+    const { rows } = await tPool.query(
+      'INSERT INTO templates (title, description, prompt, script, model_key, video_url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [title, description || null, prompt || null, script || null, model_key, video_url || null]
+    );
+    res.status(201).json({ success: true, template: rows[0] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/templates/:id — admin only, delete by id
+app.delete('/api/templates/:id', templateAdminAuth, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'valid id required' });
+  try {
+    await tPool.query('DELETE FROM templates WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/templates/add — admin only (legacy alias kept for AdminPage compatibility)
+app.post('/api/templates/add', templateAdminAuth, async (req, res) => {
+  const { title, description, prompt, script, model_key, video_url } = req.body;
+  if (!title || !model_key) return res.status(400).json({ error: 'title and model_key required' });
+  try {
+    const { rows } = await tPool.query(
+      'INSERT INTO templates (title, description, prompt, script, model_key, video_url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [title, description || null, prompt || null, script || null, model_key, video_url || null]
+    );
+    res.json({ success: true, id: rows[0].id, template: rows[0] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/templates/delete — admin only (legacy alias kept for AdminPage compatibility)
+app.post('/api/templates/delete', templateAdminAuth, async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: 'id required' });
+  try {
+    await tPool.query('DELETE FROM templates WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.use(express.static(join(__dirname, '..', 'dist')));
 
 app.get('*', (req, res) => {
@@ -790,43 +883,4 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log('AI Video Backend running on http://localhost:' + PORT);
-});
-
-
-// ── Templates API ──────────────────────────────────────────────────────────────
-const tPool = new _TPool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
-});
-tPool.query(`CREATE TABLE IF NOT EXISTS templates (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, model_key TEXT NOT NULL, prompt TEXT, video_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());`).catch(e => console.error('[Templates] DB init error:', e.message));
-
-app.get('/api/templates', async (req, res) => {
-  try { const { rows } = await tPool.query('SELECT * FROM templates ORDER BY created_at DESC'); res.json({ templates: rows }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-const ADMIN_SECRET_TPL = process.env.ADMIN_SECRET || 'Sosa6892Midbok';
-app.post('/api/templates/add', async (req, res) => {
-  if (req.headers['x-admin-secret'] !== ADMIN_SECRET_TPL) return res.status(403).json({ error: 'Unauthorized' });
-  const { title, description, model_key, prompt, video_url } = req.body;
-  if (!title || !model_key) return res.status(400).json({ error: 'title and model_key required' });
-  try {
-    const { rows } = await tPool.query('INSERT INTO templates (title, description, model_key, prompt, video_url) VALUES ($1,$2,$3,$4,$5) RETURNING id', [title, description||null, model_key, prompt||null, video_url||null]);
-    res.json({ success: true, id: rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.post('/api/templates/delete', async (req, res) => {
-  if (req.headers['x-admin-secret'] !== ADMIN_SECRET_TPL) return res.status(403).json({ error: 'Unauthorized' });
-  const { id } = req.body;
-  if (!id) return res.status(400).json({ error: 'id required' });
-  try { await tPool.query('DELETE FROM templates WHERE id = $1', [id]); res.json({ success: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── Serve Frontend ────────────────────────────────────────────────────────────
-const FRONTEND_DIST = join(__dirname, '../frontend/dist');
-app.get('/', (req, res) => {
-  res.sendFile(join(FRONTEND_DIST, 'index.html'));
-});
-app.get('*', (req, res) => {
-  res.sendFile(join(FRONTEND_DIST, 'index.html'));
 });
