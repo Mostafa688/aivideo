@@ -809,6 +809,31 @@ function templateAdminAuth(req, res, next) {
   next();
 }
 
+
+// Seed default templates if none exist
+(async () => {
+  try {
+    const result = await tPool.query('SELECT COUNT(*) FROM templates');
+    const count = parseInt(result.rows[0].count);
+    if (count === 0) {
+      const defaultTemplates = [
+        { title: 'Beautiful Landscape', description: 'A cinematic landscape video', prompt: 'Beautiful mountains and sunset', script: 'Scene 1: Mountains\nScene 2: Sunset', model_key: 'model1', video_url: null },
+        { title: 'Product Showcase', description: 'Professional product demo', prompt: 'Modern product presentation', script: 'Scene 1: Product intro\nScene 2: Features', model_key: 'model2', video_url: null },
+        { title: 'AI Generated Images', description: 'AI-powered image generation', prompt: 'Stunning AI artwork', script: 'Scene 1: AI art', model_key: 'model3', video_url: null },
+      ];
+      for (const tpl of defaultTemplates) {
+        await tPool.query(
+          'INSERT INTO templates (title, description, prompt, script, model_key, video_url) VALUES ($1,$2,$3,$4,$5,$6)',
+          [tpl.title, tpl.description, tpl.prompt, tpl.script, tpl.model_key, tpl.video_url]
+        );
+      }
+      console.log('[Templates] Seeded 3 default templates');
+    }
+  } catch (e) {
+    console.error('[Templates Seed]', e.message);
+  }
+})();
+
 // GET /api/templates — public, returns all templates ordered by model
 app.get('/api/templates', async (req, res) => {
   try {
