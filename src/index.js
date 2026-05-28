@@ -961,7 +961,7 @@ app.post('/api/templates/delete', templateAdminAuth, async (req, res) => {
   }
 });
 
-app.use(express.static(join(__dirname, '..', 'public')));
+app.use(express.static(join(__dirname, '..', 'dist')));
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' });
