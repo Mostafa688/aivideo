@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "build": "cd /app/../frontend && npm install && npm run build && cp -r dist/* /app/public/",
     "start": "node src/index.js"
   },
   "dependencies": {
