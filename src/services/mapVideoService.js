@@ -240,7 +240,6 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
           if (flagImg) {
             // Pattern fill with the flag image covering the entire SVG space
             // The country path clips it naturally
-            const bbox = ${JSON.stringify({})}[''] || null;
             // Use the country BBOX for better flag positioning
             const cb = COUNTRY_BBOX[iso];
             if (cb) {
