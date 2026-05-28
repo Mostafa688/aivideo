@@ -3,3 +3,6 @@ nixPkgs = ["nodejs_20", "ffmpeg", "python3", "python3Packages.pip", "python3Pack
 
 [phases.install]
 cmds = ["npm ci", "pip install --break-system-packages edge-tts", "fc-cache -f -v", "fc-list | grep -i arabic || echo 'NO ARABIC FONTS'"]
+
+[phases.build]
+cmds = ["cd frontend && npm ci && npm run build && cp -r dist/* ../public/"]
