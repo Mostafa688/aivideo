@@ -228,19 +228,30 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
         // Historical flag: colored box + symbol
         const hist = HISTORICAL_FLAGS[event.entity?.toLowerCase()];
         if (hist) {
-          overlaysHTML += `<rect x="${cx - flagW/2}" y="${cy - flagH - 4}" width="${flagW}" height="${flagH}" fill="${hist.color}" opacity="0.92" rx="3" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>`;
-          overlaysHTML += `<text x="${cx}" y="${cy - flagH/2 - 4 + flagH*0.35}" font-size="${Math.round(flagH * 0.7)}" text-anchor="middle" fill="white">${hist.symbol}</text>`;
+          const hw = Math.round(vbw * 0.07);
+          const hh = Math.round(hw * 0.6);
+          overlaysHTML += `<rect x="${cx - hw/2}" y="${cy - hh/2}" width="${hw}" height="${hh}" fill="${hist.color}" opacity="0.92" rx="4" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>`;
+          overlaysHTML += `<text x="${cx}" y="${cy + Math.round(hh * 0.2)}" font-size="${Math.round(hh * 0.65)}" text-anchor="middle" fill="white" font-weight="bold">${hist.symbol}</text>`;
         } else {
-          // Real country flag from preloaded cache
+          // Real country flag - centered on country centroid
           const flagImg = flagData[iso.toLowerCase()];
+          // Flag size relative to viewBox
+          const fw2 = Math.round(vbw * 0.07);
+          const fh2 = Math.round(fw2 * 0.6);
+          const fx2 = cx - fw2 / 2;
+          const fy2 = cy - fh2 / 2;
+
           if (flagImg) {
-            overlaysHTML += `<image href="${flagImg}" x="${cx - flagW/2}" y="${cy - flagH - 4}" width="${flagW}" height="${flagH}" opacity="0.95" preserveAspectRatio="xMidYMid slice"/>`;
-            overlaysHTML += `<rect x="${cx - flagW/2}" y="${cy - flagH - 4}" width="${flagW}" height="${flagH}" fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="1" rx="2"/>`;
+            // Rounded rect clip for flag shape
+            const clipId = `flag_${iso}_${Math.round(currentTime * 10)}`;
+            overlaysHTML += `<clipPath id="${clipId}"><rect x="${fx2}" y="${fy2}" width="${fw2}" height="${fh2}" rx="4"/></clipPath>`;
+            overlaysHTML += `<image href="${flagImg}" x="${fx2}" y="${fy2}" width="${fw2}" height="${fh2}" opacity="0.95" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})"/>`;
+            overlaysHTML += `<rect x="${fx2}" y="${fy2}" width="${fw2}" height="${fh2}" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="${Math.max(1, Math.round(vbw * 0.001))}" rx="4"/>`;
           } else {
-            // Fallback: colored box with ISO text
+            // Fallback: solid color fill
             const flagColor = event.color || '#e11d48';
-            overlaysHTML += `<rect x="${cx - flagW/2}" y="${cy - flagH - 4}" width="${flagW}" height="${flagH}" fill="${flagColor}" opacity="0.85" rx="3"/>`;
-            overlaysHTML += `<text x="${cx}" y="${cy - 4 - flagH*0.2}" font-size="${Math.max(7, Math.round(flagH * 0.5))}" text-anchor="middle" fill="white" font-weight="bold">${iso}</text>`;
+            overlaysHTML += `<rect x="${fx2}" y="${fy2}" width="${fw2}" height="${fh2}" fill="${flagColor}" opacity="0.85" rx="4"/>`;
+            overlaysHTML += `<text x="${cx}" y="${cy + Math.round(fh2*0.2)}" font-size="${Math.max(8, Math.round(fh2 * 0.55))}" text-anchor="middle" fill="white" font-weight="bold">${iso}</text>`;
           }
         }
       }
@@ -521,7 +532,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
     } catch {}
   }
 
-  const totalSecs = Math.max(Math.ceil(actualAudioDuration) + 4, durationSecs);
+  const totalSecs = Math.ceil(actualAudioDuration);
   // Preload all country flags
   const allISOs = (timeline.events || []).flatMap(e => e.countries || []);
   await preloadFlags(allISOs);
