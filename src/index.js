@@ -809,6 +809,29 @@ function templateAdminAuth(req, res, next) {
   next();
 }
 
+// ── Seed default templates (runs once on startup if table is empty) ─────────
+await (async () => {
+  try {
+    const { rows } = await tPool.query('SELECT COUNT(*) AS count FROM templates');
+    if (parseInt(rows[0].count, 10) === 0) {
+      await tPool.query(
+        `INSERT INTO templates (title, description, model_key) VALUES
+          ($1, $2, $3),
+          ($4, $5, $6),
+          ($7, $8, $9)`,
+        [
+          'Beautiful Landscape', 'Stunning nature and landscape visuals', 'model1',
+          'Product Showcase',    'Highlight your product with cinematic shots', 'model2',
+          'AI Generated Images', 'Fully AI-generated imagery for any topic', 'model3',
+        ]
+      );
+      console.log('[Templates] Seeded 3 default templates.');
+    }
+  } catch (e) {
+    console.error('[Templates] Seed error:', e.message);
+  }
+})();
+
 // GET /api/templates — public, returns all templates ordered by model
 app.get('/api/templates', async (req, res) => {
   try {
