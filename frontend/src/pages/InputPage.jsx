@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import VoiceUpload from './VoiceUpload.jsx';
 
 const TONES = ['Motivational', 'Storytelling', 'Educational'];
@@ -610,6 +610,23 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   const [videoLanguage, setVideoLanguage] = useState('en');
   const [captionStyle, setCaptionStyle] = useState('classic');
   const [videoEffect, setVideoEffect] = useState('none');
+
+  // ── Load template prompt if coming from Templates page ──
+  useEffect(() => {
+    const templatePrompt = localStorage.getItem('erivion_template_prompt');
+    const templateModel = localStorage.getItem('erivion_template_model');
+    if (templatePrompt) {
+      if (templatePrompt.length > 100) {
+        setMode('script');
+        setScript(templatePrompt);
+      } else {
+        setMode('idea');
+        setIdea(templatePrompt);
+      }
+      localStorage.removeItem('erivion_template_prompt');
+      localStorage.removeItem('erivion_template_model');
+    }
+  }, []);
 
   if (!selectedModel) return (
     <ModelSelect
