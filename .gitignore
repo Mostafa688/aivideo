@@ -4,4 +4,5 @@ outputs
 data
 tempdist/ 
 temp/ 
-outputs/ 
+outputs/ node_modules/ 
+frontend/node_modules/ 

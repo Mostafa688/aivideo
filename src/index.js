@@ -841,7 +841,7 @@ app.post('/api/templates/delete', async (req, res) => {
 });
 
 // ── Serve Frontend ────────────────────────────────────────────────────────────
-const FRONTEND_DIST = join(__dirname, '../frontend/dist');
+const FRONTEND_DIST = join(__dirname, 'public');
 app.use(express.static(FRONTEND_DIST));
 app.get('*', (req, res) => {
   res.sendFile(join(FRONTEND_DIST, 'index.html'));
