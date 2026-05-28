@@ -146,6 +146,24 @@ router.get('/videos', authMiddleware, async (req, res) => {
   res.json({ videos });
 });
 
+router.get('/videos/debug/add-test', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO videos (user_id, filename, title) VALUES ($1, $2, $3) RETURNING *',
+      [req.user.userId, 'test_video.mp4', 'Test Video']
+    );
+    const video = {
+      ...rows[0],
+      ratio: '16:9',
+      duration: '1:30',
+      file_size: 5242880,
+    };
+    res.json({ video });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/save-video', authMiddleware, async (req, res) => {
   const { filename, title } = req.body;
   if (!filename) return res.status(400).json({ error: 'filename required' });
