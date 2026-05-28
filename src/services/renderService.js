@@ -32,9 +32,9 @@ function getFontPath(videoLanguage) {
 }
 
 const RATIOS = {
-  '16:9': { w: 1280, h: 720 },
-  '9:16': { w: 720, h: 1280 },
-  '1:1':  { w: 720, h: 720 },
+  '16:9': { w: 1920, h: 1080 },
+  '9:16': { w: 1080, h: 1920 },
+  '1:1':  { w: 1080, h: 1080 },
 };
 
 export const RATIO_ORIENTATION = {
@@ -126,8 +126,8 @@ function trimAndScale(input, output, duration, w, h) {
         '-an',
         '-r', '30',
         '-c:v', 'libx264',
-        '-crf', '23',
-        '-preset', 'ultrafast',
+        '-crf', '18',
+        '-preset', 'fast',
         '-profile:v', 'baseline',
         '-level', '3.1',
         '-pix_fmt', 'yuv420p',
@@ -169,8 +169,8 @@ function concatVideos(listFile, output) {
       .inputOptions(['-f', 'concat', '-safe', '0'])
       .outputOptions([
         '-c:v', 'libx264',
-        '-crf', '23',
-        '-preset', 'ultrafast',
+        '-crf', '18',
+        '-preset', 'fast',
         '-profile:v', 'baseline',
         '-level', '3.1',
         '-pix_fmt', 'yuv420p',
@@ -211,7 +211,7 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
       execSync(
         `ffmpeg -i "${current}" -i "${slideFiles[i]}"` +
         ` -filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=${TRANSITION_DURATION}:offset=${offset}[v]"` +
-        ` -map "[v]" -r 30 -c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${transOut}"`,
+        ` -map "[v]" -r 30 -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${transOut}"`,
         { stdio: 'pipe' }
       );
       current = transOut;
@@ -226,7 +226,7 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
       fs.writeFileSync(tmpList, listContent);
       try {
         execSync(
-          `ffmpeg -f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${fallbackOut}"`,
+          `ffmpeg -f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${fallbackOut}"`,
           { stdio: 'pipe' }
         );
         current = fallbackOut;
@@ -355,8 +355,8 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       .outputOptions([
         '-c:a', 'copy',
         '-c:v', 'libx264',
-        '-crf', '23',
-        '-preset', 'ultrafast',
+        '-crf', '18',
+        '-preset', 'fast',
         '-profile:v', 'baseline',
         '-level', '3.1',
         '-pix_fmt', 'yuv420p',
@@ -385,8 +385,8 @@ function applyVideoEffect(videoFile, output, effectName) {
       .outputOptions([
         '-c:a', 'copy',
         '-c:v', 'libx264',
-        '-crf', '23',
-        '-preset', 'ultrafast',
+        '-crf', '18',
+        '-preset', 'fast',
         '-profile:v', 'baseline',
         '-level', '3.1',
         '-pix_fmt', 'yuv420p',
@@ -414,7 +414,7 @@ async function addSoundEffects(videoFile, introSound, outroSound, whooshSound, s
 
     const cmd = `ffmpeg ${filterInputs}`
       + ` -filter_complex "${amixInputs}amix=inputs=${inputCount}:duration=first:weights=1 ${sfxVolume}[aout]"`
-      + ` -map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k -movflags +faststart -y "${output}"`;
+      + ` -map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 320k -movflags +faststart -y "${output}"`;
     execSync(cmd, { stdio: 'pipe' });
   } catch(e) {
     console.warn('Sound effects failed:', e.message);
@@ -460,7 +460,7 @@ function addWatermark(inputFile, outputFile) {
   return new Promise((resolve) => {
     try {
       execSync(
-        `ffmpeg -i "${inputFile}" -vf "${filterStr}" -c:a copy -c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputFile}"`,
+        `ffmpeg -i "${inputFile}" -vf "${filterStr}" -c:a copy -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputFile}"`,
         { stdio: 'pipe' }
       );
       console.log('[Watermark] ✅ Done');
@@ -547,6 +547,126 @@ function finalizeVideo(inputFile, output) {
           .on('end', resolve)
           .on('error', reject)
           .run();
+      })
+      .run();
+  });
+}
+
+
+// ── Groq Whisper: Real Captions with word-level timing ──────────────────────
+async function transcribeWithWhisper(audioPath) {
+  try {
+    const { default: fetch } = await import('node-fetch');
+    const { default: FormData } = await import('form-data');
+    const audioBuffer = fs.readFileSync(audioPath);
+    const formData = new FormData();
+    formData.append('file', audioBuffer, { filename: 'audio.mp3', contentType: 'audio/mpeg' });
+    formData.append('model', 'whisper-large-v3-turbo');
+    formData.append('response_format', 'verbose_json');
+    formData.append('timestamp_granularities[]', 'word');
+
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.GROQ_API_KEY,
+        ...formData.getHeaders(),
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn('[Whisper] Failed:', err.slice(0, 200));
+      return null;
+    }
+
+    const data = await res.json();
+    console.log(`[Whisper] Transcribed ${data.words?.length || 0} words`);
+    return data.words || null;
+  } catch (e) {
+    console.warn('[Whisper] Error:', e.message);
+    return null;
+  }
+}
+
+// ── Real Captions using Whisper word timestamps ────────────────────────────
+async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio, videoLanguage) {
+  const styleName = captionStyle || 'classic';
+  const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
+  const fontfile = getFontPath(videoLanguage);
+  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
+
+  // Try Whisper first
+  const words = await transcribeWithWhisper(audioPath);
+
+  if (!words || words.length === 0) {
+    console.warn('[Captions] Whisper failed, no captions added');
+    fs.copyFileSync(videoFile, output);
+    return;
+  }
+
+  // Group words into chunks of 3-4 words
+  const WORDS_PER_CHUNK = 4;
+  const chunks = [];
+  for (let i = 0; i < words.length; i += WORDS_PER_CHUNK) {
+    const group = words.slice(i, i + WORDS_PER_CHUNK);
+    const text = group.map(w => w.word).join(' ').trim();
+    const start = group[0].start;
+    const end = group[group.length - 1].end;
+    if (text) chunks.push({ text, start, end });
+  }
+
+  console.log(`[Captions] ${chunks.length} caption chunks from ${words.length} words`);
+
+  const yExpr = style.getY(ratio);
+  const filters = chunks.map(chunk => {
+    const safeText = chunk.text
+      .replace(/['"`:;\\<>{}|]/g, '')
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return `drawtext=fontfile='${fontfile}'`
+      + `:text='${safeText}'`
+      + `:fontsize=${style.fontsize}`
+      + `:fontcolor=${style.fontcolor}`
+      + `:borderw=${style.borderw}`
+      + `:bordercolor=${style.bordercolor}`
+      + (style.box ? `:box=1:boxcolor=${style.boxcolor}:boxborderw=8` : '')
+      + `:x=(w-text_w)/2`
+      + `:y=${yExpr}`
+      + `:enable='between(t,${chunk.start.toFixed(3)},${chunk.end.toFixed(3)})'`;
+  });
+
+  if (filters.length === 0) {
+    fs.copyFileSync(videoFile, output);
+    return;
+  }
+
+  const filterStr = filters.join(',');
+
+  return new Promise((resolve) => {
+    ffmpeg(videoFile)
+      .videoFilters(filterStr)
+      .outputOptions([
+        '-c:a', 'copy',
+        '-c:v', 'libx264',
+        '-crf', '18',
+        '-preset', 'fast',
+        '-profile:v', 'high',
+        '-level', '4.1',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+      ])
+      .output(path.resolve(output))
+      .on('end', () => {
+        console.log('[Captions] ✅ Real captions added');
+        resolve();
+      })
+      .on('error', (err) => {
+        console.warn('[Captions] Failed:', err.message.slice(0, 100));
+        fs.copyFileSync(videoFile, output);
+        resolve();
       })
       .run();
   });
@@ -643,11 +763,17 @@ export async function renderVideo({
   if (captions) {
     await mkdir(TEMP_DIR, { recursive: true });
     const captionTemp = path.resolve(TEMP_DIR, `captions_${id}.mp4`);
-    const totalDur = audioDuration || (secPerScene * scenes.length);
-    const perScene = totalDur / scenes.length;
-    const sceneDurations = scenes.map(() => perScene);
-    // ✅ FIX: بنبعت videoLanguage للـ captions
-    await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
+    if (audioPath && process.env.GROQ_API_KEY) {
+      // ✅ Real captions using Groq Whisper
+      console.log('[Captions] Using Groq Whisper for real captions');
+      await addRealCaptions(step5, audioPath, captionTemp, captionStyle, ratio, videoLanguage);
+    } else {
+      // Fallback to old method
+      const totalDur = audioDuration || (secPerScene * scenes.length);
+      const perScene = totalDur / scenes.length;
+      const sceneDurations = scenes.map(() => perScene);
+      await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
+    }
     if (applyWatermark) {
       await addWatermark(captionTemp, step6);
       console.log('[Watermark] Applied (free plan)');

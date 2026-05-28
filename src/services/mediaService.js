@@ -86,7 +86,7 @@ async function fetchPexelsImages(query, orientation, usedSet) {
 }
 
 // ✅ الدالة الرئيسية - بتقبل jobId أو usedSet مباشرة
-export async function fetchMediaForScene(keywords, ratio = '16:9', jobId = null) {
+export async function fetchMediaForScene(keywords, ratio = '16:9', jobId = null, visual = null) {
   const orientation = RATIO_ORIENTATION[ratio] || 'landscape';
 
   // نجيب الـ Set الخاص بالـ job ده
@@ -100,14 +100,15 @@ export async function fetchMediaForScene(keywords, ratio = '16:9', jobId = null)
   }
 
   const kwList = (keywords || []).filter(Boolean);
-  // ✅ نجرب الكلمتين الأولى مع بعض، ثم كل واحدة لوحدها، ثم fallback
+  // ✅ Use visual description as primary query if available
   const queriesToTry = [
-    kwList.slice(0, 2).join(' '),          // "motivation success"
-    kwList[0],                              // "motivation"
-    kwList[1],                              // "success"
-    getRandomFallback(kwList),             // كلمة عشوائية
-    getRandomFallback([...kwList, 'business']), // كلمة عشوائية تانية
-  ].filter(Boolean).filter((q, i, arr) => arr.indexOf(q) === i); // نشيل التكرار
+    visual,                                 // exact scene visual description (highest priority)
+    kwList[0],                              // visual description (most specific)
+    kwList.slice(0, 2).join(' '),          // combine first two
+    kwList[1],                              // second keyword
+    kwList[2],                              // third keyword
+    getRandomFallback(kwList),             // random fallback
+  ].filter(Boolean).filter((q, i, arr) => arr.indexOf(q) === i);
 
   // ✅ نجرب فيديو أول مع كل query
   for (const query of queriesToTry) {

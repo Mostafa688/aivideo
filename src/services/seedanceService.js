@@ -135,7 +135,7 @@ function slowDownClip(inputPath, outputPath, targetDuration) {
   try {
     execSync(
       `ffmpeg -i "${inputPath}" -vf "setpts=${pts.toFixed(4)}*PTS" ` +
-      `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+      `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
       `-pix_fmt yuv420p -movflags +faststart -an -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
@@ -252,7 +252,7 @@ export async function renderModel4Video({
       console.error(`[Model4] Clip ${i + 1} failed:`, e.message);
       execSync(
         `ffmpeg -f lavfi -i color=c=0x1a1a2e:size=${w}x${h}:rate=24 -t 5 ` +
-        `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+        `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
         `-pix_fmt yuv420p -movflags +faststart -y "${rawPath}"`,
         { stdio: 'pipe' }
       );
@@ -274,7 +274,7 @@ export async function renderModel4Video({
   fs.writeFileSync(listFile, slowPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
   execSync(
     `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
-    `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+    `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
     `-pix_fmt yuv420p -movflags +faststart -y "${mergedPath}"`,
     { stdio: 'pipe' }
   );
@@ -302,7 +302,7 @@ export async function renderModel4Video({
       try {
         execSync(
           `ffmpeg -stream_loop -1 -i "${mergedPath}" -t ${targetDur} ` +
-          `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+          `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
           `-pix_fmt yuv420p -movflags +faststart -y "${videoExtended}"`,
           { stdio: 'pipe' }
         );
@@ -322,18 +322,18 @@ export async function renderModel4Video({
         execSync(
           `ffmpeg -i "${videoExtended}" -i "${audioPath}" -i "${mf}" ` +
           `-filter_complex "[2:a]volume=0.07[music];[1:a][music]amix=inputs=2:duration=longest[aout]" ` +
-          `-map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
+          `-map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 320k -shortest -movflags +faststart -y "${withAudioPath}"`,
           { stdio: 'pipe' }
         );
       } catch {
         execSync(
-          `ffmpeg -i "${videoExtended}" -i "${audioPath}" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
+          `ffmpeg -i "${videoExtended}" -i "${audioPath}" -c:v copy -c:a aac -b:a 320k -shortest -movflags +faststart -y "${withAudioPath}"`,
           { stdio: 'pipe' }
         );
       }
     } else {
       execSync(
-        `ffmpeg -i "${videoExtended}" -i "${audioPath}" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`,
+        `ffmpeg -i "${videoExtended}" -i "${audioPath}" -c:v copy -c:a aac -b:a 320k -shortest -movflags +faststart -y "${withAudioPath}"`,
         { stdio: 'pipe' }
       );
     }
@@ -397,7 +397,7 @@ export async function renderModel5Video({
       console.error(`[Model5] Clip ${i + 1} failed:`, e.message);
       execSync(
         `ffmpeg -f lavfi -i color=c=0x060208:size=${w}x${h}:rate=24 -t ${CLIP_SEC} ` +
-        `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+        `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
         `-pix_fmt yuv420p -movflags +faststart -y "${rawPath}"`,
         { stdio: 'pipe' }
       );
@@ -405,25 +405,53 @@ export async function renderModel5Video({
     rawPaths.push(rawPath);
   }
 
-  // Step 2: Concat مع الصوت الأصلي
+  // Step 2: Concat with crossfade transitions
   const mergedPath = path.join(TEMP_DIR, `m5_merged_${id}.mp4`);
-  const listFile = path.join(TEMP_DIR, `m5_list_${id}.txt`);
-  fs.writeFileSync(listFile, rawPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
 
-  try {
-    execSync(
-      `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
-      `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
-      `-pix_fmt yuv420p -c:a aac -b:a 192k -ar 44100 -ac 2 -movflags +faststart -y "${mergedPath}"`,
-      { stdio: 'pipe' }
-    );
-  } catch {
-    execSync(
-      `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
-      `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
-      `-pix_fmt yuv420p -an -movflags +faststart -y "${mergedPath}"`,
-      { stdio: 'pipe' }
-    );
+  if (rawPaths.length === 1) {
+    fs.copyFileSync(rawPaths[0], mergedPath);
+  } else {
+    // Build xfade filter chain for smooth transitions
+    try {
+      const FADE_DUR = 0.5;
+      const CLIP_DURATION = CLIP_SEC - FADE_DUR;
+      
+      // Build inputs
+      const inputs = rawPaths.map(f => `-i "${f}"`).join(' ');
+      
+      // Build xfade filter chain
+      let filterComplex = '';
+      let lastLabel = '[0:v]';
+      
+      for (let i = 1; i < rawPaths.length; i++) {
+        const offset = (CLIP_DURATION * i).toFixed(2);
+        const nextLabel = i < rawPaths.length - 1 ? `[v${i}]` : '[vout]';
+        filterComplex += `${lastLabel}[${i}:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}${nextLabel};`;
+        lastLabel = `[v${i}]`;
+      }
+      
+      if (rawPaths.length === 2) {
+        filterComplex = `[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${CLIP_DURATION.toFixed(2)}[vout]`;
+      }
+      
+      execSync(
+        `ffmpeg ${inputs} -filter_complex "${filterComplex}" -map "[vout]" ` +
+        `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
+        `-pix_fmt yuv420p -movflags +faststart -y "${mergedPath}"`,
+        { stdio: 'pipe' }
+      );
+      console.log('[Model5] ✅ Crossfade transitions applied');
+    } catch (e) {
+      console.warn('[Model5] Transitions failed, using simple concat:', e.message.slice(0, 80));
+      const listFile = path.join(TEMP_DIR, `m5_list_${id}.txt`);
+      fs.writeFileSync(listFile, rawPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
+      execSync(
+        `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
+        `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
+        `-pix_fmt yuv420p -movflags +faststart -y "${mergedPath}"`,
+        { stdio: 'pipe' }
+      );
+    }
   }
 
   // Step 3: Final output

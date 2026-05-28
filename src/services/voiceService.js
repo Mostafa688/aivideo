@@ -86,23 +86,32 @@ function splitTextIntoChunks(text, maxChars = 200) {
 // Merge multiple mp3 files using ffmpeg
 function mergeAudioFiles(files, output) {
   if (files.length === 1) {
-    fs.renameSync(files[0], output);
+    // ✅ Boost volume and quality on single file too
+    try {
+      execSync(`ffmpeg -i "${files[0]}" -af "volume=1.4,aresample=48000,highpass=f=80,lowpass=f=12000" -c:a mp3 -b:a 320k -y "${output}"`, { stdio: 'pipe' });
+      fs.unlinkSync(files[0]);
+    } catch {
+      fs.renameSync(files[0], output);
+    }
     return;
   }
   const listFile = output + '_list.txt';
   const listContent = files.map(f => `file '${path.resolve(f)}'`).join('\n');
   fs.writeFileSync(listFile, listContent);
-  execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c copy -y "${output}"`, { stdio: 'pipe' });
+  // ✅ Boost volume 40% + 48kHz + high quality encoding
+  execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -af "volume=1.4,aresample=48000,highpass=f=80,lowpass=f=12000" -c:a mp3 -b:a 320k -y "${output}"`, { stdio: 'pipe' });
   fs.unlinkSync(listFile);
   files.forEach(f => { try { fs.unlinkSync(f); } catch {} });
 }
 
 async function runEdgeTTS(text, voiceName, rateStr, pitch, outputFile) {
   const safeText = text.replace(/"/g, "'").replace(/\n/g, ' ').trim();
+  // ✅ Use --volume for louder output
   const cmd = EDGE_TTS_CMD
     + ' --voice ' + voiceName
     + ' --rate=' + rateStr
     + ' --pitch=' + pitch
+    + ' --volume=+20%'
     + ' --text "' + safeText + '"'
     + ' --write-media "' + outputFile + '"';
 

@@ -313,7 +313,7 @@ export async function renderModel3Video({
       execSync(
         `ffmpeg -loop 1 -i "${imagePaths[i]}" -t ${SEC_PER_IMAGE} -r 30 ` +
         `-vf "scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1" ` +
-        `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+        `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
         `-pix_fmt yuv420p -movflags +faststart -y "${clipPath}"`,
         { stdio: 'pipe' }
       );
@@ -341,7 +341,7 @@ export async function renderModel3Video({
     fs.writeFileSync(listFile, listContent);
     execSync(
       `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
-      `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+      `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
       `-pix_fmt yuv420p -movflags +faststart -y "${mergedPath}"`,
       { stdio: 'pipe' }
     );
@@ -377,7 +377,7 @@ export async function renderModel3Video({
       try {
         execSync(
           `ffmpeg -stream_loop -1 -i "${mergedPath}" -t ${targetDuration} ` +
-          `-c:v libx264 -crf 23 -preset ultrafast -profile:v baseline -level 3.1 ` +
+          `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
           `-pix_fmt yuv420p -movflags +faststart -y "${videoExtended}"`,
           { stdio: 'pipe' }
         );

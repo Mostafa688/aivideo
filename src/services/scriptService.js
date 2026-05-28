@@ -130,7 +130,13 @@ General rules:
 - Do NOT repeat the same sentence across scenes
 - Do NOT add extra hooks or endings beyond what is specified above
 
-Format: {"index":N,"type":"hook|body|ending","text":"...","keywords":["w1","w2"]}
+Format: {"index":N,"type":"hook|body|ending","text":"...","keywords":["w1","w2"],"visual":"specific visual description for this exact scene"}
+
+CRITICAL - keywords and visual rules:
+- keywords must describe the SPECIFIC action or scene in the text (not the general topic)
+- If text says "a man walks in the rain", keywords=["man walking rain street"] visual="man walking alone in rainy street at night"
+- If text says "success after failure", keywords=["person celebrating achievement office"] visual="confident person celebrating success"
+- NEVER use generic keywords like just "motivation" or "success" - always be SPECIFIC to the scene
 
 Create a video about:
 ${idea}
@@ -169,7 +175,9 @@ ${segmentsForChunk.map((_, i) => {
   return `Scene ${sceneIndex}: type="${type}"`;
 }).join('\n')}
 
-Format: {"index":N,"type":"hook|body|ending","text":"EXACT scene text","keywords":["w1","w2"]}
+Format: {"index":N,"type":"hook|body|ending","text":"EXACT scene text","keywords":["w1","w2"],"visual":"specific visual description for this exact scene"}
+
+CRITICAL - keywords must be SPECIFIC to the scene action, not general topic words.
 
 Scenes:
 ${scenesText}
@@ -228,6 +236,44 @@ async function callGroq(prompt) {
 // ============================================================
 // Main function
 // ============================================================
+
+// ============================================================
+// Cinematic Scene Generation - Character & Location Consistency
+// ============================================================
+export async function generateCinematicScenes({ idea, characterDesc, locationDesc, numScenes = 6 }, send) {
+  const prompt = `You are a cinematic video director. Generate ${numScenes} scenes for a short film.
+
+STORY: ${idea}
+
+CHARACTER (keep EXACTLY consistent across ALL scenes):
+${characterDesc || 'A mysterious protagonist, age 30s, wearing dark clothing'}
+
+LOCATION/SETTING (keep EXACTLY consistent):
+${locationDesc || 'Urban environment, realistic lighting'}
+
+CRITICAL RULES:
+- Every scene MUST reference the SAME character with IDENTICAL appearance
+- Every scene MUST be set in the SAME location/world
+- Each scene shows a different moment in the story
+- Prompts must be cinematic, detailed, and suitable for video generation
+- No voiceover needed - pure visual storytelling
+
+Output EXACTLY ${numScenes} JSON lines:
+{"index":N,"prompt":"detailed cinematic prompt with character and location","text":"scene description for caption"}
+
+Start:`;
+
+  try {
+    const { scenes } = await callGroq(prompt);
+    for (const scene of scenes) {
+      send('scene', { ...scene, type: scene.index === 1 ? 'hook' : scene.index === numScenes ? 'ending' : 'body' });
+    }
+  } catch (e) {
+    console.error('[Cinematic] Scene generation failed:', e.message);
+    send('error', { message: e.message });
+  }
+}
+
 export async function generateScenesStream({ idea, script, tone, duration, mode, userId, videoLanguage }, send) {
   const sceneCount  = DURATION_SCENES[duration] || 8;
   const toneGuide   = TONE_INSTRUCTIONS[tone]  || TONE_INSTRUCTIONS.motivational;
