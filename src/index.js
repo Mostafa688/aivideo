@@ -873,6 +873,40 @@ app.get('/api/templates/debug/seed', async (req, res) => {
   }
 });
 
+// GET /api/templates/debug/add-missing — inserts Product Showcase and AI Generated Images if absent
+app.get('/api/templates/debug/add-missing', async (req, res) => {
+  try {
+    const { rows: existing } = await tPool.query('SELECT model_key FROM templates');
+    const existingKeys = new Set(existing.map(r => r.model_key));
+    let added = 0;
+
+    if (!existingKeys.has('model2')) {
+      await tPool.query(
+        'INSERT INTO templates (title, description, model_key) VALUES ($1, $2, $3)',
+        ['Product Showcase', 'Highlight your product with cinematic shots', 'model2']
+      );
+      added++;
+      console.log('[Templates] Inserted missing template: Product Showcase (model2)');
+    }
+
+    if (!existingKeys.has('model3')) {
+      await tPool.query(
+        'INSERT INTO templates (title, description, model_key) VALUES ($1, $2, $3)',
+        ['AI Generated Images', 'Fully AI-generated imagery for any topic', 'model3']
+      );
+      added++;
+      console.log('[Templates] Inserted missing template: AI Generated Images (model3)');
+    }
+
+    const { rows: countRows } = await tPool.query('SELECT COUNT(*) AS count FROM templates');
+    const count = parseInt(countRows[0].count, 10);
+    res.json({ count, added });
+  } catch (e) {
+    console.error('[Templates] add-missing error:', e.message);
+    res.status(500).json({ count: 0, added: 0, error: e.message });
+  }
+});
+
 // POST /api/templates — admin only, create a new template
 app.post('/api/templates', templateAdminAuth, async (req, res) => {
   const { title, description, prompt, script, model_key, video_url } = req.body;
