@@ -842,6 +842,37 @@ app.get('/api/templates', async (req, res) => {
   }
 });
 
+// GET /api/templates/debug/seed — debug: check count and seed if empty
+app.get('/api/templates/debug/seed', async (req, res) => {
+  try {
+    const countResult = await tPool.query('SELECT COUNT(*) AS count FROM templates');
+    const count = parseInt(countResult.rows[0].count, 10);
+    let seeded = false;
+    if (count === 0) {
+      await tPool.query(
+        `INSERT INTO templates (title, description, model_key) VALUES
+          ($1, $2, $3),
+          ($4, $5, $6),
+          ($7, $8, $9)`,
+        [
+          'Beautiful Landscape', 'Stunning nature and landscape visuals', 'model1',
+          'Product Showcase',    'Highlight your product with cinematic shots', 'model2',
+          'AI Generated Images', 'Fully AI-generated imagery for any topic', 'model3',
+        ]
+      );
+      seeded = true;
+      console.log('[Templates] Debug seed: inserted 3 default templates.');
+    }
+    const afterCount = seeded
+      ? 3
+      : count;
+    res.json({ count: afterCount, seeded });
+  } catch (e) {
+    console.error('[Templates] Debug seed error:', e.message);
+    res.status(500).json({ count: 0, seeded: false, error: e.message });
+  }
+});
+
 // POST /api/templates — admin only, create a new template
 app.post('/api/templates', templateAdminAuth, async (req, res) => {
   const { title, description, prompt, script, model_key, video_url } = req.body;
