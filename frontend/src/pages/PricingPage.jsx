@@ -37,7 +37,7 @@ const PLANS = [
     name: 'Pro',
     icon: '⚡',
     price_monthly: 50,
-    price_first_month: 30,
+    price_first_month: 25,
     price_yearly: 360,
     price_yearly_monthly: 30,
     // TODO: Set international prices
