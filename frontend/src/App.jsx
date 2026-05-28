@@ -19,7 +19,7 @@ import ModelCinematicPage from './pages/ModelCinematicPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
 
 const LOGO = '/logo.png';
-const APP_VERSION = 'v2.0';
+const APP_VERSION = 'v3.1'; // build:1780005744
 
 // ── Model Welcome Modal ──────────────────────────────────────────────────────
 function ModelWelcomeModal({ modelKey, userRegion, onContinue }) {
@@ -341,6 +341,11 @@ export default function App() {
           .header-credits-label { display: none; }
           .header-credits-sep { display: none; }
           .header-plan-badge { display: none; }
+          .header-model-badge { display: none !important; }
+        }
+        .mobile-nav { display: none; }
+        @media(max-width:768px) {
+          .mobile-nav { display: flex !important; }
         }
       `}</style>
 
@@ -363,24 +368,41 @@ export default function App() {
         ))}
       </nav>
 
-      {/* Right: Credits + Plan + Hamburger + Avatar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* Right: Credits + Models + My Videos + Plan + Avatar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {credits && (
-          <button onClick={fetchCredits} title="Click to refresh credits"
+          <button onClick={fetchCredits} title="Click to refresh"
             style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>
             <span className="header-credits-label" style={{ fontSize: 11, color: 'var(--text3)' }}>Credits:</span>
             <span style={{ fontSize: 13, fontWeight: 700, color: creditsColor() }}>{formatNumber(credits.remaining)}</span>
             <span className="header-credits-sep" style={{ fontSize: 10, color: 'var(--text3)' }}>/ {formatNumber(credits.limit)}</span>
           </button>
         )}
+        {/* Model video counters */}
+        {credits && model3Access && (
+          <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#f59e0b', fontWeight:700 }}>
+            <span>✨</span><span>{credits.model3_usage !== undefined ? (credits.model3_quotas?.videos_per_month || 0) - (credits.model3_usage || 0) : '–'}</span>
+          </div>
+        )}
+        {credits && model4Access && (
+          <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#a855f7', fontWeight:700 }}>
+            <span>🎬</span><span>{credits.model4_usage !== undefined ? (credits.model4_plan_data?.videos_per_month || 0) - (credits.model4_usage || 0) : '–'}</span>
+          </div>
+        )}
+        {credits && model5Access && (
+          <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#e11d48', fontWeight:700 }}>
+            <span>🎭</span><span>{credits.model5_usage !== undefined ? (credits.model5_plan_data?.videos_per_month || 0) - (credits.model5_usage || 0) : '–'}</span>
+          </div>
+        )}
+        {/* My Videos button */}
+        <button onClick={() => setShowVideos(true)}
+          style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(124,106,247,0.1)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:8, padding:'5px 10px', cursor:'pointer', color:'#a78bfa', fontSize:12, fontWeight:600 }}>
+          <span>🎬</span>
+          <span className="header-credits-label">My Videos</span>
+        </button>
         <div className="header-plan-badge" style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${planColor}22`, border: `1px solid ${planColor}55`, color: planColor, letterSpacing: '0.04em' }}>
           {userPlan.toUpperCase()}
         </div>
-        <button onClick={() => setShowVideos(true)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4, padding: '6px' }}>
-          <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text3)', borderRadius: 2 }} />
-          <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text3)', borderRadius: 2 }} />
-          <span style={{ display: 'block', width: 20, height: 2, background: 'var(--text3)', borderRadius: 2 }} />
-        </button>
         <UserMenu user={user} plan={userPlan} onLogout={handleLogout} onNavigate={handleNavigate} model3Access={model3Access} model4Access={model4Access} model5Access={model5Access} model6Access={model6Access} avatar={userAvatar} />
       </div>
     </div>
@@ -406,16 +428,26 @@ export default function App() {
         />
       )}
 
-      {/* ── Bottom Videos Bar ── */}
-      <div style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:99, background:'var(--bg)', borderTop:'1px solid var(--border)', padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <button onClick={() => setShowVideos(true)} style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(124,106,247,0.1)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:10, padding:'7px 14px', cursor:'pointer', color:'#a78bfa', fontSize:13, fontWeight:600 }}>
-          <span>🎬</span>
-          <span>My Videos</span>
+      {/* ── Mobile Bottom Nav ── */}
+      <div className="mobile-nav" style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:99, background:'var(--bg)', borderTop:'1px solid var(--border)', padding:'6px 8px', display:'none', alignItems:'center', justifyContent:'space-around' }}>
+        <button onClick={() => handleNavigate('home')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color: page==='input'?'#a78bfa':'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
+          <span style={{ fontSize:18 }}>🏠</span><span>Home</span>
         </button>
-        <span style={{ fontSize:11, color:'var(--text3)' }}>Erivion © 2026</span>
+        <button onClick={() => handleNavigate('templates')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color: page==='templates'?'#a78bfa':'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
+          <span style={{ fontSize:18 }}>🎬</span><span>Templates</span>
+        </button>
+        <button onClick={() => setShowVideos(true)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color:'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
+          <span style={{ fontSize:18 }}>📁</span><span>My Videos</span>
+        </button>
+        <button onClick={() => setShowPricing(true)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color:'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
+          <span style={{ fontSize:18 }}>💎</span><span>Pricing</span>
+        </button>
+        <button onClick={() => handleNavigate('support')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color: page==='support'?'#a78bfa':'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
+          <span style={{ fontSize:18 }}>💬</span><span>Support</span>
+        </button>
       </div>
 
-      <div style={{ paddingTop: 54, paddingBottom: 52 }}>
+      <div style={{ paddingTop: 54, paddingBottom: 60 }}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
         {page === 'input' && <InputPage
