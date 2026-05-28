@@ -209,12 +209,14 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
 
   // ── Render active events: flags + military units ──────────────────────────
   let overlaysHTML = '';
+  let defsHTML = '';
+  let extraCSS = '';
 
   for (const event of events) {
     if (currentTime < event.time || currentTime >= event.time + event.duration) continue;
     const progress = (currentTime - event.time) / event.duration;
 
-    // ── Flag overlays ──────────────────────────────────────────────────────
+    // ── Flag overlays as pattern fill ON the country shape ───────────────
     if (event.flag && event.countries) {
       for (const iso of event.countries) {
         const label = COUNTRY_LABELS[iso];
@@ -222,37 +224,34 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
         const [cx, cy] = label;
         const inView = cx >= vbx && cx <= vbx + vbw && cy >= vby && cy <= vby + vbh;
         if (!inView) continue;
-        const flagW = Math.round(vbw * 0.06);
-        const flagH = Math.round(flagW * 0.6);
 
-        // Historical flag: colored box + symbol
         const hist = HISTORICAL_FLAGS[event.entity?.toLowerCase()];
-        if (hist) {
-          const hw = Math.round(vbw * 0.07);
-          const hh = Math.round(hw * 0.6);
-          overlaysHTML += `<rect x="${cx - hw/2}" y="${cy - hh/2}" width="${hw}" height="${hh}" fill="${hist.color}" opacity="0.92" rx="4" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>`;
-          overlaysHTML += `<text x="${cx}" y="${cy + Math.round(hh * 0.2)}" font-size="${Math.round(hh * 0.65)}" text-anchor="middle" fill="white" font-weight="bold">${hist.symbol}</text>`;
-        } else {
-          // Real country flag - centered on country centroid
-          const flagImg = flagData[iso.toLowerCase()];
-          // Flag size relative to viewBox
-          const fw2 = Math.round(vbw * 0.07);
-          const fh2 = Math.round(fw2 * 0.6);
-          const fx2 = cx - fw2 / 2;
-          const fy2 = cy - fh2 / 2;
+        const patId = `pat_${iso}_${Math.round(currentTime * 10)}`;
 
+        if (hist) {
+          // Historical: override country fill with solid color + symbol on top
+          defsHTML += `<pattern id="${patId}" patternUnits="userSpaceOnUse" x="0" y="0" width="2000" height="857"><rect width="2000" height="857" fill="${hist.color}" opacity="0.85"/></pattern>`;
+          // Override CSS to use pattern
+          extraCSS += `#${iso}, [class="${iso}"] { fill: url(#${patId}) !important; }`;
+          // Add symbol in center
+          overlaysHTML += `<text x="${cx}" y="${cy + 4}" font-size="${Math.round(vbw * 0.018)}" text-anchor="middle" fill="white" font-weight="bold" opacity="0.95">${hist.symbol}</text>`;
+        } else {
+          const flagImg = flagData[iso.toLowerCase()];
           if (flagImg) {
-            // Rounded rect clip for flag shape
-            const clipId = `flag_${iso}_${Math.round(currentTime * 10)}`;
-            overlaysHTML += `<clipPath id="${clipId}"><rect x="${fx2}" y="${fy2}" width="${fw2}" height="${fh2}" rx="4"/></clipPath>`;
-            overlaysHTML += `<image href="${flagImg}" x="${fx2}" y="${fy2}" width="${fw2}" height="${fh2}" opacity="0.95" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})"/>`;
-            overlaysHTML += `<rect x="${fx2}" y="${fy2}" width="${fw2}" height="${fh2}" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="${Math.max(1, Math.round(vbw * 0.001))}" rx="4"/>`;
-          } else {
-            // Fallback: solid color fill
-            const flagColor = event.color || '#e11d48';
-            overlaysHTML += `<rect x="${fx2}" y="${fy2}" width="${fw2}" height="${fh2}" fill="${flagColor}" opacity="0.85" rx="4"/>`;
-            overlaysHTML += `<text x="${cx}" y="${cy + Math.round(fh2*0.2)}" font-size="${Math.max(8, Math.round(fh2 * 0.55))}" text-anchor="middle" fill="white" font-weight="bold">${iso}</text>`;
+            // Pattern fill with the flag image covering the entire SVG space
+            // The country path clips it naturally
+            const bbox = ${JSON.stringify({})}[''] || null;
+            // Use the country BBOX for better flag positioning
+            const cb = COUNTRY_BBOX[iso];
+            if (cb) {
+              const [bx, by, bw, bh] = cb;
+              defsHTML += `<pattern id="${patId}" patternUnits="userSpaceOnUse" x="${bx}" y="${by}" width="${bw}" height="${bh}"><image href="${flagImg}" x="0" y="0" width="${bw}" height="${bh}" preserveAspectRatio="xMidYMid slice"/></pattern>`;
+            } else {
+              defsHTML += `<pattern id="${patId}" patternUnits="userSpaceOnUse" x="${cx-60}" y="${cy-40}" width="120" height="80"><image href="${flagImg}" x="0" y="0" width="120" height="80" preserveAspectRatio="xMidYMid slice"/></pattern>`;
+            }
+            extraCSS += `#${iso}, [class="${iso}"] { fill: url(#${patId}) !important; opacity: 0.95; }`;
           }
+          // No fallback needed - country stays highlighted color
         }
       }
     }
@@ -301,8 +300,9 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${w}" height="${h}">
-  <style>${cssRules}</style>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${viewBox}" width="${w}" height="${h}">
+  <defs>${defsHTML}</defs>
+  <style>${cssRules}${extraCSS}</style>
   <rect width="2000" height="857" fill="${colors.ocean}"/>
   ${paths}
   ${labelsHTML}
@@ -499,7 +499,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   const FPS = 15;
   const TRANSITION_FRAMES = 8;
   const durationSecs = duration === '30s' ? 30 : duration === '1min' ? 60 : duration === '2min' ? 120 : duration === '3min' ? 180 : 300;
-  const [w, h] = ratio === '16:9' ? [1280, 720] : ratio === '9:16' ? [720, 1280] : [720, 720];
+  const [w, h] = ratio === '16:9' ? [1280, 720] : ratio === '1:1' ? [720, 720] : [720, 1280]; // default 9:16
 
   updateStatus(jobId, { progress: 10, log: ['🧠 Parsing story with AI...'] });
 
@@ -632,12 +632,15 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   const rawVideoPath = path.join(jobDir, 'raw.mp4');
   const outputPath = path.join(jobDir, 'output.mp4');
 
-  // Step 1: Build raw video
+  // Step 1: Build raw video — trim to exact audio duration
   let ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i "${listPath}"`;
-  if (audioPath && fs.existsSync(audioPath)) ffmpegCmd += ` -i "${audioPath}"`;
-  ffmpegCmd += ` -c:v libx264 -pix_fmt yuv420p -crf 18 -preset fast -r ${FPS}`;
   if (audioPath && fs.existsSync(audioPath)) {
-    ffmpegCmd += ` -map 0:v:0 -map 1:a:0 -c:a aac -b:a 192k -shortest`;
+    ffmpegCmd += ` -i "${audioPath}"`;
+    ffmpegCmd += ` -c:v libx264 -pix_fmt yuv420p -crf 18 -preset fast -r ${FPS}`;
+    ffmpegCmd += ` -map 0:v:0 -map 1:a:0 -c:a aac -b:a 192k`;
+    ffmpegCmd += ` -t ${actualAudioDuration.toFixed(2)}`; // trim to exact audio duration
+  } else {
+    ffmpegCmd += ` -c:v libx264 -pix_fmt yuv420p -crf 18 -preset fast -r ${FPS}`;
   }
   ffmpegCmd += ` "${rawVideoPath}"`;
   await execAsync(ffmpegCmd);
