@@ -150,6 +150,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+app.use(express.static(join(__dirname, '../frontend/dist')));
 app.use('/outputs', express.static('outputs'));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
@@ -841,8 +842,10 @@ app.post('/api/templates/delete', async (req, res) => {
 });
 
 // ── Serve Frontend ────────────────────────────────────────────────────────────
-const FRONTEND_DIST = join(__dirname, 'public');
-app.use(express.static(FRONTEND_DIST));
+const FRONTEND_DIST = join(__dirname, '../frontend/dist');
+app.get('/', (req, res) => {
+  res.sendFile(join(FRONTEND_DIST, 'index.html'));
+});
 app.get('*', (req, res) => {
   res.sendFile(join(FRONTEND_DIST, 'index.html'));
 });
