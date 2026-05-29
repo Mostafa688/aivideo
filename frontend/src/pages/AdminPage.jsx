@@ -373,9 +373,32 @@ function TemplatesTab({ s }) {
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const showToastMsg = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
+  const handleVideoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('video', file);
+      const r = await fetch('/api/templates/upload-video', {
+        method: 'POST',
+        headers: { 'x-admin-secret': ADMIN_SECRET },
+        body: fd,
+      });
+      const d = await r.json();
+      if (d.url) {
+        setAddForm(p => ({ ...p, video_url: d.url }));
+        showToastMsg('✅ Video uploaded!');
+      } else {
+        showToastMsg('❌ ' + (d.error || 'Upload failed'));
+      }
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setUploading(false);
+  };
   const loadTemplates = async () => {
     setLoading(true);
     try {
@@ -459,8 +482,16 @@ function TemplatesTab({ s }) {
             <textarea style={{ ...s.input, width: '100%', boxSizing: 'border-box', minHeight: 100, resize: 'vertical', fontFamily: 'inherit' }} value={addForm.prompt} onChange={e => setAddForm(p => ({ ...p, prompt: e.target.value }))} placeholder="The prompt or script the user will get when using this template..." />
           </div>
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Video URL (optional — for preview)</div>
-            <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={addForm.video_url} onChange={e => setAddForm(p => ({ ...p, video_url: e.target.value }))} placeholder="https://..." />
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Video (optional — for preview)</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <label style={{ ...s.btn('#7c6af7'), cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {uploading ? '⏳ Uploading...' : '📤 Upload Video'}
+                <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleVideoUpload} disabled={uploading} />
+              </label>
+              <span style={{ color: '#4b5563', fontSize: 12 }}>or paste URL below</span>
+            </div>
+            <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={addForm.video_url} onChange={e => setAddForm(p => ({ ...p, video_url: e.target.value }))} placeholder="https://youtube.com/... or https://vimeo.com/..." />
+            {addForm.video_url && <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4 }}>✅ Video ready: {addForm.video_url.slice(0, 60)}...</div>}
           </div>
           <button style={s.btn('#22c55e')} onClick={handleAdd} disabled={adding}>
             {adding ? '⏳ Adding...' : '✅ Add Template'}
