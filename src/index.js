@@ -384,13 +384,13 @@ app.post('/api/ai-edit', authMiddleware, async (req, res) => {
   try {
     const scenesText = scenes.map((s, i) => `Scene ${i + 1}: ${s.text}`).join('\n');
     const editPrompt = `You are a professional video script editor.\n\nCurrent scenes:\n${scenesText}\n\nUser instruction: ${prompt}\n\nReturn ONLY a valid JSON array, same number of scenes. Each scene: { "index": number, "type": "hook"|"body"|"ending", "text": string, "keywords": string[] }\n\nJSON array:`;
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 6000, messages: [{ role: 'user', content: editPrompt }] }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 6000, temperature: 0.7, messages: [{ role: 'user', content: editPrompt }] }),
     });
-    const claudeData = await claudeRes.json();
-    const textContent = claudeData.content?.find(c => c.type === 'text')?.text || '';
+    const groqData = await groqRes.json();
+    const textContent = groqData.choices?.[0]?.message?.content || '';
     let editedScenes;
     try {
       const cleaned = textContent.replace(/```json\n?|\n?```/g, '').trim();
