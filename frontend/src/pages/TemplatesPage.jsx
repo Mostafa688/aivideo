@@ -108,10 +108,33 @@ export default function TemplatesPage({ onNavigate }) {
   );
 }
 
+function getYouTubeId(url) {
+  if (!url) return null;
+  const patterns = [
+    /youtube\.com\/watch\?v=([^&]+)/,
+    /youtu\.be\/([^?&]+)/,
+    /youtube\.com\/embed\/([^?&]+)/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function getGoogleDriveId(url) {
+  if (!url) return null;
+  const m = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  return m ? m[1] : null;
+}
+
 function VideoCard({ src, color, icon }) {
   const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState(false);
+
+  const youtubeId = getYouTubeId(src);
+  const driveId   = getGoogleDriveId(src);
 
   const togglePlay = (e) => {
     e.stopPropagation();
@@ -120,10 +143,36 @@ function VideoCard({ src, color, icon }) {
     else { videoRef.current.play().then(() => setPlaying(true)).catch(() => setError(true)); }
   };
 
-  if (!src || error) {
+  if (!src || (!youtubeId && !driveId && error)) {
     return (
       <div style={{ paddingTop:'56.25%', background:`linear-gradient(135deg, ${color}20, #0d0b1a)`, position:'relative', borderRadius:'12px 12px 0 0' }}>
         <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:44 }}>{icon}</div>
+      </div>
+    );
+  }
+
+  if (youtubeId) {
+    return (
+      <div style={{ position:'relative', paddingTop:'56.25%', background:'#000', borderRadius:'12px 12px 0 0', overflow:'hidden' }}>
+        <iframe
+          src={`https://www.youtube.com/embed/${youtubeId}?rel=0&modestbranding=1`}
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
+  if (driveId) {
+    return (
+      <div style={{ position:'relative', paddingTop:'56.25%', background:'#000', borderRadius:'12px 12px 0 0', overflow:'hidden' }}>
+        <iframe
+          src={`https://drive.google.com/file/d/${driveId}/preview`}
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}
+          allow="autoplay"
+          allowFullScreen
+        />
       </div>
     );
   }
@@ -138,7 +187,6 @@ function VideoCard({ src, color, icon }) {
         onEnded={() => setPlaying(false)}
         onError={() => setError(true)}
       />
-      {/* Play/Pause overlay */}
       <div onClick={togglePlay} style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background: playing ? 'transparent' : 'rgba(0,0,0,0.35)', transition:'background 0.2s', cursor:'pointer' }}>
         {!playing && (
           <div style={{ width:48, height:48, borderRadius:'50%', background:'rgba(255,255,255,0.15)', backdropFilter:'blur(8px)', border:'1px solid rgba(255,255,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center' }}>
