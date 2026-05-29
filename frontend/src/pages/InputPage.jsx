@@ -1036,3 +1036,4 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
       </div>
     </div>
   );
+}
