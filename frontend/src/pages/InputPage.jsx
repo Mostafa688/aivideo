@@ -416,8 +416,6 @@ function MapVideoForm({ onSubmit, onBack }) {
   );
 }
 
-function ModelSelect({ onSelect, model3Access = false, model4Access = false, model5Access = false }) {
-  const [hovered, setHovered] = useState(null);
 // ── Model Selector ──────────────────────────────────────────────────────────
 function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access }) {
   const [hovered, setHovered] = useState(null);
@@ -725,8 +723,6 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
   );
 }
 
-}
-
 // ── Main Form ───────────────────────────────────────────────────────────────
 export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false }) {
   const [selectedModel, setSelectedModel] = useState(null);
@@ -767,7 +763,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   }, []);
 
   if (!selectedModel) return (
-    <ModelSelect
+    <ModelSelector
       onSelect={(model) => {
         if (model === 'model3') { onSubmit({ videoType: 'model3' }); return; }
         if (model === 'model4') { onSubmit({ videoType: 'model4' }); return; }
