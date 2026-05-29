@@ -151,6 +151,7 @@ app.use('/api', (req, res, next) => {
 });
 
 app.use('/outputs', express.static('outputs'));
+app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'templates')));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/affiliate', affiliateRouter);
@@ -946,6 +947,28 @@ app.post('/api/templates/add', templateAdminAuth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// POST /api/templates/upload-video — admin only, upload video file
+const templateVideoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = join(process.cwd(), 'outputs', 'templates');
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      const ext = file.originalname.split('.').pop();
+      cb(null, `tpl_${Date.now()}.${ext}`);
+    },
+  }),
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB max
+});
+
+app.post('/api/templates/upload-video', templateAdminAuth, templateVideoUpload.single('video'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const url = `/outputs/templates/${req.file.filename}`;
+  res.json({ url });
 });
 
 // POST /api/templates/delete — admin only (legacy alias kept for AdminPage compatibility)
