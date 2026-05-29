@@ -51,6 +51,30 @@ function getRandomFallback(exclude = []) {
 
 // ✅ FIX الرئيسي: بنجيب per_page=30 بدل 10، وبنعمل page عشوائي
 //    وبنتحقق من كل الـ video_files مش بس أول file
+// ✅ بنختار الـ video file المناسب للـ ratio بناءً على الـ width/height الفعلي
+function pickBestFile(video_files, orientation) {
+  if (!video_files?.length) return null;
+
+  // بنفلتر الفايلات حسب الـ orientation الفعلي
+  const matching = video_files.filter(f => {
+    if (!f.width || !f.height) return false;
+    const isLandscape = f.width > f.height;
+    const isPortrait  = f.height > f.width;
+    const isSquare    = f.width === f.height;
+    if (orientation === 'landscape') return isLandscape;
+    if (orientation === 'portrait')  return isPortrait;
+    if (orientation === 'square')    return isSquare || Math.abs(f.width - f.height) / Math.max(f.width, f.height) < 0.2;
+    return true;
+  });
+
+  const pool = matching.length > 0 ? matching : video_files;
+
+  // نختار hd أولاً ثم sd ثم أي حاجة
+  return pool.find(f => f.quality === 'hd')
+    || pool.find(f => f.quality === 'sd')
+    || pool[0];
+}
+
 async function fetchPexelsVideos(query, orientation, usedSet, page = 1) {
   const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=30&page=${page}&orientation=${orientation}`;
   const res = await fetch(url, {
@@ -61,12 +85,10 @@ async function fetchPexelsVideos(query, orientation, usedSet, page = 1) {
   const data = await res.json();
   const videos = data.videos || [];
 
-  // ✅ بنفلتر: نشيل أي فيديو كل files بتاعته اتستخدمت
+  // ✅ بنفلتر: نشيل أي فيديو مفيش فيه file مناسب للـ orientation أو اتستخدم
   return videos.filter(v => {
-    const hdFile = v.video_files?.find(f => f.quality === 'hd');
-    const sdFile = v.video_files?.find(f => f.quality === 'sd');
-    const anyFile = hdFile || sdFile || v.video_files?.[0];
-    return anyFile && !usedSet.has(anyFile.link);
+    const file = pickBestFile(v.video_files, orientation);
+    return file && !usedSet.has(file.link);
   });
 }
 
@@ -128,10 +150,8 @@ export async function fetchMediaForScene(keywords, ratio = '16:9', jobId = null,
         // ✅ نختار عشوائي من كل النتائج مش بس أول 5
         const video = videos[Math.floor(Math.random() * videos.length)];
 
-        // ✅ نختار أفضل file مناسب للـ ratio
-        const hdFile = video.video_files?.find(f => f.quality === 'hd');
-        const sdFile = video.video_files?.find(f => f.quality === 'sd');
-        const file = hdFile || sdFile || video.video_files?.[0];
+        // ✅ نختار أفضل file مناسب للـ ratio والـ orientation الفعلي
+        const file = pickBestFile(video.video_files, orientation);
 
         if (file && !usedSet.has(file.link)) {
           usedSet.add(file.link);
