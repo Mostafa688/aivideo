@@ -134,6 +134,12 @@ function getStreamableId(url) {
   return m ? m[1] : null;
 }
 
+function getVimeoId(url) {
+  if (!url) return null;
+  const m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  return m ? m[1] : null;
+}
+
 function VideoCard({ src, color, icon }) {
   const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
@@ -142,6 +148,7 @@ function VideoCard({ src, color, icon }) {
   const youtubeId    = getYouTubeId(src);
   const driveId      = getGoogleDriveId(src);
   const streamableId = getStreamableId(src);
+  const vimeoId      = getVimeoId(src);
 
   const togglePlay = (e) => {
     e.stopPropagation();
@@ -150,7 +157,7 @@ function VideoCard({ src, color, icon }) {
     else { videoRef.current.play().then(() => setPlaying(true)).catch(() => setError(true)); }
   };
 
-  if (!src || (!youtubeId && !driveId && !streamableId && error)) {
+  if (!src || (!youtubeId && !driveId && !streamableId && !vimeoId && error)) {
     return (
       <div style={{ paddingTop:'56.25%', background:`linear-gradient(135deg, ${color}20, #0d0b1a)`, position:'relative', borderRadius:'12px 12px 0 0' }}>
         <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:44 }}>{icon}</div>
@@ -191,6 +198,19 @@ function VideoCard({ src, color, icon }) {
           src={`https://streamable.com/e/${streamableId}`}
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}
           allow="autoplay"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
+  if (vimeoId) {
+    return (
+      <div style={{ position:'relative', paddingTop:'56.25%', background:'#000', borderRadius:'12px 12px 0 0', overflow:'hidden' }}>
+        <iframe
+          src={`https://player.vimeo.com/video/${vimeoId}?badge=0&autopause=0`}
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}
+          allow="autoplay; fullscreen; picture-in-picture"
           allowFullScreen
         />
       </div>
