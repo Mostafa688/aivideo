@@ -150,7 +150,6 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-app.use(express.static(join(__dirname, '../frontend/dist')));
 app.use('/outputs', express.static('outputs'));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
