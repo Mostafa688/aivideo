@@ -262,9 +262,9 @@ const GUMROAD_LINKS = {
 };
 
 const USD_PRICES = {
-  pro:        { monthly: 6,  yearly: 45  },
-  plus:       { monthly: 13, yearly: 130 },
-  max:        { monthly: 28, yearly: 270 },
+  pro:        { monthly: 4,  yearly: 30  },
+  plus:       { monthly: 8,  yearly: 72  },
+  max:        { monthly: 13, yearly: 120 },
   m3_starter: 12, m3_pro: 20, m3_max: 32,
   m4_plan1:   15, m4_plan2: 25, m4_plan3: 55,
   mc_starter: 20, mc_pro: 35, mc_max: 65,
