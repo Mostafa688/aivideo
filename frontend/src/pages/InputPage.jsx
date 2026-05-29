@@ -418,175 +418,313 @@ function MapVideoForm({ onSubmit, onBack }) {
 
 function ModelSelect({ onSelect, model3Access = false, model4Access = false, model5Access = false }) {
   const [hovered, setHovered] = useState(null);
+// ── Model Selector ──────────────────────────────────────────────────────────
+function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access }) {
+  const [hovered, setHovered] = useState(null);
   const [showModel3Modal, setShowModel3Modal] = useState(false);
+  const [activeFilter, setActiveFilter] = useState('all');
 
   const MODELS = [
     {
       key:'ai', tag:'MODEL 1', name:'AI Slices', icon:'🎨',
-      color:'#7c6af7', glow:'rgba(124,106,247,0.25)', gradFrom:'rgba(124,106,247,0.15)', gradTo:'rgba(192,132,252,0.05)',
+      color:'#7c6af7', glow:'rgba(124,106,247,0.3)', gradFrom:'rgba(124,106,247,0.15)', gradTo:'rgba(192,132,252,0.05)',
       desc:'AI-generated visuals with cinematic Ken Burns effects. Perfect for storytelling and educational content.',
       features:['AI-generated scene images','Ken Burns zoom & pan','Cinematic quality output','Best for storytelling'],
-      badge:null, free:true,
+      badge:null, free:true, category:'free',
+      accent: '#a78bfa',
     },
     {
       key:'pexels', tag:'MODEL 2', name:'Real Footage', icon:'🎬',
-      color:'#06b6d4', glow:'rgba(6,182,212,0.25)', gradFrom:'rgba(6,182,212,0.12)', gradTo:'rgba(14,165,233,0.04)',
+      color:'#06b6d4', glow:'rgba(6,182,212,0.3)', gradFrom:'rgba(6,182,212,0.12)', gradTo:'rgba(14,165,233,0.04)',
       desc:'Real HD stock footage from Pexels library. Matches scenes with professional clips for a documentary feel.',
       features:['Real HD stock footage','Smart keyword matching','Documentary style','Fast rendering'],
-      badge:null, free:true,
+      badge:null, free:true, category:'free',
+      accent: '#67e8f9',
     },
     {
-      key:'model3', tag:'MODEL 3 · PREMIUM', name:'AI Images', icon:'🖼️',
-      color:'#f59e0b', glow:'rgba(245,158,11,0.25)', gradFrom:'rgba(245,158,11,0.14)', gradTo:'rgba(239,68,68,0.05)',
+      key:'model3', tag:'MODEL 3', name:'AI Images', icon:'🖼️',
+      color:'#f59e0b', glow:'rgba(245,158,11,0.3)', gradFrom:'rgba(245,158,11,0.14)', gradTo:'rgba(239,68,68,0.05)',
       desc:'Professional AI images per scene with Ken Burns zoom. Highest quality — every frame is unique.',
       features:['Unique AI image per scene','6 visual styles','Ken Burns + transitions','Premium production quality'],
-      badge:'PREMIUM', free:false,
+      badge:'PREMIUM', free:false, category:'premium',
+      accent: '#fcd34d',
     },
     {
-      key:'model4', tag:'MODEL 4 · AI VIDEO', name:'Seedance AI', icon:'🎞️',
-      color:'#a855f7', glow:'rgba(168,85,247,0.25)', gradFrom:'rgba(168,85,247,0.14)', gradTo:'rgba(139,92,246,0.05)',
+      key:'model4', tag:'MODEL 4', name:'Seedance AI', icon:'🎞️',
+      color:'#a855f7', glow:'rgba(168,85,247,0.3)', gradFrom:'rgba(168,85,247,0.14)', gradTo:'rgba(139,92,246,0.05)',
       desc:'Real AI-generated video clips from text. Not images — full cinematic motion powered by Seedance.',
       features:['Real AI video clips','Idea / Script / Voice','Captions + Music','Seedance v1 Pro Fast'],
-      badge:'AI VIDEO', free:false,
+      badge:'AI VIDEO', free:false, category:'premium',
+      accent: '#d8b4fe',
     },
     {
       key:'model5', tag:'CINEMATIC', name:'Cinematic AI', icon:'🎭',
-      color:'#e11d48', glow:'rgba(225,29,72,0.25)', gradFrom:'rgba(225,29,72,0.14)', gradTo:'rgba(159,18,57,0.05)',
+      color:'#e11d48', glow:'rgba(225,29,72,0.3)', gradFrom:'rgba(225,29,72,0.14)', gradTo:'rgba(159,18,57,0.05)',
       desc:'Consistent characters across scenes. Pure visual storytelling with no voiceover needed.',
       features:['Up to 5 characters','Character consistency','Pure visual storytelling','Seedance v1 Pro'],
-      badge:'CHARACTERS', free:false,
+      badge:'CHARACTERS', free:false, category:'premium',
+      accent: '#fda4af',
     },
     {
       key:'model6', tag:'ATLAS', name:'Map Video', icon:'🗺️',
-      color:'#10b981', glow:'rgba(16,185,129,0.25)', gradFrom:'rgba(16,185,129,0.14)', gradTo:'rgba(5,150,105,0.05)',
+      color:'#10b981', glow:'rgba(16,185,129,0.3)', gradFrom:'rgba(16,185,129,0.14)', gradTo:'rgba(5,150,105,0.05)',
       desc:'Animated geographic map videos. Countries highlight, zoom, and change color as your story unfolds.',
       features:['170+ countries','Dynamic highlighting','Auto zoom & pan','Voice / Script / Idea'],
-      badge:'NEW', free:true,
+      badge:'NEW', free:true, category:'free',
+      accent: '#6ee7b7',
     },
   ];
 
+  const filtered = activeFilter === 'all' ? MODELS : MODELS.filter(m => m.category === activeFilter);
+
   return (
-    <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', padding:'clamp(48px,8vw,80px) clamp(16px,4vw,32px) 80px', position:'relative', overflow:'hidden', background:'radial-gradient(ellipse at 20% 0%, rgba(124,106,247,0.07) 0%, transparent 50%), radial-gradient(ellipse at 80% 100%, rgba(16,185,129,0.05) 0%, transparent 50%)' }}>
+    <div style={{
+      minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center',
+      padding:'clamp(48px,8vw,80px) clamp(16px,4vw,32px) 80px',
+      position:'relative', overflow:'hidden',
+      background:'#05050f',
+    }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap');
-        @keyframes fadeUp  { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes float   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-        @keyframes gradShift { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
-        @keyframes shimmer { 0%{opacity:0} 50%{opacity:1} 100%{opacity:0} }
-        .mc { transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s ease, border-color 0.2s ease !important; }
-        .mc:hover { transform: translateY(-8px) !important; }
-        .mc-btn { transition: all 0.2s ease !important; }
-        .mc-btn:hover { opacity: 0.9 !important; }
+        @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500&display=swap');
+
+        @keyframes fadeUp    { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes pulseGlow { 0%,100%{opacity:0.5} 50%{opacity:1} }
+        @keyframes scanline  { 0%{transform:translateY(-100%)} 100%{transform:translateY(100vh)} }
+        @keyframes borderRot { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+        @keyframes cardIn    { from{opacity:0;transform:translateY(30px) scale(0.96)} to{opacity:1;transform:translateY(0) scale(1)} }
+
+        .ms-card {
+          transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s ease !important;
+          cursor: pointer;
+          position: relative;
+        }
+        .ms-card:hover { transform: translateY(-10px) scale(1.01) !important; }
+        .ms-card:active { transform: scale(0.98) !important; }
+
+        .ms-filter-btn {
+          padding: 7px 18px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: transparent;
+          color: rgba(255,255,255,0.4);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-family: 'DM Sans', sans-serif;
+          letter-spacing: 0.03em;
+        }
+        .ms-filter-btn:hover { border-color: rgba(255,255,255,0.25); color: rgba(255,255,255,0.7); }
+        .ms-filter-btn.active { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); color: #fff; }
+
+        .ms-noise {
+          position: fixed; inset: 0; pointer-events: none; z-index: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+          opacity: 0.4;
+        }
+
+        @media (max-width: 640px) {
+          .ms-grid { grid-template-columns: 1fr !important; }
+          .ms-header h1 { letter-spacing: -1px !important; }
+        }
+        @media (max-width: 900px) {
+          .ms-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
       `}</style>
 
-      {/* Background orbs */}
-      <div style={{ position:'fixed', top:'-20%', left:'-10%', width:600, height:600, borderRadius:'50%', background:'radial-gradient(circle, rgba(124,106,247,0.08) 0%, transparent 60%)', pointerEvents:'none', filter:'blur(40px)' }} />
-      <div style={{ position:'fixed', bottom:'-10%', right:'-5%', width:500, height:500, borderRadius:'50%', background:'radial-gradient(circle, rgba(16,185,129,0.06) 0%, transparent 60%)', pointerEvents:'none', filter:'blur(30px)' }} />
+      {/* Noise texture */}
+      <div className="ms-noise" />
 
-      {/* Header */}
-      <div style={{ textAlign:'center', marginBottom:56, position:'relative', zIndex:1, animation:'fadeUp 0.5s ease both' }}>
-        <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 16px', borderRadius:999, background:'rgba(124,106,247,0.08)', border:'1px solid rgba(124,106,247,0.2)', marginBottom:20 }}>
-          <span style={{ width:7, height:7, borderRadius:'50%', background:'#22c55e', display:'inline-block', boxShadow:'0 0 8px #22c55e' }} />
-          <span style={{ fontSize:11, color:'#a78bfa', fontWeight:700, letterSpacing:'0.1em', fontFamily:"'Plus Jakarta Sans', sans-serif" }}>SELECT YOUR GENERATION ENGINE</span>
+      {/* Background grid */}
+      <div style={{
+        position:'fixed', inset:0, pointerEvents:'none', zIndex:0,
+        backgroundImage:`
+          linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px)
+        `,
+        backgroundSize:'60px 60px',
+        maskImage:'radial-gradient(ellipse at center, black 30%, transparent 80%)',
+      }} />
+
+      {/* Ambient glows */}
+      <div style={{ position:'fixed', top:'-20%', left:'-10%', width:700, height:700, borderRadius:'50%', background:'radial-gradient(circle, rgba(124,106,247,0.1) 0%, transparent 65%)', pointerEvents:'none', filter:'blur(60px)', zIndex:0 }} />
+      <div style={{ position:'fixed', bottom:'-15%', right:'-5%', width:600, height:600, borderRadius:'50%', background:'radial-gradient(circle, rgba(6,182,212,0.08) 0%, transparent 65%)', pointerEvents:'none', filter:'blur(50px)', zIndex:0 }} />
+
+      {/* ── Header ── */}
+      <div className="ms-header" style={{ textAlign:'center', marginBottom:52, position:'relative', zIndex:1, animation:'fadeUp 0.5s ease both' }}>
+
+        {/* Live badge */}
+        <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 16px', borderRadius:999, background:'rgba(124,106,247,0.08)', border:'1px solid rgba(124,106,247,0.18)', marginBottom:24, backdropFilter:'blur(12px)' }}>
+          <span style={{ width:6, height:6, borderRadius:'50%', background:'#22c55e', display:'inline-block', boxShadow:'0 0 10px #22c55e', animation:'pulseGlow 2s ease-in-out infinite' }} />
+          <span style={{ fontSize:10, color:'#a78bfa', fontWeight:700, letterSpacing:'0.15em', fontFamily:"'DM Sans', sans-serif" }}>SELECT YOUR GENERATION ENGINE</span>
         </div>
-        <h1 style={{ fontSize:'clamp(28px,5vw,52px)', fontWeight:800, letterSpacing:'-2px', color:'#fff', fontFamily:"'Syne', sans-serif", lineHeight:1.08, marginBottom:14 }}>
+
+        <h1 style={{
+          fontSize:'clamp(32px,5.5vw,58px)', fontWeight:800, color:'#fff',
+          fontFamily:"'Bricolage Grotesque', sans-serif",
+          letterSpacing:'-2px', lineHeight:1.05, marginBottom:16,
+        }}>
           Choose how you want to{' '}
-          <span style={{ background:'linear-gradient(135deg,#7c6af7,#a78bfa,#c084fc)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>create</span>
+          <span style={{
+            background:'linear-gradient(135deg, #7c6af7 0%, #a78bfa 40%, #06b6d4 100%)',
+            WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
+            backgroundClip:'text',
+          }}>create</span>
         </h1>
-        <p style={{ fontSize:16, color:'rgba(255,255,255,0.4)', maxWidth:480, margin:'0 auto', fontFamily:"'Plus Jakarta Sans', sans-serif", lineHeight:1.7 }}>
-          Six specialized models. Each built for a different creative vision.
+
+        <p style={{ fontSize:15, color:'rgba(255,255,255,0.38)', maxWidth:460, margin:'0 auto 28px', fontFamily:"'DM Sans', sans-serif", lineHeight:1.75, fontWeight:300 }}>
+          Six specialized engines. Each crafted for a different creative vision.
         </p>
+
+        {/* Filter tabs */}
+        <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
+          {['all','free','premium'].map(f => (
+            <button key={f} className={`ms-filter-btn${activeFilter===f?' active':''}`}
+              onClick={() => setActiveFilter(f)}>
+              {f === 'all' ? '✦ All Models' : f === 'free' ? '⚡ Free' : '✦ Premium'}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Cards grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:20, width:'100%', maxWidth:960, position:'relative', zIndex:1 }}>
-
-        {MODELS.map((m, i) => {
+      {/* ── Cards Grid ── */}
+      <div className="ms-grid" style={{
+        display:'grid',
+        gridTemplateColumns:'repeat(3, 1fr)',
+        gap:16, width:'100%', maxWidth:1020,
+        position:'relative', zIndex:1,
+      }}>
+        {filtered.map((m, i) => {
           const isHov = hovered === m.key;
           return (
-            <div key={m.key} className="mc"
+            <div key={m.key} className="ms-card"
               onClick={() => onSelect(m.key)}
               onMouseEnter={() => setHovered(m.key)}
               onMouseLeave={() => setHovered(null)}
               style={{
-                borderRadius:20, cursor:'pointer', overflow:'hidden', position:'relative',
+                borderRadius:20, overflow:'hidden',
                 background: isHov
-                  ? `linear-gradient(145deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))`
-                  : 'rgba(255,255,255,0.025)',
-                border:`1px solid ${isHov ? m.color : 'rgba(255,255,255,0.07)'}`,
-                boxShadow: isHov ? `0 24px 60px ${m.glow}, 0 0 0 1px ${m.color}22` : '0 4px 20px rgba(0,0,0,0.3)',
-                animation:`fadeUp 0.5s ease ${i * 0.06}s both`,
+                  ? `linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))`
+                  : 'rgba(255,255,255,0.03)',
+                border:`1px solid ${isHov ? m.color+'66' : 'rgba(255,255,255,0.07)'}`,
+                boxShadow: isHov
+                  ? `0 30px 80px ${m.glow}, 0 0 0 1px ${m.color}22, inset 0 1px 0 rgba(255,255,255,0.08)`
+                  : '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
+                animation:`cardIn 0.5s cubic-bezier(0.16,1,0.3,1) ${i * 0.07}s both`,
+                backdropFilter:'blur(16px)',
               }}>
 
-              {/* Top colored line */}
-              <div style={{ height:3, background:`linear-gradient(90deg, ${m.color}, ${m.color}66, transparent)`, opacity: isHov ? 1 : 0.4, transition:'opacity 0.3s' }} />
+              {/* Top accent line */}
+              <div style={{
+                height:2,
+                background:`linear-gradient(90deg, transparent, ${m.color}, ${m.color}44, transparent)`,
+                opacity: isHov ? 1 : 0.35,
+                transition:'opacity 0.3s',
+              }} />
 
-              {/* Header area */}
-              <div style={{ padding:'24px 24px 20px', background:`linear-gradient(135deg, ${m.gradFrom}, ${m.gradTo})` }}>
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              {/* Glow spot on hover */}
+              {isHov && (
+                <div style={{
+                  position:'absolute', top:0, left:'50%', transform:'translateX(-50%)',
+                  width:'80%', height:120,
+                  background:`radial-gradient(ellipse at top, ${m.color}20, transparent 70%)`,
+                  pointerEvents:'none',
+                }} />
+              )}
+
+              {/* Card Header */}
+              <div style={{ padding:'22px 22px 18px', background:`linear-gradient(160deg, ${m.gradFrom}, transparent 80%)` }}>
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:11 }}>
+                    {/* Icon */}
                     <div style={{
-                      width:48, height:48, borderRadius:14,
-                      background:`linear-gradient(135deg, ${m.color}cc, ${m.color}88)`,
+                      width:46, height:46, borderRadius:14,
+                      background:`linear-gradient(135deg, ${m.color}dd, ${m.color}77)`,
                       display:'flex', alignItems:'center', justifyContent:'center',
-                      fontSize:22,
-                      boxShadow:`0 4px 16px ${m.glow}`,
-                      animation: isHov ? 'float 2.5s ease-in-out infinite' : 'none',
+                      fontSize:20,
+                      boxShadow:`0 6px 20px ${m.glow}, inset 0 1px 0 rgba(255,255,255,0.2)`,
                     }}>{m.icon}</div>
                     <div>
-                      <div style={{ fontSize:9, fontWeight:700, color:m.color, letterSpacing:'0.1em', marginBottom:3, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>{m.tag}</div>
-                      <div style={{ fontSize:20, fontWeight:800, color:'#fff', fontFamily:"'Syne', sans-serif", letterSpacing:'-0.5px', lineHeight:1.1 }}>{m.name}</div>
+                      <div style={{ fontSize:9, fontWeight:700, color:m.accent, letterSpacing:'0.12em', marginBottom:3, fontFamily:"'DM Sans', sans-serif", opacity:0.8 }}>{m.tag}</div>
+                      <div style={{ fontSize:18, fontWeight:800, color:'#fff', fontFamily:"'Bricolage Grotesque', sans-serif", letterSpacing:'-0.5px', lineHeight:1.1 }}>{m.name}</div>
                     </div>
                   </div>
                   {m.badge && (
-                    <span style={{ fontSize:9, fontWeight:700, padding:'3px 8px', borderRadius:6, background:`${m.color}22`, color:m.color, border:`1px solid ${m.color}44`, letterSpacing:'0.06em', whiteSpace:'nowrap', marginTop:4 }}>
-                      {m.badge}
-                    </span>
+                    <span style={{
+                      fontSize:8, fontWeight:700, padding:'3px 8px', borderRadius:6,
+                      background:`${m.color}18`, color:m.accent,
+                      border:`1px solid ${m.color}33`,
+                      letterSpacing:'0.1em', whiteSpace:'nowrap', marginTop:2,
+                      fontFamily:"'DM Sans', sans-serif",
+                    }}>{m.badge}</span>
                   )}
                 </div>
-                <p style={{ fontSize:13, color:'rgba(255,255,255,0.55)', lineHeight:1.7, fontFamily:"'Plus Jakarta Sans', sans-serif", margin:0 }}>{m.desc}</p>
+                <p style={{ fontSize:12, color:'rgba(255,255,255,0.45)', lineHeight:1.7, fontFamily:"'DM Sans', sans-serif", margin:0, fontWeight:300 }}>{m.desc}</p>
               </div>
 
-              {/* Features */}
-              <div style={{ padding:'18px 24px 22px' }}>
-                <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
+              {/* Divider */}
+              <div style={{ height:1, background:`linear-gradient(90deg, transparent, ${m.color}22, transparent)`, margin:'0 22px' }} />
+
+              {/* Features + CTA */}
+              <div style={{ padding:'16px 22px 20px' }}>
+                <div style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:18 }}>
                   {m.features.map((f, fi) => (
-                    <div key={fi} style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ width:5, height:5, borderRadius:'50%', background:m.color, flexShrink:0, opacity:0.8 }} />
-                      <span style={{ fontSize:12, color:'rgba(255,255,255,0.5)', fontFamily:"'Plus Jakarta Sans', sans-serif" }}>{f}</span>
+                    <div key={fi} style={{ display:'flex', alignItems:'center', gap:9 }}>
+                      <div style={{
+                        width:16, height:16, borderRadius:5,
+                        background:`${m.color}18`, border:`1px solid ${m.color}33`,
+                        display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+                      }}>
+                        <div style={{ width:4, height:4, borderRadius:'50%', background:m.accent }} />
+                      </div>
+                      <span style={{ fontSize:11, color:'rgba(255,255,255,0.45)', fontFamily:"'DM Sans', sans-serif", fontWeight:400 }}>{f}</span>
                     </div>
                   ))}
                 </div>
 
-                {/* CTA button */}
-                <div className="mc-btn" style={{
-                  padding:'11px 16px', borderRadius:12,
-                  background: isHov ? `linear-gradient(135deg, ${m.color}, ${m.color}cc)` : `${m.color}18`,
-                  border:`1px solid ${m.color}${isHov ? '00' : '33'}`,
+                {/* CTA */}
+                <div style={{
+                  padding:'10px 14px', borderRadius:12,
+                  background: isHov
+                    ? `linear-gradient(135deg, ${m.color}, ${m.color}bb)`
+                    : `${m.color}14`,
+                  border:`1px solid ${m.color}${isHov ? '00' : '2a'}`,
                   display:'flex', alignItems:'center', justifyContent:'space-between',
                   transition:'all 0.25s',
+                  boxShadow: isHov ? `0 8px 24px ${m.glow}` : 'none',
                 }}>
-                  <span style={{ fontSize:13, color: isHov ? '#fff' : m.color, fontWeight:700, fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
+                  <span style={{
+                    fontSize:12, fontWeight:700,
+                    color: isHov ? '#fff' : m.accent,
+                    fontFamily:"'DM Sans', sans-serif",
+                    letterSpacing:'0.02em',
+                  }}>
                     {m.free ? 'Start for free' : 'Get started'} →
                   </span>
-                  <div style={{ width:28, height:28, borderRadius:8, background: isHov ? 'rgba(255,255,255,0.2)' : `${m.color}22`, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    <span style={{ fontSize:13, color: isHov ? '#fff' : m.color }}>→</span>
+                  <div style={{
+                    width:26, height:26, borderRadius:8,
+                    background: isHov ? 'rgba(255,255,255,0.2)' : `${m.color}20`,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    transition:'all 0.25s',
+                  }}>
+                    <span style={{ fontSize:11, color: isHov ? '#fff' : m.accent }}>→</span>
                   </div>
                 </div>
               </div>
             </div>
           );
         })}
-
       </div>
 
       {showModel3Modal && <Model3PaymentModal onClose={() => setShowModel3Modal(false)} onSuccess={() => setShowModel3Modal(false)} />}
 
-      <p style={{ marginTop:40, fontSize:12, color:'rgba(255,255,255,0.2)', textAlign:'center', fontFamily:"'Plus Jakarta Sans', sans-serif" }}>
+      <p style={{ marginTop:40, fontSize:11, color:'rgba(255,255,255,0.18)', textAlign:'center', fontFamily:"'DM Sans', sans-serif", letterSpacing:'0.05em' }}>
         Models 1 & 2 are free · Models 3, 4, Cinematic & Atlas require a plan
       </p>
     </div>
   );
+}
+
 }
 
 // ── Main Form ───────────────────────────────────────────────────────────────
@@ -898,4 +1036,3 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
       </div>
     </div>
   );
-}
