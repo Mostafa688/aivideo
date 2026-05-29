@@ -522,10 +522,17 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
         }
 
         @media (max-width: 640px) {
-          .ms-grid { grid-template-columns: 1fr !important; }
-          .ms-header h1 { letter-spacing: -1px !important; }
+          .ms-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+          .ms-card-desc { display: none !important; }
+          .ms-card-features { display: none !important; }
+          .ms-card-header { padding: 14px 14px 12px !important; }
+          .ms-card-body { padding: 10px 14px 14px !important; }
+          .ms-card-icon { width: 36px !important; height: 36px !important; font-size: 16px !important; border-radius: 10px !important; }
+          .ms-card-tag { font-size: 8px !important; }
+          .ms-card-name { font-size: 14px !important; }
+          .ms-card-cta { padding: 8px 12px !important; font-size: 11px !important; }
         }
-        @media (max-width: 900px) {
+        @media (max-width: 900px) and (min-width: 641px) {
           .ms-grid { grid-template-columns: repeat(2, 1fr) !important; }
         }
       `}</style>
@@ -631,11 +638,11 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
               )}
 
               {/* Card Header */}
-              <div style={{ padding:'22px 22px 18px', background:`linear-gradient(160deg, ${m.gradFrom}, transparent 80%)` }}>
+              <div className="ms-card-header" style={{ padding:'22px 22px 18px', background:`linear-gradient(160deg, ${m.gradFrom}, transparent 80%)` }}>
                 <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:14 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:11 }}>
                     {/* Icon */}
-                    <div style={{
+                    <div className="ms-card-icon" style={{
                       width:46, height:46, borderRadius:14,
                       background:`linear-gradient(135deg, ${m.color}dd, ${m.color}77)`,
                       display:'flex', alignItems:'center', justifyContent:'center',
@@ -643,8 +650,8 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                       boxShadow:`0 6px 20px ${m.glow}, inset 0 1px 0 rgba(255,255,255,0.2)`,
                     }}>{m.icon}</div>
                     <div>
-                      <div style={{ fontSize:9, fontWeight:700, color:m.accent, letterSpacing:'0.12em', marginBottom:3, fontFamily:"'DM Sans', sans-serif", opacity:0.8 }}>{m.tag}</div>
-                      <div style={{ fontSize:18, fontWeight:800, color:'#fff', fontFamily:"'Bricolage Grotesque', sans-serif", letterSpacing:'-0.5px', lineHeight:1.1 }}>{m.name}</div>
+                      <div className="ms-card-tag" style={{ fontSize:9, fontWeight:700, color:m.accent, letterSpacing:'0.12em', marginBottom:3, fontFamily:"'DM Sans', sans-serif", opacity:0.8 }}>{m.tag}</div>
+                      <div className="ms-card-name" style={{ fontSize:18, fontWeight:800, color:'#fff', fontFamily:"'Bricolage Grotesque', sans-serif", letterSpacing:'-0.5px', lineHeight:1.1 }}>{m.name}</div>
                     </div>
                   </div>
                   {m.badge && (
@@ -657,15 +664,15 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                     }}>{m.badge}</span>
                   )}
                 </div>
-                <p style={{ fontSize:12, color:'rgba(255,255,255,0.45)', lineHeight:1.7, fontFamily:"'DM Sans', sans-serif", margin:0, fontWeight:300 }}>{m.desc}</p>
+                <p className="ms-card-desc" style={{ fontSize:12, color:'rgba(255,255,255,0.45)', lineHeight:1.7, fontFamily:"'DM Sans', sans-serif", margin:0, fontWeight:300 }}>{m.desc}</p>
               </div>
 
               {/* Divider */}
               <div style={{ height:1, background:`linear-gradient(90deg, transparent, ${m.color}22, transparent)`, margin:'0 22px' }} />
 
               {/* Features + CTA */}
-              <div style={{ padding:'16px 22px 20px' }}>
-                <div style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:18 }}>
+              <div className="ms-card-body" style={{ padding:'16px 22px 20px' }}>
+                <div className="ms-card-features" style={{ display:'flex', flexDirection:'column', gap:7, marginBottom:18 }}>
                   {m.features.map((f, fi) => (
                     <div key={fi} style={{ display:'flex', alignItems:'center', gap:9 }}>
                       <div style={{
@@ -681,7 +688,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                 </div>
 
                 {/* CTA */}
-                <div style={{
+                <div className="ms-card-cta" style={{
                   padding:'10px 14px', borderRadius:12,
                   background: isHov
                     ? `linear-gradient(135deg, ${m.color}, ${m.color}bb)`
@@ -820,109 +827,232 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 'clamp(20px,4vw,40px) clamp(12px,4vw,16px) 60px', position: 'relative', background: 'radial-gradient(ellipse at top, rgba(124,106,247,0.06) 0%, transparent 50%)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 'clamp(20px,4vw,40px) clamp(12px,4vw,16px) 80px', position: 'relative', background: '#05050f' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
         @keyframes fadeUp   { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes shimmer  { 0%{background-position:-200% center} 100%{background-position:200% center} }
-        @keyframes float    { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-        @keyframes gradShift{ 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
         @keyframes pulse    { 0%,100%{box-shadow:0 0 0 0 ${isAI ? 'rgba(124,106,247,0.4)' : 'rgba(6,182,212,0.4)'}; } 50%{box-shadow:0 0 0 8px transparent;} }
+        @keyframes slideIn  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 
-        .input-field {
+        .if-field {
           background: rgba(255,255,255,0.04) !important;
           border: 1px solid rgba(255,255,255,0.08) !important;
-          color: var(--text) !important;
-          font-family: 'Plus Jakarta Sans', sans-serif !important;
+          color: #fff !important;
+          font-family: 'DM Sans', sans-serif !important;
           transition: all 0.2s !important;
-          border-radius: 12px !important;
+          border-radius: 14px !important;
         }
-        .input-field:focus {
+        .if-field:focus {
           border-color: ${accentColor} !important;
-          box-shadow: 0 0 0 3px ${isAI ? 'rgba(124,106,247,0.12)' : 'rgba(6,182,212,0.12)'}, 0 0 20px ${isAI ? 'rgba(124,106,247,0.08)' : 'rgba(6,182,212,0.08)'} !important;
+          box-shadow: 0 0 0 3px ${isAI ? 'rgba(124,106,247,0.12)' : 'rgba(6,182,212,0.12)'} !important;
           background: rgba(255,255,255,0.06) !important;
           outline: none !important;
         }
-        .input-field::placeholder { color: rgba(255,255,255,0.2) !important; }
+        .if-field::placeholder { color: rgba(255,255,255,0.18) !important; }
 
-        .card-section {
-          background: rgba(255,255,255,0.025) !important;
-          border: 1px solid rgba(255,255,255,0.07) !important;
-          border-radius: 18px !important;
-          backdrop-filter: blur(10px) !important;
-          transition: border-color 0.2s !important;
+        .if-section {
+          background: rgba(255,255,255,0.025);
+          border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 20px;
+          backdrop-filter: blur(12px);
+          transition: border-color 0.2s;
         }
-        .card-section:hover { border-color: rgba(255,255,255,0.11) !important; }
+        .if-section:hover { border-color: rgba(255,255,255,0.1); }
 
-        .mode-btn-active { animation: pulse 2s ease infinite; }
+        .if-section-label {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.12em;
+          color: rgba(255,255,255,0.3);
+          text-transform: uppercase;
+          font-family: 'DM Sans', sans-serif;
+          margin-bottom: 14px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .if-section-label::before {
+          content: '';
+          width: 3px; height: 12px;
+          border-radius: 2px;
+          background: ${accentColor};
+          display: inline-block;
+        }
 
-        .submit-glow {
-          background: linear-gradient(135deg, ${isAI ? '#7c6af7, #a08ff8' : '#06b6d4, #22d3ee'}) !important;
-          box-shadow: 0 4px 24px ${isAI ? 'rgba(124,106,247,0.4)' : 'rgba(6,182,212,0.4)'} !important;
-          transition: all 0.3s cubic-bezier(0.16,1,0.3,1) !important;
-          position: relative; overflow: hidden;
+        .dur-option {
+          position: relative;
+          padding: 10px 12px;
+          border-radius: 12px;
+          cursor: pointer;
+          border: 1px solid rgba(255,255,255,0.07);
+          background: rgba(255,255,255,0.03);
+          transition: all 0.2s;
+          text-align: center;
         }
-        .submit-glow:hover:not(:disabled) {
-          transform: translateY(-2px) scale(1.01) !important;
-          box-shadow: 0 8px 36px ${isAI ? 'rgba(124,106,247,0.55)' : 'rgba(6,182,212,0.55)'} !important;
+        .dur-option:hover { border-color: ${accentColor}66; background: rgba(255,255,255,0.05); }
+        .dur-option.active {
+          border-color: ${accentColor};
+          background: ${isAI ? 'rgba(124,106,247,0.12)' : 'rgba(6,182,212,0.12)'};
+          box-shadow: 0 0 20px ${isAI ? 'rgba(124,106,247,0.1)' : 'rgba(6,182,212,0.1)'};
         }
-        .submit-glow:disabled { opacity: 0.45 !important; cursor: not-allowed !important; box-shadow: none !important; }
 
-        .prompt-chip {
-          transition: all 0.2s cubic-bezier(0.16,1,0.3,1) !important;
+        .lang-option {
+          padding: 10px 6px;
+          border-radius: 12px;
+          cursor: pointer;
+          text-align: center;
+          border: 1px solid rgba(255,255,255,0.07);
+          background: rgba(255,255,255,0.03);
+          transition: all 0.2s;
         }
-        .prompt-chip:hover { transform: translateY(-1px) !important; background: rgba(255,255,255,0.07) !important; border-color: rgba(255,255,255,0.15) !important; }
+        .lang-option:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); }
+        .lang-option.active {
+          border-color: ${accentColor};
+          background: ${isAI ? 'rgba(124,106,247,0.12)' : 'rgba(6,182,212,0.12)'};
+        }
 
         .voice-card {
-          transition: all 0.2s cubic-bezier(0.16,1,0.3,1) !important;
+          transition: all 0.2s cubic-bezier(0.16,1,0.3,1);
+          cursor: pointer;
+          border-radius: 14px;
+          padding: 12px 10px;
+          text-align: center;
+          border: 1px solid rgba(255,255,255,0.07);
+          background: rgba(255,255,255,0.03);
         }
-        .voice-card:hover { transform: translateY(-2px) !important; }
+        .voice-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.15); }
+        .voice-card.active {
+          border-color: ${accentColor};
+          background: ${isAI ? 'rgba(124,106,247,0.12)' : 'rgba(6,182,212,0.12)'};
+          box-shadow: 0 4px 20px ${isAI ? 'rgba(124,106,247,0.15)' : 'rgba(6,182,212,0.15)'};
+        }
+
+        .toggle-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 0;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .toggle-row:last-child { border-bottom: none; }
+
+        .effect-opt {
+          padding: 12px 8px;
+          border-radius: 12px;
+          cursor: pointer;
+          text-align: center;
+          border: 1px solid rgba(255,255,255,0.07);
+          background: rgba(255,255,255,0.03);
+          transition: all 0.2s;
+        }
+        .effect-opt:hover { border-color: rgba(255,255,255,0.15); }
+        .effect-opt.active {
+          border-color: ${accentColor};
+          background: ${isAI ? 'rgba(124,106,247,0.12)' : 'rgba(6,182,212,0.12)'};
+        }
+
+        .submit-btn {
+          width: 100%;
+          padding: 16px;
+          border-radius: 14px;
+          border: none;
+          font-weight: 700;
+          font-size: 15px;
+          font-family: 'DM Sans', sans-serif;
+          cursor: pointer;
+          transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+          letter-spacing: 0.02em;
+        }
+        .submit-btn.ready {
+          background: linear-gradient(135deg, ${isAI ? '#7c6af7, #a08ff8' : '#06b6d4, #22d3ee'});
+          color: #fff;
+          box-shadow: 0 4px 24px ${isAI ? 'rgba(124,106,247,0.4)' : 'rgba(6,182,212,0.4)'};
+        }
+        .submit-btn.ready:hover {
+          transform: translateY(-2px) scale(1.01);
+          box-shadow: 0 8px 36px ${isAI ? 'rgba(124,106,247,0.55)' : 'rgba(6,182,212,0.55)'};
+        }
+        .submit-btn.disabled {
+          background: rgba(255,255,255,0.06);
+          color: rgba(255,255,255,0.25);
+          cursor: not-allowed;
+        }
+
+        .mode-tab {
+          flex: 1; padding: 11px; border-radius: 11px; border: none;
+          font-weight: 700; font-size: 13px; cursor: pointer;
+          font-family: 'DM Sans', sans-serif;
+          transition: all 0.2s cubic-bezier(0.16,1,0.3,1);
+        }
+
+        @media (max-width: 480px) {
+          .dur-grid { grid-template-columns: repeat(4, 1fr) !important; }
+          .lang-grid { grid-template-columns: repeat(4, 1fr) !important; }
+          .voice-grid { grid-template-columns: repeat(3, 1fr) !important; }
+          .effect-grid { grid-template-columns: repeat(3, 1fr) !important; }
+          .caption-grid { grid-template-columns: repeat(3, 1fr) !important; }
+        }
       `}</style>
 
-      <div style={{ width:'100%', maxWidth:600, display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:28, animation:'fadeUp 0.4s ease forwards' }}>
-        <button onClick={() => setSelectedModel(null)} style={{ display:'flex', alignItems:'center', gap:8, background:'transparent', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:13, padding:0 }}>← Change model</button>
-        <div style={{ padding:'5px 14px', borderRadius:999, fontSize:12, fontWeight:700, background: accentBg, border:`1px solid ${isAI ? 'rgba(124,106,247,0.3)' : 'rgba(6,182,212,0.3)'}`, color: accentColor }}>{modelLabel}</div>
+      {/* Background */}
+      <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:0, backgroundImage:`linear-gradient(rgba(124,106,247,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(124,106,247,0.03) 1px, transparent 1px)`, backgroundSize:'60px 60px', maskImage:'radial-gradient(ellipse at center, black 20%, transparent 70%)' }} />
+      <div style={{ position:'fixed', top:'-20%', left:'-10%', width:600, height:600, borderRadius:'50%', background:`radial-gradient(circle, ${isAI ? 'rgba(124,106,247,0.08)' : 'rgba(6,182,212,0.06)'} 0%, transparent 65%)`, pointerEvents:'none', filter:'blur(60px)', zIndex:0 }} />
+
+      {/* Top bar */}
+      <div style={{ width:'100%', maxWidth:620, display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:28, animation:'fadeUp 0.4s ease forwards', position:'relative', zIndex:1 }}>
+        <button onClick={() => setSelectedModel(null)} style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, padding:'7px 14px', fontFamily:"'DM Sans', sans-serif", transition:'all 0.2s' }}>← Change model</button>
+        <div style={{ padding:'6px 16px', borderRadius:999, fontSize:12, fontWeight:700, background: isAI ? 'rgba(124,106,247,0.1)' : 'rgba(6,182,212,0.1)', border:`1px solid ${isAI ? 'rgba(124,106,247,0.25)' : 'rgba(6,182,212,0.25)'}`, color: accentColor, fontFamily:"'DM Sans', sans-serif" }}>{modelLabel}</div>
       </div>
 
-      <div style={{ width:'100%', maxWidth:600, animation:'fadeUp 0.5s ease 0.05s both' }}>
-        <div style={{ display:'flex', gap:4, marginBottom:24, background:'rgba(255,255,255,0.04)', borderRadius:14, padding:5, border:'1px solid rgba(255,255,255,0.08)', backdropFilter:'blur(10px)' }}>
+      <div style={{ width:'100%', maxWidth:620, animation:'fadeUp 0.5s ease 0.05s both', position:'relative', zIndex:1, display:'flex', flexDirection:'column', gap:14 }}>
+
+        {/* Mode tabs */}
+        <div style={{ display:'flex', gap:4, background:'rgba(255,255,255,0.04)', borderRadius:16, padding:5, border:'1px solid rgba(255,255,255,0.07)', backdropFilter:'blur(10px)' }}>
           {[['idea','💡 Idea'],['script','📝 Script'],['voice','🎙️ Voice']].map(([m,label]) => (
-            <button key={m} onClick={() => setMode(m)}
-              className={mode===m ? 'mode-btn-active' : ''}
-              style={{ flex:1, padding:'11px', borderRadius:10, border:'none', fontWeight:700, fontSize:13, cursor:'pointer', transition:'all 0.2s cubic-bezier(0.16,1,0.3,1)', background: mode===m ? `linear-gradient(135deg, ${isAI ? '#7c6af7, #a08ff8' : '#06b6d4, #22d3ee'})` : 'transparent', color: mode===m ? '#fff' : 'rgba(255,255,255,0.4)', boxShadow: mode===m ? `0 4px 16px ${isAI ? 'rgba(124,106,247,0.35)' : 'rgba(6,182,212,0.35)'}` : 'none', fontFamily:"'Plus Jakarta Sans', sans-serif" }}>{label}</button>
+            <button key={m} onClick={() => setMode(m)} className="mode-tab"
+              style={{ background: mode===m ? `linear-gradient(135deg, ${isAI ? '#7c6af7, #a08ff8' : '#06b6d4, #22d3ee'})` : 'transparent', color: mode===m ? '#fff' : 'rgba(255,255,255,0.35)', boxShadow: mode===m ? `0 4px 16px ${isAI ? 'rgba(124,106,247,0.35)' : 'rgba(6,182,212,0.35)'}` : 'none' }}>{label}</button>
           ))}
         </div>
 
-        <div className="card-section" style={{ padding:24, marginBottom:16 }}>
+        {/* Input section */}
+        <div className="if-section" style={{ padding:24 }}>
           {mode === 'idea' && (
-            <Field label="Your Idea">
-              <textarea value={idea} onChange={e => setIdea(e.target.value)} className="input-field" placeholder="A motivational video for entrepreneurs about never giving up on their dreams..." rows={4} style={{ width:'100%', resize:'none', padding:'12px 14px', lineHeight:1.65, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text)', fontSize:14, fontFamily:'inherit', outline:'none', transition:'all 0.15s' }} autoFocus />
-              <p style={{ fontSize:11, color:'var(--text3)', marginTop:6 }}>{idea.length > 0 ? `${idea.length} characters` : 'Describe your video in 1–2 sentences'}</p>
-              <div style={{ marginTop:10 }}>
-                <button onClick={() => setShowIdeaPrompts(p => !p)} style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:8, padding:'5px 12px', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>{showIdeaPrompts ? '▲ Hide examples' : '✨ Show example ideas'}</button>
-                {showIdeaPrompts && (
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:10 }}>
-                    {IDEA_PROMPTS.map((p, i) => <button key={i} onClick={() => { setIdea(p.text); setShowIdeaPrompts(false); }} style={{ padding:'6px 12px', borderRadius:999, fontSize:12, fontWeight:600, border:`1px solid ${accentColor}44`, background: accentBg, color: accentColor, cursor:'pointer' }}>{p.label}</button>)}
-                  </div>
-                )}
+            <>
+              <div className="if-section-label">Your Idea</div>
+              <textarea value={idea} onChange={e => setIdea(e.target.value)} className="if-field"
+                placeholder="A motivational video for entrepreneurs about never giving up on their dreams..." rows={4}
+                style={{ width:'100%', resize:'none', padding:'14px 16px', lineHeight:1.7, fontSize:14, outline:'none', boxSizing:'border-box' }} autoFocus />
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
+                <p style={{ fontSize:11, color:'rgba(255,255,255,0.25)', fontFamily:"'DM Sans', sans-serif", margin:0 }}>{idea.length > 0 ? `${idea.length} characters` : 'Describe your video in 1–2 sentences'}</p>
+                <button onClick={() => setShowIdeaPrompts(p => !p)} style={{ background:'transparent', border:`1px solid ${accentColor}33`, borderRadius:8, padding:'4px 12px', fontSize:11, color:accentColor, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>{showIdeaPrompts ? '▲ Hide' : '✨ Examples'}</button>
               </div>
-            </Field>
+              {showIdeaPrompts && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:12, animation:'slideIn 0.2s ease' }}>
+                  {IDEA_PROMPTS.map((p, i) => <button key={i} onClick={() => { setIdea(p.text); setShowIdeaPrompts(false); }} style={{ padding:'6px 14px', borderRadius:999, fontSize:12, fontWeight:600, border:`1px solid ${accentColor}44`, background:`${accentColor}12`, color: accentColor, cursor:'pointer', fontFamily:"'DM Sans', sans-serif", transition:'all 0.2s' }}>{p.label}</button>)}
+                </div>
+              )}
+            </>
           )}
           {mode === 'script' && (
-            <Field label="Your Script">
-              <textarea value={script} onChange={e => setScript(e.target.value)} className="input-field" placeholder={"Hook: Have you ever felt like giving up?\n\nBody: Every great journey starts with a single step...\n\nEnding: Start today. The only limit is you."} rows={7} style={{ width:'100%', resize:'vertical', padding:'12px 14px', lineHeight:1.65, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text)', fontSize:14, fontFamily:'inherit', outline:'none', transition:'all 0.15s' }} autoFocus />
-              <div style={{ marginTop:10 }}>
-                <button onClick={() => setShowScriptPrompts(p => !p)} style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:8, padding:'5px 12px', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>{showScriptPrompts ? '▲ Hide examples' : '✨ Show example scripts'}</button>
-                {showScriptPrompts && (
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:10 }}>
-                    {SCRIPT_PROMPTS.map((p, i) => <button key={i} onClick={() => { setScript(p.text); setShowScriptPrompts(false); }} style={{ padding:'6px 12px', borderRadius:999, fontSize:12, fontWeight:600, border:`1px solid ${accentColor}44`, background: accentBg, color: accentColor, cursor:'pointer' }}>{p.label}</button>)}
-                  </div>
-                )}
+            <>
+              <div className="if-section-label">Your Script</div>
+              <textarea value={script} onChange={e => setScript(e.target.value)} className="if-field"
+                placeholder={"Hook: Have you ever felt like giving up?\n\nBody: Every great journey starts with a single step...\n\nEnding: Start today. The only limit is you."} rows={7}
+                style={{ width:'100%', resize:'vertical', padding:'14px 16px', lineHeight:1.7, fontSize:14, outline:'none', boxSizing:'border-box' }} autoFocus />
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
+                <p style={{ fontSize:11, color:'rgba(255,255,255,0.25)', fontFamily:"'DM Sans', sans-serif", margin:0 }}>{script.length > 0 ? `${script.length} characters` : ''}</p>
+                <button onClick={() => setShowScriptPrompts(p => !p)} style={{ background:'transparent', border:`1px solid ${accentColor}33`, borderRadius:8, padding:'4px 12px', fontSize:11, color:accentColor, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>{showScriptPrompts ? '▲ Hide' : '✨ Examples'}</button>
               </div>
-            </Field>
+              {showScriptPrompts && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:12, animation:'slideIn 0.2s ease' }}>
+                  {SCRIPT_PROMPTS.map((p, i) => <button key={i} onClick={() => { setScript(p.text); setShowScriptPrompts(false); }} style={{ padding:'6px 14px', borderRadius:999, fontSize:12, fontWeight:600, border:`1px solid ${accentColor}44`, background:`${accentColor}12`, color: accentColor, cursor:'pointer', fontFamily:"'DM Sans', sans-serif", transition:'all 0.2s' }}>{p.label}</button>)}
+                </div>
+              )}
+            </>
           )}
           {mode === 'voice' && (
-            <Field label="Voice Recording → Video">
+            <>
+              <div className="if-section-label">Voice Recording → Video</div>
               <VoiceUpload accentColor={accentColor} accentBg={accentBg} videoLanguage={videoLanguage}
                 onTranscribed={(text, audioUrl) => {
                   setScript(text); setVoiceAudioUrl(audioUrl);
@@ -940,93 +1070,161 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
                   onSubmit({ mode:'script', idea:'', script:text, tone:tone.toLowerCase(), voice:'none', ratio, duration:smartDuration, music, captions, soundEffects, transitions, videoLanguage, captionStyle, videoEffect, videoType: isAI ? 'ai_slices' : 'pexels_clips', uploadedAudioUrl: audioUrl });
                 }}
               />
-            </Field>
+            </>
           )}
         </div>
 
         {mode !== 'voice' && (
           <>
-            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:24, marginBottom:16 }}>
-              <Field label="Tone"><PillGroup options={TONES} value={tone} onChange={setTone} /></Field>
-              <Field label="Video Language">
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
+            {/* Settings section */}
+            <div className="if-section" style={{ padding:24 }}>
+
+              {/* Tone */}
+              <div style={{ marginBottom:22 }}>
+                <div className="if-section-label">Tone</div>
+                <PillGroup options={TONES} value={tone} onChange={setTone} />
+              </div>
+
+              {/* Language */}
+              <div style={{ marginBottom:22 }}>
+                <div className="if-section-label">Video Language</div>
+                <div className="lang-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
                   {VIDEO_LANGUAGES.map(lang => (
-                    <div key={lang.code} onClick={() => setVideoLanguage(lang.code)} style={{ padding:'8px 4px', borderRadius:10, cursor:'pointer', textAlign:'center', border:'1px solid ' + (videoLanguage===lang.code ? accentColor : 'var(--border)'), background: videoLanguage===lang.code ? accentBg : 'var(--bg3)', transition:'all 0.15s' }}>
-                      <div style={{ fontSize:18, marginBottom:2 }}>{lang.flag}</div>
-                      <div style={{ fontSize:10, color: videoLanguage===lang.code ? accentColor : 'var(--text3)', fontWeight:600 }}>{lang.label}</div>
+                    <div key={lang.code} className={`lang-option${videoLanguage===lang.code?' active':''}`} onClick={() => setVideoLanguage(lang.code)}>
+                      <div style={{ fontSize:20, marginBottom:3 }}>{lang.flag}</div>
+                      <div style={{ fontSize:10, color: videoLanguage===lang.code ? accentColor : 'rgba(255,255,255,0.4)', fontWeight:600, fontFamily:"'DM Sans', sans-serif" }}>{lang.label}</div>
                     </div>
                   ))}
-                </div>
-              </Field>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:22 }}>
-                <div><Label>Aspect Ratio</Label><PillGroup options={RATIOS} value={ratio} onChange={setRatio} /></div>
-                <div>
-                  <Label>Duration {mode === 'script' && <span style={{ color:'var(--accent2)', fontWeight:600, fontSize:10 }}>· AUTO for script</span>}</Label>
-                  {mode === 'script' && script.length > 20 && <div style={{ marginBottom:8, padding:'6px 10px', borderRadius:8, background:'var(--accent-bg)', border:'1px solid rgba(124,106,247,0.2)', fontSize:11, color:'var(--accent2)' }}>✨ Auto-detected: ~{getSmartDuration()}</div>}
-                  <select value={mode === 'script' && script.length > 20 ? getSmartDuration() : duration} onChange={e => setDuration(e.target.value)} style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:'1px solid var(--border)', background:'var(--bg3)', color:'var(--text)', fontSize:13, fontFamily:'inherit', outline:'none' }}>
-                    <option value="30s">30 seconds (4 scenes)</option>
-                    <option value="1min">1 minute (8 scenes)</option>
-                    <option value="2min">2 minutes (17 scenes)</option>
-                    <option value="3min">3 minutes (26 scenes)</option>
-                    <option value="4min">4 minutes (34 scenes)</option>
-                    <option value="5min">5 minutes (42 scenes)</option>
-                    <option value="8min">8 minutes (56 scenes)</option>
-                    <option value="10min">10 minutes (70 scenes)</option>
-                  </select>
                 </div>
               </div>
-              <Field label="Voice">
-                <div style={{ display:'flex', gap:6, marginBottom:12 }}>
-                  {[['all','All'],['male','Male'],['female','Female']].map(([f,l]) => <button key={f} onClick={() => setVoiceGenderFilter(f)} style={{ padding:'5px 14px', borderRadius:999, fontSize:12, fontWeight:600, border:'none', cursor:'pointer', background: voiceGenderFilter===f ? accentColor : 'var(--bg3)', color: voiceGenderFilter===f ? '#fff' : 'var(--text3)' }}>{l}</button>)}
+
+              {/* Ratio + Duration */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:22 }}>
+                <div>
+                  <div className="if-section-label">Aspect Ratio</div>
+                  <PillGroup options={RATIOS} value={ratio} onChange={setRatio} />
                 </div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(130px,1fr))', gap:8 }}>
+                <div>
+                  <div className="if-section-label" style={{ marginBottom:10 }}>
+                    Duration
+                    {mode === 'script' && <span style={{ color:accentColor, fontWeight:600, fontSize:9, marginLeft:4 }}>AUTO</span>}
+                  </div>
+                  {mode === 'script' && script.length > 20 && (
+                    <div style={{ marginBottom:10, padding:'6px 10px', borderRadius:8, background:`${accentColor}15`, border:`1px solid ${accentColor}30`, fontSize:11, color:accentColor, fontFamily:"'DM Sans', sans-serif" }}>
+                      ✨ ~{getSmartDuration()}
+                    </div>
+                  )}
+                  {/* Custom duration selector */}
+                  <div className="dur-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:6 }}>
+                    {[
+                      { val:'30s',   label:'30s',  sub:'4 scenes'  },
+                      { val:'1min',  label:'1m',   sub:'8 scenes'  },
+                      { val:'2min',  label:'2m',   sub:'17 scenes' },
+                      { val:'3min',  label:'3m',   sub:'26 scenes' },
+                      { val:'5min',  label:'5m',   sub:'42 scenes' },
+                      { val:'10min', label:'10m',  sub:'70 scenes' },
+                    ].map(d => (
+                      <div key={d.val} className={`dur-option${(mode==='script'&&script.length>20?getSmartDuration():duration)===d.val?' active':''}`}
+                        onClick={() => setDuration(d.val)}>
+                        <div style={{ fontSize:13, fontWeight:700, color:(mode==='script'&&script.length>20?getSmartDuration():duration)===d.val ? accentColor : '#fff', fontFamily:"'DM Sans', sans-serif" }}>{d.label}</div>
+                        <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>{d.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Voice */}
+              <div>
+                <div className="if-section-label">Voice</div>
+                <div style={{ display:'flex', gap:6, marginBottom:14 }}>
+                  {[['all','All'],['male','Male'],['female','Female']].map(([f,l]) => (
+                    <button key={f} onClick={() => setVoiceGenderFilter(f)} style={{ padding:'5px 14px', borderRadius:999, fontSize:12, fontWeight:600, border:'none', cursor:'pointer', background: voiceGenderFilter===f ? accentColor : 'rgba(255,255,255,0.06)', color: voiceGenderFilter===f ? '#fff' : 'rgba(255,255,255,0.4)', fontFamily:"'DM Sans', sans-serif", transition:'all 0.2s' }}>{l}</button>
+                  ))}
+                </div>
+                <div className="voice-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(120px,1fr))', gap:8 }}>
                   {VOICE_OPTIONS.filter(v => voiceGenderFilter === 'all' || v.gender === voiceGenderFilter || v.gender === 'none').map(v => (
-                    <div key={v.key} onClick={() => setVoice(v.key)} style={{ padding:'10px 10px', borderRadius:10, cursor:'pointer', textAlign:'center', border:'1px solid ' + (voice===v.key ? accentColor : 'var(--border)'), background: voice===v.key ? accentBg : 'var(--bg3)', transition:'all 0.15s' }}>
-                      <div style={{ fontSize:20, marginBottom:4 }}>{v.emoji}</div>
-                      <div style={{ fontSize:11, fontWeight:700, color: voice===v.key ? accentColor : 'var(--text)', marginBottom:2 }}>{v.label}</div>
-                      <div style={{ fontSize:9, color:'var(--text3)', lineHeight:1.3 }}>{v.desc}</div>
+                    <div key={v.key} className={`voice-card${voice===v.key?' active':''}`} onClick={() => setVoice(v.key)}>
+                      <div style={{ fontSize:22, marginBottom:5 }}>{v.emoji}</div>
+                      <div style={{ fontSize:11, fontWeight:700, color: voice===v.key ? accentColor : '#fff', marginBottom:2, fontFamily:"'DM Sans', sans-serif" }}>{v.label}</div>
+                      <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', lineHeight:1.4, fontFamily:"'DM Sans', sans-serif" }}>{v.desc}</div>
                     </div>
                   ))}
                 </div>
-              </Field>
+              </div>
             </div>
 
-            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:24, marginBottom:16 }}>
-              <Label>Video Options</Label>
-              <Toggle label="🎵 Background Music" value={music} onChange={setMusic} description="Adds ambient music to your video" />
-              <Toggle label="💬 Captions" value={captions} onChange={setCaptions} description="Adds subtitles synced to voiceover" />
-              <Toggle label="🎬 Transitions" value={transitions} onChange={setTransitions} description="Smooth fade transitions between scenes" />
-              <Toggle label="🔊 Sound Effects" value={soundEffects} onChange={setSoundEffects} description="Intro & outro sound effects" />
+            {/* Video Options */}
+            <div className="if-section" style={{ padding:24 }}>
+              <div className="if-section-label">Video Options</div>
+
+              {/* Toggles */}
+              <div style={{ marginBottom:20 }}>
+                {[
+                  { label:'🎵 Background Music', desc:'Adds ambient music', val:music, set:setMusic },
+                  { label:'💬 Captions', desc:'Subtitles synced to voiceover', val:captions, set:setCaptions },
+                  { label:'🎬 Transitions', desc:'Smooth fades between scenes', val:transitions, set:setTransitions },
+                  { label:'🔊 Sound Effects', desc:'Intro & outro effects', val:soundEffects, set:setSoundEffects },
+                ].map(({ label, desc, val, set }) => (
+                  <div key={label} className="toggle-row">
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:600, color:'#fff', fontFamily:"'DM Sans', sans-serif" }}>{label}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>{desc}</div>
+                    </div>
+                    <div onClick={() => set(p => !p)} style={{ width:44, height:24, borderRadius:999, background: val ? accentColor : 'rgba(255,255,255,0.1)', cursor:'pointer', position:'relative', transition:'all 0.25s', flexShrink:0, boxShadow: val ? `0 0 12px ${accentColor}60` : 'none' }}>
+                      <div style={{ position:'absolute', top:3, left: val ? 22 : 3, width:18, height:18, borderRadius:'50%', background:'#fff', transition:'left 0.25s', boxShadow:'0 2px 6px rgba(0,0,0,0.3)' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Caption Style */}
               {captions && (
-                <div style={{ marginTop:14 }}>
-                  <Label>Caption Style</Label>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
-                    {[{ id:'classic', label:'Classic', desc:'White on dark' },{ id:'bold_yellow', label:'Bold Yellow', desc:'High contrast' },{ id:'center_box', label:'Center Box', desc:'Boxed style' },{ id:'documentary', label:'Documentary', desc:'Green tint' },{ id:'clean_white', label:'Clean White', desc:'Minimal' }].map(s => (
-                      <div key={s.id} onClick={() => setCaptionStyle(s.id)} style={{ padding:'10px', borderRadius:10, cursor:'pointer', textAlign:'center', border:'1px solid ' + (captionStyle===s.id ? accentColor : 'var(--border)'), background: captionStyle===s.id ? accentBg : 'var(--bg3)', transition:'all 0.15s' }}>
-                        <div style={{ fontSize:12, fontWeight:600, color: captionStyle===s.id ? accentColor : 'var(--text)', marginBottom:2 }}>{s.label}</div>
-                        <div style={{ fontSize:10, color:'var(--text3)' }}>{s.desc}</div>
+                <div style={{ marginBottom:20 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:'rgba(255,255,255,0.3)', letterSpacing:'0.08em', textTransform:'uppercase', fontFamily:"'DM Sans', sans-serif", marginBottom:10 }}>Caption Style</div>
+                  <div className="caption-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+                    {[
+                      { id:'classic',     label:'Classic',    desc:'White on dark' },
+                      { id:'bold_yellow', label:'Bold Yellow',desc:'High contrast'  },
+                      { id:'center_box',  label:'Center Box', desc:'Boxed style'    },
+                      { id:'documentary', label:'Documentary',desc:'Green tint'     },
+                      { id:'clean_white', label:'Clean White',desc:'Minimal'        },
+                    ].map(s => (
+                      <div key={s.id} className={`effect-opt${captionStyle===s.id?' active':''}`} onClick={() => setCaptionStyle(s.id)}>
+                        <div style={{ fontSize:12, fontWeight:700, color: captionStyle===s.id ? accentColor : '#fff', fontFamily:"'DM Sans', sans-serif" }}>{s.label}</div>
+                        <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>{s.desc}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-              <div style={{ marginTop:16 }}>
-                <Label>Video Effect</Label>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
-                  {[{ id:'none', label:'None', emoji:'🎞️' },{ id:'cinematic', label:'Cinematic', emoji:'🎬' },{ id:'grayscale', label:'Grayscale', emoji:'⬛' },{ id:'sepia', label:'Sepia', emoji:'🟤' },{ id:'vignette', label:'Vignette', emoji:'🔲' },{ id:'brightness', label:'Bright', emoji:'☀️' }].map(e => (
-                    <div key={e.id} onClick={() => setVideoEffect(e.id)} style={{ padding:'10px 8px', borderRadius:10, cursor:'pointer', textAlign:'center', border:'1px solid ' + (videoEffect===e.id ? accentColor : 'var(--border)'), background: videoEffect===e.id ? accentBg : 'var(--bg3)', transition:'all 0.15s' }}>
-                      <div style={{ fontSize:16, marginBottom:3 }}>{e.emoji}</div>
-                      <div style={{ fontSize:11, fontWeight:600, color: videoEffect===e.id ? accentColor : 'var(--text3)' }}>{e.label}</div>
+
+              {/* Video Effect */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:'rgba(255,255,255,0.3)', letterSpacing:'0.08em', textTransform:'uppercase', fontFamily:"'DM Sans', sans-serif", marginBottom:10 }}>Video Effect</div>
+                <div className="effect-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+                  {[
+                    { id:'none',       label:'None',      emoji:'🎞️' },
+                    { id:'cinematic',  label:'Cinematic', emoji:'🎬' },
+                    { id:'grayscale',  label:'Grayscale', emoji:'⬛' },
+                    { id:'sepia',      label:'Sepia',     emoji:'🟤' },
+                    { id:'vignette',   label:'Vignette',  emoji:'🔲' },
+                    { id:'brightness', label:'Bright',    emoji:'☀️' },
+                  ].map(e => (
+                    <div key={e.id} className={`effect-opt${videoEffect===e.id?' active':''}`} onClick={() => setVideoEffect(e.id)}>
+                      <div style={{ fontSize:18, marginBottom:4 }}>{e.emoji}</div>
+                      <div style={{ fontSize:11, fontWeight:600, color: videoEffect===e.id ? accentColor : 'rgba(255,255,255,0.5)', fontFamily:"'DM Sans', sans-serif" }}>{e.label}</div>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
 
-            <button onClick={handleSubmit} disabled={!canSubmit} style={{ width:'100%', padding:'15px', borderRadius:12, border:'none', fontWeight:700, fontSize:15, background: canSubmit ? accentColor : 'var(--bg3)', color: canSubmit ? '#fff' : 'var(--text3)', cursor: canSubmit ? 'pointer' : 'not-allowed', transition:'all 0.15s', boxShadow: canSubmit ? `0 4px 16px ${isAI ? 'rgba(124,106,247,0.35)' : 'rgba(6,182,212,0.35)'}` : 'none' }}>
+            {/* Submit */}
+            <button onClick={handleSubmit} disabled={!canSubmit} className={`submit-btn ${canSubmit ? 'ready' : 'disabled'}`}>
               {canSubmit ? `Generate Scenes with ${isAI ? 'Model 1' : 'Model 2'} →` : (mode === 'idea' ? 'Enter your idea to continue' : 'Paste your script to continue')}
             </button>
-            <p style={{ textAlign:'center', fontSize:11, color:'var(--text3)', marginTop:16 }}>Powered by Groq AI · {isAI ? 'AI Image Generation' : 'Pexels Stock Footage'} · FFmpeg</p>
+            <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:12, fontFamily:"'DM Sans', sans-serif" }}>Powered by Groq AI · {isAI ? 'AI Image Generation' : 'Pexels Stock Footage'} · FFmpeg</p>
           </>
         )}
       </div>
