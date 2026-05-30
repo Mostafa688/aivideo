@@ -19,7 +19,7 @@ import ModelCinematicPage from './pages/ModelCinematicPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
 
 const LOGO = '/logo.png';
-const APP_VERSION = 'v3.1'; // build:1780005744
+const APP_VERSION = 'v4.0'; // build:1780005744
 
 // ── Model Welcome Modal ──────────────────────────────────────────────────────
 function ModelWelcomeModal({ modelKey, userRegion, onContinue }) {
@@ -394,6 +394,12 @@ export default function App() {
             <span>🎭</span><span>{credits.model5_usage !== undefined ? (credits.model5_plan_data?.videos_per_month || 0) - (credits.model5_usage || 0) : '–'}</span>
           </div>
         )}
+        {/* Affiliate button */}
+        <button onClick={() => handleNavigate('affiliate')}
+          style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(34,197,94,0.1)', border:'1px solid rgba(34,197,94,0.25)', borderRadius:8, padding:'5px 10px', cursor:'pointer', color:'#22c55e', fontSize:12, fontWeight:600 }}>
+          <span>🤝</span>
+          <span className="header-credits-label">Affiliate</span>
+        </button>
         {/* My Videos button */}
         <button onClick={() => setShowVideos(true)}
           style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(124,106,247,0.1)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:8, padding:'5px 10px', cursor:'pointer', color:'#a78bfa', fontSize:12, fontWeight:600 }}>
