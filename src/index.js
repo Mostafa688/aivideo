@@ -442,7 +442,16 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
       const batchCount = batchEnd - batchStart + 1;
       let batchPrompt;
       if (isIdeaMode) {
-        batchPrompt = `Video topic: "${idea}"\nStyle: ${styleHint}\n\nGenerate EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).\n- "index": starts from ${batchStart}\n- "prompt": ENGLISH ONLY, 30-50 words, style: ${styleHint}\n- "text": narration in ${videoLanguage}\n\nOutput ONLY JSON array:`;
+        batchPrompt = `You are a documentary narrator. Generate EXACTLY ${batchCount} scenes for a video about: "${idea}"
+Style: ${styleHint}. Scenes ${batchStart} to ${batchEnd} of ${imageCount} total.
+
+"prompt": ENGLISH ONLY - visual AI image generation prompt (subject + action + environment + lighting + camera angle + style). 30-50 words.
+"text": SPOKEN NARRATION in ${videoLanguage} - what a narrator says OUT LOUD. Full natural sentences telling the story. NOT an image description.
+GOOD text: "في أكتوبر 1973، قرر الجيش المصري تغيير مجرى التاريخ إلى الأبد"
+BAD text: "لوحة زيتية تصور انتصار الجيش" (image description - WRONG!)
+Each scene CONTINUES the story sequentially from scene ${batchStart - 1}.
+
+Output ONLY JSON array: [{"index":N,"prompt":"English visual prompt","text":"Spoken narration in ${videoLanguage}"},...]`;
       } else {
         const portion = script.slice(Math.floor((batchStart - 1) / imageCount * script.length), Math.floor(batchEnd / imageCount * script.length));
         batchPrompt = `Script: "${portion}"\nStyle: ${styleHint}\n\nSplit into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).\n- "index": starts from ${batchStart}\n- "prompt": ENGLISH ONLY, 30-50 words\n- "text": from script, keep original language\n\nOutput ONLY JSON array:`;
@@ -545,7 +554,16 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
       const isIdeaMode = inputMode === 'idea';
       let batchPrompt;
       if (isIdeaMode) {
-        batchPrompt = `Video topic: "${idea}"\n\nGenerate EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).\n- "index": starts from ${batchStart}\n- "prompt": ENGLISH ONLY, cinematic video scene, no human faces, 20-40 words, style: ${styleHint}\n- "text": narration in ${videoLanguage || 'en'}\n\nOutput ONLY JSON array:`;
+        batchPrompt = `You are a documentary narrator. Generate EXACTLY ${batchCount} scenes for a video about: "${idea}"
+Scenes ${batchStart} to ${batchEnd} of ${sceneCount} total. Style: ${styleHint}.
+
+"prompt": ENGLISH ONLY - cinematic video scene prompt (no human faces). Subject + action + environment + lighting. 20-40 words.
+"text": SPOKEN NARRATION in ${videoLanguage || 'en'} - what a narrator SAYS OUT LOUD. Full natural sentences. NOT an image description.
+GOOD text: "On that cold morning, the world was about to change forever"
+BAD text: "Cinematic scene of army victory" (image description - WRONG!)
+Each scene CONTINUES the story sequentially.
+
+Output ONLY JSON array: [{"index":N,"prompt":"English visual prompt","text":"Spoken narration"},...]`;
       } else {
         const portion = script.slice(Math.floor((batchStart - 1) / sceneCount * script.length), Math.floor(batchEnd / sceneCount * script.length));
         batchPrompt = `Script: "${portion}"\n\nSplit into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).\n- "index": starts from ${batchStart}\n- "prompt": ENGLISH ONLY, 20-40 words, style: ${styleHint}\n- "text": from script, keep original language\n\nOutput ONLY JSON array:`;
