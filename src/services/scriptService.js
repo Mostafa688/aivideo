@@ -393,7 +393,8 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
               index: idx,
               type,
               text: originalText,
-              keywords: ['motivation', 'inspiration'],
+              keywords: (originalText || '').split(/\s+/).filter(w => w.length > 3).slice(0, 4),
+              visual: originalText ? originalText.slice(0, 80) : '',
             };
             send('scene', fallbackScene);
             totalEmitted++;
@@ -411,7 +412,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
           const originalText = scriptSegments[idx - 1];
           if (originalText) {
             const type = idx === 1 ? 'hook' : idx === sceneCount ? 'ending' : 'body';
-            send('scene', { index: idx, type, text: originalText, keywords: ['motivation', 'inspiration'] });
+            send('scene', { index: idx, type, text: originalText, keywords: (originalText || '').split(/\s+/).filter(w => w.length > 3).slice(0, 4), visual: originalText ? originalText.slice(0, 80) : '' });
             totalEmitted++;
           }
         }

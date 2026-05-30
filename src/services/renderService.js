@@ -809,3 +809,5 @@ export async function renderVideo({
 }
 
 export const VIDEO_EFFECT_OPTIONS = Object.keys(VIDEO_EFFECTS);
+// Export alias for Model 3/4/5
+export { addRealCaptions as addRealCaptionsForModel };

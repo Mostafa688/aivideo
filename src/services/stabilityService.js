@@ -1,3 +1,4 @@
+import { addRealCaptionsForModel } from './renderService.js';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
@@ -232,6 +233,7 @@ export async function renderModel3Video({
   captions = false,
   transitions = true,
   videoLanguage = 'en',
+  captionStyle = 'classic',
   onProgress = null,
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
@@ -425,7 +427,12 @@ export async function renderModel3Video({
   // ── Step 5: Captions ─────────────────────────────────────────────────
   const withCaptionsPath = path.join(TEMP_DIR, `m3_captions_${id}.mp4`);
   if (captions) {
-    addCaptions(withAudioPath, scenes, withCaptionsPath, ratio, videoLanguage);
+    if (audioPath && process.env.GROQ_API_KEY) {
+      console.log('[Model3] Using Groq Whisper for real captions');
+      await addRealCaptionsForModel(withAudioPath, audioPath, withCaptionsPath, captionStyle, ratio, videoLanguage);
+    } else {
+      addCaptions(withAudioPath, scenes, withCaptionsPath, ratio, videoLanguage);
+    }
   } else {
     fs.copyFileSync(withAudioPath, withCaptionsPath);
   }
