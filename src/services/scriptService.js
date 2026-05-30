@@ -20,7 +20,7 @@ const LANGUAGE_INSTRUCTIONS = {
 
 export const LANGUAGE_DEFAULT_VOICES = {
   en: { male: 'en-US-EricNeural',       female: 'en-US-JennyNeural'    },
-  ar: { male: 'ar-SA-HamedNeural',      female: 'ar-SA-ZariyahNeural'  },
+  ar: { male: 'ar-EG-ShakirNeural',      female: 'ar-EG-SalmaNeural'    },
   de: { male: 'de-DE-ConradNeural',     female: 'de-DE-KatjaNeural'    },
   fr: { male: 'fr-FR-HenriNeural',      female: 'fr-FR-DeniseNeural'   },
   es: { male: 'es-ES-AlvaroNeural',     female: 'es-ES-ElviraNeural'   },
@@ -119,29 +119,33 @@ async function fetchChunkIdea({ fromIndex, toIndex, idea, toneGuide, langGuide, 
 TONE: ${toneGuide}
 LANGUAGE: ${langGuide}
 Index range: ${fromIndex} to ${toIndex}
+Total scenes in video: ${totalScenes}
 
 TYPE RULES (STRICTLY FOLLOW):
 ${typeRules.join('\n')}
 
+STORYTELLING RULES - CRITICAL:
+- The video tells ONE CONTINUOUS STORY from scene 1 to scene ${totalScenes}
+- Each scene MUST continue directly from the previous one - no repetition, no jumps
+- Scene ${fromIndex} continues from scene ${fromIndex - 1} (think: chapters of a book)
+- "text" is VOICEOVER narration - full natural sentences spoken aloud, NOT titles
+- GOOD: "As he stepped into the dark alley, his heart began to race..."
+- BAD: "Man in dark alley" or "Step 2: Facing Fear"
+
 General rules:
 - ONLY JSON lines, zero extra text, no markdown
 - Keywords always in English
-- Short text per scene (1-2 sentences max)
-- Do NOT repeat the same sentence across scenes
-- Do NOT add extra hooks or endings beyond what is specified above
+- 1-2 sentences per scene max
+- Do NOT repeat ideas across scenes
+- Do NOT add extra hooks or endings
 
-Format: {"index":N,"type":"hook|body|ending","text":"...","keywords":["w1","w2"],"visual":"specific visual description for this exact scene","prompt":"cinematic image generation prompt: [specific subject] [specific action] [specific setting] [lighting] [camera angle] [art style]. Sequential story continuation from previous scenes."}
+Format: {"index":N,"type":"hook|body|ending","text":"voiceover narration","keywords":["w1","w2"],"visual":"specific visual description","prompt":"cinematic AI image prompt: subject + action + environment + lighting + camera angle + style. Continuation of scene ${fromIndex - 1}."}
 
-CRITICAL - keywords, visual and prompt rules:
-- keywords must describe the SPECIFIC action or scene (NOT the general topic)
-- If text says "a man walks in the rain", keywords=["man walking rain street"] visual="man walking alone in rainy street at night"
-- If text says "success after failure", keywords=["person celebrating achievement office"] visual="confident person celebrating success"
-- NEVER use generic keywords like "motivation" or "success" alone - always SPECIFIC to scene action
-- prompt MUST be a detailed Stable Diffusion / AI image prompt:
-  - Include: subject + action + environment + lighting + camera + style
-  - Example: "Close-up of determined young man clenching fist, standing in heavy rain on empty city street at night, dramatic side lighting, cinematic color grading, photorealistic"
-  - Each prompt MUST be DIFFERENT and show SEQUENTIAL story progression
-  - NO generic prompts like "motivational background" or "abstract concept"
+CRITICAL rules:
+- keywords MUST be SPECIFIC to the exact scene action (NOT general topic)
+- prompt MUST be detailed Stable Diffusion prompt with all visual elements
+- Each scene prompt shows DIFFERENT moment progressing the story
+- NO generic prompts like "motivational background"
 
 Create a video about:
 ${idea}
@@ -259,9 +263,9 @@ export async function generateCinematicScenes({ idea, characterDesc, locationDes
     es: 'Write the "text" field in Spanish.',
   }[videoLanguage] || 'Write the "text" field in English.';
 
-  const prompt = `You are a cinematic video director AND voiceover writer. Generate ${numScenes} scenes for a short film.
+  const prompt = `You are a professional documentary narrator AND visual director. Generate ${numScenes} scenes for a short film.
 
-STORY: ${idea}
+STORY TOPIC: ${idea}
 
 CHARACTER (keep EXACTLY consistent across ALL scenes):
 ${characterDesc || 'A mysterious protagonist, age 30s, wearing dark clothing'}
@@ -269,17 +273,29 @@ ${characterDesc || 'A mysterious protagonist, age 30s, wearing dark clothing'}
 LOCATION/SETTING (keep EXACTLY consistent):
 ${locationDesc || 'Urban environment, realistic lighting'}
 
-LANGUAGE RULE: ${langGuide}
+LANGUAGE FOR NARRATION: ${langGuide}
 
-CRITICAL RULES:
-- Every scene MUST reference the SAME character with IDENTICAL appearance
-- Every scene MUST be set in the SAME location/world
-- Each scene shows a SEQUENTIAL moment in the story (scenes must tell a progressive story)
-- "prompt" must be a detailed Stable Diffusion / AI image prompt: subject + action + environment + lighting + camera angle + style
-- "text" is the VOICEOVER NARRATION for this scene — it must sound like a professional narrator speaking, NOT a scene title or description. Write full natural sentences that will be spoken aloud. Example: "In the heart of the ancient city, our hero takes his first step toward destiny" NOT "Hero walks in ancient city"
+=== TWO COMPLETELY SEPARATE FIELDS ===
 
-Output EXACTLY ${numScenes} JSON lines:
-{"index":N,"prompt":"detailed AI image generation prompt with character appearance + action + setting + cinematic lighting + camera angle","text":"voiceover narration sentence(s) for this scene — natural spoken language"}
+"prompt" = AI IMAGE GENERATION PROMPT (always in English):
+- Describe what to DRAW/GENERATE visually
+- Include: subject + action + environment + lighting + camera angle + art style
+- Example: "Egyptian soldier standing on sand dune at sunset, dramatic golden lighting, wide angle shot, photorealistic, cinematic"
+
+"text" = SPOKEN NARRATION (in ${videoLanguage === 'ar' ? 'Arabic' : 'the specified language'}):
+- This is what a NARRATOR SPEAKS OUT LOUD over the video
+- Must sound like a TV documentary narrator
+- Full natural sentences with emotion and flow
+- NEVER describe the image - TELL THE STORY
+- GOOD: "في أكتوبر 1973، قرر الجيش المصري تغيير مجرى التاريخ إلى الأبد"
+- BAD: "لوحة زيتية تُصوّر انتصار الجيش" (this describes an image, not narration!)
+- GOOD EN: "On that cold October morning, everything was about to change forever"
+- BAD EN: "Cinematic scene of army victory" (this is an image description!)
+
+STORY FLOW: Each scene must CONTINUE the story from the previous one. Scene 1 starts, scene ${numScenes} concludes.
+
+Output EXACTLY ${numScenes} JSON lines (no extra text):
+{"index":N,"prompt":"[English visual prompt for AI image]","text":"[Spoken narration in ${videoLanguage === 'ar' ? 'Arabic' : 'the target language'} - sounds like documentary narrator]"}
 
 Start:`;
 
