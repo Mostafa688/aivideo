@@ -49,7 +49,7 @@ function AffiliateModal({ user, onClose }) {
         {step === 'form' && (
           <>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:24 }}>
-              {[['Pro','35 EGP'],['Plus','71 EGP'],['Max','155 EGP'],['M3 Max','175 EGP']].map(([plan,earn]) => (
+              {[['Pro','22 EGP'],['Plus','47 EGP'],['Max','122 EGP'],['M3 Max','175 EGP']].map(([plan,earn]) => (
                 <div key={plan} style={{ background:'rgba(34,197,94,0.05)', border:'1px solid rgba(34,197,94,0.12)', borderRadius:10, padding:'10px 12px' }}>
                   <div style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>{plan}</div>
                   <div style={{ fontSize:16, fontWeight:800, color:'#22c55e' }}>{earn}</div>
@@ -122,6 +122,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
   const groups = [
     {
       items: [
+        { icon: '📖', label: 'كيفية الاستخدام', sub: 'دليل شامل للموقع', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
         ...(model3Access ? [{ icon: '🖼️', label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
         { icon: '💰', label: 'Earn with Erivion', sub: 'Affiliate — 50% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
       ]
@@ -227,7 +228,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                       style={{
                         width:'100%', display:'flex', alignItems:'center', gap:10,
                         padding:'9px 10px', borderRadius:10, border:'none',
-                        background: item.accent && item.key === 'affiliate' ? 'rgba(34,197,94,0.06)' : 'transparent',
+                        background: item.key === 'affiliate' ? 'rgba(34,197,94,0.06)' : item.key === 'howto' ? 'rgba(6,182,212,0.06)' : 'transparent',
                         color: item.accent ? item.accent : '#9ca3af',
                         cursor:'pointer', fontSize:13, fontWeight: item.accent ? 600 : 500,
                         textAlign:'left',
@@ -238,7 +239,12 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                         {item.sub && <div style={{ fontSize:10, color: item.accent ? `${item.accent}99` : '#4b5563', marginTop:1 }}>{item.sub}</div>}
                       </div>
                       {item.badge && (
-                        <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4, background:'rgba(34,197,94,0.15)', color:'#22c55e', letterSpacing:'0.06em', border:'1px solid rgba(34,197,94,0.2)' }}>
+                        <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                          background: item.key === 'howto' ? 'rgba(6,182,212,0.15)' : 'rgba(34,197,94,0.15)',
+                          color: item.key === 'howto' ? '#06b6d4' : '#22c55e',
+                          letterSpacing:'0.06em',
+                          border: item.key === 'howto' ? '1px solid rgba(6,182,212,0.2)' : '1px solid rgba(34,197,94,0.2)',
+                        }}>
                           {item.badge}
                         </span>
                       )}

@@ -254,6 +254,7 @@ export default function App() {
       case 'refund':     setPage('refund'); break;
       case 'support':    setPage('support'); break;
       case 'about':      setPage('about'); break;
+      case 'howto':      setPage('howto'); break;
       case 'templates':  setPage('templates'); break;
       case 'home':       setPage('input'); break;
       default:           setPage('input'); break;
@@ -394,12 +395,6 @@ export default function App() {
             <span>🎭</span><span>{credits.model5_usage !== undefined ? (credits.model5_plan_data?.videos_per_month || 0) - (credits.model5_usage || 0) : '–'}</span>
           </div>
         )}
-        {/* Affiliate button */}
-        <button onClick={() => handleNavigate('affiliate')}
-          style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(34,197,94,0.1)', border:'1px solid rgba(34,197,94,0.25)', borderRadius:8, padding:'5px 10px', cursor:'pointer', color:'#22c55e', fontSize:12, fontWeight:600 }}>
-          <span>🤝</span>
-          <span className="header-credits-label">Affiliate</span>
-        </button>
         {/* My Videos button */}
         <button onClick={() => setShowVideos(true)}
           style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(124,106,247,0.1)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:8, padding:'5px 10px', cursor:'pointer', color:'#a78bfa', fontSize:12, fontWeight:600 }}>
@@ -475,7 +470,7 @@ export default function App() {
         {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />}
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
-        {['terms','privacy','support','about','refund'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
+        {['terms','privacy','support','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
       </div>
     </>
   );
