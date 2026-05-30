@@ -50,24 +50,34 @@ const DURATION_SCENES = {
 
 const CAPTION_STYLES = {
   classic: {
-    fontsize: 28, fontcolor: 'white', borderw: 2, bordercolor: 'black',
-    box: 1, boxcolor: '0x00000088', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60', maxChars: 50,
+    fontsize: 34, fontcolor: 'white', borderw: 3, bordercolor: 'black',
+    box: 1, boxcolor: '0x000000aa',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-80',
+    maxChars: 50,
   },
   bold_yellow: {
-    fontsize: 32, fontcolor: 'yellow', borderw: 3, bordercolor: 'black',
-    box: 0, boxcolor: '0x00000000', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82', maxChars: 40,
+    fontsize: 38, fontcolor: 'yellow', borderw: 4, bordercolor: 'black',
+    box: 0, boxcolor: '0x00000000',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-70',
+    maxChars: 40,
   },
   center_box: {
-    fontsize: 30, fontcolor: 'white', borderw: 0, bordercolor: 'black',
-    box: 1, boxcolor: '0x0a0a2ecc', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h*0.82', maxChars: 45,
+    fontsize: 34, fontcolor: 'white', borderw: 0, bordercolor: 'black',
+    box: 1, boxcolor: '0x0a0a2eee',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-70',
+    maxChars: 45,
   },
   documentary: {
-    fontsize: 26, fontcolor: '0x00ff88', borderw: 2, bordercolor: '0x003322',
-    box: 1, boxcolor: '0x00000099', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-50', maxChars: 55,
+    fontsize: 32, fontcolor: '0x00ff88', borderw: 2, bordercolor: '0x003322',
+    box: 1, boxcolor: '0x000000bb',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-80',
+    maxChars: 55,
   },
   clean_white: {
-    fontsize: 30, fontcolor: 'white', borderw: 2, bordercolor: '0x00000077',
-    box: 0, boxcolor: '0x00000000', getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60', maxChars: 50,
+    fontsize: 36, fontcolor: 'white', borderw: 3, bordercolor: '0x00000099',
+    box: 0, boxcolor: '0x00000000',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-80',
+    maxChars: 50,
   },
 };
 
@@ -621,14 +631,16 @@ async function transcribeWithWhisper(audioPath) {
 // ── توليد ملف ASS للـ subtitles ────────────────────────────────────────────
 function buildAssFile(chunks, style, ratio, videoLanguage, fontName) {
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
-  const fs_size = style.fontsize || 28;
+  const fs_size = Math.round((style.fontsize || 34) * 1.2); // أكبر شوية في ASS
   const color = style.fontcolor === 'white' ? '&H00FFFFFF' :
                 style.fontcolor === 'yellow' ? '&H0000FFFF' :
                 style.fontcolor.startsWith('0x') ? `&H00${style.fontcolor.slice(2).toUpperCase()}` : '&H00FFFFFF';
   const outline = style.borderw || 2;
   const shadow = style.box ? 1 : 0;
   const backColor = '&H88000000';
-  const alignment = isRTL ? 2 : 2; // center bottom for both
+  // نحدد الـ alignment: 2=bottom center, 8=middle center
+  const alignment = (ratio === '9:16' || ratio === '1:1') ? 8 : 2;
+  const marginV = (ratio === '9:16' || ratio === '1:1') ? 0 : 60;
 
   const toAssTime = (s) => {
     const h = Math.floor(s / 3600);
@@ -646,7 +658,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${fontName},${fs_size},${color},&H000000FF,&H00000000,${backColor},-1,0,0,0,100,100,0,0,1,${outline},${shadow},${alignment},10,10,30,1
+Style: Default,${fontName},${fs_size},${color},&H000000FF,&H00000000,${backColor},-1,0,0,0,100,100,0,0,1,${outline},${shadow},${alignment},10,10,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

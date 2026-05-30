@@ -250,8 +250,16 @@ async function callGroq(prompt) {
 // ============================================================
 // Cinematic Scene Generation - Character & Location Consistency
 // ============================================================
-export async function generateCinematicScenes({ idea, characterDesc, locationDesc, numScenes = 6 }, send) {
-  const prompt = `You are a cinematic video director. Generate ${numScenes} scenes for a short film.
+export async function generateCinematicScenes({ idea, characterDesc, locationDesc, numScenes = 6, videoLanguage = 'en' }, send) {
+  const langGuide = {
+    ar: 'Write the "text" field in Arabic (العربية). Use natural, flowing Arabic suitable for voiceover.',
+    en: 'Write the "text" field in English.',
+    fr: 'Write the "text" field in French.',
+    de: 'Write the "text" field in German.',
+    es: 'Write the "text" field in Spanish.',
+  }[videoLanguage] || 'Write the "text" field in English.';
+
+  const prompt = `You are a cinematic video director AND voiceover writer. Generate ${numScenes} scenes for a short film.
 
 STORY: ${idea}
 
@@ -261,15 +269,17 @@ ${characterDesc || 'A mysterious protagonist, age 30s, wearing dark clothing'}
 LOCATION/SETTING (keep EXACTLY consistent):
 ${locationDesc || 'Urban environment, realistic lighting'}
 
+LANGUAGE RULE: ${langGuide}
+
 CRITICAL RULES:
 - Every scene MUST reference the SAME character with IDENTICAL appearance
 - Every scene MUST be set in the SAME location/world
-- Each scene shows a different moment in the story
-- Prompts must be cinematic, detailed, and suitable for video generation
-- No voiceover needed - pure visual storytelling
+- Each scene shows a SEQUENTIAL moment in the story (scenes must tell a progressive story)
+- "prompt" must be a detailed Stable Diffusion / AI image prompt: subject + action + environment + lighting + camera angle + style
+- "text" is the VOICEOVER NARRATION for this scene — it must sound like a professional narrator speaking, NOT a scene title or description. Write full natural sentences that will be spoken aloud. Example: "In the heart of the ancient city, our hero takes his first step toward destiny" NOT "Hero walks in ancient city"
 
 Output EXACTLY ${numScenes} JSON lines:
-{"index":N,"prompt":"detailed cinematic prompt with character and location","text":"scene description for caption"}
+{"index":N,"prompt":"detailed AI image generation prompt with character appearance + action + setting + cinematic lighting + camera angle","text":"voiceover narration sentence(s) for this scene — natural spoken language"}
 
 Start:`;
 
