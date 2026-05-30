@@ -8,14 +8,14 @@ const TONE_INSTRUCTIONS = {
 };
 
 const LANGUAGE_INSTRUCTIONS = {
-  en: 'Write all scene text in English.',
-  ar: 'Write all scene text in Arabic (العربية). Use natural, flowing Arabic.',
-  de: 'Write all scene text in German (Deutsch).',
-  fr: 'Write all scene text in French (Français).',
-  es: 'Write all scene text in Spanish (Español).',
-  ru: 'Write all scene text in Russian (Русский).',
-  ja: 'Write all scene text in Japanese (日本語).',
-  pt: 'Write all scene text in Portuguese (Português).',
+  en: 'Write all scene text in English only. No other languages.',
+  ar: 'اكتب كل نص المشاهد باللغة العربية فقط. ممنوع استخدام أي كلمة إنجليزية في حقل "text". النص يجب أن يكون عربياً خالصاً بدون أي كلمات أجنبية.',
+  de: 'Write all scene text in German (Deutsch) only. No other languages.',
+  fr: 'Write all scene text in French (Français) only. No other languages.',
+  es: 'Write all scene text in Spanish (Español) only. No other languages.',
+  ru: 'Write all scene text in Russian (Русский) only. No other languages.',
+  ja: 'Write all scene text in Japanese (日本語) only. No other languages.',
+  pt: 'Write all scene text in Portuguese (Português) only. No other languages.',
 };
 
 export const LANGUAGE_DEFAULT_VOICES = {
@@ -135,8 +135,8 @@ STORYTELLING RULES - CRITICAL:
 General rules:
 - ONLY JSON lines, zero extra text, no markdown
 - Keywords always in English
-- MAXIMUM 15 words per scene text (strictly enforced - never exceed this)
-- 1 short sentence only per scene
+- 20 to 25 words per scene text (not less, not more)
+- 1-2 short sentences per scene
 - Do NOT repeat ideas across scenes
 - Do NOT add extra hooks or endings
 
@@ -257,7 +257,7 @@ async function callGroq(prompt) {
 // ============================================================
 export async function generateCinematicScenes({ idea, characterDesc, locationDesc, numScenes = 6, videoLanguage = 'en' }, send) {
   const langGuide = {
-    ar: 'Write the "text" field in Arabic (العربية). Use natural, flowing Arabic suitable for voiceover.',
+    ar: 'اكتب حقل "text" باللغة العربية فقط. ممنوع أي كلمة إنجليزية في النص. عربي خالص.',
     en: 'Write the "text" field in English.',
     fr: 'Write the "text" field in French.',
     de: 'Write the "text" field in German.',

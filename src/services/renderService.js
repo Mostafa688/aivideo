@@ -666,8 +666,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
   const events = chunks.map(chunk => {
     let text = chunk.text.replace(/['"`\\{}|<>]/g, '').replace(/\n/g, ' ').trim();
-    // للـ RTL: نضيف Unicode RLE marker عشان الـ ASS يعرض العربي صح
-    if (isRTL) text = `{\\an2}‏${text}`;
+    // للـ RTL: نضيف override للـ alignment حسب الـ ratio
+    if (isRTL) {
+      const anCode = (ratio === '9:16' || ratio === '1:1') ? 5 : 2;
+      text = `{\\an${anCode}}‏${text}`;
+    }
     return `Dialogue: 0,${toAssTime(chunk.start)},${toAssTime(chunk.end)},Default,,0,0,0,,${text}`;
   }).join('\n');
 
