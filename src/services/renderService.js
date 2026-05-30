@@ -117,7 +117,7 @@ function downloadFile(url, dest) {
 
 function trimAndScale(input, output, duration, w, h) {
   return new Promise((resolve, reject) => {
-    const scaleFilter = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`;
+    const scaleFilter = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,unsharp=5:5:0.5:3:3:0.0`;
     ffmpeg(input)
       .inputOptions(['-stream_loop', '-1'])
       .duration(duration)
@@ -126,10 +126,13 @@ function trimAndScale(input, output, duration, w, h) {
         '-an',
         '-r', '30',
         '-c:v', 'libx264',
-        '-crf', '18',
-        '-preset', 'fast',
-        '-profile:v', 'baseline',
-        '-level', '3.1',
+        '-crf', '16',
+        '-preset', 'slow',
+        '-profile:v', 'high',
+        '-level', '4.1',
+        '-b:v', '4M',
+        '-maxrate', '6M',
+        '-bufsize', '8M',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
       ])
@@ -148,10 +151,10 @@ function generateColorSlide(scene, output, duration, w, h) {
     '-i', `color=c=${color}:size=${w}x${h}:rate=30`,
     '-t', String(duration),
     '-c:v', 'libx264',
-    '-crf', '23',
-    '-preset', 'ultrafast',
-    '-profile:v', 'baseline',
-    '-level', '3.1',
+    '-crf', '18',
+    '-preset', 'fast',
+    '-profile:v', 'high',
+    '-level', '4.1',
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
     '-y', output,
@@ -169,10 +172,13 @@ function concatVideos(listFile, output) {
       .inputOptions(['-f', 'concat', '-safe', '0'])
       .outputOptions([
         '-c:v', 'libx264',
-        '-crf', '18',
-        '-preset', 'fast',
-        '-profile:v', 'baseline',
-        '-level', '3.1',
+        '-crf', '16',
+        '-preset', 'slow',
+        '-profile:v', 'high',
+        '-level', '4.1',
+        '-b:v', '4M',
+        '-maxrate', '6M',
+        '-bufsize', '8M',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
       ])
@@ -606,11 +612,15 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
   }
 
   // Group words into chunks of 3-4 words
-  const WORDS_PER_CHUNK = 4;
+  const WORDS_PER_CHUNK = isRTL ? 3 : 4;
   const chunks = [];
   for (let i = 0; i < words.length; i += WORDS_PER_CHUNK) {
     const group = words.slice(i, i + WORDS_PER_CHUNK);
-    const text = group.map(w => w.word).join(' ').trim();
+    let text = group.map(w => w.word).join(' ').trim();
+    // للعربي: نعكس ترتيب الكلمات عشان FFmpeg مش بيدعم RTL
+    if (isRTL) {
+      text = text.split(' ').reverse().join(' ');
+    }
     const start = group[0].start;
     const end = group[group.length - 1].end;
     if (text) chunks.push({ text, start, end });

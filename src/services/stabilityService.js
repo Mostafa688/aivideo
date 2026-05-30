@@ -69,8 +69,8 @@ function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
   try {
     execSync(
       `ffmpeg -loop 1 -i "${imagePath}" -vf "${effect}" ` +
-      `-t ${duration} -r ${fps} -c:v libx264 -crf 23 -preset ultrafast ` +
-      `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+      `-t ${duration} -r ${fps} -c:v libx264 -crf 17 -preset medium ` +
+      `-profile:v high -level 4.1 -b:v 3M -maxrate 5M -bufsize 6M -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
   } catch(e) {
@@ -79,8 +79,8 @@ function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
     execSync(
       `ffmpeg -loop 1 -i "${imagePath}" ` +
       `-vf "scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1" ` +
-      `-t ${duration} -r ${fps} -c:v libx264 -crf 23 -preset ultrafast ` +
-      `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+      `-t ${duration} -r ${fps} -c:v libx264 -crf 17 -preset medium ` +
+      `-profile:v high -level 4.1 -b:v 3M -maxrate 5M -bufsize 6M -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
   }
@@ -96,8 +96,8 @@ function applyTransition(clip1, clip2, outputPath, duration1, transitionDuration
     execSync(
       `ffmpeg -i "${clip1}" -i "${clip2}" ` +
       `-filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=${transitionDuration}:offset=${offset}[v]" ` +
-      `-map "[v]" -r 30 -c:v libx264 -crf 23 -preset ultrafast ` +
-      `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+      `-map "[v]" -r 30 -c:v libx264 -crf 17 -preset medium ` +
+      `-profile:v high -level 4.1 -b:v 3M -maxrate 5M -bufsize 6M -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
   } catch (e) {
@@ -109,8 +109,8 @@ function applyTransition(clip1, clip2, outputPath, duration1, transitionDuration
     const tmpList = outputPath + '_list.txt';
     fs.writeFileSync(tmpList, listContent);
     execSync(
-      `ffmpeg -f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 23 -preset ultrafast ` +
-      `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+      `ffmpeg -f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 17 -preset medium ` +
+      `-profile:v high -level 4.1 -b:v 3M -maxrate 5M -bufsize 6M -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
     try { fs.unlinkSync(tmpList); } catch {}
@@ -212,8 +212,8 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'en')
   try {
     execSync(
       `ffmpeg -i "${videoPath}" -vf "${filters.join(',')}" ` +
-      `-c:a copy -c:v libx264 -crf 23 -preset ultrafast ` +
-      `-profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+      `-c:a copy -c:v libx264 -crf 17 -preset medium ` +
+      `-profile:v high -level 4.1 -b:v 3M -maxrate 5M -bufsize 6M -pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
       { stdio: 'pipe' }
     );
   } catch (e) {
@@ -260,7 +260,11 @@ export async function renderModel3Video({
       if (onProgress) onProgress({ step: 'generating', current: i + 1, total: totalImages });
       console.log(`[Model3] Generating image ${i + 1}/${totalImages}: ${scene.prompt?.slice(0, 60)}...`);
 
-      const imageBuffer = await generateImage(scene.prompt || scene.text, ratio);
+      // بنبني prompt محسن: scene.prompt أولاً، لو مفيش نبنيه من visual + text
+      const imagePrompt = scene.prompt 
+        || (scene.visual ? `${scene.visual}, cinematic lighting, photorealistic, high detail, 8K` : null)
+        || `${scene.text}, cinematic, photorealistic, high quality`;
+      const imageBuffer = await generateImage(imagePrompt, ratio);
       fs.writeFileSync(imagePath, imageBuffer);
       imagePaths.push(imagePath);
     } catch (e) {

@@ -248,7 +248,10 @@ export async function renderModel4Video({
     try {
       if (onProgress) onProgress({ step: 'generating', current: i + 1, total });
       console.log(`[Model4] Generating clip ${i + 1}/${total}`);
-      const url = await generateSeedanceClip(scenes[i].prompt || scenes[i].text, ratio);
+      const seedPrompt = scenes[i].prompt 
+        || (scenes[i].visual ? `${scenes[i].visual}, cinematic motion, professional video` : null)
+        || scenes[i].text;
+      const url = await generateSeedanceClip(seedPrompt, ratio);
       await downloadVideo(url, rawPath);
     } catch (e) {
       console.error(`[Model4] Clip ${i + 1} failed:`, e.message);
@@ -398,7 +401,10 @@ export async function renderModel5Video({
     const rawPath = path.join(TEMP_DIR, `m5_raw_${id}_${i}.mp4`);
     try {
       console.log(`[Model5] Clip ${i + 1}/${total}: ${(scenes[i].prompt || '').slice(0, 60)}...`);
-      const url = await generateSeedance2Clip(scenes[i].prompt || scenes[i].text, ratio, CLIP_SEC);
+      const seed2Prompt = scenes[i].prompt
+        || (scenes[i].visual ? `${scenes[i].visual}, cinematic motion, professional video` : null)
+        || scenes[i].text;
+      const url = await generateSeedance2Clip(seed2Prompt, ratio, CLIP_SEC);
       await downloadVideo(url, rawPath);
     } catch (e) {
       console.error(`[Model5] Clip ${i + 1} failed:`, e.message);

@@ -130,13 +130,18 @@ General rules:
 - Do NOT repeat the same sentence across scenes
 - Do NOT add extra hooks or endings beyond what is specified above
 
-Format: {"index":N,"type":"hook|body|ending","text":"...","keywords":["w1","w2"],"visual":"specific visual description for this exact scene"}
+Format: {"index":N,"type":"hook|body|ending","text":"...","keywords":["w1","w2"],"visual":"specific visual description for this exact scene","prompt":"cinematic image generation prompt: [specific subject] [specific action] [specific setting] [lighting] [camera angle] [art style]. Sequential story continuation from previous scenes."}
 
-CRITICAL - keywords and visual rules:
-- keywords must describe the SPECIFIC action or scene in the text (not the general topic)
+CRITICAL - keywords, visual and prompt rules:
+- keywords must describe the SPECIFIC action or scene (NOT the general topic)
 - If text says "a man walks in the rain", keywords=["man walking rain street"] visual="man walking alone in rainy street at night"
 - If text says "success after failure", keywords=["person celebrating achievement office"] visual="confident person celebrating success"
-- NEVER use generic keywords like just "motivation" or "success" - always be SPECIFIC to the scene
+- NEVER use generic keywords like "motivation" or "success" alone - always SPECIFIC to scene action
+- prompt MUST be a detailed Stable Diffusion / AI image prompt:
+  - Include: subject + action + environment + lighting + camera + style
+  - Example: "Close-up of determined young man clenching fist, standing in heavy rain on empty city street at night, dramatic side lighting, cinematic color grading, photorealistic"
+  - Each prompt MUST be DIFFERENT and show SEQUENTIAL story progression
+  - NO generic prompts like "motivational background" or "abstract concept"
 
 Create a video about:
 ${idea}
@@ -175,9 +180,14 @@ ${segmentsForChunk.map((_, i) => {
   return `Scene ${sceneIndex}: type="${type}"`;
 }).join('\n')}
 
-Format: {"index":N,"type":"hook|body|ending","text":"EXACT scene text","keywords":["w1","w2"],"visual":"specific visual description for this exact scene"}
+Format: {"index":N,"type":"hook|body|ending","text":"EXACT scene text","keywords":["w1","w2"],"visual":"specific visual description for this exact scene","prompt":"cinematic image generation prompt: [specific subject] [specific action] [specific setting] [lighting] [camera angle]. Sequential continuation matching the scene text exactly."}
 
-CRITICAL - keywords must be SPECIFIC to the scene action, not general topic words.
+CRITICAL - keywords and prompt rules:
+- keywords MUST be SPECIFIC to the exact scene action (NOT general topic)
+- Example: "man walking rain street" NOT just "motivation"
+- prompt MUST be detailed AI image generation prompt with subject + action + setting + lighting
+- Example: "Young woman crying alone in hospital corridor, fluorescent lighting, shallow depth of field, cinematic"
+- Each scene prompt MUST show SEQUENTIAL story progression - reference what happened before
 
 Scenes:
 ${scenesText}
