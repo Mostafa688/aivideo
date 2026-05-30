@@ -301,72 +301,95 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
 function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9', videoLanguage = 'en') {
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
-  // ✅ FIX: استخدم getFontPath بدل FONT_PATH الثابت
   const fontfile = style.fontfile || getFontPath(videoLanguage);
-
-  // للعربي: نعكس الكلمات عشان FFmpeg drawtext مش بيدعم RTL
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
 
-  function splitIntoChunks(text, wordsPerChunk = 3) {
-    const words = text.replace(/[':]/g, '').replace(/\\/g, '').replace(/\n/g, ' ').trim().split(/\s+/);
-    const chunks = [];
-    for (let i = 0; i < words.length; i += wordsPerChunk) {
-      let chunk = words.slice(i, i + wordsPerChunk).join(' ');
-      // للـ RTL نعكس ترتيب الكلمات في الـ chunk
-      if (isRTL) {
-        chunk = words.slice(i, i + wordsPerChunk).reverse().join(' ');
-      }
-      chunks.push(chunk);
-    }
-    return chunks.filter(Boolean);
-  }
-
+  // بنبني الـ chunks مع timestamps
+  const chunks = [];
   let currentTime = 0;
-  const filters = [];
+  const WORDS_PER_CHUNK = isRTL ? 3 : 4;
 
   scenes.forEach((scene, i) => {
-    const start = currentTime;
     const sceneDur = sceneDurations[i] || 7;
-    const end = start + sceneDur;
-    currentTime = end;
+    const words = scene.text
+      .replace(/[':]/g, '').replace(/\\/g, '').replace(/\n/g, ' ')
+      .trim().split(/\s+/).filter(Boolean);
+    const chunkCount = Math.ceil(words.length / WORDS_PER_CHUNK);
+    const chunkDur = sceneDur / Math.max(chunkCount, 1);
 
-    const chunks = splitIntoChunks(scene.text, 3);
-    const chunkDur = sceneDur / chunks.length;
-    const yExpr = style.getY(ratio);
-
-    chunks.forEach((chunk, j) => {
-      const chunkStart = start + j * chunkDur;
-      const chunkEnd = chunkStart + chunkDur;
-
-      filters.push(
-        `drawtext=fontfile='${fontfile}'`
-        + `:text='${chunk}'`
-        + `:fontsize=${style.fontsize}`
-        + `:fontcolor=${style.fontcolor}`
-        + `:borderw=${style.borderw}`
-        + `:bordercolor=${style.bordercolor}`
-        + (style.box ? `:box=1:boxcolor=${style.boxcolor}:boxborderw=8` : '')
-        + `:x=(w-text_w)/2`
-        + `:y=${yExpr}`
-        + `:enable='between(t,${chunkStart.toFixed(3)},${chunkEnd.toFixed(3)})'`
-      );
-    });
+    for (let j = 0; j < chunkCount; j++) {
+      const slice = words.slice(j * WORDS_PER_CHUNK, (j + 1) * WORDS_PER_CHUNK);
+      const text = slice.join(' ');
+      chunks.push({
+        text,
+        start: currentTime + j * chunkDur,
+        end: currentTime + (j + 1) * chunkDur,
+      });
+    }
+    currentTime += sceneDur;
   });
 
-  const filterStr = filters.join(',');
+  // للعربي: ASS subtitles عشان RTL صح
+  if (isRTL) {
+    const assFile = path.join(TEMP_DIR, `captions_timing_${Date.now()}.ass`);
+    const fontName = fontfile.includes('Naskh') ? 'Noto Naskh Arabic' :
+                     fontfile.includes('Noto') ? 'Noto Sans Arabic' : 'DejaVu Sans';
+    try {
+      const assContent = buildAssFile(chunks, style, ratio, videoLanguage, fontName);
+      fs.writeFileSync(assFile, assContent, 'utf8');
+      const safeAss = assFile.replace(/\\/g, '/').replace(/:/g, '\\:');
+      return new Promise((resolve) => {
+        ffmpeg(videoFile)
+          .outputOptions([
+            '-vf', `subtitles='${safeAss}':fontsdir='${path.dirname(fontfile)}'`,
+            '-c:a', 'copy',
+            '-c:v', 'libx264', '-crf', '16', '-preset', 'slow',
+            '-profile:v', 'high', '-level', '4.1',
+            '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
+            '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+          ])
+          .output(path.resolve(output))
+          .on('end', () => { try { fs.unlinkSync(assFile); } catch {} resolve(); })
+          .on('error', (err) => {
+            console.warn('[Captions] ASS failed:', err.message.slice(0, 80));
+            try { fs.unlinkSync(assFile); } catch {}
+            fs.copyFileSync(videoFile, output); resolve();
+          })
+          .run();
+      });
+    } catch (e) {
+      console.warn('[Captions] ASS build failed:', e.message);
+      fs.copyFileSync(videoFile, output);
+      return Promise.resolve();
+    }
+  }
 
-  return new Promise((resolve, reject) => {
+  // LTR: drawtext مع شكل أحسن
+  const yExpr = style.getY(ratio);
+  const filters = chunks.map(chunk => {
+    const safeText = chunk.text
+      .replace(/['"`:\\<>{}|]/g, '').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    return `drawtext=fontfile='${fontfile}'`
+      + `:text='${safeText}'`
+      + `:fontsize=${style.fontsize}`
+      + `:fontcolor=${style.fontcolor}`
+      + `:borderw=${style.borderw}`
+      + `:bordercolor=${style.bordercolor}`
+      + (style.box ? `:box=1:boxcolor=${style.boxcolor}:boxborderw=10` : '')
+      + `:x=(w-text_w)/2`
+      + `:y=${yExpr}`
+      + `:enable='between(t,${chunk.start.toFixed(3)},${chunk.end.toFixed(3)})'`;
+  });
+
+  return new Promise((resolve) => {
     ffmpeg(videoFile)
-      .videoFilters(filterStr)
+      .videoFilters(filters.join(','))
       .outputOptions([
         '-c:a', 'copy',
-        '-c:v', 'libx264',
-        '-crf', '18',
-        '-preset', 'fast',
-        '-profile:v', 'baseline',
-        '-level', '3.1',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
+        '-c:v', 'libx264', '-crf', '16', '-preset', 'slow',
+        '-profile:v', 'high', '-level', '4.1',
+        '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
+        '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
       ])
       .output(path.resolve(output))
       .on('end', resolve)
@@ -595,12 +618,56 @@ async function transcribeWithWhisper(audioPath) {
   }
 }
 
+// ── توليد ملف ASS للـ subtitles ────────────────────────────────────────────
+function buildAssFile(chunks, style, ratio, videoLanguage, fontName) {
+  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
+  const fs_size = style.fontsize || 28;
+  const color = style.fontcolor === 'white' ? '&H00FFFFFF' :
+                style.fontcolor === 'yellow' ? '&H0000FFFF' :
+                style.fontcolor.startsWith('0x') ? `&H00${style.fontcolor.slice(2).toUpperCase()}` : '&H00FFFFFF';
+  const outline = style.borderw || 2;
+  const shadow = style.box ? 1 : 0;
+  const backColor = '&H88000000';
+  const alignment = isRTL ? 2 : 2; // center bottom for both
+
+  const toAssTime = (s) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    const cs = Math.round((s % 1) * 100);
+    return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+  };
+
+  const header = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,${fontName},${fs_size},${color},&H000000FF,&H00000000,${backColor},-1,0,0,0,100,100,0,0,1,${outline},${shadow},${alignment},10,10,30,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+
+  const events = chunks.map(chunk => {
+    let text = chunk.text.replace(/['"`\\{}|<>]/g, '').replace(/\n/g, ' ').trim();
+    // للـ RTL: نضيف Unicode RLE marker عشان الـ ASS يعرض العربي صح
+    if (isRTL) text = `{\\an2}‏${text}`;
+    return `Dialogue: 0,${toAssTime(chunk.start)},${toAssTime(chunk.end)},Default,,0,0,0,,${text}`;
+  }).join('\n');
+
+  return header + events;
+}
+
 // ── Real Captions using Whisper word timestamps ────────────────────────────
 async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio, videoLanguage) {
   const styleName = captionStyle || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
-  const fontfile = getFontPath(videoLanguage);
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
+  const fontfile = getFontPath(videoLanguage);
 
   // Try Whisper first
   const words = await transcribeWithWhisper(audioPath);
@@ -611,27 +678,77 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
     return;
   }
 
-  // Group words into chunks of 3-4 words
+  // Group words into chunks
   const WORDS_PER_CHUNK = isRTL ? 3 : 4;
   const chunks = [];
   for (let i = 0; i < words.length; i += WORDS_PER_CHUNK) {
     const group = words.slice(i, i + WORDS_PER_CHUNK);
-    let text = group.map(w => w.word).join(' ').trim();
-    // للعربي: نعكس ترتيب الكلمات عشان FFmpeg مش بيدعم RTL
-    if (isRTL) {
-      text = text.split(' ').reverse().join(' ');
-    }
+    const text = group.map(w => w.word).join(' ').trim();
     const start = group[0].start;
     const end = group[group.length - 1].end;
     if (text) chunks.push({ text, start, end });
   }
 
-  console.log(`[Captions] ${chunks.length} caption chunks from ${words.length} words`);
+  console.log(`[Captions] ${chunks.length} chunks from ${words.length} words | RTL: ${isRTL}`);
 
+  if (chunks.length === 0) {
+    fs.copyFileSync(videoFile, output);
+    return;
+  }
+
+  // للعربي: نستخدم ASS subtitles عشان تدعم RTL صح
+  if (isRTL) {
+    const assFile = path.join(TEMP_DIR, `captions_${Date.now()}.ass`);
+    // نحدد اسم الفونت من المسار
+    const fontName = fontfile.includes('Naskh') ? 'Noto Naskh Arabic' :
+                     fontfile.includes('Noto') ? 'Noto Sans Arabic' :
+                     fontfile.includes('DejaVu') ? 'DejaVu Sans' : 'Arial';
+    try {
+      const assContent = buildAssFile(chunks, style, ratio, videoLanguage, fontName);
+      fs.writeFileSync(assFile, assContent, 'utf8');
+      // نستخدم subtitles filter مع force_style لـ RTL
+      await new Promise((resolve) => {
+        const safeAssFile = assFile.replace(/\\/g, '/').replace(/:/g, '\\:');
+        ffmpeg(videoFile)
+          .outputOptions([
+            '-vf', `subtitles='${safeAssFile}':fontsdir='${path.dirname(fontfile)}'`,
+            '-c:a', 'copy',
+            '-c:v', 'libx264',
+            '-crf', '16',
+            '-preset', 'slow',
+            '-profile:v', 'high',
+            '-level', '4.1',
+            '-b:v', '4M',
+            '-maxrate', '6M',
+            '-bufsize', '8M',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+          ])
+          .output(path.resolve(output))
+          .on('end', () => {
+            try { fs.unlinkSync(assFile); } catch {}
+            console.log('[Captions] ✅ RTL ASS captions added');
+            resolve();
+          })
+          .on('error', (err) => {
+            console.warn('[Captions] ASS failed, trying drawtext:', err.message.slice(0, 80));
+            try { fs.unlinkSync(assFile); } catch {}
+            fs.copyFileSync(videoFile, output);
+            resolve();
+          })
+          .run();
+      });
+      return;
+    } catch (e) {
+      console.warn('[Captions] ASS build failed:', e.message);
+    }
+  }
+
+  // للـ LTR: نستخدم drawtext العادي
   const yExpr = style.getY(ratio);
   const filters = chunks.map(chunk => {
     const safeText = chunk.text
-      .replace(/['"`:;\\<>{}|]/g, '')
+      .replace(/['"`:\\<>{}|]/g, '')
       .replace(/\n/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -653,26 +770,24 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
     return;
   }
 
-  const filterStr = filters.join(',');
-
   return new Promise((resolve) => {
     ffmpeg(videoFile)
-      .videoFilters(filterStr)
+      .videoFilters(filters.join(','))
       .outputOptions([
         '-c:a', 'copy',
         '-c:v', 'libx264',
-        '-crf', '18',
-        '-preset', 'fast',
+        '-crf', '16',
+        '-preset', 'slow',
         '-profile:v', 'high',
         '-level', '4.1',
+        '-b:v', '4M',
+        '-maxrate', '6M',
+        '-bufsize', '8M',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
       ])
       .output(path.resolve(output))
-      .on('end', () => {
-        console.log('[Captions] ✅ Real captions added');
-        resolve();
-      })
+      .on('end', () => { console.log('[Captions] ✅ LTR captions added'); resolve(); })
       .on('error', (err) => {
         console.warn('[Captions] Failed:', err.message.slice(0, 100));
         fs.copyFileSync(videoFile, output);
