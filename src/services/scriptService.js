@@ -119,34 +119,22 @@ async function fetchChunkIdea({ fromIndex, toIndex, idea, toneGuide, langGuide, 
 TONE: ${toneGuide}
 LANGUAGE: ${langGuide}
 Index range: ${fromIndex} to ${toIndex}
-Total scenes in video: ${totalScenes}
 
 TYPE RULES (STRICTLY FOLLOW):
 ${typeRules.join('\n')}
 
-STORYTELLING RULES - CRITICAL:
-- The video tells ONE CONTINUOUS STORY from scene 1 to scene ${totalScenes}
-- Each scene MUST continue directly from the previous one - no repetition, no jumps
-- Scene ${fromIndex} continues from scene ${fromIndex - 1} (think: chapters of a book)
-- "text" is VOICEOVER narration - full natural sentences spoken aloud, NOT titles
-- GOOD: "As he stepped into the dark alley, his heart began to race..."
-- BAD: "Man in dark alley" or "Step 2: Facing Fear"
-
-General rules:
+Rules:
 - ONLY JSON lines, zero extra text, no markdown
 - Keywords always in English
-- 20 to 25 words per scene text (not less, not more)
-- 1-2 short sentences per scene
-- Do NOT repeat ideas across scenes
-- Do NOT add extra hooks or endings
+- Natural voiceover text - 1-2 sentences per scene, conversational and engaging
+- Do NOT repeat the same sentence across scenes
+- Do NOT add extra hooks or endings beyond what is specified above
 
-Format: {"index":N,"type":"hook|body|ending","text":"voiceover narration","keywords":["w1","w2"],"visual":"specific visual description","prompt":"cinematic AI image prompt: subject + action + environment + lighting + camera angle + style. Continuation of scene ${fromIndex - 1}."}
+Format: {"index":N,"type":"hook|body|ending","text":"...","keywords":["w1","w2"],"visual":"specific visual description for this exact scene"}
 
-CRITICAL rules:
-- keywords MUST be SPECIFIC to the exact scene action (NOT general topic)
-- prompt MUST be detailed Stable Diffusion prompt with all visual elements
-- Each scene prompt shows DIFFERENT moment progressing the story
-- NO generic prompts like "motivational background"
+CRITICAL - keywords and visual rules:
+- keywords must describe the SPECIFIC action or scene in the text (not the general topic)
+- NEVER use generic keywords like just "motivation" or "success" - always be SPECIFIC to the scene
 
 Create a video about:
 ${idea}
