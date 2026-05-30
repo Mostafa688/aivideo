@@ -16,12 +16,12 @@ export const VOICE_OPTIONS = {
   'male_wise':       { name: 'Wise Man',         voice: 'en-US-ChristopherNeural', gender: 'male'   },
   'male_young':      { name: 'Young Man',         voice: 'en-US-GuyNeural',         gender: 'male'   },
   'male_american':   { name: 'American Man',      voice: 'en-US-EricNeural',        gender: 'male'   },
-  'male_arabic':     { name: 'Arabic Man',        voice: 'ar-SA-HamedNeural',       gender: 'male'   },
+  'male_arabic':     { name: 'Arabic Man',        voice: 'ar-EG-ShakirNeural',      gender: 'male'   },
   'male_child':      { name: 'Child',             voice: 'en-US-AnaNeural',         gender: 'male'   },
   'female_wise':     { name: 'Wise Woman',        voice: 'en-US-AriaNeural',        gender: 'female' },
   'female_young':    { name: 'Young Woman',       voice: 'en-US-JennyNeural',       gender: 'female' },
   'female_american': { name: 'American Woman',    voice: 'en-US-MichelleNeural',    gender: 'female' },
-  'female_arabic':   { name: 'Arabic Woman',      voice: 'ar-SA-ZariyahNeural',     gender: 'female' },
+  'female_arabic':   { name: 'Arabic Woman',      voice: 'ar-EG-SalmaNeural',       gender: 'female' },
   'female_child':    { name: 'Girl',              voice: 'en-GB-MaisieNeural',      gender: 'female' },
 };
 
@@ -35,6 +35,15 @@ const PITCH_BY_TYPE = {
   motivational: '+5Hz',
   storytelling: '-5Hz',
   education:    '+0Hz',
+};
+
+// الـ rate الافتراضي لكل لغة
+const LANG_DEFAULT_RATE = {
+  ar: -15, // العربي أبطأ شوية
+  en: 0,
+  fr: 0,
+  de: -5,
+  es: 0,
 };
 
 function resolveVoice(voiceKey, videoType, videoLanguage) {
@@ -128,7 +137,9 @@ export async function generateVoiceover(text, voiceKey = 'male_american', videoT
   const voiceName = voiceData.voice;
   const pitch = PITCH_BY_TYPE[videoType] || '+0Hz';
 
-  const clampedSpeed = Math.max(-50, Math.min(50, Number(speed) || 0));
+  const langDefaultRate = LANG_DEFAULT_RATE[videoLanguage] || 0;
+  const baseSpeed = (Number(speed) === 0) ? langDefaultRate : Number(speed);
+  const clampedSpeed = Math.max(-50, Math.min(50, baseSpeed));
   const rateStr = (clampedSpeed >= 0 ? '+' : '') + clampedSpeed + '%';
 
   console.log(`[TTS] Voice: ${voiceName} | Lang: ${videoLanguage} | Rate: ${rateStr} | Pitch: ${pitch}`);

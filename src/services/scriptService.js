@@ -135,7 +135,8 @@ STORYTELLING RULES - CRITICAL:
 General rules:
 - ONLY JSON lines, zero extra text, no markdown
 - Keywords always in English
-- 1-2 sentences per scene max
+- MAXIMUM 15 words per scene text (strictly enforced - never exceed this)
+- 1 short sentence only per scene
 - Do NOT repeat ideas across scenes
 - Do NOT add extra hooks or endings
 
