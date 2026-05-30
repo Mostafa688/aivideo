@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 
 // ── جدول هامش الربح والعمولة الحقيقية ──────────────────────────────────
 const COMMISSION_TABLE = [
-  { plan: '⚡ Pro (M1/M2)',    price: '50 EGP/mo',    cost: '5 EGP',    profit: '45 EGP',  commission: '22 EGP' },
-  { plan: '🚀 Plus (M1/M2)',   price: '100 EGP/mo',   cost: '5 EGP',    profit: '95 EGP',  commission: '47 EGP' },
-  { plan: '👑 Max (M1/M2)',    price: '250 EGP/mo',   cost: '5 EGP',    profit: '245 EGP', commission: '122 EGP' },
+  { plan: '⚡ Pro (M1/M2)',    price: '80 EGP/mo',    cost: '10 EGP',   profit: '70 EGP',  commission: '35 EGP' },
+  { plan: '🚀 Plus (M1/M2)',   price: '180 EGP/mo',   cost: '38 EGP',   profit: '142 EGP', commission: '71 EGP' },
+  { plan: '👑 Max (M1/M2)',    price: '400 EGP/mo',   cost: '90 EGP',   profit: '310 EGP', commission: '155 EGP' },
   { plan: '🖼️ M3 Starter',    price: '300 EGP/mo',   cost: '190 EGP',  profit: '110 EGP', commission: '55 EGP' },
   { plan: '🖼️ M3 Pro',        price: '750 EGP/mo',   cost: '560 EGP',  profit: '190 EGP', commission: '95 EGP' },
   { plan: '🖼️ M3 Max',        price: '1,400 EGP/mo', cost: '1,050 EGP',profit: '350 EGP', commission: '175 EGP' },
