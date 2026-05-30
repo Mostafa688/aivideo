@@ -49,7 +49,7 @@ function AffiliateModal({ user, onClose }) {
         {step === 'form' && (
           <>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:24 }}>
-              {[['Pro','22 EGP'],['Plus','47 EGP'],['Max','122 EGP'],['M3 Max','175 EGP']].map(([plan,earn]) => (
+              {[['Pro','35 EGP'],['Plus','71 EGP'],['Max','155 EGP'],['M3 Max','175 EGP']].map(([plan,earn]) => (
                 <div key={plan} style={{ background:'rgba(34,197,94,0.05)', border:'1px solid rgba(34,197,94,0.12)', borderRadius:10, padding:'10px 12px' }}>
                   <div style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>{plan}</div>
                   <div style={{ fontSize:16, fontWeight:800, color:'#22c55e' }}>{earn}</div>
