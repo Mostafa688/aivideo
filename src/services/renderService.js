@@ -52,31 +52,31 @@ const CAPTION_STYLES = {
   classic: {
     fontsize: 34, fontcolor: 'white', borderw: 3, bordercolor: 'black',
     box: 1, boxcolor: '0x000000aa',
-    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-80',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-80',
     maxChars: 50,
   },
   bold_yellow: {
     fontsize: 38, fontcolor: 'yellow', borderw: 4, bordercolor: 'black',
     box: 0, boxcolor: '0x00000000',
-    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-70',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-70',
     maxChars: 40,
   },
   center_box: {
     fontsize: 34, fontcolor: 'white', borderw: 0, bordercolor: 'black',
     box: 1, boxcolor: '0x0a0a2eee',
-    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-70',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-70',
     maxChars: 45,
   },
   documentary: {
     fontsize: 32, fontcolor: '0x00ff88', borderw: 2, bordercolor: '0x003322',
     box: 1, boxcolor: '0x000000bb',
-    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-80',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-80',
     maxChars: 55,
   },
   clean_white: {
     fontsize: 36, fontcolor: 'white', borderw: 3, bordercolor: '0x00000099',
     box: 0, boxcolor: '0x00000000',
-    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h/2+h*0.15)' : 'h-text_h-80',
+    getY: (ratio) => ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-80',
     maxChars: 50,
   },
 };
@@ -638,8 +638,8 @@ function buildAssFile(chunks, style, ratio, videoLanguage, fontName) {
   const outline = style.borderw || 2;
   const shadow = style.box ? 1 : 0;
   const backColor = '&H88000000';
-  // نحدد الـ alignment: 2=bottom center, 8=middle center
-  const alignment = (ratio === '9:16' || ratio === '1:1') ? 8 : 2;
+  // نحدد الـ alignment: 2=bottom center, 5=middle center
+  const alignment = (ratio === '9:16' || ratio === '1:1') ? 5 : 2;
   const marginV = (ratio === '9:16' || ratio === '1:1') ? 0 : 60;
 
   const toAssTime = (s) => {
@@ -948,3 +948,4 @@ export async function renderVideo({
 export const VIDEO_EFFECT_OPTIONS = Object.keys(VIDEO_EFFECTS);
 // Export alias for Model 3/4/5
 export { addRealCaptions as addRealCaptionsForModel };
+export { addCaptionsWithTiming as addCaptionsWithTimingForModel };

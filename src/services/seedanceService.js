@@ -1,4 +1,4 @@
-import { addRealCaptionsForModel } from './renderService.js';
+import { addRealCaptionsForModel, addCaptionsWithTimingForModel } from './renderService.js';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
@@ -353,7 +353,7 @@ export async function renderModel4Video({
       console.log('[Model4] Using Groq Whisper for real captions');
       await addRealCaptionsForModel(withAudioPath, audioPath, withCaptionsPath, captionStyle, ratio, videoLanguage);
     } else {
-      addCaptions(withAudioPath, scenes, withCaptionsPath, ratio, videoLanguage, SEC_PER_CLIP);
+      await addCaptionsWithTimingForModel(withAudioPath, scenes, withCaptionsPath, null, captionStyle, ratio, videoLanguage);
     }
   } else {
     fs.copyFileSync(withAudioPath, withCaptionsPath);
