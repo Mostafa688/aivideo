@@ -132,9 +132,15 @@ Rules:
 
 Format: {"index":N,"type":"hook|body|ending","text":"...","keywords":["w1","w2"],"visual":"specific visual description for this exact scene"}
 
-CRITICAL - keywords and visual rules:
-- keywords must describe the SPECIFIC action or scene in the text (not the general topic)
-- NEVER use generic keywords like just "motivation" or "success" - always be SPECIFIC to the scene
+CRITICAL - keywords rules:
+- keywords MUST be a literal Pexels search query for what is VISUALLY HAPPENING in that exact scene
+- Think: what would you type in Pexels to find this exact footage?
+- If text says "a snake attacking a lion" → keywords: ["snake attacking lion"]
+- If text says "man walking alone at night" → keywords: ["man walking night street"]
+- If text says "crowd cheering at stadium" → keywords: ["crowd cheering stadium"]
+- If text says "soldier crossing a river" → keywords: ["soldier crossing river"]
+- NEVER use abstract single words like "motivation", "success", "hope", "journey", "inspiration"
+- ALWAYS include: specific subject + specific action (+ setting if relevant)
 
 Create a video about:
 ${idea}
@@ -176,8 +182,13 @@ ${segmentsForChunk.map((_, i) => {
 Format: {"index":N,"type":"hook|body|ending","text":"EXACT scene text","keywords":["w1","w2"],"visual":"specific visual description for this exact scene","prompt":"cinematic image generation prompt: [specific subject] [specific action] [specific setting] [lighting] [camera angle]. Sequential continuation matching the scene text exactly."}
 
 CRITICAL - keywords and prompt rules:
-- keywords MUST be SPECIFIC to the exact scene action (NOT general topic)
-- Example: "man walking rain street" NOT just "motivation"
+- keywords MUST be a literal Pexels search query for what is VISUALLY HAPPENING in that exact scene
+- Think: what would you type in Pexels to find this exact footage?
+- If text says "snake attacking lion" → keywords: ["snake attacking lion"]
+- If text says "man searching in darkness" → keywords: ["man searching darkness"]
+- If text says "children playing in field" → keywords: ["children playing field"]
+- NEVER use abstract single words like "motivation", "success", "hope" alone
+- ALWAYS include: specific subject + specific action (+ setting if relevant)
 - prompt MUST be detailed AI image generation prompt with subject + action + setting + lighting
 - Example: "Young woman crying alone in hospital corridor, fluorescent lighting, shallow depth of field, cinematic"
 - Each scene prompt MUST show SEQUENTIAL story progression - reference what happened before
