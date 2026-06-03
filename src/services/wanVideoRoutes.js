@@ -16,8 +16,8 @@ const router = express.Router();
 
 // 1080p
 const qualityMap = {
-  '16:9': { width: 1920, height: 1080 },
-  '9:16': { width: 1080, height: 1920 },
+  '16:9': { width: 1280, height: 736 },
+  '9:16': { width: 736, height: 1280 },
 };
 
 // LTX prompt builder - قصير ومركز
