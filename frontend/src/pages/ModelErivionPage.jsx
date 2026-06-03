@@ -89,7 +89,7 @@ function PaymentModal({ onClose, userRegion }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
               <div>
                 <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#fff' }}>Choose Your Plan</h2>
-                <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0' }}>Erivion — WAN AI Video</p>
+                <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0' }}>Erivion AI Video</p>
               </div>
               <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
             </div>
@@ -409,10 +409,10 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 22 }}>🎬</span>
-              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff' }}>Erivion <span style={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>WAN AI</span></h1>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff' }}>Erivion <span style={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>AI</span></h1>
               <span style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', fontSize: 11, color: '#c084fc', fontWeight: 700 }}>Model 7</span>
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>Open-source text-to-video · Cinematic quality</p>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>Cinematic AI video generation</p>
           </div>
           {!erivionAccess && (
             <button onClick={() => setShowPayment(true)} style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 10, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
