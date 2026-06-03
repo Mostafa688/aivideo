@@ -267,6 +267,12 @@ export async function activateUserPlan(email, plan, billing = 'monthly') {
   const expiresAt = new Date();
   if (billing === 'yearly') expiresAt.setFullYear(expiresAt.getFullYear() + 1);
   else expiresAt.setMonth(expiresAt.getMonth() + 1);
+  if (plan.startsWith('erivion_')) {
+    const erivionPlan = plan.replace('erivion_', '');
+    await pool.query('UPDATE users SET erivion_access = 1, erivion_plan = $1 WHERE email = $2', [erivionPlan, email]);
+    await pool.query("UPDATE payment_requests SET status = 'approved' WHERE user_email = $1 AND plan = $2 AND status = 'pending'", [email, plan]);
+    return { success: true, plan, expires_at: expiresAt.toISOString() };
+  }
   await pool.query('UPDATE users SET plan = $1, plan_billing = $2, plan_expires_at = $3 WHERE email = $4', [plan, billing, expiresAt.toISOString(), email]);
   await pool.query("UPDATE payment_requests SET status = 'approved' WHERE user_email = $1 AND plan = $2 AND status = 'pending'", [email, plan]);
   return { success: true, plan, expires_at: expiresAt.toISOString() };

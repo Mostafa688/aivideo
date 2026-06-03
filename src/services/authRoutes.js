@@ -198,6 +198,8 @@ router.get('/credits', authMiddleware, async (req, res) => {
       model4_trial_used: user?.model4_trial_used || 0,
       model3_trial_used: user?.model3_trial_used || 0,
       model5_access: user?.model5_access || 0,
+      erivion_access: user?.erivion_access || 0,
+      erivion_plan: user?.erivion_plan || null,
       model5_plan: user?.model5_plan || 'mc_starter',
       avatar: user?.avatar || null,
       user_name: user?.name || null,
