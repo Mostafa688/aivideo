@@ -1,7 +1,7 @@
 import express from 'express';
 import { generateWanVideo } from './wanVideoService.js';
 import { authMiddleware } from './authRoutes.js';
-import { createPaymentRequest } from './authService.js';
+import { createPaymentRequest, sendPaymentRequestEmail } from './authService.js';
 
 const router = express.Router();
 
@@ -18,6 +18,7 @@ router.post('/payment-request', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     await createPaymentRequest(req.user.userId, userEmail, `erivion_${plan}`, 'monthly', amount, screenshot);
+    await sendPaymentRequestEmail({ userEmail, plan: `erivion_${plan}`, planName, billing: 'monthly', amount, screenshot });
     res.json({ success: true, message: 'Payment request submitted' });
   } catch (error) {
     console.error('WAN payment error:', error.message);
