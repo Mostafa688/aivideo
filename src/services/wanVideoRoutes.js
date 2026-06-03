@@ -1,9 +1,11 @@
 import express from 'express';
 import { generateWanVideo } from './wanVideoService.js';
 import { generateVoiceover } from './voiceService.js';
+import { addRealCaptionsForModel, addCaptionsWithTimingForModel } from './renderService.js';
 import { authMiddleware } from './authRoutes.js';
 import { createPaymentRequest, sendPaymentRequestEmail } from './authService.js';
 import { execSync } from 'child_process';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
@@ -31,6 +33,34 @@ async function downloadFile(url, dest) {
       reject(err);
     });
   });
+}
+
+// Upload to R2
+async function uploadToR2(filePath, key) {
+  const s3 = new S3Client({
+    region: 'auto',
+    endpoint: process.env.S3_ENDPOINT_URL,
+    credentials: {
+      accessKeyId: process.env.S3_ACCESS_KEY,
+      secretAccessKey: process.env.S3_SECRET_KEY,
+    },
+  });
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.S3_BUCKET || 'erivion-videos',
+    Key: key,
+    Body: fs.readFileSync(filePath),
+    ContentType: 'video/mp4',
+  }));
+  return `${(process.env.R2_PUBLIC_URL || '').replace(/\/$/, '')}/${key}`;
+}
+
+// Find random music file
+function findMusicFile() {
+  const dir = path.join(process.cwd(), 'assets', 'music');
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.mp3') || f.endsWith('.wav'));
+  if (!files.length) return null;
+  return path.join(dir, files[Math.floor(Math.random() * files.length)]);
 }
 
 // Payment request
@@ -67,8 +97,8 @@ router.post('/generate-scenes', authMiddleware, async (req, res) => {
     const inputText = mode === 'idea' ? idea : script;
 
     const systemPrompt = isAr
-      ? `أنت كاتب سيناريو محترف. ولّد ${sceneCount} مشهداً لفيديو. لكل مشهد: نص التعليق الصوتي بالعربي، وvideo prompt بالإنجليزي سينمائي ومفصل.${charDesc ? `\nالشخصيات:\n${charDesc}\nمهم جداً: استخدم وصف الشخصية بالضبط في كل مشهد تظهر فيه بدون تغيير.` : ''}\nأجب بـ JSON فقط: {"scenes": [{"text": "...", "prompt": "..."}]}`
-      : `You are a professional screenwriter. Generate ${sceneCount} scenes. For each scene: voiceover text in English, and a detailed cinematic video prompt in English.${charDesc ? `\nCharacters:\n${charDesc}\nIMPORTANT: Use the exact character description word-for-word in every scene they appear in. Never change or summarize the character description.` : ''}\nReply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
+      ? `أنت كاتب سيناريو محترف. ولّد ${sceneCount} مشهداً لفيديو. لكل مشهد: نص التعليق الصوتي بالعربي، وvideo prompt بالإنجليزي سينمائي ومفصل.${charDesc ? `\nالشخصيات:\n${charDesc}\nمهم جداً: في كل مشهد تظهر فيه الشخصية، أضف وصفها الكامل بالضبط في الـ prompt بدون تغيير أو اختصار.` : ''}\nأجب بـ JSON فقط: {"scenes": [{"text": "...", "prompt": "..."}]}`
+      : `You are a professional screenwriter. Generate ${sceneCount} scenes. For each scene: voiceover text in English, and a detailed cinematic video prompt in English.${charDesc ? `\nCharacters:\n${charDesc}\nCRITICAL: In every scene where a character appears, you MUST include their EXACT full description verbatim in the video prompt. Never paraphrase or shorten it.` : ''}\nReply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -119,12 +149,11 @@ router.get('/status/:jobId', authMiddleware, async (req, res) => {
   res.json(job);
 });
 
-// Single 5s video (no voiceover)
+// Single 5s video
 router.post('/generate', authMiddleware, async (req, res) => {
   try {
     const { prompt, negative_prompt = '', aspectRatio = '16:9' } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
-
     const { width, height } = qualityMap[aspectRatio] || qualityMap['16:9'];
     const result = await generateWanVideo({ prompt, negative_prompt, num_frames: 121, width, height });
     res.json({ success: true, videoUrl: result.videoUrl });
@@ -135,26 +164,23 @@ router.post('/generate', authMiddleware, async (req, res) => {
 
 async function processWanJob(jobId, scenes, options) {
   const job = global.wanJobs[jobId];
-  const { aspectRatio = '16:9', voice = 'male_american', language = 'en' } = options;
+  const { aspectRatio = '16:9', voice = 'male_american', language = 'en', withCaptions = false, withMusic = false } = options;
   const { width, height } = qualityMap[aspectRatio] || qualityMap['16:9'];
+  const ratio = aspectRatio;
 
   const tmpDir = `outputs/wan_tmp_${jobId}`;
   await mkdir(tmpDir, { recursive: true });
 
   try {
     const mergedScenes = [];
+    let lastAudioPath = null;
 
     for (let i = 0; i < scenes.length; i++) {
       job.scenes[i].status = 'generating';
       job.statusMsg = `Generating scene ${i + 1} of ${scenes.length}...`;
 
       // 1. توليد الفيديو
-      const result = await generateWanVideo({
-        prompt: scenes[i].prompt,
-        num_frames: 121,
-        width, height,
-      });
-
+      const result = await generateWanVideo({ prompt: scenes[i].prompt, num_frames: 121, width, height });
       job.scenes[i].videoUrl = result.videoUrl;
 
       // 2. تحميل الفيديو محلياً
@@ -165,69 +191,80 @@ async function processWanJob(jobId, scenes, options) {
       job.statusMsg = `Generating voiceover for scene ${i + 1}...`;
       const audioFile = await generateVoiceover(scenes[i].text, voice, 'storytelling', 0, language);
       const audioPath = audioFile ? path.join('outputs', audioFile) : null;
+      if (audioPath) lastAudioPath = audioPath;
 
       // 4. دمج الفيديو مع الـ voiceover
       const mergedPath = path.join(tmpDir, `merged_${i}.mp4`);
       if (audioPath && fs.existsSync(audioPath)) {
         try {
-          execSync(
-            `ffmpeg -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest -y "${mergedPath}"`,
-            { stdio: 'pipe' }
-          );
+          execSync(`ffmpeg -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest -y "${mergedPath}"`, { stdio: 'pipe' });
         } catch {
-          // لو فشل الدمج استخدم الفيديو بدون صوت
           fs.copyFileSync(videoPath, mergedPath);
         }
-        try { fs.unlinkSync(audioPath); } catch {}
       } else {
         fs.copyFileSync(videoPath, mergedPath);
       }
 
       mergedScenes.push(mergedPath);
       job.scenes[i].status = 'done';
-      job.progress = Math.round(((i + 1) / scenes.length) * 80);
+      job.progress = Math.round(((i + 1) / scenes.length) * 70);
     }
 
     // 5. جمع كل المشاهد في فيديو واحد
     job.statusMsg = 'Merging all scenes...';
     const listFile = path.join(tmpDir, 'list.txt');
-    const listContent = mergedScenes.map(f => `file '${path.resolve(f)}'`).join('\n');
-    fs.writeFileSync(listFile, listContent);
+    fs.writeFileSync(listFile, mergedScenes.map(f => `file '${path.resolve(f)}'`).join('\n'));
+    const concatPath = path.join(tmpDir, 'concat.mp4');
+    execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c copy -y "${concatPath}"`, { stdio: 'pipe' });
+    job.progress = 75;
 
-    const finalPath = path.join('outputs', `wan_final_${jobId}.mp4`);
-    execSync(
-      `ffmpeg -f concat -safe 0 -i "${listFile}" -c copy -y "${finalPath}"`,
-      { stdio: 'pipe' }
-    );
+    // 6. إضافة الموسيقى (اختياري)
+    let videoWithMusic = concatPath;
+    if (withMusic) {
+      job.statusMsg = 'Adding music...';
+      const musicFile = findMusicFile();
+      if (musicFile) {
+        const musicPath = path.join(tmpDir, 'with_music.mp4');
+        try {
+          execSync(
+            `ffmpeg -i "${concatPath}" -i "${musicFile}" -filter_complex "[1:a]volume=0.07[music];[0:a][music]amix=inputs=2:duration=longest[aout]" -map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 320k -shortest -y "${musicPath}"`,
+            { stdio: 'pipe' }
+          );
+          videoWithMusic = musicPath;
+        } catch(e) {
+          console.warn('[WAN] Music mix failed:', e.message);
+        }
+      }
+    }
+    job.progress = 80;
 
-    // 6. رفع الفيديو النهائي على R2
+    // 7. إضافة الكابشن (اختياري)
+    let finalVideoPath = videoWithMusic;
+    if (withCaptions && lastAudioPath && fs.existsSync(lastAudioPath) && process.env.GROQ_API_KEY) {
+      job.statusMsg = 'Adding captions...';
+      const captionPath = path.join(tmpDir, 'with_captions.mp4');
+      try {
+        await addRealCaptionsForModel(videoWithMusic, lastAudioPath, captionPath, 'classic', ratio, language);
+        if (fs.existsSync(captionPath) && fs.statSync(captionPath).size > 1000) {
+          finalVideoPath = captionPath;
+        }
+      } catch(e) {
+        console.warn('[WAN] Captions failed:', e.message);
+      }
+    }
+    job.progress = 90;
+
+    // 8. رفع الفيديو النهائي على R2
     job.statusMsg = 'Uploading final video...';
-    const { default: boto3 } = await import('boto3').catch(() => ({ default: null }));
-    
-    // استخدم aws4 + fetch لرفع الفيديو على R2
-    const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
-    const s3Client = new S3Client({
-      region: 'auto',
-      endpoint: process.env.S3_ENDPOINT_URL,
-      credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY,
-        secretAccessKey: process.env.S3_SECRET_KEY,
-      },
-    });
+    const finalLocalPath = path.join('outputs', `wan_final_${jobId}.mp4`);
+    fs.copyFileSync(finalVideoPath, finalLocalPath);
 
-    const key = `wan-videos/final_${jobId}.mp4`;
-    await s3Client.send(new PutObjectCommand({
-      Bucket: process.env.S3_BUCKET || 'erivion-videos',
-      Key: key,
-      Body: fs.readFileSync(finalPath),
-      ContentType: 'video/mp4',
-    }));
+    const publicUrl = await uploadToR2(finalLocalPath, `wan-videos/final_${jobId}.mp4`);
 
-    const publicUrl = `${(process.env.R2_PUBLIC_URL || '').replace(/\/$/, '')}/${key}`;
-
-    // تنظيف الملفات المؤقتة
+    // تنظيف
     try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
-    try { fs.unlinkSync(finalPath); } catch {}
+    try { fs.unlinkSync(finalLocalPath); } catch {}
+    if (lastAudioPath) try { fs.unlinkSync(lastAudioPath); } catch {}
 
     job.status = 'done';
     job.videoUrl = publicUrl;
