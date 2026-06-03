@@ -89,7 +89,7 @@ function PaymentModal({ onClose, userRegion }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
               <div>
                 <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#fff' }}>Choose Your Plan</h2>
-                <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0' }}>Erivion AI Video</p>
+                <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0' }}>Erivion — WAN AI Video</p>
               </div>
               <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
             </div>
@@ -409,10 +409,10 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 22 }}>🎬</span>
-              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff' }}>Erivion <span style={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>AI</span></h1>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff' }}>Erivion <span style={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>WAN AI</span></h1>
               <span style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', fontSize: 11, color: '#c084fc', fontWeight: 700 }}>Model 7</span>
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>AI-powered text-to-video · Fast generation</p>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>Open-source text-to-video · Cinematic quality</p>
           </div>
           {!erivionAccess && (
             <button onClick={() => setShowPayment(true)} style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 10, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
@@ -628,6 +628,11 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
             <div style={{ fontSize: 56, marginBottom: 16 }}>🎬</div>
             <h2 style={{ color: '#fff', marginBottom: 8 }}>{isAr ? 'جاري إنشاء الفيديو...' : 'Rendering your video...'}</h2>
             <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 24 }}>{statusMsg || (isAr ? 'Erivion AI يولد المشاهد واحداً تلو الآخر' : 'Erivion AI is generating scenes one by one')}</p>
+            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '10px 16px', maxWidth: 420, margin: '0 auto 20px' }}>
+              <p style={{ color: '#f59e0b', fontSize: 13, margin: 0 }}>
+                {isAr ? '⚠️ المشهد الأول قد يأخذ من 10 إلى 15 دقيقة لتحميل الذكاء الاصطناعي — المشاهد التالية ستكون أسرع بكثير' : '⚠️ The first scene may take 10–15 minutes to load the AI model — following scenes will be much faster'}
+              </p>
+            </div>
             <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 99, height: 8, overflow: 'hidden', maxWidth: 400, margin: '0 auto 12px' }}>
               <div style={{ height: '100%', width: progress + '%', background: 'linear-gradient(90deg, #a855f7, #7c3aed)', borderRadius: 99, transition: 'width 0.5s' }} />
             </div>
