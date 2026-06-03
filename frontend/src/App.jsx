@@ -102,6 +102,8 @@ export default function App() {
   const [model5Access, setModel5Access] = useState(false);
   const [model6Access, setModel6Access] = useState(true);
   const [model5Plan, setModel5Plan] = useState('mc_starter');
+  const [erivionAccess, setErivionAccess] = useState(false);
+  const [erivionPlan, setErivionPlan] = useState(null);
   const [userAvatar, setUserAvatar] = useState(null);
   const [userRegion, setUserRegion] = useState(null);
   const [pendingModelKey, setPendingModelKey] = useState(null); // for welcome modal
@@ -207,6 +209,8 @@ export default function App() {
         setModel3Access(data.model3_access === 1 || data.model3_access === true);
         setModel4Access(data.model4_access === 1 || data.model4_access === true);
         setModel5Access(data.model5_access === 1 || data.model5_access === true);
+        setErivionAccess(data.erivion_access === 1 || data.erivion_access === true);
+        setErivionPlan(data.erivion_plan || null);
         if (data.avatar) { setUserAvatar(data.avatar); localStorage.setItem('avatar', data.avatar); }
       } catch {}
     }, 30000);
@@ -227,6 +231,8 @@ export default function App() {
         setModel4TrialUsed(data.model4_trial_used === 1 || data.model4_trial_used === true);
         setModel5Access(data.model5_access === 1 || data.model5_access === true);
         setModel5Plan(data.model5_plan || 'mc_starter');
+        setErivionAccess(data.erivion_access === 1 || data.erivion_access === true);
+        setErivionPlan(data.erivion_plan || null);
         localStorage.setItem('plan', data.plan || 'free');
         if (data.avatar) { setUserAvatar(data.avatar); localStorage.setItem('avatar', data.avatar); }
       }
@@ -469,7 +475,7 @@ export default function App() {
         {page === 'model4' && <Model4Page onBack={() => { setPage('input'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} onNavigate={handleNavigate} />}
         {page === 'model5' && <ModelCinematicPage onBack={() => { setPage('input'); fetchCredits(); }} model5Plan={model5Plan} model5Access={model5Access} onNavigate={handleNavigate} />}
         {page === 'model6' && <MapVideoPage formData={formData} onBack={() => setPage('input')} />}
-        {page === 'model7' && <ModelErivionPage onBack={() => { setPage('input'); fetchCredits(); }} erivionPlan={null} erivionAccess={false} onNavigate={handleNavigate} />}
+        {page === 'model7' && <ModelErivionPage onBack={() => { setPage('input'); fetchCredits(); }} erivionPlan={erivionPlan} erivionAccess={erivionAccess} onNavigate={handleNavigate} />}
         {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />}
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
