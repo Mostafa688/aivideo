@@ -1,14 +1,13 @@
 import express from 'express';
 import { generateWanVideo } from './wanVideoService.js';
 import { authMiddleware } from './authRoutes.js';
-import { pool } from './authService.js';
+import { createPaymentRequest } from './authService.js';
 
 const router = express.Router();
 
-const framesMap = { 5: 33, 10: 65, 15: 97 };
 const qualityMap = {
-  '480p': { width: 832, height: 480 },
-  '720p': { width: 1280, height: 720 }
+  '16:9': { width: 832, height: 480 },
+  '9:16': { width: 480, height: 832 },
 };
 
 // Payment request
@@ -18,13 +17,7 @@ router.post('/payment-request', authMiddleware, async (req, res) => {
     if (!plan || !amount || !userEmail || !screenshot) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-
-    await pool.query(
-      `INSERT INTO payment_requests (user_id, user_email, model, plan, amount, screenshot, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW())`,
-      [req.user.id, userEmail, 'erivion_wan', plan, amount, screenshot]
-    );
-
+    await createPaymentRequest(req.user.id, userEmail, `erivion_${plan}`, 'monthly', amount, screenshot);
     res.json({ success: true, message: 'Payment request submitted' });
   } catch (error) {
     console.error('WAN payment error:', error.message);
@@ -32,32 +25,24 @@ router.post('/payment-request', authMiddleware, async (req, res) => {
   }
 });
 
-// Generate scenes
+// Generate scenes via Groq
 router.post('/generate-scenes', authMiddleware, async (req, res) => {
   try {
-    const { mode, duration, language, aspectRatio, idea, script, characters = [], sceneCount } = req.body;
+    const { mode, language, idea, script, characters = [], sceneCount } = req.body;
 
     const Groq = (await import('groq-sdk')).default;
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
     const charDesc = characters.length > 0
-      ? `\nCharacters:\n${characters.map(c => `- ${c.name}: ${c.description}`).join('\n')}`
+      ? characters.map(c => `- ${c.name}: ${c.description}`).join('\n')
       : '';
 
     const isAr = language === 'ar';
     const inputText = mode === 'idea' ? idea : script;
 
     const systemPrompt = isAr
-      ? `أنت كاتب سيناريو محترف. مهمتك توليد ${sceneCount} مشهد لفيديو. لكل مشهد:
-1. نص التعليق الصوتي (جملة أو جملتين بالعربي)
-2. وصف بصري بالإنجليزي للفيديو (video prompt) - سينمائي ومفصل
-${charDesc ? `\nإذا ظهرت شخصية في المشهد، استخدم وصفها المحدد:\n${charDesc}` : ''}
-أجب بـ JSON فقط: {"scenes": [{"text": "...", "prompt": "..."}]}`
-      : `You are a professional screenwriter. Generate ${sceneCount} scenes for a video. For each scene:
-1. Voiceover text (1-2 sentences)
-2. English video prompt - cinematic and detailed
-${charDesc ? `\nIf a character appears, use their exact description:\n${charDesc}` : ''}
-Reply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
+      ? `أنت كاتب سيناريو محترف. ولّد ${sceneCount} مشهداً لفيديو. لكل مشهد: نص التعليق الصوتي بالعربي، وvideo prompt بالإنجليزي سينمائي ومفصل.${charDesc ? `\nالشخصيات:\n${charDesc}\nاستخدم وصف الشخصية بالضبط عند ظهورها.` : ''}\nأجب بـ JSON فقط: {"scenes": [{"text": "...", "prompt": "..."}]}`
+      : `You are a professional screenwriter. Generate ${sceneCount} scenes. For each scene: voiceover text in English, and a detailed cinematic video prompt in English.${charDesc ? `\nCharacters:\n${charDesc}\nUse exact character description when they appear.` : ''}\nReply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -69,10 +54,8 @@ Reply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
       max_tokens: 4000,
     });
 
-    let content = completion.choices[0].message.content.trim();
-    content = content.replace(/```json|```/g, '').trim();
+    let content = completion.choices[0].message.content.trim().replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(content);
-
     const scenes = parsed.scenes.map(s => ({ ...s, status: 'pending' }));
     res.json({ success: true, scenes });
 
@@ -82,18 +65,20 @@ Reply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
   }
 });
 
-// Render video
+// Start render job
 router.post('/render', authMiddleware, async (req, res) => {
   try {
-    const { scenes, duration, language, aspectRatio, voice, withCaptions, withMusic } = req.body;
+    const { scenes, aspectRatio = '16:9', voice, withCaptions, withMusic, language } = req.body;
     const jobId = `wan_${Date.now()}_${req.user.id}`;
 
-    // Store job
     global.wanJobs = global.wanJobs || {};
-    global.wanJobs[jobId] = { status: 'processing', progress: 0, scenes: scenes.map(s => ({ ...s, status: 'pending' })), error: null };
+    global.wanJobs[jobId] = {
+      status: 'processing', progress: 0,
+      scenes: scenes.map(s => ({ ...s, status: 'pending' })),
+      error: null, videoUrl: null
+    };
 
-    // Process async
-    processWanJob(jobId, scenes, { duration, language, aspectRatio, voice, withCaptions, withMusic }).catch(console.error);
+    processWanJob(jobId, scenes, { aspectRatio, voice, withCaptions, withMusic, language }).catch(console.error);
 
     res.json({ success: true, jobId });
   } catch (error) {
@@ -101,23 +86,21 @@ router.post('/render', authMiddleware, async (req, res) => {
   }
 });
 
-// Status
+// Job status
 router.get('/status/:jobId', authMiddleware, async (req, res) => {
   const job = global.wanJobs?.[req.params.jobId];
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json(job);
 });
 
-// Generate single 5s video (no voiceover)
+// Single 5s video (no voiceover)
 router.post('/generate', authMiddleware, async (req, res) => {
   try {
-    const { prompt, negative_prompt = '', duration = 5, quality = '480p' } = req.body;
+    const { prompt, negative_prompt = '', aspectRatio = '16:9' } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
-    const num_frames = framesMap[duration] || 33;
-    const { width, height } = qualityMap[quality] || qualityMap['480p'];
-
-    const result = await generateWanVideo({ prompt, negative_prompt, num_frames, width, height });
+    const { width, height } = qualityMap[aspectRatio] || qualityMap['16:9'];
+    const result = await generateWanVideo({ prompt, negative_prompt, num_frames: 33, width, height });
     res.json({ success: true, videoUrl: result.videoUrl });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -127,7 +110,7 @@ router.post('/generate', authMiddleware, async (req, res) => {
 async function processWanJob(jobId, scenes, options) {
   const job = global.wanJobs[jobId];
   const { aspectRatio = '16:9' } = options;
-  const dims = aspectRatio === '9:16' ? { width: 480, height: 832 } : { width: 832, height: 480 };
+  const { width, height } = qualityMap[aspectRatio] || qualityMap['16:9'];
 
   try {
     const videoUrls = [];
@@ -139,8 +122,7 @@ async function processWanJob(jobId, scenes, options) {
       const result = await generateWanVideo({
         prompt: scenes[i].prompt,
         num_frames: 33,
-        width: dims.width,
-        height: dims.height,
+        width, height,
       });
 
       job.scenes[i].status = 'done';
@@ -149,7 +131,6 @@ async function processWanJob(jobId, scenes, options) {
       job.progress = Math.round(((i + 1) / scenes.length) * 100);
     }
 
-    // For now return first video URL (full merge needs FFmpeg - coming soon)
     job.status = 'done';
     job.videoUrl = videoUrls[0];
     job.allVideoUrls = videoUrls;
