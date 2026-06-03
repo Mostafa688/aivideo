@@ -103,7 +103,7 @@ router.post('/generate', authMiddleware, async (req, res) => {
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
     const { width, height } = qualityMap[aspectRatio] || qualityMap['16:9'];
-    const result = await generateWanVideo({ prompt, negative_prompt, num_frames: 33, width, height });
+    const result = await generateWanVideo({ prompt, negative_prompt, num_frames: 121, width, height });
     res.json({ success: true, videoUrl: result.videoUrl });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -124,7 +124,7 @@ async function processWanJob(jobId, scenes, options) {
 
       const result = await generateWanVideo({
         prompt: scenes[i].prompt,
-        num_frames: 33,
+        num_frames: 121,
         width, height,
       });
 
