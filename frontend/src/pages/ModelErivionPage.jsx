@@ -658,7 +658,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
             <h2 style={{ color: '#22c55e', marginBottom: 8 }}>{isAr ? 'الفيديو جاهز!' : 'Your video is ready!'}</h2>
-            <video key={finalVideoUrl} src={finalVideoUrl} controls crossOrigin="anonymous" style={{ width: '100%', maxWidth: 600, borderRadius: 16, marginBottom: 20, boxShadow: '0 0 40px rgba(168,85,247,0.3)' }} playsInline />
+            <video key={finalVideoUrl} src={finalVideoUrl} controls style={{ width: '100%', maxWidth: 600, borderRadius: 16, marginBottom: 20, boxShadow: '0 0 40px rgba(168,85,247,0.3)' }} playsInline autoPlay />
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               <a href={finalVideoUrl} download style={{ padding: '12px 28px', borderRadius: 12, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 15 }}>
                 ⬇️ {isAr ? 'تحميل' : 'Download'}

@@ -14,10 +14,31 @@ import { mkdir } from 'fs/promises';
 
 const router = express.Router();
 
+// 1080p
 const qualityMap = {
-  '16:9': { width: 832, height: 480 },
-  '9:16': { width: 480, height: 832 },
+  '16:9': { width: 1920, height: 1080 },
+  '9:16': { width: 1080, height: 1920 },
 };
+
+// LTX prompt builder - قصير ومركز
+function buildLTXPrompt(rawPrompt) {
+  let prompt = rawPrompt.trim();
+  if (!prompt.toLowerCase().includes('camera') && !prompt.toLowerCase().includes('shot')) {
+    prompt += ', cinematic shot, smooth motion';
+  }
+  return prompt;
+}
+
+// تقليل الـ voiceover عشان يتناسب مع مدة الفيديو
+// 5 ثواني = أقصى 12 كلمة
+function trimVoiceoverText(text) {
+  const maxWords = 12;
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text;
+  // قطع عند آخر جملة قبل الـ limit
+  const trimmed = words.slice(0, maxWords).join(' ');
+  return trimmed.replace(/[,،]?\s*$/, '') + '.';
+}
 
 // Download file from URL
 async function downloadFile(url, dest) {
@@ -26,6 +47,10 @@ async function downloadFile(url, dest) {
     const file = fs.createWriteStream(dest);
     const lib = url.startsWith('https') ? https : http;
     lib.get(url, res => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        file.close();
+        return downloadFile(res.headers.location, dest).then(resolve).catch(reject);
+      }
       res.pipe(file);
       file.on('finish', () => { file.close(); resolve(); });
     }).on('error', err => {
@@ -96,9 +121,27 @@ router.post('/generate-scenes', authMiddleware, async (req, res) => {
     const isAr = language === 'ar';
     const inputText = mode === 'idea' ? idea : script;
 
+    const ltxGuide = `
+LTX-Video prompt rules (MUST follow):
+1. ONE single action or motion per scene only
+2. Maximum 15 words per prompt
+3. Format: [Subject + action], [lighting], [camera movement]
+4. Example: "A knight rides a horse through flames, orange firelight, slow tracking shot"
+5. NO multiple actions, NO sound descriptions, NO complex scenes
+6. If character appears: include their exact appearance description in the subject`;
+
+    const voiceGuide = `Voiceover rules:
+- Maximum 10 words per scene (5 second clip)
+- One short sentence only
+- Example: "The knight rides into the heart of darkness."`;
+
+    const charGuide = charDesc
+      ? `\nCharacters (copy EXACTLY when they appear):\n${charDesc}`
+      : '';
+
     const systemPrompt = isAr
-      ? `أنت كاتب سيناريو محترف. ولّد ${sceneCount} مشهداً لفيديو. لكل مشهد: نص التعليق الصوتي بالعربي، وvideo prompt بالإنجليزي سينمائي ومفصل.${charDesc ? `\nالشخصيات:\n${charDesc}\nمهم جداً: في كل مشهد تظهر فيه الشخصية، أضف وصفها الكامل بالضبط في الـ prompt بدون تغيير أو اختصار.` : ''}\nأجب بـ JSON فقط: {"scenes": [{"text": "...", "prompt": "..."}]}`
-      : `You are a professional screenwriter. Generate ${sceneCount} scenes. For each scene: voiceover text in English, and a detailed cinematic video prompt in English.${charDesc ? `\nCharacters:\n${charDesc}\nCRITICAL: In every scene where a character appears, you MUST include their EXACT full description verbatim in the video prompt. Never paraphrase or shorten it.` : ''}\nReply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
+      ? `أنت كاتب سيناريو AI محترف. ولّد ${sceneCount} مشهداً.\n${ltxGuide}\n${voiceGuide}${charGuide}\nنص الفويس أوفر: جملة واحدة، أقل من 10 كلمات عربية.\nأجب بـ JSON فقط: {"scenes": [{"text": "...", "prompt": "..."}]}`
+      : `You are a professional AI screenwriter. Generate ${sceneCount} scenes.\n${ltxGuide}\n${voiceGuide}${charGuide}\nReply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -112,7 +155,12 @@ router.post('/generate-scenes', authMiddleware, async (req, res) => {
 
     let content = completion.choices[0].message.content.trim().replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(content);
-    const scenes = parsed.scenes.map(s => ({ ...s, status: 'pending' }));
+    const scenes = parsed.scenes.map(s => ({
+      ...s,
+      prompt: buildLTXPrompt(s.prompt),
+      text: trimVoiceoverText(s.text),
+      status: 'pending'
+    }));
     res.json({ success: true, scenes });
 
   } catch (error) {
@@ -135,7 +183,6 @@ router.post('/render', authMiddleware, async (req, res) => {
     };
 
     processWanJob(jobId, scenes, { aspectRatio, voice, withCaptions, withMusic, language }).catch(console.error);
-
     res.json({ success: true, jobId });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -155,7 +202,7 @@ router.post('/generate', authMiddleware, async (req, res) => {
     const { prompt, negative_prompt = '', aspectRatio = '16:9' } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
     const { width, height } = qualityMap[aspectRatio] || qualityMap['16:9'];
-    const result = await generateWanVideo({ prompt, negative_prompt, num_frames: 121, width, height });
+    const result = await generateWanVideo({ prompt: buildLTXPrompt(prompt), negative_prompt, num_frames: 121, width, height });
     res.json({ success: true, videoUrl: result.videoUrl });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -167,40 +214,34 @@ async function processWanJob(jobId, scenes, options) {
   const { aspectRatio = '16:9', voice = 'male_american', language = 'en', withCaptions = false, withMusic = false } = options;
   const { width, height } = qualityMap[aspectRatio] || qualityMap['16:9'];
   const ratio = aspectRatio;
-
   const tmpDir = `outputs/wan_tmp_${jobId}`;
   await mkdir(tmpDir, { recursive: true });
 
   try {
     const mergedScenes = [];
-    let lastAudioPath = null;
+    const allAudioPaths = [];
 
     for (let i = 0; i < scenes.length; i++) {
       job.scenes[i].status = 'generating';
       job.statusMsg = `Generating scene ${i + 1} of ${scenes.length}...`;
 
-      // 1. توليد الفيديو
       const result = await generateWanVideo({ prompt: scenes[i].prompt, num_frames: 121, width, height });
       job.scenes[i].videoUrl = result.videoUrl;
 
-      // 2. تحميل الفيديو محلياً
       const videoPath = path.join(tmpDir, `scene_${i}.mp4`);
       await downloadFile(result.videoUrl, videoPath);
 
-      // 3. توليد الـ voiceover
       job.statusMsg = `Generating voiceover for scene ${i + 1}...`;
-      const audioFile = await generateVoiceover(scenes[i].text, voice, 'storytelling', 0, language);
+      const trimmedText = trimVoiceoverText(scenes[i].text);
+      const audioFile = await generateVoiceover(trimmedText, voice, 'storytelling', 0, language);
       const audioPath = audioFile ? path.join('outputs', audioFile) : null;
-      if (audioPath) lastAudioPath = audioPath;
+      if (audioPath) allAudioPaths.push(audioPath);
 
-      // 4. دمج الفيديو مع الـ voiceover
       const mergedPath = path.join(tmpDir, `merged_${i}.mp4`);
       if (audioPath && fs.existsSync(audioPath)) {
         try {
           execSync(`ffmpeg -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -shortest -y "${mergedPath}"`, { stdio: 'pipe' });
-        } catch {
-          fs.copyFileSync(videoPath, mergedPath);
-        }
+        } catch { fs.copyFileSync(videoPath, mergedPath); }
       } else {
         fs.copyFileSync(videoPath, mergedPath);
       }
@@ -210,7 +251,6 @@ async function processWanJob(jobId, scenes, options) {
       job.progress = Math.round(((i + 1) / scenes.length) * 70);
     }
 
-    // 5. جمع كل المشاهد في فيديو واحد
     job.statusMsg = 'Merging all scenes...';
     const listFile = path.join(tmpDir, 'list.txt');
     fs.writeFileSync(listFile, mergedScenes.map(f => `file '${path.resolve(f)}'`).join('\n'));
@@ -218,7 +258,6 @@ async function processWanJob(jobId, scenes, options) {
     execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c copy -y "${concatPath}"`, { stdio: 'pipe' });
     job.progress = 75;
 
-    // 6. إضافة الموسيقى (اختياري)
     let videoWithMusic = concatPath;
     if (withMusic) {
       job.statusMsg = 'Adding music...';
@@ -231,40 +270,36 @@ async function processWanJob(jobId, scenes, options) {
             { stdio: 'pipe' }
           );
           videoWithMusic = musicPath;
-        } catch(e) {
-          console.warn('[WAN] Music mix failed:', e.message);
-        }
+        } catch(e) { console.warn('[WAN] Music failed:', e.message); }
       }
     }
     job.progress = 80;
 
-    // 7. إضافة الكابشن (اختياري)
     let finalVideoPath = videoWithMusic;
-    if (withCaptions && lastAudioPath && fs.existsSync(lastAudioPath) && process.env.GROQ_API_KEY) {
+    if (withCaptions && allAudioPaths.length > 0 && process.env.GROQ_API_KEY) {
       job.statusMsg = 'Adding captions...';
-      const captionPath = path.join(tmpDir, 'with_captions.mp4');
+      const allAudioList = path.join(tmpDir, 'audio_list.txt');
+      fs.writeFileSync(allAudioList, allAudioPaths.map(f => `file '${path.resolve(f)}'`).join('\n'));
+      const mergedAudioPath = path.join(tmpDir, 'merged_audio.mp3');
       try {
-        await addRealCaptionsForModel(videoWithMusic, lastAudioPath, captionPath, 'classic', ratio, language);
+        execSync(`ffmpeg -f concat -safe 0 -i "${allAudioList}" -c copy -y "${mergedAudioPath}"`, { stdio: 'pipe' });
+        const captionPath = path.join(tmpDir, 'with_captions.mp4');
+        await addRealCaptionsForModel(videoWithMusic, mergedAudioPath, captionPath, 'classic', ratio, language);
         if (fs.existsSync(captionPath) && fs.statSync(captionPath).size > 1000) {
           finalVideoPath = captionPath;
         }
-      } catch(e) {
-        console.warn('[WAN] Captions failed:', e.message);
-      }
+      } catch(e) { console.warn('[WAN] Captions failed:', e.message); }
     }
     job.progress = 90;
 
-    // 8. رفع الفيديو النهائي على R2
     job.statusMsg = 'Uploading final video...';
     const finalLocalPath = path.join('outputs', `wan_final_${jobId}.mp4`);
     fs.copyFileSync(finalVideoPath, finalLocalPath);
-
     const publicUrl = await uploadToR2(finalLocalPath, `wan-videos/final_${jobId}.mp4`);
 
-    // تنظيف
     try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
     try { fs.unlinkSync(finalLocalPath); } catch {}
-    if (lastAudioPath) try { fs.unlinkSync(lastAudioPath); } catch {}
+    allAudioPaths.forEach(p => { try { fs.unlinkSync(p); } catch {} });
 
     job.status = 'done';
     job.videoUrl = publicUrl;
