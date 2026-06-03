@@ -9,7 +9,7 @@ const runpodHeaders = {
   'Authorization': `Bearer ${RUNPOD_API_KEY}`
 };
 
-export async function generateWanVideo({ prompt, negative_prompt = '', num_frames = 33, guidance_scale = 5.0, num_inference_steps = 50, width = 832, height = 480 }) {
+export async function generateWanVideo({ prompt, negative_prompt = '', num_frames = 121, guidance_scale = 5.0, num_inference_steps = 50, width = 832, height = 480 }) {
   // Submit job
   const submitRes = await axios.post(`${RUNPOD_BASE_URL}/run`, {
     input: { prompt, negative_prompt, num_frames, guidance_scale, num_inference_steps, width, height }
