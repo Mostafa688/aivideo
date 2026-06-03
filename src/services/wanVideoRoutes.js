@@ -17,7 +17,7 @@ router.post('/payment-request', authMiddleware, async (req, res) => {
     if (!plan || !amount || !userEmail || !screenshot) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    await createPaymentRequest(req.user.id, userEmail, `erivion_${plan}`, 'monthly', amount, screenshot);
+    await createPaymentRequest(req.user.userId, userEmail, `erivion_${plan}`, 'monthly', amount, screenshot);
     res.json({ success: true, message: 'Payment request submitted' });
   } catch (error) {
     console.error('WAN payment error:', error.message);
@@ -69,7 +69,7 @@ router.post('/generate-scenes', authMiddleware, async (req, res) => {
 router.post('/render', authMiddleware, async (req, res) => {
   try {
     const { scenes, aspectRatio = '16:9', voice, withCaptions, withMusic, language } = req.body;
-    const jobId = `wan_${Date.now()}_${req.user.id}`;
+    const jobId = `wan_${Date.now()}_${req.user.userId}`;
 
     global.wanJobs = global.wanJobs || {};
     global.wanJobs[jobId] = {
