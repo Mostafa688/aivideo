@@ -472,7 +472,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       accent: '#6ee7b7',
     },
     {
-      key:'model7', tag:'ERIVION', name:'Erivion Video AI', icon:'🌊',
+      key:'model7', tag:'ERIVION', name:'Erivion Video AI', icon:'🌊', maintenance:true,
       color:'#0ea5e9', glow:'rgba(14,165,233,0.3)', gradFrom:'rgba(14,165,233,0.14)', gradTo:'rgba(6,182,212,0.05)',
       desc:'Cinematic AI video with voiceover, captions, and music.',
       features:['Idea / Script / Voice','Characters consistency','Captions + Music','Cinematic quality'],
@@ -611,7 +611,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
           const isHov = hovered === m.key;
           return (
             <div key={m.key} className="ms-card"
-              onClick={() => onSelect(m.key)}
+              onClick={() => !m.maintenance && onSelect(m.key)}
               onMouseEnter={() => setHovered(m.key)}
               onMouseLeave={() => setHovered(null)}
               style={{
@@ -643,6 +643,22 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                   background:`radial-gradient(ellipse at top, ${m.color}20, transparent 70%)`,
                   pointerEvents:'none',
                 }} />
+              )}
+
+              {/* Maintenance Overlay */}
+              {m.maintenance && (
+                <div style={{
+                  position:'absolute', top:0, left:0, right:0, bottom:0,
+                  background:'rgba(0,0,0,0.6)',
+                  borderRadius:20,
+                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                  zIndex:10,
+                  backdropFilter:'blur(3px)',
+                }}>
+                  <div style={{ fontSize:28, marginBottom:8 }}>🔧</div>
+                  <div style={{ color:'#f59e0b', fontWeight:700, fontSize:14, marginBottom:4 }}>Under Maintenance</div>
+                  <div style={{ color:'rgba(255,255,255,0.5)', fontSize:12 }}>Coming back soon</div>
+                </div>
               )}
 
               {/* Card Header */}
