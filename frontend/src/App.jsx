@@ -17,6 +17,7 @@ import AdminPage from './pages/AdminPage.jsx';
 import AffiliatePage from './pages/AffiliatePage.jsx';
 import ModelCinematicPage from './pages/ModelCinematicPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
+import ModelErivionPage from './pages/ModelErivionPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -457,6 +458,7 @@ export default function App() {
             if (data.videoType === 'model4') { setPage('model4'); return; }
             if (data.videoType === 'model5') { setPage('model5'); return; }
             if (data.videoType === 'model6') { setFormData(data); setPage('model6'); return; }
+            if (data.videoType === 'model7') { setPage('model7'); return; }
             // model1 / model2 — show welcome modal
             const modelKey = data.videoType === 'model2' ? 'model2' : 'model1';
             goToModelWithWelcome(modelKey, () => { setFormData(data); setPage('scenes'); });
@@ -467,6 +469,7 @@ export default function App() {
         {page === 'model4' && <Model4Page onBack={() => { setPage('input'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} onNavigate={handleNavigate} />}
         {page === 'model5' && <ModelCinematicPage onBack={() => { setPage('input'); fetchCredits(); }} model5Plan={model5Plan} model5Access={model5Access} onNavigate={handleNavigate} />}
         {page === 'model6' && <MapVideoPage formData={formData} onBack={() => setPage('input')} />}
+        {page === 'model7' && <ModelErivionPage onBack={() => { setPage('input'); fetchCredits(); }} erivionPlan={null} erivionAccess={false} onNavigate={handleNavigate} />}
         {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />}
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}

@@ -20,6 +20,7 @@ import adminRouter from './services/adminRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
 import mapVideoRouter from './services/mapVideoRoutes.js';
+import wanVideoRouter from './services/wanVideoRoutes.js';
 import pgPkg from 'pg';
 const { Pool: _TPool } = pgPkg;
 
@@ -156,6 +157,7 @@ app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
+app.use('/api/wan-video', wanVideoRouter);
 
 // ── Transcribe ─────────────────────────────────────────────────────────────
 app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, res) => {

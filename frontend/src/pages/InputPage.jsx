@@ -471,6 +471,14 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       badge:'NEW', free:true, category:'free',
       accent: '#6ee7b7',
     },
+    {
+      key:'model7', tag:'ERIVION', name:'WAN AI Video', icon:'🌊',
+      color:'#0ea5e9', glow:'rgba(14,165,233,0.3)', gradFrom:'rgba(14,165,233,0.14)', gradTo:'rgba(6,182,212,0.05)',
+      desc:'Open-source WAN 2.1 text-to-video. Real cinematic AI video with voiceover, captions, and music.',
+      features:['WAN 2.1 open-source','Idea / Script / Voice','Characters consistency','Captions + Music'],
+      badge:'NEW', free:false, category:'premium',
+      accent: '#7dd3fc',
+    },
   ];
 
   const filtered = activeFilter === 'all' ? MODELS : MODELS.filter(m => m.category === activeFilter);
@@ -776,6 +784,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
         if (model === 'model4') { onSubmit({ videoType: 'model4' }); return; }
         if (model === 'model5') { onSubmit({ videoType: 'model5' }); return; }
         if (model === 'model6') { setSelectedModel('model6'); return; }
+        if (model === 'model7') { onSubmit({ videoType: 'model7' }); return; }
         setSelectedModel(model);
       }}
       model3Access={model3Access}
