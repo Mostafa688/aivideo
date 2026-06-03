@@ -32,6 +32,9 @@ export const PLANS = {
     max_duration: '10min', watermark: false, captions: true, music: true, transitions: true,
     sound_effects: true, video_effects: true, edit_after_render: true, languages: null, all_languages: true,
   },
+  erivion_ev_plan1: { name: 'Erivion Starter' },
+  erivion_ev_plan2: { name: 'Erivion Creator' },
+  erivion_ev_plan3: { name: 'Erivion Pro' },
 };
 
 async function initDB() {

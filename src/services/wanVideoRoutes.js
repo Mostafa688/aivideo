@@ -18,7 +18,9 @@ router.post('/payment-request', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     await createPaymentRequest(req.user.userId, userEmail, `erivion_${plan}`, 'monthly', amount, screenshot);
-    await sendPaymentRequestEmail({ userEmail, plan: `erivion_${plan}`, planName, billing: 'monthly', amount, screenshot });
+    try {
+      await sendPaymentRequestEmail({ userEmail, plan: `erivion_${plan}`, planName, billing: 'monthly', amount, screenshotBase64: screenshot });
+    } catch(emailErr) { console.error('Email error:', emailErr.message); }
     res.json({ success: true, message: 'Payment request submitted' });
   } catch (error) {
     console.error('WAN payment error:', error.message);
