@@ -20,7 +20,7 @@ export async function generateWanVideo({ prompt, negative_prompt = '', num_frame
 
   // Poll for result
   let attempts = 0;
-  const maxAttempts = 120;
+  const maxAttempts = 360; // 30 minutes
 
   while (attempts < maxAttempts) {
     await new Promise(r => setTimeout(r, 5000));
@@ -38,5 +38,5 @@ export async function generateWanVideo({ prompt, negative_prompt = '', num_frame
     attempts++;
   }
 
-  throw new Error('Job timed out after 10 minutes');
+  throw new Error("Job timed out after 30 minutes");
 }
