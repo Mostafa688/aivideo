@@ -472,10 +472,10 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       accent: '#6ee7b7',
     },
     {
-      key:'model7', tag:'ERIVION', name:'WAN AI Video', icon:'🌊',
+      key:'model7', tag:'ERIVION', name:'Erivion Video AI', icon:'🌊',
       color:'#0ea5e9', glow:'rgba(14,165,233,0.3)', gradFrom:'rgba(14,165,233,0.14)', gradTo:'rgba(6,182,212,0.05)',
-      desc:'Open-source WAN 2.1 text-to-video. Real cinematic AI video with voiceover, captions, and music.',
-      features:['WAN 2.1 open-source','Idea / Script / Voice','Characters consistency','Captions + Music'],
+      desc:'Cinematic AI video with voiceover, captions, and music.',
+      features:['Idea / Script / Voice','Characters consistency','Captions + Music','Cinematic quality'],
       badge:'NEW', free:false, category:'premium',
       accent: '#7dd3fc',
     },
