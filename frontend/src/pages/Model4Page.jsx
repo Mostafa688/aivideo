@@ -589,7 +589,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>LANGUAGE</p>
             <div style={{ display: 'flex', gap: 6 }}>
-              {[{ v: 'en', l: '🇺🇸 EN' }, { v: 'ar', l: '🇸🇦 AR' }].map(lang => (
+              {[{ v: 'en', l: '🇺🇸 EN' }, { v: 'ar', l: '🇸🇦 AR' }, { v: 'ar_eg', l: '🇪🇬 مصري' }, { v: 'ar_gulf', l: '🇦🇪 خليجي' }].map(lang => (
                 <button key={lang.v} onClick={() => setVideoLanguage(lang.v)} style={{ flex: 1, padding: '9px 4px', borderRadius: 8, border: `1px solid ${videoLanguage === lang.v ? '#a855f7' : 'rgba(255,255,255,0.07)'}`, background: videoLanguage === lang.v ? 'rgba(168,85,247,0.15)' : 'transparent', color: videoLanguage === lang.v ? '#c084fc' : '#4b5563', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{lang.l}</button>
               ))}
             </div>

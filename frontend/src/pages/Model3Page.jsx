@@ -153,10 +153,12 @@ const VOICE_OPTIONS = [
 ];
 
 const VIDEO_LANGUAGES = [
-  { code: 'en', label: 'English', flag: '🇺🇸' },
-  { code: 'ar', label: 'Arabic',  flag: '🇸🇦' },
-  { code: 'de', label: 'German',  flag: '🇩🇪' },
-  { code: 'fr', label: 'French',  flag: '🇫🇷' },
+  { code: 'en',      label: 'English',         flag: '🇺🇸' },
+  { code: 'ar',      label: 'Arabic (Formal)',  flag: '🇸🇦' },
+  { code: 'ar_eg',   label: 'Arabic (Egyptian)',flag: '🇪🇬' },
+  { code: 'ar_gulf', label: 'Arabic (Gulf)',    flag: '🇦🇪' },
+  { code: 'de',      label: 'German',           flag: '🇩🇪' },
+  { code: 'fr',      label: 'French',           flag: '🇫🇷' },
 ];
 
 const RATIOS = ['9:16', '16:9', '1:1'];

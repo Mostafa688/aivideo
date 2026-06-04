@@ -36,14 +36,16 @@ const VOICE_OPTIONS = [
 ];
 const RATIOS = ['9:16', '16:9', '1:1'];
 const VIDEO_LANGUAGES = [
-  { code: 'en', label: 'English',    flag: '🇺🇸' },
-  { code: 'ar', label: 'Arabic',     flag: '🇸🇦' },
-  { code: 'de', label: 'German',     flag: '🇩🇪' },
-  { code: 'fr', label: 'French',     flag: '🇫🇷' },
-  { code: 'es', label: 'Spanish',    flag: '🇪🇸' },
-  { code: 'ru', label: 'Russian',    flag: '🇷🇺' },
-  { code: 'ja', label: 'Japanese',   flag: '🇯🇵' },
-  { code: 'pt', label: 'Portuguese', flag: '🇧🇷' },
+  { code: 'en',      label: 'English',          flag: '🇺🇸' },
+  { code: 'ar',      label: 'Arabic (Formal)',   flag: '🇸🇦' },
+  { code: 'ar_eg',   label: 'Arabic (Egyptian)', flag: '🇪🇬' },
+  { code: 'ar_gulf', label: 'Arabic (Gulf)',     flag: '🇦🇪' },
+  { code: 'de',      label: 'German',            flag: '🇩🇪' },
+  { code: 'fr',      label: 'French',            flag: '🇫🇷' },
+  { code: 'es',      label: 'Spanish',           flag: '🇪🇸' },
+  { code: 'ru',      label: 'Russian',           flag: '🇷🇺' },
+  { code: 'ja',      label: 'Japanese',          flag: '🇯🇵' },
+  { code: 'pt',      label: 'Portuguese',        flag: '🇧🇷' },
 ];
 
 function Label({ children }) {

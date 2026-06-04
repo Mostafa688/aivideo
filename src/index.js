@@ -487,12 +487,12 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
         userPrompt = `VIDEO TOPIC: "${idea}"
 VISUAL STYLE: ${styleHint}${charBlock}${locBlock}
 TOTAL SCENES: ${imageCount} | THIS BATCH: scenes ${batchStart}–${batchEnd}
-${batchStart > 1 ? `IMPORTANT: These scenes CONTINUE from scene ${batchStart - 1}. Do NOT repeat ideas already covered.` : ''}
+${allScenes.length > 0 ? `STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:\n` + allScenes.map(s => `Scene ${s.index}: ${s.text}`).join('\n') + `\n\nCONTINUE chronologically from where scene ${batchStart - 1} ended. Cover NEW story events only.` : ''}
 
 SCENE TYPE RULES:
 ${typeRules.join('\n')}
 
-"text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang}):
+"text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang === 'ar_eg' ? 'Egyptian Arabic — اكتب بالعامية المصرية، كلمات زي: إيه ده دي عشان بقى أهو يعني' : lang === 'ar_gulf' ? 'Gulf Arabic — اكتب باللهجة الخليجية، كلمات زي: وش كيف ليش زين هالشي ترا' : lang}):
 - What a documentary narrator SAYS OUT LOUD — full emotional sentences
 - Each scene ADVANCES the story — never repeat what was said before
 - Historical content: maintain CORRECT chronological order
@@ -679,12 +679,12 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
         userPrompt = `VIDEO TOPIC: "${idea}"
 VISUAL STYLE: ${styleHint}${charBlock}${locBlock}
 TOTAL SCENES: ${sceneCount} | THIS BATCH: scenes ${batchStart}–${batchEnd}
-${batchStart > 1 ? `IMPORTANT: These scenes CONTINUE from scene ${batchStart - 1}. Do NOT repeat ideas already covered.` : ''}
+${allScenes.length > 0 ? `STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:\n` + allScenes.map(s => `Scene ${s.index}: ${s.text}`).join('\n') + `\n\nCONTINUE chronologically from where scene ${batchStart - 1} ended. Cover NEW story events only.` : ''}
 
 SCENE TYPE RULES:
 ${typeRules.join('\n')}
 
-"text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang}):
+"text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang === 'ar_eg' ? 'Egyptian Arabic — اكتب بالعامية المصرية، كلمات زي: إيه ده دي عشان بقى أهو يعني' : lang === 'ar_gulf' ? 'Gulf Arabic — اكتب باللهجة الخليجية، كلمات زي: وش كيف ليش زين هالشي ترا' : lang}):
 - What a documentary narrator SAYS OUT LOUD — full emotional sentences
 - Each scene ADVANCES the story — never repeat what was said before
 - Historical content: maintain CORRECT chronological order of events
