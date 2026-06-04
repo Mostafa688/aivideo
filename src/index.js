@@ -423,43 +423,123 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
   const isIdeaMode = inputMode === 'idea';
   const styleHint = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic';
+  const lang = videoLanguage || 'en';
   const BATCH_SIZE = 5;
   const allScenes = [];
   const totalBatches = Math.ceil(imageCount / BATCH_SIZE);
-  async function groqBatch(batchPrompt) {
+
+  // استخلاص وصف الشخصيات والأماكن من الـ idea تلقائياً
+  let characterLock = '';
+  let locationLock = '';
+  if (isIdeaMode && idea) {
+    try {
+      const extractRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile', max_tokens: 300, temperature: 0.3,
+          messages: [
+            { role: 'system', content: 'Extract visual consistency info. Output ONLY JSON: {"characters":"...","location":"..."}. English only. Be concise.' },
+            { role: 'user', content: `Video idea: "${idea}"\n\nExtract:\n- characters: physical appearance of main characters (clothing, age, look) max 25 words\n- location: main setting/environment max 15 words\nIf generic topic with no specific character/place, use ""\n\nJSON only:` }
+          ]
+        }),
+      });
+      const extractData = await extractRes.json();
+      const extractRaw = (extractData.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+      try { const ex = JSON.parse(extractRaw); characterLock = ex.characters || ''; locationLock = ex.location || ''; } catch {}
+    } catch (e) { console.warn('[Model3] Extract failed:', e.message); }
+  }
+
+  async function groqBatch(systemPrompt, userPrompt) {
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.5, messages: [{ role: 'system', content: 'You are a JSON array generator. Output ONLY a raw JSON array. CRITICAL: "prompt" field MUST be in English only.' }, { role: 'user', content: batchPrompt }] }),
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.7,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]
+      }),
     });
     const data = await r.json();
     const raw = data.choices?.[0]?.message?.content || '';
     const clean = raw.replace(/^[^[]*/, '').replace(/[^\]]*$/, '').trim();
     try { return JSON.parse(clean); } catch { const m = raw.match(/\[[\s\S]*\]/); return m ? JSON.parse(m[0]) : []; }
   }
+
   try {
     for (let b = 0; b < totalBatches; b++) {
       const batchStart = b * BATCH_SIZE + 1;
       const batchEnd = Math.min((b + 1) * BATCH_SIZE, imageCount);
       const batchCount = batchEnd - batchStart + 1;
-      let batchPrompt;
+      let userPrompt, systemPrompt;
+
       if (isIdeaMode) {
-        batchPrompt = `You are a documentary narrator. Generate EXACTLY ${batchCount} scenes for a video about: "${idea}"
-Style: ${styleHint}. Scenes ${batchStart} to ${batchEnd} of ${imageCount} total.
+        const charBlock = characterLock ? `\nCHARACTER (include in EVERY prompt verbatim): ${characterLock}` : '';
+        const locBlock = locationLock ? `\nLOCATION (keep in EVERY prompt): ${locationLock}` : '';
+        const typeRules = [];
+        for (let i = batchStart; i <= batchEnd; i++) {
+          if (i === 1) typeRules.push(`Scene ${i}: HOOK — powerful attention-grabbing opening`);
+          else if (i === imageCount) typeRules.push(`Scene ${i}: ENDING — strong memorable conclusion`);
+          else typeRules.push(`Scene ${i}: BODY — continues story logically from scene ${i - 1}`);
+        }
 
-"prompt": ENGLISH ONLY - visual AI image generation prompt (subject + action + environment + lighting + camera angle + style). 30-50 words.
-"text": SPOKEN NARRATION in ${videoLanguage} - what a narrator says OUT LOUD. Full natural sentences telling the story. NOT an image description.
-GOOD text: "في أكتوبر 1973، قرر الجيش المصري تغيير مجرى التاريخ إلى الأبد"
-BAD text: "لوحة زيتية تصور انتصار الجيش" (image description - WRONG!)
-Each scene CONTINUES the story sequentially from scene ${batchStart - 1}.
+        systemPrompt = `You are an elite documentary scriptwriter and visual director. You write professional narration with perfect story flow, zero repetition, and cinematic visual direction. Output ONLY a raw JSON array. "prompt" MUST be English only. No markdown, no extra text.`;
 
-Output ONLY JSON array: [{"index":N,"prompt":"English visual prompt","text":"Spoken narration in ${videoLanguage}"},...]`;
+        userPrompt = `VIDEO TOPIC: "${idea}"
+VISUAL STYLE: ${styleHint}${charBlock}${locBlock}
+TOTAL SCENES: ${imageCount} | THIS BATCH: scenes ${batchStart}–${batchEnd}
+${batchStart > 1 ? `IMPORTANT: These scenes CONTINUE from scene ${batchStart - 1}. Do NOT repeat ideas already covered.` : ''}
+
+SCENE TYPE RULES:
+${typeRules.join('\n')}
+
+"text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang}):
+- What a documentary narrator SAYS OUT LOUD — full emotional sentences
+- Each scene ADVANCES the story — never repeat what was said before
+- Historical content: maintain CORRECT chronological order
+- Build emotional arc: curiosity → engagement → climax → resolution
+- NEVER describe the image — TELL the story
+
+"prompt" RULES (English only, 40-55 words):
+- Cinematic AI image generation: subject + action + environment + lighting + camera angle + style
+${characterLock ? `- MUST include character: "${characterLock}"` : ''}
+${locationLock ? `- MUST include location: "${locationLock}"` : ''}
+- Each prompt visually DISTINCT from others — show progression
+- Be specific and vivid, no abstract words
+
+Output ONLY JSON array (${batchCount} items):
+[{"index":N,"prompt":"English cinematic image prompt 40-55 words","text":"Spoken narration in ${lang}"},...]`;
+
       } else {
-        const portion = script.slice(Math.floor((batchStart - 1) / imageCount * script.length), Math.floor(batchEnd / imageCount * script.length));
-        batchPrompt = `Script: "${portion}"\nStyle: ${styleHint}\n\nSplit into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).\n- "index": starts from ${batchStart}\n- "prompt": ENGLISH ONLY, 30-50 words\n- "text": from script, keep original language\n\nOutput ONLY JSON array:`;
+        // Script mode: نقسم على مستوى الجمل
+        const sentences = script.match(/[^.!?؟\n]+[.!?؟\n]*/g) || script.split('\n').filter(Boolean);
+        const total = sentences.length;
+        const s0 = Math.floor((batchStart - 1) / imageCount * total);
+        const s1 = Math.floor(batchEnd / imageCount * total);
+        const portion = sentences.slice(s0, s1).join(' ').trim() || script.slice(
+          Math.floor((batchStart - 1) / imageCount * script.length),
+          Math.floor(batchEnd / imageCount * script.length)
+        );
+
+        systemPrompt = `You are an expert video scene splitter. Split the script faithfully into scenes. Output ONLY a raw JSON array. "prompt" MUST be English only.`;
+
+        userPrompt = `SCRIPT PORTION:
+"${portion}"
+
+VISUAL STYLE: ${styleHint}
+SPLIT INTO EXACTLY ${batchCount} SCENES (numbered ${batchStart} to ${batchEnd})
+
+"text": EXACT script text for this scene — preserve original language (${lang}), do NOT paraphrase or summarize
+"prompt": English ONLY, 40-55 words — cinematic AI image generation prompt
+  - subject + action + environment + lighting + camera angle + ${styleHint}
+  - Match the scene content visually
+  - Each scene prompt visually distinct
+
+Output ONLY JSON array:
+[{"index":N,"prompt":"English visual prompt 40-55 words","text":"exact script text"},...]`;
       }
+
       let batchScenes = [];
-      try { batchScenes = await groqBatch(batchPrompt); } catch(e) { console.warn(`[Model3] Batch ${b+1} failed:`, e.message); }
+      try { batchScenes = await groqBatch(systemPrompt, userPrompt); } catch(e) { console.warn(`[Model3] Batch ${b+1} failed:`, e.message); }
       if (Array.isArray(batchScenes) && batchScenes.length > 0) allScenes.push(...batchScenes);
     }
     if (allScenes.length === 0) throw new Error('No scenes returned from AI');
@@ -533,45 +613,126 @@ app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
 app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, script, inputMode, sceneCount, videoLanguage } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
-  const styleHint = 'cinematic, photorealistic, dramatic lighting, no text';
+  const lang = videoLanguage || 'en';
+  const styleHint = 'cinematic, photorealistic, dramatic lighting, no text overlays, no watermarks';
   const BATCH_SIZE = 5;
   const allScenes = [];
   const totalBatches = Math.ceil(sceneCount / BATCH_SIZE);
-  async function groqBatch(batchPrompt) {
+
+  // استخلاص وصف الشخصيات والأماكن من الـ idea تلقائياً
+  let characterLock = '';
+  let locationLock = '';
+  const isIdeaMode = inputMode === 'idea';
+  if (isIdeaMode && idea) {
+    try {
+      const extractRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile', max_tokens: 300, temperature: 0.3,
+          messages: [
+            { role: 'system', content: 'Extract visual consistency info. Output ONLY JSON: {"characters":"...","location":"..."}. English only. Be concise.' },
+            { role: 'user', content: `Video idea: "${idea}"\n\nExtract:\n- characters: physical appearance of main characters (clothing, age, look) max 25 words\n- location: main setting/environment max 15 words\nIf generic topic with no specific character/place, use ""\n\nJSON only:` }
+          ]
+        }),
+      });
+      const extractData = await extractRes.json();
+      const extractRaw = (extractData.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+      try { const ex = JSON.parse(extractRaw); characterLock = ex.characters || ''; locationLock = ex.location || ''; } catch {}
+    } catch (e) { console.warn('[Model4] Extract failed:', e.message); }
+  }
+
+  async function groqBatch(systemPrompt, userPrompt) {
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.5, messages: [{ role: 'system', content: 'JSON array generator. CRITICAL: "prompt" MUST be English only.' }, { role: 'user', content: batchPrompt }] }),
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.7,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]
+      }),
     });
     const data = await r.json();
     const raw = data.choices?.[0]?.message?.content || '';
     const clean = raw.replace(/^[^[]*/, '').replace(/[^\]]*$/, '').trim();
     try { return JSON.parse(clean); } catch { const m = raw.match(/\[[\s\S]*\]/); return m ? JSON.parse(m[0]) : []; }
   }
+
   try {
     for (let b = 0; b < totalBatches; b++) {
       const batchStart = b * BATCH_SIZE + 1;
       const batchEnd = Math.min((b + 1) * BATCH_SIZE, sceneCount);
       const batchCount = batchEnd - batchStart + 1;
-      const isIdeaMode = inputMode === 'idea';
-      let batchPrompt;
+      let userPrompt, systemPrompt;
+
       if (isIdeaMode) {
-        batchPrompt = `You are a documentary narrator. Generate EXACTLY ${batchCount} scenes for a video about: "${idea}"
-Scenes ${batchStart} to ${batchEnd} of ${sceneCount} total. Style: ${styleHint}.
+        const charBlock = characterLock ? `\nCHARACTER (include in EVERY prompt verbatim): ${characterLock}` : '';
+        const locBlock = locationLock ? `\nLOCATION (keep in EVERY prompt): ${locationLock}` : '';
+        const typeRules = [];
+        for (let i = batchStart; i <= batchEnd; i++) {
+          if (i === 1) typeRules.push(`Scene ${i}: HOOK — powerful attention-grabbing opening`);
+          else if (i === sceneCount) typeRules.push(`Scene ${i}: ENDING — strong memorable conclusion`);
+          else typeRules.push(`Scene ${i}: BODY — continues story logically from scene ${i - 1}`);
+        }
 
-"prompt": ENGLISH ONLY - cinematic video scene prompt (no human faces). Subject + action + environment + lighting. 20-40 words.
-"text": SPOKEN NARRATION in ${videoLanguage || 'en'} - what a narrator SAYS OUT LOUD. Full natural sentences. NOT an image description.
-GOOD text: "On that cold morning, the world was about to change forever"
-BAD text: "Cinematic scene of army victory" (image description - WRONG!)
-Each scene CONTINUES the story sequentially.
+        systemPrompt = `You are an elite documentary scriptwriter and cinematic video director. You write professional narration with perfect story flow, zero repetition, and vivid cinematic direction for AI video generation. Output ONLY a raw JSON array. "prompt" MUST be English only. No markdown, no extra text.`;
 
-Output ONLY JSON array: [{"index":N,"prompt":"English visual prompt","text":"Spoken narration"},...]`;
+        userPrompt = `VIDEO TOPIC: "${idea}"
+VISUAL STYLE: ${styleHint}${charBlock}${locBlock}
+TOTAL SCENES: ${sceneCount} | THIS BATCH: scenes ${batchStart}–${batchEnd}
+${batchStart > 1 ? `IMPORTANT: These scenes CONTINUE from scene ${batchStart - 1}. Do NOT repeat ideas already covered.` : ''}
+
+SCENE TYPE RULES:
+${typeRules.join('\n')}
+
+"text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang}):
+- What a documentary narrator SAYS OUT LOUD — full emotional sentences
+- Each scene ADVANCES the story — never repeat what was said before
+- Historical content: maintain CORRECT chronological order of events
+- Build emotional arc: curiosity → engagement → climax → resolution
+- NEVER describe visuals — TELL the story
+
+"prompt" RULES (English only, 30-45 words — for AI VIDEO generation):
+- Describe a MOVING SCENE: subject + action/motion + environment + lighting + camera movement
+- ${styleHint}
+${characterLock ? `- MUST include character: "${characterLock}"` : ''}
+${locationLock ? `- MUST include location: "${locationLock}"` : ''}
+- Each prompt visually DISTINCT — show story progression through motion
+- Think: camera slowly pans, character walks, wind moves trees — dynamic not static
+- No text, no watermarks, no UI elements in scene
+
+Output ONLY JSON array (${batchCount} items):
+[{"index":N,"prompt":"English cinematic VIDEO prompt 30-45 words","text":"Spoken narration in ${lang}"},...]`;
+
       } else {
-        const portion = script.slice(Math.floor((batchStart - 1) / sceneCount * script.length), Math.floor(batchEnd / sceneCount * script.length));
-        batchPrompt = `Script: "${portion}"\n\nSplit into EXACTLY ${batchCount} scenes (numbered ${batchStart} to ${batchEnd}).\n- "index": starts from ${batchStart}\n- "prompt": ENGLISH ONLY, 20-40 words, style: ${styleHint}\n- "text": from script, keep original language\n\nOutput ONLY JSON array:`;
+        // Script mode
+        const sentences = script.match(/[^.!?؟\n]+[.!?؟\n]*/g) || script.split('\n').filter(Boolean);
+        const total = sentences.length;
+        const s0 = Math.floor((batchStart - 1) / sceneCount * total);
+        const s1 = Math.floor(batchEnd / sceneCount * total);
+        const portion = sentences.slice(s0, s1).join(' ').trim() || script.slice(
+          Math.floor((batchStart - 1) / sceneCount * script.length),
+          Math.floor(batchEnd / sceneCount * script.length)
+        );
+
+        systemPrompt = `You are an expert video scene splitter for AI video generation. Split script faithfully. Output ONLY a raw JSON array. "prompt" MUST be English only.`;
+
+        userPrompt = `SCRIPT PORTION:
+"${portion}"
+
+SPLIT INTO EXACTLY ${batchCount} SCENES (numbered ${batchStart} to ${batchEnd})
+
+"text": EXACT script text for this scene — preserve original language (${lang}), do NOT paraphrase
+"prompt": English ONLY, 30-45 words — cinematic AI VIDEO generation prompt
+  - Describe MOTION/ACTION: subject + movement + environment + lighting + camera
+  - ${styleHint}
+  - Match scene content visually, each prompt distinct
+
+Output ONLY JSON array:
+[{"index":N,"prompt":"English video prompt 30-45 words","text":"exact script text"},...]`;
       }
+
       let batchScenes = [];
-      try { batchScenes = await groqBatch(batchPrompt); } catch (e) { console.warn(`[Model4] Batch ${b + 1} failed:`, e.message); }
+      try { batchScenes = await groqBatch(systemPrompt, userPrompt); } catch (e) { console.warn(`[Model4] Batch ${b + 1} failed:`, e.message); }
       if (Array.isArray(batchScenes) && batchScenes.length > 0) allScenes.push(...batchScenes);
     }
     if (allScenes.length === 0) throw new Error('No scenes returned from AI');
@@ -679,31 +840,62 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, characters, duration, videoStyle, styleSuffix } = req.body;
   if (!idea) return res.status(400).json({ error: 'idea required' });
   const sceneCount = duration === '1min' ? 12 : duration === '30s' ? 6 : 3;
-    const characterRef = characters && characters.length > 0
-    ? characters.map((c, i) => `Character ${i+1}: ${c.prompt}`).join('. ')
+
+  // بناء وصف الشخصيات بشكل مفصل وثابت
+  const characterDescs = (characters || []).filter(c => c.prompt?.trim());
+  const characterBlock = characterDescs.length > 0
+    ? characterDescs.map((c, i) => `CHARACTER_${i + 1}: ${c.prompt.trim()}`).join('\n')
     : '';
-  async function groqBatch(prompt) {
+
+  // الـ style suffix الكامل
+  const styleInstruction = styleSuffix || 'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading';
+
+  async function groqBatch(systemPrompt, userPrompt) {
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.5, messages: [{ role: 'system', content: 'JSON array generator. "prompt" MUST be English only. No voiceover. Cinematic scenes.' }, { role: 'user', content: prompt }] }),
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.7,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]
+      }),
     });
     const data = await r.json();
     const raw = data.choices?.[0]?.message?.content || '';
     const clean = raw.replace(/^[^[]*/, '').replace(/[^\]]*$/, '').trim();
     try { return JSON.parse(clean); } catch { const m = raw.match(/\[[\s\S]*\]/); return m ? JSON.parse(m[0]) : []; }
   }
+
   try {
-    const { videoStyle, styleSuffix } = req.body;
-    const styleInstruction = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic';
-    const charInstruction = characterRef ? `CHARACTER (include in EVERY scene): ${characterRef}` : '';
-    const batchPrompt = `Cinematic video: "${idea}"
-${charInstruction ? charInstruction + '\n' : ''}STYLE: ${styleInstruction}
-Generate EXACTLY ${sceneCount} scenes. Each = 5 seconds, no voiceover.
-- "prompt": ENGLISH, 30-50 words, MUST include character + style every scene, if dialogue: add 'and says "[text]"'
-- "text": short scene title
-Output ONLY JSON array:`;
-    const scenes = await groqBatch(batchPrompt);
+    const systemPrompt = `You are a world-class cinematic AI video director inspired by the HiggsField YouTube channel style — immersive, atmospheric, visually stunning shorts with consistent characters and locations. You write Seedance AI video generation prompts that produce Hollywood-quality footage. Output ONLY a raw JSON array. All prompts MUST be in English only. No markdown, no extra text.`;
+
+    const charSection = characterBlock ? `\n\nCHARACTERS — COPY EXACT DESCRIPTION INTO EVERY SCENE PROMPT:
+${characterBlock}
+⚠️ CRITICAL: Every single prompt MUST include the FULL character description above. Never abbreviate or omit it.` : '';
+
+    const userPrompt = `CINEMATIC VIDEO: "${idea}"
+STYLE: ${styleInstruction}${charSection}
+
+Generate EXACTLY ${sceneCount} scenes. Each scene = 5 seconds of AI video, NO voiceover, pure visual storytelling.
+
+PROMPT RULES (English only, 45-65 words per prompt):
+1. STRUCTURE: [Character full description] + [specific action/motion] + [environment/setting] + [camera movement] + [lighting] + [style]
+2. MOTION: Always describe movement — "slowly walks", "camera pulls back", "wind moves through hair", "turns and looks at camera"
+3. CINEMATIC: Use film techniques — "rack focus", "slow motion", "golden hour light", "volumetric fog", "anamorphic lens flare"
+4. CONSISTENCY: ${characterDescs.length > 0 ? 'Copy the EXACT character description from above into EVERY prompt without shortening' : 'Keep the same location/environment across all scenes'}
+5. PROGRESSION: Each scene advances the story visually — show change, emotion, action building up
+6. NO TEXT in frame, no watermarks, no UI elements
+
+SCENE STRUCTURE:
+- Scene 1: Establishing shot — introduce character/location dramatically
+${sceneCount > 3 ? `- Scenes 2-${sceneCount - 1}: Action/story unfolds — build tension/emotion progressively` : '- Scenes 2+: Story unfolds with visual progression'}
+- Scene ${sceneCount}: Powerful closing shot — memorable final image
+
+"text": SHORT scene title (3-6 words, English), describes what happens visually
+
+Output ONLY JSON array (${sceneCount} items):
+[{"index":N,"prompt":"[Full cinematic Seedance prompt 45-65 words with character+action+setting+camera+lighting+style]","text":"Short scene title"},...]`;
+
+    const scenes = await groqBatch(systemPrompt, userPrompt);
     if (!scenes || scenes.length === 0) throw new Error('No scenes generated');
     res.json({ scenes: scenes.slice(0, sceneCount) });
   } catch (e) {
