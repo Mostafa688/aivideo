@@ -92,7 +92,7 @@ app.use(helmet({
 fontSrc: ["'self'", "data:", "https:", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: ["'self'", "https://api.pexels.com", "https://api.groq.com", "https://api.anthropic.com", "https://api.replicate.com"],
-      mediaSrc: ["'self'", "blob:"],
+      mediaSrc: ["'self'", "blob:", "https://*.r2.dev", "https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev"],
       workerSrc: ["'self'", "blob:"],
       fontSrc: ["'self'", "data:", "https:"],
     }
