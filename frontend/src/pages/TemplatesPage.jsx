@@ -143,7 +143,7 @@ function getVimeoId(url) {
 function VideoCard({ src, color, icon }) {
   const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(true);
 
   const youtubeId    = getYouTubeId(src);
   const driveId      = getGoogleDriveId(src);
@@ -224,7 +224,7 @@ function VideoCard({ src, color, icon }) {
         src={src}
         style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}
         muted playsInline preload="auto"
-        onLoadedMetadata={() => setLoaded(true)}
+        onLoadedData={() => setLoaded(true)} onCanPlay={() => setLoaded(true)}
         onEnded={() => setPlaying(false)}
         onError={(e) => console.warn('[VideoCard] load error:', src, e.target.error?.message)}
       />
