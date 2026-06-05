@@ -9,6 +9,25 @@ import { execSync } from 'child_process';
 
 const execAsync = promisify(exec);
 const MAP_SVG_PATH = path.join(process.cwd(), 'public', 'maps', 'world.svg');
+const MAP_SVG_URL = 'https://raw.githubusercontent.com/rinzler83/world-svg/main/world.svg';
+
+async function getWorldSvg() {
+  // لو الملف موجود locally، استخدمه
+  if (fs.existsSync(MAP_SVG_PATH)) {
+    return fs.readFileSync(MAP_SVG_PATH, 'utf8');
+  }
+  // لو مش موجود، حمّله من GitHub وكاشه محلياً
+  console.log('[MapVideo] Downloading world.svg from GitHub...');
+  const res = await fetch(MAP_SVG_URL);
+  if (!res.ok) throw new Error('Failed to download world.svg: ' + res.status);
+  const svg = await res.text();
+  // كاش الملف عشان المرة الجاية
+  try {
+    fs.mkdirSync(path.dirname(MAP_SVG_PATH), { recursive: true });
+    fs.writeFileSync(MAP_SVG_PATH, svg, 'utf8');
+  } catch (e) { console.warn('[MapVideo] Could not cache world.svg:', e.message); }
+  return svg;
+}
 
 const STYLES = {
   dark:     { ocean: '#0f0f1f', land: '#1e2044', border: '#2d3561', text: '#ffffff' },
@@ -536,7 +555,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   const allISOs = (timeline.events || []).flatMap(e => e.countries || []);
   await preloadFlags(allISOs);
 
-  const baseSvg = fs.readFileSync(MAP_SVG_PATH, 'utf8');
+  const baseSvg = await getWorldSvg();
   const framesDir = path.join(jobDir, 'frames');
   fs.mkdirSync(framesDir, { recursive: true });
 
