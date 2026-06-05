@@ -143,7 +143,7 @@ function getVimeoId(url) {
 function VideoCard({ src, color, icon }) {
   const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
-  const [error, setError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const youtubeId    = getYouTubeId(src);
   const driveId      = getGoogleDriveId(src);
@@ -154,10 +154,10 @@ function VideoCard({ src, color, icon }) {
     e.stopPropagation();
     if (!videoRef.current) return;
     if (playing) { videoRef.current.pause(); setPlaying(false); }
-    else { videoRef.current.play().then(() => setPlaying(true)).catch(() => setError(true)); }
+    else { videoRef.current.play().then(() => setPlaying(true)).catch(err => console.warn('[VideoCard] play failed:', err)); }
   };
 
-  if (!src || (!youtubeId && !driveId && !streamableId && !vimeoId && error)) {
+  if (!src) {
     return (
       <div style={{ paddingTop:'56.25%', background:`linear-gradient(135deg, ${color}20, #0d0b1a)`, position:'relative', borderRadius:'12px 12px 0 0' }}>
         <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:44 }}>{icon}</div>
@@ -223,10 +223,14 @@ function VideoCard({ src, color, icon }) {
         ref={videoRef}
         src={src}
         style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}
-        muted playsInline preload="metadata"
+        muted playsInline preload="auto"
+        onLoadedMetadata={() => setLoaded(true)}
         onEnded={() => setPlaying(false)}
-        onError={() => setError(true)}
+        onError={(e) => console.warn('[VideoCard] load error:', src, e.target.error?.message)}
       />
+      {!loaded && (
+        <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:`linear-gradient(135deg, ${color}20, #0d0b1a)`, fontSize:44 }}>{icon}</div>
+      )}
       <div onClick={togglePlay} style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background: playing ? 'transparent' : 'rgba(0,0,0,0.35)', transition:'background 0.2s', cursor:'pointer' }}>
         {!playing && (
           <div style={{ width:48, height:48, borderRadius:'50%', background:'rgba(255,255,255,0.15)', backdropFilter:'blur(8px)', border:'1px solid rgba(255,255,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center' }}>
