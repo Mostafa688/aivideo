@@ -1183,26 +1183,38 @@ app.post('/api/templates/add', templateAdminAuth, async (req, res) => {
   }
 });
 
-// POST /api/templates/upload-video — admin only, upload video file
+// POST /api/templates/upload-video — admin only, upload video to R2
 const templateVideoUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const dir = join(process.cwd(), 'outputs', 'templates');
-      fs.mkdirSync(dir, { recursive: true });
-      cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-      const ext = file.originalname.split('.').pop();
-      cb(null, `tpl_${Date.now()}.${ext}`);
-    },
-  }),
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB max
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 },
 });
 
-app.post('/api/templates/upload-video', templateAdminAuth, templateVideoUpload.single('video'), (req, res) => {
+app.post('/api/templates/upload-video', templateAdminAuth, templateVideoUpload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const url = `/outputs/templates/${req.file.filename}`;
-  res.json({ url });
+  try {
+    const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+    const s3 = new S3Client({
+      region: 'auto',
+      endpoint: process.env.S3_ENDPOINT_URL,
+      credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY,
+        secretAccessKey: process.env.S3_SECRET_KEY,
+      },
+    });
+    const ext = req.file.originalname.split('.').pop();
+    const key = `templates/tpl_${Date.now()}.${ext}`;
+    await s3.send(new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET || 'erivion-videos',
+      Key: key,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype || 'video/mp4',
+    }));
+    const url = `${(process.env.R2_PUBLIC_URL || '').replace(/\/$/, '')}/${key}`;
+    res.json({ url });
+  } catch (e) {
+    console.error('[Templates] R2 upload failed:', e.message);
+    res.status(500).json({ error: 'Upload to R2 failed: ' + e.message });
+  }
 });
 
 // POST /api/templates/delete — admin only (legacy alias kept for AdminPage compatibility)
