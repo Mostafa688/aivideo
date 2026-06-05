@@ -476,8 +476,19 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
         const charBlock = characterLock ? `\nCHARACTER (include in EVERY prompt verbatim): ${characterLock}` : '';
         const locBlock = locationLock ? `\nLOCATION (keep in EVERY prompt): ${locationLock}` : '';
         const typeRules = [];
+        const isFirstBatch = batchStart === 1;
+        const hookGuide = isFirstBatch ? `
+HOOK WRITING RULES (scene 1 ONLY — this scene must grab attention in 3 seconds):
+Use ONE of these proven techniques:
+- SHOCKING FACT: "في 6 ساعات فقط، مات 50,000 إنسان" / "In just 6 hours, 50,000 people died"
+- PARADOX: "الرجل الذي أنقذ الملايين لم يعرفه أحد" / "The man who saved millions was unknown to all"
+- OPEN LOOP: "كيف استطاع رجل واحد أن يُسقط إمبراطورية؟" / "How did one man bring down an empire?"
+- START FROM THE END: Begin at the climax moment, then go back
+- DIRECT CHALLENGE: "ما ستسمعه الآن لن تصدقه" / "What you're about to hear will shock you"
+NEVER start with "في هذا الفيديو" / "In this video we will" — instant viewer loss!
+` : '';
         for (let i = batchStart; i <= batchEnd; i++) {
-          if (i === 1) typeRules.push(`Scene ${i}: HOOK — powerful attention-grabbing opening`);
+          if (i === 1) typeRules.push(`Scene ${i}: HOOK — powerful attention-grabbing opening (see HOOK WRITING RULES)`);
           else if (i === imageCount) typeRules.push(`Scene ${i}: ENDING — strong memorable conclusion`);
           else typeRules.push(`Scene ${i}: BODY — continues story logically from scene ${i - 1}`);
         }
@@ -491,7 +502,7 @@ ${allScenes.length > 0 ? `STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:\n` 
 
 SCENE TYPE RULES:
 ${typeRules.join('\n')}
-
+${hookGuide}
 "text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang === 'ar_eg' ? 'Egyptian Arabic — اكتب بالعامية المصرية، كلمات زي: إيه ده دي عشان بقى أهو يعني' : lang === 'ar_gulf' ? 'Gulf Arabic — اكتب باللهجة الخليجية، كلمات زي: وش كيف ليش زين هالشي ترا' : lang}):
 - What a documentary narrator SAYS OUT LOUD — full emotional sentences
 - Each scene ADVANCES the story — never repeat what was said before
@@ -668,8 +679,19 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
         const charBlock = characterLock ? `\nCHARACTER (include in EVERY prompt verbatim): ${characterLock}` : '';
         const locBlock = locationLock ? `\nLOCATION (keep in EVERY prompt): ${locationLock}` : '';
         const typeRules = [];
+        const isFirstBatch = batchStart === 1;
+        const hookGuide = isFirstBatch ? `
+HOOK WRITING RULES (scene 1 ONLY — this scene must grab attention in 3 seconds):
+Use ONE of these proven techniques:
+- SHOCKING FACT: "في 6 ساعات فقط، مات 50,000 إنسان" / "In just 6 hours, 50,000 people died"
+- PARADOX: "الرجل الذي أنقذ الملايين لم يعرفه أحد" / "The man who saved millions was unknown to all"
+- OPEN LOOP: "كيف استطاع رجل واحد أن يُسقط إمبراطورية؟" / "How did one man bring down an empire?"
+- START FROM THE END: Begin at the climax moment, then go back
+- DIRECT CHALLENGE: "ما ستسمعه الآن لن تصدقه" / "What you're about to hear will shock you"
+NEVER start with "في هذا الفيديو" / "In this video we will" — instant viewer loss!
+` : '';
         for (let i = batchStart; i <= batchEnd; i++) {
-          if (i === 1) typeRules.push(`Scene ${i}: HOOK — powerful attention-grabbing opening`);
+          if (i === 1) typeRules.push(`Scene ${i}: HOOK — powerful attention-grabbing opening (see HOOK WRITING RULES)`);
           else if (i === sceneCount) typeRules.push(`Scene ${i}: ENDING — strong memorable conclusion`);
           else typeRules.push(`Scene ${i}: BODY — continues story logically from scene ${i - 1}`);
         }
@@ -683,7 +705,7 @@ ${allScenes.length > 0 ? `STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:\n` 
 
 SCENE TYPE RULES:
 ${typeRules.join('\n')}
-
+${hookGuide}
 "text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang === 'ar_eg' ? 'Egyptian Arabic — اكتب بالعامية المصرية، كلمات زي: إيه ده دي عشان بقى أهو يعني' : lang === 'ar_gulf' ? 'Gulf Arabic — اكتب باللهجة الخليجية، كلمات زي: وش كيف ليش زين هالشي ترا' : lang}):
 - What a documentary narrator SAYS OUT LOUD — full emotional sentences
 - Each scene ADVANCES the story — never repeat what was said before
