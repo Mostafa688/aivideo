@@ -361,16 +361,21 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
 
     setStatus('rendering');
     setProgress('Rendering video... (this may take a few minutes)');
+    let retryCount = 0;
+    const MAX_QUEUE_RETRIES = 60;
     try {
-      const jobId = Date.now();
-      const res = await fetch('/api/render', {
-        method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({
-          scenes: renderScenes, audioUrl: renderAudio, ratio, jobId, duration,
-          music, captions, transitions, soundEffects,
-          videoType: tone, captionStyle, musicVolume, sfxVolume, videoEffect,
-          sceneCount: renderScenes.length, videoLanguage,
-        }),
+      let res, data;
+      // ── Queue loop: retry if server busy ─────────────────────────────────
+      while (true) {
+        const jobId = Date.now();
+        res = await fetch('/api/render', {
+          method: 'POST', headers: authHeaders(),
+          body: JSON.stringify({
+            scenes: renderScenes, audioUrl: renderAudio, ratio, jobId, duration,
+            music, captions, transitions, soundEffects,
+            videoType: tone, captionStyle, musicVolume, sfxVolume, videoEffect,
+            sceneCount: renderScenes.length, videoLanguage,
+          }),
         });
         data = await readJsonSafely(res);
         if (res.status === 429 && data.error === 'server_busy') {
