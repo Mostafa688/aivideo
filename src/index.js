@@ -31,10 +31,6 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 const renderJobs = new Map();
 
-// ── Concurrent Render Limiter ─────────────────────────────────────────────────
-const MAX_CONCURRENT_RENDERS = 1;
-let activeRenderCount = 0;
-
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
@@ -159,28 +155,6 @@ app.use('/outputs', express.static('outputs'));
 app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'templates')));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
-
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'email required' });
-
-    const { rows } = await pool.query(
-      `UPDATE users
-       SET weekly_credits_used = 0,
-           videos_this_week = 0,
-           last_reset_at = NOW()
-       WHERE email = $1
-       RETURNING email, plan`,
-      [email]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'User not found' });
-    console.log(`[Admin] Credits reset for ${email} by admin ${adminUser.email}`);
-    res.json({ success: true, message: `Credits reset for ${rows[0].email}` });
-  } catch (err) {
-    console.error('[Admin] Reset credits error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
@@ -353,24 +327,15 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     if (soundEffects && !planData.sound_effects) return res.status(403).json({ error: 'Sound effects require Plus plan or higher.' });
     if (videoEffect && videoEffect !== 'none' && !planData.video_effects) return res.status(403).json({ error: 'Video effects require Max plan.' });
     const applyWatermark = planData.watermark !== false;
-    // ── Concurrency Check ────────────────────────────────────────────────────
-    if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
-      return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
-    }
-
     setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
     res.status(202).json({ jobId: renderJobId, status: 'processing' });
     (async () => {
-      activeRenderCount++;
-      console.log(`[Render] Active renders: ${activeRenderCount}`);
       try {
         const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' });
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
       } catch (jobErr) {
         setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
       } finally {
-        activeRenderCount--;
-        console.log(`[Render] Active renders after finish: ${activeRenderCount}`);
         scheduleRenderJobCleanup(renderJobId);
       }
     })();

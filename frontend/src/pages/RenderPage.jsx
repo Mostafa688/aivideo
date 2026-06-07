@@ -288,7 +288,6 @@ function ManualEditorModal({ videoUrl, onClose }) {
 export default function RenderPage({ scenes: initialScenes, formData, user, onBack, onReset }) {
   const [scenes, setScenes]         = useState(initialScenes);
   const [status, setStatus]         = useState('idle');
-  const [queuePosition, setQueuePosition] = useState(null); // null | 'waiting' | 'rendering'
   const [videoUrl, setVideoUrl]     = useState(null);
   const [error, setError]           = useState(null);
   const [progress, setProgress]     = useState('');
@@ -336,31 +335,10 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
 
   const handleRender = useCallback(async (overrideScenes, overrideAudio) => {
     const renderScenes = overrideScenes || scenes;
-    let renderAudio    = overrideAudio  || audioUrl;
-    setError(null);
-
-    // ── Auto-generate voice if not already done ──────────────────────────────
-    if (!isVoiceMode && !renderAudio) {
-      setStatus('voice');
-      setProgress('🎙️ Generating voiceover...');
-      try {
-        const vRes = await fetch('/api/generate-voice', {
-          method: 'POST', headers: authHeaders(),
-          body: JSON.stringify({ text: renderScenes.map(s => s.text).join(' '), voice, videoType: tone, videoLanguage }),
-        });
-        const vData = await vRes.json();
-        if (!vRes.ok) throw new Error(vData.error || 'Voice generation failed');
-        renderAudio = vData.audioUrl;
-        setAudioUrl(vData.audioUrl);
-      } catch (e) {
-        setError(e.message);
-        setStatus('idle');
-        return;
-      }
-    }
-
+    const renderAudio  = overrideAudio  || audioUrl;
     setStatus('rendering');
     setProgress('Rendering video... (this may take a few minutes)');
+    setError(null);
     try {
       const jobId = Date.now();
       const res = await fetch('/api/render', {
@@ -371,19 +349,8 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
           videoType: tone, captionStyle, musicVolume, sfxVolume, videoEffect,
           sceneCount: renderScenes.length, videoLanguage,
         }),
-        });
-        data = await readJsonSafely(res);
-        if (res.status === 429 && data.error === 'server_busy') {
-          retryCount++;
-          if (retryCount > MAX_QUEUE_RETRIES) throw new Error('انتهت مهلة الانتظار. حاول مرة أخرى.');
-          setQueuePosition('waiting');
-          setProgress('⏳ السيرفر مشغول بفيديو آخر... في الطابور');
-          await delay(5000);
-          continue;
-        }
-        setQueuePosition('rendering');
-        break;
-      }
+      });
+      const data = await readJsonSafely(res);
       if (!res.ok) throw new Error(data.error || 'Render failed');
 
       const maxMinutes = MAX_POLL_MINUTES[duration] || 30;
@@ -412,11 +379,11 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
         }
 
         if (!statusRes.ok) { if (++transientFailures >= 10) throw new Error(statusData.error || 'Status check failed'); continue; }
-        if (statusData.status === 'done')   { setVideoUrl(statusData.videoUrl); setStatus('done'); setProgress(''); setQueuePosition(null); break; }
+        if (statusData.status === 'done')   { setVideoUrl(statusData.videoUrl); setStatus('done'); setProgress(''); break; }
         if (statusData.status === 'failed') throw new Error(statusData.error || 'Render failed');
         setProgress(`⏳ Rendering... ${timeStr} elapsed (up to ${maxMinutes} min)`);
       }
-    } catch (e) { setError(e.message); setStatus('idle'); setProgress(''); setQueuePosition(null); }
+    } catch (e) { setError(e.message); setStatus('idle'); setProgress(''); }
   }, [scenes, audioUrl, ratio, duration, music, captions, transitions, soundEffects, tone, captionStyle, musicVolume, sfxVolume, videoEffect, videoLanguage]);
 
   const handleAIEditApply = (newScenes) => {
@@ -474,17 +441,7 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
         </div>
       )}
 
-      {queuePosition === 'waiting' && (
-        <div style={{ padding: '14px 18px', background: 'rgba(100,100,120,0.15)', border: '1px solid rgba(150,150,180,0.25)', borderRadius: 10, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#9ca3af', flexShrink: 0, animation: 'pulse 1.5s infinite' }} />
-          <div>
-            <div style={{ fontSize: 14, color: '#d1d5db', fontWeight: 600 }}>⏳ في الطابور — السيرفر مشغول بفيديو آخر</div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>سيبدأ فيديوك تلقائياً بمجرد انتهاء الفيديو الحالي</div>
-          </div>
-        </div>
-      )}
-
-      {progress && queuePosition !== 'waiting' && (
+      {progress && (
         <div style={{ padding: '12px 16px', background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.2)', borderRadius: 10, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="pulsing" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
           <span style={{ fontSize: 14, color: 'var(--accent2)' }}>{progress}</span>
@@ -544,6 +501,11 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
 
           {/* Action Buttons */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {!isVoiceMode && !audioUrl && (
+              <button className="btn-primary" onClick={handleGenerateVoice} disabled={status !== 'idle'} style={{ width: '100%', padding: 14 }}>
+                {status === 'voice' ? 'Generating voice...' : '🎙️ Generate Voiceover'}
+              </button>
+            )}
             {!isVoiceMode && audioUrl && !videoUrl && (
               <div style={{ padding: '10px 14px', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ color: 'var(--green)', fontSize: 13, flexShrink: 0 }}>✓ Voice ready</span>
@@ -554,7 +516,7 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
             <button className="btn-primary" onClick={() => handleRender()}
               disabled={status === 'rendering' || status === 'voice'}
               style={{ width: '100%', padding: 14, opacity: (status === 'rendering' || status === 'voice') ? 0.6 : 1 }}>
-              {status === 'voice' ? '🎙️ Generating voice...' : status === 'rendering' ? '⏳ Rendering...' : isVoiceMode ? '🎙️ Render with My Voice' : '🎬 Render Video'}
+              {status === 'rendering' ? '⏳ Rendering...' : isVoiceMode ? '🎙️ Render with My Voice' : '🎬 Render Video'}
             </button>
 
             {videoUrl && (
