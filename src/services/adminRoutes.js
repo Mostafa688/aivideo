@@ -156,4 +156,35 @@ router.post('/user/model5', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ── Reset User Weekly Credits ─────────────────────────────────────────────────
+router.post('/reset-credits', adminAuth, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+    const { rows } = await pool.query(
+      `UPDATE user_usage
+       SET credits_used = 0,
+           videos_this_week = 0,
+           week_start = NOW()
+       WHERE user_id = (SELECT id FROM users WHERE email = $1)
+       RETURNING user_id`,
+      [email]
+    );
+    if (!rows.length) {
+      // user_usage row may not exist yet — insert it
+      await pool.query(
+        `INSERT INTO user_usage (user_id, credits_used, videos_this_week, week_start)
+         SELECT id, 0, 0, NOW() FROM users WHERE email = $1
+         ON CONFLICT (user_id) DO UPDATE SET credits_used=0, videos_this_week=0, week_start=NOW()`,
+        [email]
+      );
+    }
+    console.log(\`[Admin] Credits reset for \${email}\`);
+    res.json({ success: true, message: \`Credits reset for \${email}\` });
+  } catch (err) {
+    console.error('[Admin] reset-credits error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

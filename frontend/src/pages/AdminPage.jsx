@@ -546,6 +546,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
   const [editUser, setEditUser] = useState(null);
+  const [resetingCredits, setResetingCredits] = useState(null); // email being reset
   const [editPlan, setEditPlan] = useState('free');
   const [saving, setSaving] = useState(false);
   const [editM3, setEditM3] = useState(false);
@@ -561,6 +562,18 @@ export default function AdminPage() {
   const loadStats    = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/stats', { headers }); const d = await r.json(); setStats(d); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadPayments = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/payments', { headers }); const d = await r.json(); setPayments(d.payments || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadVideos   = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/videos', { headers }); const d = await r.json(); setVideos(d.videos || []); } catch (e) { console.error(e); } setLoading(false); }, []);
+  const handleResetCredits = async (email) => {
+    if (!confirm(`Reset weekly credits for ${email}?`)) return;
+    setResetingCredits(email);
+    try {
+      const r = await fetch('/api/admin/reset-credits', { method: 'POST', headers, body: JSON.stringify({ email }) });
+      const d = await r.json();
+      if (d.success) { showToast('✅ Credits reset successfully'); loadUsers(); }
+      else showToast('❌ ' + (d.error || 'Failed'));
+    } catch (e) { showToast('❌ ' + e.message); }
+    setResetingCredits(null);
+  };
+
   const loadUsers    = useCallback(async () => { setLoading(true); try { const params = new URLSearchParams(); if (planFilter) params.set('plan', planFilter); if (search) params.set('search', search); const r = await fetch('/api/admin/users?' + params, { headers }); const d = await r.json(); setUsers(d.users || []); } catch (e) { console.error(e); } setLoading(false); }, [planFilter, search]);
 
   useEffect(() => {
@@ -748,7 +761,8 @@ export default function AdminPage() {
                       <td style={s.td}>{u.model5_access == 1 ? '✅' : '–'}</td>
                       <td style={{ ...s.td, fontSize: 11, color: '#7c6af7', fontFamily: 'monospace' }}>{u.ref_code || '–'}</td>
                       <td style={s.td}>{new Date(u.created_at).toLocaleDateString()}</td>
-                      <td style={s.td}><button style={s.btn('#374151')} onClick={() => { 
+                      <td style={{ ...s.td, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button style={s.btn('#374151')} onClick={() => { 
                           setEditUser(u); 
                           setEditPlan(u.plan);
                           setEditM3(u.model3_access == 1);
@@ -757,7 +771,16 @@ export default function AdminPage() {
                           setEditM4Plan(u.model4_plan || 'm4_plan1');
                           setEditM5(u.model5_access == 1);
                           setEditM5Plan(u.model5_plan || 'mc_starter');
-                        }}>Edit</button></td>
+                        }}>Edit</button>
+                        <button
+                          style={s.btn('#1e3a2f')}
+                          disabled={resetingCredits === u.email}
+                          onClick={() => handleResetCredits(u.email)}
+                          title="Reset weekly credits & videos count"
+                        >
+                          {resetingCredits === u.email ? '...' : '🔄 Credits'}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
