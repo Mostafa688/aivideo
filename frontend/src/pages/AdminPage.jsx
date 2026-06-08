@@ -413,7 +413,7 @@ function StudioTab({ s }) {
     <div>
       <div style={s.topbar}>
         <div style={s.title}>🎥 My Studio — Batch Video Generator</div>
-        <span style={{ fontSize: 12, color: '#4b5563' }}>Seedance 1.5 Pro · 5s per scene</span>
+        <span style={{ fontSize: 12, color: '#4b5563' }}>Seedance 1 Pro Fast · 5s per scene</span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20, alignItems: 'start' }}>
@@ -489,7 +489,7 @@ function StudioTab({ s }) {
           <div style={{ ...s.card, background: '#0a0a18' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#7c6af7', marginBottom: 12 }}>📋 معلومات</div>
             {[
-              { label: 'Model', value: 'Seedance 1.5 Pro' },
+              { label: 'Model', value: 'Seedance 1 Pro Fast' },
               { label: 'مدة كل مشهد', value: '5 ثواني' },
               { label: 'الجودة', value: '720p / 24fps' },
               { label: 'الحد الأقصى', value: '20 مشهد' },

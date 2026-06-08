@@ -201,7 +201,7 @@ async function generateStudioClip(prompt, ratio = '16:9') {
     'Content-Type': 'application/json',
     'Prefer': 'wait',
   };
-  const submitRes = await fetchNode('https://api.replicate.com/v1/models/bytedance/seedance-1.5-pro/predictions', {
+  const submitRes = await fetchNode('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
     method: 'POST',
     headers: hdrs,
     body: JSON.stringify({
