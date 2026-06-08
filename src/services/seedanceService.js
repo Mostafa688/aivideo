@@ -424,44 +424,50 @@ export async function renderModel5Video({
   if (rawPaths.length === 1) {
     fs.copyFileSync(rawPaths[0], mergedPath);
   } else {
-    // Build xfade filter chain for smooth transitions
+    // Build xfade (video) + acrossfade (audio) filter chain — FIX: preserve audio from Seedance
+    // listFile declared here (outer scope) so setTimeout cleanup can reference it
+    const listFile = path.join(TEMP_DIR, `m5_list_${id}.txt`);
     try {
       const FADE_DUR = 0.5;
       const CLIP_DURATION = CLIP_SEC - FADE_DUR;
-      
-      // Build inputs
+
       const inputs = rawPaths.map(f => `-i "${f}"`).join(' ');
-      
-      // Build xfade filter chain
+
       let filterComplex = '';
-      let lastLabel = '[0:v]';
-      
-      for (let i = 1; i < rawPaths.length; i++) {
-        const offset = (CLIP_DURATION * i).toFixed(2);
-        const nextLabel = i < rawPaths.length - 1 ? `[v${i}]` : '[vout]';
-        filterComplex += `${lastLabel}[${i}:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}${nextLabel};`;
-        lastLabel = `[v${i}]`;
-      }
-      
       if (rawPaths.length === 2) {
-        filterComplex = `[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${CLIP_DURATION.toFixed(2)}[vout]`;
+        filterComplex =
+          `[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${CLIP_DURATION.toFixed(2)}[vout];` +
+          `[0:a][1:a]acrossfade=d=${FADE_DUR}[aout]`;
+      } else {
+        let lastVLabel = '[0:v]';
+        let lastALabel = '[0:a]';
+        for (let i = 1; i < rawPaths.length; i++) {
+          const offset = (CLIP_DURATION * i).toFixed(2);
+          const isLast = i === rawPaths.length - 1;
+          const vNext = isLast ? '[vout]' : `[v${i}]`;
+          const aNext = isLast ? '[aout]' : `[a${i}]`;
+          filterComplex += `${lastVLabel}[${i}:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}${vNext};`;
+          filterComplex += `${lastALabel}[${i}:a]acrossfade=d=${FADE_DUR}${aNext};`;
+          lastVLabel = `[v${i}]`;
+          lastALabel = `[a${i}]`;
+        }
+        filterComplex = filterComplex.replace(/;$/, '');
       }
-      
+
       execSync(
-        `ffmpeg ${inputs} -filter_complex "${filterComplex}" -map "[vout]" ` +
+        `ffmpeg ${inputs} -filter_complex "${filterComplex}" -map "[vout]" -map "[aout]" ` +
         `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
-        `-pix_fmt yuv420p -movflags +faststart -y "${mergedPath}"`,
+        `-c:a aac -b:a 192k -pix_fmt yuv420p -movflags +faststart -y "${mergedPath}"`,
         { stdio: 'pipe' }
       );
-      console.log('[Model5] ✅ Crossfade transitions applied');
+      console.log('[Model5] ✅ Crossfade transitions applied (video + audio)');
     } catch (e) {
       console.warn('[Model5] Transitions failed, using simple concat:', e.message.slice(0, 80));
-      const listFile = path.join(TEMP_DIR, `m5_list_${id}.txt`);
       fs.writeFileSync(listFile, rawPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
       execSync(
         `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
         `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
-        `-pix_fmt yuv420p -movflags +faststart -y "${mergedPath}"`,
+        `-c:a aac -b:a 192k -pix_fmt yuv420p -movflags +faststart -y "${mergedPath}"`,
         { stdio: 'pipe' }
       );
     }
