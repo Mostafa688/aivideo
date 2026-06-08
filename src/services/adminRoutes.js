@@ -3,7 +3,6 @@ import pkg from 'pg';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import fetchNode from 'node-fetch';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -190,41 +189,48 @@ router.post('/reset-credits', adminAuth, async (req, res) => {
 });
 
 // ── Admin Personal Studio — Batch Video Generator ─────────────────────────
-const REPLICATE_API_TOKEN_ADMIN = process.env.REPLICATE_API_TOKEN;
 const TEMP_DIR_ADMIN = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const OUTPUTS_DIR_ADMIN = 'outputs';
 
 async function generateStudioClip(prompt, ratio = '16:9') {
-  if (!REPLICATE_API_TOKEN_ADMIN) throw new Error('REPLICATE_API_TOKEN not set');
-  const hdrs = {
-    'Authorization': `Bearer ${REPLICATE_API_TOKEN_ADMIN}`,
+  const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+
+  const headers = {
+    'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
     'Content-Type': 'application/json',
     'Prefer': 'wait',
   };
-  const submitRes = await fetchNode('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
+
+  const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
     method: 'POST',
-    headers: hdrs,
+    headers,
     body: JSON.stringify({
-      input: { prompt, aspect_ratio: ratio, resolution: '720p', duration: 5, fps: 24 },
+      input: { prompt, aspect_ratio: ratio, resolution: '720p', duration: 5, fps: 24, camera_fixed: false },
     }),
   });
+
   if (!submitRes.ok) {
     const err = await submitRes.text();
     throw new Error(`Replicate error ${submitRes.status}: ${err}`);
   }
+
   const prediction = await submitRes.json();
   if (prediction.status === 'succeeded' && prediction.output) {
     return Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
   }
+
   const predictionId = prediction.id;
   if (!predictionId) throw new Error(`No prediction ID: ${JSON.stringify(prediction)}`);
   console.log(`[Studio] Job: ${predictionId}`);
+
   const maxWait = 300_000;
   const pollInterval = 5_000;
   const startTime = Date.now();
+
   while (Date.now() - startTime < maxWait) {
     await new Promise(r => setTimeout(r, pollInterval));
-    const statusRes = await fetchNode(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers: hdrs });
+    const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
     if (!statusRes.ok) continue;
     const data = await statusRes.json();
     console.log(`[Studio] Status: ${data.status} (${Math.round((Date.now() - startTime) / 1000)}s)`);
@@ -241,7 +247,7 @@ async function generateStudioClip(prompt, ratio = '16:9') {
 }
 
 async function downloadStudioClip(url, outputPath) {
-  const res = await fetchNode(url);
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
 }
@@ -309,6 +315,7 @@ router.post('/studio/generate', adminAuth, async (req, res) => {
 
     console.log(`[Studio] DONE → ${outputFile}`);
     res.json({ success: true, filename: outputFile, url: `/outputs/${outputFile}`, scenes: clipPaths.length });
+
   } catch (err) {
     console.error('[Studio] ERROR:', err.message);
     res.status(500).json({ error: err.message });
