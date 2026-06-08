@@ -20,8 +20,8 @@ const CAPTION_STYLES = [
 ];
 
 const MAX_POLL_MINUTES = {
-  '30s':   5, 'auto':  5, '1min':  8, '2min':  12,
-  '3min':  18, '4min':  22, '5min':  28, '8min':  55, '10min': 90,
+  '30s':  10, 'auto': 10, '1min': 20, '2min': 30,
+  '3min': 45, '4min': 55, '5min': 70, '8min': 90, '10min': 120,
 };
 
 function authHeaders() {
