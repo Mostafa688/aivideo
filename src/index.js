@@ -11,17 +11,12 @@ import { generateScenesStream } from './services/scriptService.js';
 import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/mediaService.js';
 import { generateVoiceover, VOICE_OPTIONS } from './services/voiceService.js';
 import { fork } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname, join as pathJoin } from 'path';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
 
 // ── renderVideoInWorker: runs FFmpeg in a separate process ─────────────────
 function renderVideoInWorker(job) {
   return new Promise((resolve, reject) => {
-    const worker = fork(pathJoin(__dirname, 'renderWorker.js'), [], {
-      stdio: 'inherit',   // worker logs go to same Railway log stream
-      execArgPath: process.execPath,
+    const worker = fork(new URL('./renderWorker.js', import.meta.url).pathname, [], {
+      stdio: 'inherit',
     });
     worker.on('message', (msg) => {
       if (msg.success) resolve(msg.videoPath);
