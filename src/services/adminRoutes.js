@@ -1,5 +1,9 @@
 import express from 'express';
 import pkg from 'pg';
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import fetchNode from 'node-fetch';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -181,6 +185,132 @@ router.post('/reset-credits', adminAuth, async (req, res) => {
     res.json({ success: true, message: 'Credits reset for ' + email });
   } catch (err) {
     console.error('[Admin] reset-credits error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin Personal Studio — Batch Video Generator ─────────────────────────
+const REPLICATE_API_TOKEN_ADMIN = process.env.REPLICATE_API_TOKEN;
+const TEMP_DIR_ADMIN = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
+const OUTPUTS_DIR_ADMIN = 'outputs';
+
+async function generateStudioClip(prompt, ratio = '16:9') {
+  if (!REPLICATE_API_TOKEN_ADMIN) throw new Error('REPLICATE_API_TOKEN not set');
+  const hdrs = {
+    'Authorization': `Bearer ${REPLICATE_API_TOKEN_ADMIN}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'wait',
+  };
+  const submitRes = await fetchNode('https://api.replicate.com/v1/models/bytedance/seedance-1.5-pro/predictions', {
+    method: 'POST',
+    headers: hdrs,
+    body: JSON.stringify({
+      input: { prompt, aspect_ratio: ratio, resolution: '720p', duration: 5, fps: 24 },
+    }),
+  });
+  if (!submitRes.ok) {
+    const err = await submitRes.text();
+    throw new Error(`Replicate error ${submitRes.status}: ${err}`);
+  }
+  const prediction = await submitRes.json();
+  if (prediction.status === 'succeeded' && prediction.output) {
+    return Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  }
+  const predictionId = prediction.id;
+  if (!predictionId) throw new Error(`No prediction ID: ${JSON.stringify(prediction)}`);
+  console.log(`[Studio] Job: ${predictionId}`);
+  const maxWait = 300_000;
+  const pollInterval = 5_000;
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWait) {
+    await new Promise(r => setTimeout(r, pollInterval));
+    const statusRes = await fetchNode(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers: hdrs });
+    if (!statusRes.ok) continue;
+    const data = await statusRes.json();
+    console.log(`[Studio] Status: ${data.status} (${Math.round((Date.now() - startTime) / 1000)}s)`);
+    if (data.status === 'succeeded') {
+      const url = Array.isArray(data.output) ? data.output[0] : data.output;
+      if (!url) throw new Error('No video URL in output');
+      return url;
+    }
+    if (data.status === 'failed' || data.status === 'canceled') {
+      throw new Error(`Replicate failed: ${data.error || 'unknown'}`);
+    }
+  }
+  throw new Error('Timeout after 5 minutes');
+}
+
+async function downloadStudioClip(url, outputPath) {
+  const res = await fetchNode(url);
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
+}
+
+router.post('/studio/generate', adminAuth, async (req, res) => {
+  const { prompts, ratio = '16:9' } = req.body;
+  if (!prompts || !Array.isArray(prompts) || prompts.length === 0)
+    return res.status(400).json({ error: 'prompts array required' });
+  if (prompts.length > 20)
+    return res.status(400).json({ error: 'Max 20 scenes' });
+
+  const id = Date.now();
+  const outputFile = `studio_${id}.mp4`;
+  const outputPath = path.join(OUTPUTS_DIR_ADMIN, outputFile);
+
+  try {
+    await fs.promises.mkdir(TEMP_DIR_ADMIN, { recursive: true });
+    await fs.promises.mkdir(OUTPUTS_DIR_ADMIN, { recursive: true });
+    console.log(`[Studio] START — ${prompts.length} scenes, ratio: ${ratio}`);
+
+    const clipPaths = [];
+    for (let i = 0; i < prompts.length; i++) {
+      const prompt = prompts[i].trim();
+      if (!prompt) continue;
+      const clipPath = path.join(TEMP_DIR_ADMIN, `studio_${id}_clip${i}.mp4`);
+      console.log(`[Studio] Clip ${i + 1}/${prompts.length}: ${prompt.slice(0, 60)}`);
+      try {
+        const url = await generateStudioClip(prompt, ratio);
+        await downloadStudioClip(url, clipPath);
+        clipPaths.push(clipPath);
+        console.log(`[Studio] ✅ Clip ${i + 1} done`);
+      } catch (e) {
+        console.error(`[Studio] ❌ Clip ${i + 1} failed: ${e.message}`);
+        const { w, h } = ratio === '9:16' ? { w: 720, h: 1280 } : ratio === '1:1' ? { w: 720, h: 720 } : { w: 1280, h: 720 };
+        try {
+          execSync(
+            `ffmpeg -f lavfi -i color=c=black:size=${w}x${h}:rate=24 -t 5 ` +
+            `-c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p -movflags +faststart -y "${clipPath}"`,
+            { stdio: 'pipe' }
+          );
+          clipPaths.push(clipPath);
+        } catch {}
+      }
+    }
+
+    if (clipPaths.length === 0) return res.status(500).json({ error: 'All clips failed to generate' });
+
+    if (clipPaths.length === 1) {
+      fs.copyFileSync(clipPaths[0], outputPath);
+    } else {
+      const listFile = path.join(TEMP_DIR_ADMIN, `studio_${id}_list.txt`);
+      fs.writeFileSync(listFile, clipPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
+      execSync(
+        `ffmpeg -f concat -safe 0 -i "${listFile}" ` +
+        `-c:v libx264 -crf 16 -preset slow -profile:v high -level 4.1 ` +
+        `-pix_fmt yuv420p -movflags +faststart -y "${outputPath}"`,
+        { stdio: 'pipe' }
+      );
+      try { fs.unlinkSync(listFile); } catch {}
+    }
+
+    setTimeout(() => {
+      clipPaths.forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
+    }, 120_000);
+
+    console.log(`[Studio] DONE → ${outputFile}`);
+    res.json({ success: true, filename: outputFile, url: `/outputs/${outputFile}`, scenes: clipPaths.length });
+  } catch (err) {
+    console.error('[Studio] ERROR:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

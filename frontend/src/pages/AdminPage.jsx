@@ -353,6 +353,179 @@ function AffiliatesTab({ s }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  STUDIO TAB — Admin Personal Batch Video Generator
+// ══════════════════════════════════════════════════════════════════════════
+function StudioTab({ s }) {
+  const [sceneCount, setSceneCount] = useState(3);
+  const [prompts, setPrompts] = useState(Array(3).fill(''));
+  const [ratio, setRatio] = useState('16:9');
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = React.useRef(null);
+
+  const handleSceneCount = (n) => {
+    const count = Math.min(Math.max(1, n), 20);
+    setSceneCount(count);
+    setPrompts(prev => {
+      const next = [...prev];
+      while (next.length < count) next.push('');
+      return next.slice(0, count);
+    });
+  };
+
+  const startTimer = () => {
+    setElapsed(0);
+    timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+  };
+  const stopTimer = () => { clearInterval(timerRef.current); };
+
+  const handleGenerate = async () => {
+    const filled = prompts.filter(p => p.trim());
+    if (filled.length === 0) { setError('ادخل prompt واحد على الأقل'); return; }
+    if (filled.length < sceneCount) { setError(`في ${sceneCount - filled.length} مشاهد فاضية — اكملهم أو قلل العدد`); return; }
+    setError(''); setResult(null); setLoading(true);
+    setProgress(`⏳ بيولّد ${sceneCount} مشاهد... (كل مشهد ~30-60 ثانية)`);
+    startTimer();
+    try {
+      const r = await fetch('/api/admin/studio/generate', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ prompts: prompts.filter(p => p.trim()), ratio }),
+      });
+      const d = await r.json();
+      stopTimer();
+      if (d.success) { setProgress(''); setResult(d); }
+      else { setError('❌ ' + (d.error || 'Generation failed')); setProgress(''); }
+    } catch (e) {
+      stopTimer();
+      setError('❌ ' + e.message);
+      setProgress('');
+    }
+    setLoading(false);
+  };
+
+  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  return (
+    <div>
+      <div style={s.topbar}>
+        <div style={s.title}>🎥 My Studio — Batch Video Generator</div>
+        <span style={{ fontSize: 12, color: '#4b5563' }}>Seedance 1.5 Pro · 5s per scene</span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20, alignItems: 'start' }}>
+
+        {/* LEFT — prompts */}
+        <div style={s.card}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>عدد المشاهد</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button style={{ ...s.btn('#1a1a2e'), width: 32, height: 32, fontSize: 18, padding: 0, border: '1px solid #2d2d4a' }} onClick={() => handleSceneCount(sceneCount - 1)} disabled={loading}>−</button>
+                <span style={{ fontSize: 22, fontWeight: 700, color: '#7c6af7', minWidth: 32, textAlign: 'center' }}>{sceneCount}</span>
+                <button style={{ ...s.btn('#1a1a2e'), width: 32, height: 32, fontSize: 18, padding: 0, border: '1px solid #2d2d4a' }} onClick={() => handleSceneCount(sceneCount + 1)} disabled={loading}>+</button>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>النسبة</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['16:9', '9:16', '1:1'].map(r => (
+                  <button key={r} style={{ ...s.btn(ratio === r ? '#7c6af7' : '#1a1a2e'), border: `1px solid ${ratio === r ? '#7c6af7' : '#2d2d4a'}`, fontSize: 12 }} onClick={() => setRatio(r)} disabled={loading}>{r}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginLeft: 'auto' }}>
+              <button
+                style={{ ...s.btn(loading ? '#1a1a2e' : '#7c6af7'), padding: '10px 28px', fontSize: 14, opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer', border: loading ? '1px solid #2d2d4a' : 'none' }}
+                onClick={handleGenerate} disabled={loading}
+              >
+                {loading ? `⏳ جاري التوليد... ${formatTime(elapsed)}` : `🚀 Generate ${sceneCount} Scenes`}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {prompts.map((p, i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#1a1a2e', border: '1px solid #2d2d4a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#7c6af7', fontWeight: 700, flexShrink: 0, marginTop: 6 }}>{i + 1}</div>
+                <textarea
+                  value={p}
+                  onChange={e => { const next = [...prompts]; next[i] = e.target.value; setPrompts(next); }}
+                  placeholder={`Scene ${i + 1} prompt... (e.g. "cinematic aerial shot of desert at golden hour, slow pan right")`}
+                  disabled={loading}
+                  style={{ ...s.input, flex: 1, minHeight: 72, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, fontSize: 13, opacity: loading ? 0.5 : 1 }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {progress && (
+            <div style={{ marginTop: 16, background: '#0a0a18', border: '1px solid #2d2d4a', borderRadius: 10, padding: '14px 18px', color: '#a5b4fc', fontSize: 13 }}>
+              {progress}
+              <div style={{ marginTop: 8, height: 3, background: '#1a1a2e', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 2, backgroundImage: 'linear-gradient(90deg, #7c6af7 0%, #a78bfa 50%, #7c6af7 100%)', backgroundSize: '200% 100%', animation: 'studioShimmer 2s infinite' }} />
+              </div>
+              <style>{`@keyframes studioShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+            </div>
+          )}
+          {error && (
+            <div style={{ marginTop: 16, background: '#1c0a0a', border: '1px solid #7f1d1d', borderRadius: 10, padding: '12px 16px', color: '#fca5a5', fontSize: 13 }}>{error}</div>
+          )}
+        </div>
+
+        {/* RIGHT — result + info */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {result && (
+            <div style={{ ...s.card, border: '1px solid #166534' }}>
+              <div style={{ fontSize: 13, color: '#22c55e', fontWeight: 700, marginBottom: 12 }}>✅ الفيديو جاهز! ({result.scenes} مشاهد)</div>
+              <video src={result.url} controls style={{ width: '100%', borderRadius: 8, background: '#000', marginBottom: 12 }} />
+              <a href={result.url} download={result.filename} style={{ ...s.btn('#22c55e'), display: 'block', textAlign: 'center', textDecoration: 'none', padding: '10px' }}>⬇️ تحميل الفيديو</a>
+              <div style={{ fontSize: 11, color: '#4b5563', marginTop: 8, fontFamily: 'monospace' }}>{result.filename}</div>
+            </div>
+          )}
+          <div style={{ ...s.card, background: '#0a0a18' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#7c6af7', marginBottom: 12 }}>📋 معلومات</div>
+            {[
+              { label: 'Model', value: 'Seedance 1.5 Pro' },
+              { label: 'مدة كل مشهد', value: '5 ثواني' },
+              { label: 'الجودة', value: '720p / 24fps' },
+              { label: 'الحد الأقصى', value: '20 مشهد' },
+              { label: '5 مشاهد ≈', value: '~4 دقائق' },
+              { label: '10 مشاهد ≈', value: '~8 دقائق' },
+            ].map((item, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < 5 ? '1px solid #1a1a2e' : 'none' }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>{item.label}</span>
+                <span style={{ fontSize: 12, color: '#d1d5db', fontWeight: 600 }}>{item.value}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ ...s.card, background: '#0a0a18' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#7c6af7', marginBottom: 10 }}>💡 أمثلة سريعة</div>
+            {[
+              'Cinematic aerial shot of ancient desert ruins at golden hour, slow dolly forward',
+              'Close-up of a luxury watch on marble surface, soft studio lighting, subtle rotation',
+              'Dramatic ocean waves crashing against rocky cliffs at sunset, wide establishing shot',
+              'Dense forest with rays of light piercing through trees, mystical atmosphere, slow tilt up',
+            ].map((example, i) => (
+              <div key={i}
+                onClick={() => { if (loading) return; const next = [...prompts]; const idx = next.findIndex(p => !p.trim()); if (idx !== -1) { next[idx] = example; setPrompts(next); } }}
+                style={{ fontSize: 11, color: '#6b7280', padding: '6px 10px', marginBottom: 4, background: '#111122', borderRadius: 6, cursor: loading ? 'default' : 'pointer', border: '1px solid #1a1a2e', lineHeight: 1.4 }}
+                onMouseEnter={e => { if (!loading) e.currentTarget.style.color = '#a5b4fc'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#6b7280'; }}
+              >{example}</div>
+            ))}
+            <div style={{ fontSize: 10, color: '#374151', marginTop: 6 }}>اضغط على أي مثال لإضافته لأول مشهد فاضي</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  MAIN DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -650,7 +823,8 @@ export default function AdminPage() {
     { key: 'payments',   label: '💰 Payments'    },
     { key: 'videos',     label: '🎬 Videos'      },
     { key: 'affiliates', label: '🤝 Affiliates'  },
-    { key: 'templates', label: '🎬 Templates'   },  // ← جديد
+    { key: 'templates',  label: '🎬 Templates'   },
+    { key: 'studio',     label: '🎥 My Studio'   },
   ];
 
   return (
@@ -906,6 +1080,9 @@ export default function AdminPage() {
 
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}
+
+        {/* ── STUDIO ── */}
+        {tab === 'studio' && <StudioTab s={s} />}
 
       </div>
     </div>
