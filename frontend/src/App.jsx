@@ -18,7 +18,6 @@ import AffiliatePage from './pages/AffiliatePage.jsx';
 import ModelCinematicPage from './pages/ModelCinematicPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
 import ModelErivionPage from './pages/ModelErivionPage.jsx';
-import FAQPage from './pages/FAQPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -483,7 +482,6 @@ export default function App() {
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
         {['terms','privacy','support','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
-        {page === 'faq' && <FAQPage onBack={() => setPage('input')} />}
       </div>
     </>
   );
