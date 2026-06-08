@@ -1254,4 +1254,4 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log('AI Video Backend running on http://localhost:' + PORT);
-});
+}); 
