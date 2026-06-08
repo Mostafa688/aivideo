@@ -114,12 +114,24 @@ async function fetchChunkIdea({ fromIndex, toIndex, idea, toneGuide, langGuide, 
     }
   }
 
-  const prompt = `You are a video scriptwriter. Output EXACTLY ${chunkCount} JSON lines, no more, no less.
+  // بناء تعليمات Hook قوية للـ scene 1 و2
+  const hookInstructions = isFirstScene ? `
+HOOK WRITING RULES (scene 1 ONLY):
+The hook MUST grab the viewer in the first 3 seconds — use ONE of these techniques:
+- SHOCKING FACT: Start with a number or stat that surprises: "في 6 ساعات فقط، مات 50,000 إنسان"
+- PARADOX: Something that seems impossible: "الرجل الذي أنقذ الملايين لم يعرفه أحد في حياته"
+- OPEN LOOP: A question with no answer yet: "كيف استطاع رجل واحد أن يُسقط إمبراطورية بأكملها؟"
+- START FROM THE END: Begin at the climax: "كان يعلم أنه سيموت اليوم — لكنه لم يتراجع"
+- DIRECT CHALLENGE: Talk to the viewer: "ما ستسمعه الآن لن تصدقه"
+NEVER start with "في هذا الفيديو" or "سنتحدث عن" — that kills engagement instantly.
+` : '';
+
+  const prompt = `You are an elite video scriptwriter specializing in viral documentary content. Output EXACTLY ${chunkCount} JSON lines, no more, no less.
 
 TONE: ${toneGuide}
 LANGUAGE: ${langGuide}
 Index range: ${fromIndex} to ${toIndex}
-
+${hookInstructions}
 TYPE RULES (STRICTLY FOLLOW):
 ${typeRules.join('\n')}
 
