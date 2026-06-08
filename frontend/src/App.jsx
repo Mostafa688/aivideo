@@ -483,6 +483,7 @@ export default function App() {
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
         {['terms','privacy','support','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
+        {page === 'faq' && <FAQPage onBack={() => setPage('input')} />}
       </div>
     </>
   );
