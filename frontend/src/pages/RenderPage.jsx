@@ -378,13 +378,10 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
           }),
         });
         data = await readJsonSafely(res);
-        if (res.status === 429 && data.error === 'server_busy') {
-          retryCount++;
-          if (retryCount > MAX_QUEUE_RETRIES) throw new Error('انتهت مهلة الانتظار. حاول مرة أخرى.');
+        if (data.status === 'queued' || (res.status === 429 && data.error === 'server_busy')) {
           setQueuePosition('waiting');
-          setProgress('⏳ السيرفر مشغول بفيديو آخر... في الطابور');
-          await delay(5000);
-          continue;
+          setProgress('⏳ فيديوك في الطابور — سيبدأ تلقائياً');
+          break; // job is queued on server, poll will track it
         }
         setQueuePosition('rendering');
         break;
@@ -483,8 +480,8 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
         <div style={{ padding: '14px 18px', background: 'rgba(100,100,120,0.15)', border: '1px solid rgba(150,150,180,0.25)', borderRadius: 10, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#9ca3af', flexShrink: 0, animation: 'pulse 1.5s infinite' }} />
           <div>
-            <div style={{ fontSize: 14, color: '#d1d5db', fontWeight: 600 }}>⏳ في الطابور — السيرفر مشغول بفيديو آخر</div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>سيبدأ فيديوك تلقائياً بمجرد انتهاء الفيديو الحالي</div>
+            <div style={{ fontSize: 14, color: '#d1d5db', fontWeight: 600 }}>⏳ فيديوك في الطابور</div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>سيبدأ تلقائياً بمجرد انتهاء الفيديو الحالي — لا تغلق الصفحة</div>
           </div>
         </div>
       )}
