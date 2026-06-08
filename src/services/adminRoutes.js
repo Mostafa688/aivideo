@@ -313,8 +313,9 @@ router.post('/studio/generate', adminAuth, async (req, res) => {
       clipPaths.forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
     }, 120_000);
 
+    const backendUrl = (process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app').replace(/\/$/, '');
     console.log(`[Studio] DONE → ${outputFile}`);
-    res.json({ success: true, filename: outputFile, url: `/outputs/${outputFile}`, scenes: clipPaths.length });
+    res.json({ success: true, filename: outputFile, url: `${backendUrl}/outputs/${outputFile}`, scenes: clipPaths.length });
 
   } catch (err) {
     console.error('[Studio] ERROR:', err.message);
