@@ -31,32 +31,9 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 const renderJobs = new Map();
 
-// ── In-Memory Render Queue ────────────────────────────────────────────────────
+// ── Render Limiter ────────────────────────────────────────────────────────────
 let activeRenderCount = 0;
 const MAX_CONCURRENT_RENDERS = 1;
-const renderQueue = []; // { jobId, jobParams, userId }
-
-async function processRenderQueue() {
-  if (activeRenderCount >= MAX_CONCURRENT_RENDERS) return;
-  if (renderQueue.length === 0) return;
-
-  const { jobId, jobParams, userId } = renderQueue.shift();
-  activeRenderCount++;
-  console.log(`[Queue] Starting job ${jobId} | Queue remaining: ${renderQueue.length}`);
-  setRenderJob(jobId, { status: 'processing', userId, createdAt: Date.now(), error: null, videoUrl: null });
-
-  try {
-    const videoPath = await renderVideo(jobParams);
-    setRenderJob(jobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
-  } catch (err) {
-    setRenderJob(jobId, { status: 'failed', error: err.message || 'Render failed.', completedAt: Date.now() });
-  } finally {
-    activeRenderCount--;
-    scheduleRenderJobCleanup(jobId);
-    console.log(`[Queue] Job ${jobId} done | Active: ${activeRenderCount} | Queue: ${renderQueue.length}`);
-    processRenderQueue(); // process next job
-  }
-}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -356,28 +333,25 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     if (soundEffects && !planData.sound_effects) return res.status(403).json({ error: 'Sound effects require Plus plan or higher.' });
     if (videoEffect && videoEffect !== 'none' && !planData.video_effects) return res.status(403).json({ error: 'Video effects require Max plan.' });
     const applyWatermark = planData.watermark !== false;
-    // ── Add to Queue ─────────────────────────────────────────────────────────
-    const MAX_QUEUE_SIZE = 10;
-    if (renderQueue.length >= MAX_QUEUE_SIZE) {
-      return res.status(429).json({ error: 'queue_full', message: 'الطابور ممتلئ، حاول بعد قليل.' });
+    // ── Concurrency Check ────────────────────────────────────────────────────
+    if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+      return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
     }
 
-    const queuePosition = renderQueue.length + (activeRenderCount > 0 ? 1 : 0);
-    const jobParams = { scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' };
-
-    if (activeRenderCount === 0) {
-      // Start immediately
-      setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
-      res.status(202).json({ jobId: renderJobId, status: 'processing', queue_position: 0 });
-      renderQueue.push({ jobId: renderJobId, jobParams, userId: req.user.userId });
-      processRenderQueue();
-    } else {
-      // Add to queue
-      setRenderJob(renderJobId, { status: 'queued', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null, queue_position: queuePosition });
-      renderQueue.push({ jobId: renderJobId, jobParams, userId: req.user.userId });
-      console.log(`[Queue] Job ${renderJobId} queued at position ${queuePosition}`);
-      res.status(202).json({ jobId: renderJobId, status: 'queued', queue_position: queuePosition });
-    }
+    setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+    res.status(202).json({ jobId: renderJobId, status: 'processing' });
+    (async () => {
+      activeRenderCount++;
+      try {
+        const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' });
+        setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
+      } catch (jobErr) {
+        setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
+      } finally {
+        activeRenderCount--;
+        scheduleRenderJobCleanup(renderJobId);
+      }
+    })();
   } catch (err) {
     res.status(500).json({ error: err.message || 'Render failed.' });
   }

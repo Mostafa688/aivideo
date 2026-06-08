@@ -164,17 +164,16 @@ router.post('/reset-credits', adminAuth, async (req, res) => {
     const { rows } = await pool.query(
       `UPDATE user_usage
        SET credits_used = 0,
-           videos_this_week = 0,
-           week_start = NOW()
+           videos_this_week = 0
        WHERE user_id = (SELECT id FROM users WHERE email = $1)
        RETURNING user_id`,
       [email]
     );
     if (!rows.length) {
       await pool.query(
-        `INSERT INTO user_usage (user_id, credits_used, videos_this_week, week_start)
-         SELECT id, 0, 0, NOW() FROM users WHERE email = $1
-         ON CONFLICT (user_id) DO UPDATE SET credits_used=0, videos_this_week=0, week_start=NOW()`,
+        `INSERT INTO user_usage (user_id, credits_used, videos_this_week)
+         SELECT id, 0, 0 FROM users WHERE email = $1
+         ON CONFLICT (user_id) DO UPDATE SET credits_used=0, videos_this_week=0`,
         [email]
       );
     }
