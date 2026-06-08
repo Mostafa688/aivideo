@@ -137,7 +137,8 @@ function trimAndScale(input, output, duration, w, h) {
         '-r', '30',
         '-c:v', 'libx264',
         '-crf', '16',
-        '-preset', 'slow',
+        '-threads', '2',
+        '-preset', 'medium',
         '-profile:v', 'high',
         '-level', '4.1',
         '-b:v', '4M',
@@ -170,7 +171,7 @@ function generateColorSlide(scene, output, duration, w, h) {
     '-y', output,
   ];
   return new Promise((resolve, reject) => {
-    try { execSync('ffmpeg ' + args.join(' '), { stdio: 'pipe' }); resolve(); }
+    try { execSync('ffmpeg -threads 2 ' + args.join(' '), { stdio: 'pipe' }); resolve(); }
     catch (err) { reject(err); }
   });
 }
@@ -183,7 +184,8 @@ function concatVideos(listFile, output) {
       .outputOptions([
         '-c:v', 'libx264',
         '-crf', '16',
-        '-preset', 'slow',
+        '-threads', '2',
+        '-preset', 'medium',
         '-profile:v', 'high',
         '-level', '4.1',
         '-b:v', '4M',
@@ -225,7 +227,7 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
     const transType = transTypes[i % transTypes.length];
     try {
       execSync(
-        `ffmpeg -i "${current}" -i "${slideFiles[i]}"` +
+        `ffmpeg -threads 2 --i "${current}" -i "${slideFiles[i]}"` +
         ` -filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=${TRANSITION_DURATION}:offset=${offset}[v]"` +
         ` -map "[v]" -r 30 -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${transOut}"`,
         { stdio: 'pipe' }
@@ -242,7 +244,7 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
       fs.writeFileSync(tmpList, listContent);
       try {
         execSync(
-          `ffmpeg -f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${fallbackOut}"`,
+          `ffmpeg -threads 2 --f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${fallbackOut}"`,
           { stdio: 'pipe' }
         );
         current = fallbackOut;
@@ -353,7 +355,8 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
           .outputOptions([
             '-vf', `subtitles='${safeAss}':fontsdir='${path.dirname(fontfile)}'`,
             '-c:a', 'copy',
-            '-c:v', 'libx264', '-crf', '16', '-preset', 'slow',
+            '-c:v', 'libx264', '-crf', '16', '-threads', '2',
+        '-preset', 'medium',
             '-profile:v', 'high', '-level', '4.1',
             '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
             '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
@@ -396,7 +399,8 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       .videoFilters(filters.join(','))
       .outputOptions([
         '-c:a', 'copy',
-        '-c:v', 'libx264', '-crf', '16', '-preset', 'slow',
+        '-c:v', 'libx264', '-crf', '16', '-threads', '2',
+        '-preset', 'medium',
         '-profile:v', 'high', '-level', '4.1',
         '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
         '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
@@ -499,7 +503,7 @@ function addWatermark(inputFile, outputFile) {
   return new Promise((resolve) => {
     try {
       execSync(
-        `ffmpeg -i "${inputFile}" -vf "${filterStr}" -c:a copy -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputFile}"`,
+        `ffmpeg -threads 2 --i "${inputFile}" -vf "${filterStr}" -c:a copy -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputFile}"`,
         { stdio: 'pipe' }
       );
       console.log('[Watermark] ✅ Done');
@@ -730,7 +734,8 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
             '-c:a', 'copy',
             '-c:v', 'libx264',
             '-crf', '16',
-            '-preset', 'slow',
+            '-threads', '2',
+        '-preset', 'medium',
             '-profile:v', 'high',
             '-level', '4.1',
             '-b:v', '4M',
@@ -792,7 +797,8 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
         '-c:a', 'copy',
         '-c:v', 'libx264',
         '-crf', '16',
-        '-preset', 'slow',
+        '-threads', '2',
+        '-preset', 'medium',
         '-profile:v', 'high',
         '-level', '4.1',
         '-b:v', '4M',
