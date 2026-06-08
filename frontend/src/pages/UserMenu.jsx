@@ -132,6 +132,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         { icon: '⚙️', label: 'Settings', key: 'settings' },
         { icon: '💳', label: 'Pricing & Plans', key: 'pricing' },
         { icon: '🛟', label: 'Support', key: 'support' },
+        { icon: '❓', label: 'FAQ', key: 'faq' },
         { icon: 'ℹ️', label: 'About Us', key: 'about' },
       ]
     },

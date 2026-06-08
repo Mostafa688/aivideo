@@ -325,7 +325,10 @@ function MapVideoForm({ onSubmit, onBack }) {
             <div>
               <p style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>Your Script</p>
               <textarea value={script} onChange={e => setScript(e.target.value)} className="map-input" placeholder="Write your full narration script here. Mention countries and regions — the AI will automatically highlight them on the map as your story unfolds..." rows={8} style={{ width:'100%', resize:'vertical', padding:'12px 14px', lineHeight:1.65, fontFamily:'inherit', fontSize:14, minHeight:180, outline:'none' }} autoFocus />
-              <p style={{ fontSize:11, color:'rgba(255,255,255,0.3)', marginTop:6 }}>{script.trim().split(/\s+/).filter(Boolean).length} words</p>
+              <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'rgba(255,255,255,0.3)', marginTop:6 }}>
+                {scriptWordCount} / {MAX_SCRIPT_WORDS} words
+                {scriptOverLimit && <span style={{ marginRight:6, fontWeight:700 }}> — النص طويل جداً! قلل للـ {MAX_SCRIPT_WORDS} كلمة كحد أقصى (8 دقائق)</span>}
+              </p>
             </div>
           )}
           {mode === 'voice' && (
@@ -824,6 +827,11 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
 
   const canSubmit = mode === 'idea' ? idea.trim().length > 5 : mode === 'voice' ? false : script.trim().length > 20;
 
+  // ── Script length limit (max ~8 min = ~1200 words) ─────────────────────────
+  const MAX_SCRIPT_WORDS = 1200;
+  const scriptWordCount = script.trim().split(/\s+/).filter(Boolean).length;
+  const scriptOverLimit = mode === 'script' && scriptWordCount > MAX_SCRIPT_WORDS;
+
   const getSmartDuration = () => {
     if ((mode !== 'script' && mode !== 'voice') || !script.trim()) return duration;
     const words = script.trim().split(/\s+/).length;
@@ -839,6 +847,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   };
 
   const handleSubmit = () => {
+    if (scriptOverLimit) return;
     const smartDuration = (mode === 'script' || mode === 'voice') ? getSmartDuration() : duration;
     onSubmit({
       mode: mode === 'voice' ? 'script' : mode,

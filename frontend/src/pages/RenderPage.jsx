@@ -21,7 +21,7 @@ const CAPTION_STYLES = [
 
 const MAX_POLL_MINUTES = {
   '30s':   5, 'auto':  5, '1min':  8, '2min':  12,
-  '3min':  18, '4min':  22, '5min':  28, '8min':  40, '10min': 50,
+  '3min':  18, '4min':  22, '5min':  28, '8min':  55, '10min': 90,
 };
 
 function authHeaders() {
