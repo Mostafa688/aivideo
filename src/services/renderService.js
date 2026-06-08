@@ -137,7 +137,7 @@ function trimAndScale(input, output, duration, w, h) {
         '-r', '30',
         '-c:v', 'libx264',
         '-crf', '16',
-        '-preset', 'slow',
+        '-preset', 'fast',
         '-profile:v', 'high',
         '-level', '4.1',
         '-b:v', '4M',
@@ -183,7 +183,7 @@ function concatVideos(listFile, output) {
       .outputOptions([
         '-c:v', 'libx264',
         '-crf', '16',
-        '-preset', 'slow',
+        '-preset', 'fast',
         '-profile:v', 'high',
         '-level', '4.1',
         '-b:v', '4M',
@@ -353,7 +353,7 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
           .outputOptions([
             '-vf', `subtitles='${safeAss}':fontsdir='${path.dirname(fontfile)}'`,
             '-c:a', 'copy',
-            '-c:v', 'libx264', '-crf', '16', '-preset', 'slow',
+            '-c:v', 'libx264', '-crf', '16', '-preset', 'fast',
             '-profile:v', 'high', '-level', '4.1',
             '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
             '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
@@ -396,7 +396,7 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       .videoFilters(filters.join(','))
       .outputOptions([
         '-c:a', 'copy',
-        '-c:v', 'libx264', '-crf', '16', '-preset', 'slow',
+        '-c:v', 'libx264', '-crf', '16', '-preset', 'fast',
         '-profile:v', 'high', '-level', '4.1',
         '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
         '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
@@ -730,7 +730,7 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
             '-c:a', 'copy',
             '-c:v', 'libx264',
             '-crf', '16',
-            '-preset', 'slow',
+            '-preset', 'fast',
             '-profile:v', 'high',
             '-level', '4.1',
             '-b:v', '4M',
@@ -792,7 +792,7 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
         '-c:a', 'copy',
         '-c:v', 'libx264',
         '-crf', '16',
-        '-preset', 'slow',
+        '-preset', 'fast',
         '-profile:v', 'high',
         '-level', '4.1',
         '-b:v', '4M',
