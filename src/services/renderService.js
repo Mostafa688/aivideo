@@ -225,7 +225,7 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
     const transType = transTypes[i % transTypes.length];
     try {
       execSync(
-        `ffmpeg --i "${current}" -i "${slideFiles[i]}"` +
+        `ffmpeg -i "${current}" -i "${slideFiles[i]}"` +
         ` -filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=${TRANSITION_DURATION}:offset=${offset}[v]"` +
         ` -map "[v]" -r 30 -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${transOut}"`,
         { stdio: 'pipe' }
@@ -242,7 +242,7 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
       fs.writeFileSync(tmpList, listContent);
       try {
         execSync(
-          `ffmpeg --f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${fallbackOut}"`,
+          `ffmpeg -f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${fallbackOut}"`,
           { stdio: 'pipe' }
         );
         current = fallbackOut;
@@ -499,7 +499,7 @@ function addWatermark(inputFile, outputFile) {
   return new Promise((resolve) => {
     try {
       execSync(
-        `ffmpeg --i "${inputFile}" -vf "${filterStr}" -c:a copy -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputFile}"`,
+        `ffmpeg -i "${inputFile}" -vf "${filterStr}" -c:a copy -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputFile}"`,
         { stdio: 'pipe' }
       );
       console.log('[Watermark] ✅ Done');
