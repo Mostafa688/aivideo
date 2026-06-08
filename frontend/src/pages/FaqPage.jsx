@@ -53,6 +53,10 @@ const faqs = [
         q: 'هل هناك نسخة مجانية؟',
         a: 'نعم، الباقة المجانية تتيح لك تجربة المنصة بعدد محدود من الكريديت أسبوعياً.',
       },
+      {
+        q: 'هل باقة Max تفتح كل النماذج؟',
+        a: 'لا، باقة Max تمنحك أعلى كريديت أسبوعي وتفتح Model 1 و Model 2 (Pexels Clips) فقط بشكل تلقائي.\n\nالنماذج الأخرى لها اشتراك منفصل:\n• Model 3 (AI Image): له خطط خاصة\n• Model 4 (Real Video): له خطط خاصة\n• Model 5 (Cinematic): له خطط خاصة\n\nكل نموذج له تسعيرة مستقلة لأن تكلفة توليده تختلف.',
+      },
     ],
   },
   {
@@ -112,7 +116,7 @@ const faqs = [
   },
 ];
 
-export default function FAQPage() {
+export default function FAQPage({ onBack }) {
   const [openItem, setOpenItem] = useState(null);
   const [search, setSearch]   = useState('');
 
@@ -126,6 +130,13 @@ export default function FAQPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0f)', color: 'var(--text, #fff)', fontFamily: "'DM Sans', sans-serif", padding: '40px 20px' }}>
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
+
+        {/* Back button */}
+        {onBack && (
+          <button onClick={onBack} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, marginBottom: 24, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            ← رجوع
+          </button>
+        )}
 
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 40 }}>

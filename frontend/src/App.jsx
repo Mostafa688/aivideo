@@ -18,6 +18,7 @@ import AffiliatePage from './pages/AffiliatePage.jsx';
 import ModelCinematicPage from './pages/ModelCinematicPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
 import ModelErivionPage from './pages/ModelErivionPage.jsx';
+import FAQPage from './pages/FAQPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -261,6 +262,7 @@ export default function App() {
       case 'refund':     setPage('refund'); break;
       case 'support':    setPage('support'); break;
       case 'about':      setPage('about'); break;
+      case 'faq':        setPage('faq'); break;
       case 'howto':      setPage('howto'); break;
       case 'templates':  setPage('templates'); break;
       case 'home':       setPage('input'); break;
@@ -280,6 +282,7 @@ export default function App() {
   };
 
   if (!authChecked) return null;
+  if (page === 'faq') return <FAQPage onBack={() => setPage('input')} />;
   if (page === 'admin') return <AdminPage />;
   if (page === 'affiliate') return <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />;
   if (['terms','privacy','refund'].includes(page) && !user) return <SubPage page={page} onBack={() => { setPage('input'); window.history.replaceState({}, '', '/'); }} />;
