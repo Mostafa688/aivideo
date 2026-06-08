@@ -178,26 +178,6 @@ app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'tem
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
 
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'email required' });
-
-    const { rows } = await pool.query(
-      `UPDATE users
-       SET weekly_credits_used = 0,
-           videos_this_week = 0,
-           last_reset_at = NOW()
-       WHERE email = $1
-       RETURNING email, plan`,
-      [email]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'User not found' });
-    console.log(`[Admin] Credits reset for ${email} by admin ${adminUser.email}`);
-    res.json({ success: true, message: `Credits reset for ${rows[0].email}` });
-  } catch (err) {
-    console.error('[Admin] Reset credits error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
