@@ -10,25 +10,7 @@ import fs from 'fs';
 import { generateScenesStream } from './services/scriptService.js';
 import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/mediaService.js';
 import { generateVoiceover, VOICE_OPTIONS } from './services/voiceService.js';
-import { fork } from 'child_process';
-
-// ── renderVideoInWorker: runs FFmpeg in a separate process ─────────────────
-function renderVideoInWorker(job) {
-  return new Promise((resolve, reject) => {
-    const worker = fork(new URL('./renderWorker.js', import.meta.url).pathname, [], {
-      stdio: 'inherit',
-    });
-    worker.on('message', (msg) => {
-      if (msg.success) resolve(msg.videoPath);
-      else reject(new Error(msg.error || 'Worker render failed'));
-    });
-    worker.on('error', (err) => reject(err));
-    worker.on('exit', (code) => {
-      if (code !== 0) reject(new Error(`Worker exited with code ${code}`));
-    });
-    worker.send(job);
-  });
-}
+import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
@@ -362,7 +344,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
       activeRenderCount++;
       console.log(`[Render] Active renders: ${activeRenderCount}`);
       try {
-        const videoPath = await renderVideoInWorker({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' });
+        const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' });
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
       } catch (jobErr) {
         setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
