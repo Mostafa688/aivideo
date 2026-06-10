@@ -540,11 +540,13 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
             </>
           )}
           {mode === 'script' && (
+            <>
             <textarea value={script} onChange={e => setScript(e.target.value)} placeholder="Paste your script here..." rows={6}
               style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: 1.65 }} />
             <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'rgba(255,255,255,0.3)', marginTop:6, margin:'6px 0 0' }}>
               {scriptCharCount} / {MAX_SCRIPT_CHARS} حرف{scriptOverLimit ? ' — النص طويل جداً! الحد 1800 حرف (3 دقائق)' : ''}
             </p>
+            </>
           )}
           {mode === 'voice' && (
             <div>
