@@ -258,11 +258,15 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
     return d === '30s' && !trialUsed; // trial = 30s only
   };
 
-  const canSubmit = inputMode === 'idea'
+  const MAX_SCRIPT_CHARS = 3000;
+  const scriptCharCount = script.length;
+  const scriptOverLimit = inputMode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
+
+  const canSubmit = (inputMode === 'idea'
     ? idea.trim().length > 10
     : inputMode === 'voice'
     ? false
-    : script.trim().length > 30;
+    : script.trim().length > 30) && !scriptOverLimit;
 
   const generateScenes = async () => {
     setGenerating(true); setError('');
@@ -443,8 +447,10 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           )}
 
           {inputMode !== 'voice' && (
-            <p style={{ fontSize:11, color:'var(--text3)', marginTop:6 }}>
-              {inputMode === 'idea' ? `${idea.length} characters` : `${script.split(/\s+/).filter(Boolean).length} words — recommended ${imageCount * 12}+ words`}
+            <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'var(--text3)', marginTop:6 }}>
+              {inputMode === 'idea'
+                ? `${idea.length} characters`
+                : `${scriptCharCount} / ${MAX_SCRIPT_CHARS} حرف${scriptOverLimit ? ' — النص طويل جداً! الحد 3000 حرف (5 دقائق)' : ''}`}
             </p>
           )}
         </div>

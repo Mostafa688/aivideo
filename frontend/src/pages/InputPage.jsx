@@ -273,7 +273,11 @@ function MapVideoForm({ onSubmit, onBack }) {
   const [mapStyle, setMapStyle] = useState('dark');
   const [voice, setVoice]       = useState('male_american');
 
-  const canSubmit = mode === 'idea' ? idea.trim().length > 5 : mode === 'voice' ? !!voiceAudioUrl : script.trim().length > 20;
+  const MAX_SCRIPT_CHARS = 3000;
+  const scriptCharCount = script.length;
+  const scriptOverLimit = mode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
+
+  const canSubmit = (mode === 'idea' ? idea.trim().length > 5 : mode === 'voice' ? !!voiceAudioUrl : script.trim().length > 20) && !scriptOverLimit;
 
   const handleSubmit = () => {
     onSubmit({
@@ -326,8 +330,8 @@ function MapVideoForm({ onSubmit, onBack }) {
               <p style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>Your Script</p>
               <textarea value={script} onChange={e => setScript(e.target.value)} className="map-input" placeholder="Write your full narration script here. Mention countries and regions — the AI will automatically highlight them on the map as your story unfolds..." rows={8} style={{ width:'100%', resize:'vertical', padding:'12px 14px', lineHeight:1.65, fontFamily:'inherit', fontSize:14, minHeight:180, outline:'none' }} autoFocus />
               <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'rgba(255,255,255,0.3)', marginTop:6 }}>
-                {scriptWordCount} / {MAX_SCRIPT_WORDS} words
-                {scriptOverLimit && <span style={{ marginRight:6, fontWeight:700 }}> — النص طويل جداً! قلل للـ {MAX_SCRIPT_WORDS} كلمة كحد أقصى (8 دقائق)</span>}
+                {scriptCharCount} / {MAX_SCRIPT_CHARS} حرف
+                {scriptOverLimit && <span style={{ marginRight:6, fontWeight:700 }}> — النص طويل جداً! الحد الأقصى {MAX_SCRIPT_CHARS} حرف (5 دقائق)</span>}
               </p>
             </div>
           )}
@@ -825,12 +829,12 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   const accentBg = isAI ? 'var(--accent-bg)' : 'rgba(6,182,212,0.1)';
   const modelLabel = isAI ? '🎨 Model 1 — AI Slices' : '🎬 Model 2 — Pexels Clips';
 
-  const canSubmit = mode === 'idea' ? idea.trim().length > 5 : mode === 'voice' ? false : script.trim().length > 20;
+  // ── Script length limit (max ~8 min = ~4800 chars) ─────────────────────────
+  const MAX_SCRIPT_CHARS = 4800;
+  const scriptCharCount = script.length;
+  const scriptOverLimit = mode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
 
-  // ── Script length limit (max ~8 min = ~1200 words) ─────────────────────────
-  const MAX_SCRIPT_WORDS = 1200;
-  const scriptWordCount = script.trim().split(/\s+/).filter(Boolean).length;
-  const scriptOverLimit = mode === 'script' && scriptWordCount > MAX_SCRIPT_WORDS;
+  const canSubmit = (mode === 'idea' ? idea.trim().length > 5 : mode === 'voice' ? false : script.trim().length > 20) && !scriptOverLimit;
 
   const getSmartDuration = () => {
     if ((mode !== 'script' && mode !== 'voice') || !script.trim()) return duration;
@@ -1076,7 +1080,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
                 placeholder={"Hook: Have you ever felt like giving up?\n\nBody: Every great journey starts with a single step...\n\nEnding: Start today. The only limit is you."} rows={7}
                 style={{ width:'100%', resize:'vertical', padding:'14px 16px', lineHeight:1.7, fontSize:14, outline:'none', boxSizing:'border-box' }} autoFocus />
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
-                <p style={{ fontSize:11, color:'rgba(255,255,255,0.25)', fontFamily:"'DM Sans', sans-serif", margin:0 }}>{script.length > 0 ? `${script.length} characters` : ''}</p>
+                <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'rgba(255,255,255,0.25)', fontFamily:"'DM Sans', sans-serif", margin:0 }}>{script.length > 0 ? `${script.length} / 4800 حرف${scriptOverLimit ? ' — النص طويل جداً! الحد 4800 حرف (8 دقائق)' : ''}` : ''}</p>
                 <button onClick={() => setShowScriptPrompts(p => !p)} style={{ background:'transparent', border:`1px solid ${accentColor}33`, borderRadius:8, padding:'4px 12px', fontSize:11, color:accentColor, cursor:'pointer', fontFamily:"'DM Sans', sans-serif" }}>{showScriptPrompts ? '▲ Hide' : '✨ Examples'}</button>
               </div>
               {showScriptPrompts && (

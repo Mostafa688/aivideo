@@ -404,12 +404,7 @@ export default function App() {
             <span>🎭</span><span>{credits.model5_usage !== undefined ? (credits.model5_plan_data?.videos_per_month || 0) - (credits.model5_usage || 0) : '–'}</span>
           </div>
         )}
-        {/* My Videos button */}
-        <button onClick={() => setShowVideos(true)}
-          style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(124,106,247,0.1)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:8, padding:'5px 10px', cursor:'pointer', color:'#a78bfa', fontSize:12, fontWeight:600 }}>
-          <span>🎬</span>
-          <span className="header-credits-label">My Videos</span>
-        </button>
+
         <div className="header-plan-badge" style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${planColor}22`, border: `1px solid ${planColor}55`, color: planColor, letterSpacing: '0.04em' }}>
           {userPlan.toUpperCase()}
         </div>
@@ -446,9 +441,7 @@ export default function App() {
         <button onClick={() => handleNavigate('templates')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color: page==='templates'?'#a78bfa':'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
           <span style={{ fontSize:18 }}>🎬</span><span>Templates</span>
         </button>
-        <button onClick={() => setShowVideos(true)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color:'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
-          <span style={{ fontSize:18 }}>📁</span><span>My Videos</span>
-        </button>
+
         <button onClick={() => setShowPricing(true)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color:'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
           <span style={{ fontSize:18 }}>💎</span><span>Pricing</span>
         </button>
