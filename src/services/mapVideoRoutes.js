@@ -8,6 +8,8 @@ const router = express.Router();
 
 // In-memory job store
 const jobs = {};
+let activeMapRenders = 0;
+const MAX_MAP_RENDERS = 1;
 
 function updateStatus(jobId, update) {
   if (!jobs[jobId]) return;
@@ -31,10 +33,15 @@ router.post('/generate', authMiddleware, async (req, res) => {
     const jobDir = path.join(process.cwd(), 'tmp', 'map-jobs', jobId);
     fs.mkdirSync(jobDir, { recursive: true });
 
+    if (activeMapRenders >= MAX_MAP_RENDERS) {
+      return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
+    }
+
     jobs[jobId] = { status: 'processing', progress: 5, log: ['🗺️ Job started...'] };
 
     // Run async
     (async () => {
+      activeMapRenders++;
       try {
         const outputPath = await renderMapVideo({ jobId, formData, jobDir, updateStatus });
 
@@ -49,6 +56,8 @@ router.post('/generate', authMiddleware, async (req, res) => {
         jobs[jobId].status = 'error';
         jobs[jobId].error = e.message;
         jobs[jobId].log = [...(jobs[jobId].log || []), `❌ Error: ${e.message}`];
+      } finally {
+        activeMapRenders--;
       }
     })();
 

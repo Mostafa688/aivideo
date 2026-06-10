@@ -588,10 +588,14 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
       show_upgrade: true,
     });
   }
+  if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+    return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
+  }
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false });
   (async () => {
+    activeRenderCount++;
     try {
       const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en' });
       if (quotaCheck.is_trial) {
@@ -603,6 +607,7 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
     } finally {
+      activeRenderCount--;
       scheduleRenderJobCleanup(renderJobId);
     }
   })();
@@ -792,10 +797,14 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
       show_upgrade: true,
     });
   }
+  if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+    return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
+  }
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing' });
   (async () => {
+    activeRenderCount++;
     try {
       let finalAudioUrl = audioUrl;
       if (!audioUrl && scenes?.length > 0) {
@@ -825,6 +834,7 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
       console.error('[Model4 Render] Failed:', jobErr.message);
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
     } finally {
+      activeRenderCount--;
       scheduleRenderJobCleanup(renderJobId);
     }
   })();
@@ -953,10 +963,14 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
       show_upgrade: true,
     });
   }
+  if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+    return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
+  }
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing' });
   (async () => {
+    activeRenderCount++;
     try {
       const videoPath = await renderModel5Video({ scenes, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s' });
       await incrementModel5Video(req.user.userId, duration || '30s');
@@ -964,6 +978,7 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
     } finally {
+      activeRenderCount--;
       scheduleRenderJobCleanup(renderJobId);
     }
   })();
