@@ -281,7 +281,6 @@ export default function App() {
   };
 
   if (!authChecked) return null;
-  if (page === 'faq') return <FAQPage onBack={() => setPage('input')} onNavigate={handleNavigate} />;
   if (page === 'admin') return <AdminPage />;
   if (page === 'affiliate') return <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />;
   if (['terms','privacy','refund'].includes(page) && !user) return <SubPage page={page} onBack={() => { setPage('input'); window.history.replaceState({}, '', '/'); }} />;
@@ -475,6 +474,7 @@ export default function App() {
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
         {['terms','privacy','support','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
+        {page === 'faq' && <FAQPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
       </div>
     </>
   );
