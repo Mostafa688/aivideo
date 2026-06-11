@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 
 const SUPPORTED_FORMATS = ['mp3', 'mp4', 'm4a', 'wav', 'webm', 'ogg', 'flac'];
-const MAX_SIZE_MB = 25;
 
 /**
  * VoiceUpload Component
@@ -14,6 +13,8 @@ export default function VoiceUpload({
   accentColor = '#7c6af7',
   accentBg = 'rgba(124,106,247,0.1)',
   videoLanguage = 'en',
+  model = '',
+  maxSizeMb = 10,
 }) {
   const [file, setFile]                   = useState(null);
   const [isDragging, setIsDragging]       = useState(false);
@@ -26,7 +27,7 @@ export default function VoiceUpload({
     if (!f) return 'No file selected';
     const ext = f.name.split('.').pop()?.toLowerCase();
     if (!SUPPORTED_FORMATS.includes(ext)) return `Unsupported format. Use: ${SUPPORTED_FORMATS.join(', ')}`;
-    if (f.size > MAX_SIZE_MB * 1024 * 1024) return `File too large. Max size is ${MAX_SIZE_MB}MB.`;
+    if (f.size > maxSizeMb * 1024 * 1024) return `Audio too long. Max allowed is ${maxSizeMb === 8 ? '2 min 30 sec' : '3 min'}.`;
     return null;
   }
 
@@ -50,6 +51,7 @@ export default function VoiceUpload({
       const formData = new FormData();
       formData.append('audio', file);
       if (videoLanguage && videoLanguage !== 'auto') formData.append('language', videoLanguage);
+      if (model) formData.append('model', model);
 
       setProgress('Transcribing with Groq Whisper AI...');
 
@@ -113,7 +115,7 @@ export default function VoiceUpload({
           <>
             <div style={{ fontSize: 40, marginBottom: 10 }}>🎤</div>
             <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: 0 }}>Drop your audio here or click to browse</p>
-            <p style={{ fontSize: 11, color: 'var(--text3)', margin: '6px 0 0' }}>MP3, MP4, M4A, WAV, WebM, OGG, FLAC · Max {MAX_SIZE_MB}MB</p>
+            <p style={{ fontSize: 11, color: 'var(--text3)', margin: '6px 0 0' }}>MP3, M4A, WAV, WebM · Max {maxSizeMb === 8 ? '2:30 min' : '3 min'}</p>
           </>
         )}
       </div>

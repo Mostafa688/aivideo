@@ -483,6 +483,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
               accentColor="#f59e0b"
               accentBg="rgba(245,158,11,0.1)"
               videoLanguage={videoLanguage}
+              model="model3"
+              maxSizeMb={10}
               onTranscribed={(text, audioUrl) => {
                 setScript(text);
                 setVoiceAudioUrl(audioUrl);

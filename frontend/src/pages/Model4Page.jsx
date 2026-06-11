@@ -335,11 +335,17 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
 
   const handleVoiceUpload = async (file) => {
     if (!file) return;
+    // Model 4 max: 2min 30sec ≈ 8MB
+    if (file.size > 8 * 1024 * 1024) {
+      setError('Audio too long. Maximum allowed for Model 4 is 2 minutes 30 seconds.');
+      return;
+    }
     setVoiceFile(file); setTranscribing(true); setError('');
     try {
       const fd = new FormData();
       fd.append('audio', file);
       fd.append('language', videoLanguage);
+      fd.append('model', 'model4');
       const res = await fetch('/api/transcribe', { method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }, body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Transcription failed');
