@@ -345,7 +345,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         </div>
         <div style={{ marginBottom:20 }}>
           <h2 style={{ fontSize:24, fontWeight:900, color:'#fff', margin:'0 0 6px', letterSpacing:'-0.5px' }}>Review Cinematic Scenes</h2>
-          <p style={{ fontSize:13, color:'rgba(255,255,255,0.35)', margin:0 }}>Each scene = 5 seconds of AI-generated video with character consistency.</p>
+          <p style={{ fontSize:13, color:'rgba(255,255,255,0.35)', margin:0 }}>Each scene = {duration === '15s' ? '15' : '5'} seconds of AI-generated video with character consistency.</p>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
           {scenes.map((scene,i) => <SceneCard key={i} scene={scene} index={i} onChange={updated=>setScenes(s=>s.map((sc,idx)=>idx===i?updated:sc))} />)}
