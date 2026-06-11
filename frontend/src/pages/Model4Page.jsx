@@ -617,7 +617,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
             <textarea value={script} onChange={e => setScript(e.target.value)} placeholder="Paste your script here..." rows={6}
               style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: 1.65 }} />
             <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'rgba(255,255,255,0.3)', marginTop:6, margin:'6px 0 0' }}>
-              {scriptCharCount} / {MAX_SCRIPT_CHARS} حرف{scriptOverLimit ? ' — النص طويل جداً! الحد 1800 حرف (3 دقائق)' : (mode === 'script' && script.length > 20 ? ` ✨ ~${getSmartDuration()}` : '')}
+              {scriptCharCount} / {MAX_SCRIPT_CHARS} chars{scriptOverLimit ? ' — Too long! Max 1800 chars (3 min)' : (mode === 'script' && script.length > 20 ? ` · Auto: ${getSmartDuration()}` : '')}
             </p>
             </>
           )}
@@ -642,7 +642,12 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
         {/* Duration */}
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>DURATION & SCENES</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+          {(mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) && (
+            <div style={{ padding:'10px 16px', borderRadius:10, background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.3)', fontSize:13, color:'#c084fc', marginBottom:12, fontWeight:600 }}>
+              ✨ Auto-detected: <strong>{getSmartDuration()}</strong> based on script length
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, opacity: (mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) ? 0.4 : 1, pointerEvents: (mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) ? 'none' : 'auto' }}>
             {Object.entries(DURATION_CONFIG).map(([d, cfg]) => {
               const allowed = allowedDurations.includes(d);
               return (

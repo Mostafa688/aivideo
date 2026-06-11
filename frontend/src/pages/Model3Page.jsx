@@ -524,7 +524,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
             <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'var(--text3)', marginTop:6 }}>
               {inputMode === 'idea'
                 ? `${idea.length} characters`
-                : `${scriptCharCount} / ${MAX_SCRIPT_CHARS} حرف${scriptOverLimit ? ' — النص طويل جداً! الحد 3000 حرف (5 دقائق)' : ` ✨ ~${getSmartDuration()}`}`}
+                : `${scriptCharCount} / ${MAX_SCRIPT_CHARS} chars${scriptOverLimit ? ' — Too long! Max 3000 chars (5 min)' : (script.length > 20 ? ` · Auto: ${getSmartDuration()}` : '')}`}
             </p>
           )}
         </div>
@@ -532,7 +532,12 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         {/* Duration */}
         <div className="m3-card">
           <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:14 }}>⏱ Duration</p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {(inputMode === 'script' || inputMode === 'voice') && script.length > 20 && (
+            <div style={{ padding:'10px 16px', borderRadius:10, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', fontSize:13, color:'#f59e0b', marginBottom:14, fontWeight:600 }}>
+              ✨ Auto-detected: <strong>{getSmartDuration()}</strong> based on script length
+            </div>
+          )}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, opacity: (inputMode === 'script' || inputMode === 'voice') && script.length > 20 ? 0.4 : 1, pointerEvents: (inputMode === 'script' || inputMode === 'voice') && script.length > 20 ? 'none' : 'auto' }}>
             {ALL_DURATIONS.map(d => {
               const allowed = canUseDuration(d.value);
               const isTrial30 = !hasAccess && !trialUsed && d.value === '30s';
