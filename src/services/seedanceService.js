@@ -391,7 +391,7 @@ export async function renderModel5Video({
   const outputFile = 'video_' + id + '.mp4';
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
   const total = scenes.length;
-  const CLIP_SEC = 5;
+  const CLIP_SEC = duration === '15s' ? 15 : 5;
 
   console.log(`[Model5] START | ${total} scenes | ${ratio} | ${duration} | Seedance 2.0`);
 
