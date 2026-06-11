@@ -127,7 +127,7 @@ function downloadFile(url, dest) {
 
 function trimAndScale(input, output, duration, w, h) {
   return new Promise((resolve, reject) => {
-    const scaleFilter = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,unsharp=5:5:0.5:3:3:0.0`;
+    const scaleFilter = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`;
     ffmpeg(input)
       .inputOptions(['-stream_loop', '-1'])
       .duration(duration)
@@ -136,15 +136,13 @@ function trimAndScale(input, output, duration, w, h) {
         '-an',
         '-r', '30',
         '-c:v', 'libx264',
-        '-crf', '16',
-        '-preset', 'fast',
-        '-profile:v', 'high',
-        '-level', '4.1',
-        '-b:v', '4M',
-        '-maxrate', '6M',
-        '-bufsize', '8M',
+        '-crf', '23',
+        '-preset', 'ultrafast',
+        '-profile:v', 'baseline',
+        '-level', '3.1',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
+        '-threads', '2',
       ])
       .output(output)
       .on('end', resolve)
@@ -521,8 +519,11 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
   const secPerScene = (videoDuration + totalTransitionOverlap) / sceneCount;
   console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
 
-  const slideFiles = [];
-  for (let i = 0; i < scenes.length; i++) {
+  // ── Parallel scene processing (max 4 concurrent) ──────────────────────────
+  const CONCURRENCY = 4;
+  const slideFiles = new Array(scenes.length);
+
+  async function processScene(i) {
     const scene = scenes[i];
     const slideFile = path.join(TEMP_DIR, `slide_${id}_${i}.mp4`);
 
@@ -545,8 +546,17 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
     } else {
       await generateColorSlide(scene, slideFile, secPerScene, w, h);
     }
-    slideFiles.push(slideFile);
+    slideFiles[i] = slideFile;
     console.log(`[Render] Scene ${i + 1}/${sceneCount} done (${secPerScene.toFixed(1)}s)`);
+  }
+
+  // Process in batches of CONCURRENCY
+  for (let batch = 0; batch < scenes.length; batch += CONCURRENCY) {
+    const batchEnd = Math.min(batch + CONCURRENCY, scenes.length);
+    const batchPromises = [];
+    for (let i = batch; i < batchEnd; i++) batchPromises.push(processScene(i));
+    await Promise.all(batchPromises);
+    console.log(`[Render] Batch ${Math.floor(batch/CONCURRENCY)+1} done (scenes ${batch+1}-${batchEnd})`);
   }
 
   const concatFile = path.join(TEMP_DIR, `concat_${id}.mp4`);

@@ -168,8 +168,8 @@ app.use('/api/wan-video', wanVideoRouter);
 // ── Transcribe ─────────────────────────────────────────────────────────────
 app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Audio file required' });
-  const MAX_SIZE = 25 * 1024 * 1024;
-  if (req.file.size > MAX_SIZE) return res.status(400).json({ error: 'File too large. Max size is 25MB.' });
+  const MAX_SIZE = 10 * 1024 * 1024; // 10MB = ~3min audio max
+  if (req.file.size > MAX_SIZE) return res.status(400).json({ error: 'الملف الصوتي كبير جداً. الحد الأقصى 3 دقائق (10MB).' });
   const ext = req.file.originalname.split('.').pop()?.toLowerCase();
   const allowedExts = ['mp3', 'mp4', 'm4a', 'wav', 'webm', 'ogg', 'flac'];
   const allowedTypes = ['audio/mpeg','audio/mp4','audio/wav','audio/webm','audio/ogg','audio/flac','video/mp4','audio/x-m4a','audio/mp3','audio/x-wav'];

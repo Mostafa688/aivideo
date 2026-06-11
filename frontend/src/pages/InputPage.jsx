@@ -837,17 +837,17 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   const canSubmit = (mode === 'idea' ? idea.trim().length > 5 : mode === 'voice' ? false : script.trim().length > 20) && !scriptOverLimit;
 
   const getSmartDuration = () => {
-    if ((mode !== 'script' && mode !== 'voice') || !script.trim()) return duration;
-    const words = script.trim().split(/\s+/).length;
-    const estimatedSeconds = Math.round(words / 2.5);
-    if (estimatedSeconds <= 35) return '30s';
-    if (estimatedSeconds <= 70) return '1min';
-    if (estimatedSeconds <= 140) return '2min';
-    if (estimatedSeconds <= 200) return '3min';
-    if (estimatedSeconds <= 270) return '4min';
-    if (estimatedSeconds <= 330) return '5min';
-    if (estimatedSeconds <= 520) return '8min';
+    if (!script.trim()) return duration;
+    const chars = script.trim().length;
+    if (chars <= 240)  return '30s';
+    if (chars <= 480)  return '1min';
+    if (chars <= 960)  return '2min';
+    if (chars <= 1380) return '3min';
+    if (chars <= 2340) return '5min';
+    if (chars <= 3780) return '8min';
+    if (chars <= 4800) return '10min';
     return '10min';
+  };
   };
 
   const handleSubmit = () => {
@@ -1162,6 +1162,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
                       { val:'2min',  label:'2m',   sub:'17 scenes' },
                       { val:'3min',  label:'3m',   sub:'26 scenes' },
                       { val:'5min',  label:'5m',   sub:'42 scenes' },
+                      { val:'8min',  label:'8m',   sub:'56 scenes' },
                       { val:'10min', label:'10m',  sub:'70 scenes' },
                     ].map(d => (
                       <div key={d.val} className={`dur-option${(mode==='script'&&script.length>20?getSmartDuration():duration)===d.val?' active':''}`}
