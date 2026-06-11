@@ -18,6 +18,7 @@ import AffiliatePage from './pages/AffiliatePage.jsx';
 import ModelCinematicPage from './pages/ModelCinematicPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
 import ModelErivionPage from './pages/ModelErivionPage.jsx';
+import FAQPage from './pages/FAQPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
