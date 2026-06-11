@@ -168,8 +168,8 @@ app.use('/api/wan-video', wanVideoRouter);
 // ── Transcribe ─────────────────────────────────────────────────────────────
 app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Audio file required' });
-  const MAX_SIZE = 10 * 1024 * 1024; // 10MB = ~3min audio max
-  if (req.file.size > MAX_SIZE) return res.status(400).json({ error: 'الملف الصوتي كبير جداً. الحد الأقصى 3 دقائق (10MB).' });
+  const MAX_SIZE = 25 * 1024 * 1024;
+  if (req.file.size > MAX_SIZE) return res.status(400).json({ error: 'File too large. Max size is 25MB.' });
   const ext = req.file.originalname.split('.').pop()?.toLowerCase();
   const allowedExts = ['mp3', 'mp4', 'm4a', 'wav', 'webm', 'ogg', 'flac'];
   const allowedTypes = ['audio/mpeg','audio/mp4','audio/wav','audio/webm','audio/ogg','audio/flac','video/mp4','audio/x-m4a','audio/mp3','audio/x-wav'];
@@ -335,7 +335,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     const applyWatermark = planData.watermark !== false;
     // ── Concurrency Check ────────────────────────────────────────────────────
     if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
-      return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
+      return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
     }
 
     setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
@@ -589,7 +589,7 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
     });
   }
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
-    return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
+    return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
@@ -798,7 +798,7 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
     });
   }
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
-    return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
+    return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
@@ -964,7 +964,7 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     });
   }
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
-    return res.status(429).json({ error: 'server_busy', message: 'السيرفر مشغول بفيديو آخر حالياً. انتظر دقيقة وحاول مرة أخرى.' });
+    return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });

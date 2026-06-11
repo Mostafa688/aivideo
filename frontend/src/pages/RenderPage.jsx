@@ -379,8 +379,8 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
         data = await readJsonSafely(res);
         if (res.status === 429 && data.error === 'server_busy') {
           retryCount++;
-          if (retryCount > MAX_QUEUE_RETRIES) throw new Error('انتهت مهلة الانتظار. حاول مرة أخرى.');
-          setProgress('⏳ السيرفر مشغول بفيديو آخر... في الطابور');
+          if (retryCount > MAX_QUEUE_RETRIES) throw new Error('Server is busy. Please try again later.');
+          setProgress('⏳ Server is busy... waiting in queue');
           await delay(5000);
           continue;
         }
