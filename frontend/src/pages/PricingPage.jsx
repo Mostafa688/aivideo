@@ -37,7 +37,7 @@ const PLANS = [
     name: 'Pro',
     icon: '⚡',
     price_monthly: 100,
-    price_first_month: 50,
+    price_first_month: null,
     price_yearly: 720,
     price_yearly_monthly: 60,
     price_usd_monthly: 5,
@@ -68,7 +68,7 @@ const PLANS = [
     name: 'Plus',
     icon: '🚀',
     price_monthly: 220,
-    price_first_month: 110,
+    price_first_month: null,
     price_yearly: 1584,
     price_yearly_monthly: 132,
     price_usd_monthly: 11,
@@ -99,7 +99,7 @@ const PLANS = [
     name: 'Max',
     icon: '👑',
     price_monthly: 550,
-    price_first_month: 275,
+    price_first_month: null,
     price_yearly: 3960,
     price_yearly_monthly: 330,
     price_usd_monthly: 18,
@@ -337,8 +337,7 @@ function PaymentModal({ plan, billing, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const amount = billing === 'yearly' ? plan.price_yearly : (plan.price_first_month || plan.price_monthly);
-  const isFirstMonth = billing === 'monthly' && plan.price_first_month;
+  const amount = billing === 'yearly' ? plan.price_yearly : plan.price_monthly;
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -386,7 +385,6 @@ function PaymentModal({ plan, billing, onClose, onSuccess }) {
                 <h3 style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{plan.icon} Upgrade to {plan.name}</h3>
                 <p style={{ fontSize: 13, color: '#9ca3af' }}>
                   {billing === 'yearly' ? 'Yearly' : 'Monthly'} · {amount} EGP
-                  {isFirstMonth && <span style={{ color: '#22c55e', marginLeft: 6 }}>🎉 First month offer!</span>}
                 </p>
               </div>
               <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
@@ -837,12 +835,7 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
     return plan.price_monthly + ' EGP/mo';
   };
 
-  const getOffer = (plan) => {
-    if (region === 'intl') return null;
-    if (plan.key === 'free' || billing === 'yearly') return null;
-    if (plan.price_first_month) return `First month: ${plan.price_first_month} EGP 🎉`;
-    return null;
-  };
+  const getOffer = (plan) => null;
 
   // ── Pending payment screen ──
   if (pendingRequest) {
