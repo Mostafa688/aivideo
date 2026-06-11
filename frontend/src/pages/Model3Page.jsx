@@ -328,6 +328,12 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
   };
   const scriptCharCount = script.length;
   const scriptOverLimit = inputMode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
+  // auto-set duration when script changes
+  React.useEffect(() => {
+    if (inputMode === 'script' && script.length > 20) {
+      setDuration(getSmartDuration());
+    }
+  }, [script, inputMode]);
 
   const canSubmit = (inputMode === 'idea'
     ? idea.trim().length > 10

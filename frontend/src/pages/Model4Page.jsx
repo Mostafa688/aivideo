@@ -521,6 +521,12 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
   };
   const scriptCharCount = script.length;
   const scriptOverLimit = mode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
+  // auto-set duration when script changes
+  React.useEffect(() => {
+    if (mode === 'script' && script.length > 20) {
+      setDuration(getSmartDuration());
+    }
+  }, [script, mode]);
 
   const canGenerate = !loading && !scriptOverLimit && (
     mode === 'idea' ? idea.trim().length > 5 :
