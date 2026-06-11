@@ -53,38 +53,48 @@ function sleep(ms) {
 // FIX: نقسم الاسكريبت لجمل/فقرات ونرجعها كـ array
 // ============================================================
 function splitScriptIntoSegments(script, count) {
-  // نقسم على سطور فاضية أو نقاط أو فواصل
-  let segments = script
-    .split(/\n{2,}/)          // فقرات مفصولة بسطر فاضي
-    .map(s => s.trim())
-    .filter(Boolean);
+  const clean = script.trim();
 
-  // لو الفقرات أقل من المطلوب، نقسم على جمل
+  // المرحلة 1: نقسم على فقرات (سطر فاضي)
+  let segments = clean.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+
+  // المرحلة 2: لو ناقص، نقسم على جمل
   if (segments.length < count) {
-    segments = script
-      .split(/(?<=[.!?؟])\s+/)
-      .map(s => s.trim())
-      .filter(Boolean);
+    segments = clean.split(/(?<=[.!?؟،])\s+/).map(s => s.trim()).filter(Boolean);
   }
 
-  // لو لسه أقل، نقسم على سطور
+  // المرحلة 3: لو ناقص، نقسم على سطور
   if (segments.length < count) {
-    segments = script
-      .split('\n')
-      .map(s => s.trim())
-      .filter(Boolean);
+    segments = clean.split('\n').map(s => s.trim()).filter(Boolean);
   }
 
-  // نوزع الـ segments على عدد المشاهد المطلوب
+  // المرحلة 4: fallback - نقسم على عدد الحروف (voice transcription بدون علامات ترقيم)
+  if (segments.length < count) {
+    const chunkSize = Math.ceil(clean.length / count);
+    segments = [];
+    let start = 0;
+    while (start < clean.length) {
+      let end = start + chunkSize;
+      if (end < clean.length) {
+        const spaceIdx = clean.lastIndexOf(' ', end);
+        if (spaceIdx > start) end = spaceIdx;
+      } else {
+        end = clean.length;
+      }
+      segments.push(clean.slice(start, end).trim());
+      start = end + 1;
+    }
+  }
+
+  // نوزع الـ segments على عدد المشاهد بالتساوي
   const result = [];
   const total = segments.length;
 
   for (let i = 0; i < count; i++) {
-    // نأخذ نسبة متساوية من الـ segments
     const startRatio = i / count;
     const endRatio   = (i + 1) / count;
     const startIdx   = Math.floor(startRatio * total);
-    const endIdx     = Math.floor(endRatio * total);
+    const endIdx     = Math.max(startIdx + 1, Math.floor(endRatio * total));
     const chunk      = segments.slice(startIdx, endIdx).join(' ').trim();
     result.push(chunk || segments[Math.min(i, total - 1)]);
   }
