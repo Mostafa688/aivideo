@@ -234,10 +234,10 @@ router.get('/payment/status', authMiddleware, async (req, res) => {
 });
 
 // ── أسعار الباقات للـ affiliate ───────────────────────────────────────────
-const PLAN_PRICES    = { pro: 50, plus: 100, max: 250 };
-const MODEL3_PRICES  = { m3_starter: 800, m3_pro: 1800, m3_max: 2500 };
-const MODEL4_PRICES  = { m4_plan1: 600, m4_plan2: 1000, m4_plan3: 2500, m4_starter: 600, m4_creator: 1000, m4_pro: 2500 };
-const MODEL5_PRICES = { mc_starter: 500, mc_pro: 900, mc_max: 1800 };
+const PLAN_PRICES    = { pro: 100, plus: 220, max: 550 };
+const MODEL3_PRICES  = { m3_starter: 450, m3_pro: 1100, m3_max: 2000 };
+const MODEL4_PRICES  = { m4_plan1: 600, m4_plan2: 1000, m4_plan3: 2800, m4_starter: 600, m4_creator: 1000, m4_pro: 2800 };
+const MODEL5_PRICES = { mc_starter: 550, mc_pro: 1050, mc_max: 2200 };
 router.get('/admin/approve', async (req, res) => {
   const { email, plan, billing, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');

@@ -2,10 +2,16 @@ import React, { useState, useRef, useEffect } from 'react';
 import VoiceUpload from './VoiceUpload.jsx';
 
 const MODEL3_PLANS_INFO = [
-  { key: 'm3_starter', name: 'Starter', icon: '🚀', color: '#f59e0b', price: '300 EGP/month', quota: { '30s': 5, '1min': 10, '3min': 0, '5min': 0 }, features: ['5 × 30s videos', '10 × 1min videos'] },
-  { key: 'm3_pro', name: 'Pro', icon: '⚡', color: '#7c6af7', price: '750 EGP/month', badge: 'Most Popular', quota: { '30s': 5, '1min': 5, '3min': 10, '5min': 0 }, features: ['5 × 30s videos', '5 × 1min videos', '10 × 3min videos'] },
-  { key: 'm3_max', name: 'Max', icon: '👑', color: '#22c55e', price: '1400 EGP/month', quota: { '30s': 0, '1min': 5, '3min': 5, '5min': 10 }, features: ['5 × 1min videos', '5 × 3min videos', '10 × 5min videos'] },
+  { key: 'm3_starter', name: 'Starter', icon: '🚀', color: '#f59e0b', price: '450 EGP/month', price_usd: 14, quota: { '30s': 5, '1min': 10, '3min': 0, '5min': 0 }, features: ['5 × 30s videos', '10 × 1min videos'] },
+  { key: 'm3_pro', name: 'Pro', icon: '⚡', color: '#7c6af7', price: '1,100 EGP/month', price_usd: 28, badge: 'Most Popular', quota: { '30s': 5, '1min': 5, '3min': 10, '5min': 0 }, features: ['5 × 30s videos', '5 × 1min videos', '10 × 3min videos'] },
+  { key: 'm3_max', name: 'Max', icon: '👑', color: '#22c55e', price: '2,000 EGP/month', price_usd: 45, quota: { '30s': 0, '1min': 5, '3min': 5, '5min': 10 }, features: ['5 × 1min videos', '5 × 3min videos', '10 × 5min videos'] },
 ];
+
+const MODEL3_GUMROAD = {
+  m3_starter: 'https://digiwhirl23.gumroad.com/l/osibu',
+  m3_pro:     'https://digiwhirl23.gumroad.com/l/zfdge',
+  m3_max:     'https://digiwhirl23.gumroad.com/l/fgydww',
+};
 
 const INSTAPAY_NUMBER = '01091917832';
 
@@ -17,6 +23,8 @@ function PlansModal({ currentPlan, onClose, usage, quotas, onNavigate }) {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [intlDone, setIntlDone] = useState(false);
+  const region = localStorage.getItem('erivion_region') || 'eg';
   const [copied, setCopied] = useState(false);
 
   const handleFile = (e) => {
@@ -47,7 +55,54 @@ function PlansModal({ currentPlan, onClose, usage, quotas, onNavigate }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000, padding:16 }}>
       <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
       <div style={{ background:'#0a0a12', border:'1px solid rgba(124,106,247,0.3)', borderRadius:24, width:'100%', maxWidth:500, maxHeight:'90vh', overflowY:'auto', animation:'slideUp 0.3s ease' }}>
-        {step === 'pending' ? (
+        {step === 'intl' ? (
+          <div style={{ padding:28 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
+              <button onClick={() => setStep('plans')} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>←</button>
+              <div>
+                <h3 style={{ fontSize:17, fontWeight:800, color:'#fff', margin:0 }}>{selectedPlan?.icon} {selectedPlan?.name} — International</h3>
+                <p style={{ fontSize:13, color:selectedPlan?.color, margin:'2px 0 0', fontWeight:700 }}>${selectedPlan?.price_usd}/month</p>
+              </div>
+              <button onClick={onClose} style={{ marginLeft:'auto', background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>✕</button>
+            </div>
+            {intlDone ? (
+              <div style={{ textAlign:'center', padding:'20px 0' }}>
+                <div style={{ fontSize:64, marginBottom:16 }}>⏳</div>
+                <h3 style={{ fontSize:20, fontWeight:800, color:'#fff', marginBottom:12 }}>Request Submitted!</h3>
+                <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:24 }}>We'll verify your Gumroad payment and activate your plan within <strong style={{ color:'#22c55e' }}>24 hours</strong>.</p>
+                <button onClick={onClose} style={{ background:selectedPlan?.color, color:'#fff', border:'none', borderRadius:12, padding:'13px 36px', fontWeight:700, fontSize:15, cursor:'pointer' }}>Got it! 🚀</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:14, padding:18, marginBottom:20 }}>
+                  <p style={{ fontSize:13, fontWeight:700, color:'#d1d5db', margin:'0 0 14px' }}>💳 How to subscribe:</p>
+                  {['Click "Pay on Gumroad" below', 'Complete payment with your card', "Come back here and click \"I've Paid\"", "We'll verify and activate within 24h"].map((s,i) => (
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                      <div style={{ width:22, height:22, borderRadius:'50%', background:`${selectedPlan?.color}22`, border:`1px solid ${selectedPlan?.color}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:selectedPlan?.color, flexShrink:0 }}>{i+1}</div>
+                      <span style={{ fontSize:13, color:'#d1d5db' }}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+                <a href={MODEL3_GUMROAD[selectedPlan?.key]} target="_blank" rel="noreferrer"
+                  style={{ display:'block', width:'100%', padding:'14px', borderRadius:12, background:`linear-gradient(135deg, ${selectedPlan?.color}, ${selectedPlan?.color}bb)`, color: selectedPlan?.color === '#f59e0b' || selectedPlan?.color === '#22c55e' ? '#000' : '#fff', fontWeight:700, fontSize:15, textAlign:'center', textDecoration:'none', marginBottom:10, boxSizing:'border-box' }}>
+                  🔗 Pay on Gumroad — ${selectedPlan?.price_usd}
+                </a>
+                <button onClick={async () => {
+                  try {
+                    const res = await fetch('/api/auth/intl-payment/request', {
+                      method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+localStorage.getItem('token') },
+                      body: JSON.stringify({ planKey: selectedPlan?.key, planName: 'Model 3 ' + selectedPlan?.name, usdPrice: selectedPlan?.price_usd }),
+                    });
+                    if (res.ok) setIntlDone(true);
+                  } catch(e) {}
+                }}
+                  style={{ width:'100%', padding:'13px', borderRadius:12, border:`1px solid ${selectedPlan?.color}44`, background:'rgba(255,255,255,0.04)', color:selectedPlan?.color, fontWeight:700, fontSize:14, cursor:'pointer' }}>
+                  ✅ I've Paid — Notify Admin
+                </button>
+              </>
+            )}
+          </div>
+        ) : step === 'pending' ? (
           <div style={{ padding:40, textAlign:'center' }}>
             <div style={{ fontSize:64, marginBottom:16 }}>⏳</div>
             <h3 style={{ fontSize:20, fontWeight:800, color:'#fff', marginBottom:12 }}>Request Received!</h3>
@@ -119,7 +174,10 @@ function PlansModal({ currentPlan, onClose, usage, quotas, onNavigate }) {
             )}
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               {MODEL3_PLANS_INFO.map(plan => (
-                <div key={plan.key} onClick={() => { setSelectedPlan(plan); setStep('payment'); }}
+                <div key={plan.key} onClick={() => {
+                  if (region === 'intl') { setSelectedPlan(plan); setStep('intl'); }
+                  else { setSelectedPlan(plan); setStep('payment'); }
+                }}
                   style={{ padding:'18px', borderRadius:14, cursor:'pointer', background: currentPlan === plan.key ? `rgba(${plan.color === '#22c55e' ? '34,197,94' : plan.color === '#7c6af7' ? '124,106,247' : '245,158,11'},0.1)` : '#111120', border:`1px solid ${plan.color}${currentPlan === plan.key ? '88' : '33'}`, transition:'all 0.2s', position:'relative' }}>
                   {plan.badge && <div style={{ position:'absolute', top:10, right:10, padding:'2px 8px', borderRadius:999, background:`${plan.color}22`, fontSize:10, fontWeight:700, color:plan.color }}>{plan.badge}</div>}
                   {currentPlan === plan.key && <div style={{ position:'absolute', top:10, left:10, padding:'2px 8px', borderRadius:999, background:'rgba(34,197,94,0.2)', fontSize:10, fontWeight:700, color:'#22c55e' }}>✓ Current Plan</div>}
@@ -127,7 +185,7 @@ function PlansModal({ currentPlan, onClose, usage, quotas, onNavigate }) {
                     <span style={{ fontSize:22 }}>{plan.icon}</span>
                     <div>
                       <div style={{ fontSize:15, fontWeight:800, color:'#fff' }}>{plan.name}</div>
-                      <div style={{ fontSize:13, fontWeight:700, color:plan.color }}>{plan.price}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:plan.color }}>{region === 'intl' ? `$${plan.price_usd}/month` : plan.price}</div>
                     </div>
                   </div>
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>

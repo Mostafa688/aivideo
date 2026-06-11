@@ -3,10 +3,16 @@ import React, { useState, useEffect, useRef } from 'react';
 const INSTAPAY_NUMBER = import.meta.env.VITE_INSTAPAY_NUMBER || '01091917832';
 
 const MC_PLANS = [
-  { key:'mc_starter', name:'Starter', icon:'🎬', price_egp:400, price_usd:15, videos_15s:5, videos_30s:0, videos_1min:0, color:'#fb7185', glow:'rgba(251,113,133,0.3)', features:['5 × 15s cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
-  { key:'mc_pro', name:'Pro', icon:'🎥', price_egp:750, price_usd:28, videos_15s:0, videos_30s:5, videos_1min:0, badge:'Most Popular', color:'#e11d48', glow:'rgba(225,29,72,0.35)', features:['5 × 30s cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
-  { key:'mc_max', name:'Max', icon:'🏆', price_egp:1500, price_usd:55, videos_15s:0, videos_30s:0, videos_1min:5, color:'#9f1239', glow:'rgba(159,18,57,0.3)', features:['5 × 1min cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
+  { key:'mc_starter', name:'Starter', icon:'🎬', price_egp:550, price_usd:22, videos_15s:5, videos_30s:0, videos_1min:0, color:'#fb7185', glow:'rgba(251,113,133,0.3)', features:['5 × 15s cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
+  { key:'mc_pro', name:'Pro', icon:'🎥', price_egp:1050, price_usd:38, videos_15s:0, videos_30s:5, videos_1min:0, badge:'Most Popular', color:'#e11d48', glow:'rgba(225,29,72,0.35)', features:['5 × 30s cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
+  { key:'mc_max', name:'Max', icon:'🏆', price_egp:2200, price_usd:72, videos_15s:0, videos_30s:0, videos_1min:5, color:'#9f1239', glow:'rgba(159,18,57,0.3)', features:['5 × 1min cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
 ];
+
+const MC_GUMROAD = {
+  mc_starter: 'https://digiwhirl23.gumroad.com/l/dnkam',
+  mc_pro:     'https://digiwhirl23.gumroad.com/l/gohhdt',
+  mc_max:     'https://digiwhirl23.gumroad.com/l/ukgdl',
+};
 
 const VIDEO_STYLES = [
   { key:'cinematic',  label:'Cinematic',  emoji:'🎬', desc:'Dramatic · Film-like',   suffix:'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading' },
@@ -30,7 +36,9 @@ function PaymentModal({ onClose, fetchUsage }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [intlDone, setIntlDone] = useState(false);
   const fileRef = useRef();
+  const region = localStorage.getItem('erivion_region') || 'eg';
   const plan = MC_PLANS.find(p=>p.key===selectedPlan);
 
   const handleFile = (e) => {
@@ -61,6 +69,53 @@ function PaymentModal({ onClose, fetchUsage }) {
             <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:28 }}>We'll activate your Cinematic plan within a few hours.</p>
             <button onClick={()=>{ onClose(); if(fetchUsage) fetchUsage(); }} style={{ background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', border:'none', borderRadius:12, padding:'13px 36px', fontWeight:700, fontSize:15, cursor:'pointer' }}>Got it! 🚀</button>
           </div>
+        ) : step==='intl' ? (
+          <div style={{ padding:28 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
+              <button onClick={()=>setStep('select')} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:18 }}>←</button>
+              <div>
+                <h2 style={{ fontSize:18, fontWeight:900, margin:0, color:'#fff' }}>{plan?.icon} {plan?.name} — International</h2>
+                <p style={{ margin:0, fontSize:12, color:plan?.color }}>${plan?.price_usd}/month</p>
+              </div>
+              <button onClick={onClose} style={{ marginLeft:'auto', background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>✕</button>
+            </div>
+            {intlDone ? (
+              <div style={{ textAlign:'center', padding:'20px 0' }}>
+                <div style={{ fontSize:64, marginBottom:16 }}>⏳</div>
+                <h3 style={{ fontSize:20, fontWeight:800, color:'#fff', marginBottom:12 }}>Request Submitted!</h3>
+                <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:24 }}>We'll verify your Gumroad payment and activate your plan within <strong style={{ color:'#22c55e' }}>24 hours</strong>.</p>
+                <button onClick={onClose} style={{ background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', border:'none', borderRadius:12, padding:'13px 36px', fontWeight:700, fontSize:15, cursor:'pointer' }}>Got it! 🚀</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ background:'rgba(225,29,72,0.06)', border:'1px solid rgba(225,29,72,0.2)', borderRadius:14, padding:18, marginBottom:20 }}>
+                  <p style={{ fontSize:13, fontWeight:700, color:'#fb7185', margin:'0 0 14px' }}>💳 How to subscribe:</p>
+                  {['Click "Pay on Gumroad" below','Complete payment with your card',"Come back here and click \"I've Paid\"","We'll verify and activate within 24h"].map((s,i) => (
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                      <div style={{ width:22, height:22, borderRadius:'50%', background:'rgba(225,29,72,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#fb7185', flexShrink:0 }}>{i+1}</div>
+                      <span style={{ fontSize:13, color:'#d1d5db' }}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+                <a href={MC_GUMROAD[selectedPlan]} target="_blank" rel="noreferrer"
+                  style={{ display:'block', width:'100%', padding:'14px', borderRadius:12, background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', fontWeight:700, fontSize:15, textAlign:'center', textDecoration:'none', marginBottom:10, boxSizing:'border-box' }}>
+                  🔗 Pay on Gumroad — ${plan?.price_usd}
+                </a>
+                <button onClick={async()=>{
+                  try {
+                    const res = await fetch('/api/auth/intl-payment/request', {
+                      method:'POST', headers:authHeaders(),
+                      body:JSON.stringify({ planKey:selectedPlan, planName:'Cinematic '+plan?.name, usdPrice:plan?.price_usd }),
+                    });
+                    if(res.ok) setIntlDone(true);
+                  } catch(e){}
+                }}
+                  style={{ width:'100%', padding:'13px', borderRadius:12, border:'1px solid rgba(225,29,72,0.4)', background:'rgba(255,255,255,0.04)', color:'#fb7185', fontWeight:700, fontSize:14, cursor:'pointer' }}>
+                  ✅ I've Paid — Notify Admin
+                </button>
+              </>
+            )}
+          </div>
         ) : step==='select' ? (
           <div style={{ padding:28 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:28 }}>
@@ -77,7 +132,10 @@ function PaymentModal({ onClose, fetchUsage }) {
                   {p.badge && <div style={{ position:'absolute', top:-10, right:16, padding:'2px 12px', borderRadius:999, background:p.color, fontSize:10, fontWeight:800, color:'#fff' }}>{p.badge}</div>}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                     <span style={{ fontWeight:900, fontSize:17, color:selectedPlan===p.key?p.color:'#fff' }}>{p.icon} {p.name}</span>
-                    <span style={{ fontSize:22, fontWeight:900, color:'#22c55e' }}>{p.price_egp}<span style={{ fontSize:11, color:'#6b7280', fontWeight:400 }}> EGP</span></span>
+                    <span style={{ fontSize:22, fontWeight:900, color:'#22c55e' }}>
+                      {region === 'intl' ? `$${p.price_usd}` : p.price_egp}
+                      <span style={{ fontSize:11, color:'#6b7280', fontWeight:400 }}>{region === 'intl' ? ' USD' : ' EGP'}</span>
+                    </span>
                   </div>
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                     {p.videos_15s>0 && <span style={{ fontSize:11, color:'#9ca3af', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', padding:'2px 10px', borderRadius:20 }}>🎬 {p.videos_15s}×15s</span>}
@@ -87,8 +145,8 @@ function PaymentModal({ onClose, fetchUsage }) {
                 </div>
               ))}
             </div>
-            <button onClick={()=>setStep('pay')} style={{ width:'100%', background:`linear-gradient(135deg,#e11d48,#9f1239)`, color:'#fff', border:'none', borderRadius:12, padding:'15px', fontWeight:800, fontSize:16, cursor:'pointer', boxShadow:`0 4px 24px ${plan?.glow}` }}>
-              Subscribe to {plan?.name} — {plan?.price_egp} EGP →
+            <button onClick={()=> region === 'intl' ? setStep('intl') : setStep('pay')} style={{ width:'100%', background:`linear-gradient(135deg,#e11d48,#9f1239)`, color:'#fff', border:'none', borderRadius:12, padding:'15px', fontWeight:800, fontSize:16, cursor:'pointer', boxShadow:`0 4px 24px ${plan?.glow}` }}>
+              {region === 'intl' ? `Pay $${plan?.price_usd} — Gumroad →` : `Subscribe to ${plan?.name} — ${plan?.price_egp} EGP →`}
             </button>
           </div>
         ) : (
@@ -174,6 +232,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
   const [showPricing, setShowPricing] = useState(false);
   const pollRef = useRef(null);
   const timerRef = useRef(null);
+  const region = localStorage.getItem('erivion_region') || 'eg';
 
   useEffect(() => { fetchUsage(); }, []);
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
@@ -371,7 +430,10 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
                   {p.badge && <div style={{ position:'absolute', top:-10, left:'50%', transform:'translateX(-50%)', padding:'2px 10px', borderRadius:999, background:p.color, fontSize:9, fontWeight:800, color:'#fff', whiteSpace:'nowrap' }}>{p.badge}</div>}
                   <div style={{ fontSize:22, marginBottom:6 }}>{p.icon}</div>
                   <div style={{ fontSize:14, fontWeight:800, color:'#fff', marginBottom:6 }}>{p.name}</div>
-                  <div style={{ fontSize:20, fontWeight:900, color:p.color, marginBottom:8 }}>{p.price_egp}<span style={{ fontSize:10, color:'#6b7280' }}> EGP</span></div>
+                  <div style={{ fontSize:20, fontWeight:900, color:p.color, marginBottom:8 }}>
+                    {region === 'intl' ? `$${p.price_usd}` : p.price_egp}
+                    <span style={{ fontSize:10, color:'#6b7280' }}>{region === 'intl' ? ' USD' : ' EGP'}</span>
+                  </div>
                   {p.videos_15s>0 && <div style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>{p.videos_15s} × 15s</div>}
                   {p.videos_30s>0 && <div style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>{p.videos_30s} × 30s</div>}
                   {p.videos_1min>0 && <div style={{ fontSize:11, color:'#6b7280', marginBottom:8 }}>{p.videos_1min} × 1min</div>}

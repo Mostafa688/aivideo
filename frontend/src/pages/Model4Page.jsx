@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 const MODEL4_PLANS = {
-  m4_plan1: { name: 'Starter', price: 450, videos_30s: 10, videos_1min: 1, videos_3min: 0, badge: null },
-  m4_plan2: { name: 'Creator', price: 800, videos_30s: 3, videos_1min: 10, videos_3min: 0, badge: 'Most Popular' },
-  m4_plan3: { name: 'Pro', price: 2250, videos_30s: 3, videos_1min: 3, videos_3min: 10, badge: 'Best Value' },
+  m4_plan1: { name: 'Starter', price: 600, price_usd: 18, videos_30s: 10, videos_1min: 1, videos_3min: 0, badge: null },
+  m4_plan2: { name: 'Creator', price: 1000, price_usd: 28, videos_30s: 3, videos_1min: 10, videos_3min: 0, badge: 'Most Popular' },
+  m4_plan3: { name: 'Pro', price: 2800, price_usd: 72, videos_30s: 3, videos_1min: 3, videos_3min: 10, badge: 'Best Value' },
+};
+
+const MODEL4_GUMROAD = {
+  m4_plan1: 'https://digiwhirl23.gumroad.com/l/hqsejc',
+  m4_plan2: 'https://digiwhirl23.gumroad.com/l/ckvlgo',
+  m4_plan3: 'https://digiwhirl23.gumroad.com/l/vmzubx',
 };
 
 const DURATION_CONFIG = {
@@ -40,7 +46,9 @@ function PaymentModal({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [intlDone, setIntlDone] = useState(false);
   const fileRef = useRef();
+  const region = localStorage.getItem('erivion_region') || 'eg';
   const selected = MODEL4_PLANS[selectedPlan];
 
   const handleFile = (e) => {
@@ -81,6 +89,53 @@ function PaymentModal({ onClose }) {
             <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>We'll review your payment and activate your plan within a few hours.<br />You'll receive a confirmation email.</p>
             <button onClick={onClose} style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 32px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Got it!</button>
           </div>
+        ) : step === 'intl' ? (
+          <div style={{ padding: 28 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+              <button onClick={() => setStep('select')} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 20 }}>←</button>
+              <div>
+                <h3 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: 0 }}>🎬 {selected.name} — International</h3>
+                <p style={{ fontSize: 13, color: '#a855f7', margin: '2px 0 0', fontWeight: 700 }}>${selected.price_usd}/month</p>
+              </div>
+              <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 20 }}>✕</button>
+            </div>
+            {intlDone ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: 64, marginBottom: 16 }}>⏳</div>
+                <h3 style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginBottom: 12 }}>Request Submitted!</h3>
+                <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>We'll verify your Gumroad payment and activate your plan within <strong style={{ color: '#22c55e' }}>24 hours</strong>.</p>
+                <button onClick={onClose} style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 12, padding: '13px 36px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Got it! 🚀</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 14, padding: 18, marginBottom: 20 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: '#c084fc', margin: '0 0 14px' }}>💳 How to subscribe:</p>
+                  {['Click "Pay on Gumroad" below', 'Complete payment with your card', "Come back here and click \"I've Paid\"", "We'll verify and activate within 24h"].map((s, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#c084fc', flexShrink: 0 }}>{i + 1}</div>
+                      <span style={{ fontSize: 13, color: '#d1d5db' }}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+                <a href={MODEL4_GUMROAD[selectedPlan]} target="_blank" rel="noreferrer"
+                  style={{ display: 'block', width: '100%', padding: '14px', borderRadius: 12, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', fontWeight: 700, fontSize: 15, textAlign: 'center', textDecoration: 'none', marginBottom: 10, boxSizing: 'border-box' }}>
+                  🔗 Pay on Gumroad — ${selected.price_usd}
+                </a>
+                <button onClick={async () => {
+                  try {
+                    const res = await fetch('/api/auth/intl-payment/request', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
+                      body: JSON.stringify({ planKey: selectedPlan, planName: 'Model 4 ' + selected.name, usdPrice: selected.price_usd }),
+                    });
+                    if (res.ok) setIntlDone(true);
+                  } catch (e) {}
+                }}
+                  style={{ width: '100%', padding: '13px', borderRadius: 12, border: '1px solid rgba(168,85,247,0.4)', background: 'rgba(255,255,255,0.04)', color: '#c084fc', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                  ✅ I've Paid — Notify Admin
+                </button>
+              </>
+            )}
+          </div>
         ) : step === 'select' ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -99,9 +154,9 @@ function PaymentModal({ onClose }) {
                     <span style={{ fontWeight: 800, fontSize: 16, color: selectedPlan === key ? '#c084fc' : '#fff' }}>{plan.name}</span>
                     <div>
                       {plan.price_offer && <span style={{ fontSize: 12, color: '#4b5563', textDecoration: 'line-through', marginRight: 6 }}>{plan.price} EGP</span>}
-                      <span style={{ fontSize: 20, fontWeight: 900, color: '#22c55e' }}>{plan.price_offer || plan.price}</span>
-                      <span style={{ fontSize: 12, color: '#6b7280' }}> EGP</span>
-                      {plan.price_offer && <div style={{ fontSize: 10, color: '#f59e0b' }}>first month</div>}
+                      <span style={{ fontSize: 20, fontWeight: 900, color: '#22c55e' }}>{region === 'intl' ? `$${plan.price_usd}` : (plan.price_offer || plan.price)}</span>
+                      <span style={{ fontSize: 12, color: '#6b7280' }}>{region === 'intl' ? ' USD' : ' EGP'}</span>
+                      {plan.price_offer && region !== 'intl' && <div style={{ fontSize: 10, color: '#f59e0b' }}>first month</div>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -113,9 +168,9 @@ function PaymentModal({ onClose }) {
                 </div>
               ))}
             </div>
-            <button onClick={() => setStep('pay')}
+            <button onClick={() => region === 'intl' ? setStep('intl') : setStep('pay')}
               style={{ width: '100%', background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 4px 20px rgba(168,85,247,0.4)' }}>
-              Subscribe to {MODEL4_PLANS[selectedPlan].name} →
+              {region === 'intl' ? `Pay $${MODEL4_PLANS[selectedPlan].price_usd} — Gumroad →` : `Subscribe to ${MODEL4_PLANS[selectedPlan].name} →`}
             </button>
           </>
         ) : (
@@ -540,13 +595,11 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
             </>
           )}
           {mode === 'script' && (
-            <>
             <textarea value={script} onChange={e => setScript(e.target.value)} placeholder="Paste your script here..." rows={6}
               style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: 1.65 }} />
             <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'rgba(255,255,255,0.3)', marginTop:6, margin:'6px 0 0' }}>
               {scriptCharCount} / {MAX_SCRIPT_CHARS} حرف{scriptOverLimit ? ' — النص طويل جداً! الحد 1800 حرف (3 دقائق)' : ''}
             </p>
-            </>
           )}
           {mode === 'voice' && (
             <div>
