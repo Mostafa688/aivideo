@@ -848,7 +848,6 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
     if (chars <= 4800) return '10min';
     return '10min';
   };
-  };
 
   const handleSubmit = () => {
     if (scriptOverLimit) return;
