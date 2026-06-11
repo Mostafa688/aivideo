@@ -6,7 +6,7 @@ function authHeaders() {
 
 function Section({ title, icon, children, danger }) {
   return (
-    <div style={{
+    <div className="s-section" style={{
       background: danger ? 'rgba(248,113,113,0.04)' : 'var(--bg2)',
       border: `1px solid ${danger ? 'rgba(248,113,113,0.25)' : 'var(--border)'}`,
       borderRadius: 16, padding: 24, marginBottom: 16,
@@ -21,12 +21,12 @@ function Section({ title, icon, children, danger }) {
 
 function Row({ label, desc, children, last }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '13px 0', borderBottom: last ? 'none' : '1px solid var(--border)' }}>
+    <div className="s-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '13px 0', borderBottom: last ? 'none' : '1px solid var(--border)' }}>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
         {desc && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2, lineHeight: 1.5 }}>{desc}</div>}
       </div>
-      <div style={{ flexShrink: 0 }}>{children}</div>
+      <div className="s-row-control" style={{ flexShrink: 0 }}>{children}</div>
     </div>
   );
 }
@@ -142,11 +142,33 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
         .s-content { animation: fadeIn 0.2s ease; }
         .s-nav-btn { transition: all 0.15s !important; }
         .s-nav-btn:hover { background: var(--bg3) !important; }
+
+        /* Mobile nav: horizontal tabs instead of sidebar */
+        @media (max-width: 600px) {
+          .s-layout { flex-direction: column !important; padding: 12px !important; gap: 12px !important; }
+          .s-sidebar { width: 100% !important; }
+          .s-sidebar-inner { display: flex !important; flex-direction: row !important; overflow-x: auto !important; border-radius: 12px !important; scrollbar-width: none !important; }
+          .s-sidebar-inner::-webkit-scrollbar { display: none; }
+          .s-nav-btn { flex-shrink: 0 !important; padding: 10px 14px !important; border-left: none !important; border-bottom: 3px solid transparent !important; white-space: nowrap !important; }
+          .s-nav-btn-active { border-bottom-color: var(--accent) !important; border-left-color: transparent !important; }
+          .s-row { flex-direction: column !important; align-items: flex-start !important; gap: 10px !important; }
+          .s-row-control { width: 100% !important; }
+          .s-region-btns { flex-direction: column !important; width: 100% !important; }
+          .s-region-btns button { width: 100% !important; text-align: center !important; }
+          .s-sub-row { flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; }
+          .s-sub-row button { width: 100% !important; }
+          .s-name-row { flex-direction: column !important; }
+          .s-name-row button { width: 100% !important; }
+          .s-export-row { flex-direction: column !important; gap: 10px !important; }
+          .s-export-row button { width: 100% !important; }
+          .s-header { padding: 12px 14px !important; }
+          .s-section { padding: 16px !important; }
+        }
       `}</style>
 
       {/* Header */}
-      <div style={{ borderBottom: '1px solid var(--border)', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg2)' }}>
-        <button onClick={onBack} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text3)', cursor: 'pointer', fontSize: 13, padding: '7px 14px', fontWeight: 600 }}>
+      <div className="s-header" style={{ borderBottom: '1px solid var(--border)', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg2)' }}>
+        <button onClick={onBack} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text3)', cursor: 'pointer', fontSize: 13, padding: '7px 14px', fontWeight: 600, flexShrink: 0 }}>
           ← Back
         </button>
         <div>
@@ -155,13 +177,14 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flex: 1, maxWidth: 960, margin: '0 auto', width: '100%', padding: '24px 20px', gap: 20 }}>
+      <div className="s-layout" style={{ display: 'flex', flex: 1, maxWidth: 960, margin: '0 auto', width: '100%', padding: '24px 20px', gap: 20, boxSizing: 'border-box' }}>
 
         {/* Sidebar */}
-        <div style={{ width: 190, flexShrink: 0 }}>
-          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', position: 'sticky', top: 24 }}>
+        <div className="s-sidebar" style={{ width: 190, flexShrink: 0 }}>
+          <div className="s-sidebar-inner" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', position: 'sticky', top: 24 }}>
             {NAV.map(item => (
-              <button key={item.key} className="s-nav-btn"
+              <button key={item.key}
+                className={`s-nav-btn${active === item.key ? ' s-nav-btn-active' : ''}`}
                 onClick={() => setActive(item.key)}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10,
@@ -200,7 +223,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                 {/* Display Name */}
                 <div style={{ marginBottom: 16 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', display: 'block', marginBottom: 7 }}>Display Name</label>
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div className="s-name-row" style={{ display: 'flex', gap: 10 }}>
                     <input value={displayName} onChange={e => setDisplayName(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleSaveName()}
                       placeholder="Your name"
@@ -225,7 +248,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
 
               {/* Subscription */}
               <Section title="Subscription" icon="💳">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="s-sub-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
                       {user?.plan ? user.plan.toUpperCase() : 'Free'} Plan
@@ -245,7 +268,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
               {/* Pricing Region */}
               <Section title="Pricing Region" icon="🌍">
                 <Row label="Your Region" desc="Affects which currency is shown on pricing pages" last>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="s-region-btns" style={{ display: 'flex', gap: 8 }}>
                     {[{ key: 'eg', label: '🇪🇬 Egypt (EGP)' }, { key: 'intl', label: '🌐 International (USD)' }].map(r => (
                       <button key={r.key} onClick={() => setRegion(r.key)}
                         style={{ padding: '8px 14px', borderRadius: 8, border: `2px solid ${region === r.key ? 'var(--accent)' : 'var(--border)'}`, background: region === r.key ? 'var(--accent-bg)' : 'var(--bg3)', color: region === r.key ? 'var(--accent)' : 'var(--text3)', cursor: 'pointer', fontSize: 12, fontWeight: region === r.key ? 700 : 500 }}>
@@ -333,7 +356,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
               ) : (
                 <>
                   {/* Export data */}
-                  <div style={{ padding: 16, background: 'var(--bg2)', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="s-export-row" style={{ padding: 16, background: 'var(--bg2)', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>📦 Export My Data</div>
                       <div style={{ fontSize: 12, color: 'var(--text3)' }}>Request a copy of all your account data</div>
