@@ -197,6 +197,7 @@ const MODEL4_PLANS_LIST = [
 
 // ─── Model 5 Cinematic Plans ──────────────────────────────────────────────
 const MC_PLANS_LIST = [
+  {
     key: 'mc_starter',
     name: 'Starter',
     icon: '🎭',
