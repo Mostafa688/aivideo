@@ -732,4 +732,55 @@ router.get('/model5-reject', async (req, res) => {
   } catch {}
   res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2 style="color:#ef4444">❌ Rejected</h2><p>${email}</p></body></html>`);
 });
+// ── Update display name ──────────────────────────────────────────────────
+router.post('/update-profile', authMiddleware, async (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+  try {
+    await pool.query('UPDATE users SET name = $1 WHERE id = $2', [name.trim(), req.user.userId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update name' });
+  }
+});
+
+// ── Change password ──────────────────────────────────────────────────────
+router.post('/change-password', authMiddleware, async (req, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  try {
+    const bcrypt = (await import('bcryptjs')).default;
+    const hash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user.userId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update password' });
+  }
+});
+
+// ── Delete account ───────────────────────────────────────────────────────
+router.delete('/delete-account', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [req.user.userId]);
+    const email = rows[0]?.email;
+    await pool.query('DELETE FROM users WHERE id = $1', [req.user.userId]);
+    // notify admin
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion <noreply@erivion.net>',
+          to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+          subject: '🗑️ Account Deleted — ' + email,
+          html: `<div style="font-family:sans-serif;padding:24px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#f87171">Account Deleted</h3><p>Email: <strong>${email}</strong></p><p>Time: ${new Date().toISOString()}</p></div>`,
+        }),
+      });
+    } catch {}
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 export default router;
