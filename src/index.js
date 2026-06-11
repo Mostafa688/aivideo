@@ -887,7 +887,7 @@ app.get('/api/model4/usage', authMiddleware, async (req, res) => {
 app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, characters, duration, videoStyle, styleSuffix } = req.body;
   if (!idea) return res.status(400).json({ error: 'idea required' });
-  const sceneCount = duration === '1min' ? 12 : duration === '30s' ? 6 : 3;
+  const sceneCount = duration === '1min' ? 12 : duration === '30s' ? 6 : 1;
 
   // بناء وصف الشخصيات بشكل مفصل وثابت
   const characterDescs = (characters || []).filter(c => c.prompt?.trim());
