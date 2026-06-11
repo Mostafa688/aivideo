@@ -306,7 +306,7 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
 }
 
 // ✅ FIX: إضافة videoLanguage parameter عشان يختار الفونت الصح
-function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9', videoLanguage = 'en') {
+function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoType = 'education', captionStyle = null, ratio = '16:9', videoLanguage = 'en', applyWm = false) {
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
   const fontfile = style.fontfile || getFontPath(videoLanguage);
@@ -349,9 +349,9 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       return new Promise((resolve) => {
         ffmpeg(videoFile)
           .outputOptions([
-            '-vf', `subtitles='${safeAss}':fontsdir='${path.dirname(fontfile)}'`,
+            '-vf', `subtitles='${safeAss}':fontsdir='${path.dirname(fontfile)}',${applyWm ? getWatermarkFilter() : 'null'}`.replace(',null',''),
             '-c:a', 'copy',
-            '-c:v', 'libx264', '-crf', '16', '-preset', 'fast',
+            '-c:v', 'libx264', '-crf', '18', '-preset', 'fast',
             '-profile:v', 'high', '-level', '4.1',
             '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
             '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
@@ -389,12 +389,13 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       + `:enable='between(t,${chunk.start.toFixed(3)},${chunk.end.toFixed(3)})'`;
   });
 
+  const ltrFilters = applyWm ? [...filters, getWatermarkFilter()] : filters;
   return new Promise((resolve) => {
     ffmpeg(videoFile)
-      .videoFilters(filters.join(','))
+      .videoFilters(ltrFilters.join(','))
       .outputOptions([
         '-c:a', 'copy',
-        '-c:v', 'libx264', '-crf', '16', '-preset', 'fast',
+        '-c:v', 'libx264', '-crf', '18', '-preset', 'fast',
         '-profile:v', 'high', '-level', '4.1',
         '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
         '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
@@ -471,10 +472,9 @@ function getAudioDuration(audioFile) {
   }
 }
 
-function addWatermark(inputFile, outputFile) {
+function getWatermarkFilter() {
   const watermarkText = 'Erivion';
-
-  const filterStr = [
+  return [
     `drawtext=fontfile='${FONT_BOLD_PATH}'` +
     `:text='${watermarkText}'` +
     `:fontsize=90` +
@@ -483,7 +483,6 @@ function addWatermark(inputFile, outputFile) {
     `:y=(h-text_h)/2` +
     `:borderw=2` +
     `:bordercolor=black@0.10`,
-
     `drawtext=fontfile='${FONT_PATH}'` +
     `:text='© ${watermarkText}'` +
     `:fontsize=26` +
@@ -493,7 +492,10 @@ function addWatermark(inputFile, outputFile) {
     `:borderw=1` +
     `:bordercolor=black@0.40`,
   ].join(',');
+}
 
+function addWatermark(inputFile, outputFile) {
+  const filterStr = getWatermarkFilter();
   return new Promise((resolve) => {
     try {
       execSync(
@@ -688,7 +690,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 }
 
 // ── Real Captions using Whisper word timestamps ────────────────────────────
-async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio, videoLanguage) {
+async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio, videoLanguage, applyWm = false) {
   const styleName = captionStyle || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
@@ -736,10 +738,10 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
         const safeAssFile = assFile.replace(/\\/g, '/').replace(/:/g, '\\:');
         ffmpeg(videoFile)
           .outputOptions([
-            '-vf', `subtitles='${safeAssFile}':fontsdir='${path.dirname(fontfile)}'`,
+            '-vf', `subtitles='${safeAssFile}':fontsdir='${path.dirname(fontfile)}',${applyWm ? getWatermarkFilter() : 'null'}`.replace(',null',''),
             '-c:a', 'copy',
             '-c:v', 'libx264',
-            '-crf', '16',
+            '-crf', '18',
             '-preset', 'fast',
             '-profile:v', 'high',
             '-level', '4.1',
@@ -752,7 +754,7 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
           .output(path.resolve(output))
           .on('end', () => {
             try { fs.unlinkSync(assFile); } catch {}
-            console.log('[Captions] ✅ RTL ASS captions added');
+            console.log('[Captions] ✅ RTL ASS captions + watermark merged');
             resolve();
           })
           .on('error', (err) => {
@@ -795,13 +797,15 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
     return;
   }
 
+  const allFilters = applyWm ? [...filters, getWatermarkFilter()] : filters;
+
   return new Promise((resolve) => {
     ffmpeg(videoFile)
-      .videoFilters(filters.join(','))
+      .videoFilters(allFilters.join(','))
       .outputOptions([
         '-c:a', 'copy',
         '-c:v', 'libx264',
-        '-crf', '16',
+        '-crf', '18',
         '-preset', 'fast',
         '-profile:v', 'high',
         '-level', '4.1',
@@ -812,7 +816,7 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
         '-movflags', '+faststart',
       ])
       .output(path.resolve(output))
-      .on('end', () => { console.log('[Captions] ✅ LTR captions added'); resolve(); })
+      .on('end', () => { console.log('[Captions] ✅ LTR captions + watermark merged'); resolve(); })
       .on('error', (err) => {
         console.warn('[Captions] Failed:', err.message.slice(0, 100));
         fs.copyFileSync(videoFile, output);
@@ -910,28 +914,19 @@ export async function renderVideo({
 
   const step6 = path.join(TEMP_DIR, `step6_${id}.mp4`);
 
+  // ── Captions + Watermark merged in ONE pass ──────────────────────────────
   if (captions) {
     await mkdir(TEMP_DIR, { recursive: true });
-    const captionTemp = path.resolve(TEMP_DIR, `captions_${id}.mp4`);
     if (audioPath && process.env.GROQ_API_KEY) {
-      // ✅ Real captions using Groq Whisper
       console.log('[Captions] Using Groq Whisper for real captions');
-      await addRealCaptions(step5, audioPath, captionTemp, captionStyle, ratio, videoLanguage);
+      await addRealCaptions(step5, audioPath, step6, captionStyle, ratio, videoLanguage, applyWatermark);
     } else {
-      // Fallback to old method
       const totalDur = audioDuration || (secPerScene * scenes.length);
       const perScene = totalDur / scenes.length;
       const sceneDurations = scenes.map(() => perScene);
-      await addCaptionsWithTiming(step5, scenes, captionTemp, sceneDurations, videoType, captionStyle, ratio, videoLanguage);
+      await addCaptionsWithTiming(step5, scenes, step6, sceneDurations, videoType, captionStyle, ratio, videoLanguage, applyWatermark);
     }
-    if (applyWatermark) {
-      await addWatermark(captionTemp, step6);
-      console.log('[Watermark] Applied (free plan)');
-    } else {
-      fs.copyFileSync(captionTemp, step6);
-      console.log('[Watermark] Skipped (paid plan)');
-    }
-    try { if (fs.existsSync(captionTemp)) fs.unlinkSync(captionTemp); } catch {}
+    console.log(`[Watermark] ${applyWatermark ? 'Merged with captions' : 'Skipped (paid plan)'}`);
   } else {
     if (applyWatermark) {
       await addWatermark(step5, step6);
