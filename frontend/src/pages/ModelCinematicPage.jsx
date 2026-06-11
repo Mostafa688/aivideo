@@ -248,7 +248,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
   const removeCharacter = (id) => setCharacters(characters.filter(c=>c.id!==id));
   const updateCharacter = (id, prompt) => setCharacters(characters.map(c=>c.id===id?{...c,prompt}:c));
   const selectedStyle = VIDEO_STYLES.find(s=>s.key===videoStyle);
-  const sceneCount = duration==='1min'?12:duration==='30s'?6:3;
+  const sceneCount = duration==='1min'?12:duration==='30s'?6:1;
 
   const handleGenerate = async () => {
     if (!idea.trim()) { setError('Please describe your video idea'); return; }
