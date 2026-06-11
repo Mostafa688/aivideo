@@ -316,7 +316,16 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
     return d === '30s' && !trialUsed; // trial = 30s only
   };
 
-  const MAX_SCRIPT_CHARS = 3000;
+  const MAX_SCRIPT_CHARS = 3000; // max = 5min
+
+  const getSmartDuration = () => {
+    if (!script.trim()) return duration;
+    const chars = script.trim().length;
+    if (chars <= 300)  return '30s';
+    if (chars <= 600)  return '1min';
+    if (chars <= 1800) return '3min';
+    return '5min';
+  };
   const scriptCharCount = script.length;
   const scriptOverLimit = inputMode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
 
@@ -331,7 +340,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
     try {
       const res = await fetch('/api/model3/generate-scenes', {
         method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ idea: inputMode === 'idea' ? idea : null, script: (inputMode === 'script' || inputMode === 'voice') ? script : null, inputMode: inputMode === 'voice' ? 'script' : inputMode, imageCount, videoLanguage, ratio, videoStyle, styleSuffix: selectedStyle?.suffix || '' }),
+        body: JSON.stringify({ idea: inputMode === 'idea' ? idea : null, script: (inputMode === 'script' || inputMode === 'voice') ? script : null, inputMode: inputMode === 'voice' ? 'script' : inputMode, imageCount: ALL_DURATIONS.find(d => d.value === (inputMode === 'script' ? getSmartDuration() : duration))?.images || imageCount, videoLanguage, ratio, videoStyle, styleSuffix: selectedStyle?.suffix || '' }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
@@ -355,7 +364,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
       }
 
       setRenderStatus('Starting AI image generation...');
-      const renderRes = await fetch('/api/model3/render', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, audioUrl, ratio, captions, transitions: false, music, videoLanguage, duration }) });
+      const renderRes = await fetch('/api/model3/render', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, audioUrl, ratio, captions, transitions: false, music, videoLanguage, duration: inputMode === 'script' ? getSmartDuration() : duration }) });
       const renderData = await renderRes.json();
       if (!renderRes.ok) {
         if (renderData.show_upgrade || renderData.error === 'subscribe_required' || renderData.error === 'no_access') {
@@ -490,12 +499,17 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
                 setVoiceAudioUrl(audioUrl);
                 setInputMode('script');
                 setTimeout(() => {
+                  // auto duration from voice transcript
+                  const voiceChars = text.trim().length;
+                  const smartDur = voiceChars <= 300 ? '30s' : voiceChars <= 600 ? '1min' : voiceChars <= 1800 ? '3min' : '5min';
+                  const smartImages = ALL_DURATIONS.find(d => d.value === smartDur)?.images || imageCount;
+                  setDuration(smartDur);
                   setGenerating(true);
                   setError('');
                   fetch('/api/model3/generate-scenes', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
-                    body: JSON.stringify({ idea: null, script: text, inputMode: 'script', imageCount, videoLanguage, ratio, videoStyle, styleSuffix: VIDEO_STYLES.find(s => s.key === videoStyle)?.suffix || '' }),
+                    body: JSON.stringify({ idea: null, script: text, inputMode: 'script', imageCount: smartImages, videoLanguage, ratio, videoStyle, styleSuffix: VIDEO_STYLES.find(s => s.key === videoStyle)?.suffix || '' }),
                   })
                   .then(r => r.json())
                   .then(data => { if (data.error) throw new Error(data.error); setScenes(data.scenes); setStep('scenes'); })
@@ -510,7 +524,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
             <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'var(--text3)', marginTop:6 }}>
               {inputMode === 'idea'
                 ? `${idea.length} characters`
-                : `${scriptCharCount} / ${MAX_SCRIPT_CHARS} حرف${scriptOverLimit ? ' — النص طويل جداً! الحد 3000 حرف (5 دقائق)' : ''}`}
+                : `${scriptCharCount} / ${MAX_SCRIPT_CHARS} حرف${scriptOverLimit ? ' — النص طويل جداً! الحد 3000 حرف (5 دقائق)' : ` ✨ ~${getSmartDuration()}`}`}
             </p>
           )}
         </div>

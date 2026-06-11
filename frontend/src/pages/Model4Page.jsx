@@ -351,6 +351,10 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
       if (!res.ok) throw new Error(data.error || 'Transcription failed');
       setVoiceTranscript(data.text);
       setVoiceAudioUrl(data.audioUrl);
+      // auto duration from voice chars
+      const vChars = (data.text || '').trim().length;
+      const vDur = vChars <= 300 ? '30s' : vChars <= 600 ? '1min' : '3min';
+      setDuration(vDur);
     } catch (e) { setError(e.message); } finally { setTranscribing(false); }
   };
 
@@ -362,7 +366,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
       const res = await fetch('/api/model4/generate-scenes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
-        body: JSON.stringify({ idea: mode === 'idea' ? inputText : undefined, script: mode !== 'idea' ? inputText : undefined, inputMode: mode === 'idea' ? 'idea' : 'script', sceneCount: durConfig.scenes, videoLanguage }),
+        body: JSON.stringify({ idea: mode === 'idea' ? inputText : undefined, script: mode !== 'idea' ? inputText : undefined, inputMode: mode === 'idea' ? 'idea' : 'script', sceneCount: mode === 'script' ? (DURATION_CONFIG[getSmartDuration()]?.scenes || durConfig.scenes) : durConfig.scenes, videoLanguage }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
@@ -377,7 +381,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
       const res = await fetch('/api/model4/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
-        body: JSON.stringify({ scenes, audioUrl: mode === 'voice' ? voiceAudioUrl : null, ratio, captions, music, videoLanguage, duration, inputMode: mode }),
+        body: JSON.stringify({ scenes, audioUrl: mode === 'voice' ? voiceAudioUrl : null, ratio, captions, music, videoLanguage, duration: mode === 'script' ? getSmartDuration() : duration, inputMode: mode }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -506,7 +510,15 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
   }
 
   // ── Input Screen ───────────────────────────────────────────────────────
-  const MAX_SCRIPT_CHARS = 1800;
+  const MAX_SCRIPT_CHARS = 1800; // max = 3min
+
+  const getSmartDuration = () => {
+    if (!script.trim()) return duration;
+    const chars = script.trim().length;
+    if (chars <= 300)  return '30s';
+    if (chars <= 600)  return '1min';
+    return '3min';
+  };
   const scriptCharCount = script.length;
   const scriptOverLimit = mode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
 
@@ -605,7 +617,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
             <textarea value={script} onChange={e => setScript(e.target.value)} placeholder="Paste your script here..." rows={6}
               style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: 1.65 }} />
             <p style={{ fontSize:11, color: scriptOverLimit ? '#f87171' : 'rgba(255,255,255,0.3)', marginTop:6, margin:'6px 0 0' }}>
-              {scriptCharCount} / {MAX_SCRIPT_CHARS} حرف{scriptOverLimit ? ' — النص طويل جداً! الحد 1800 حرف (3 دقائق)' : ''}
+              {scriptCharCount} / {MAX_SCRIPT_CHARS} حرف{scriptOverLimit ? ' — النص طويل جداً! الحد 1800 حرف (3 دقائق)' : (mode === 'script' && script.length > 20 ? ` ✨ ~${getSmartDuration()}` : '')}
             </p>
             </>
           )}
