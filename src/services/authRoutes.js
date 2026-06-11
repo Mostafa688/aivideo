@@ -1,6 +1,7 @@
 import express from 'express';
 import fetch from 'node-fetch';
 import pkg from 'pg';
+import bcrypt from 'bcryptjs';
 const { Pool } = pkg;
 import {
   signUp, verifyCode, login, verifyToken,
@@ -749,7 +750,6 @@ router.post('/change-password', authMiddleware, async (req, res) => {
   const { newPassword } = req.body;
   if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   try {
-    const bcrypt = (await import('bcryptjs')).default;
     const hash = await bcrypt.hash(newPassword, 10);
     await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user.userId]);
     res.json({ ok: true });
