@@ -7,6 +7,127 @@ const PLAN_META = {
   max:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.35)',  icon: '♛',  label: 'Max',   ring: '#92400e' },
 };
 
+function HowToModal({ onClose }) {
+  const [activeTab, setActiveTab] = useState(0);
+
+  const TABS = [
+    {
+      icon: '🎬', title: 'Video Plans (Model 1 & 2)',
+      steps: [
+        { step: '1', title: 'Enter your idea', desc: 'Type a topic or paste a script. Erivion\'s AI will write the scenes, voiceover, and captions automatically.' },
+        { step: '2', title: 'Choose duration & style', desc: 'Pick from 30s up to 10 minutes. Select aspect ratio (9:16, 16:9, 1:1) and video style.' },
+        { step: '3', title: 'Review scenes', desc: 'Edit any scene prompt or voiceover text before rendering.' },
+        { step: '4', title: 'Download your video', desc: 'Your video is ready in minutes with music, captions, and transitions.' },
+      ],
+    },
+    {
+      icon: '🖼️', title: 'AI Image Videos (Model 3)',
+      steps: [
+        { step: '1', title: 'Describe your video', desc: 'Enter an idea or script. AI generates unique images for every scene using Stability AI.' },
+        { step: '2', title: 'Select duration', desc: 'Choose 30s, 1min, 3min, or 5min depending on your plan.' },
+        { step: '3', title: 'Cinematic zoom effects', desc: 'Each image gets a smooth Ken Burns zoom effect for a cinematic look.' },
+        { step: '4', title: 'Download & publish', desc: 'Full HD video with AI voiceover, captions, and background music.' },
+      ],
+    },
+    {
+      icon: '🎥', title: 'Real AI Video (Model 4)',
+      steps: [
+        { step: '1', title: 'Write your script', desc: 'Describe your scenes. Each scene becomes a real AI-generated video clip powered by Seedance v1 Pro.' },
+        { step: '2', title: 'Choose clip duration', desc: 'Pick 30s, 1min, or 3min videos. Each scene is ~7 seconds of real motion video.' },
+        { step: '3', title: 'AI generates motion', desc: 'Real moving video — not just images with zoom. Characters, objects, and environments actually move.' },
+        { step: '4', title: 'Get your video', desc: 'Download with full voiceover, Arabic/English captions, and music.' },
+      ],
+    },
+    {
+      icon: '🎭', title: 'Cinematic AI (Model 5)',
+      steps: [
+        { step: '1', title: 'Describe characters', desc: 'Define up to 5 characters with detailed descriptions for consistent appearance across all scenes.' },
+        { step: '2', title: 'Write the story', desc: 'Describe your cinematic scene or story. No voiceover — pure visual storytelling.' },
+        { step: '3', title: 'Seedance 2.0 renders it', desc: 'Character-consistent cinematic scenes with original ambient audio. No narration needed.' },
+        { step: '4', title: 'Download your film', desc: 'Professional cinematic video in 15s, 30s, or 1min format.' },
+      ],
+    },
+    {
+      icon: '💰', title: 'Credits System',
+      steps: [
+        { step: '✦', title: 'What are credits?', desc: 'Credits control how many videos you can make per week. Each plan gets a weekly credit allowance.' },
+        { step: '✦', title: 'Credit costs', desc: 'Short videos use fewer credits. Longer videos (5-10min) use more. Credits reset every week automatically.' },
+        { step: '✦', title: 'Free plan', desc: '1,600 credits/week — enough for ~3 short videos of up to 30 seconds.' },
+        { step: '✦', title: 'Max plan', desc: '100,000 credits/week — effectively unlimited videos up to 10 minutes each.' },
+      ],
+    },
+  ];
+
+  const tab = TABS[activeTab];
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:99999, padding:16 }}>
+      <style>{`@keyframes htIn{from{opacity:0;transform:scale(0.95) translateY(14px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+      <div style={{ background:'#09090f', border:'1px solid rgba(6,182,212,0.2)', borderRadius:24, width:'100%', maxWidth:520, maxHeight:'88vh', overflowY:'auto', boxShadow:'0 32px 80px rgba(0,0,0,0.9)', animation:'htIn 0.25s cubic-bezier(0.16,1,0.3,1)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'24px 24px 0', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+          <div>
+            <div style={{ fontSize:11, fontWeight:700, color:'#06b6d4', letterSpacing:'0.1em', marginBottom:4 }}>PLATFORM GUIDE</div>
+            <h2 style={{ fontSize:22, fontWeight:800, color:'#fff', margin:0 }}>How to Use Erivion</h2>
+            <p style={{ fontSize:13, color:'#4b5563', margin:'4px 0 0' }}>Everything you need to create amazing AI videos</p>
+          </div>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#6b7280', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display:'flex', gap:6, padding:'16px 24px 0', overflowX:'auto', scrollbarWidth:'none' }}>
+          {TABS.map((t, i) => (
+            <button key={i} onClick={() => setActiveTab(i)}
+              style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:20, border:`1px solid ${activeTab===i ? 'rgba(6,182,212,0.5)' : 'rgba(255,255,255,0.07)'}`, background: activeTab===i ? 'rgba(6,182,212,0.1)' : 'transparent', color: activeTab===i ? '#06b6d4' : '#6b7280', cursor:'pointer', fontSize:12, fontWeight: activeTab===i ? 700 : 500, whiteSpace:'nowrap', flexShrink:0 }}>
+              <span>{t.icon}</span> {t.title.split(' ')[0]} {t.title.split(' ')[1] || ''}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div style={{ padding:24 }}>
+          <div style={{ fontSize:15, fontWeight:700, color:'#fff', marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
+            <span>{tab.icon}</span> {tab.title}
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {tab.steps.map((s, i) => (
+              <div key={i} style={{ display:'flex', gap:14, padding:'14px 16px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:12 }}>
+                <div style={{ width:28, height:28, borderRadius:8, background:'rgba(6,182,212,0.12)', border:'1px solid rgba(6,182,212,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'#06b6d4', flexShrink:0 }}>{s.step}</div>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:700, color:'#fff', marginBottom:3 }}>{s.title}</div>
+                  <div style={{ fontSize:13, color:'#6b7280', lineHeight:1.6 }}>{s.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Navigation buttons */}
+          <div style={{ display:'flex', gap:10, marginTop:20 }}>
+            {activeTab > 0 && (
+              <button onClick={() => setActiveTab(activeTab - 1)}
+                style={{ flex:1, padding:'11px', borderRadius:10, border:'1px solid rgba(255,255,255,0.08)', background:'transparent', color:'#9ca3af', cursor:'pointer', fontSize:13, fontWeight:600 }}>
+                ← Previous
+              </button>
+            )}
+            {activeTab < TABS.length - 1 ? (
+              <button onClick={() => setActiveTab(activeTab + 1)}
+                style={{ flex:1, padding:'11px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#06b6d4,#0891b2)', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+                Next →
+              </button>
+            ) : (
+              <button onClick={onClose}
+                style={{ flex:1, padding:'11px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+                ✅ Got it! Start Creating
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AffiliateModal({ user, onClose }) {
   const [step, setStep] = useState('form');
   const [email, setEmail] = useState(user?.email || '');
@@ -107,6 +228,7 @@ function AffiliateModal({ user, onClose }) {
 export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null }) {
   const [open, setOpen] = useState(false);
   const [showAffiliate, setShowAffiliate] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(false);
   const [hovered, setHovered] = useState(null);
   const menuRef = useRef(null);
 
@@ -122,7 +244,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
   const groups = [
     {
       items: [
-        { icon: '📖', label: 'كيفية الاستخدام', sub: 'دليل شامل للموقع', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
+        { icon: '📖', label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
         ...(model3Access ? [{ icon: '🖼️', label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
         { icon: '💰', label: 'Earn with Erivion', sub: 'Affiliate — 50% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
       ]
@@ -148,6 +270,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
   const handleItemClick = (key) => {
     setOpen(false);
     if (key === 'affiliate') setShowAffiliate(true);
+    else if (key === 'howto') setShowHowTo(true);
     else onNavigate?.(key);
   };
 
@@ -270,6 +393,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
       </div>
 
       {showAffiliate && <AffiliateModal user={user} onClose={() => setShowAffiliate(false)} />}
+      {showHowTo && <HowToModal onClose={() => setShowHowTo(false)} />}
     </>
   );
 }
