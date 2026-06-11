@@ -341,10 +341,10 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
       return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
     }
 
+    activeRenderCount++;
     setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
     res.status(202).json({ jobId: renderJobId, status: 'processing' });
     (async () => {
-      activeRenderCount++;
       try {
         const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' });
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
@@ -595,10 +595,10 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
+  activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false });
   (async () => {
-    activeRenderCount++;
     try {
       const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en' });
       if (quotaCheck.is_trial) {
@@ -804,10 +804,10 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
+  activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing' });
   (async () => {
-    activeRenderCount++;
     try {
       let finalAudioUrl = audioUrl;
       if (!audioUrl && scenes?.length > 0) {
@@ -970,10 +970,10 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
+  activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing' });
   (async () => {
-    activeRenderCount++;
     try {
       const videoPath = await renderModel5Video({ scenes, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s' });
       await incrementModel5Video(req.user.userId, duration || '30s');
