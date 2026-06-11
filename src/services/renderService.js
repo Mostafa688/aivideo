@@ -521,11 +521,10 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
   const secPerScene = (videoDuration + totalTransitionOverlap) / sceneCount;
   console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
 
-  // ── Parallel scene processing (max 4 concurrent) ──────────────────────────
-  const CONCURRENCY = 4;
-  const slideFiles = new Array(scenes.length);
+  // ── Sequential scene processing ──────────────────────────────────────────
+  const slideFiles = [];
 
-  async function processScene(i) {
+  for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
     const slideFile = path.join(TEMP_DIR, `slide_${id}_${i}.mp4`);
 
@@ -548,17 +547,8 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
     } else {
       await generateColorSlide(scene, slideFile, secPerScene, w, h);
     }
-    slideFiles[i] = slideFile;
+    slideFiles.push(slideFile);
     console.log(`[Render] Scene ${i + 1}/${sceneCount} done (${secPerScene.toFixed(1)}s)`);
-  }
-
-  // Process in batches of CONCURRENCY
-  for (let batch = 0; batch < scenes.length; batch += CONCURRENCY) {
-    const batchEnd = Math.min(batch + CONCURRENCY, scenes.length);
-    const batchPromises = [];
-    for (let i = batch; i < batchEnd; i++) batchPromises.push(processScene(i));
-    await Promise.all(batchPromises);
-    console.log(`[Render] Batch ${Math.floor(batch/CONCURRENCY)+1} done (scenes ${batch+1}-${batchEnd})`);
   }
 
   const concatFile = path.join(TEMP_DIR, `concat_${id}.mp4`);

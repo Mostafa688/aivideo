@@ -362,11 +362,11 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
     setProgress('Rendering video... (this may take a few minutes)');
     let retryCount = 0;
     const MAX_QUEUE_RETRIES = 60;
+    const jobId = Date.now();
     try {
       let res, data;
       // ── Queue loop: retry if server busy ─────────────────────────────────
       while (true) {
-        const jobId = Date.now();
         res = await fetch('/api/render', {
           method: 'POST', headers: authHeaders(),
           body: JSON.stringify({
