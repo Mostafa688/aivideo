@@ -52,24 +52,29 @@ function getRandomFallback(exclude = []) {
 // ✅ FIX الرئيسي: بنجيب per_page=30 بدل 10، وبنعمل page عشوائي
 //    وبنتحقق من كل الـ video_files مش بس أول file
 // ✅ بنختار الـ video file المناسب للـ ratio بناءً على الـ width/height الفعلي
+// Target aspect ratios
+const ORIENTATION_RATIO = {
+  landscape: 16 / 9,
+  portrait:  9 / 16,
+  square:    1,
+};
+
 function pickBestFile(video_files, orientation) {
   if (!video_files?.length) return null;
 
-  // بنفلتر الفايلات حسب الـ orientation الفعلي
+  const targetRatio = ORIENTATION_RATIO[orientation] || 16 / 9;
+  const TOLERANCE   = 0.15; // 15% tolerance
+
+  // فلتر صارم: نشيل أي فيديو نسبته بعيدة عن الـ target
   const matching = video_files.filter(f => {
     if (!f.width || !f.height) return false;
-    const isLandscape = f.width > f.height;
-    const isPortrait  = f.height > f.width;
-    const isSquare    = f.width === f.height;
-    if (orientation === 'landscape') return isLandscape;
-    if (orientation === 'portrait')  return isPortrait;
-    if (orientation === 'square')    return isSquare || Math.abs(f.width - f.height) / Math.max(f.width, f.height) < 0.2;
-    return true;
+    const fileRatio = f.width / f.height;
+    return Math.abs(fileRatio - targetRatio) / targetRatio < TOLERANCE;
   });
 
   const pool = matching.length > 0 ? matching : video_files;
 
-  // نختار hd أولاً ثم sd ثم أي حاجة
+  // نختار hd أولاً ثم sd
   return pool.find(f => f.quality === 'hd')
     || pool.find(f => f.quality === 'sd')
     || pool[0];

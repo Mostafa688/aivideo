@@ -127,7 +127,7 @@ function downloadFile(url, dest) {
 
 function trimAndScale(input, output, duration, w, h) {
   return new Promise((resolve, reject) => {
-    const scaleFilter = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1`;
+    const scaleFilter = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`;
     ffmpeg(input)
       .inputOptions(['-stream_loop', '-1'])
       .duration(duration)
