@@ -136,13 +136,13 @@ function trimAndScale(input, output, duration, w, h) {
         '-an',
         '-r', '30',
         '-c:v', 'libx264',
-        '-crf', '23',
+        '-crf', '26',
         '-preset', 'ultrafast',
         '-profile:v', 'baseline',
         '-level', '3.1',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
-        '-threads', '2',
+        '-threads', '0',
       ])
       .output(output)
       .on('end', resolve)
@@ -179,15 +179,7 @@ function concatVideos(listFile, output) {
       .input(listFile)
       .inputOptions(['-f', 'concat', '-safe', '0'])
       .outputOptions([
-        '-c:v', 'libx264',
-        '-crf', '16',
-        '-preset', 'fast',
-        '-profile:v', 'high',
-        '-level', '4.1',
-        '-b:v', '4M',
-        '-maxrate', '6M',
-        '-bufsize', '8M',
-        '-pix_fmt', 'yuv420p',
+        '-c', 'copy',
         '-movflags', '+faststart',
       ])
       .output(output)
@@ -203,54 +195,50 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
     return;
   }
 
-  let current = slideFiles[0];
+  // ── Build ONE filter_complex with all xfade transitions at once ──────────
+  // This replaces N-1 sequential FFmpeg processes with a single pass
+  const transTypes = ['fade', 'slideleft', 'slideright', 'slideup', 'dissolve', 'wipeleft', 'wiperight'];
+  const n = slideFiles.length;
 
-  for (let i = 1; i < slideFiles.length; i++) {
-    const transOut = path.join(TEMP_DIR, 'trans_' + id + '_' + i + '.mp4');
-
-    let currentDuration = secPerScene;
-    try {
-      const result = execSync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${current}"`,
-        { encoding: 'utf8' }
-      ).trim();
-      currentDuration = parseFloat(result) || secPerScene;
-    } catch {}
-
-    const offset = Math.max(currentDuration - TRANSITION_DURATION, TRANSITION_DURATION);
-
-    const transTypes = ['fade', 'slideleft', 'slideright', 'slideup', 'dissolve', 'wipeleft', 'wiperight', 'circlecrop', 'rectcrop', 'distance'];
-    const transType = transTypes[i % transTypes.length];
-    try {
-      execSync(
-        `ffmpeg -i "${current}" -i "${slideFiles[i]}"` +
-        ` -filter_complex "[0:v][1:v]xfade=transition=${transType}:duration=${TRANSITION_DURATION}:offset=${offset}[v]"` +
-        ` -map "[v]" -r 30 -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${transOut}"`,
-        { stdio: 'pipe' }
-      );
-      current = transOut;
-    } catch(e) {
-      console.warn('Transition failed for scene', i, e.message);
-      const fallbackOut = path.join(TEMP_DIR, 'fallback_' + id + '_' + i + '.mp4');
-      const listContent = [
-        `file '${path.resolve(current).replace(/\\/g, '/')}'`,
-        `file '${path.resolve(slideFiles[i]).replace(/\\/g, '/')}'`,
-      ].join('\n');
-      const tmpList = path.join(TEMP_DIR, `fallback_list_${id}_${i}.txt`);
-      fs.writeFileSync(tmpList, listContent);
-      try {
-        execSync(
-          `ffmpeg -f concat -safe 0 -i "${tmpList}" -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${fallbackOut}"`,
-          { stdio: 'pipe' }
-        );
-        current = fallbackOut;
-      } catch(e2) {
-        console.warn('Fallback concat also failed for scene', i, e2.message);
-      }
-    }
+  // Build inputs string
+  let inputArgs = '';
+  for (const f of slideFiles) {
+    inputArgs += ` -i "${f}"`;
   }
 
-  fs.copyFileSync(current, output);
+  // Build filter_complex
+  // Each clip offset = i * (secPerScene - TRANSITION_DURATION)
+  let filterParts = [];
+  let lastLabel = '[0:v]';
+  for (let i = 1; i < n; i++) {
+    const transType = transTypes[i % transTypes.length];
+    const offset = i * (secPerScene - TRANSITION_DURATION);
+    const outLabel = i === n - 1 ? '[vout]' : `[v${i}]`;
+    filterParts.push(`${lastLabel}[${i}:v]xfade=transition=${transType}:duration=${TRANSITION_DURATION}:offset=${offset}${outLabel}`);
+    lastLabel = `[v${i}]`;
+  }
+
+  const filterComplex = filterParts.join(';');
+
+  try {
+    execSync(
+      `ffmpeg${inputArgs}` +
+      ` -filter_complex "${filterComplex}"` +
+      ` -map "[vout]" -r 30 -c:v libx264 -crf 20 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -threads 0 -y "${output}"`,
+      { stdio: 'pipe' }
+    );
+    console.log(`[Render] Transitions done in single pass (${n} scenes)`);
+  } catch (e) {
+    console.warn('[Render] xfade filter_complex failed, falling back to simple concat:', e.message.slice(0, 120));
+    // Fallback: simple concat without transitions
+    const listContent = slideFiles.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n');
+    const listFile = path.join(TEMP_DIR, `fallback_list_${id}.txt`);
+    fs.writeFileSync(listFile, listContent);
+    execSync(
+      `ffmpeg -f concat -safe 0 -i "${listFile}" -c:v libx264 -crf 20 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -threads 0 -y "${output}"`,
+      { stdio: 'pipe' }
+    );
+  }
 }
 
 function mixAudio(videoFile, audioFile, output) {
@@ -258,9 +246,9 @@ function mixAudio(videoFile, audioFile, output) {
     ffmpeg()
       .input(videoFile).input(audioFile)
       .outputOptions([
-        '-c:v', 'copy',
+        '-c:v', 'copy',        // stream copy video — no re-encode
         '-c:a', 'aac',
-        '-b:a', '192k',
+        '-b:a', '128k',
         '-shortest',
         '-movflags', '+faststart',
       ])
@@ -273,7 +261,7 @@ function addMusicOnly(videoFile, musicFile, output, musicVolume = 0.08) {
     ffmpeg()
       .input(videoFile).input(musicFile)
       .outputOptions([
-        '-c:v', 'copy',
+        '-c:v', 'copy',        // stream copy video
         '-c:a', 'aac',
         '-b:a', '128k',
         '-shortest',
@@ -295,9 +283,9 @@ function mixAudioAndMusic(videoFile, voiceFile, musicFile, output, musicVolume =
       .outputOptions([
         '-map', '0:v',
         '-map', '[aout]',
-        '-c:v', 'copy',
+        '-c:v', 'copy',        // stream copy video
         '-c:a', 'aac',
-        '-b:a', '192k',
+        '-b:a', '128k',
         '-shortest',
         '-movflags', '+faststart',
       ])
@@ -351,10 +339,9 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
           .outputOptions([
             '-vf', `subtitles='${safeAss}':fontsdir='${path.dirname(fontfile)}',${applyWm ? getWatermarkFilter() : 'null'}`.replace(',null',''),
             '-c:a', 'copy',
-            '-c:v', 'libx264', '-crf', '18', '-preset', 'fast',
+            '-c:v', 'libx264', '-crf', '20', '-preset', 'ultrafast',
             '-profile:v', 'high', '-level', '4.1',
-            '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
-            '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+            '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-threads', '0',
           ])
           .output(path.resolve(output))
           .on('end', () => { try { fs.unlinkSync(assFile); } catch {} resolve(); })
@@ -395,10 +382,9 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
       .videoFilters(ltrFilters.join(','))
       .outputOptions([
         '-c:a', 'copy',
-        '-c:v', 'libx264', '-crf', '18', '-preset', 'fast',
+        '-c:v', 'libx264', '-crf', '20', '-preset', 'ultrafast',
         '-profile:v', 'high', '-level', '4.1',
-        '-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M',
-        '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+        '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-threads', '0',
       ])
       .output(path.resolve(output))
       .on('end', resolve)
@@ -423,12 +409,13 @@ function applyVideoEffect(videoFile, output, effectName) {
       .outputOptions([
         '-c:a', 'copy',
         '-c:v', 'libx264',
-        '-crf', '18',
-        '-preset', 'fast',
+        '-crf', '23',
+        '-preset', 'ultrafast',
         '-profile:v', 'baseline',
         '-level', '3.1',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
+        '-threads', '0',
       ])
       .output(output)
       .on('end', resolve)
@@ -499,7 +486,7 @@ function addWatermark(inputFile, outputFile) {
   return new Promise((resolve) => {
     try {
       execSync(
-        `ffmpeg -i "${inputFile}" -vf "${filterStr}" -c:a copy -c:v libx264 -crf 18 -preset fast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -y "${outputFile}"`,
+        `ffmpeg -i "${inputFile}" -vf "${filterStr}" -c:a copy -c:v libx264 -crf 20 -preset ultrafast -profile:v baseline -level 3.1 -pix_fmt yuv420p -movflags +faststart -threads 0 -y "${outputFile}"`,
         { stdio: 'pipe' }
       );
       console.log('[Watermark] ✅ Done');
@@ -731,15 +718,13 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
             '-vf', `subtitles='${safeAssFile}':fontsdir='${path.dirname(fontfile)}',${applyWm ? getWatermarkFilter() : 'null'}`.replace(',null',''),
             '-c:a', 'copy',
             '-c:v', 'libx264',
-            '-crf', '18',
-            '-preset', 'fast',
+            '-crf', '20',
+            '-preset', 'ultrafast',
             '-profile:v', 'high',
             '-level', '4.1',
-            '-b:v', '4M',
-            '-maxrate', '6M',
-            '-bufsize', '8M',
             '-pix_fmt', 'yuv420p',
             '-movflags', '+faststart',
+            '-threads', '0',
           ])
           .output(path.resolve(output))
           .on('end', () => {
@@ -795,15 +780,13 @@ async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio
       .outputOptions([
         '-c:a', 'copy',
         '-c:v', 'libx264',
-        '-crf', '18',
-        '-preset', 'fast',
+        '-crf', '20',
+        '-preset', 'ultrafast',
         '-profile:v', 'high',
         '-level', '4.1',
-        '-b:v', '4M',
-        '-maxrate', '6M',
-        '-bufsize', '8M',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
+        '-threads', '0',
       ])
       .output(path.resolve(output))
       .on('end', () => { console.log('[Captions] ✅ LTR captions + watermark merged'); resolve(); })

@@ -1268,6 +1268,13 @@ app.get('*', (req, res) => {
 });
 
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log('AI Video Backend running on http://localhost:' + PORT);
 });
+
+// ── Disable timeouts for long video renders ──────────────────────────────────
+// Railway/reverse proxies have their own idle timeouts — we set Node's to 0
+// (unlimited) so a 10-min render doesn't get cut mid-way.
+server.timeout = 0;               // socket inactivity timeout
+server.keepAliveTimeout = 0;      // keep-alive timeout
+server.headersTimeout = 0;        // time to receive full headers
