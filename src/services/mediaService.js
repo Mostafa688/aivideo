@@ -63,7 +63,7 @@ function pickBestFile(video_files, orientation) {
   if (!video_files?.length) return null;
 
   const targetRatio = ORIENTATION_RATIO[orientation] || 16 / 9;
-  const TOLERANCE   = 0.15; // 15% tolerance
+  const TOLERANCE   = 0.05; // 5% tolerance — strict ratio match
 
   // فلتر صارم: نشيل أي فيديو نسبته بعيدة عن الـ target
   const matching = video_files.filter(f => {
@@ -81,7 +81,8 @@ function pickBestFile(video_files, orientation) {
 }
 
 async function fetchPexelsVideos(query, orientation, usedSet, page = 1) {
-  const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=30&page=${page}&orientation=${orientation}`;
+  const minWidth = orientation === 'portrait' ? 720 : 1280;
+  const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=30&page=${page}&orientation=${orientation}&min_width=${minWidth}`;
   const res = await fetch(url, {
     headers: { Authorization: process.env.PEXELS_API_KEY },
   });

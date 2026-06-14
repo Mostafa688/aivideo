@@ -159,7 +159,7 @@ const [voiceRatio, setVoiceRatio] = useState(formData?.ratio || '9:16');
       const res = await fetch('/api/fetch-media', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ scenes, ratio: formData?.ratio || '16:9' }),
+        body: JSON.stringify({ scenes, ratio: isVoiceMode ? voiceRatio : (formData?.ratio || '16:9') }),
       });
       const data = await res.json();
       const enrichedScenes = data.scenes || scenes;
@@ -233,7 +233,7 @@ const [voiceRatio, setVoiceRatio] = useState(formData?.ratio || '9:16');
                   musicVolume: voiceMusicVolume,
                   captions: voiceCaptions,
                   videoLanguage: formData.videoLanguage || 'en',
-                  ratio: formData?.ratio || '16:9',
+                  ratio: voiceRatio,
                 });
               } else {
                 onRender(parsed.scenes);
