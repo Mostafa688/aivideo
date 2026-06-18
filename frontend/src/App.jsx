@@ -176,16 +176,16 @@ export default function App() {
       if (googleAvatar) localStorage.setItem('avatar', googleAvatar);
       const termsAccepted = localStorage.getItem('termsAccepted') === 'true';
       const planChosenBefore = localStorage.getItem('planSelected') === 'true';
-      setUser({ token: googleToken, email: googleEmail });
-      setUserPlan(googlePlan || 'free');
-      setUserAvatar(googleAvatar || null);
       if (!termsAccepted) {
-        // مستخدم جديد — نبعت البيانات لـ AuthPage مباشرة عشان يبدأ من Terms
+        // مستخدم جديد — مش بنعمل setUser عشان يعرض AuthPage صح
         const pendingData = { token: googleToken, email: googleEmail, plan: googlePlan || 'free', name: decodeURIComponent(params.get('name') || '') };
         setGooglePendingData(pendingData);
         setShowAuth(true);
       } else {
-        // مستخدم قديم — يدخل مباشرة بدون reload
+        // مستخدم قديم — يدخل مباشرة
+        setUser({ token: googleToken, email: googleEmail });
+        setUserPlan(googlePlan || 'free');
+        setUserAvatar(googleAvatar || null);
         setShowAuth(false);
         setPlanSelected(planChosenBefore);
         if (!planChosenBefore) setShowPricing(true);
