@@ -852,4 +852,4 @@ export default function AuthPage({ onAuth, googlePendingData }) {
       </div>
     </>
   );
-}س
+}
