@@ -405,12 +405,14 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
 }
 
 // ── Groq: parse timeline ────────────────────────────────────────────────────────
-async function parseMapTimeline(script, idea, mode, language) {
+async function parseMapTimeline(script, idea, mode, language, durationSecs = 60) {
   const content = mode === 'script' ? script : (idea || script || '');
 
   const prompt = `You are a geographic storyteller. Parse this story into a map animation timeline.
 
 STORY: ${content}
+
+TOTAL VIDEO DURATION: ${durationSecs} seconds
 
 Return a JSON object with:
 {
@@ -434,12 +436,15 @@ Return a JSON object with:
 }
 
 RULES:
+- CRITICAL: events MUST cover the FULL ${durationSecs} seconds. Last event's (time + duration) must equal ${durationSecs}.
+- Create enough events so the total duration adds up to exactly ${durationSecs} seconds.
+- Each event duration should be between 5 and 20 seconds.
+- Minimum number of events: ${Math.max(5, Math.floor(durationSecs / 15))}.
 - For war/invasion events: set military=true, unitType="tank" or "plane" or "army", fromCountry=attacker ISO, toCountry=defender ISO
 - For historical events: set entity to the historical name (e.g. "nazi germany", "ottoman empire")
 - flag=true means show flag overlay on the country
 - countries use 2-letter ISO codes
 - zoom can be: world, europe, western-europe, eastern-europe, scandinavia, balkans, iberia, british-isles, middle-east, gulf, levant, arabian-peninsula, holy-land, asia, central-asia, east-asia, south-asia, southeast-asia, far-east, africa, north-africa, west-africa, east-africa, southern-africa, horn-of-africa, great-lakes, sub-saharan, sahara, americas, north-america, south-america, central-america, caribbean, southern-cone, oceania, egypt, egypt-sinai, nile-valley, north-egypt, mesopotamia, anatolia, caucasus, iran-plateau, arabian-desert, ancient-egypt, ancient-rome, ancient-greece, ancient-persia, byzantine, ottoman, mongolia-steppe, silk-road
-- events should cover the full story duration
 - Return ONLY valid JSON, no markdown`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -597,7 +602,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
   updateStatus(jobId, { progress: 10, log: ['🧠 Parsing story with AI...'] });
 
-  const timeline = await parseMapTimeline(script, idea, mode, language);
+  const timeline = await parseMapTimeline(script, idea, mode, language, durationSecs);
   updateStatus(jobId, { progress: 20, log: [`✅ Timeline — ${timeline.events?.length || 0} events`, '🎙️ Generating voiceover...'] });
 
   let audioPath = null;
