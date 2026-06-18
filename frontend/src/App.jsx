@@ -109,6 +109,7 @@ export default function App() {
   const [userRegion, setUserRegion] = useState(null);
   const [pendingModelKey, setPendingModelKey] = useState(null); // for welcome modal
   const [pendingModelAction, setPendingModelAction] = useState(null);
+  const [googlePendingData, setGooglePendingData] = useState(null); // for google new user onboarding
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -179,7 +180,9 @@ export default function App() {
       setUserPlan(googlePlan || 'free');
       setUserAvatar(googleAvatar || null);
       if (!termsAccepted) {
-        // مستخدم جديد — يعرض Terms/Survey/Recommend داخل AuthPage
+        // مستخدم جديد — نبعت البيانات لـ AuthPage مباشرة عشان يبدأ من Terms
+        const pendingData = { token: googleToken, email: googleEmail, plan: googlePlan || 'free', name: decodeURIComponent(params.get('name') || '') };
+        setGooglePendingData(pendingData);
         setShowAuth(true);
       } else {
         // مستخدم قديم — يدخل مباشرة بدون reload
@@ -294,9 +297,9 @@ export default function App() {
   if (['terms','privacy','refund'].includes(page) && !user) return <SubPage page={page} onBack={() => { setPage('input'); window.history.replaceState({}, '', '/'); }} />;
 
   if (!user) {
-    if (showAuth) return <AuthPage onAuth={(data) => {
+    if (showAuth) return <AuthPage googlePendingData={googlePendingData} onAuth={(data) => {
       localStorage.setItem('token', data.token); localStorage.setItem('email', data.email); localStorage.setItem('plan', data.plan || 'free');
-      setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false);
+      setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false); setGooglePendingData(null);
       const planChosenBefore = localStorage.getItem('planSelected') === 'true';
       if (!planChosenBefore) setShowPricing(true);
     }} />;

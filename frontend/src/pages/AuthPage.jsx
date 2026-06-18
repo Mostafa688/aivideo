@@ -495,19 +495,22 @@ function LegalModal({ type, onClose }) {
 }
 
 // ─── Main AuthPage ────────────────────────────────────────────────────────────
-export default function AuthPage({ onAuth }) {
+export default function AuthPage({ onAuth, googlePendingData }) {
   const [mode, setMode]           = useState('login');
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
   const [code, setCode]           = useState('');
-  const [step, setStep]           = useState('form'); // form | verify | terms | survey | recommend
+  const [step, setStep]           = useState(googlePendingData ? 'terms' : 'form');
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
   const [legalModal, setLegalModal] = useState(null);
-  const [pendingAuthData, setPendingAuthData] = useState(null);
+  const [pendingAuthData, setPendingAuthData] = useState(googlePendingData || null);
   const [surveySource, setSurveySource] = useState(null);
 
   useEffect(() => {
+    // لو البيانات اتبعتت من App.jsx مباشرة، مش محتاجين نشوف الـ URL
+    if (googlePendingData) return;
+
     const params      = new URLSearchParams(window.location.search);
     const googleToken = params.get('google_token');
     const googleEmail = params.get('email');
@@ -531,10 +534,9 @@ export default function AuthPage({ onAuth }) {
       const termsAccepted = localStorage.getItem('termsAccepted') === 'true';
 
       if (termsAccepted) {
-        // مستخدم قديم — يدخل مباشرة
-        onAuth(authData);
+        // ✅ الفيكس: بدل onAuth بنعمل reload عشان يشتغل صح على موبايل
+        window.location.reload();
       } else {
-        // مستخدم جديد — يعرض Terms ثم Survey ثم Recommend
         setPendingAuthData(authData);
         setStep('terms');
       }
@@ -596,7 +598,6 @@ export default function AuthPage({ onAuth }) {
 
   const handleRecommendDone = (modelKey, answers) => {
     if (modelKey) localStorage.setItem('erivion_recommended_model', modelKey);
-    // احفظ كل إجابات الـ onboarding في الـ DB
     fetch('/api/auth/onboarding-answers', {
       method: 'POST',
       headers: {
@@ -851,4 +852,4 @@ export default function AuthPage({ onAuth }) {
       </div>
     </>
   );
-}
+}س
