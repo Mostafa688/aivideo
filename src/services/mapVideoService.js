@@ -376,21 +376,7 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
       }
     }
 
-    // ── Event label ────────────────────────────────────────────────────────
-    if (event.label) {
-      const country = event.countries?.[0];
-      const labelPos = country ? COUNTRY_LABELS[country] : null;
-      if (labelPos) {
-        const [cx, cy] = labelPos;
-        const inView = cx >= vbx && cx <= vbx + vbw && cy >= vby && cy <= vby + vbh;
-        if (inView) {
-          const lFontSize = Math.max(8, Math.round(vbw * 0.008));
-          const textY = cy - Math.round(vbw * 0.025);
-          overlaysHTML += `<rect x="${cx - lFontSize * event.label.length * 0.3}" y="${textY - lFontSize}" width="${lFontSize * event.label.length * 0.6}" height="${lFontSize * 1.4}" fill="rgba(0,0,0,0.7)" rx="3"/>`;
-          overlaysHTML += `<text x="${cx}" y="${textY + lFontSize * 0.3}" font-size="${lFontSize}" text-anchor="middle" fill="#fff" font-weight="bold">${event.label}</text>`;
-        }
-      }
-    }
+    // Labels removed for cleaner look
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -408,25 +394,26 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
 async function parseMapTimeline(script, idea, mode, language, durationSecs = 60) {
   const content = mode === 'script' ? script : (idea || script || '');
 
-  const prompt = `You are a geographic storyteller. Parse this story into a map animation timeline.
+  const prompt = `You are an expert geographic documentary director. Create a cinematic map animation timeline.
 
 STORY: ${content}
+TOTAL DURATION: ${durationSecs} seconds
+LANGUAGE: ${language || 'en'}
 
-TOTAL VIDEO DURATION: ${durationSecs} seconds
-
-Return a JSON object with:
+OUTPUT FORMAT (JSON only, no markdown):
 {
-  "script": "clean narration script (the voiceover text)",
+  "script": "voiceover narration text that takes exactly ${durationSecs} seconds to read aloud",
   "events": [
     {
       "time": 0,
-      "duration": 8,
-      "countries": ["EG","US"],
-      "zoom": "middle-east",
+      "duration": 10,
+      "countries": ["DE"],
+      "addCountries": [],
+      "removeCountries": [],
+      "zoom": "europe",
       "color": "#e11d48",
-      "label": "Event name",
-      "flag": true,
-      "entity": "egypt",
+      "flag": false,
+      "entity": "nazi germany",
       "military": false,
       "unitType": null,
       "fromCountry": null,
@@ -435,22 +422,37 @@ Return a JSON object with:
   ]
 }
 
-RULES:
-- CRITICAL: events MUST cover the FULL ${durationSecs} seconds. Last event's (time + duration) must equal ${durationSecs}.
-- Create enough events so the total duration adds up to exactly ${durationSecs} seconds.
-- Each event duration should be between 5 and 20 seconds.
-- Minimum number of events: ${Math.max(5, Math.floor(durationSecs / 15))}.
-- For war/invasion events: set military=true, unitType="tank" or "plane" or "army", fromCountry=attacker ISO, toCountry=defender ISO
-- For historical events: set entity to the historical name (e.g. "nazi germany", "ottoman empire")
-- flag=true means show flag overlay on the country
-- countries use 2-letter ISO codes
-- zoom can be: world, europe, western-europe, eastern-europe, scandinavia, balkans, iberia, british-isles, middle-east, gulf, levant, arabian-peninsula, holy-land, asia, central-asia, east-asia, south-asia, southeast-asia, far-east, africa, north-africa, west-africa, east-africa, southern-africa, horn-of-africa, great-lakes, sub-saharan, sahara, americas, north-america, south-america, central-america, caribbean, southern-cone, oceania, egypt, egypt-sinai, nile-valley, north-egypt, mesopotamia, anatolia, caucasus, iran-plateau, arabian-desert, ancient-egypt, ancient-rome, ancient-greece, ancient-persia, byzantine, ottoman, mongolia-steppe, silk-road
-- Return ONLY valid JSON, no markdown`;
+CRITICAL RULES — READ ALL:
+
+1. DURATION: Events MUST cover exactly ${durationSecs} seconds total. Last event (time + duration) = ${durationSecs}. Minimum ${Math.max(6, Math.floor(durationSecs / 12))} events.
+
+2. HOOK: First event (time=0, duration=5-8s) must be a shocking dramatic opening — zoom in on the key location, highlight the main country/empire with a bold color. No slow intros.
+
+3. AUDIO SYNC: Each event matches exactly one sentence or phrase in the voiceover. If the narrator says "Germany invaded France" that event shows DE highlighted red expanding toward FR. Events change exactly when the narration changes topic.
+
+4. COLOR EXPANSION (most important):
+   - Use "countries" for countries currently highlighted with this event's color.
+   - Use "addCountries" for countries NEWLY joining/being conquered (add to existing highlights, don't remove others).
+   - Use "removeCountries" for countries being liberated/lost (fade them out).
+   - Example — Germany expands: event1 countries=["DE"] color="#cc0000", event2 addCountries=["FR","BE","NL"] (keeps DE red, adds FR/BE/NL). When allies push back: removeCountries=["FR","NL"].
+
+5. NO LABELS: Do NOT include any "label" field. Remove it completely.
+
+6. SMOOTH ZOOM: Zoom should follow the action. If story moves from Middle East to Europe, zoom out to "world" first for 3s, then zoom into "europe". Never jump between distant regions instantly.
+
+7. MILITARY ARROWS: For invasions, set military=true, fromCountry=attacker, toCountry=main target. This draws a movement arrow.
+
+8. COLORS: Use vivid colors. Aggressors: "#cc0000" or "#e11d48". Defenders/allies: "#1d4ed8" or "#15803d". Neutral: "#f59e0b". Empire expansion: "#7c3aed".
+
+9. NO REPETITION: Each event must show something NEW happening on the map. Never show the same countries with the same color twice in a row.
+
+- countries use 2-letter ISO codes only
+- zoom options: world, europe, western-europe, eastern-europe, scandinavia, balkans, iberia, british-isles, middle-east, gulf, levant, arabian-peninsula, holy-land, asia, central-asia, east-asia, south-asia, southeast-asia, far-east, africa, north-africa, west-africa, east-africa, southern-africa, horn-of-africa, great-lakes, sub-saharan, sahara, americas, north-america, south-america, central-america, caribbean, southern-cone, oceania, egypt, egypt-sinai, nile-valley, north-egypt, mesopotamia, anatolia, caucasus, iran-plateau, arabian-desert, ancient-egypt, ancient-rome, ancient-greece, ancient-persia, byzantine, ottoman, mongolia-steppe, silk-road`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 3000, temperature: 0.3 }),
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 4000, temperature: 0.2 }),
   });
 
   const data = await res.json();
@@ -460,7 +462,6 @@ RULES:
   try {
     return JSON.parse(clean);
   } catch {
-    // try to extract JSON
     const match = clean.match(/\{[\s\S]*\}/);
     if (match) {
       try { return JSON.parse(match[0]); } catch {}
@@ -640,16 +641,53 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   const framesDir = path.join(jobDir, 'frames');
   fs.mkdirSync(framesDir, { recursive: true });
 
-  const getHighlightsAtTime = (t) => {
+  // Build cumulative highlights — supports addCountries/removeCountries for expansion
+  const buildHighlightsAtTime = (t) => {
     const h2 = {};
-    for (const ev of (timeline.events || [])) {
-      if (t >= ev.time && t < ev.time + ev.duration) {
-        for (const iso of (ev.countries || [])) {
-          if (iso && iso.length === 2) h2[iso] = ev.color || '#e11d48';
-        }
+    // Process events in order up to current time
+    const sortedEvents = [...(timeline.events || [])].sort((a, b) => a.time - b.time);
+    for (const ev of sortedEvents) {
+      if (ev.time > t) break;
+      const isActive = t >= ev.time && t < ev.time + ev.duration;
+      if (!isActive) continue;
+
+      // Set base countries for this event
+      for (const iso of (ev.countries || [])) {
+        if (iso && iso.length === 2) h2[iso] = ev.color || '#e11d48';
+      }
+      // Add new countries (expansion) — keep existing colors too
+      for (const iso of (ev.addCountries || [])) {
+        if (iso && iso.length === 2) h2[iso] = ev.color || '#e11d48';
+      }
+      // Remove countries (liberation/retreat)
+      for (const iso of (ev.removeCountries || [])) {
+        delete h2[iso];
       }
     }
     return h2;
+  };
+
+  // Track cumulative state across time for persistent highlights
+  const cumulativeHighlights = {};
+  const getHighlightsAtTime = (t) => {
+    const sortedEvents = [...(timeline.events || [])].sort((a, b) => a.time - b.time);
+    const state = {};
+    for (const ev of sortedEvents) {
+      if (ev.time > t) break;
+      // Set/replace countries
+      for (const iso of (ev.countries || [])) {
+        if (iso && iso.length === 2) state[iso] = ev.color || '#e11d48';
+      }
+      // Add (expand)
+      for (const iso of (ev.addCountries || [])) {
+        if (iso && iso.length === 2) state[iso] = ev.color || '#e11d48';
+      }
+      // Remove (retreat)
+      for (const iso of (ev.removeCountries || [])) {
+        delete state[iso];
+      }
+    }
+    return state;
   };
 
   const getZoneAtTime = (t) => {
@@ -689,7 +727,9 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
       const parseVB = (vb) => vb.split(' ').map(Number);
       const fromVB = parseVB(prevViewBox), toVB = parseVB(viewBox);
-      const curVB = fromVB.map((v, i) => Math.round(v + (toVB[i] - v) * progress));
+      // Ease in-out for smoother zoom
+      const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+      const curVB = fromVB.map((v, i) => Math.round(v + (toVB[i] - v) * eased));
       const curViewBox = curVB.join(' ');
       const currentTime = sec + progress;
 
