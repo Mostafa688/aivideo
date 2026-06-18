@@ -534,9 +534,10 @@ export default function AuthPage({ onAuth, googlePendingData }) {
       const termsAccepted = localStorage.getItem('termsAccepted') === 'true';
 
       if (termsAccepted) {
-        // ✅ الفيكس: بدل onAuth بنعمل reload عشان يشتغل صح على موبايل
-        window.location.reload();
+        // مستخدم قديم — يدخل مباشرة زي التسجيل العادي
+        onAuth(authData);
       } else {
+        // مستخدم جديد — يعرض Terms ثم Survey ثم Recommend
         setPendingAuthData(authData);
         setStep('terms');
       }
