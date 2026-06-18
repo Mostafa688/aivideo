@@ -72,56 +72,136 @@ const COUNTRY_ISO = {
   'puerto rico':'PR','guyana':'GY','suriname':'SR',
 };
 
-// ── Country bounding boxes ──────────────────────────────────────────────────────
+// ── Country bounding boxes (matched to SVG viewBox 0 0 1000 500) ───────────────
 const COUNTRY_BBOX = {
-  'US':[200,150,450,250],'CA':[150,50,500,280],'MX':[200,320,200,180],
-  'BR':[380,420,340,340],'AR':[380,580,200,240],'CO':[300,390,120,120],
-  'VE':[340,360,130,80],'PE':[310,450,160,160],'CL':[390,480,80,280],
-  'GB':[900,100,80,120],'FR':[930,160,100,100],'DE':[980,130,80,100],
-  'IT':[990,200,60,120],'ES':[900,200,120,80],'PT':[870,200,50,80],
-  'PL':[1040,130,100,80],'RO':[1080,150,80,70],'UA':[1080,130,150,80],
-  'NO':[930,60,160,120],'SE':[990,70,100,130],'FI':[1050,60,100,100],
-  'RU':[1100,50,700,300],'TR':[1120,200,200,80],'CN':[1350,120,400,280],
-  'IN':[1310,250,200,200],'JP':[1600,130,100,150],'EG':[1100,240,120,120],
-  'SA':[1180,260,200,160],'IR':[1230,190,180,120],'IQ':[1190,220,80,100],
-  'SY':[1160,210,70,60],'AF':[1290,170,120,120],'PK':[1310,190,120,130],
-  'NG':[990,360,100,100],'ET':[1160,360,120,100],'ZA':[1060,540,120,120],
-  'AU':[1580,440,400,280],'KZ':[1250,110,250,150],'MN':[1380,100,220,120],
+  // Americas
+  'US':[100,140,230,130],'CA':[75,50,250,140],'MX':[100,225,100,90],
+  'BR':[190,300,175,170],'AR':[190,360,100,120],'CO':[150,270,60,60],
+  'VE':[170,255,65,40],'PE':[155,300,80,80],'CL':[195,300,40,140],
+  'BO':[165,310,70,70],'PY':[215,335,50,40],'UY':[225,360,30,25],
+  'EC':[145,280,40,40],'GY':[210,270,30,30],'SR':[220,270,25,25],
+  // Europe
+  'GB':[450,100,40,55],'FR':[465,155,55,50],'DE':[490,130,50,50],
+  'IT':[495,175,40,60],'ES':[450,175,60,40],'PT':[435,175,25,40],
+  'PL':[520,135,50,40],'RO':[540,155,40,35],'UA':[540,140,75,40],
+  'NO':[465,70,75,55],'SE':[495,85,50,65],'FI':[525,75,50,50],
+  'NL':[480,135,20,20],'BE':[475,145,20,15],'CH':[490,165,25,15],
+  'AT':[510,160,30,20],'HU',[515,165,35,25],'CZ':[505,155,30,20],
+  'GR':[540,195,30,35],'BG':[545,180,30,25],'SK':[525,160,25,15],
+  // Russia & Central Asia
+  'RU':[550,55,350,175],'KZ':[610,135,130,75],'MN':[690,115,115,65],
+  'TR':[560,185,100,40],'AZ':[610,185,20,20],'GE':[600,180,25,20],
+  // Middle East
+  'SY':[580,190,35,30],'IQ':[595,205,45,45],'IR':[615,175,90,65],
+  'SA':[590,225,100,75],'YE':[600,265,60,35],'OM':[640,235,45,45],
+  'AE':[630,235,20,15],'KW':[615,220,15,15],'JO':[580,210,30,25],
+  'IL':[575,210,15,20],'LB':[577,200,12,15],'QA':[625,230,10,15],
+  'EG':[560,220,60,55],'LY':[515,205,70,55],'TN':[490,195,25,35],
+  'DZ':[460,195,90,70],'MA':[435,200,60,55],'SD':[575,250,65,60],
+  'ET':[595,275,60,50],'ER':[598,258,20,20],'DJ':[610,265,12,12],
+  'SO':[615,270,50,55],
+  // Africa
+  'NG':[495,285,50,50],'GH':[480,285,25,30],'CI':[468,285,25,28],
+  'CM':[515,275,30,35],'CF':[527,270,40,35],'CD':[535,295,65,65],
+  'KE':[595,310,30,35],'TZ':[575,310,45,40],'UG':[578,295,25,25],
+  'ZA':[520,380,70,60],'MZ':[575,330,35,55],'ZM':[543,315,45,40],
+  'ZW':[556,332,30,28],'BW':[536,330,30,30],'NA':[516,330,35,45],
+  'AO':[516,300,45,50],'MW',[567,316,15,25],
+  'MG':[617,325,30,50],'SN':[440,255,25,20],'ML':[455,255,60,55],
+  'NE':[500,245,65,45],'TD':[520,245,50,55],'MR':[435,240,40,35],
+  // South & Southeast Asia
+  'IN':[660,215,100,100],'PK':[640,185,60,65],'AF':[640,175,60,55],
+  'BD':[735,230,20,20],'LK':[694,265,12,15],'NP':[696,210,55,20],
+  'BT':[724,210,15,12],'MM':[742,230,35,50],'TH':[752,245,30,45],
+  'VN':[770,235,20,50],'KH':[762,255,20,20],'LA':[762,245,20,30],
+  'MY':[765,270,40,25],'ID':[769,280,100,55],'PH':[805,245,30,40],
+  // East Asia
+  'CN':[695,130,200,140],'JP':[828,170,40,70],'KR':[810,185,20,30],
+  'KP':[805,175,20,20],'TW':[800,220,10,15],'MN':[700,115,115,60],
+  // Oceania
+  'AU':[787,330,200,150],'NZ':[912,395,30,50],'PG':[855,295,45,35],
 };
 
 const ZOOM_REGIONS = {
-  'world':       { x:0,    y:0,   w:2000, h:857 },
-  'europe':      { x:840,  y:70,  w:520,  h:380 },
-  'middle-east': { x:1100, y:180, w:400,  h:320 },
-  'gulf':        { x:1190, y:250, w:200,  h:150 },
-  'asia':        { x:1200, y:80,  w:700,  h:500 },
-  'east-asia':   { x:1380, y:120, w:340,  h:280 },
-  'south-asia':  { x:1280, y:200, w:250,  h:200 },
-  'africa':      { x:840,  y:230, w:420,  h:500 },
-  'north-africa':{ x:860,  y:235, w:380,  h:180 },
-  'americas':    { x:100,  y:50,  w:700,  h:750 },
-  'north-america':{ x:100, y:50,  w:600,  h:350 },
-  'south-america':{ x:280, y:350, w:380,  h:500 },
-  'oceania':     { x:1550, y:400, w:430,  h:330 },
+  // Global
+  'world':           { x:0,    y:0,   w:1000, h:500 },
+  // Continents
+  'europe':          { x:420,  y:80,  w:260,  h:190 },
+  'africa':          { x:420,  y:200, w:220,  h:230 },
+  'north-africa':    { x:420,  y:190, w:220,  h:90  },
+  'west-africa':     { x:420,  y:245, w:120,  h:90  },
+  'east-africa':     { x:555,  y:245, w:90,   h:110 },
+  'southern-africa': { x:490,  y:325, w:130,  h:100 },
+  'americas':        { x:50,   y:50,  w:360,  h:400 },
+  'north-america':   { x:50,   y:50,  w:300,  h:200 },
+  'south-america':   { x:130,  y:245, w:200,  h:260 },
+  'central-america': { x:120,  y:220, w:100,  h:80  },
+  'caribbean':       { x:140,  y:215, w:120,  h:70  },
+  'oceania':         { x:770,  y:300, w:220,  h:170 },
+  // Asia regions
+  'asia':            { x:580,  y:80,  w:380,  h:280 },
+  'central-asia':    { x:600,  y:140, w:160,  h:90  },
+  'east-asia':       { x:700,  y:120, w:160,  h:130 },
+  'south-asia':      { x:630,  y:180, w:130,  h:110 },
+  'southeast-asia':  { x:730,  y:220, w:150,  h:110 },
+  'far-east':        { x:790,  y:155, w:90,   h:90  },
+  // Middle East
+  'middle-east':     { x:545,  y:185, w:130,  h:120 },
+  'gulf':            { x:590,  y:215, w:80,   h:70  },
+  'levant':          { x:555,  y:185, w:60,   h:55  },
+  'arabian-peninsula':{ x:575, y:220, w:90,   h:80  },
+  // Specific countries / sub-regions
+  'egypt':           { x:540,  y:205, w:80,   h:65  },
+  'egypt-sinai':     { x:555,  y:205, w:55,   h:45  },
+  'nile-valley':     { x:555,  y:200, w:50,   h:80  },
+  'north-egypt':     { x:540,  y:205, w:80,   h:35  },
+  'mesopotamia':     { x:580,  y:195, w:60,   h:55  },
+  'anatolia':        { x:545,  y:178, w:110,  h:45  },
+  'caucasus':        { x:590,  y:170, w:50,   h:35  },
+  'iran-plateau':    { x:610,  y:170, w:95,   h:70  },
+  'arabian-desert':  { x:580,  y:220, w:80,   h:70  },
+  'holy-land':       { x:560,  y:198, w:30,   h:40  },
+  // Ancient regions
+  'ancient-egypt':   { x:540,  y:200, w:80,   h:80  },
+  'ancient-rome':    { x:450,  y:155, w:120,  h:90  },
+  'ancient-greece':  { x:520,  y:180, w:60,   h:50  },
+  'ancient-persia':  { x:595,  y:160, w:130,  h:100 },
+  'byzantine':       { x:520,  y:170, w:110,  h:70  },
+  'ottoman':         { x:510,  y:160, w:150,  h:90  },
+  'mongolia-steppe': { x:640,  y:100, w:200,  h:90  },
+  'silk-road':       { x:580,  y:140, w:230,  h:80  },
+  // Sub-Saharan
+  'sahara':          { x:430,  y:210, w:190,  h:80  },
+  'sub-saharan':     { x:430,  y:265, w:210,  h:165 },
+  'horn-of-africa':  { x:575,  y:250, w:70,   h:65  },
+  'great-lakes':     { x:555,  y:285, w:65,   h:60  },
+  'southern-cone':   { x:170,  y:340, w:90,   h:130 },
+  // Europe sub-regions
+  'western-europe':  { x:420,  y:120, w:110,  h:120 },
+  'eastern-europe':  { x:510,  y:120, w:110,  h:110 },
+  'scandinavia':     { x:455,  y:70,  w:120,  h:100 },
+  'balkans':         { x:510,  y:160, w:70,   h:60  },
+  'iberia':          { x:428,  y:165, w:75,   h:55  },
+  'british-isles':   { x:430,  y:100, w:70,   h:65  },
 };
 
 const COUNTRY_LABELS = {
-  'US':[425,270,'United States'],'CA':[400,180,'Canada'],'MX':[300,410,'Mexico'],
-  'BR':[555,540,'Brazil'],'AR':[520,690,'Argentina'],'CO':[375,450,'Colombia'],
-  'GB':[928,155,'UK'],'FR':[975,205,'France'],'DE':[1025,178,'Germany'],
-  'IT':[1033,250,'Italy'],'ES':[950,235,'Spain'],'PT':[895,232,'Portugal'],
-  'PL':[1085,165,'Poland'],'RO':[1115,178,'Romania'],'UA':[1160,170,'Ukraine'],
-  'NO':[990,105,'Norway'],'SE':[1025,120,'Sweden'],'FI':[1085,103,'Finland'],
-  'RU':[1400,175,'Russia'],'TR':[1220,238,'Turkey'],
-  'SY':[1203,237,'Syria'],'IQ':[1238,260,'Iraq'],'IR':[1303,258,'Iran'],
-  'SA':[1268,330,'Saudi Arabia'],'AE':[1287,293,'UAE'],'EG':[1155,300,'Egypt'],
-  'LY':[1080,298,'Libya'],'DZ':[1008,320,'Algeria'],'MA':[943,283,'Morocco'],
-  'CN':[1560,288,'China'],'IN':[1410,353,'India'],'JP':[1663,208,'Japan'],
-  'AU':[1758,603,'Australia'],'ZA':[1120,603,'South Africa'],
-  'NG':[1030,398,'Nigeria'],'ET':[1205,405,'Ethiopia'],
-  'SD':[1165,373,'Sudan'],'KE':[1198,440,'Kenya'],
-  'PK':[1370,250,'Pakistan'],'AF':[1335,220,'Afghanistan'],
-  'KZ':[1365,175,'Kazakhstan'],'MN':[1495,150,'Mongolia'],
+  'US':[215,195,'United States'],'CA':[200,120,'Canada'],'MX':[150,260,'Mexico'],
+  'BR':[280,370,'Brazil'],'AR':[240,410,'Argentina'],'CO':[178,285,'Colombia'],
+  'GB':[465,130,'UK'],'FR':[487,175,'France'],'DE':[505,155,'Germany'],
+  'IT':[515,200,'Italy'],'ES':[462,195,'Spain'],'PT':[443,195,'Portugal'],
+  'PL':[540,150,'Poland'],'RO':[558,168,'Romania'],'UA':[578,155,'Ukraine'],
+  'NO':[502,105,'Norway'],'SE':[512,125,'Sweden'],'FI':[542,108,'Finland'],
+  'RU':[700,140,'Russia'],'TR':[585,205,'Turkey'],
+  'SY':[595,200,'Syria'],'IQ':[615,215,'Iraq'],'IR':[650,205,'Iran'],
+  'SA':[625,245,'Saudi Arabia'],'AE':[642,235,'UAE'],'EG':[577,238,'Egypt'],
+  'LY':[540,225,'Libya'],'DZ':[505,225,'Algeria'],'MA':[462,218,'Morocco'],
+  'CN':[780,195,'China'],'IN':[710,255,'India'],'JP':[848,195,'Japan'],
+  'AU':[880,400,'Australia'],'ZA':[555,375,'South Africa'],
+  'NG':[520,298,'Nigeria'],'ET':[600,285,'Ethiopia'],
+  'SD':[580,262,'Sudan'],'KE':[607,318,'Kenya'],
+  'PK':[668,220,'Pakistan'],'AF':[665,195,'Afghanistan'],
+  'KZ':[680,170,'Kazakhstan'],'MN':[755,145,'Mongolia'],
 };
 
 // ── Historical flags ────────────────────────────────────────────────────────────
@@ -184,13 +264,13 @@ function getViewBoxForZone(zone, w, h) {
   let region;
   if (zone && zone.length === 2 && COUNTRY_BBOX[zone]) {
     const [bx, by, bw, bh] = COUNTRY_BBOX[zone];
-    const pad = Math.max(bw, bh) * 0.5;
+    const pad = Math.max(bw, bh) * 0.4;
     region = { x: bx - pad, y: by - pad, w: bw + pad * 2, h: bh + pad * 2 };
   } else {
     region = ZOOM_REGIONS[zone] || ZOOM_REGIONS['world'];
   }
   const rx = Math.max(0, region.x), ry = Math.max(0, region.y);
-  const rw = Math.min(2000 - rx, region.w), rh = Math.min(857 - ry, region.h);
+  const rw = Math.min(1000 - rx, region.w), rh = Math.min(500 - ry, region.h);
   const outputAspect = w / h, regionAspect = rw / rh;
   let vbx, vby, vbw, vbh;
   if (regionAspect > outputAspect) {
@@ -358,7 +438,7 @@ RULES:
 - For historical events: set entity to the historical name (e.g. "nazi germany", "ottoman empire")
 - flag=true means show flag overlay on the country
 - countries use 2-letter ISO codes
-- zoom can be: world, europe, middle-east, gulf, asia, africa, americas, north-africa, east-asia, south-asia
+- zoom can be: world, europe, western-europe, eastern-europe, scandinavia, balkans, iberia, british-isles, middle-east, gulf, levant, arabian-peninsula, holy-land, asia, central-asia, east-asia, south-asia, southeast-asia, far-east, africa, north-africa, west-africa, east-africa, southern-africa, horn-of-africa, great-lakes, sub-saharan, sahara, americas, north-america, south-america, central-america, caribbean, southern-cone, oceania, egypt, egypt-sinai, nile-valley, north-egypt, mesopotamia, anatolia, caucasus, iran-plateau, arabian-desert, ancient-egypt, ancient-rome, ancient-greece, ancient-persia, byzantine, ottoman, mongolia-steppe, silk-road
 - events should cover the full story duration
 - Return ONLY valid JSON, no markdown`;
 
@@ -510,8 +590,8 @@ async function preloadFlags(isoCodes) {
 export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) {
   const { mode, idea, script, voice, duration, ratio, language, mapStyle, uploadedAudioUrl, captions, music } = formData;
 
-  const FPS = 15;
-  const TRANSITION_FRAMES = 8;
+  const FPS = 24;
+  const TRANSITION_FRAMES = 12;
   const durationSecs = duration === '30s' ? 30 : duration === '1min' ? 60 : duration === '2min' ? 120 : duration === '3min' ? 180 : 300;
   const [w, h] = ratio === '16:9' ? [1280, 720] : ratio === '1:1' ? [720, 720] : [720, 1280]; // default 9:16
 
