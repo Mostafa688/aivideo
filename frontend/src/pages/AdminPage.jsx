@@ -715,6 +715,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [videos, setVideos] = useState([]);
+  const [answers, setAnswers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
@@ -735,6 +736,7 @@ export default function AdminPage() {
   const loadStats    = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/stats', { headers }); const d = await r.json(); setStats(d); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadPayments = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/payments', { headers }); const d = await r.json(); setPayments(d.payments || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadVideos   = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/videos', { headers }); const d = await r.json(); setVideos(d.videos || []); } catch (e) { console.error(e); } setLoading(false); }, []);
+  const loadAnswers  = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/onboarding-answers', { headers }); const d = await r.json(); setAnswers(d.answers || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const handleResetCredits = async (email) => {
     if (!confirm(`Reset weekly credits for ${email}?`)) return;
     setResetingCredits(email);
@@ -824,6 +826,7 @@ export default function AdminPage() {
     { key: 'videos',     label: '🎬 Videos'      },
     { key: 'affiliates', label: '🤝 Affiliates'  },
     { key: 'templates',  label: '🎬 Templates'   },
+    { key: 'answers',    label: '📋 Answers'     },
     { key: 'studio',     label: '🎥 My Studio'   },
   ];
 
@@ -1082,6 +1085,53 @@ export default function AdminPage() {
         {tab === 'templates' && <TemplatesTab s={s} />}
 
         {/* ── STUDIO ── */}
+        {/* ── ANSWERS ── */}
+        {tab === 'answers' && (
+          <>
+            <div style={s.topbar}>
+              <div style={s.title}>📋 User Onboarding Answers</div>
+              <button style={s.btn()} onClick={loadAnswers}>🔄 Load Answers</button>
+            </div>
+            {loading && <div style={{ color: '#6b7280', fontSize: 13 }}>Loading...</div>}
+            {!loading && answers.length === 0 && (
+              <div style={{ color: '#6b7280', fontSize: 13, padding: '20px 0' }}>اضغط "Load Answers" عشان تجيب الإجابات.</div>
+            )}
+            {answers.length > 0 && (
+              <div style={s.card}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>{answers.length} user(s) answered the onboarding survey</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={s.table}>
+                    <thead>
+                      <tr>
+                        <th style={s.th}>Email</th>
+                        <th style={s.th}>Plan</th>
+                        <th style={s.th}>Source (من فين؟)</th>
+                        <th style={s.th}>Content Type</th>
+                        <th style={s.th}>Style</th>
+                        <th style={s.th}>Budget</th>
+                        <th style={s.th}>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {answers.map((a, i) => (
+                        <tr key={i}>
+                          <td style={s.td}>{a.email}</td>
+                          <td style={s.td}><span style={planStyle(a.plan)}>{a.plan}</span></td>
+                          <td style={s.td}>{a.source || '—'}</td>
+                          <td style={s.td}>{a.content_type || '—'}</td>
+                          <td style={s.td}>{a.style || '—'}</td>
+                          <td style={s.td}>{a.budget || '—'}</td>
+                          <td style={s.td}>{a.answered_at ? new Date(a.answered_at).toLocaleDateString('en-GB') : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {tab === 'studio' && <StudioTab s={s} />}
 
       </div>

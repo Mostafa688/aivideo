@@ -539,6 +539,21 @@ router.post('/gumroad-ping', async (req, res) => {
 
 router.post('/referral', authMiddleware, async (req, res) => { res.json({ ok: true }); });
 
+// ── Save onboarding survey answers ────────────────────────────────────────
+router.post('/onboarding-answers', authMiddleware, async (req, res) => {
+  try {
+    const { source, content_type, style, budget } = req.body;
+    await pool.query(`
+      INSERT INTO user_onboarding (user_id, source, content_type, style, budget, created_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET source=$2, content_type=$3, style=$4, budget=$5
+    `, [req.user.userId, source || null, content_type || null, style || null, budget || null]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/model3-usage', authMiddleware, async (req, res) => {
   try {
     const user = await getUserById(req.user.userId);

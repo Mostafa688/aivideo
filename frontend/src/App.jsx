@@ -178,8 +178,15 @@ export default function App() {
       setUser({ token: googleToken, email: googleEmail });
       setUserPlan(googlePlan || 'free');
       setUserAvatar(googleAvatar || null);
-      if (!termsAccepted) { setShowAuth(true); }
-      else { setPlanSelected(planChosenBefore); if (!planChosenBefore) setShowPricing(true); }
+      if (!termsAccepted) {
+        // مستخدم جديد — يعرض Terms/Survey/Recommend داخل AuthPage
+        setShowAuth(true);
+      } else {
+        // مستخدم قديم — يدخل مباشرة بدون reload
+        setShowAuth(false);
+        setPlanSelected(planChosenBefore);
+        if (!planChosenBefore) setShowPricing(true);
+      }
       setAuthChecked(true); return;
     }
     const token = localStorage.getItem('token');

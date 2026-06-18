@@ -437,10 +437,10 @@ function ModelRecommendStep({ onContinue }) {
               <div style={{ fontSize:18, fontWeight:800, color: modelInfo?.color, marginBottom:8 }}>{modelInfo?.name}</div>
               <div style={{ fontSize:14, color:'#d1d5db', lineHeight:1.6 }}>{modelInfo?.desc}</div>
             </div>
-            <button onClick={() => onContinue(recommended)} style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#7c6af7,#a08ff8)', border:'none', borderRadius:12, color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 4px 20px rgba(124,106,247,0.4)', marginBottom:10 }}>
+            <button onClick={() => onContinue(recommended, answers)} style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#7c6af7,#a08ff8)', border:'none', borderRadius:12, color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 4px 20px rgba(124,106,247,0.4)', marginBottom:10 }}>
               ابدأ الآن / Get Started →
             </button>
-            <button onClick={() => onContinue(null)} style={{ width:'100%', padding:'10px', background:'transparent', border:'none', color:'var(--text3)', fontSize:13, cursor:'pointer' }}>
+            <button onClick={() => onContinue(null, answers)} style={{ width:'100%', padding:'10px', background:'transparent', border:'none', color:'var(--text3)', fontSize:13, cursor:'pointer' }}>
               استكشف جميع الموديلات / Explore all models
             </button>
           </div>
@@ -505,6 +505,7 @@ export default function AuthPage({ onAuth }) {
   const [error, setError]         = useState('');
   const [legalModal, setLegalModal] = useState(null);
   const [pendingAuthData, setPendingAuthData] = useState(null);
+  const [surveySource, setSurveySource] = useState(null);
 
   useEffect(() => {
     const params      = new URLSearchParams(window.location.search);
@@ -530,9 +531,10 @@ export default function AuthPage({ onAuth }) {
       const termsAccepted = localStorage.getItem('termsAccepted') === 'true';
 
       if (termsAccepted) {
-        // ✅ الفيكس: بدل onAuth بنعمل reload عشان يشتغل صح على موبايل
-        window.location.reload();
+        // مستخدم قديم — يدخل مباشرة
+        onAuth(authData);
       } else {
+        // مستخدم جديد — يعرض Terms ثم Survey ثم Recommend
         setPendingAuthData(authData);
         setStep('terms');
       }
@@ -587,13 +589,23 @@ export default function AuthPage({ onAuth }) {
         body: JSON.stringify({ source }),
       }).catch(() => {});
     }
+    setSurveySource(source);
     localStorage.removeItem('erivion_ref');
     setStep('recommend');
   };
 
-  const handleRecommendDone = (modelKey) => {
+  const handleRecommendDone = (modelKey, answers) => {
     if (modelKey) localStorage.setItem('erivion_recommended_model', modelKey);
-    window.location.reload();
+    // احفظ كل إجابات الـ onboarding في الـ DB
+    fetch('/api/auth/onboarding-answers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + (pendingAuthData?.token || localStorage.getItem('token')),
+      },
+      body: JSON.stringify({ source: surveySource, ...(answers || {}) }),
+    }).catch(() => {});
+    onAuth(pendingAuthData);
   };
 
   return (

@@ -323,4 +323,22 @@ router.post('/studio/generate', adminAuth, async (req, res) => {
   }
 });
 
+// ── User Onboarding Answers ────────────────────────────────────────────────
+router.get('/onboarding-answers', adminAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.email, u.plan, u.created_at as joined,
+             o.source, o.content_type, o.style, o.budget, o.created_at as answered_at
+      FROM users u
+      LEFT JOIN user_onboarding o ON o.user_id = u.id
+      WHERE o.user_id IS NOT NULL
+      ORDER BY o.created_at DESC
+      LIMIT 500
+    `);
+    res.json({ answers: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
