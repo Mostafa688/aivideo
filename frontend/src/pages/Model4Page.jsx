@@ -524,7 +524,9 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
   // auto-set duration when script changes
   React.useEffect(() => {
     if (mode === 'script' && script.length > 20) {
-      setDuration(getSmartDuration());
+      const chars = script.trim().length;
+      const smart = chars <= 300 ? '30s' : chars <= 600 ? '1min' : '3min';
+      setDuration(smart);
     }
   }, [script, mode]);
 
