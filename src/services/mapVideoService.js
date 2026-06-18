@@ -593,7 +593,7 @@ function resolveAudioPath(uploadedAudioUrl) {
 }
 
 // ── Groq Whisper captions ─────────────────────────────────────────────────────
-async function transcribeAudioForMap(audioPath) {
+async function transcribeAudioForMap(audioPath, language = 'en') {
   try {
     const { default: FormData } = await import('form-data');
     const audioBuffer = fs.readFileSync(audioPath);
@@ -602,6 +602,7 @@ async function transcribeAudioForMap(audioPath) {
     formData.append('model', 'whisper-large-v3-turbo');
     formData.append('response_format', 'verbose_json');
     formData.append('timestamp_granularities[]', 'word');
+    formData.append('language', language); // ← بيقول لـ Whisper اللغة عشان يتعرف صح
 
     const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',
@@ -615,30 +616,54 @@ async function transcribeAudioForMap(audioPath) {
 }
 
 // ── Add real captions with ffmpeg drawtext ────────────────────────────────────
-async function addMapCaptions(videoPath, audioPath, outputPath, style = 'dark', ratio) {
-  const isRTL = false;
-  const FONT_PATH = process.platform === 'win32'
-    ? 'C\\:/Windows/Fonts/arial.ttf'
-    : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+async function addMapCaptions(videoPath, audioPath, outputPath, style = 'dark', ratio, language = 'en') {
+  const isArabic = language === 'ar';
 
-  const words = await transcribeAudioForMap(audioPath);
+  // Arabic needs a font that supports Arabic — try Noto fonts first
+  let FONT_PATH;
+  if (isArabic) {
+    const candidates = [
+      '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf',
+      '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf',
+      '/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.otf',
+      '/usr/share/fonts/truetype/arabic/NotoNaskhArabic-Regular.ttf',
+      '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    ];
+    FONT_PATH = candidates.find(f => { try { return fs.existsSync(f); } catch { return false; } })
+      || '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+  } else {
+    FONT_PATH = process.platform === 'win32'
+      ? 'C\\:/Windows/Fonts/arial.ttf'
+      : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+  }
+
+  // Pass language to Whisper so it transcribes correctly
+  const words = await transcribeAudioForMap(audioPath, language);
   if (!words || words.length === 0) {
     fs.copyFileSync(videoPath, outputPath);
     return;
   }
 
-  // Group into chunks of 4 words
+  // Arabic: fewer words per chunk (shorter lines)
+  const chunkSize = isArabic ? 3 : 4;
   const chunks = [];
-  for (let i = 0; i < words.length; i += 4) {
-    const group = words.slice(i, i + 4);
-    const text = group.map(w => w.word.replace(/['"`:;\\<>{}|]/g, '').trim()).join(' ');
+  for (let i = 0; i < words.length; i += chunkSize) {
+    const group = words.slice(i, i + chunkSize);
+    const text = group.map(w => w.word
+      .replace(/['"`:;\\<>{}|]/g, '')
+      .replace(/'/g, "\\'")
+      .trim()
+    ).filter(Boolean).join(' ');
     if (text) chunks.push({ text, start: group[0].start, end: group[group.length-1].end });
   }
 
-  const yExpr = ratio === '9:16' || ratio === '1:1' ? '(h-text_h)/2' : 'h-text_h-60';
+  if (!chunks.length) { fs.copyFileSync(videoPath, outputPath); return; }
+
+  const yExpr = ratio === '9:16' || ratio === '1:1' ? 'h-text_h-80' : 'h-text_h-60';
   const filters = chunks.map(c =>
-    `drawtext=fontfile='${FONT_PATH}':text='${c.text}':fontsize=28:fontcolor=white` +
-    `:borderw=2:bordercolor=black:box=1:boxcolor=0x00000088:boxborderw=8` +
+    `drawtext=fontfile='${FONT_PATH}':text='${c.text}':fontsize=30:fontcolor=white` +
+    `:borderw=2:bordercolor=black:box=1:boxcolor=0x00000088:boxborderw=10` +
     `:x=(w-text_w)/2:y=${yExpr}:enable='between(t,${c.start.toFixed(3)},${c.end.toFixed(3)})'`
   );
 
@@ -702,6 +727,80 @@ async function preloadFlags(isoCodes) {
   console.log(`[MapVideo] Preloaded ${flagCache.size} flags`);
 }
 
+// ── Sync events timing to actual audio transcript ─────────────────────────────
+async function syncEventsToAudio(events, audioPath, language = 'en', totalSecs) {
+  try {
+    // Get word-level timestamps from Whisper
+    const words = await transcribeAudioForMap(audioPath, language);
+    if (!words || words.length === 0) return events;
+
+    // Build sentence timestamps from word timestamps
+    // Group words into sentences by punctuation or pauses
+    const sentences = [];
+    let current = [];
+    for (const word of words) {
+      current.push(word);
+      const w = word.word.trim();
+      // End sentence on punctuation or long pause
+      if (/[.!?،؟]$/.test(w) || (current.length > 0 && word.start - (current[current.length - 2]?.end || 0) > 0.8)) {
+        if (current.length > 0) {
+          sentences.push({
+            text: current.map(w => w.word).join(' ').trim(),
+            start: current[0].start,
+            end: current[current.length - 1].end,
+          });
+          current = [];
+        }
+      }
+    }
+    // Add remaining words as last sentence
+    if (current.length > 0) {
+      sentences.push({
+        text: current.map(w => w.word).join(' ').trim(),
+        start: current[0].start,
+        end: current[current.length - 1].end,
+      });
+    }
+
+    if (sentences.length === 0) return events;
+
+    console.log(`[MapVideo] Syncing ${events.length} events to ${sentences.length} sentences`);
+
+    // Distribute events evenly across sentences
+    const synced = events.map((ev, i) => {
+      // Map event index to sentence index proportionally
+      const sentIdx = Math.min(Math.floor((i / events.length) * sentences.length), sentences.length - 1);
+      const nextSentIdx = Math.min(sentIdx + Math.ceil(sentences.length / events.length), sentences.length - 1);
+      const sentStart = sentences[sentIdx].start;
+      const sentEnd = sentences[nextSentIdx]?.end || sentences[sentences.length - 1].end;
+      return {
+        ...ev,
+        time: Math.round(sentStart * 10) / 10,
+        duration: Math.max(3, Math.round((sentEnd - sentStart) * 10) / 10),
+      };
+    });
+
+    // Fix overlaps and gaps — make sure events are contiguous
+    for (let i = 1; i < synced.length; i++) {
+      if (synced[i].time < synced[i-1].time + synced[i-1].duration) {
+        synced[i].time = synced[i-1].time + synced[i-1].duration;
+      }
+    }
+
+    // Last event extends to end of audio
+    if (synced.length > 0) {
+      const last = synced[synced.length - 1];
+      last.duration = Math.max(last.duration, totalSecs - last.time);
+    }
+
+    console.log(`[MapVideo] Sync done — events now match audio timing`);
+    return synced;
+  } catch (e) {
+    console.warn('[MapVideo] Sync failed, using AI timing:', e.message);
+    return events;
+  }
+}
+
 // ── Main render ────────────────────────────────────────────────────────────────
 export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) {
   const { mode, idea, script, voice, duration, ratio, language, mapStyle, uploadedAudioUrl, captions, music } = formData;
@@ -728,7 +827,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
     }
   }
 
-  updateStatus(jobId, { progress: 30, log: ['✅ Voiceover ready', '🗺️ Generating map frames...'] });
+  updateStatus(jobId, { progress: 30, log: ['✅ Voiceover ready', '🔄 Syncing events to audio...'] });
 
   let actualAudioDuration = durationSecs;
   if (audioPath && fs.existsSync(audioPath)) {
@@ -743,6 +842,14 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   }
 
   const totalSecs = Math.ceil(actualAudioDuration);
+
+  // ── Sync events timing to actual audio ──────────────────────────────────
+  let syncedEvents = timeline.events || [];
+  if (audioPath && fs.existsSync(audioPath) && syncedEvents.length > 0) {
+    syncedEvents = await syncEventsToAudio(syncedEvents, audioPath, language || 'en', totalSecs);
+    updateStatus(jobId, { progress: 35, log: [`✅ Synced ${syncedEvents.length} events to audio timeline`] });
+  }
+  timeline.events = syncedEvents;
   // Preload all country flags
   const allISOs = (timeline.events || []).flatMap(e => e.countries || []);
   await preloadFlags(allISOs);
@@ -910,7 +1017,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   if (captions !== false && audioPath && fs.existsSync(audioPath) && process.env.GROQ_API_KEY) {
     updateStatus(jobId, { progress: 92, log: ['🗣️ Generating real captions with Whisper...'] });
     const withCaptionsPath = path.join(jobDir, 'with_captions.mp4');
-    await addMapCaptions(currentPath, audioPath, withCaptionsPath, mapStyle, ratio);
+    await addMapCaptions(currentPath, audioPath, withCaptionsPath, mapStyle, ratio, language || 'en');
     if (fs.existsSync(withCaptionsPath) && fs.statSync(withCaptionsPath).size > 10000) {
       currentPath = withCaptionsPath;
     }
