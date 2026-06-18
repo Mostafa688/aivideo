@@ -204,60 +204,109 @@ const COUNTRY_LABELS = {
   'KZ':[680,170,'Kazakhstan'],'MN':[755,145,'Mongolia'],
 };
 
-// ── Historical flags ────────────────────────────────────────────────────────────
+// ── Historical empires — defines color for ancient/historical entities ──────────
 const HISTORICAL_FLAGS = {
   // WWII
-  'nazi germany': { color: '#cc0000', symbol: '✠', border: '#000' },
-  'third reich': { color: '#cc0000', symbol: '✠', border: '#000' },
-  'imperial japan': { color: '#bc002d', symbol: '☀', border: '#fff' },
-  'fascist italy': { color: '#009246', symbol: 'F', border: '#fff' },
-  'vichy france': { color: '#002395', symbol: 'V', border: '#fff' },
-  // Empires
-  'ottoman empire': { color: '#cc0000', symbol: '☽', border: '#fff' },
-  'roman empire': { color: '#8B0000', symbol: 'SPQR', border: '#gold' },
-  'byzantine empire': { color: '#6B0000', symbol: '⊕', border: '#gold' },
-  'mongol empire': { color: '#4a90d9', symbol: '🐎', border: '#fff' },
-  'british empire': { color: '#012169', symbol: '♔', border: '#fff' },
-  'french empire': { color: '#002395', symbol: 'N', border: '#fff' },
-  'spanish empire': { color: '#c60b1e', symbol: '♔', border: '#ffc400' },
-  'portuguese empire': { color: '#006600', symbol: '⚓', border: '#fff' },
-  'dutch empire': { color: '#ae1c28', symbol: '🌷', border: '#fff' },
-  'austrian empire': { color: '#ED2939', symbol: '⊕', border: '#fff' },
-  'austro-hungarian empire': { color: '#ED2939', symbol: '⊕', border: '#fff' },
-  'habsburg empire': { color: '#ED2939', symbol: '⊕', border: '#fff' },
-  'russian empire': { color: '#0033A0', symbol: '✠', border: '#fff' },
-  'persian empire': { color: '#009000', symbol: '☀', border: '#fff' },
-  'achaemenid empire': { color: '#009000', symbol: '⚡', border: '#fff' },
-  'sassanid empire': { color: '#cc6600', symbol: '☀', border: '#fff' },
-  // Modern conflicts
-  'soviet union': { color: '#cc0000', symbol: '☭', border: '#ffd700' },
-  'ussr': { color: '#cc0000', symbol: '☭', border: '#ffd700' },
-  'warsaw pact': { color: '#cc0000', symbol: '☆', border: '#ffd700' },
-  'nato': { color: '#003087', symbol: '☆', border: '#fff' },
-  'arab league': { color: '#007A3D', symbol: '☾', border: '#fff' },
-  'axis powers': { color: '#555', symbol: '⚙', border: '#000' },
-  'allies': { color: '#003087', symbol: '★', border: '#fff' },
-  // Middle Eastern
-  'umayyad caliphate': { color: '#006600', symbol: '☾', border: '#fff' },
-  'abbasid caliphate': { color: '#000000', symbol: '☾', border: '#gold' },
-  'fatimid caliphate': { color: '#007A3D', symbol: '☾', border: '#fff' },
-  'safavid empire': { color: '#cc0000', symbol: '☀', border: '#fff' },
-  // African/Asian
-  'zulu kingdom': { color: '#000', symbol: '⚡', border: '#fff' },
-  'mughal empire': { color: '#046A38', symbol: '☾', border: '#fff' },
-  'qing dynasty': { color: '#ffd700', symbol: '龙', border: '#000' },
-  'ming dynasty': { color: '#cc0000', symbol: '龙', border: '#gold' },
-  'han dynasty': { color: '#cc0000', symbol: '汉', border: '#gold' },
+  'nazi germany': { color: '#8B0000', border: '#000' },
+  'third reich': { color: '#8B0000', border: '#000' },
+  'imperial japan': { color: '#bc002d', border: '#fff' },
+  'fascist italy': { color: '#009246', border: '#fff' },
+  'vichy france': { color: '#002395', border: '#fff' },
+  // European Empires
+  'ottoman empire': { color: '#b5451b', border: '#fff' },
+  'roman empire': { color: '#8B2500', border: '#ffd700' },
+  'byzantine empire': { color: '#6B0080', border: '#ffd700' },
+  'holy roman empire': { color: '#ffd700', border: '#000' },
+  'mongol empire': { color: '#2d5a1b', border: '#ffd700' },
+  'british empire': { color: '#012169', border: '#fff' },
+  'french empire': { color: '#002395', border: '#ffd700' },
+  'spanish empire': { color: '#c60b1e', border: '#ffc400' },
+  'portuguese empire': { color: '#006600', border: '#ffd700' },
+  'dutch empire': { color: '#ae1c28', border: '#fff' },
+  'austrian empire': { color: '#ED2939', border: '#fff' },
+  'austro-hungarian empire': { color: '#ED2939', border: '#000' },
+  'habsburg empire': { color: '#ED2939', border: '#fff' },
+  'russian empire': { color: '#0033A0', border: '#ffd700' },
+  'napoleon': { color: '#002395', border: '#ffd700' },
+  'napoleonic france': { color: '#002395', border: '#ffd700' },
+  // Ancient
+  'persian empire': { color: '#8B6914', border: '#ffd700' },
+  'achaemenid empire': { color: '#8B6914', border: '#ffd700' },
+  'sassanid empire': { color: '#cc6600', border: '#ffd700' },
+  'macedonian empire': { color: '#1a3a6b', border: '#ffd700' },
+  'alexander the great': { color: '#1a3a6b', border: '#ffd700' },
+  'ancient egypt': { color: '#c8860a', border: '#ffd700' },
+  'pharaonic egypt': { color: '#c8860a', border: '#ffd700' },
+  'new kingdom egypt': { color: '#c8860a', border: '#ffd700' },
+  'ptolemaic egypt': { color: '#8B6914', border: '#ffd700' },
+  'carthage': { color: '#8B4513', border: '#ffd700' },
+  'greek empire': { color: '#1a3a6b', border: '#fff' },
+  'athens': { color: '#1a3a6b', border: '#ffd700' },
+  'sparta': { color: '#8B0000', border: '#ffd700' },
+  'assyrian empire': { color: '#4a2800', border: '#ffd700' },
+  'babylonian empire': { color: '#8B6914', border: '#ffd700' },
+  'sumerian empire': { color: '#8B6000', border: '#ffd700' },
+  'hittite empire': { color: '#556B2F', border: '#ffd700' },
+  // Islamic Caliphates
+  'umayyad caliphate': { color: '#006600', border: '#ffd700' },
+  'abbasid caliphate': { color: '#1a1a00', border: '#ffd700' },
+  'fatimid caliphate': { color: '#007A3D', border: '#ffd700' },
+  'safavid empire': { color: '#cc0000', border: '#ffd700' },
+  'ayyubid sultanate': { color: '#c8860a', border: '#ffd700' },
+  'mamluk sultanate': { color: '#8B6914', border: '#ffd700' },
+  'rashidun caliphate': { color: '#006600', border: '#ffd700' },
+  // Asian
+  'mughal empire': { color: '#046A38', border: '#ffd700' },
+  'qing dynasty': { color: '#ffd700', border: '#000' },
+  'ming dynasty': { color: '#cc0000', border: '#ffd700' },
+  'han dynasty': { color: '#cc0000', border: '#ffd700' },
+  'tang dynasty': { color: '#cc0000', border: '#ffd700' },
+  'song dynasty': { color: '#cc0000', border: '#ffd700' },
+  'maurya empire': { color: '#c8860a', border: '#ffd700' },
+  'gupta empire': { color: '#8B6914', border: '#ffd700' },
+  'timurid empire': { color: '#2d5a1b', border: '#ffd700' },
+  // Modern
+  'soviet union': { color: '#cc0000', border: '#ffd700' },
+  'ussr': { color: '#cc0000', border: '#ffd700' },
+  'warsaw pact': { color: '#cc0000', border: '#ffd700' },
+  'nato': { color: '#003087', border: '#fff' },
+  'arab league': { color: '#007A3D', border: '#fff' },
+  'axis powers': { color: '#555', border: '#000' },
+  'allies': { color: '#003087', border: '#fff' },
+  'united nations': { color: '#009edb', border: '#fff' },
+  'eu': { color: '#003087', border: '#ffd700' },
+  'european union': { color: '#003087', border: '#ffd700' },
+  // Africa
+  'zulu kingdom': { color: '#000', border: '#fff' },
+  'mali empire': { color: '#c8860a', border: '#ffd700' },
+  'songhai empire': { color: '#8B4513', border: '#ffd700' },
+  'carthaginian empire': { color: '#8B4513', border: '#ffd700' },
   // Americas
-  'aztec empire': { color: '#006600', symbol: '🦅', border: '#fff' },
-  'inca empire': { color: '#ffd700', symbol: '☀', border: '#cc0000' },
-  'confederate states': { color: '#003087', symbol: '✠', border: '#cc0000' },
+  'aztec empire': { color: '#006600', border: '#ffd700' },
+  'inca empire': { color: '#ffd700', border: '#cc0000' },
+  'maya civilization': { color: '#2d5a1b', border: '#ffd700' },
+  'confederate states': { color: '#003087', border: '#cc0000' },
 };
 
-// ── Military unit symbols ──────────────────────────────────────────────────────
-const MILITARY_SYMBOLS = {
-  tank: '🪖', plane: '✈', ship: '🚢', army: '⚔', bomb: '💣',
-  missile: '🚀', cavalry: '🐴', infantry: '👣', artillery: '💥',
+// ── Event type colors ──────────────────────────────────────────────────────────
+const EVENT_TYPE_COLORS = {
+  invasion:    '#cc0000',
+  occupation:  '#8B0000',
+  alliance:    '#1d4ed8',
+  trade:       '#f59e0b',
+  aid:         '#15803d',
+  resources:   '#92400e',
+  sanction:    '#6b21a8',
+  liberation:  '#15803d',
+  annexation:  '#7c3aed',
+  revolution:  '#ea580c',
+  expansion:   '#dc2626',
+  neutral:     '#6b7280',
+  diplomatic:  '#0891b2',
+  economic:    '#d97706',
+  blockade:    '#1e293b',
+  protest:     '#f97316',
+  nuclear:     '#84cc16',
 };
 
 function getViewBoxForZone(zone, w, h) {
@@ -311,46 +360,39 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
     if (currentTime < event.time || currentTime >= event.time + event.duration) continue;
     const progress = (currentTime - event.time) / event.duration;
 
-    // ── Flag overlays as pattern fill ON the country shape ───────────────
-    if (event.flag && event.countries) {
+    // ── Historical entity / flag overlay ──────────────────────────────────
+    if (event.flag && event.countries && event.entity) {
+      const hist = HISTORICAL_FLAGS[event.entity?.toLowerCase()];
       for (const iso of event.countries) {
+        if (!iso || iso.length !== 2) continue;
         const label = COUNTRY_LABELS[iso];
         if (!label) continue;
         const [cx, cy] = label;
         const inView = cx >= vbx && cx <= vbx + vbw && cy >= vby && cy <= vby + vbh;
         if (!inView) continue;
-
-        const hist = HISTORICAL_FLAGS[event.entity?.toLowerCase()];
         const patId = `pat_${iso}_${Math.round(currentTime * 10)}`;
-
         if (hist) {
-          // Historical: override country fill with solid color + symbol on top
-          defsHTML += `<pattern id="${patId}" patternUnits="userSpaceOnUse" x="0" y="0" width="2000" height="857"><rect width="2000" height="857" fill="${hist.color}" opacity="0.85"/></pattern>`;
-          // Override CSS to use pattern
+          defsHTML += `<pattern id="${patId}" patternUnits="userSpaceOnUse" x="0" y="0" width="1000" height="500"><rect width="1000" height="500" fill="${hist.color}" opacity="0.85"/></pattern>`;
           extraCSS += `#${iso}, [class="${iso}"] { fill: url(#${patId}) !important; }`;
-          // Add symbol in center
-          overlaysHTML += `<text x="${cx}" y="${cy + 4}" font-size="${Math.round(vbw * 0.018)}" text-anchor="middle" fill="white" font-weight="bold" opacity="0.95">${hist.symbol}</text>`;
+          const mk = Math.round(vbw * 0.009);
+          overlaysHTML += `<circle cx="${cx}" cy="${cy}" r="${mk}" fill="${hist.border === '#ffd700' ? '#ffd700' : '#ffffff'}" opacity="0.75"/>`;
         } else {
           const flagImg = flagData[iso.toLowerCase()];
           if (flagImg) {
-            // Pattern fill with the flag image covering the entire SVG space
-            // The country path clips it naturally
-            // Use the country BBOX for better flag positioning
             const cb = COUNTRY_BBOX[iso];
             if (cb) {
               const [bx, by, bw, bh] = cb;
               defsHTML += `<pattern id="${patId}" patternUnits="userSpaceOnUse" x="${bx}" y="${by}" width="${bw}" height="${bh}"><image href="${flagImg}" x="0" y="0" width="${bw}" height="${bh}" preserveAspectRatio="xMidYMid slice"/></pattern>`;
             } else {
-              defsHTML += `<pattern id="${patId}" patternUnits="userSpaceOnUse" x="${cx-60}" y="${cy-40}" width="120" height="80"><image href="${flagImg}" x="0" y="0" width="120" height="80" preserveAspectRatio="xMidYMid slice"/></pattern>`;
+              defsHTML += `<pattern id="${patId}" patternUnits="userSpaceOnUse" x="${cx-30}" y="${cy-20}" width="60" height="40"><image href="${flagImg}" x="0" y="0" width="60" height="40" preserveAspectRatio="xMidYMid slice"/></pattern>`;
             }
             extraCSS += `#${iso}, [class="${iso}"] { fill: url(#${patId}) !important; opacity: 0.95; }`;
           }
-          // No fallback needed - country stays highlighted color
         }
       }
     }
 
-    // ── Military units (tanks, planes etc.) ───────────────────────────────
+    // ── Military invasion arrow ────────────────────────────────────────────
     if (event.military && event.fromCountry && event.toCountry) {
       const fromLabel = COUNTRY_LABELS[event.fromCountry];
       const toLabel = COUNTRY_LABELS[event.toCountry];
@@ -359,20 +401,62 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
         const [tx, ty] = toLabel;
         const inView = fx >= vbx && fx <= vbx + vbw && fy >= vby && fy <= vby + vbh;
         if (inView) {
-          // Animate position along path
-          const animProgress = Math.min(progress * 1.5, 0.9);
+          const animProgress = Math.min(progress * 1.5, 0.85);
           const mx = fx + (tx - fx) * animProgress;
           const my = fy + (ty - fy) * animProgress;
-          const unitSize = Math.round(vbw * 0.018);
-          const symbol = MILITARY_SYMBOLS[event.unitType] || '⚔';
-
-          // Draw arrow path
-          overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${event.color || '#ff6b00'}" stroke-width="${Math.max(1, unitSize * 0.3)}" stroke-dasharray="${unitSize * 2} ${unitSize}" opacity="0.6"/>`;
-
-          // Draw moving unit
-          overlaysHTML += `<circle cx="${mx}" cy="${my}" r="${unitSize * 1.2}" fill="${event.color || '#ff6b00'}" opacity="0.9"/>`;
-          overlaysHTML += `<text x="${mx}" y="${my + unitSize * 0.4}" font-size="${unitSize * 1.5}" text-anchor="middle">${symbol}</text>`;
+          const sw = Math.max(1, Math.round(vbw * 0.004));
+          const dr = Math.max(2, Math.round(vbw * 0.008));
+          const aid = `arrow_${Math.round(currentTime * 10)}`;
+          defsHTML += `<marker id="${aid}" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="${event.color || '#ff0000'}"/></marker>`;
+          overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${event.color || '#ff0000'}" stroke-width="${sw}" stroke-dasharray="${dr * 3} ${dr}" opacity="0.65" marker-end="url(#${aid})"/>`;
+          overlaysHTML += `<circle cx="${mx}" cy="${my}" r="${dr * 1.5}" fill="${event.color || '#ff0000'}" opacity="0.95"/>`;
+          overlaysHTML += `<circle cx="${mx}" cy="${my}" r="${dr * 0.55}" fill="white" opacity="0.8"/>`;
         }
+      }
+    }
+
+    // ── Alliance / Union line ──────────────────────────────────────────────
+    if (event.eventType === 'alliance' && event.fromCountry && event.toCountry) {
+      const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
+      if (fl && tl) {
+        const [fx, fy] = fl, [tx, ty] = tl;
+        const sw = Math.max(1, Math.round(vbw * 0.004));
+        const gr = Math.max(3, Math.round(vbw * 0.01));
+        const ac = event.color || '#1d4ed8';
+        overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${ac}" stroke-width="${sw * 2}" opacity="0.2"/>`;
+        overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${ac}" stroke-width="${sw}" opacity="0.85"/>`;
+        overlaysHTML += `<circle cx="${fx}" cy="${fy}" r="${gr}" fill="${ac}" opacity="0.9"/>`;
+        overlaysHTML += `<circle cx="${tx}" cy="${ty}" r="${gr}" fill="${ac}" opacity="0.9"/>`;
+      }
+    }
+
+    // ── Trade / Aid / Resources flowing arrow ─────────────────────────────
+    if (['trade','aid','resources','economic'].includes(event.eventType) && event.fromCountry && event.toCountry) {
+      const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
+      if (fl && tl) {
+        const [fx, fy] = fl, [tx, ty] = tl;
+        const ap = (Math.sin(currentTime * 2.5) + 1) / 2;
+        const mx = fx + (tx - fx) * ap, my = fy + (ty - fy) * ap;
+        const sw = Math.max(1, Math.round(vbw * 0.003));
+        const dr = Math.max(2, Math.round(vbw * 0.007));
+        const tc = event.color || (event.eventType === 'trade' ? '#f59e0b' : event.eventType === 'resources' ? '#92400e' : '#15803d');
+        overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${tc}" stroke-width="${sw}" stroke-dasharray="${dr * 2} ${dr}" opacity="0.55"/>`;
+        overlaysHTML += `<circle cx="${mx}" cy="${my}" r="${dr}" fill="${tc}" opacity="0.95"/>`;
+      }
+    }
+
+    // ── Blockade / Sanction ring ───────────────────────────────────────────
+    if (['blockade','sanction'].includes(event.eventType) && event.countries) {
+      for (const iso of (event.countries || [])) {
+        const label = COUNTRY_LABELS[iso];
+        if (!label) continue;
+        const [cx, cy] = label;
+        const inView = cx >= vbx && cx <= vbx + vbw && cy >= vby && cy <= vby + vbh;
+        if (!inView) continue;
+        const rr = Math.round(vbw * 0.02);
+        const rc = event.color || '#6b21a8';
+        overlaysHTML += `<circle cx="${cx}" cy="${cy}" r="${rr}" fill="none" stroke="${rc}" stroke-width="${Math.round(vbw * 0.003)}" stroke-dasharray="${rr * 0.5} ${rr * 0.3}" opacity="0.85"/>`;
+        overlaysHTML += `<circle cx="${cx}" cy="${cy}" r="${rr * 0.28}" fill="${rc}" opacity="0.6"/>`;
       }
     }
 
@@ -383,7 +467,7 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${viewBox}" width="${w}" height="${h}">
   <defs>${defsHTML}</defs>
   <style>${cssRules}${extraCSS}</style>
-  <rect width="2000" height="857" fill="${colors.ocean}"/>
+  <rect width="1000" height="500" fill="${colors.ocean}"/>
   ${paths}
   ${labelsHTML}
   ${overlaysHTML}
@@ -394,15 +478,15 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
 async function parseMapTimeline(script, idea, mode, language, durationSecs = 60) {
   const content = mode === 'script' ? script : (idea || script || '');
 
-  const prompt = `You are an expert geographic documentary director. Create a cinematic map animation timeline.
+  const prompt = `You are an expert geographic documentary director and map animator. Create a cinematic animated map timeline.
 
-STORY: ${content}
+STORY/IDEA: ${content}
 TOTAL DURATION: ${durationSecs} seconds
 LANGUAGE: ${language || 'en'}
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
-  "script": "voiceover narration text that takes exactly ${durationSecs} seconds to read aloud",
+  "script": "voiceover narration text that takes exactly ${durationSecs} seconds to read aloud at normal pace",
   "events": [
     {
       "time": 0,
@@ -411,43 +495,69 @@ OUTPUT FORMAT (JSON only, no markdown):
       "addCountries": [],
       "removeCountries": [],
       "zoom": "europe",
-      "color": "#e11d48",
-      "flag": false,
+      "color": "#cc0000",
+      "flag": true,
       "entity": "nazi germany",
-      "military": false,
-      "unitType": null,
-      "fromCountry": null,
-      "toCountry": null
+      "eventType": "invasion",
+      "military": true,
+      "unitType": "tank",
+      "fromCountry": "DE",
+      "toCountry": "FR"
     }
   ]
 }
 
-CRITICAL RULES — READ ALL:
+CRITICAL RULES:
 
-1. DURATION: Events MUST cover exactly ${durationSecs} seconds total. Last event (time + duration) = ${durationSecs}. Minimum ${Math.max(6, Math.floor(durationSecs / 12))} events.
+1. DURATION: Total events MUST cover exactly ${durationSecs}s. Last event (time+duration)=${durationSecs}. Min ${Math.max(6, Math.floor(durationSecs / 12))} events.
 
-2. HOOK: First event (time=0, duration=5-8s) must be a shocking dramatic opening — zoom in on the key location, highlight the main country/empire with a bold color. No slow intros.
+2. HOOK: Event at time=0 must be dramatic — bold color, tight zoom on the key place. No slow intros.
 
-3. AUDIO SYNC: Each event matches exactly one sentence or phrase in the voiceover. If the narrator says "Germany invaded France" that event shows DE highlighted red expanding toward FR. Events change exactly when the narration changes topic.
+3. AUDIO SYNC: Each event = one narration sentence. Map changes exactly when narrator changes topic.
 
-4. COLOR EXPANSION (most important):
-   - Use "countries" for countries currently highlighted with this event's color.
-   - Use "addCountries" for countries NEWLY joining/being conquered (add to existing highlights, don't remove others).
-   - Use "removeCountries" for countries being liberated/lost (fade them out).
-   - Example — Germany expands: event1 countries=["DE"] color="#cc0000", event2 addCountries=["FR","BE","NL"] (keeps DE red, adds FR/BE/NL). When allies push back: removeCountries=["FR","NL"].
+4. EXPANSION: 
+   - "countries" = all countries currently in this event's color
+   - "addCountries" = newly conquered/joined countries (keep previous colors too)
+   - "removeCountries" = liberated/lost countries (fade out)
+   Example conquest: event1 {countries:["DE"],color:"#cc0000"}, event2 {addCountries:["FR","BE"],color:"#cc0000"}, event3 {removeCountries:["FR"],addCountries:["RU"]}
 
-5. NO LABELS: Do NOT include any "label" field. Remove it completely.
+5. HISTORICAL EMPIRES: For ancient/historical stories, set entity= the empire name and flag=true.
+   Available: "ottoman empire", "roman empire", "byzantine empire", "mongol empire", "british empire", "umayyad caliphate", "abbasid caliphate", "persian empire", "ancient egypt", "pharaonic egypt", "macedonian empire", "alexander the great", "mughal empire", "qing dynasty", "aztec empire", "inca empire", "mali empire", "safavid empire", "napoleon", "russian empire", "austro-hungarian empire", "holy roman empire", etc.
+   The map will show those countries in the empire's historical color automatically.
 
-6. SMOOTH ZOOM: Zoom should follow the action. If story moves from Middle East to Europe, zoom out to "world" first for 3s, then zoom into "europe". Never jump between distant regions instantly.
+6. WHAT-IF SCENARIOS: For "what if X invaded Y" stories — treat it as real history. Germany invades US = show military arrows + expansion of German color across US states.
 
-7. MILITARY ARROWS: For invasions, set military=true, fromCountry=attacker, toCountry=main target. This draws a movement arrow.
+7. EVENT TYPES (set "eventType" field):
+   - "invasion" → military arrow + red expansion
+   - "alliance" → blue line connecting countries  
+   - "trade" → flowing yellow dots between countries (set fromCountry + toCountry)
+   - "aid" → flowing green dots (set fromCountry + toCountry)
+   - "resources" → flowing brown dots (set fromCountry + toCountry)
+   - "economic" → flowing orange dots
+   - "blockade" → purple ring around country
+   - "sanction" → purple ring around country
+   - "annexation" → purple expansion
+   - "liberation" → green replacement of red
+   - "revolution" → orange highlight
+   - "diplomatic" → cyan connecting line
+   - "expansion" → bold color spread
 
-8. COLORS: Use vivid colors. Aggressors: "#cc0000" or "#e11d48". Defenders/allies: "#1d4ed8" or "#15803d". Neutral: "#f59e0b". Empire expansion: "#7c3aed".
+8. COLORS BY TYPE:
+   Invasion/aggressor: "#cc0000" or "#e11d48"
+   Allies/liberation: "#1d4ed8" or "#15803d"  
+   Trade/resources: "#f59e0b" or "#92400e"
+   Alliance: "#1d4ed8"
+   Empire: "#7c3aed"
+   Neutral: "#6b7280"
+   Ancient civilizations: "#c8860a" or "#8B6914"
 
-9. NO REPETITION: Each event must show something NEW happening on the map. Never show the same countries with the same color twice in a row.
+9. ZOOM: Follow the action. Transitioning between distant regions → zoom to "world" for 3s first.
 
-- countries use 2-letter ISO codes only
-- zoom options: world, europe, western-europe, eastern-europe, scandinavia, balkans, iberia, british-isles, middle-east, gulf, levant, arabian-peninsula, holy-land, asia, central-asia, east-asia, south-asia, southeast-asia, far-east, africa, north-africa, west-africa, east-africa, southern-africa, horn-of-africa, great-lakes, sub-saharan, sahara, americas, north-america, south-america, central-america, caribbean, southern-cone, oceania, egypt, egypt-sinai, nile-valley, north-egypt, mesopotamia, anatolia, caucasus, iran-plateau, arabian-desert, ancient-egypt, ancient-rome, ancient-greece, ancient-persia, byzantine, ottoman, mongolia-steppe, silk-road`;
+10. NO REPETITION: Every event shows something NEW. Never identical countries + color twice in a row.
+
+11. NO "label" FIELD ever.
+
+Countries: 2-letter ISO codes. zoom options: world, europe, western-europe, eastern-europe, scandinavia, balkans, iberia, british-isles, middle-east, gulf, levant, arabian-peninsula, holy-land, asia, central-asia, east-asia, south-asia, southeast-asia, far-east, africa, north-africa, west-africa, east-africa, southern-africa, horn-of-africa, great-lakes, sub-saharan, sahara, americas, north-america, south-america, central-america, caribbean, southern-cone, oceania, egypt, egypt-sinai, nile-valley, mesopotamia, anatolia, caucasus, iran-plateau, arabian-desert, ancient-egypt, ancient-rome, ancient-greece, ancient-persia, byzantine, ottoman, mongolia-steppe, silk-road`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
