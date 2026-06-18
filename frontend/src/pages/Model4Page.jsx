@@ -323,6 +323,13 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
 
   useEffect(() => { fetchUsage(); }, []);
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
+  useEffect(() => {
+    if (mode === 'script' && script.length > 20) {
+      const chars = script.trim().length;
+      const smart = chars <= 300 ? '30s' : chars <= 600 ? '1min' : '3min';
+      setDuration(smart);
+    }
+  }, [script, mode]);
 
   const fetchUsage = async () => {
     try {
@@ -521,14 +528,6 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
   };
   const scriptCharCount = script.length;
   const scriptOverLimit = mode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
-  // auto-set duration when script changes
-  React.useEffect(() => {
-    if (mode === 'script' && script.length > 20) {
-      const chars = script.trim().length;
-      const smart = chars <= 300 ? '30s' : chars <= 600 ? '1min' : '3min';
-      setDuration(smart);
-    }
-  }, [script, mode]);
 
   const canGenerate = !loading && !scriptOverLimit && (
     mode === 'idea' ? idea.trim().length > 5 :
