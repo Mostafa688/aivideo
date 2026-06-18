@@ -13,7 +13,7 @@ const pool = new Pool({
 
 export const PLANS = {
   free: {
-    name: 'Free', price_monthly: 0, price_yearly: 0, credits_weekly: 1600, videos_weekly: 3,
+    name: 'Free', price_monthly: 0, price_yearly: 0, credits_weekly: 2500, videos_weekly: 3,
     max_duration: '30s', watermark: true, captions: true, music: true, transitions: true,
     sound_effects: false, video_effects: false, edit_after_render: false, languages: ['en', 'ar'], all_languages: false,
   },
