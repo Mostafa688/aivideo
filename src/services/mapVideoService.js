@@ -383,39 +383,28 @@ function hexToRgb(hex) {
 }
 
 async function generateRealMapFrame({ mapPng, highlights, w, h, events = [], currentTime = 0, flagData = {}, zoomRegion = 'world' }) {
-  // حساب الـ crop للـ zoom region
-  const region = ZOOM_REGIONS[zoomRegion] || ZOOM_REGIONS['world'];
-  const scaleX = w / 1000, scaleY = h / 500;
-
-  // Crop الخريطة للمنطقة المطلوبة
-  const cropX = Math.max(0, Math.round(region.x * (w / 1000)));
-  const cropY = Math.max(0, Math.round(region.y * (h / 500)));
-  const cropW = Math.min(w - cropX, Math.round(region.w * (w / 1000)));
-  const cropH = Math.min(h - cropY, Math.round(region.h * (h / 500)));
-
-  // ابدأ بالخريطة الحقيقية مـcropped ومـresized
-  let baseImage = sharp(mapPng).resize(w * 3, h * 3, { fit: 'fill' });
-
-  // حول كل دولة highlighted لـ overlay
   const composites = [];
 
-  // Country highlights
+  // Country highlights — حساب مباشر في pixel space (w x h)
   for (const [iso, color] of Object.entries(highlights)) {
     const bbox = COUNTRY_BBOX[iso];
     if (!bbox) continue;
     const [bx, by, bw, bh] = bbox;
 
-    // حول coordinates من SVG space (1000x500) لـ pixel space
-    const px = Math.round(bx * w / 1000 * 3);
-    const py = Math.round(by * h / 500 * 3);
-    const pw = Math.max(4, Math.round(bw * w / 1000 * 3));
-    const ph = Math.max(4, Math.round(bh * h / 500 * 3));
+    // حول من SVG space (1000x500) لـ pixel space (w x h)
+    const px = Math.round(bx * w / 1000);
+    const py = Math.round(by * h / 500);
+    const pw = Math.max(4, Math.round(bw * w / 1000));
+    const ph = Math.max(4, Math.round(bh * h / 500));
+
+    // تأكد إن الـ highlight جوه الصورة
+    if (px >= w || py >= h) continue;
+    const safeW = Math.min(pw, w - px);
+    const safeH = Math.min(ph, h - py);
+    if (safeW <= 0 || safeH <= 0) continue;
 
     const rgb = hexToRgb(color);
-    // عمل SVG مستطيل ملون شفاف بحواف ناعمة
-    const highlightSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}">
-      <rect width="${pw}" height="${ph}" rx="${Math.round(Math.min(pw,ph)*0.15)}" fill="rgba(${rgb.r},${rgb.g},${rgb.b},0.55)" stroke="rgba(${rgb.r},${rgb.g},${rgb.b},0.9)" stroke-width="2"/>
-    </svg>`;
+    const highlightSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${safeW}" height="${safeH}"><rect width="${safeW}" height="${safeH}" rx="${Math.round(Math.min(safeW,safeH)*0.12)}" fill="rgba(${rgb.r},${rgb.g},${rgb.b},0.5)" stroke="rgba(${rgb.r},${rgb.g},${rgb.b},0.85)" stroke-width="2"/></svg>`;
     try {
       const hlBuf = await sharp(Buffer.from(highlightSvg)).png().toBuffer();
       composites.push({ input: hlBuf, left: px, top: py, blend: 'over' });
@@ -427,49 +416,49 @@ async function generateRealMapFrame({ mapPng, highlights, w, h, events = [], cur
   if (event) {
     const progress = (currentTime - event.time) / Math.max(1, event.duration);
 
-    // Military arrow element
+    // Military element
     if (event.military && event.fromCountry && event.toCountry) {
       const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
       if (fl && tl) {
         const [fx, fy] = fl, [tx, ty] = tl;
         const ap = Math.min(progress * 1.5, 0.85);
-        const mx = Math.round((fx + (tx-fx)*ap) * w/1000 * 3);
-        const my = Math.round((fy + (ty-fy)*ap) * h/500 * 3);
+        const elemSize = Math.round(Math.min(w, h) * 0.06);
+        const mx = Math.round((fx + (tx-fx)*ap) * w/1000);
+        const my = Math.round((fy + (ty-fy)*ap) * h/500);
         const elemType = event.unitType === 'plane' ? 'plane' : event.unitType === 'ship' ? 'warship' : 'tank';
-        const elemSize = Math.round(w * 0.06);
         const elemPng = await getElementPng(elemType, elemSize);
         if (elemPng) {
-          composites.push({ input: elemPng, left: Math.max(0, mx - elemSize/2), top: Math.max(0, my - elemSize/2), blend: 'over' });
+          const left = Math.min(Math.max(0, mx - Math.round(elemSize/2)), w - elemSize);
+          const top = Math.min(Math.max(0, my - Math.round(elemSize/2)), h - elemSize);
+          composites.push({ input: elemPng, left, top, blend: 'over' });
         }
       }
     }
 
-    // Trade/Aid flowing element
+    // Trade/Aid element
     if (['trade','aid','resources','economic'].includes(event.eventType) && event.fromCountry && event.toCountry) {
       const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
       if (fl && tl) {
         const [fx, fy] = fl, [tx, ty] = tl;
         const ap = (Math.sin(currentTime * 2.5) + 1) / 2;
-        const mx = Math.round((fx + (tx-fx)*ap) * w/1000 * 3);
-        const my = Math.round((fy + (ty-fy)*ap) * h/500 * 3);
-        const elemType = event.eventType === 'trade' || event.eventType === 'economic' ? 'money' : 'shield';
-        const elemSize = Math.round(w * 0.05);
+        const elemSize = Math.round(Math.min(w, h) * 0.05);
+        const mx = Math.round((fx + (tx-fx)*ap) * w/1000);
+        const my = Math.round((fy + (ty-fy)*ap) * h/500);
+        const elemType = ['trade','economic'].includes(event.eventType) ? 'money' : 'shield';
         const elemPng = await getElementPng(elemType, elemSize);
         if (elemPng) {
-          composites.push({ input: elemPng, left: Math.max(0, mx - elemSize/2), top: Math.max(0, my - elemSize/2), blend: 'over' });
+          const left = Math.min(Math.max(0, mx - Math.round(elemSize/2)), w - elemSize);
+          const top = Math.min(Math.max(0, my - Math.round(elemSize/2)), h - elemSize);
+          composites.push({ input: elemPng, left, top, blend: 'over' });
         }
       }
     }
   }
 
-  // دمج كل الـ composites فوق الخريطة
+  // دمج الخريطة مع الـ composites
   const finalBuf = await sharp(mapPng)
     .resize(w, h, { fit: 'fill' })
-    .composite(composites.map(c => ({
-      ...c,
-      left: Math.round(c.left / 3),
-      top: Math.round(c.top / 3),
-    })))
+    .composite(composites)
     .png()
     .toBuffer();
 
