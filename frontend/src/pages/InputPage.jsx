@@ -439,6 +439,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       features:['AI-generated scene images','Ken Burns zoom & pan','Cinematic quality output','Best for storytelling'],
       badge:null, free:true, category:'free',
       accent: '#a78bfa',
+      deprecated: true,
     },
     {
       key:'pexels', tag:'MODEL 2', name:'Real Footage', icon:'🎬',
@@ -620,7 +621,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
           const isHov = hovered === m.key;
           return (
             <div key={m.key} className="ms-card"
-              onClick={() => !m.maintenance && onSelect(m.key)}
+              onClick={() => !m.maintenance && !m.deprecated && onSelect(m.key)}
               onMouseEnter={() => setHovered(m.key)}
               onMouseLeave={() => setHovered(null)}
               style={{
@@ -667,6 +668,28 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                   <div style={{ fontSize:28, marginBottom:8 }}>🔧</div>
                   <div style={{ color:'#f59e0b', fontWeight:700, fontSize:14, marginBottom:4 }}>Under Maintenance</div>
                   <div style={{ color:'rgba(255,255,255,0.5)', fontSize:12 }}>Coming back soon</div>
+                </div>
+              )}
+
+              {/* Deprecation Overlay */}
+              {m.deprecated && (
+                <div style={{
+                  position:'absolute', top:0, left:0, right:0, bottom:0,
+                  background:'rgba(0,0,0,0.72)',
+                  borderRadius:20,
+                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                  zIndex:10,
+                  backdropFilter:'blur(4px)',
+                  padding:'0 20px',
+                  textAlign:'center',
+                }}>
+                  <div style={{ fontSize:26, marginBottom:10 }}>🔒</div>
+                  <div style={{ color:'#f87171', fontWeight:700, fontSize:13, marginBottom:8, lineHeight:1.5 }}>
+                    This model will be removed soon.
+                  </div>
+                  <div style={{ color:'rgba(255,255,255,0.55)', fontSize:12, lineHeight:1.6 }}>
+                    We recommend using <span style={{ color:'#67e8f9', fontWeight:700 }}>Model 2 — Real Footage</span> for a better experience.
+                  </div>
                 </div>
               )}
 
