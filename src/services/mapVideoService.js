@@ -8,16 +8,60 @@ import { generateVoiceover } from './voiceService.js';
 import { execSync } from 'child_process';
 
 const execAsync = promisify(exec);
-const MAP_SVG_PATH = path.join(process.cwd(), 'public', 'maps', 'world.svg');
-const MAP_SVG_URL = 'https://raw.githubusercontent.com/rinzler83/world-svg/main/world.svg';
 
-async function getWorldSvg() {
-  // لو الملف موجود locally، استخدمه
-  if (fs.existsSync(MAP_SVG_PATH)) {
-    return fs.readFileSync(MAP_SVG_PATH, 'utf8');
+// ── Natural Earth map — حقيقية ملونة من GitHub ─────────────────────────────
+const MAP_CACHE_PATH = '/tmp/natural_earth_map.png';
+const MAP_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/../../../natural-earth-raster/10m_raster/HYP_HR_SR_OB_DR/HYP_HR_SR_OB_DR_small.png';
+// Fallback — smaller but reliable
+const MAP_URL_FALLBACK = 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/World_map_-_low_resolution.svg/2560px-World_map_-_low_resolution.svg.png';
+// Use a reliable source
+const MAP_URL_MAIN = 'https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57752/land_shallow_topo_2048.jpg';
+
+let realMapCache = null;
+
+async function getRealWorldMap(w, h) {
+  // Return from memory cache
+  if (realMapCache) {
+    return await sharp(realMapCache).resize(w, h, { fit: 'fill' }).png().toBuffer();
   }
-  // استخدم الـ SVG المدمج في الكود
-  return EMBEDDED_WORLD_SVG;
+  // Return from disk cache
+  if (fs.existsSync(MAP_CACHE_PATH)) {
+    realMapCache = fs.readFileSync(MAP_CACHE_PATH);
+    return await sharp(realMapCache).resize(w, h, { fit: 'fill' }).png().toBuffer();
+  }
+  // Download from NASA (best quality natural earth)
+  try {
+    console.log('[MapVideo] Downloading real world map...');
+    const res = await fetch(MAP_URL_MAIN, { timeout: 15000 });
+    if (res.ok) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      fs.writeFileSync(MAP_CACHE_PATH, buf);
+      realMapCache = buf;
+      console.log('[MapVideo] Real map downloaded:', Math.round(buf.length / 1024), 'KB');
+      return await sharp(buf).resize(w, h, { fit: 'fill' }).png().toBuffer();
+    }
+  } catch (e) { console.warn('[MapVideo] Map download failed:', e.message); }
+  // Return null — fallback to SVG
+  return null;
+}
+
+// ── Military & event element SVGs (no Unicode, no emoji) ──────────────────────
+const ELEMENT_SVGS = {
+  tank: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 40"><rect x="5" y="15" width="50" height="20" rx="4" fill="#4a4a2a"/><rect x="10" y="10" width="30" height="12" rx="3" fill="#5a5a3a"/><rect x="28" y="5" width="24" height="5" rx="2" fill="#3a3a1a"/><circle cx="12" cy="35" r="6" fill="#2a2a1a"/><circle cx="28" cy="35" r="6" fill="#2a2a1a"/><circle cx="44" cy="35" r="6" fill="#2a2a1a"/><circle cx="12" cy="35" r="3" fill="#4a4a2a"/><circle cx="28" cy="35" r="3" fill="#4a4a2a"/><circle cx="44" cy="35" r="3" fill="#4a4a2a"/></svg>`,
+  plane: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><path d="M40,10 L70,35 L55,35 L55,50 L45,50 L45,35 L35,35 L35,50 L25,50 L25,35 L10,35 Z" fill="#555577"/><path d="M40,10 L55,25 L25,25 Z" fill="#666688"/><circle cx="40" cy="22" r="4" fill="#88aacc"/></svg>`,
+  warship: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 50"><path d="M5,35 L15,20 L65,20 L75,35 Z" fill="#336699"/><rect x="25" y="10" width="30" height="12" rx="2" fill="#224466"/><rect x="35" y="5" width="10" height="8" rx="1" fill="#112233"/><rect x="38" y="2" width="4" height="6" fill="#888"/></svg>`,
+  army: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 50"><ellipse cx="20" cy="10" rx="10" ry="8" fill="#cc4444"/><rect x="12" y="18" width="16" height="20" rx="3" fill="#4a6a2a"/><line x1="20" y1="38" x2="14" y2="50" stroke="#4a6a2a" stroke-width="3"/><line x1="20" y1="38" x2="26" y2="50" stroke="#4a6a2a" stroke-width="3"/><line x1="20" y1="22" x2="8" y2="32" stroke="#4a6a2a" stroke-width="3"/><line x1="20" y1="22" x2="32" y2="32" stroke="#4a6a2a" stroke-width="3"/></svg>`,
+  money: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50"><circle cx="25" cy="25" r="22" fill="#f59e0b" stroke="#d97706" stroke-width="2"/><text x="25" y="32" text-anchor="middle" font-size="24" fill="#7c2d12" font-weight="bold">$</text></svg>`,
+  missile: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 60"><path d="M10,0 L16,15 L16,45 L10,55 L4,45 L4,15 Z" fill="#888"/><path d="M4,45 L0,55 L10,50 L20,55 L16,45 Z" fill="#cc4444"/><rect x="7" y="10" width="6" height="8" fill="#336699"/></svg>`,
+  shield: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 60"><path d="M25,2 L48,12 L48,35 C48,48 25,58 25,58 C25,58 2,48 2,35 L2,12 Z" fill="#1d4ed8" stroke="#93c5fd" stroke-width="2"/><path d="M25,15 L35,25 L25,45 L15,25 Z" fill="#fff" opacity="0.8"/></svg>`,
+};
+
+async function getElementPng(type, size = 60) {
+  const svg = ELEMENT_SVGS[type];
+  if (!svg) return null;
+  try {
+    return await sharp(Buffer.from(svg)).resize(size, size, { fit: 'contain', background: { r:0,g:0,b:0,alpha:0 } }).png().toBuffer();
+  } catch { return null; }
 }
 
 const EMBEDDED_WORLD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1000 500" width="1000" height="500">
@@ -331,7 +375,108 @@ function getViewBoxForZone(zone, w, h) {
   return `${Math.round(vbx)} ${Math.round(vby)} ${Math.round(vbw)} ${Math.round(vbh)}`;
 }
 
-// ── Generate SVG frame with flags + military units ────────────────────────────
+// ── GeoJSON country highlight using sharp composite ───────────────────────────
+// بندي كل دولة مستطيل ملون شفاف فوق الخريطة الحقيقية
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return { r, g, b };
+}
+
+async function generateRealMapFrame({ mapPng, highlights, w, h, events = [], currentTime = 0, flagData = {}, zoomRegion = 'world' }) {
+  // حساب الـ crop للـ zoom region
+  const region = ZOOM_REGIONS[zoomRegion] || ZOOM_REGIONS['world'];
+  const scaleX = w / 1000, scaleY = h / 500;
+
+  // Crop الخريطة للمنطقة المطلوبة
+  const cropX = Math.max(0, Math.round(region.x * (w / 1000)));
+  const cropY = Math.max(0, Math.round(region.y * (h / 500)));
+  const cropW = Math.min(w - cropX, Math.round(region.w * (w / 1000)));
+  const cropH = Math.min(h - cropY, Math.round(region.h * (h / 500)));
+
+  // ابدأ بالخريطة الحقيقية مـcropped ومـresized
+  let baseImage = sharp(mapPng).resize(w * 3, h * 3, { fit: 'fill' });
+
+  // حول كل دولة highlighted لـ overlay
+  const composites = [];
+
+  // Country highlights
+  for (const [iso, color] of Object.entries(highlights)) {
+    const bbox = COUNTRY_BBOX[iso];
+    if (!bbox) continue;
+    const [bx, by, bw, bh] = bbox;
+
+    // حول coordinates من SVG space (1000x500) لـ pixel space
+    const px = Math.round(bx * w / 1000 * 3);
+    const py = Math.round(by * h / 500 * 3);
+    const pw = Math.max(4, Math.round(bw * w / 1000 * 3));
+    const ph = Math.max(4, Math.round(bh * h / 500 * 3));
+
+    const rgb = hexToRgb(color);
+    // عمل SVG مستطيل ملون شفاف بحواف ناعمة
+    const highlightSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}">
+      <rect width="${pw}" height="${ph}" rx="${Math.round(Math.min(pw,ph)*0.15)}" fill="rgba(${rgb.r},${rgb.g},${rgb.b},0.55)" stroke="rgba(${rgb.r},${rgb.g},${rgb.b},0.9)" stroke-width="2"/>
+    </svg>`;
+    try {
+      const hlBuf = await sharp(Buffer.from(highlightSvg)).png().toBuffer();
+      composites.push({ input: hlBuf, left: px, top: py, blend: 'over' });
+    } catch {}
+  }
+
+  // Military / event elements
+  const event = events.find(e => currentTime >= e.time && currentTime < e.time + e.duration);
+  if (event) {
+    const progress = (currentTime - event.time) / Math.max(1, event.duration);
+
+    // Military arrow element
+    if (event.military && event.fromCountry && event.toCountry) {
+      const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
+      if (fl && tl) {
+        const [fx, fy] = fl, [tx, ty] = tl;
+        const ap = Math.min(progress * 1.5, 0.85);
+        const mx = Math.round((fx + (tx-fx)*ap) * w/1000 * 3);
+        const my = Math.round((fy + (ty-fy)*ap) * h/500 * 3);
+        const elemType = event.unitType === 'plane' ? 'plane' : event.unitType === 'ship' ? 'warship' : 'tank';
+        const elemSize = Math.round(w * 0.06);
+        const elemPng = await getElementPng(elemType, elemSize);
+        if (elemPng) {
+          composites.push({ input: elemPng, left: Math.max(0, mx - elemSize/2), top: Math.max(0, my - elemSize/2), blend: 'over' });
+        }
+      }
+    }
+
+    // Trade/Aid flowing element
+    if (['trade','aid','resources','economic'].includes(event.eventType) && event.fromCountry && event.toCountry) {
+      const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
+      if (fl && tl) {
+        const [fx, fy] = fl, [tx, ty] = tl;
+        const ap = (Math.sin(currentTime * 2.5) + 1) / 2;
+        const mx = Math.round((fx + (tx-fx)*ap) * w/1000 * 3);
+        const my = Math.round((fy + (ty-fy)*ap) * h/500 * 3);
+        const elemType = event.eventType === 'trade' || event.eventType === 'economic' ? 'money' : 'shield';
+        const elemSize = Math.round(w * 0.05);
+        const elemPng = await getElementPng(elemType, elemSize);
+        if (elemPng) {
+          composites.push({ input: elemPng, left: Math.max(0, mx - elemSize/2), top: Math.max(0, my - elemSize/2), blend: 'over' });
+        }
+      }
+    }
+  }
+
+  // دمج كل الـ composites فوق الخريطة
+  const finalBuf = await sharp(mapPng)
+    .resize(w, h, { fit: 'fill' })
+    .composite(composites.map(c => ({
+      ...c,
+      left: Math.round(c.left / 3),
+      top: Math.round(c.top / 3),
+    })))
+    .png()
+    .toBuffer();
+
+  return finalBuf;
+}
+
+// ── Old SVG frame (fallback) ──────────────────────────────────────────────────
 export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, events = [], currentTime = 0, flagData = {} }) {
   const colors = STYLES[style] || STYLES.dark;
   const [vbx, vby, vbw, vbh] = viewBox.split(' ').map(Number);
@@ -727,80 +872,6 @@ async function preloadFlags(isoCodes) {
   console.log(`[MapVideo] Preloaded ${flagCache.size} flags`);
 }
 
-// ── Sync events timing to actual audio transcript ─────────────────────────────
-async function syncEventsToAudio(events, audioPath, language = 'en', totalSecs) {
-  try {
-    // Get word-level timestamps from Whisper
-    const words = await transcribeAudioForMap(audioPath, language);
-    if (!words || words.length === 0) return events;
-
-    // Build sentence timestamps from word timestamps
-    // Group words into sentences by punctuation or pauses
-    const sentences = [];
-    let current = [];
-    for (const word of words) {
-      current.push(word);
-      const w = word.word.trim();
-      // End sentence on punctuation or long pause
-      if (/[.!?،؟]$/.test(w) || (current.length > 0 && word.start - (current[current.length - 2]?.end || 0) > 0.8)) {
-        if (current.length > 0) {
-          sentences.push({
-            text: current.map(w => w.word).join(' ').trim(),
-            start: current[0].start,
-            end: current[current.length - 1].end,
-          });
-          current = [];
-        }
-      }
-    }
-    // Add remaining words as last sentence
-    if (current.length > 0) {
-      sentences.push({
-        text: current.map(w => w.word).join(' ').trim(),
-        start: current[0].start,
-        end: current[current.length - 1].end,
-      });
-    }
-
-    if (sentences.length === 0) return events;
-
-    console.log(`[MapVideo] Syncing ${events.length} events to ${sentences.length} sentences`);
-
-    // Distribute events evenly across sentences
-    const synced = events.map((ev, i) => {
-      // Map event index to sentence index proportionally
-      const sentIdx = Math.min(Math.floor((i / events.length) * sentences.length), sentences.length - 1);
-      const nextSentIdx = Math.min(sentIdx + Math.ceil(sentences.length / events.length), sentences.length - 1);
-      const sentStart = sentences[sentIdx].start;
-      const sentEnd = sentences[nextSentIdx]?.end || sentences[sentences.length - 1].end;
-      return {
-        ...ev,
-        time: Math.round(sentStart * 10) / 10,
-        duration: Math.max(3, Math.round((sentEnd - sentStart) * 10) / 10),
-      };
-    });
-
-    // Fix overlaps and gaps — make sure events are contiguous
-    for (let i = 1; i < synced.length; i++) {
-      if (synced[i].time < synced[i-1].time + synced[i-1].duration) {
-        synced[i].time = synced[i-1].time + synced[i-1].duration;
-      }
-    }
-
-    // Last event extends to end of audio
-    if (synced.length > 0) {
-      const last = synced[synced.length - 1];
-      last.duration = Math.max(last.duration, totalSecs - last.time);
-    }
-
-    console.log(`[MapVideo] Sync done — events now match audio timing`);
-    return synced;
-  } catch (e) {
-    console.warn('[MapVideo] Sync failed, using AI timing:', e.message);
-    return events;
-  }
-}
-
 // ── Main render ────────────────────────────────────────────────────────────────
 export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) {
   const { mode, idea, script, voice, duration, ratio, language, mapStyle, uploadedAudioUrl, captions, music } = formData;
@@ -827,7 +898,7 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
     }
   }
 
-  updateStatus(jobId, { progress: 30, log: ['✅ Voiceover ready', '🔄 Syncing events to audio...'] });
+  updateStatus(jobId, { progress: 30, log: ['✅ Voiceover ready', '🗺️ Generating map frames...'] });
 
   let actualAudioDuration = durationSecs;
   if (audioPath && fs.existsSync(audioPath)) {
@@ -842,19 +913,16 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   }
 
   const totalSecs = Math.ceil(actualAudioDuration);
-
-  // ── Sync events timing to actual audio ──────────────────────────────────
-  let syncedEvents = timeline.events || [];
-  if (audioPath && fs.existsSync(audioPath) && syncedEvents.length > 0) {
-    syncedEvents = await syncEventsToAudio(syncedEvents, audioPath, language || 'en', totalSecs);
-    updateStatus(jobId, { progress: 35, log: [`✅ Synced ${syncedEvents.length} events to audio timeline`] });
-  }
-  timeline.events = syncedEvents;
   // Preload all country flags
-  const allISOs = (timeline.events || []).flatMap(e => e.countries || []);
+  const allISOs = (timeline.events || []).flatMap(e => [...(e.countries||[]),...(e.addCountries||[])]);
   await preloadFlags(allISOs);
 
-  const baseSvg = await getWorldSvg();
+  updateStatus(jobId, { progress: 37, log: ['🗺️ Loading real world map...'] });
+  const realMap = await getRealWorldMap(w, h);
+  const useRealMap = !!realMap;
+  updateStatus(jobId, { log: [useRealMap ? '✅ Real map loaded!' : '⚠️ Using SVG fallback', '🖼️ Generating frames...'] });
+
+  const baseSvg = useRealMap ? null : await getWorldSvg();
   const framesDir = path.join(jobDir, 'frames');
   fs.mkdirSync(framesDir, { recursive: true });
 
@@ -944,23 +1012,41 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
 
       const parseVB = (vb) => vb.split(' ').map(Number);
       const fromVB = parseVB(prevViewBox), toVB = parseVB(viewBox);
-      // Ease in-out for smoother zoom
       const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
       const curVB = fromVB.map((v, i) => Math.round(v + (toVB[i] - v) * eased));
       const curViewBox = curVB.join(' ');
       const currentTime = sec + progress;
 
-      const svgContent = generateSVGFrame({
-        baseSvg, highlights: transHighlights, style: mapStyle,
-        viewBox: curViewBox, w, h,
-        events: timeline.events || [],
-        currentTime,
-        flagData: Object.fromEntries(flagCache),
-      });
+      // حساب الـ zoom region الحالي
+      const curEvent = (timeline.events || []).find(e => currentTime >= e.time && currentTime < e.time + e.duration);
+      const curZoom = curEvent?.zoom || 'world';
 
       const frameNum = sec * TRANSITION_FRAMES + tf;
       const pngPath = path.join(framesDir, `frame_${String(frameNum).padStart(6, '0')}.png`);
-      await sharp(Buffer.from(svgContent)).resize(w, h, { fit: 'fill' }).png().toFile(pngPath);
+
+      if (useRealMap) {
+        // ── خريطة حقيقية ────────────────────────────────────────────────
+        const frameBuf = await generateRealMapFrame({
+          mapPng: realMap,
+          highlights: transHighlights,
+          w, h,
+          events: timeline.events || [],
+          currentTime,
+          flagData: Object.fromEntries(flagCache),
+          zoomRegion: curZoom,
+        });
+        fs.writeFileSync(pngPath, frameBuf);
+      } else {
+        // ── SVG fallback ────────────────────────────────────────────────
+        const svgContent = generateSVGFrame({
+          baseSvg, highlights: transHighlights, style: mapStyle,
+          viewBox: curViewBox, w, h,
+          events: timeline.events || [],
+          currentTime,
+          flagData: Object.fromEntries(flagCache),
+        });
+        await sharp(Buffer.from(svgContent)).resize(w, h, { fit: 'fill' }).png().toFile(pngPath);
+      }
     }
 
     prevHighlights = { ...highlights };
