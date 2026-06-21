@@ -9,60 +9,44 @@ import { execSync } from 'child_process';
 
 const execAsync = promisify(exec);
 
-// ── Natural Earth map — حقيقية ملونة من GitHub ─────────────────────────────
-const MAP_CACHE_PATH = '/tmp/natural_earth_map.png';
-const MAP_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/../../../natural-earth-raster/10m_raster/HYP_HR_SR_OB_DR/HYP_HR_SR_OB_DR_small.png';
-// Fallback — smaller but reliable
-const MAP_URL_FALLBACK = 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/World_map_-_low_resolution.svg/2560px-World_map_-_low_resolution.svg.png';
-// Use a reliable source
-const MAP_URL_MAIN = 'https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57752/land_shallow_topo_2048.jpg';
-
-let realMapCache = null;
-
-async function getRealWorldMap(w, h) {
-  // Return from memory cache
-  if (realMapCache) {
-    return await sharp(realMapCache).resize(w, h, { fit: 'fill' }).png().toBuffer();
-  }
-  // Return from disk cache
-  if (fs.existsSync(MAP_CACHE_PATH)) {
-    realMapCache = fs.readFileSync(MAP_CACHE_PATH);
-    return await sharp(realMapCache).resize(w, h, { fit: 'fill' }).png().toBuffer();
-  }
-  // Download from NASA (best quality natural earth)
-  try {
-    console.log('[MapVideo] Downloading real world map...');
-    const res = await fetch(MAP_URL_MAIN, { timeout: 15000 });
-    if (res.ok) {
-      const buf = Buffer.from(await res.arrayBuffer());
-      fs.writeFileSync(MAP_CACHE_PATH, buf);
-      realMapCache = buf;
-      console.log('[MapVideo] Real map downloaded:', Math.round(buf.length / 1024), 'KB');
-      return await sharp(buf).resize(w, h, { fit: 'fill' }).png().toBuffer();
-    }
-  } catch (e) { console.warn('[MapVideo] Map download failed:', e.message); }
-  // Return null — fallback to SVG
-  return null;
-}
-
-// ── Military & event element SVGs (no Unicode, no emoji) ──────────────────────
-const ELEMENT_SVGS = {
-  tank: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 40"><rect x="5" y="15" width="50" height="20" rx="4" fill="#4a4a2a"/><rect x="10" y="10" width="30" height="12" rx="3" fill="#5a5a3a"/><rect x="28" y="5" width="24" height="5" rx="2" fill="#3a3a1a"/><circle cx="12" cy="35" r="6" fill="#2a2a1a"/><circle cx="28" cy="35" r="6" fill="#2a2a1a"/><circle cx="44" cy="35" r="6" fill="#2a2a1a"/><circle cx="12" cy="35" r="3" fill="#4a4a2a"/><circle cx="28" cy="35" r="3" fill="#4a4a2a"/><circle cx="44" cy="35" r="3" fill="#4a4a2a"/></svg>`,
-  plane: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><path d="M40,10 L70,35 L55,35 L55,50 L45,50 L45,35 L35,35 L35,50 L25,50 L25,35 L10,35 Z" fill="#555577"/><path d="M40,10 L55,25 L25,25 Z" fill="#666688"/><circle cx="40" cy="22" r="4" fill="#88aacc"/></svg>`,
-  warship: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 50"><path d="M5,35 L15,20 L65,20 L75,35 Z" fill="#336699"/><rect x="25" y="10" width="30" height="12" rx="2" fill="#224466"/><rect x="35" y="5" width="10" height="8" rx="1" fill="#112233"/><rect x="38" y="2" width="4" height="6" fill="#888"/></svg>`,
-  army: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 50"><ellipse cx="20" cy="10" rx="10" ry="8" fill="#cc4444"/><rect x="12" y="18" width="16" height="20" rx="3" fill="#4a6a2a"/><line x1="20" y1="38" x2="14" y2="50" stroke="#4a6a2a" stroke-width="3"/><line x1="20" y1="38" x2="26" y2="50" stroke="#4a6a2a" stroke-width="3"/><line x1="20" y1="22" x2="8" y2="32" stroke="#4a6a2a" stroke-width="3"/><line x1="20" y1="22" x2="32" y2="32" stroke="#4a6a2a" stroke-width="3"/></svg>`,
-  money: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50"><circle cx="25" cy="25" r="22" fill="#f59e0b" stroke="#d97706" stroke-width="2"/><text x="25" y="32" text-anchor="middle" font-size="24" fill="#7c2d12" font-weight="bold">$</text></svg>`,
-  missile: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 60"><path d="M10,0 L16,15 L16,45 L10,55 L4,45 L4,15 Z" fill="#888"/><path d="M4,45 L0,55 L10,50 L20,55 L16,45 Z" fill="#cc4444"/><rect x="7" y="10" width="6" height="8" fill="#336699"/></svg>`,
-  shield: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 60"><path d="M25,2 L48,12 L48,35 C48,48 25,58 25,58 C25,58 2,48 2,35 L2,12 Z" fill="#1d4ed8" stroke="#93c5fd" stroke-width="2"/><path d="M25,15 L35,25 L25,45 L15,25 Z" fill="#fff" opacity="0.8"/></svg>`,
+// ── Military & event element SVGs (inline in SVG frame) ───────────────────────
+const ELEMENT_SVG_DEFS = {
+  tank: (x, y, size, color) => `<g transform="translate(${x},${y}) scale(${size/60})">
+    <rect x="-28" y="-10" width="52" height="18" rx="4" fill="${color}" opacity="0.95"/>
+    <rect x="-18" y="-18" width="28" height="12" rx="3" fill="${color}" opacity="0.85"/>
+    <rect x="2" y="-22" width="22" height="5" rx="2" fill="${color}"/>
+    <circle cx="-16" cy="10" r="7" fill="#1a1a00" stroke="${color}" stroke-width="1.5"/>
+    <circle cx="0" cy="10" r="7" fill="#1a1a00" stroke="${color}" stroke-width="1.5"/>
+    <circle cx="16" cy="10" r="7" fill="#1a1a00" stroke="${color}" stroke-width="1.5"/>
+  </g>`,
+  plane: (x, y, size, color) => `<g transform="translate(${x},${y}) scale(${size/60})">
+    <path d="M0,-25 L20,5 L8,5 L8,18 L-8,18 L-8,5 L-20,5 Z" fill="${color}" opacity="0.95"/>
+    <path d="M-20,5 L-28,18 L-8,18 Z" fill="${color}" opacity="0.7"/>
+    <path d="M20,5 L28,18 L8,18 Z" fill="${color}" opacity="0.7"/>
+  </g>`,
+  ship: (x, y, size, color) => `<g transform="translate(${x},${y}) scale(${size/60})">
+    <path d="M-28,5 L-18,-10 L18,-10 L28,5 Z" fill="${color}" opacity="0.95"/>
+    <rect x="-10" y="-22" width="20" height="14" rx="2" fill="${color}" opacity="0.85"/>
+    <rect x="-3" y="-28" width="6" height="8" fill="${color}"/>
+  </g>`,
+  army: (x, y, size, color) => `<g transform="translate(${x},${y}) scale(${size/60})">
+    <circle cx="0" cy="-20" r="10" fill="${color}" opacity="0.9"/>
+    <rect x="-10" y="-10" width="20" height="20" rx="3" fill="${color}" opacity="0.85"/>
+    <line x1="0" y1="10" x2="-8" y2="25" stroke="${color}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="0" y1="10" x2="8" y2="25" stroke="${color}" stroke-width="4" stroke-linecap="round"/>
+  </g>`,
+  money: (x, y, size, color) => `<g transform="translate(${x},${y}) scale(${size/50})">
+    <circle cx="0" cy="0" r="22" fill="#f59e0b" stroke="#d97706" stroke-width="2" opacity="0.95"/>
+    <circle cx="0" cy="0" r="16" fill="#fbbf24" opacity="0.8"/>
+    <rect x="-4" y="-14" width="8" height="28" rx="2" fill="#92400e"/>
+    <rect x="-12" y="-6" width="24" height="4" rx="2" fill="#92400e"/>
+    <rect x="-12" y="2" width="24" height="4" rx="2" fill="#92400e"/>
+  </g>`,
+  shield: (x, y, size, color) => `<g transform="translate(${x},${y}) scale(${size/50})">
+    <path d="M0,-24 L22,−10 L22,8 C22,20 0,28 0,28 C0,28 -22,20 -22,8 L-22,-10 Z" fill="${color}" stroke="white" stroke-width="2" opacity="0.9"/>
+    <path d="M0,-12 L10,4 L0,20 L-10,4 Z" fill="white" opacity="0.7"/>
+  </g>`,
 };
-
-async function getElementPng(type, size = 60) {
-  const svg = ELEMENT_SVGS[type];
-  if (!svg) return null;
-  try {
-    return await sharp(Buffer.from(svg)).resize(size, size, { fit: 'contain', background: { r:0,g:0,b:0,alpha:0 } }).png().toBuffer();
-  } catch { return null; }
-}
 
 const EMBEDDED_WORLD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1000 500" width="1000" height="500">
 <rect width="1000" height="500" fill="#4a90d9"/>
@@ -382,90 +366,7 @@ function hexToRgb(hex) {
   return { r, g, b };
 }
 
-async function generateRealMapFrame({ mapPng, highlights, w, h, events = [], currentTime = 0, flagData = {}, zoomRegion = 'world' }) {
-  const composites = [];
-
-  // Country highlights — حساب مباشر في pixel space (w x h)
-  for (const [iso, color] of Object.entries(highlights)) {
-    const bbox = COUNTRY_BBOX[iso];
-    if (!bbox) continue;
-    const [bx, by, bw, bh] = bbox;
-
-    // حول من SVG space (1000x500) لـ pixel space (w x h)
-    const px = Math.round(bx * w / 1000);
-    const py = Math.round(by * h / 500);
-    const pw = Math.max(4, Math.round(bw * w / 1000));
-    const ph = Math.max(4, Math.round(bh * h / 500));
-
-    // تأكد إن الـ highlight جوه الصورة
-    if (px >= w || py >= h) continue;
-    const safeW = Math.min(pw, w - px);
-    const safeH = Math.min(ph, h - py);
-    if (safeW <= 0 || safeH <= 0) continue;
-
-    const rgb = hexToRgb(color);
-    const highlightSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${safeW}" height="${safeH}"><rect width="${safeW}" height="${safeH}" rx="${Math.round(Math.min(safeW,safeH)*0.12)}" fill="rgba(${rgb.r},${rgb.g},${rgb.b},0.5)" stroke="rgba(${rgb.r},${rgb.g},${rgb.b},0.85)" stroke-width="2"/></svg>`;
-    try {
-      const hlBuf = await sharp(Buffer.from(highlightSvg)).png().toBuffer();
-      composites.push({ input: hlBuf, left: px, top: py, blend: 'over' });
-    } catch {}
-  }
-
-  // Military / event elements
-  const event = events.find(e => currentTime >= e.time && currentTime < e.time + e.duration);
-  if (event) {
-    const progress = (currentTime - event.time) / Math.max(1, event.duration);
-
-    // Military element
-    if (event.military && event.fromCountry && event.toCountry) {
-      const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
-      if (fl && tl) {
-        const [fx, fy] = fl, [tx, ty] = tl;
-        const ap = Math.min(progress * 1.5, 0.85);
-        const elemSize = Math.round(Math.min(w, h) * 0.06);
-        const mx = Math.round((fx + (tx-fx)*ap) * w/1000);
-        const my = Math.round((fy + (ty-fy)*ap) * h/500);
-        const elemType = event.unitType === 'plane' ? 'plane' : event.unitType === 'ship' ? 'warship' : 'tank';
-        const elemPng = await getElementPng(elemType, elemSize);
-        if (elemPng) {
-          const left = Math.min(Math.max(0, mx - Math.round(elemSize/2)), w - elemSize);
-          const top = Math.min(Math.max(0, my - Math.round(elemSize/2)), h - elemSize);
-          composites.push({ input: elemPng, left, top, blend: 'over' });
-        }
-      }
-    }
-
-    // Trade/Aid element
-    if (['trade','aid','resources','economic'].includes(event.eventType) && event.fromCountry && event.toCountry) {
-      const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
-      if (fl && tl) {
-        const [fx, fy] = fl, [tx, ty] = tl;
-        const ap = (Math.sin(currentTime * 2.5) + 1) / 2;
-        const elemSize = Math.round(Math.min(w, h) * 0.05);
-        const mx = Math.round((fx + (tx-fx)*ap) * w/1000);
-        const my = Math.round((fy + (ty-fy)*ap) * h/500);
-        const elemType = ['trade','economic'].includes(event.eventType) ? 'money' : 'shield';
-        const elemPng = await getElementPng(elemType, elemSize);
-        if (elemPng) {
-          const left = Math.min(Math.max(0, mx - Math.round(elemSize/2)), w - elemSize);
-          const top = Math.min(Math.max(0, my - Math.round(elemSize/2)), h - elemSize);
-          composites.push({ input: elemPng, left, top, blend: 'over' });
-        }
-      }
-    }
-  }
-
-  // دمج الخريطة مع الـ composites
-  const finalBuf = await sharp(mapPng)
-    .resize(w, h, { fit: 'fill' })
-    .composite(composites)
-    .png()
-    .toBuffer();
-
-  return finalBuf;
-}
-
-// ── Old SVG frame (fallback) ──────────────────────────────────────────────────
+// ── SVG frame generator ───────────────────────────────────────────────────────
 export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, events = [], currentTime = 0, flagData = {} }) {
   const colors = STYLES[style] || STYLES.dark;
   const [vbx, vby, vbw, vbh] = viewBox.split(' ').map(Number);
@@ -494,8 +395,79 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
     if (currentTime < event.time || currentTime >= event.time + event.duration) continue;
     const progress = (currentTime - event.time) / event.duration;
 
-    // ── Historical entity / flag overlay ──────────────────────────────────
-    if (event.flag && event.countries && event.entity) {
+    // ── Military invasion arrow + element ─────────────────────────────────
+    if (event.military && event.fromCountry && event.toCountry) {
+      const fromLabel = COUNTRY_LABELS[event.fromCountry];
+      const toLabel = COUNTRY_LABELS[event.toCountry];
+      if (fromLabel && toLabel) {
+        const [fx, fy] = fromLabel, [tx, ty] = toLabel;
+        const inView = fx >= vbx && fx <= vbx + vbw && fy >= vby && fy <= vby + vbh;
+        if (inView) {
+          const ap = Math.min(progress * 1.5, 0.85);
+          const mx = fx + (tx - fx) * ap, my = fy + (ty - fy) * ap;
+          const sw = Math.max(1, Math.round(vbw * 0.004));
+          const dr = Math.max(2, Math.round(vbw * 0.008));
+          const aid = `arr_${Math.round(currentTime * 10)}`;
+          const elemColor = event.color || '#ff0000';
+          const elemSize = Math.max(8, Math.round(vbw * 0.025));
+          // Arrow line
+          defsHTML += `<marker id="${aid}" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="${elemColor}"/></marker>`;
+          overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${elemColor}" stroke-width="${sw}" stroke-dasharray="${dr*3} ${dr}" opacity="0.6" marker-end="url(#${aid})"/>`;
+          // Moving element
+          const elemType = event.unitType === 'plane' ? 'plane' : event.unitType === 'ship' ? 'ship' : 'tank';
+          const elemFn = ELEMENT_SVG_DEFS[elemType];
+          if (elemFn) overlaysHTML += elemFn(mx, my, elemSize, elemColor);
+        }
+      }
+    }
+
+    // ── Alliance line ──────────────────────────────────────────────────────
+    if (event.eventType === 'alliance' && event.fromCountry && event.toCountry) {
+      const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
+      if (fl && tl) {
+        const [fx, fy] = fl, [tx, ty] = tl;
+        const sw = Math.max(1, Math.round(vbw * 0.004));
+        const gr = Math.max(3, Math.round(vbw * 0.01));
+        const ac = event.color || '#1d4ed8';
+        overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${ac}" stroke-width="${sw*2}" opacity="0.2"/>`;
+        overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${ac}" stroke-width="${sw}" opacity="0.85"/>`;
+        overlaysHTML += `<circle cx="${fx}" cy="${fy}" r="${gr}" fill="${ac}" opacity="0.9"/>`;
+        overlaysHTML += `<circle cx="${tx}" cy="${ty}" r="${gr}" fill="${ac}" opacity="0.9"/>`;
+      }
+    }
+
+    // ── Trade / Aid flowing element ────────────────────────────────────────
+    if (['trade','aid','resources','economic'].includes(event.eventType) && event.fromCountry && event.toCountry) {
+      const fl = COUNTRY_LABELS[event.fromCountry], tl = COUNTRY_LABELS[event.toCountry];
+      if (fl && tl) {
+        const [fx, fy] = fl, [tx, ty] = tl;
+        const ap = (Math.sin(currentTime * 2.5) + 1) / 2;
+        const mx = fx + (tx-fx)*ap, my = fy + (ty-fy)*ap;
+        const sw = Math.max(1, Math.round(vbw * 0.003));
+        const elemSize = Math.max(6, Math.round(vbw * 0.022));
+        const tc = event.color || (event.eventType === 'trade' ? '#f59e0b' : '#15803d');
+        overlaysHTML += `<line x1="${fx}" y1="${fy}" x2="${tx}" y2="${ty}" stroke="${tc}" stroke-width="${sw}" stroke-dasharray="${elemSize} ${elemSize*0.5}" opacity="0.55"/>`;
+        const elemFn = ELEMENT_SVG_DEFS[['trade','economic'].includes(event.eventType) ? 'money' : 'shield'];
+        if (elemFn) overlaysHTML += elemFn(mx, my, elemSize, tc);
+      }
+    }
+
+    // ── Blockade / Sanction ring ───────────────────────────────────────────
+    if (['blockade','sanction'].includes(event.eventType)) {
+      for (const iso of (event.countries || [])) {
+        const label = COUNTRY_LABELS[iso];
+        if (!label) continue;
+        const [cx, cy] = label;
+        if (cx < vbx || cx > vbx+vbw || cy < vby || cy > vby+vbh) continue;
+        const rr = Math.round(vbw * 0.02);
+        const rc = event.color || '#6b21a8';
+        overlaysHTML += `<circle cx="${cx}" cy="${cy}" r="${rr}" fill="none" stroke="${rc}" stroke-width="${Math.round(vbw*0.003)}" stroke-dasharray="${rr*0.5} ${rr*0.3}" opacity="0.85"/>`;
+        overlaysHTML += `<circle cx="${cx}" cy="${cy}" r="${Math.round(rr*0.28)}" fill="${rc}" opacity="0.6"/>`;
+      }
+    }
+
+    // Labels removed
+  }
       const hist = HISTORICAL_FLAGS[event.entity?.toLowerCase()];
       for (const iso of event.countries) {
         if (!iso || iso.length !== 2) continue;
@@ -906,12 +878,9 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
   const allISOs = (timeline.events || []).flatMap(e => [...(e.countries||[]),...(e.addCountries||[])]);
   await preloadFlags(allISOs);
 
-  updateStatus(jobId, { progress: 37, log: ['🗺️ Loading real world map...'] });
-  const realMap = await getRealWorldMap(w, h);
-  const useRealMap = !!realMap;
-  updateStatus(jobId, { log: [useRealMap ? '✅ Real map loaded!' : '⚠️ Using SVG fallback', '🖼️ Generating frames...'] });
+  updateStatus(jobId, { progress: 37, log: ['🖼️ Generating map frames...'] });
 
-  const baseSvg = useRealMap ? null : await getWorldSvg();
+  const baseSvg = await getWorldSvg();
   const framesDir = path.join(jobDir, 'frames');
   fs.mkdirSync(framesDir, { recursive: true });
 
@@ -1006,36 +975,17 @@ export async function renderMapVideo({ jobId, formData, jobDir, updateStatus }) 
       const curViewBox = curVB.join(' ');
       const currentTime = sec + progress;
 
-      // حساب الـ zoom region الحالي
-      const curEvent = (timeline.events || []).find(e => currentTime >= e.time && currentTime < e.time + e.duration);
-      const curZoom = curEvent?.zoom || 'world';
-
       const frameNum = sec * TRANSITION_FRAMES + tf;
       const pngPath = path.join(framesDir, `frame_${String(frameNum).padStart(6, '0')}.png`);
 
-      if (useRealMap) {
-        // ── خريطة حقيقية ────────────────────────────────────────────────
-        const frameBuf = await generateRealMapFrame({
-          mapPng: realMap,
-          highlights: transHighlights,
-          w, h,
-          events: timeline.events || [],
-          currentTime,
-          flagData: Object.fromEntries(flagCache),
-          zoomRegion: curZoom,
-        });
-        fs.writeFileSync(pngPath, frameBuf);
-      } else {
-        // ── SVG fallback ────────────────────────────────────────────────
-        const svgContent = generateSVGFrame({
-          baseSvg, highlights: transHighlights, style: mapStyle,
-          viewBox: curViewBox, w, h,
-          events: timeline.events || [],
-          currentTime,
-          flagData: Object.fromEntries(flagCache),
-        });
-        await sharp(Buffer.from(svgContent)).resize(w, h, { fit: 'fill' }).png().toFile(pngPath);
-      }
+      const svgContent = generateSVGFrame({
+        baseSvg, highlights: transHighlights, style: mapStyle,
+        viewBox: curViewBox, w, h,
+        events: timeline.events || [],
+        currentTime,
+        flagData: Object.fromEntries(flagCache),
+      });
+      await sharp(Buffer.from(svgContent)).resize(w, h, { fit: 'fill' }).png().toFile(pngPath);
     }
 
     prevHighlights = { ...highlights };
