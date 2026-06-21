@@ -54,11 +54,82 @@ const EMBEDDED_WORLD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink=
 </svg>`;
 
 const STYLES = {
-  dark:     { ocean: '#0f0f1f', land: '#1e2044', border: '#2d3561', text: '#ffffff' },
+  dark:     { ocean: '#1a2744', land: '#2d3a5c', border: '#1a2744', text: '#ffffff' },
   classic:  { ocean: '#4a90d9', land: '#f5e6c8', border: '#c8a96e', text: '#333333' },
   military: { ocean: '#0d1a0d', land: '#2d4a2d', border: '#1a3a1a', text: '#ffffff' },
-  clean:    { ocean: '#e8f4f8', land: '#ffffff',  border: '#cccccc', text: '#333333' },
+  clean:    { ocean: '#c8dff0', land: '#e8e0d0',  border: '#b0a890', text: '#333333' },
 };
+
+// ── Natural country colors (realistic geographic look) ─────────────────────────
+// Desert/arid: sandy/tan | Forest/tropical: green | Cold/tundra: grey-blue | Fertile: olive-green
+const COUNTRY_NATURAL_COLORS = {
+  // North Africa — desert
+  'EG':'#c9a96e','LY':'#cda96b','DZ':'#c8a560','MA':'#b8955a','TN':'#c4a060',
+  'SD':'#b8975a','SS':'#9aaa6a','MR':'#c2a055','ML':'#c0a050','NE':'#c4a358',
+  'TD':'#b89860','ER':'#a09060','ET':'#9aaa6a','DJ':'#b09060','SO':'#b09565',
+  // Sub-Saharan Africa — green/savanna
+  'SN':'#8faa60','GM':'#8faa60','GW':'#80a055','GN':'#70a050','SL':'#70a050',
+  'LR':'#70a050','CI':'#7aaa55','GH':'#80aa55','TG':'#80aa55','BJ':'#90aa55',
+  'NG':'#85a850','CM':'#80a550','CF':'#88a855','CD':'#6aab50','CG':'#6aab50',
+  'GA':'#65b050','GQ':'#65b050','AO':'#90a558','ZM':'#85a855','MW':'#80a555',
+  'MZ':'#80a855','TZ':'#85a860','KE':'#90aa60','UG':'#70ab55','RW':'#70a850',
+  'BI':'#70a850','ZW':'#88a558','BW':'#b0a060','NA':'#b5a060','ZA':'#90a055',
+  'LS':'#88a055','SZ':'#80a855','MG':'#90a858',
+  // Middle East — desert/arid
+  'SA':'#c8a060','YE':'#c0a060','OM':'#c8a560','AE':'#c4a058','QA':'#c4a058',
+  'KW':'#c0a058','BH':'#c8a560','IQ':'#b8a060','SY':'#b8a060','JO':'#c0a060',
+  'IL':'#b8b060','LB':'#a8b060','PS':'#b8b060','TR':'#a0a860',
+  // Central Asia — steppe/semi-arid
+  'KZ':'#b8b060','UZ':'#c0a860','TM':'#c0a860','TJ':'#b0a060','KG':'#b0a060',
+  'AF':'#b0a060','PK':'#b8a860',
+  // South Asia — green/tropical
+  'IN':'#90a855','BD':'#80b055','LK':'#70b055','NP':'#90a058','BT':'#80a858',
+  // Southeast Asia — tropical
+  'MM':'#70a850','TH':'#78ab50','LA':'#75a855','VN':'#78aa50','KH':'#80aa55',
+  'MY':'#68b050','SG':'#68b050','ID':'#68b050','PH':'#70b055','TL':'#70b055',
+  'BN':'#68b050','PG':'#65b050',
+  // East Asia
+  'CN':'#90a858','MN':'#b0a860','KP':'#88a858','KR':'#88a858','JP':'#90aa60',
+  'TW':'#88aa60',
+  // Europe — green/fertile
+  'PT':'#80a855','ES':'#88a858','FR':'#88aa58','GB':'#80aa60','IE':'#78b055',
+  'NL':'#80aa60','BE':'#80aa60','LU':'#80aa60','DE':'#85aa58','CH':'#88a858',
+  'AT':'#88a858','IT':'#88aa58','GR':'#90a858','MT':'#90a858',
+  'PL':'#85aa58','CZ':'#85aa58','SK':'#85aa58','HU':'#88a858','RO':'#88a858',
+  'BG':'#88a858','RS':'#88a858','HR':'#88a858','SI':'#88a858','BA':'#88a858',
+  'ME':'#88a858','MK':'#88a858','AL':'#88a858',
+  'SE':'#80a858','NO':'#88a860','FI':'#88a860','DK':'#85aa60',
+  'EE':'#85aa60','LV':'#85aa60','LT':'#85aa60','BY':'#85a858','UA':'#88a858',
+  'MD':'#88a858',
+  // Russia — mixed taiga/tundra
+  'RU':'#8a9f72',
+  // Americas — varies
+  'US':'#90a860','CA':'#8a9f72','MX':'#98a858',
+  'GT':'#80aa55','BZ':'#78aa55','HN':'#80aa55','SV':'#80aa55',
+  'NI':'#80aa55','CR':'#75ab55','PA':'#75ab55','CU':'#78aa55',
+  'HT':'#88a058','DO':'#80aa55','JM':'#78aa55',
+  'CO':'#78ab55','VE':'#80ab55','GY':'#75ab55','SR':'#72ab55',
+  'BR':'#78aa55','EC':'#72ab55','PE':'#88a855','BO':'#90a858',
+  'PY':'#90a858','AR':'#95a860','CL':'#8aa058','UY':'#90a860',
+  // Oceania
+  'AU':'#b8a060','NZ':'#88aa60','FJ':'#70b055',
+  // Greenland/Iceland — cold
+  'GRL':'#9ab0b0','IS':'#98a8b0',
+};
+
+function getCountryNaturalColor(iso, style) {
+  if (style === 'dark') {
+    // Dark style — keep dark palette but with slight variation
+    const base = COUNTRY_NATURAL_COLORS[iso];
+    if (!base) return null;
+    // Darken the natural color for dark theme
+    return null; // use CSS for dark theme
+  }
+  if (style === 'classic' || style === 'clean') {
+    return COUNTRY_NATURAL_COLORS[iso] || null;
+  }
+  return null;
+}
 
 // ── Country ISO codes ──────────────────────────────────────────────────────────
 const COUNTRY_ISO = {
@@ -372,6 +443,17 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
   const [vbx, vby, vbw, vbh] = viewBox.split(' ').map(Number);
 
   let cssRules = `path { fill: ${colors.land}; stroke: ${colors.border}; stroke-width: 0.4; }`;
+
+  // Apply natural colors for classic/clean styles
+  if (style === 'classic' || style === 'clean') {
+    for (const [iso, natColor] of Object.entries(COUNTRY_NATURAL_COLORS)) {
+      if (!highlights[iso]) { // only if not highlighted
+        cssRules += `#${iso}, .${iso} { fill: ${natColor}; }`;
+      }
+    }
+  }
+
+  // Apply highlight colors (override natural colors)
   for (const [iso, color] of Object.entries(highlights)) {
     cssRules += `#${iso}, [class="${iso}"] { fill: ${color} !important; }`;
   }
@@ -472,9 +554,15 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
   return
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${viewBox}" width="${w}" height="${h}">
-  <defs>${defsHTML}</defs>
+  <defs>
+    <linearGradient id="oceanGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:${style === 'dark' ? '#0d1b3e' : style === 'military' ? '#0a1a0a' : '#3a7abf'};stop-opacity:1" />
+      <stop offset="100%" style="stop-color:${style === 'dark' ? '#1a2744' : style === 'military' ? '#0d220d' : '#4a90d9'};stop-opacity:1" />
+    </linearGradient>
+    ${defsHTML}
+  </defs>
   <style>${cssRules}${extraCSS}</style>
-  <rect width="1000" height="500" fill="${colors.ocean}"/>
+  <rect width="1000" height="500" fill="url(#oceanGrad)"/>
   ${paths}
   ${labelsHTML}
   ${overlaysHTML}
