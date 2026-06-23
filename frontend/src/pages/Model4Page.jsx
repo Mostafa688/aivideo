@@ -405,7 +405,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
       const res = await fetch('/api/model4/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
-        body: JSON.stringify({ scenes, audioUrl: mode === 'voice' ? voiceAudioUrl : null, ratio, captions, music, videoLanguage, duration: mode === 'script' ? getSmartDuration() : duration, inputMode: mode }),
+        body: JSON.stringify({ scenes, audioUrl: mode === 'voice' ? voiceAudioUrl : null, ratio, captions, music, videoLanguage, duration: mode === 'script' ? getSmartDuration() : duration, inputMode: mode, videoStyle, styleSuffix: VIDEO_STYLES_M4.find(s=>s.key===videoStyle)?.suffix || '' }),
       });
       const data = await res.json();
       if (!res.ok) {

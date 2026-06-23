@@ -632,7 +632,7 @@ Output ONLY JSON array:
 });
 
 app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration } = req.body;
+  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, videoStyle, styleSuffix } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const quotaCheck = await canUserMakeModel3Video(req.user.userId, duration || '1min');
   if (!quotaCheck.allowed) {
@@ -656,7 +656,7 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
   res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false, creditCost: m3CreditCost });
   (async () => {
     try {
-      const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en' });
+      const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '' });
       if (quotaCheck.is_trial) {
         await markModel3TrialUsed(req.user.userId);
       } else {
@@ -859,7 +859,7 @@ Output ONLY JSON array:
 });
 
 app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, inputMode } = req.body;
+  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, inputMode, videoStyle, styleSuffix } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const quotaCheck = await canUserMakeModel4Video(req.user.userId, duration || '30s');
   if (!quotaCheck.allowed) {
@@ -904,7 +904,7 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
           console.warn('[Model4] Voiceover failed, continuing without audio:', voiceErr.message);
         }
       }
-      const videoPath = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en' });
+      const videoPath = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '' });
       await incrementModel4Video(req.user.userId, duration || '30s');
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {

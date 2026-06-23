@@ -300,6 +300,8 @@ export async function renderModel4Video({
   videoLanguage = 'ar',
   captionStyle = 'classic',
   onProgress = null,
+  videoStyle = 'cinematic',
+  styleSuffix = '',
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -310,7 +312,7 @@ export async function renderModel4Video({
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
   const total = scenes.length;
 
-  console.log(`[Model4] START | ${total} scenes | ${ratio}`);
+  console.log(`[Model4] START | ${total} scenes | ${ratio} | style: ${videoStyle}`);
 
   const SEC_PER_CLIP = 7;
   console.log(`[Model4] SEC_PER_CLIP: ${SEC_PER_CLIP}s | Total video: ${total * SEC_PER_CLIP}s`);
@@ -321,9 +323,13 @@ export async function renderModel4Video({
     try {
       if (onProgress) onProgress({ step: 'generating', current: i + 1, total });
       console.log(`[Model4] Generating clip ${i + 1}/${total}`);
-      const seedPrompt = scenes[i].prompt 
+      // Build prompt: scene prompt + style suffix appended
+      const basePrompt = scenes[i].prompt
         || (scenes[i].visual ? `${scenes[i].visual}, cinematic motion, professional video` : null)
         || scenes[i].text;
+      const seedPrompt = styleSuffix
+        ? `${basePrompt}, ${styleSuffix}`
+        : basePrompt;
       const url = await generateSeedanceClip(seedPrompt, ratio);
       await downloadVideo(url, rawPath);
     } catch (e) {

@@ -381,7 +381,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
       }
 
       setRenderStatus('Starting AI image generation...');
-      const renderRes = await fetch('/api/model3/render', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, audioUrl, ratio, captions, transitions: false, music, videoLanguage, duration: inputMode === 'script' ? getSmartDuration() : duration }) });
+      const renderRes = await fetch('/api/model3/render', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, audioUrl, ratio, captions, transitions: false, music, videoLanguage, duration: inputMode === 'script' ? getSmartDuration() : duration, videoStyle, styleSuffix: selectedStyle?.suffix || '' }) });
       const renderData = await renderRes.json();
       if (!renderRes.ok) {
         if (renderData.show_upgrade || renderData.error === 'subscribe_required' || renderData.error === 'no_access') {
