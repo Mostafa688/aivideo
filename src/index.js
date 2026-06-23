@@ -699,10 +699,10 @@ app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
 
 // ── Model 4 Routes ─────────────────────────────────────────────────────────
 app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
-  const { idea, script, inputMode, sceneCount, videoLanguage } = req.body;
+  const { idea, script, inputMode, sceneCount, videoLanguage, styleSuffix, videoStyle } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
   const lang = videoLanguage || 'en';
-  const styleHint = 'cinematic, photorealistic, dramatic lighting, no text overlays, no watermarks';
+  const styleHint = styleSuffix || 'cinematic, photorealistic, dramatic lighting, no text overlays, no watermarks';
   const BATCH_SIZE = 5;
   const allScenes = [];
   const totalBatches = Math.ceil(sceneCount / BATCH_SIZE);
@@ -1044,7 +1044,7 @@ Output ONLY JSON array (${sceneCount} items):
 });
 
 app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, ratio, duration } = req.body;
+  const { scenes, ratio, duration, characterPhotos } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const quotaCheck = await canUserMakeModel5Video(req.user.userId, duration || '30s');
   if (!quotaCheck.allowed) {
@@ -1061,6 +1061,18 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
+
+  // ── Attach character photos to scenes for reference image generation ──
+  const photos = Array.isArray(characterPhotos) ? characterPhotos.filter(Boolean) : [];
+  const scenesWithPhotos = scenes.map((scene, i) => {
+    if (photos.length === 0) return scene;
+    const photoIndex = i % photos.length;
+    return { ...scene, characterPhoto: photos[photoIndex] };
+  });
+  if (photos.length > 0) {
+    console.log(`[Model5] ${photos.length} character photo(s) attached to ${scenesWithPhotos.length} scenes`);
+  }
+
   const renderJobId = String(Date.now());
   const m5CreditCost = MODEL5_CREDIT_COSTS[duration] || 15;
   activeRenderCount++;
@@ -1068,7 +1080,7 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m5CreditCost });
   (async () => {
     try {
-      const videoPath = await renderModel5Video({ scenes, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s' });
+      const videoPath = await renderModel5Video({ scenes: scenesWithPhotos, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s' });
       await incrementModel5Video(req.user.userId, duration || '30s');
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {

@@ -220,6 +220,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
   const [idea, setIdea] = useState('');
   // characters: { id, prompt, photo: base64|null, photoPreview: url|null }
   const [characters, setCharacters] = useState([{ id:1, prompt:'', photo:null, photoPreview:null }]);
+  const [characterPhotos, setCharacterPhotos] = useState([]); // kept separately to survive scene step
   const [videoStyle, setVideoStyle] = useState('cinematic');
   const [duration, setDuration] = useState('15s');
   const [ratio, setRatio] = useState('9:16');
@@ -250,11 +251,16 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
   const updateCharacter = (id, prompt) => setCharacters(characters.map(c=>c.id===id?{...c,prompt}:c));
   const updateCharacterPhoto = (id, file) => {
     if (!file) return;
-    // Resize/read as base64
     const reader = new FileReader();
     reader.onload = (ev) => {
       const base64 = ev.target.result;
       setCharacters(prev => prev.map(c => c.id===id ? {...c, photo: base64, photoPreview: base64} : c));
+      // Also store in separate array that persists to render step
+      setCharacterPhotos(prev => {
+        const idx = prev.findIndex(p => p.id === id);
+        if (idx >= 0) return prev.map(p => p.id===id ? {...p, photo: base64} : p);
+        return [...prev, { id, photo: base64 }];
+      });
     };
     reader.readAsDataURL(file);
   };
@@ -281,7 +287,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
   const handleRender = async () => {
     setLoading(true); setError(''); setElapsed(0);
     try {
-      const res = await fetch('/api/model5/render', { method:'POST', headers:authHeaders(), body:JSON.stringify({ scenes, ratio, duration }) });
+      const res = await fetch('/api/model5/render', { method:'POST', headers:authHeaders(), body:JSON.stringify({ scenes, ratio, duration, characterPhotos: characterPhotos.map(p => p.photo) }) });
       const data = await res.json();
       if (!res.ok) {
         if (data.show_upgrade||data.error==='no_access') { setShowPayment(true); setLoading(false); return; }
