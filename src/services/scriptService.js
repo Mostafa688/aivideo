@@ -483,10 +483,6 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
     }
   }
 
-  if (userId && totalTokens > 0) {
-    try { addUserTokens(userId, totalTokens); }
-    catch (e) { console.warn('Could not track tokens:', e.message); }
-  }
-
+  // Note: Groq tokens are NOT deducted from user credits — video credits are deducted after render only
   console.log(`[Script] Done: ${totalEmitted}/${sceneCount} scenes | ${totalTokens} tokens`);
 }

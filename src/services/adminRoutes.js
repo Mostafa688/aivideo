@@ -67,8 +67,8 @@ router.get('/payments', adminAuth, async (req, res) => {
 });
 router.get('/users', adminAuth, async (req, res) => {
   try {
-    // Ensure banned column exists
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned INTEGER DEFAULT 0').catch(() => {});
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS region TEXT DEFAULT NULL').catch(() => {});
     const { plan, search, limit = 50 } = req.query;
     let where = [], params = [], idx = 1;
     if (plan) { where.push(`plan = $${idx++}`); params.push(plan); }
@@ -78,15 +78,29 @@ router.get('/users', adminAuth, async (req, res) => {
       SELECT u.id, u.email, u.name, u.plan, u.verified,
              u.model3_access, u.model3_plan, u.model4_access, u.model4_plan,
              u.model5_access, u.model5_plan, u.ref_code, u.created_at,
+             u.plan_expires_at,
              COALESCE(u.banned, 0) as banned,
+             COALESCE(u.region, 'unknown') as region,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
-             COUNT(v.id) as total_videos
+             COUNT(v.id) as total_videos,
+             COALESCE(m3c.credits_total, 0) as m3_credits_total,
+             COALESCE(m3c.credits_used, 0) as m3_credits_used,
+             COALESCE(m4c.credits_total, 0) as m4_credits_total,
+             COALESCE(m4c.credits_used, 0) as m4_credits_used,
+             COALESCE(m5c.credits_total, 0) as m5_credits_total,
+             COALESCE(m5c.credits_used, 0) as m5_credits_used
       FROM users u
       LEFT JOIN user_usage uu ON uu.user_id = u.id
       LEFT JOIN videos v ON v.user_id = u.id
+      LEFT JOIN model3_credits m3c ON m3c.user_id = u.id
+      LEFT JOIN model4_credits m4c ON m4c.user_id = u.id
+      LEFT JOIN model5_credits m5c ON m5c.user_id = u.id
       ${whereClause}
-      GROUP BY u.id, uu.credits_used, uu.videos_this_week
+      GROUP BY u.id, uu.credits_used, uu.videos_this_week,
+               m3c.credits_total, m3c.credits_used,
+               m4c.credits_total, m4c.credits_used,
+               m5c.credits_total, m5c.credits_used
       ORDER BY u.id DESC
       LIMIT $${idx}
     `, [...params, parseInt(limit)]);
@@ -345,6 +359,79 @@ router.get('/onboarding-answers', adminAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Recharge Credits ──────────────────────────────────────────────────────────
+// Model 1&2: reset/add weekly credits
+router.post('/user/add-credits', adminAuth, async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+    if (!email || !amount) return res.status(400).json({ error: 'email and amount required' });
+    const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const uid = rows[0].id;
+    await pool.query(
+      `INSERT INTO user_usage (user_id, credits_used) VALUES ($1, 0)
+       ON CONFLICT (user_id) DO UPDATE
+       SET credits_used = GREATEST(0, user_usage.credits_used - $2)`,
+      [uid, parseInt(amount)]
+    );
+    res.json({ success: true, message: `Added ${amount} credits (M1&2) to ${email}` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Model 3: recharge credit pool
+router.post('/user/recharge-m3', adminAuth, async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+    if (!email || !amount) return res.status(400).json({ error: 'email and amount required' });
+    const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const uid = rows[0].id;
+    await pool.query(
+      `INSERT INTO model3_credits (user_id, credits_total, credits_used) VALUES ($1, $2, 0)
+       ON CONFLICT (user_id) DO UPDATE
+       SET credits_total = model3_credits.credits_total + $2`,
+      [uid, parseInt(amount)]
+    );
+    res.json({ success: true, message: `Added ${amount} credits (M3) to ${email}` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Model 4: recharge credit pool
+router.post('/user/recharge-m4', adminAuth, async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+    if (!email || !amount) return res.status(400).json({ error: 'email and amount required' });
+    const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const uid = rows[0].id;
+    await pool.query(
+      `INSERT INTO model4_credits (user_id, credits_total, credits_used) VALUES ($1, $2, 0)
+       ON CONFLICT (user_id) DO UPDATE
+       SET credits_total = model4_credits.credits_total + $2`,
+      [uid, parseInt(amount)]
+    );
+    res.json({ success: true, message: `Added ${amount} credits (M4) to ${email}` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Model 5: recharge credit pool
+router.post('/user/recharge-m5', adminAuth, async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+    if (!email || !amount) return res.status(400).json({ error: 'email and amount required' });
+    const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const uid = rows[0].id;
+    await pool.query(
+      `INSERT INTO model5_credits (user_id, credits_total, credits_used) VALUES ($1, $2, 0)
+       ON CONFLICT (user_id) DO UPDATE
+       SET credits_total = model5_credits.credits_total + $2`,
+      [uid, parseInt(amount)]
+    );
+    res.json({ success: true, message: `Added ${amount} credits (M5) to ${email}` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Ban / Unban User ──────────────────────────────────────────────────────────
