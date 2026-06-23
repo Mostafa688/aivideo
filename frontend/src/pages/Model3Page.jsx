@@ -235,6 +235,9 @@ const VIDEO_STYLES = [
   { key: 'historical',  label: 'Historical',  emoji: '🏛️', desc: 'Ancient civilizations, epic',       suffix: 'historical epic, ancient world, dramatic atmosphere, oil painting style, cinematic' },
   { key: 'nature',      label: 'Nature',      emoji: '🌿', desc: 'Landscapes, wildlife',              suffix: 'nature photography, golden hour lighting, breathtaking landscape, National Geographic style' },
   { key: 'islamic',     label: 'Islamic',     emoji: '🕌', desc: 'Islamic architecture, spiritual',   suffix: 'Islamic architecture, golden light, spiritual atmosphere, detailed geometric patterns, cinematic' },
+  { key: 'anime',       label: 'Anime',       emoji: '🌸', desc: 'Japanese animation style',          suffix: 'anime style, vibrant colors, detailed illustration, studio ghibli inspired, beautiful cel shading' },
+  { key: 'cartoon',     label: 'Cartoon',     emoji: '🎨', desc: 'Animated, colorful, fun',           suffix: 'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired illustration' },
+  { key: '3d_cartoon',  label: '3D Cartoon',  emoji: '🎮', desc: '3D rendered, Pixar style',          suffix: '3D rendered cartoon style, smooth colorful surfaces, pixar style 3D animation, high detail render' },
 ];
 
 function authHeaders() {
@@ -291,6 +294,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
   const [quotas, setQuotas]         = useState(null);
   const [trialUsed, setTrialUsed]   = useState(false);
   const [isTrial, setIsTrial]       = useState(false);
+  const [creditCost, setCreditCost] = useState(5);
   const pollRef                     = useRef(null);
 
   useEffect(() => {
@@ -303,6 +307,13 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
       })
       .catch(() => {});
   }, []);
+
+  // fetch credit cost when duration changes
+  useEffect(() => {
+    const dur = inputMode === 'script' ? getSmartDuration() : duration;
+    fetch(`/api/model3/credit-cost?duration=${dur}`, { headers: { Authorization: 'Bearer ' + localStorage.getItem('token') } })
+      .then(r => r.json()).then(d => setCreditCost(d.creditCost || 5)).catch(() => {});
+  }, [duration, inputMode, script]);
 
   const DURATIONS = ALL_DURATIONS.filter(d => d.plans.includes(model3Plan));
   const selectedDuration = ALL_DURATIONS.find(d => d.value === duration);
@@ -651,6 +662,16 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           </div>;
         })()}
 
+        {/* Credit cost badge */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:10 }}>
+          <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(245,158,11,0.12)', border:'1px solid rgba(245,158,11,0.3)', fontSize:12, fontWeight:700, color:'#f59e0b' }}>
+            🪙 {creditCost} credits per video
+          </div>
+          <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', fontSize:11, color:'rgba(255,255,255,0.4)', fontWeight:600 }}>
+            Model 3 · AI Images
+          </div>
+        </div>
+
         {/* CTA */}
         {!hasAccess && trialUsed ? (
           <button onClick={() => setShowPlans(true)} style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background:'linear-gradient(135deg, #f59e0b, #ef4444)', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 4px 20px rgba(245,158,11,0.3)' }}>
@@ -664,7 +685,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
             }
             return false;
           })()} style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background: generating || !canSubmit ? 'var(--bg3)' : 'linear-gradient(135deg, #f59e0b, #ef4444)', color: generating || !canSubmit ? 'var(--text3)' : '#fff', fontWeight:700, fontSize:15, cursor: generating || !canSubmit ? 'not-allowed' : 'pointer', boxShadow: canSubmit ? '0 4px 20px rgba(245,158,11,0.3)' : 'none', transition:'all 0.15s' }}>
-            {generating ? '⏳ Generating scenes...' : !hasAccess && !trialUsed ? `🎁 Try Free — Generate ${imageCount} Scenes →` : `✨ Generate ${imageCount} Scenes →`}
+            {generating ? '⏳ Generating scenes...' : !hasAccess && !trialUsed ? `🎁 Try Free — Generate ${imageCount} Scenes →` : `✨ Generate ${imageCount} Scenes — ${creditCost} Credits →`}
           </button>
         )}
 

@@ -218,7 +218,8 @@ function SceneCard({ scene, index, onChange }) {
 export default function ModelCinematicPage({ onBack, model5Access, model5Plan, onNavigate }) {
   const [step, setStep] = useState('input');
   const [idea, setIdea] = useState('');
-  const [characters, setCharacters] = useState([{ id:1, prompt:'' }]);
+  // characters: { id, prompt, photo: base64|null, photoPreview: url|null }
+  const [characters, setCharacters] = useState([{ id:1, prompt:'', photo:null, photoPreview:null }]);
   const [videoStyle, setVideoStyle] = useState('cinematic');
   const [duration, setDuration] = useState('15s');
   const [ratio, setRatio] = useState('9:16');
@@ -244,9 +245,19 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
     } catch {}
   };
 
-  const addCharacter = () => { if(characters.length>=5) return; setCharacters([...characters,{id:Date.now(),prompt:''}]); };
+  const addCharacter = () => { if(characters.length>=5) return; setCharacters([...characters,{id:Date.now(),prompt:'',photo:null,photoPreview:null}]); };
   const removeCharacter = (id) => setCharacters(characters.filter(c=>c.id!==id));
   const updateCharacter = (id, prompt) => setCharacters(characters.map(c=>c.id===id?{...c,prompt}:c));
+  const updateCharacterPhoto = (id, file) => {
+    if (!file) return;
+    // Resize/read as base64
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target.result;
+      setCharacters(prev => prev.map(c => c.id===id ? {...c, photo: base64, photoPreview: base64} : c));
+    };
+    reader.readAsDataURL(file);
+  };
   const selectedStyle = VIDEO_STYLES.find(s=>s.key===videoStyle);
   const sceneCount = duration==='1min'?12:duration==='30s'?6:1;
 
@@ -254,8 +265,13 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
     if (!idea.trim()) { setError('Please describe your video idea'); return; }
     setLoading(true); setError('');
     try {
-      const validChars = characters.filter(c=>c.prompt.trim());
-      const res = await fetch('/api/model5/generate-scenes', { method:'POST', headers:authHeaders(), body:JSON.stringify({ idea, characters:validChars, duration, videoStyle, styleSuffix:selectedStyle?.suffix }) });
+      const validChars = characters
+        .filter(c => c.prompt.trim() || c.photo)
+        .map(c => ({ prompt: c.prompt, photo: c.photo || null }));
+      const res = await fetch('/api/model5/generate-scenes', {
+        method:'POST', headers:authHeaders(),
+        body:JSON.stringify({ idea, characters:validChars, duration, videoStyle, styleSuffix:selectedStyle?.suffix })
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error||'Failed');
       setScenes(data.scenes||[]); setStep('scenes');
@@ -457,17 +473,36 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         <div style={{ marginBottom:22 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
             <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em' }}>🎭 Characters <span style={{ color:'#374151', fontWeight:400, textTransform:'none', letterSpacing:0 }}>(Optional · Max 5)</span></label>
-            {characters.length<5 && <button onClick={addCharacter} style={{ fontSize:12, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.08)', border:'1px solid rgba(225,29,72,0.25)', borderRadius:8, padding:'5px 12px', cursor:'pointer' }}>+ More Character</button>}
+            {characters.length<5 && <button onClick={addCharacter} style={{ fontSize:12, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.08)', border:'1px solid rgba(225,29,72,0.25)', borderRadius:8, padding:'5px 12px', cursor:'pointer' }}>+ Add Character</button>}
           </div>
-          <p style={{ fontSize:12, color:'#374151', marginBottom:12 }}>Describe each character — they'll appear consistently in every scene.</p>
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <p style={{ fontSize:12, color:'#4b5563', marginBottom:12 }}>
+            📸 <strong style={{ color:'#fb7185' }}>New:</strong> Upload a photo of each character — AI will keep their face/look consistent in every scene using image reference (FLUX Kontext).
+          </p>
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {characters.map((char,i) => (
-              <div key={char.id} style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-                <div style={{ flexShrink:0, width:30, height:30, borderRadius:10, background:'linear-gradient(135deg,rgba(225,29,72,0.2),rgba(159,18,57,0.2))', border:'1px solid rgba(225,29,72,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:800, color:'#fb7185', marginTop:10 }}>{i+1}</div>
-                <textarea value={char.prompt} onChange={e=>updateCharacter(char.id,e.target.value)} className="char-input"
-                  placeholder={`Character ${i+1}: e.g. "A tall warrior in silver armor, long dark hair, serious expression, ancient Japanese style"`}
-                  rows={2} style={{ flex:1, padding:'11px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:13, resize:'none', fontFamily:'inherit', boxSizing:'border-box', transition:'all 0.2s' }} />
-                {characters.length>1 && <button onClick={()=>removeCharacter(char.id)} style={{ flexShrink:0, background:'none', border:'none', color:'#374151', cursor:'pointer', fontSize:18, marginTop:8 }}>✕</button>}
+              <div key={char.id} style={{ background:'rgba(255,255,255,0.025)', border:'1px solid rgba(225,29,72,0.15)', borderRadius:14, padding:14 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                  <div style={{ flexShrink:0, width:26, height:26, borderRadius:8, background:'linear-gradient(135deg,rgba(225,29,72,0.2),rgba(159,18,57,0.2))', border:'1px solid rgba(225,29,72,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'#fb7185' }}>{i+1}</div>
+                  <span style={{ fontSize:12, fontWeight:700, color:'#fb7185' }}>Character {i+1}</span>
+                  {characters.length>1 && <button onClick={()=>removeCharacter(char.id)} style={{ marginLeft:'auto', background:'none', border:'none', color:'#374151', cursor:'pointer', fontSize:16 }}>✕</button>}
+                </div>
+                <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                  {/* Photo upload */}
+                  <label style={{ flexShrink:0, cursor:'pointer' }}>
+                    <div style={{ width:64, height:64, borderRadius:12, border:`2px dashed ${char.photo ? '#22c55e' : 'rgba(225,29,72,0.3)'}`, background: char.photo ? 'none' : 'rgba(225,29,72,0.04)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
+                      {char.photoPreview
+                        ? <img src={char.photoPreview} alt="ref" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:10 }} />
+                        : <div style={{ textAlign:'center' }}><div style={{ fontSize:20 }}>📷</div><div style={{ fontSize:9, color:'#6b7280', marginTop:2 }}>Photo</div></div>
+                      }
+                    </div>
+                    <input type="file" accept="image/*" onChange={e=>updateCharacterPhoto(char.id, e.target.files[0])} style={{ display:'none' }} />
+                  </label>
+                  {/* Prompt */}
+                  <textarea value={char.prompt} onChange={e=>updateCharacter(char.id,e.target.value)} className="char-input"
+                    placeholder={`Describe Character ${i+1} (or upload photo above):\ne.g. "A tall warrior with dark hair, silver armor, serious expression"`}
+                    rows={3} style={{ flex:1, padding:'10px 12px', borderRadius:12, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:13, resize:'none', fontFamily:'inherit', boxSizing:'border-box', transition:'all 0.2s' }} />
+                </div>
+                {char.photo && <div style={{ marginTop:6, fontSize:11, color:'#22c55e', fontWeight:600 }}>✓ Photo uploaded — AI will reference this face in every scene</div>}
               </div>
             ))}
           </div>

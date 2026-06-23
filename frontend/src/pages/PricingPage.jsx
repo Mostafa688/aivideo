@@ -15,22 +15,23 @@ const PLANS = [
     gradient: 'linear-gradient(135deg, #1f2937 0%, #111827 100%)',
     border: 'rgba(107,114,128,0.4)',
     popular: false,
+    creditNote: '30s video = 3 credits',
     features: [
-      { text: '3 videos / week', included: true },
+      { text: '10 credits / week', included: true },
       { text: '30s max duration', included: true },
+      { text: '3 credits per 30s video', included: true },
       { text: 'Captions', included: true },
       { text: 'Music', included: true },
       { text: 'Transitions', included: true },
       { text: 'English & Arabic only', included: true },
-      { text: '2,500 credits / week', included: true },
       { text: 'Watermark on videos', included: false, note: 'always' },
       { text: 'Sound Effects', included: false, badge: 'PRO' },
       { text: 'Video Effects', included: false, badge: 'PRO' },
       { text: 'Edit after render', included: false, badge: 'PRO' },
       { text: 'Longer durations', included: false, badge: 'PRO' },
     ],
-    credits: '2,500 / week',
-    videos: '3 / week',
+    credits: '10 / week',
+    videos: 'Unlimited (credits permitting)',
   },
   {
     key: 'pro',
@@ -46,22 +47,23 @@ const PLANS = [
     gradient: 'linear-gradient(135deg, #2d1b69 0%, #1a0f3d 100%)',
     border: 'rgba(124,106,247,0.5)',
     popular: true,
+    creditNote: '30s=3cr · 1min=6cr · 2min=12cr',
     features: [
-      { text: '5 videos / week', included: true },
+      { text: '400 credits / week', included: true },
       { text: '2min max duration', included: true },
+      { text: '3 credits per 30s · 6 per 1min', included: true },
       { text: 'No watermark', included: true },
       { text: 'Captions', included: true },
       { text: 'Music', included: true },
       { text: 'Transitions', included: true },
       { text: 'Edit after render', included: true },
       { text: 'EN, AR, DE, FR', included: true },
-      { text: '10,000 credits / week', included: true },
       { text: 'Sound Effects', included: false, badge: 'PLUS' },
       { text: 'Video Effects', included: false, badge: 'PLUS' },
       { text: 'Longer durations', included: false, badge: 'PLUS' },
     ],
-    credits: '10,000 / week',
-    videos: '5 / week',
+    credits: '400 / week',
+    videos: 'Unlimited (credits permitting)',
   },
   {
     key: 'plus',
@@ -77,9 +79,11 @@ const PLANS = [
     gradient: 'linear-gradient(135deg, #0c3a4a 0%, #061a22 100%)',
     border: 'rgba(6,182,212,0.5)',
     popular: false,
+    creditNote: '30s=3cr · 1min=6cr · 5min=30cr',
     features: [
-      { text: '8 videos / week', included: true },
+      { text: '60 credits / week', included: true },
       { text: '5min max duration', included: true },
+      { text: '3 credits per 30s · 6 per 1min', included: true },
       { text: 'No watermark', included: true },
       { text: 'Captions', included: true },
       { text: 'Music', included: true },
@@ -87,12 +91,11 @@ const PLANS = [
       { text: 'Sound Effects', included: true },
       { text: 'Edit after render', included: true },
       { text: 'All languages', included: true },
-      { text: '45,000 credits / week', included: true },
       { text: 'Video Effects', included: false, badge: 'MAX' },
       { text: 'Longer durations', included: false, badge: 'MAX' },
     ],
-    credits: '45,000 / week',
-    videos: '8 / week',
+    credits: '60 / week',
+    videos: 'Unlimited (credits permitting)',
   },
   {
     key: 'max',
@@ -108,9 +111,11 @@ const PLANS = [
     gradient: 'linear-gradient(135deg, #451a03 0%, #1c0a00 100%)',
     border: 'rgba(245,158,11,0.5)',
     popular: false,
+    creditNote: '30s=3cr · 1min=6cr · 10min=60cr',
     features: [
-      { text: 'Unlimited videos (until credits run out)', included: true },
+      { text: '600 credits / week', included: true },
       { text: '10min max duration', included: true },
+      { text: '3 credits per 30s · 60 per 10min', included: true },
       { text: 'No watermark', included: true },
       { text: 'Captions', included: true },
       { text: 'Music', included: true },
@@ -119,10 +124,9 @@ const PLANS = [
       { text: 'Video Effects', included: true },
       { text: 'Edit after render', included: true },
       { text: 'All languages', included: true },
-      { text: '100,000 credits / week', included: true },
     ],
-    credits: '100,000 / week',
-    videos: 'Unlimited',
+    credits: '600 / week',
+    videos: 'Unlimited (credits permitting)',
   },
 ];
 
@@ -136,7 +140,9 @@ const MODEL3_PLANS = [
     price_egp: 450,
     price_usd: 14,
     badge: null,
-    features: ['5 × 30s AI videos', '10 × 1min AI videos', 'Cinematic Ken Burns zoom', 'All video styles'],
+    credits: 125,
+    creditNote: '30s = 5 cr · 1min = 10 cr · 3min = 30 cr',
+    features: ['125 Model 3 credits', '5 cr per 30s video', '10 cr per 1min video', 'Cinematic Ken Burns zoom', 'All video styles'],
   },
   {
     key: 'm3_pro',
@@ -146,7 +152,9 @@ const MODEL3_PLANS = [
     price_egp: 1100,
     price_usd: 28,
     badge: 'Most Popular',
-    features: ['5 × 30s AI videos', '5 × 1min AI videos', '10 × 3min AI videos', 'All video styles'],
+    credits: 375,
+    creditNote: '30s = 5 cr · 1min = 10 cr · 5min = 50 cr',
+    features: ['375 Model 3 credits', '5 cr per 30s video', '10 cr per 1min video', '50 cr per 5min video', 'All video styles'],
   },
   {
     key: 'm3_max',
@@ -156,7 +164,9 @@ const MODEL3_PLANS = [
     price_egp: 2000,
     price_usd: 45,
     badge: null,
-    features: ['5 × 1min AI videos', '5 × 3min AI videos', '10 × 5min AI videos', 'All video styles'],
+    credits: 700,
+    creditNote: '30s = 5 cr · 1min = 10 cr · 5min = 50 cr',
+    features: ['700 Model 3 credits', '5 cr per 30s video', '10 cr per 1min video', '50 cr per 5min video', 'All video styles'],
   },
 ];
 
@@ -170,7 +180,9 @@ const MODEL4_PLANS_LIST = [
     price_egp: 600,
     price_usd: 18,
     badge: null,
-    features: ['10 × 30s AI videos', '1 × 1min AI video', 'Seedance v1 Pro', 'Captions + Music'],
+    credits: 80,
+    creditNote: '30s = 10 cr · 1min = 20 cr · 3min = 60 cr',
+    features: ['80 Model 4 credits', '10 cr per 30s video', '20 cr per 1min video', 'Seedance v1 Pro', 'Captions + Music'],
   },
   {
     key: 'm4_plan2',
@@ -180,7 +192,9 @@ const MODEL4_PLANS_LIST = [
     price_egp: 1000,
     price_usd: 28,
     badge: 'Most Popular',
-    features: ['3 × 30s AI videos', '10 × 1min AI videos', 'Seedance v1 Pro', 'Captions + Music'],
+    credits: 230,
+    creditNote: '30s = 10 cr · 1min = 20 cr · 3min = 60 cr',
+    features: ['230 Model 4 credits', '10 cr per 30s video', '20 cr per 1min video', '60 cr per 3min video', 'Seedance v1 Pro'],
   },
   {
     key: 'm4_plan3',
@@ -190,7 +204,9 @@ const MODEL4_PLANS_LIST = [
     price_egp: 2800,
     price_usd: 72,
     badge: 'Best Value',
-    features: ['3 × 30s AI videos', '3 × 1min AI videos', '10 × 3min AI videos', 'Seedance v1 Pro'],
+    credits: 690,
+    creditNote: '30s = 10 cr · 1min = 20 cr · 3min = 60 cr',
+    features: ['690 Model 4 credits', '10 cr per 30s video', '20 cr per 1min video', '60 cr per 3min video', 'Seedance v1 Pro'],
   },
 ];
 
@@ -205,7 +221,9 @@ const MC_PLANS_LIST = [
     price_egp: 550,
     price_usd: 22,
     badge: null,
-    features: ['5 × 15s cinematic videos', 'Up to 5 characters', 'Seedance 2.0 Fast', 'Original audio'],
+    credits: 75,
+    creditNote: '15s = 15 cr · 30s = 30 cr · 1min = 60 cr',
+    features: ['75 Model 5 credits', '15 cr per 15s video', '30 cr per 30s video', 'Up to 5 characters', 'Seedance 2.0 Fast'],
   },
   {
     key: 'mc_pro',
@@ -215,7 +233,9 @@ const MC_PLANS_LIST = [
     price_egp: 1050,
     price_usd: 38,
     badge: 'Most Popular',
-    features: ['5 × 30s cinematic videos', 'Up to 5 characters', 'Seedance 2.0 Fast', 'Original audio'],
+    credits: 150,
+    creditNote: '15s = 15 cr · 30s = 30 cr · 1min = 60 cr',
+    features: ['150 Model 5 credits', '15 cr per 15s video', '30 cr per 30s video', '60 cr per 1min video', 'Seedance 2.0 Fast'],
   },
   {
     key: 'mc_max',
@@ -225,7 +245,9 @@ const MC_PLANS_LIST = [
     price_egp: 2200,
     price_usd: 72,
     badge: null,
-    features: ['5 × 1min cinematic videos', 'Up to 5 characters', 'Seedance 2.0 Fast', 'Original audio'],
+    credits: 300,
+    creditNote: '15s = 15 cr · 30s = 30 cr · 1min = 60 cr',
+    features: ['300 Model 5 credits', '15 cr per 15s video', '30 cr per 30s video', '60 cr per 1min video', 'Seedance 2.0 Fast'],
   },
 ];
 
@@ -970,8 +992,8 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
       {/* Tab Switcher */}
       <div style={{ display:'flex', gap:4, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:4, marginBottom:36 }}>
         {[
-          { key:'main', label:'Video Plans', icon:'🎬', badge:null },
-          { key:'more', label:'AI Models', icon:'✨', badge:'NEW' },
+          { key:'main', label:'Model 1 & 2 Plans', icon:'🎬', badge:null },
+          { key:'more', label:'Model 3, 4 & 5 Plans', icon:'✨', badge:null },
         ].map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             style={{ padding:'11px 28px', borderRadius:12, border:'none', cursor:'pointer', fontWeight:700, fontSize:14, transition:'all 0.2s', background:activeTab===tab.key?'linear-gradient(135deg,#7c6af7,#6d28d9)':'transparent', color:activeTab===tab.key?'#fff':'rgba(255,255,255,0.4)', display:'flex', alignItems:'center', gap:8, boxShadow:activeTab===tab.key?'0 4px 16px rgba(124,106,247,0.35)':'none' }}>
@@ -1027,6 +1049,7 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                     <div style={{ fontSize: 28, fontWeight: 800, color: plan.color }}>{getPrice(plan)}</div>
                     {billing === 'yearly' && plan.key !== 'free' && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{plan.price_yearly} EGP / year</div>}
                     {getOffer(plan) && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 4, fontWeight: 600 }}>{getOffer(plan)}</div>}
+                    {plan.creditNote && plan.key !== 'free' && <div style={{ fontSize:11, color:'#4b5563', marginTop:6 }}>💡 {plan.creditNote}</div>}
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 20, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '10px 12px' }}>
                     <div style={{ flex: 1, textAlign: 'center' }}>
@@ -1078,9 +1101,12 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                 <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, letterSpacing: '0.06em' }}>MODEL 3 — AI IMAGES</span>
               </div>
               <h2 style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 8 }}>🖼️ AI Image Videos</h2>
-              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto' }}>
+              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto 16px' }}>
                 Generate stunning videos from AI-generated images. Powered by Stability AI with cinematic Ken Burns zoom effects.
               </p>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 18px', borderRadius:10, background:'rgba(245,158,11,0.07)', border:'1px solid rgba(245,158,11,0.2)', fontSize:13, color:'#f59e0b', fontWeight:600 }}>
+                ⚠️ These plans are exclusive to <strong style={{ color:'#fbbf24' }}>Model 3</strong> only — separate from Model 1, 2, 4 & 5 plans
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
               {MODEL3_PLANS.map((plan, idx) => (
@@ -1108,6 +1134,12 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                       <span style={{ fontSize: 13, color: '#6b7280' }}>/month</span>
                     </div>
                     {plan.price_egp_offer && <div style={{ fontSize: 11, color: '#22c55e', fontWeight: 600, marginTop: 2 }}>🎉 First month offer!</div>}
+                    {plan.credits && (
+                      <div style={{ marginTop: 10, display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:999, background:`${plan.color}18`, border:`1px solid ${plan.color}44`, fontSize:12, fontWeight:700, color:plan.color }}>
+                        🪙 {plan.credits} Model 3 Credits
+                      </div>
+                    )}
+                    {plan.creditNote && <div style={{ fontSize:11, color:'#6b7280', marginTop:5 }}>{plan.creditNote}</div>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
                     {plan.features.map((f, i) => (
@@ -1144,9 +1176,12 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                 <span style={{ fontSize: 11, color: '#c084fc', fontWeight: 700, letterSpacing: '0.06em' }}>MODEL 4 — REAL AI VIDEO</span>
               </div>
               <h2 style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 8 }}>🎬 Seedance AI Video</h2>
-              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto' }}>
+              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto 16px' }}>
                 Real AI-generated video clips — not images. Powered by Seedance v1 Pro. The most advanced model on Erivion.
               </p>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 18px', borderRadius:10, background:'rgba(168,85,247,0.07)', border:'1px solid rgba(168,85,247,0.2)', fontSize:13, color:'#c084fc', fontWeight:600 }}>
+                ⚠️ These plans are exclusive to <strong style={{ color:'#d8b4fe' }}>Model 4</strong> only — subscribing to Model 2 does NOT unlock Model 4
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
               {MODEL4_PLANS_LIST.map((plan, idx) => (
@@ -1174,6 +1209,12 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                       <span style={{ fontSize: 13, color: '#6b7280' }}>/month</span>
                     </div>
                     {plan.price_egp_offer && <div style={{ fontSize: 11, color: '#22c55e', fontWeight: 600, marginTop: 2 }}>🎉 First month offer!</div>}
+                    {plan.credits && (
+                      <div style={{ marginTop: 10, display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:999, background:'rgba(168,85,247,0.15)', border:'1px solid rgba(168,85,247,0.35)', fontSize:12, fontWeight:700, color:'#c084fc' }}>
+                        🪙 {plan.credits} Model 4 Credits
+                      </div>
+                    )}
+                    {plan.creditNote && <div style={{ fontSize:11, color:'#6b7280', marginTop:5 }}>{plan.creditNote}</div>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
                     {plan.features.map((f, i) => (
@@ -1200,12 +1241,15 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
             <div style={{ textAlign: 'center', marginBottom: 32 }}>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 999, background: 'rgba(225,29,72,0.1)', border: '1px solid rgba(225,29,72,0.3)', marginBottom: 12 }}>
                 <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#e11d48', display: 'inline-block' }} />
-                <span style={{ fontSize: 11, color: '#fb7185', fontWeight: 700, letterSpacing: '0.06em' }}>ERIVION CINEMATIC</span>
+                <span style={{ fontSize: 11, color: '#fb7185', fontWeight: 700, letterSpacing: '0.06em' }}>ERIVION CINEMATIC — MODEL 5</span>
               </div>
               <h2 style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 8 }}>🎭 Cinematic AI Video</h2>
-              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto' }}>
+              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto 16px' }}>
                 Character-consistent cinematic videos with original audio. No voiceover — pure visual storytelling. Powered by Seedance 2.0 Fast.
               </p>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 18px', borderRadius:10, background:'rgba(225,29,72,0.07)', border:'1px solid rgba(225,29,72,0.2)', fontSize:13, color:'#fb7185', fontWeight:600 }}>
+                ⚠️ These plans are exclusive to <strong style={{ color:'#fda4af' }}>Model 5 (Cinematic)</strong> only — separate from all other models
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
               {MC_PLANS_LIST.map((plan, idx) => (
@@ -1231,6 +1275,12 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                       <span style={{ fontSize: 26, fontWeight: 800, color: '#fb7185' }}>{region === 'intl' ? `$${USD_PRICES[plan.key]}` : `${plan.price_egp} EGP`}</span>
                       <span style={{ fontSize: 13, color: '#6b7280' }}>/month</span>
                     </div>
+                    {plan.credits && (
+                      <div style={{ marginTop: 10, display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:999, background:'rgba(225,29,72,0.15)', border:'1px solid rgba(225,29,72,0.35)', fontSize:12, fontWeight:700, color:'#fb7185' }}>
+                        🪙 {plan.credits} Model 5 Credits
+                      </div>
+                    )}
+                    {plan.creditNote && <div style={{ fontSize:11, color:'#6b7280', marginTop:5 }}>{plan.creditNote}</div>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
                     {plan.features.map((f, i) => (

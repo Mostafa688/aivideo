@@ -78,20 +78,93 @@ async function downloadVideo(url, outputPath) {
   fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
 }
 
+// ── FLUX Kontext Dev: generate reference image from character photo ──────────
+// Cheapest Replicate model for character reference (~$0.01-0.02/image)
+async function generateReferenceImage(photoBase64, scenePrompt) {
+  if (!REPLICATE_API_TOKEN) return null;
+  try {
+    // Accept both raw base64 and data URL
+    const b64 = photoBase64.replace(/^data:image\/\w+;base64,/, '');
+    const imageDataUrl = `data:image/jpeg;base64,${b64}`;
+
+    const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'wait',
+      },
+      body: JSON.stringify({
+        input: {
+          image: imageDataUrl,
+          prompt: `${scenePrompt}, keep the same person's face and identity from the reference image exactly, same facial features, same person`,
+          aspect_ratio: '9:16',
+          output_format: 'webp',
+          guidance: 3.5,
+          num_inference_steps: 28,
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn(`[Model5] FLUX Kontext error ${res.status}: ${err.slice(0, 100)}`);
+      return null;
+    }
+
+    const data = await res.json();
+    if (data.error) { console.warn('[Model5] FLUX Kontext prediction error:', data.error); return null; }
+
+    // If not done yet (no Prefer:wait support), poll once
+    if (data.status !== 'succeeded') {
+      if (!data.id) return null;
+      let attempts = 0;
+      while (attempts < 24) { // max ~2 min
+        await new Promise(r => setTimeout(r, 5000));
+        const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${data.id}`, {
+          headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` },
+        });
+        const pollData = await pollRes.json();
+        if (pollData.status === 'succeeded') {
+          return Array.isArray(pollData.output) ? pollData.output[0] : pollData.output;
+        }
+        if (pollData.status === 'failed' || pollData.status === 'canceled') {
+          console.warn('[Model5] FLUX Kontext failed:', pollData.error);
+          return null;
+        }
+        attempts++;
+      }
+      return null;
+    }
+
+    return Array.isArray(data.output) ? data.output[0] : data.output;
+  } catch (e) {
+    console.warn('[Model5] generateReferenceImage error:', e.message);
+    return null;
+  }
+}
+
 // ── Seedance 2.0 Fast for Model 5 ────────────────────────────────────────
-async function generateSeedance2Clip(prompt, ratio = '9:16', duration = 5) {
+// imageUrl: optional — if provided, used as starting frame for image-to-video
+async function generateSeedance2Clip(prompt, ratio = '9:16', duration = 5, imageUrl = null) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const headers = {
     'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
     'Content-Type': 'application/json',
     'Prefer': 'wait',
   };
+
+  const input = { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24 };
+  // If reference image provided, pass as first_frame for character consistency
+  if (imageUrl) {
+    input.first_frame_image = imageUrl;
+    console.log(`[Model5] Using reference image for clip`);
+  }
+
   const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      input: { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24 },
-    }),
+    body: JSON.stringify({ input }),
   });
   if (!submitRes.ok) {
     const err = await submitRes.text();
@@ -398,13 +471,23 @@ export async function renderModel5Video({
   // Step 1: Generate clips بـ Seedance 2.0 مع الصوت الأصلي
   const rawPaths = [];
   for (let i = 0; i < scenes.length; i++) {
+    const scene = scenes[i];
     const rawPath = path.join(TEMP_DIR, `m5_raw_${id}_${i}.mp4`);
     try {
-      console.log(`[Model5] Clip ${i + 1}/${total}: ${(scenes[i].prompt || '').slice(0, 60)}...`);
-      const seed2Prompt = scenes[i].prompt
-        || (scenes[i].visual ? `${scenes[i].visual}, cinematic motion, professional video` : null)
-        || scenes[i].text;
-      const url = await generateSeedance2Clip(seed2Prompt, ratio, CLIP_SEC);
+      console.log(`[Model5] Clip ${i + 1}/${total}: ${(scene.prompt || '').slice(0, 60)}...`);
+      const seed2Prompt = scene.prompt
+        || (scene.visual ? `${scene.visual}, cinematic motion, professional video` : null)
+        || scene.text;
+
+      // ── Reference image: generate with FLUX Kontext Dev if character photo exists ──
+      let refImageUrl = scene.referenceImageUrl || null; // pre-generated in generate-scenes
+      if (!refImageUrl && scene.characterPhoto) {
+        // Fallback: generate reference image here if not already done
+        console.log(`[Model5] Generating reference image for clip ${i + 1}...`);
+        refImageUrl = await generateReferenceImage(scene.characterPhoto, seed2Prompt);
+      }
+
+      const url = await generateSeedance2Clip(seed2Prompt, ratio, CLIP_SEC, refImageUrl);
       await downloadVideo(url, rawPath);
     } catch (e) {
       console.error(`[Model5] Clip ${i + 1} failed:`, e.message);

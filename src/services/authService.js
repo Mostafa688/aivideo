@@ -11,26 +11,49 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
 });
 
+// ── Credit costs per duration for Model 1 & 2 ──────────────────────────────
+export const MODEL12_CREDIT_COSTS = {
+  '30s': 3, 'auto': 3, '1min': 6, '2min': 12,
+  '3min': 18, '4min': 24, '5min': 30, '8min': 48, '10min': 60,
+};
+
+// ── Credit costs per duration for Model 3, 4, 5 ───────────────────────────
+export const MODEL3_CREDIT_COSTS = { '30s': 5, '1min': 10, '2min': 20, '3min': 30, '5min': 50 };
+export const MODEL4_CREDIT_COSTS = { '30s': 10, '1min': 20, '2min': 40, '3min': 60 };
+export const MODEL5_CREDIT_COSTS = { '15s': 15, '30s': 30, '1min': 60 };
+
 export const PLANS = {
   free: {
-    name: 'Free', price_monthly: 0, price_yearly: 0, credits_weekly: 2500, videos_weekly: 3,
+    name: 'Free', price_monthly: 0, price_yearly: 0,
+    credits_weekly: 10,   // 10 credits/week → ~3 videos of 30s (3cr each)
+    videos_weekly: null,  // no video cap — credit cap governs
     max_duration: '30s', watermark: true, captions: true, music: true, transitions: true,
-    sound_effects: false, video_effects: false, edit_after_render: false, languages: ['en', 'ar'], all_languages: false,
+    sound_effects: false, video_effects: false, edit_after_render: false,
+    languages: ['en', 'ar'], all_languages: false,
   },
   pro: {
-    name: 'Pro', price_monthly: 50, price_first_month: 25, price_yearly: 360, credits_weekly: 10000, videos_weekly: 5,
+    name: 'Pro', price_monthly: 100, price_first_month: 25, price_yearly: 720,
+    credits_weekly: 400,  // 400 credits/week → ~133 × 30s or ~66 × 1min
+    videos_weekly: null,
     max_duration: '2min', watermark: false, captions: true, music: true, transitions: true,
-    sound_effects: false, video_effects: false, edit_after_render: true, languages: ['en', 'ar', 'de', 'fr'], all_languages: false,
+    sound_effects: false, video_effects: false, edit_after_render: true,
+    languages: ['en', 'ar', 'de', 'fr'], all_languages: false,
   },
   plus: {
-    name: 'Plus', price_monthly: 100, price_first_month: 75, price_yearly: 840, credits_weekly: 45000, videos_weekly: 8,
+    name: 'Plus', price_monthly: 220, price_first_month: 75, price_yearly: 1584,
+    credits_weekly: 60,   // 60 credits/week → ~20 × 30s or ~10 × 1min
+    videos_weekly: null,
     max_duration: '5min', watermark: false, captions: true, music: true, transitions: true,
-    sound_effects: true, video_effects: false, edit_after_render: true, languages: null, all_languages: true,
+    sound_effects: true, video_effects: false, edit_after_render: true,
+    languages: null, all_languages: true,
   },
   max: {
-    name: 'Max', price_monthly: 250, price_first_month: 150, price_yearly: 1440, credits_weekly: 100000, videos_weekly: null,
+    name: 'Max', price_monthly: 550, price_first_month: 150, price_yearly: 3960,
+    credits_weekly: 600,  // 600 credits/week → ~200 × 30s or ~10 × 10min
+    videos_weekly: null,
     max_duration: '10min', watermark: false, captions: true, music: true, transitions: true,
-    sound_effects: true, video_effects: true, edit_after_render: true, languages: null, all_languages: true,
+    sound_effects: true, video_effects: true, edit_after_render: true,
+    languages: null, all_languages: true,
   },
 };
 
@@ -366,11 +389,49 @@ export async function getUserVideos(userId) {
 }
 
 // ── Model 3 ────────────────────────────────────────────────────────────────
-export const MODEL3_PLAN_QUOTAS = {
-  m3_starter: { '30s': 5,  '1min': 10, '3min': 0,  '5min': 0  },
-  m3_pro:     { '30s': 5,  '1min': 5,  '3min': 10, '5min': 0  },
-  m3_max:     { '30s': 0,  '1min': 5,  '3min': 5,  '5min': 10 },
+// Credit pools per plan (one-time purchase, not weekly)
+export const MODEL3_PLAN_CREDITS = {
+  m3_starter: 125,
+  m3_pro:     375,
+  m3_max:     700,
 };
+
+// Kept for backwards compat (used by canUserMakeModel3Video quota display)
+export const MODEL3_PLAN_QUOTAS = {
+  m3_starter: { '30s': 25, '1min': 12, '3min': 4,  '5min': 2  }, // 125cr ÷ cost
+  m3_pro:     { '30s': 75, '1min': 37, '3min': 12, '5min': 7  }, // 375cr ÷ cost
+  m3_max:     { '30s':140, '1min': 70, '3min': 23, '5min': 14 }, // 700cr ÷ cost
+};
+
+// Init model3_credits table (credit pool per user, separate from usage count)
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS model3_credits (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id),
+        credits_total INTEGER DEFAULT 0,
+        credits_used  INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT NOW()
+      );
+    `);
+  } catch(e) { console.warn('[DB] model3_credits init:', e.message); }
+})();
+
+export async function getModel3Credits(userId) {
+  const { rows } = await pool.query('SELECT * FROM model3_credits WHERE user_id = $1', [userId]);
+  if (rows.length === 0) return { credits_total: 0, credits_used: 0 };
+  return rows[0];
+}
+
+export async function addModel3Credits(userId, amount) {
+  await pool.query(
+    `INSERT INTO model3_credits (user_id, credits_total, credits_used)
+     VALUES ($1, $2, 0)
+     ON CONFLICT (user_id) DO UPDATE
+     SET credits_total = model3_credits.credits_total + $2, updated_at = NOW()`,
+    [userId, amount]
+  );
+}
 
 export async function getModel3Usage(userId) {
   const { rows } = await pool.query('SELECT * FROM model3_usage WHERE user_id = $1', [userId]);
@@ -382,6 +443,15 @@ export async function getModel3Usage(userId) {
 }
 
 export async function incrementModel3Video(userId, duration) {
+  // Deduct credits
+  const cost = MODEL3_CREDIT_COSTS[duration] || 5;
+  await pool.query(
+    `INSERT INTO model3_credits (user_id, credits_total, credits_used)
+     VALUES ($1, 0, $2)
+     ON CONFLICT (user_id) DO UPDATE SET credits_used = model3_credits.credits_used + $2, updated_at = NOW()`,
+    [userId, cost]
+  );
+  // Also track video count for display
   const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : duration === '3min' ? 'videos_3min' : 'videos_5min';
   await pool.query(`INSERT INTO model3_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model3_usage.${col} + 1`, [userId]);
 }
@@ -400,14 +470,12 @@ export async function canUserMakeModel3Video(userId, duration) {
   const user = await getUserById(userId);
   if (user?.model3_access) {
     const plan = user?.model3_plan || 'm3_starter';
-    const quotas = MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter;
-    const quota = quotas[duration] || 0;
-    if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
-    const usage = await getModel3Usage(userId);
-    const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : duration === '3min' ? 'videos_3min' : 'videos_5min';
-    const used = usage[col] || 0;
-    if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
-    return { allowed: true, quota, used, remaining: quota - used };
+    const totalCredits = MODEL3_PLAN_CREDITS[plan] || 125;
+    const cost = MODEL3_CREDIT_COSTS[duration] || 5;
+    const credits = await getModel3Credits(userId);
+    const remaining = (credits.credits_total || 0) - (credits.credits_used || 0);
+    if (remaining < cost) return { allowed: false, reason: 'quota_exceeded', remaining, cost };
+    return { allowed: true, remaining, cost };
   }
   if (duration === '30s' && !user?.model3_trial_used) {
     return { allowed: true, is_trial: true };
@@ -430,10 +498,40 @@ export async function getAllPaymentRequests(status = null) {
 
 // ── Model 4 ────────────────────────────────────────────────────────────────
 export const MODEL4_PLANS = {
-  m4_plan1: { name: 'Starter', price: 600, videos_30s: 10, videos_1min: 1, videos_3min: 0 },
-  m4_plan2: { name: 'Creator', price: 1000, price_offer: 800, videos_30s: 3, videos_1min: 10, videos_3min: 0 },
-  m4_plan3: { name: 'Pro', price: 2500, videos_30s: 3, videos_1min: 3, videos_3min: 10 },
+  m4_plan1: { name: 'Starter', price: 600,  credits: 80  },
+  m4_plan2: { name: 'Creator', price: 1000, credits: 230 },
+  m4_plan3: { name: 'Pro',     price: 2800, credits: 690 },
 };
+
+// Init model4_credits table
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS model4_credits (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id),
+        credits_total INTEGER DEFAULT 0,
+        credits_used  INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT NOW()
+      );
+    `);
+  } catch(e) { console.warn('[DB] model4_credits init:', e.message); }
+})();
+
+export async function getModel4Credits(userId) {
+  const { rows } = await pool.query('SELECT * FROM model4_credits WHERE user_id = $1', [userId]);
+  if (rows.length === 0) return { credits_total: 0, credits_used: 0 };
+  return rows[0];
+}
+
+export async function addModel4Credits(userId, amount) {
+  await pool.query(
+    `INSERT INTO model4_credits (user_id, credits_total, credits_used)
+     VALUES ($1, $2, 0)
+     ON CONFLICT (user_id) DO UPDATE
+     SET credits_total = model4_credits.credits_total + $2, updated_at = NOW()`,
+    [userId, amount]
+  );
+}
 
 export async function getModel4Usage(userId) {
   const { rows } = await pool.query('SELECT * FROM model4_usage WHERE user_id = $1', [userId]);
@@ -445,6 +543,13 @@ export async function getModel4Usage(userId) {
 }
 
 export async function incrementModel4Video(userId, duration) {
+  const cost = MODEL4_CREDIT_COSTS[duration] || 10;
+  await pool.query(
+    `INSERT INTO model4_credits (user_id, credits_total, credits_used)
+     VALUES ($1, 0, $2)
+     ON CONFLICT (user_id) DO UPDATE SET credits_used = model4_credits.credits_used + $2, updated_at = NOW()`,
+    [userId, cost]
+  );
   const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
   await pool.query(
     `INSERT INTO model4_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model4_usage.${col} + 1`,
@@ -468,13 +573,11 @@ export async function canUserMakeModel4Video(userId, duration) {
   const plan = user.model4_plan || 'm4_plan1';
   const planData = MODEL4_PLANS[plan];
   if (!planData) return { allowed: false, reason: 'invalid_plan' };
-  const quotaKey = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : 'videos_3min';
-  const quota = planData[quotaKey] || 0;
-  if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
-  const usage = await getModel4Usage(userId);
-  const used = usage[quotaKey] || 0;
-  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
-  return { allowed: true, quota, used, remaining: quota - used };
+  const cost = MODEL4_CREDIT_COSTS[duration] || 10;
+  const credits = await getModel4Credits(userId);
+  const remaining = (credits.credits_total || 0) - (credits.credits_used || 0);
+  if (remaining < cost) return { allowed: false, reason: 'quota_exceeded', remaining, cost };
+  return { allowed: true, remaining, cost };
 }
 
 export async function markModel4TrialUsed(userId) {
@@ -482,9 +585,9 @@ export async function markModel4TrialUsed(userId) {
 }
 // ── Model 5 (Cinematic) ────────────────────────────────────────────────────
 export const MODEL5_PLANS = {
-  mc_starter: { name: 'Starter', price: 400,  videos_15s: 5, videos_30s: 0, videos_1min: 0 },
-  mc_pro:     { name: 'Pro',     price: 750,  videos_15s: 0, videos_30s: 5, videos_1min: 0 },
-  mc_max:     { name: 'Max',     price: 1500, videos_15s: 0, videos_30s: 0, videos_1min: 5 },
+  mc_starter: { name: 'Starter', price: 550,  credits: 75  },
+  mc_pro:     { name: 'Pro',     price: 1050, credits: 150 },
+  mc_max:     { name: 'Max',     price: 2200, credits: 300 },
 };
 
 export async function initModel5DB() {
@@ -497,25 +600,56 @@ export async function initModel5DB() {
       videos_1min INTEGER DEFAULT 0,
       last_reset TEXT DEFAULT CURRENT_DATE
     );
-    ALTER TABLE model5_usage ADD COLUMN IF NOT EXISTS videos_15s INTEGER DEFAULT 0;
   `);
+  await pool.query(`ALTER TABLE model5_usage ADD COLUMN IF NOT EXISTS videos_15s INTEGER DEFAULT 0`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model5_access INTEGER DEFAULT 0`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model5_plan TEXT DEFAULT NULL`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS model5_credits (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id),
+      credits_total INTEGER DEFAULT 0,
+      credits_used  INTEGER DEFAULT 0,
+      updated_at TEXT DEFAULT NOW()
+    );
+  `);
   console.log('[DB] Model 5 tables ready');
 }
 
 initModel5DB().catch(err => console.error('[DB] Model 5 init error:', err.message));
 
+export async function getModel5Credits(userId) {
+  const { rows } = await pool.query('SELECT * FROM model5_credits WHERE user_id = $1', [userId]);
+  if (rows.length === 0) return { credits_total: 0, credits_used: 0 };
+  return rows[0];
+}
+
+export async function addModel5Credits(userId, amount) {
+  await pool.query(
+    `INSERT INTO model5_credits (user_id, credits_total, credits_used)
+     VALUES ($1, $2, 0)
+     ON CONFLICT (user_id) DO UPDATE
+     SET credits_total = model5_credits.credits_total + $2, updated_at = NOW()`,
+    [userId, amount]
+  );
+}
+
 export async function getModel5Usage(userId) {
   const { rows } = await pool.query('SELECT * FROM model5_usage WHERE user_id = $1', [userId]);
   if (rows.length === 0) {
     await pool.query('INSERT INTO model5_usage (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]);
-    return { videos_30s: 0, videos_1min: 0 };
+    return { videos_15s: 0, videos_30s: 0, videos_1min: 0 };
   }
   return rows[0];
 }
 
 export async function incrementModel5Video(userId, duration) {
+  const cost = MODEL5_CREDIT_COSTS[duration] || 15;
+  await pool.query(
+    `INSERT INTO model5_credits (user_id, credits_total, credits_used)
+     VALUES ($1, 0, $2)
+     ON CONFLICT (user_id) DO UPDATE SET credits_used = model5_credits.credits_used + $2, updated_at = NOW()`,
+    [userId, cost]
+  );
   const col = duration === '15s' ? 'videos_15s' : duration === '30s' ? 'videos_30s' : 'videos_1min';
   await pool.query(
     `INSERT INTO model5_usage (user_id, ${col}) VALUES ($1, 1) ON CONFLICT (user_id) DO UPDATE SET ${col} = model5_usage.${col} + 1`,
@@ -539,11 +673,9 @@ export async function canUserMakeModel5Video(userId, duration) {
   const plan = user.model5_plan || 'mc_starter';
   const planData = MODEL5_PLANS[plan];
   if (!planData) return { allowed: false, reason: 'invalid_plan' };
-  const quotaKey = duration === '15s' ? 'videos_15s' : duration === '30s' ? 'videos_30s' : 'videos_1min';
-  const quota = planData[quotaKey] || 0;
-  if (quota === 0) return { allowed: false, reason: 'plan_not_support', quota: 0, used: 0 };
-  const usage = await getModel5Usage(userId);
-  const used = usage[quotaKey] || 0;
-  if (used >= quota) return { allowed: false, reason: 'quota_exceeded', quota, used };
-  return { allowed: true, quota, used, remaining: quota - used };
+  const cost = MODEL5_CREDIT_COSTS[duration] || 15;
+  const credits = await getModel5Credits(userId);
+  const remaining = (credits.credits_total || 0) - (credits.credits_used || 0);
+  if (remaining < cost) return { allowed: false, reason: 'quota_exceeded', remaining, cost };
+  return { allowed: true, remaining, cost };
 }

@@ -310,6 +310,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
   const [elapsed, setElapsed] = useState(0);
   const [usage, setUsage] = useState(null);
   const [showPayment, setShowPayment] = useState(false);
+  const [creditCost, setCreditCost] = useState(10);
   const [voiceFile, setVoiceFile] = useState(null);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceAudioUrl, setVoiceAudioUrl] = useState(null);
@@ -323,6 +324,10 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
 
   useEffect(() => { fetchUsage(); }, []);
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
+  useEffect(() => {
+    fetch(`/api/model4/credit-cost?duration=${duration}`, { headers: { Authorization: 'Bearer ' + localStorage.getItem('token') } })
+      .then(r => r.json()).then(d => setCreditCost(d.creditCost || 10)).catch(() => {});
+  }, [duration]);
   useEffect(() => {
     if (mode === 'script' && script.length > 20) {
       const chars = script.trim().length;
@@ -716,6 +721,16 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
 
         {error && <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: 12, marginBottom: 16, color: '#ef4444', fontSize: 13 }}>{error}</div>}
 
+        {/* Credit cost badge */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:10 }}>
+          <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(168,85,247,0.12)', border:'1px solid rgba(168,85,247,0.3)', fontSize:12, fontWeight:700, color:'#c084fc' }}>
+            🪙 {creditCost} credits per video
+          </div>
+          <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', fontSize:11, color:'rgba(255,255,255,0.4)', fontWeight:600 }}>
+            Model 4 · Seedance AI
+          </div>
+        </div>
+
         {/* CTA */}
         {!model4Access ? (
           <button onClick={() => setShowPayment(true)} style={{ width: '100%', background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff', border: 'none', borderRadius: 12, padding: '15px', fontWeight: 800, fontSize: 16, cursor: 'pointer', boxShadow: '0 4px 24px rgba(168,85,247,0.4)' }}>
@@ -723,7 +738,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
           </button>
         ) : (
           <button onClick={handleGenerateScenes} disabled={!canGenerate} style={{ width: '100%', background: !canGenerate ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg,#a855f7,#7c3aed)', color: !canGenerate ? '#374151' : '#fff', border: 'none', borderRadius: 12, padding: '15px', fontWeight: 800, fontSize: 16, cursor: !canGenerate ? 'not-allowed' : 'pointer', boxShadow: canGenerate ? '0 4px 24px rgba(168,85,247,0.4)' : 'none', transition: 'all 0.2s' }}>
-            {loading ? '⏳ Generating...' : '✨ Generate Scenes →'}
+            {loading ? '⏳ Generating...' : `✨ Generate Scenes — ${creditCost} Credits →`}
           </button>
         )}
 

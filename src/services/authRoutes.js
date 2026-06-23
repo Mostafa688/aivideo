@@ -9,9 +9,10 @@ import {
   createPaymentRequest, sendPaymentRequestEmail, activateUserPlan,
   getLatestPaymentRequestForUser, markLatestPaymentRequestRejected,
   loginOrCreateGoogleUser, PLANS,
-  getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS,
-  getModel4Usage, MODEL4_PLANS,
-  getModel5Usage, MODEL5_PLANS,
+  getModel3Usage, canUserMakeModel3Video, MODEL3_PLAN_QUOTAS, MODEL3_PLAN_CREDITS,
+  getModel3Credits, addModel3Credits,
+  getModel4Usage, MODEL4_PLANS, getModel4Credits, addModel4Credits,
+  getModel5Usage, MODEL5_PLANS, getModel5Credits, addModel5Credits,
   resetModel3Usage, resetModel4Usage, resetModel5Usage,
 } from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
@@ -180,28 +181,45 @@ router.get('/credits', authMiddleware, async (req, res) => {
   try {
     const credits = await getUserCredits(req.user.userId);
     const user = await getUserById(req.user.userId);
-    const model3Usage = user?.model3_access ? await getModel3Usage(req.user.userId) : null;
-    const plan = user?.model3_plan || 'm3_starter';
-    const quotas = user?.model3_access ? (MODEL3_PLAN_QUOTAS[plan] || MODEL3_PLAN_QUOTAS.m3_starter) : null;
-    const model4Usage = user?.model4_access ? await getModel4Usage(req.user.userId) : null;
+    const uid = req.user.userId;
+
+    // Model 3 credits
+    const m3plan = user?.model3_plan || 'm3_starter';
+    const model3Credits = user?.model3_access ? await getModel3Credits(uid) : null;
+    const model3Usage = user?.model3_access ? await getModel3Usage(uid) : null;
+
+    // Model 4 credits
     const m4plan = user?.model4_plan || 'm4_plan1';
-    const m4planData = user?.model4_access ? (MODEL4_PLANS[m4plan] || MODEL4_PLANS.m4_plan1) : null;
+    const model4Credits = user?.model4_access ? await getModel4Credits(uid) : null;
+    const model4Usage = user?.model4_access ? await getModel4Usage(uid) : null;
+
+    // Model 5 credits
+    const m5plan = user?.model5_plan || 'mc_starter';
+    const model5Credits = user?.model5_access ? await getModel5Credits(uid) : null;
+    const model5Usage = user?.model5_access ? await getModel5Usage(uid) : null;
+
     res.json({
       ...credits,
+      // Model 3
       model3_access: user?.model3_access || 0,
-      model3_plan: plan,
+      model3_plan: m3plan,
+      model3_credits: model3Credits,
       model3_usage: model3Usage,
-      model3_quotas: quotas,
+      model3_trial_used: user?.model3_trial_used || 0,
+      // Model 4
       model4_access: user?.model4_access || 0,
       model4_plan: m4plan,
+      model4_credits: model4Credits,
       model4_usage: model4Usage,
-      model4_plan_data: m4planData,
       model4_trial_used: user?.model4_trial_used || 0,
-      model3_trial_used: user?.model3_trial_used || 0,
+      // Model 5
       model5_access: user?.model5_access || 0,
+      model5_plan: m5plan,
+      model5_credits: model5Credits,
+      model5_usage: model5Usage,
+      // Other
       erivion_access: user?.erivion_access || 0,
       erivion_plan: user?.erivion_plan || null,
-      model5_plan: user?.model5_plan || 'mc_starter',
       avatar: user?.avatar || null,
       user_name: user?.name || null,
     });
@@ -603,12 +621,18 @@ router.get('/model3-approve', async (req, res) => {
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (!email) return res.status(400).send('Missing email');
   try {
-    await pool.query('UPDATE users SET model3_access = 1, model3_plan = $2 WHERE email = $1', [email, plan || 'm3_starter']);
-    // Reset usage عشان لو اشترى خطة جديدة يتجدد العداد
+    const approvedPlan = plan || 'm3_starter';
+    await pool.query('UPDATE users SET model3_access = 1, model3_plan = $2 WHERE email = $1', [email, approvedPlan]);
+    // Charge credits for the plan
     try {
       const uRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-      if (uRow.rows.length > 0) await resetModel3Usage(uRow.rows[0].id);
-    } catch {}
+      if (uRow.rows.length > 0) {
+        const uid = uRow.rows[0].id;
+        const creditsToAdd = MODEL3_PLAN_CREDITS[approvedPlan] || 125;
+        await addModel3Credits(uid, creditsToAdd);
+        await resetModel3Usage(uid);
+      }
+    } catch(e) { console.warn('[model3-approve] credits error:', e.message); }
 
     // ── Affiliate payment tracking ─────────────────────────────────────
     try {
@@ -662,12 +686,17 @@ router.get('/model4-approve', async (req, res) => {
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (!email) return res.status(400).send('Missing email');
   try {
-    await pool.query('UPDATE users SET model4_access = 1, model4_plan = $1 WHERE email = $2', [plan || 'm4_plan1', email]);
-    // Reset usage عشان لو اشترى خطة جديدة يتجدد العداد
+    const approvedPlan4 = plan || 'm4_plan1';
+    await pool.query('UPDATE users SET model4_access = 1, model4_plan = $1 WHERE email = $2', [approvedPlan4, email]);
     try {
       const uRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-      if (uRow.rows.length > 0) await resetModel4Usage(uRow.rows[0].id);
-    } catch {}
+      if (uRow.rows.length > 0) {
+        const uid = uRow.rows[0].id;
+        const creditsToAdd4 = (MODEL4_PLANS[approvedPlan4]?.credits) || 80;
+        await addModel4Credits(uid, creditsToAdd4);
+        await resetModel4Usage(uid);
+      }
+    } catch(e) { console.warn('[model4-approve] credits error:', e.message); }
 
     // ── Affiliate payment tracking ─────────────────────────────────────
     try {
@@ -720,12 +749,17 @@ router.get('/model5-approve', async (req, res) => {
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (!email) return res.status(400).send('Missing email');
   try {
-    await pool.query('UPDATE users SET model5_access = 1, model5_plan = $1 WHERE email = $2', [plan || 'mc_starter', email]);
-    // Reset usage عشان لو اشترى خطة جديدة يتجدد العداد
+    const approvedPlan5 = plan || 'mc_starter';
+    await pool.query('UPDATE users SET model5_access = 1, model5_plan = $1 WHERE email = $2', [approvedPlan5, email]);
     try {
       const uRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-      if (uRow.rows.length > 0) await resetModel5Usage(uRow.rows[0].id);
-    } catch {}
+      if (uRow.rows.length > 0) {
+        const uid = uRow.rows[0].id;
+        const creditsToAdd5 = (MODEL5_PLANS[approvedPlan5]?.credits) || 75;
+        await addModel5Credits(uid, creditsToAdd5);
+        await resetModel5Usage(uid);
+      }
+    } catch(e) { console.warn('[model5-approve] credits error:', e.message); }
     const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
     await fetch('https://api.resend.com/emails', {
       method: 'POST',

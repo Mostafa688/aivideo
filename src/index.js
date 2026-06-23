@@ -15,7 +15,7 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS } from './services/authService.js';
+import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS, getModel5Credits, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
@@ -307,6 +307,26 @@ app.post('/api/generate-voice', authMiddleware, async (req, res) => {
   }
 });
 
+// MODEL12_CREDIT_COSTS imported from authService.js
+const _MODEL12_TMP = {
+  '30s':   3,
+  'auto':  3,
+  '1min':  6,
+  '2min':  12,
+  '3min':  18,
+  '4min':  24,
+  '5min':  30,
+  '8min':  48,
+  '10min': 60,
+};
+
+// ── GET credit cost for a given duration (model 1&2) ─────────────────────────
+app.get('/api/credit-cost', authMiddleware, (req, res) => {
+  const { duration } = req.query;
+  const cost = MODEL12_CREDIT_COSTS[duration] || 3;
+  res.json({ creditCost: cost, duration });
+});
+
 app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, audioUrl, ratio, jobId, duration, music, captions, transitions, soundEffects, videoType, captionStyle, musicVolume, sfxVolume, videoEffect } = req.body;
   const renderJobId = String(jobId || Date.now());
@@ -341,9 +361,10 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
       return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
     }
 
+    const creditCost = MODEL12_CREDIT_COSTS[duration] || 3;
     activeRenderCount++;
     setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
-    res.status(202).json({ jobId: renderJobId, status: 'processing' });
+    res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost });
     (async () => {
       try {
         const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' });
@@ -421,6 +442,19 @@ app.post('/api/ai-edit', authMiddleware, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/api/model3/credit-cost', authMiddleware, (req, res) => {
+  const { duration } = req.query;
+  res.json({ creditCost: MODEL3_CREDIT_COSTS[duration] || 5, duration });
+});
+app.get('/api/model4/credit-cost', authMiddleware, (req, res) => {
+  const { duration } = req.query;
+  res.json({ creditCost: MODEL4_CREDIT_COSTS[duration] || 10, duration });
+});
+app.get('/api/model5/credit-cost', authMiddleware, (req, res) => {
+  const { duration } = req.query;
+  res.json({ creditCost: MODEL5_CREDIT_COSTS[duration] || 15, duration });
 });
 
 // ── Model 3 Routes ─────────────────────────────────────────────────────────
@@ -509,29 +543,42 @@ NEVER start with "في هذا الفيديو" / "In this video we will" — inst
           else typeRules.push(`Scene ${i}: BODY — continues story logically from scene ${i - 1}`);
         }
 
-        systemPrompt = `You are an elite documentary scriptwriter and visual director. You write professional narration with perfect story flow, zero repetition, and cinematic visual direction. Output ONLY a raw JSON array. "prompt" MUST be English only. No markdown, no extra text.`;
+        // ── تحديد هل الفيديو تاريخي ──
+        const historicalKeywords = ['history','historical','ancient','empire','dynasty','war','battle','civilization','prophet','king','pharaoh','medieval','century','bc','ad','عصر','تاريخ','حضارة','إمبراطورية','معركة','نبي','خليفة','ملك','قرن','عهد','دولة','فتح','غزوة','صحابة','إسلام'];
+        const isHistorical = historicalKeywords.some(kw => idea.toLowerCase().includes(kw));
+        const historicalEraNote = isHistorical ? `\n⚠️ HISTORICAL VIDEO: ALL prompts MUST reflect the correct historical era. NO modern elements allowed:\n- NO: cars, electricity, phones, computers, modern buildings, modern clothing, modern weapons, skyscrapers, asphalt roads, neon signs, glasses (eyewear)\n- YES: period-accurate architecture, hand-crafted tools, torches/oil lamps, horses, camels, sailing ships, ancient weapons (swords/spears/bows), period clothing, mud-brick/stone structures\n- TIME PERIOD: Determine the era from the topic and stay consistent across ALL scenes` : '';
+
+        systemPrompt = `You are an elite documentary scriptwriter and visual director specializing in sequential cinematic storytelling. Each scene MUST directly follow and continue from the previous scene — like chapters in a film, not isolated shots. Output ONLY a raw JSON array. "prompt" MUST be English only. No markdown, no extra text.`;
 
         userPrompt = `VIDEO TOPIC: "${idea}"
 VISUAL STYLE: ${styleHint}${charBlock}${locBlock}
 TOTAL SCENES: ${imageCount} | THIS BATCH: scenes ${batchStart}–${batchEnd}
-${allScenes.length > 0 ? `STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:\n` + allScenes.map(s => `Scene ${s.index}: ${s.text}`).join('\n') + `\n\nCONTINUE chronologically from where scene ${batchStart - 1} ended. Cover NEW story events only.` : ''}
+${allScenes.length > 0 ? `STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:\n` + allScenes.map(s => `Scene ${s.index}: ${s.text}`).join('\n') + `\n\nCONTINUE the story DIRECTLY from scene ${batchStart - 1}. Each new scene must be a DIRECT continuation of the previous scene's action/event. Cover NEW story events only — never repeat.` : ''}
+${historicalEraNote}
 
 SCENE TYPE RULES:
 ${typeRules.join('\n')}
 ${hookGuide}
+SEQUENTIAL STORY FLOW (CRITICAL):
+- Scene N must DIRECTLY continue from scene N-1 (same storyline, next moment/event)
+- Scenes flow like: Scene 1 → Scene 2 → ... → Scene ${imageCount} as one connected film
+- Each scene shows the NEXT logical event in the story sequence
+- Build drama progressively: setup → rising action → climax → resolution
+
 "text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang === 'ar_eg' ? 'Egyptian Arabic — اكتب بالعامية المصرية، كلمات زي: إيه ده دي عشان بقى أهو يعني' : lang === 'ar_gulf' ? 'Gulf Arabic — اكتب باللهجة الخليجية، كلمات زي: وش كيف ليش زين هالشي ترا' : lang}):
 - What a documentary narrator SAYS OUT LOUD — full emotional sentences
-- Each scene ADVANCES the story — never repeat what was said before
-- Historical content: maintain CORRECT chronological order
+- Each scene DIRECTLY continues the narration from the previous scene
+- Historical content: strict CHRONOLOGICAL ORDER of events — no jumping in time
 - Build emotional arc: curiosity → engagement → climax → resolution
-- NEVER describe the image — TELL the story
+- NEVER describe the image — TELL the story in sequence
 
 "prompt" RULES (English only, 40-55 words):
 - Cinematic AI image generation: subject + action + environment + lighting + camera angle + style
 ${characterLock ? `- MUST include character: "${characterLock}"` : ''}
 ${locationLock ? `- MUST include location: "${locationLock}"` : ''}
-- Each prompt visually DISTINCT from others — show progression
-- Be specific and vivid, no abstract words
+- VISUALLY CONTINUES from the previous scene — show the NEXT moment/event
+- Each prompt distinct but connected — shows story PROGRESSION
+- Be specific, vivid, historically accurate if applicable${isHistorical ? '\n- STRICTLY no anachronistic modern elements' : ''}
 
 Output ONLY JSON array (${batchCount} items):
 [{"index":N,"prompt":"English cinematic image prompt 40-55 words","text":"Spoken narration in ${lang}"},...]`;
@@ -547,19 +594,25 @@ Output ONLY JSON array (${batchCount} items):
           Math.floor(batchEnd / imageCount * script.length)
         );
 
-        systemPrompt = `You are an expert video scene splitter. Split the script faithfully into scenes. Output ONLY a raw JSON array. "prompt" MUST be English only.`;
+        const historicalKeywordsScript = ['history','historical','ancient','empire','dynasty','war','battle','civilization','prophet','king','pharaoh','medieval','century','bc','ad','عصر','تاريخ','حضارة','إمبراطورية','معركة','نبي','خليفة','ملك','قرن','عهد','دولة','فتح'];
+        const isHistoricalScript = historicalKeywordsScript.some(kw => (script||'').toLowerCase().includes(kw));
+        const historicalNoteScript = isHistoricalScript ? `\n⚠️ HISTORICAL: ALL prompts must reflect the correct historical era. NO modern elements (cars, phones, electricity, modern buildings, modern clothes). Use period-accurate props, architecture, weapons, and clothing only.` : '';
+
+        systemPrompt = `You are an expert video scene splitter specializing in sequential cinematic storytelling. Each scene's prompt must visually CONTINUE from the previous scene — connected like film chapters. Output ONLY a raw JSON array. "prompt" MUST be English only.`;
 
         userPrompt = `SCRIPT PORTION:
 "${portion}"
 
-VISUAL STYLE: ${styleHint}
+VISUAL STYLE: ${styleHint}${historicalNoteScript}
 SPLIT INTO EXACTLY ${batchCount} SCENES (numbered ${batchStart} to ${batchEnd})
+${allScenes.length > 0 ? `\nPREVIOUS SCENES VISUAL CONTEXT (continue from these):\n` + allScenes.slice(-3).map(s => `Scene ${s.index}: ${s.prompt?.slice(0,60)}...`).join('\n') : ''}
 
-"text": EXACT script text for this scene — preserve original language (${lang}), do NOT paraphrase or summarize
+"text": EXACT script text for this scene — preserve original language (${lang}), do NOT paraphrase
 "prompt": English ONLY, 40-55 words — cinematic AI image generation prompt
   - subject + action + environment + lighting + camera angle + ${styleHint}
-  - Match the scene content visually
-  - Each scene prompt visually distinct
+  - Each prompt CONTINUES visually from the previous scene (connected storyline)
+  - Show PROGRESSION: each scene is the next moment in the sequence
+  - Each scene visually distinct but part of the same continuous story${isHistoricalScript ? '\n  - Historically accurate — no anachronistic elements' : ''}
 
 Output ONLY JSON array:
 [{"index":N,"prompt":"English visual prompt 40-55 words","text":"exact script text"},...]`;
@@ -595,9 +648,10 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
+  const m3CreditCost = MODEL3_CREDIT_COSTS[duration] || 5;
   activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
-  res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false });
+  res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false, creditCost: m3CreditCost });
   (async () => {
     try {
       const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en' });
@@ -717,31 +771,42 @@ NEVER start with "في هذا الفيديو" / "In this video we will" — inst
           else typeRules.push(`Scene ${i}: BODY — continues story logically from scene ${i - 1}`);
         }
 
-        systemPrompt = `You are an elite documentary scriptwriter and cinematic video director. You write professional narration with perfect story flow, zero repetition, and vivid cinematic direction for AI video generation. Output ONLY a raw JSON array. "prompt" MUST be English only. No markdown, no extra text.`;
+        // ── تحديد هل الفيديو تاريخي لموديل 4 ──
+        const m4HistoricalKeywords = ['history','historical','ancient','empire','dynasty','war','battle','civilization','prophet','king','pharaoh','medieval','century','bc','ad','عصر','تاريخ','حضارة','إمبراطورية','معركة','نبي','خليفة','ملك','قرن','عهد','دولة','فتح','غزوة','صحابة','إسلام'];
+        const m4IsHistorical = m4HistoricalKeywords.some(kw => idea.toLowerCase().includes(kw));
+        const m4HistoricalEraNote = m4IsHistorical ? `\n⚠️ HISTORICAL VIDEO — STRICT ERA ACCURACY REQUIRED:\n- FORBIDDEN in prompts: cars, electricity, phones, computers, modern buildings, modern clothing, modern weapons, skyscrapers, asphalt roads, neon signs, glasses (eyewear), any modern technology\n- REQUIRED: period-accurate architecture, torches/oil lamps, horses, camels, sailing ships, ancient weapons (swords/spears/bows/shields), period clothing (robes/armor/turbans), mud-brick/stone structures, open-fire cooking\n- Determine the historical era from the topic and stay consistent across ALL scenes` : '';
+
+        systemPrompt = `You are an elite documentary scriptwriter and cinematic video director specializing in sequential storytelling. Each scene MUST be a direct continuation of the previous scene — connected like frames in a film, not isolated clips. Output ONLY a raw JSON array. "prompt" MUST be English only. No markdown, no extra text.`;
 
         userPrompt = `VIDEO TOPIC: "${idea}"
 VISUAL STYLE: ${styleHint}${charBlock}${locBlock}
 TOTAL SCENES: ${sceneCount} | THIS BATCH: scenes ${batchStart}–${batchEnd}
-${allScenes.length > 0 ? `STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:\n` + allScenes.map(s => `Scene ${s.index}: ${s.text}`).join('\n') + `\n\nCONTINUE chronologically from where scene ${batchStart - 1} ended. Cover NEW story events only.` : ''}
+${allScenes.length > 0 ? `STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:\n` + allScenes.map(s => `Scene ${s.index}: ${s.text}`).join('\n') + `\n\nCONTINUE the story DIRECTLY from scene ${batchStart - 1}. Next scene must begin where the last one left off. Cover NEW story events only.` : ''}
+${m4HistoricalEraNote}
 
 SCENE TYPE RULES:
 ${typeRules.join('\n')}
 ${hookGuide}
+SEQUENTIAL CONTINUITY (CRITICAL):
+- Scene N DIRECTLY continues from scene N-1 — same ongoing story, next moment
+- Like a film: each scene is the next shot, not a new topic
+- Build progressively: setup → rising action → climax → resolution
+
 "text" RULES (spoken narration in ${lang === 'ar' ? 'Arabic — فصيح وسلس، أسلوب وثائقي احترافي' : lang === 'ar_eg' ? 'Egyptian Arabic — اكتب بالعامية المصرية، كلمات زي: إيه ده دي عشان بقى أهو يعني' : lang === 'ar_gulf' ? 'Gulf Arabic — اكتب باللهجة الخليجية، كلمات زي: وش كيف ليش زين هالشي ترا' : lang}):
 - What a documentary narrator SAYS OUT LOUD — full emotional sentences
-- Each scene ADVANCES the story — never repeat what was said before
-- Historical content: maintain CORRECT chronological order of events
+- Each scene DIRECTLY continues narration from the previous scene
+- Historical content: strict CHRONOLOGICAL ORDER — no time jumps
 - Build emotional arc: curiosity → engagement → climax → resolution
-- NEVER describe visuals — TELL the story
+- NEVER describe visuals — TELL the story in sequence
 
 "prompt" RULES (English only, 30-45 words — for AI VIDEO generation):
-- Describe a MOVING SCENE: subject + action/motion + environment + lighting + camera movement
+- Describe a MOVING SCENE continuing from the previous: subject + action/motion + environment + lighting + camera movement
 - ${styleHint}
 ${characterLock ? `- MUST include character: "${characterLock}"` : ''}
 ${locationLock ? `- MUST include location: "${locationLock}"` : ''}
-- Each prompt visually DISTINCT — show story progression through motion
-- Think: camera slowly pans, character walks, wind moves trees — dynamic not static
-- No text, no watermarks, no UI elements in scene
+- Each prompt shows the NEXT moment/event — visual story PROGRESSION
+- Think: camera slowly pans, character walks forward, scene unfolds — dynamic
+- No text, no watermarks, no UI elements${m4IsHistorical ? '\n- Historically accurate — ZERO modern elements' : ''}
 
 Output ONLY JSON array (${batchCount} items):
 [{"index":N,"prompt":"English cinematic VIDEO prompt 30-45 words","text":"Spoken narration in ${lang}"},...]`;
@@ -757,18 +822,24 @@ Output ONLY JSON array (${batchCount} items):
           Math.floor(batchEnd / sceneCount * script.length)
         );
 
-        systemPrompt = `You are an expert video scene splitter for AI video generation. Split script faithfully. Output ONLY a raw JSON array. "prompt" MUST be English only.`;
+        const m4HistoricalKwScript = ['history','historical','ancient','empire','dynasty','war','battle','civilization','prophet','king','pharaoh','medieval','century','bc','ad','عصر','تاريخ','حضارة','إمبراطورية','معركة','نبي','خليفة','ملك','قرن','عهد','دولة','فتح'];
+        const m4IsHistScript = m4HistoricalKwScript.some(kw => (script||'').toLowerCase().includes(kw));
+        const m4HistNoteScript = m4IsHistScript ? `\n⚠️ HISTORICAL: ALL prompts must reflect correct historical era. NO modern elements whatsoever. Use period-accurate clothing, weapons, architecture, lighting.` : '';
+
+        systemPrompt = `You are an expert video scene splitter for AI video generation specializing in sequential cinematic storytelling. Each scene's prompt must CONTINUE from the previous — connected like film chapters. Output ONLY a raw JSON array. "prompt" MUST be English only.`;
 
         userPrompt = `SCRIPT PORTION:
 "${portion}"
 
 SPLIT INTO EXACTLY ${batchCount} SCENES (numbered ${batchStart} to ${batchEnd})
+${allScenes.length > 0 ? `\nPREVIOUS SCENES (your prompts must continue visually from these):\n` + allScenes.slice(-3).map(s => `Scene ${s.index}: ${(s.prompt||'').slice(0,60)}...`).join('\n') : ''}${m4HistNoteScript}
 
 "text": EXACT script text for this scene — preserve original language (${lang}), do NOT paraphrase
 "prompt": English ONLY, 30-45 words — cinematic AI VIDEO generation prompt
-  - Describe MOTION/ACTION: subject + movement + environment + lighting + camera
+  - Describe MOTION continuing from previous scene: subject + action + environment + lighting + camera
   - ${styleHint}
-  - Match scene content visually, each prompt distinct
+  - Each scene shows NEXT moment/event — visual PROGRESSION through the story
+  - Connected but visually distinct${m4IsHistScript ? '\n  - Historically accurate — no anachronistic elements' : ''}
 
 Output ONLY JSON array:
 [{"index":N,"prompt":"English video prompt 30-45 words","text":"exact script text"},...]`;
@@ -804,9 +875,10 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
+  const m4CreditCost = MODEL4_CREDIT_COSTS[duration] || 10;
   activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
-  res.status(202).json({ jobId: renderJobId, status: 'processing' });
+  res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m4CreditCost });
   (async () => {
     try {
       let finalAudioUrl = audioUrl;
@@ -889,8 +961,11 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
   if (!idea) return res.status(400).json({ error: 'idea required' });
   const sceneCount = duration === '1min' ? 12 : duration === '30s' ? 6 : 1;
 
-  // بناء وصف الشخصيات بشكل مفصل وثابت
-  const characterDescs = (characters || []).filter(c => c.prompt?.trim());
+  // Separate characters with photos vs prompt-only
+  const allChars = characters || [];
+  const characterDescs = allChars.filter(c => c.prompt?.trim());
+  const charsWithPhotos = allChars.filter(c => c.photo);
+
   const characterBlock = characterDescs.length > 0
     ? characterDescs.map((c, i) => `CHARACTER_${i + 1}: ${c.prompt.trim()}`).join('\n')
     : '';
@@ -943,9 +1018,24 @@ ${sceneCount > 3 ? `- Scenes 2-${sceneCount - 1}: Action/story unfolds — build
 Output ONLY JSON array (${sceneCount} items):
 [{"index":N,"prompt":"[Full cinematic Seedance prompt 45-65 words with character+action+setting+camera+lighting+style]","text":"Short scene title"},...]`;
 
-    const scenes = await groqBatch(systemPrompt, userPrompt);
+    let scenes = await groqBatch(systemPrompt, userPrompt);
     if (!scenes || scenes.length === 0) throw new Error('No scenes generated');
-    res.json({ scenes: scenes.slice(0, sceneCount) });
+    scenes = scenes.slice(0, sceneCount);
+
+    // ── Attach character photos to scenes — reference images generated in seedanceService during render ──
+    if (charsWithPhotos.length > 0) {
+      scenes = scenes.map((scene) => {
+        const charIndex = (scene.index - 1) % charsWithPhotos.length;
+        const refChar = charsWithPhotos[charIndex];
+        if (refChar?.photo) {
+          return { ...scene, characterPhoto: refChar.photo };
+        }
+        return scene;
+      });
+      console.log(`[Model5] Attached character photos to ${scenes.filter(s=>s.characterPhoto).length}/${scenes.length} scenes`);
+    }
+
+    res.json({ scenes });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -970,9 +1060,10 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
+  const m5CreditCost = MODEL5_CREDIT_COSTS[duration] || 15;
   activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
-  res.status(202).json({ jobId: renderJobId, status: 'processing' });
+  res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m5CreditCost });
   (async () => {
     try {
       const videoPath = await renderModel5Video({ scenes, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s' });
@@ -1021,9 +1112,19 @@ app.get('/api/model5/usage', authMiddleware, async (req, res) => {
     const user = await getUserById(req.user.userId);
     if (!user?.model5_access) return res.json({ access: false });
     const usage = await getModel5Usage(req.user.userId);
+    const credits = await getModel5Credits(req.user.userId);
     const plan = user.model5_plan || 'mc_starter';
     const planData = MODEL5_PLANS[plan];
-    res.json({ access: true, plan, planData, usage: { videos_15s: usage.videos_15s || 0, videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0 }, quota: { videos_15s: planData?.videos_15s || 0, videos_30s: planData?.videos_30s || 0, videos_1min: planData?.videos_1min || 0 } });
+    const totalCredits = planData?.credits || 75;
+    const creditsUsed = credits.credits_used || 0;
+    const creditsRemaining = Math.max(0, (credits.credits_total || 0) - creditsUsed);
+    res.json({
+      access: true, plan, planData,
+      credits: { total: credits.credits_total || 0, used: creditsUsed, remaining: creditsRemaining },
+      usage: { videos_15s: usage.videos_15s || 0, videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0 },
+      // Legacy quota fields for UI compatibility
+      quota: { videos_15s: Math.floor(creditsRemaining/15), videos_30s: Math.floor(creditsRemaining/30), videos_1min: Math.floor(creditsRemaining/60) }
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
