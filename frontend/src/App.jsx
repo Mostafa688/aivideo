@@ -349,91 +349,62 @@ export default function App() {
   ];
 
   const Header = () => (
-    <div className="app-header" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, background: 'var(--bg)', borderBottom: '1px solid var(--border)', padding: '0 16px', height: 54, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <style>{`
-        .nav-link { color: #9ca3af; font-size: 13px; font-weight: 500; background: none; border: none; cursor: pointer; padding: 6px 10px; border-radius: 8px; transition: all 0.15s; }
-        .nav-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
-        .nav-link.active { color: #fff; background: rgba(124,106,247,0.15); }
-        .header-credits-label { display: inline; }
-        .header-credits-sep { display: inline; }
-        @media(max-width:768px) {
-          .header-nav { display: none !important; }
-          .header-credits-label { display: none; }
-          .header-credits-sep { display: none; }
-          .header-plan-badge { display: none; }
-          .header-model-badge { display: none !important; }
-        }
-        .mobile-nav { display: none; }
-        @media(max-width:768px) {
-          .mobile-nav { display: flex !important; }
-        }
-      `}</style>
-
-      {/* Left: Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => setPage('input')}>
-        <img src={LOGO} alt="Erivion" style={{ width: 32, height: 32, objectFit: 'contain' }} />
-        <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--accent)', letterSpacing: '-0.3px' }}>Erivion</span>
+    <header className="app-header" style={{ gap:8 }}>
+      {/* Logo */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', flexShrink:0 }} onClick={() => handleNavigate('home')}>
+        <img src={LOGO} alt="Erivion" style={{ width:26, height:26, objectFit:'contain' }} />
+        <span style={{ fontSize:16, fontWeight:800, color:'#fff', letterSpacing:'-0.4px', fontFamily:"'Bricolage Grotesque', sans-serif" }}>Erivion</span>
       </div>
 
-      {/* Center: Nav */}
-      <nav className="header-nav" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      {/* Center Nav */}
+      <nav className="header-nav" style={{ display:'flex', alignItems:'center', gap:2 }}>
         {NAV_ITEMS.map(item => (
-          <button
-            key={item.key}
-            className={`nav-link${page === item.key || (item.key === 'pricing' && showPricing) ? ' active' : ''}`}
-            onClick={() => handleNavigate(item.key)}
-          >
-            {item.label}
-          </button>
+          <button key={item.key} className={`nav-link${page === item.key || (item.key === 'pricing' && showPricing) ? ' active' : ''}`}
+            onClick={() => handleNavigate(item.key)}>{item.label}</button>
         ))}
       </nav>
 
-      {/* Right: Credits + Models + My Videos + Plan + Avatar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {/* Right side */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+        {/* M1&2 Credits */}
         {credits && (
-          <button onClick={fetchCredits} title="Click to refresh"
-            style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>
-            <span className="header-credits-label" style={{ fontSize: 11, color: 'var(--text3)' }}>Credits:</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: creditsColor() }}>{formatNumber(credits.remaining)}</span>
-            <span className="header-credits-sep" style={{ fontSize: 10, color: 'var(--text3)' }}>/ {formatNumber(credits.limit)}</span>
+          <button onClick={fetchCredits} title="Click to refresh" className="header-credits"
+            style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'4px 10px', cursor:'pointer', transition:'all 0.15s' }}
+            onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'}
+            onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.04)'}>
+            <span style={{ fontSize:10, color:'var(--text3)' }}>Credits:</span>
+            <span style={{ fontSize:13, fontWeight:700, color:creditsColor() }}>{formatNumber(credits.remaining)}</span>
+            <span style={{ fontSize:10, color:'var(--text3)' }}>/{formatNumber(credits.limit)}</span>
           </button>
         )}
-        {/* Model credits counters */}
+
+        {/* Model credits */}
         {credits && model3Access && (() => {
           const m3cr = credits.model3_credits;
-          const remaining = m3cr ? Math.max(0, (m3cr.credits_total || 0) - (m3cr.credits_used || 0)) : 0;
-          return (
-            <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#f59e0b', fontWeight:700 }}>
-              <span>✨</span><span>{remaining}cr</span>
-            </div>
-          );
+          const rem = m3cr ? Math.max(0,(m3cr.credits_total||0)-(m3cr.credits_used||0)) : 0;
+          return <div className="header-model-badge" style={{ background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', color:'#f59e0b' }}><span>✨</span><span>{rem}cr</span></div>;
         })()}
         {credits && model4Access && (() => {
           const m4cr = credits.model4_credits;
-          const remaining = m4cr ? Math.max(0, (m4cr.credits_total || 0) - (m4cr.credits_used || 0)) : 0;
-          return (
-            <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#a855f7', fontWeight:700 }}>
-              <span>🎬</span><span>{remaining}cr</span>
-            </div>
-          );
+          const rem = m4cr ? Math.max(0,(m4cr.credits_total||0)-(m4cr.credits_used||0)) : 0;
+          return <div className="header-model-badge" style={{ background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.25)', color:'#a855f7' }}><span>🎞️</span><span>{rem}cr</span></div>;
         })()}
         {credits && model5Access && (() => {
           const m5cr = credits.model5_credits;
-          const remaining = m5cr ? Math.max(0, (m5cr.credits_total || 0) - (m5cr.credits_used || 0)) : 0;
-          return (
-            <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#e11d48', fontWeight:700 }}>
-              <span>🎭</span><span>{remaining}cr</span>
-            </div>
-          );
+          const rem = m5cr ? Math.max(0,(m5cr.credits_total||0)-(m5cr.credits_used||0)) : 0;
+          return <div className="header-model-badge" style={{ background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.25)', color:'#e11d48' }}><span>🎭</span><span>{rem}cr</span></div>;
         })()}
 
-        <div className="header-plan-badge" style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${planColor}22`, border: `1px solid ${planColor}55`, color: planColor, letterSpacing: '0.04em' }}>
+        {/* Plan badge */}
+        <div className="header-plan-badge" style={{ background:`${planColor}18`, border:`1px solid ${planColor}40`, color:planColor }}>
           {userPlan.toUpperCase()}
         </div>
+
         <UserMenu user={user} plan={userPlan} onLogout={handleLogout} onNavigate={handleNavigate} model3Access={model3Access} model4Access={model4Access} model5Access={model5Access} model6Access={model6Access} avatar={userAvatar} />
       </div>
-    </div>
+    </header>
   );
+
 
   return (
     <>
