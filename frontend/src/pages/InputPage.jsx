@@ -787,7 +787,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
 }
 
 // ── Main Form ───────────────────────────────────────────────────────────────
-export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false }) {
+export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, userPlan = 'free', credits = null }) {
   const [selectedModel, setSelectedModel] = useState(null);
   const [mode, setMode] = useState('idea');
   const [idea, setIdea] = useState('');
@@ -851,6 +851,16 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   const accentColor = isAI ? 'var(--accent)' : '#06b6d4';
   const accentBg = isAI ? 'var(--accent-bg)' : 'rgba(6,182,212,0.1)';
   const modelLabel = isAI ? '🎨 Model 1 — AI Slices' : '🎬 Model 2 — Pexels Clips';
+
+  // ── Plan-based duration locks ─────────────────────────────────────────────
+  const PLAN_DURATIONS = {
+    free:  ['30s'],
+    pro:   ['30s', '1min', '2min'],
+    plus:  ['30s', '1min', '2min', '3min', '4min', '5min'],
+    max:   ['30s', '1min', '2min', '3min', '4min', '5min', '8min', '10min'],
+  };
+  const CREDIT_COSTS_12 = { '30s': 3, 'auto': 3, '1min': 6, '2min': 12, '3min': 18, '4min': 24, '5min': 30, '8min': 48, '10min': 60 };
+  const allowedDurations = PLAN_DURATIONS[userPlan] || PLAN_DURATIONS.free;
 
   // ── Script length limit (max ~8 min = ~4800 chars) ─────────────────────────
   const MAX_SCRIPT_CHARS = 4800;
@@ -1179,20 +1189,29 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
                   {/* Custom duration selector */}
                   <div className="dur-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:6 }}>
                     {[
-                      { val:'30s',   label:'30s',  sub:'4 scenes'  },
-                      { val:'1min',  label:'1m',   sub:'8 scenes'  },
-                      { val:'2min',  label:'2m',   sub:'17 scenes' },
-                      { val:'3min',  label:'3m',   sub:'26 scenes' },
-                      { val:'5min',  label:'5m',   sub:'42 scenes' },
-                      { val:'8min',  label:'8m',   sub:'56 scenes' },
-                      { val:'10min', label:'10m',  sub:'70 scenes' },
-                    ].map(d => (
-                      <div key={d.val} className={`dur-option${(mode==='script'&&script.length>20?getSmartDuration():duration)===d.val?' active':''}`}
-                        onClick={() => setDuration(d.val)}>
-                        <div style={{ fontSize:13, fontWeight:700, color:(mode==='script'&&script.length>20?getSmartDuration():duration)===d.val ? accentColor : '#fff', fontFamily:"'DM Sans', sans-serif" }}>{d.label}</div>
-                        <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>{d.sub}</div>
-                      </div>
-                    ))}
+                      { val:'30s',   label:'30s',  sub:'4 scenes',  cost:3  },
+                      { val:'1min',  label:'1m',   sub:'8 scenes',  cost:6  },
+                      { val:'2min',  label:'2m',   sub:'17 scenes', cost:12 },
+                      { val:'3min',  label:'3m',   sub:'26 scenes', cost:18 },
+                      { val:'5min',  label:'5m',   sub:'42 scenes', cost:30 },
+                      { val:'8min',  label:'8m',   sub:'56 scenes', cost:48 },
+                      { val:'10min', label:'10m',  sub:'70 scenes', cost:60 },
+                    ].map(d => {
+                      const isAllowed = allowedDurations.includes(d.val);
+                      const isActive = (mode==='script'&&script.length>20?getSmartDuration():duration)===d.val;
+                      return (
+                        <div key={d.val}
+                          className={`dur-option${isActive&&isAllowed?' active':''}`}
+                          onClick={() => isAllowed ? setDuration(d.val) : null}
+                          style={{ opacity: isAllowed ? 1 : 0.4, cursor: isAllowed ? 'pointer' : 'not-allowed', position:'relative' }}>
+                          {!isAllowed && <div style={{ position:'absolute', top:4, right:4, fontSize:9 }}>🔒</div>}
+                          <div style={{ fontSize:13, fontWeight:700, color:isActive&&isAllowed ? accentColor : isAllowed ? '#fff' : '#6b7280', fontFamily:"'DM Sans', sans-serif" }}>{d.label}</div>
+                          <div style={{ fontSize:9, color: isAllowed ? 'rgba(255,255,255,0.3)' : '#374151', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>{d.sub}</div>
+                          {isAllowed && <div style={{ fontSize:8, color: accentColor, fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>{d.cost}cr</div>}
+                          {!isAllowed && <div style={{ fontSize:8, color:'#374151', fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>Upgrade</div>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1285,7 +1304,9 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
 
             {/* Submit */}
             <button onClick={handleSubmit} disabled={!canSubmit} className={`submit-btn ${canSubmit ? 'ready' : 'disabled'}`}>
-              {canSubmit ? `Generate Scenes with ${isAI ? 'Model 1' : 'Model 2'} →` : (mode === 'idea' ? 'Enter your idea to continue' : 'Paste your script to continue')}
+              {canSubmit
+                ? `Generate Scenes — ${CREDIT_COSTS_12[(mode==='script'&&script.length>20?getSmartDuration():duration)]||3} Credits →`
+                : (mode === 'idea' ? 'Enter your idea to continue' : 'Paste your script to continue')}
             </button>
             <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:12, fontFamily:"'DM Sans', sans-serif" }}>Powered by Groq AI · {isAI ? 'AI Image Generation' : 'Pexels Stock Footage'} · FFmpeg</p>
           </>

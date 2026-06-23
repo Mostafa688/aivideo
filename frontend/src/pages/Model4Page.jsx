@@ -18,6 +18,17 @@ const DURATION_CONFIG = {
   '3min': { scenes: 24, label: '3 minutes',  sublabel: '24 AI video clips' },
 };
 
+const VIDEO_STYLES_M4 = [
+  { key: 'cinematic',   label: 'Cinematic',   emoji: '🎬', desc: 'Dramatic · Film-like',    suffix: 'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading' },
+  { key: 'realistic',   label: 'Realistic',   emoji: '📸', desc: 'Real · Photographic',     suffix: 'photorealistic, natural lighting, high detail, documentary style, authentic' },
+  { key: 'historical',  label: 'Historical',  emoji: '🏛️', desc: 'Ancient · Epic',           suffix: 'historical epic, ancient world, dramatic atmosphere, oil painting style, cinematic, period-accurate' },
+  { key: 'anime',       label: 'Anime',       emoji: '🌸', desc: 'Japanese · Animated',     suffix: 'anime style, vibrant colors, detailed illustration, studio ghibli inspired, cel shading' },
+  { key: 'cartoon',     label: 'Cartoon',     emoji: '🎨', desc: 'Animated · Colorful',     suffix: 'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired' },
+  { key: '3d_cartoon',  label: '3D Cartoon',  emoji: '🎮', desc: '3D · Rendered',            suffix: '3D rendered cartoon style, smooth colorful surfaces, pixar style 3D animation' },
+  { key: 'action',      label: 'Action',      emoji: '⚡', desc: 'Dynamic · Epic',           suffix: 'action scene, dynamic motion blur, explosive energy, dramatic angles, high contrast' },
+  { key: 'documentary', label: 'Documentary', emoji: '📹', desc: 'Real · Journalistic',      suffix: 'documentary style, natural lighting, photorealistic, journalistic photography, authentic atmosphere' },
+];
+
 // ── Usage Bar ──────────────────────────────────────────────────────────────
 function UsageBar({ label, used, quota }) {
   if (quota === 0) return null;
@@ -311,6 +322,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
   const [usage, setUsage] = useState(null);
   const [showPayment, setShowPayment] = useState(false);
   const [creditCost, setCreditCost] = useState(10);
+  const [videoStyle, setVideoStyle] = useState('cinematic');
   const [voiceFile, setVoiceFile] = useState(null);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceAudioUrl, setVoiceAudioUrl] = useState(null);
@@ -378,7 +390,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
       const res = await fetch('/api/model4/generate-scenes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
-        body: JSON.stringify({ idea: mode === 'idea' ? inputText : undefined, script: mode !== 'idea' ? inputText : undefined, inputMode: mode === 'idea' ? 'idea' : 'script', sceneCount: mode === 'script' ? (DURATION_CONFIG[getSmartDuration()]?.scenes || durConfig.scenes) : durConfig.scenes, videoLanguage }),
+        body: JSON.stringify({ idea: mode === 'idea' ? inputText : undefined, script: mode !== 'idea' ? inputText : undefined, inputMode: mode === 'idea' ? 'idea' : 'script', sceneCount: mode === 'script' ? (DURATION_CONFIG[getSmartDuration()]?.scenes || durConfig.scenes) : durConfig.scenes, videoLanguage, videoStyle, styleSuffix: VIDEO_STYLES_M4.find(s=>s.key===videoStyle)?.suffix || '' }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
@@ -649,6 +661,21 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
               )}
             </div>
           )}
+        </div>
+
+        {/* Video Style */}
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>🎨 VIDEO STYLE</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            {VIDEO_STYLES_M4.map(s => (
+              <div key={s.key} onClick={() => setVideoStyle(s.key)}
+                style={{ padding: '10px 8px', borderRadius: 12, cursor: 'pointer', textAlign: 'center', border: `1px solid ${videoStyle===s.key ? '#a855f7' : 'rgba(255,255,255,0.07)'}`, background: videoStyle===s.key ? 'rgba(168,85,247,0.12)' : 'rgba(255,255,255,0.02)', transition: 'all 0.15s' }}>
+                <div style={{ fontSize: 18, marginBottom: 4 }}>{s.emoji}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: videoStyle===s.key ? '#c084fc' : '#fff' }}>{s.label}</div>
+                <div style={{ fontSize: 9, color: '#374151', marginTop: 2 }}>{s.desc}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Duration */}

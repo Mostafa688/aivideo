@@ -74,6 +74,7 @@ router.get('/users', adminAuth, async (req, res) => {
     const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
     const { rows } = await pool.query(`
       SELECT u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model4_access, u.model4_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at,
+             COALESCE(u.banned, 0) as banned,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
              COUNT(v.id) as total_videos
@@ -81,7 +82,7 @@ router.get('/users', adminAuth, async (req, res) => {
       LEFT JOIN user_usage uu ON uu.user_id = u.id
       LEFT JOIN videos v ON v.user_id = u.id
       ${whereClause}
-      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model4_access, u.model4_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at, uu.credits_used, uu.videos_this_week
+      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model4_access, u.model4_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at, uu.credits_used, uu.videos_this_week, u.banned
       ORDER BY u.id DESC
       LIMIT $${idx}
     `, [...params, parseInt(limit)]);
@@ -336,6 +337,67 @@ router.get('/onboarding-answers', adminAuth, async (req, res) => {
       LIMIT 500
     `);
     res.json({ answers: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Ban / Unban User ──────────────────────────────────────────────────────────
+router.post('/user/ban', adminAuth, async (req, res) => {
+  try {
+    const { email, banned } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned INTEGER DEFAULT 0');
+    await pool.query('UPDATE users SET banned = $1 WHERE email = $2', [banned ? 1 : 0, email]);
+    res.json({ success: true, message: `User ${email} is now ${banned ? 'banned' : 'unbanned'}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Delete User ────────────────────────────────────────────────────────────────
+router.post('/user/delete', adminAuth, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+    // Get user id first
+    const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const uid = rows[0].id;
+    // Delete related data
+    await pool.query('DELETE FROM user_usage WHERE user_id = $1', [uid]);
+    await pool.query('DELETE FROM model3_usage WHERE user_id = $1', [uid]).catch(() => {});
+    await pool.query('DELETE FROM model4_usage WHERE user_id = $1', [uid]).catch(() => {});
+    await pool.query('DELETE FROM model5_usage WHERE user_id = $1', [uid]).catch(() => {});
+    await pool.query('DELETE FROM model3_credits WHERE user_id = $1', [uid]).catch(() => {});
+    await pool.query('DELETE FROM model4_credits WHERE user_id = $1', [uid]).catch(() => {});
+    await pool.query('DELETE FROM model5_credits WHERE user_id = $1', [uid]).catch(() => {});
+    await pool.query('DELETE FROM payment_requests WHERE user_id = $1', [uid]).catch(() => {});
+    await pool.query('DELETE FROM videos WHERE user_id = $1', [uid]).catch(() => {});
+    await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]).catch(() => {});
+    await pool.query('DELETE FROM users WHERE id = $1', [uid]);
+    res.json({ success: true, message: `User ${email} deleted` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Add Credits to User (Model 1&2) ───────────────────────────────────────────
+router.post('/user/add-credits', adminAuth, async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+    if (!email || !amount) return res.status(400).json({ error: 'email and amount required' });
+    const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const uid = rows[0].id;
+    // Decrease credits_used (effectively adding credits back)
+    await pool.query(
+      `INSERT INTO user_usage (user_id, credits_used) VALUES ($1, 0)
+       ON CONFLICT (user_id) DO UPDATE
+       SET credits_used = GREATEST(0, user_usage.credits_used - $2)`,
+      [uid, parseInt(amount)]
+    );
+    res.json({ success: true, message: `Added ${amount} credits to ${email}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

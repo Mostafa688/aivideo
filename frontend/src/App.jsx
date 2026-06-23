@@ -398,22 +398,34 @@ export default function App() {
             <span className="header-credits-sep" style={{ fontSize: 10, color: 'var(--text3)' }}>/ {formatNumber(credits.limit)}</span>
           </button>
         )}
-        {/* Model video counters */}
-        {credits && model3Access && (
-          <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#f59e0b', fontWeight:700 }}>
-            <span>✨</span><span>{credits.model3_usage !== undefined ? (credits.model3_quotas?.videos_per_month || 0) - (credits.model3_usage || 0) : '–'}</span>
-          </div>
-        )}
-        {credits && model4Access && (
-          <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#a855f7', fontWeight:700 }}>
-            <span>🎬</span><span>{credits.model4_usage !== undefined ? (credits.model4_plan_data?.videos_per_month || 0) - (credits.model4_usage || 0) : '–'}</span>
-          </div>
-        )}
-        {credits && model5Access && (
-          <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#e11d48', fontWeight:700 }}>
-            <span>🎭</span><span>{credits.model5_usage !== undefined ? (credits.model5_plan_data?.videos_per_month || 0) - (credits.model5_usage || 0) : '–'}</span>
-          </div>
-        )}
+        {/* Model credits counters */}
+        {credits && model3Access && (() => {
+          const m3cr = credits.model3_credits;
+          const remaining = m3cr ? Math.max(0, (m3cr.credits_total || 0) - (m3cr.credits_used || 0)) : 0;
+          return (
+            <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#f59e0b', fontWeight:700 }}>
+              <span>✨</span><span>{remaining}cr</span>
+            </div>
+          );
+        })()}
+        {credits && model4Access && (() => {
+          const m4cr = credits.model4_credits;
+          const remaining = m4cr ? Math.max(0, (m4cr.credits_total || 0) - (m4cr.credits_used || 0)) : 0;
+          return (
+            <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#a855f7', fontWeight:700 }}>
+              <span>🎬</span><span>{remaining}cr</span>
+            </div>
+          );
+        })()}
+        {credits && model5Access && (() => {
+          const m5cr = credits.model5_credits;
+          const remaining = m5cr ? Math.max(0, (m5cr.credits_total || 0) - (m5cr.credits_used || 0)) : 0;
+          return (
+            <div className="header-model-badge" style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'4px 8px', fontSize:11, color:'#e11d48', fontWeight:700 }}>
+              <span>🎭</span><span>{remaining}cr</span>
+            </div>
+          );
+        })()}
 
         <div className="header-plan-badge" style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${planColor}22`, border: `1px solid ${planColor}55`, color: planColor, letterSpacing: '0.04em' }}>
           {userPlan.toUpperCase()}
@@ -475,6 +487,7 @@ export default function App() {
             goToModelWithWelcome(modelKey, () => { setFormData(data); setPage('scenes'); });
           }}
           model3Access={model3Access} model4Access={model4Access} model5Access={model5Access}
+          userPlan={userPlan} credits={credits}
         />}
         {page === 'model3' && <Model3Page onBack={() => setPage('input')} model3Plan={model3Plan} model3Access={model3Access} onNavigate={handleNavigate} />}
         {page === 'model4' && <Model4Page onBack={() => { setPage('input'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} onNavigate={handleNavigate} />}

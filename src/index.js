@@ -15,7 +15,7 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, canUserRender, getUserCredits, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS, getModel5Credits, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS } from './services/authService.js';
+import { getUserById, PLANS, canUserRender, getUserCredits, addUserTokens, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS, getModel5Credits, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
@@ -368,7 +368,9 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     (async () => {
       try {
         const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' });
-        setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
+        // ── Deduct credits based on video duration ──
+        try { await addUserTokens(req.user.userId, creditCost); } catch(e) { console.warn('[Render] Credit deduct failed:', e.message); }
+        setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost });
       } catch (jobErr) {
         setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
       } finally {

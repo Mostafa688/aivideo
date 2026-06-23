@@ -29,10 +29,18 @@ export function authMiddleware(req, res, next) {
   if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   try {
     req.user = verifyToken(auth.slice(7));
-    next();
   } catch {
-    res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ error: 'Invalid token' });
   }
+  // Check if user is banned
+  pool.query('SELECT COALESCE(banned, 0) as banned FROM users WHERE id = $1', [req.user.userId])
+    .then(({ rows }) => {
+      if (rows[0]?.banned == 1) {
+        return res.status(403).json({ error: 'account_banned', message: 'Your account has been suspended. Contact support.' });
+      }
+      next();
+    })
+    .catch(() => next()); // on DB error, allow through
 }
 
 router.post('/signup', async (req, res) => {

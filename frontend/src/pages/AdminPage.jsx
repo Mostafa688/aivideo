@@ -730,6 +730,8 @@ export default function AdminPage() {
   const [editM5, setEditM5] = useState(false);
   const [editM5Plan, setEditM5Plan] = useState('mc_starter');
   const [toast, setToast] = useState('');
+  const [addCreditsEmail, setAddCreditsEmail] = useState('');
+  const [addCreditsAmount, setAddCreditsAmount] = useState('');
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -747,6 +749,38 @@ export default function AdminPage() {
       else showToast('❌ ' + (d.error || 'Failed'));
     } catch (e) { showToast('❌ ' + e.message); }
     setResetingCredits(null);
+  };
+
+  const handleBan = async (user) => {
+    const newBanned = !user.banned || user.banned == 0;
+    if (!confirm(`${newBanned ? 'Ban' : 'Unban'} ${user.email}?`)) return;
+    try {
+      const r = await fetch('/api/admin/user/ban', { method: 'POST', headers, body: JSON.stringify({ email: user.email, banned: newBanned }) });
+      const d = await r.json();
+      if (d.success) { showToast(`✅ User ${newBanned ? 'banned' : 'unbanned'}`); loadUsers(); }
+      else showToast('❌ ' + d.error);
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+
+  const handleDelete = async (user) => {
+    if (!confirm(`⚠️ PERMANENTLY DELETE account for ${user.email}? This cannot be undone!`)) return;
+    if (!confirm(`Are you 100% sure? All data for ${user.email} will be deleted.`)) return;
+    try {
+      const r = await fetch('/api/admin/user/delete', { method: 'POST', headers, body: JSON.stringify({ email: user.email }) });
+      const d = await r.json();
+      if (d.success) { showToast('✅ User deleted'); loadUsers(); }
+      else showToast('❌ ' + d.error);
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+
+  const handleAddCredits = async () => {
+    if (!addCreditsEmail || !addCreditsAmount) return;
+    try {
+      const r = await fetch('/api/admin/user/add-credits', { method: 'POST', headers, body: JSON.stringify({ email: addCreditsEmail, amount: parseInt(addCreditsAmount) }) });
+      const d = await r.json();
+      if (d.success) { showToast('✅ ' + d.message); setAddCreditsEmail(''); setAddCreditsAmount(''); loadUsers(); }
+      else showToast('❌ ' + d.error);
+    } catch (e) { showToast('❌ ' + e.message); }
   };
 
   const loadUsers    = useCallback(async () => { setLoading(true); try { const params = new URLSearchParams(); if (planFilter) params.set('plan', planFilter); if (search) params.set('search', search); const r = await fetch('/api/admin/users?' + params, { headers }); const d = await r.json(); setUsers(d.users || []); } catch (e) { console.error(e); } setLoading(false); }, [planFilter, search]);
@@ -914,7 +948,7 @@ export default function AdminPage() {
           <>
             <div style={s.topbar}>
               <div style={s.title}>Users ({users.length})</div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input style={{ ...s.input, width: 180 }} placeholder="Search email..." value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadUsers()} />
                 <select style={s.input} value={planFilter} onChange={e => setPlanFilter(e.target.value)}>
                   <option value="">All plans</option><option value="free">Free</option><option value="pro">Pro</option><option value="plus">Plus</option><option value="max">Max</option><option value="m3_starter">M3 Starter</option><option value="m3_pro">M3 Pro</option><option value="m3_max">M3 Max</option>
@@ -922,25 +956,46 @@ export default function AdminPage() {
                 <button style={s.btn()} onClick={loadUsers}>🔍 Search</button>
               </div>
             </div>
+            {/* Quick Add Credits */}
+            <div style={{ display:'flex', gap:8, marginBottom:16, background:'#0f0f1a', border:'1px solid #1a1a2e', borderRadius:10, padding:'12px 16px', alignItems:'center', flexWrap:'wrap' }}>
+              <span style={{ fontSize:12, color:'#6b7280', fontWeight:600 }}>🪙 Add Credits (M1&2):</span>
+              <input style={{ ...s.input, width:200 }} placeholder="user@email.com" value={addCreditsEmail} onChange={e=>setAddCreditsEmail(e.target.value)} />
+              <input style={{ ...s.input, width:80 }} type="number" placeholder="amount" value={addCreditsAmount} onChange={e=>setAddCreditsAmount(e.target.value)} />
+              <button style={s.btn('#22c55e')} onClick={handleAddCredits}>+ Add</button>
+            </div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
             <div style={s.card}>
               <table style={s.table}>
-                <thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Credits Used</th><th style={s.th}>Videos</th><th style={s.th}>M3</th><th style={s.th}>M4</th><th style={s.th}>M5</th><th style={s.th}>Ref</th><th style={s.th}>Joined</th><th style={s.th}>Actions</th></tr></thead>
+                <thead><tr>
+                  <th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Credits</th>
+                  <th style={s.th}>Videos</th><th style={s.th}>M3</th><th style={s.th}>M4</th><th style={s.th}>M5</th>
+                  <th style={s.th}>Status</th><th style={s.th}>Joined</th><th style={s.th}>Actions</th>
+                </tr></thead>
                 <tbody>
                   {users.map(u => (
-                    <tr key={u.id}>
-                      <td style={s.td}><div>{u.email}</div>{u.name && <div style={{ fontSize: 11, color: '#4b5563' }}>{u.name}</div>}</td>
+                    <tr key={u.id} style={{ background: u.banned == 1 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
+                      <td style={s.td}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          {u.banned == 1 && <span title="Banned" style={{ fontSize:12 }}>🚫</span>}
+                          <div>{u.email}</div>
+                        </div>
+                        {u.name && <div style={{ fontSize: 11, color: '#4b5563' }}>{u.name}</div>}
+                      </td>
                       <td style={s.td}><span style={planStyle(u.plan)}>{u.plan}</span></td>
                       <td style={s.td}>{fmt(u.credits_used)}</td>
                       <td style={s.td}>{u.total_videos}</td>
                       <td style={s.td}>{u.model3_access == 1 ? '✅' : '–'}</td>
                       <td style={s.td}>{u.model4_access == 1 ? '✅' : '–'}</td>
                       <td style={s.td}>{u.model5_access == 1 ? '✅' : '–'}</td>
-                      <td style={{ ...s.td, fontSize: 11, color: '#7c6af7', fontFamily: 'monospace' }}>{u.ref_code || '–'}</td>
+                      <td style={s.td}>
+                        <span style={{ fontSize:11, fontWeight:700, color: u.banned==1 ? '#ef4444' : '#22c55e' }}>
+                          {u.banned == 1 ? '🚫 Banned' : '✅ Active'}
+                        </span>
+                      </td>
                       <td style={s.td}>{new Date(u.created_at).toLocaleDateString()}</td>
-                      <td style={{ ...s.td, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <button style={s.btn('#374151')} onClick={() => { 
-                          setEditUser(u); 
+                      <td style={{ ...s.td, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        <button style={s.btn('#374151')} onClick={() => {
+                          setEditUser(u);
                           setEditPlan(u.plan);
                           setEditM3(u.model3_access == 1);
                           setEditM3Plan(u.model3_plan || 'm3_starter');
@@ -948,15 +1003,14 @@ export default function AdminPage() {
                           setEditM4Plan(u.model4_plan || 'm4_plan1');
                           setEditM5(u.model5_access == 1);
                           setEditM5Plan(u.model5_plan || 'mc_starter');
-                        }}>Edit</button>
-                        <button
-                          style={s.btn('#1e3a2f')}
-                          disabled={resetingCredits === u.email}
-                          onClick={() => handleResetCredits(u.email)}
-                          title="Reset weekly credits & videos count"
-                        >
-                          {resetingCredits === u.email ? '...' : '🔄 Credits'}
+                        }}>✏️</button>
+                        <button style={s.btn('#1e3a2f')} disabled={resetingCredits === u.email} onClick={() => handleResetCredits(u.email)} title="Reset credits">
+                          {resetingCredits === u.email ? '...' : '🔄'}
                         </button>
+                        <button style={s.btn(u.banned==1 ? '#166534' : '#7f1d1d')} onClick={() => handleBan(u)} title={u.banned==1?'Unban':'Ban'}>
+                          {u.banned==1 ? '✅' : '🚫'}
+                        </button>
+                        <button style={s.btn('#450a0a')} onClick={() => handleDelete(u)} title="Delete account">🗑️</button>
                       </td>
                     </tr>
                   ))}
