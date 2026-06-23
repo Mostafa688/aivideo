@@ -786,22 +786,7 @@ export default function AdminPage() {
   const loadUsers    = useCallback(async () => { setLoading(true); try { const params = new URLSearchParams(); if (planFilter) params.set('plan', planFilter); if (search) params.set('search', search); const r = await fetch('/api/admin/users?' + params, { headers }); const d = await r.json(); setUsers(d.users || []); } catch (e) { console.error(e); } setLoading(false); }, [planFilter, search]);
 
   useEffect(() => {
-    const saveModelAccess = async (model, access, plan) => {
-    if (!editUser) return;
-    setSaving(true);
-    try {
-      const r = await fetch(`/api/admin/user/${model}`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ email: editUser.email, access: access ? 1 : 0, plan }),
-      });
-      const d = await r.json();
-      if (d.success) { showToast(`✅ Model ${model} updated`); loadUsers(); }
-      else showToast('❌ ' + d.error);
-    } catch (e) { showToast('❌ Error: ' + e.message); }
-    setSaving(false);
-  };
-
-  if (!authed) return;
+    if (!authed) return;
     if (tab === 'overview') loadStats();
     else if (tab === 'users') loadUsers();
     else if (tab === 'payments') loadPayments();
