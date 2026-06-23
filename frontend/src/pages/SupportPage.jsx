@@ -297,13 +297,17 @@ export default function SupportPage({ onBack, onNavigate }) {
         // ── Chat Messages ──
         <>
           <div style={{ flex:1, overflowY:'auto', padding:'20px 16px', display:'flex', flexDirection:'column', gap:12 }}>
-            {messages.map((m,i) => (
-              <div key={i} style={{ display:'flex', flexDirection:'column', alignItems: m.role==='user' ? (isAr?'flex-start':'flex-end') : m.role==='admin' ? (isAr?'flex-end':'flex-start') : 'center' }}>
+            {messages.map((m,i) => {
+              const align = m.role==='user' ? (isAr?'flex-start':'flex-end') : m.role==='admin' ? (isAr?'flex-end':'flex-start') : 'center';
+              const timeStyle = isAr ? { fontSize:10, color:'rgba(255,255,255,0.2)', marginTop:3, marginRight:8 } : { fontSize:10, color:'rgba(255,255,255,0.2)', marginTop:3, marginLeft:8 };
+              const labelStyle = isAr ? { fontSize:10, color:'rgba(255,255,255,0.25)', marginBottom:4, marginRight:8 } : { fontSize:10, color:'rgba(255,255,255,0.25)', marginBottom:4, marginLeft:8 };
+              return (
+              <div key={i} style={{ display:'flex', flexDirection:'column', alignItems: align }}>
                 {m.role === 'system' ? (
                   <div style={{ padding:'8px 16px', borderRadius:20, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', fontSize:12, color:'rgba(255,255,255,0.4)', textAlign:'center', maxWidth:320 }}>{m.text}</div>
                 ) : (
                   <>
-                    <div style={{ fontSize:10, color:'rgba(255,255,255,0.25)', marginBottom:4, [isAr?'marginRight':'marginLeft']:8 }}>
+                    <div style={labelStyle}>
                       {m.role==='user'?T.youLabel:T.supportLbl}
                     </div>
                     <div style={{ maxWidth:'75%', padding:'12px 16px', borderRadius:16, fontSize:13.5, lineHeight:1.7, whiteSpace:'pre-line',
@@ -313,13 +317,14 @@ export default function SupportPage({ onBack, onNavigate }) {
                       borderBottomRightRadius: m.role==='user'&&!isAr ? 4 : 16,
                       borderBottomLeftRadius: m.role==='user'&&isAr ? 4 : m.role==='admin'&&!isAr ? 4 : 16,
                     }}>{m.text}</div>
-                    <div style={{ fontSize:10, color:'rgba(255,255,255,0.2)', marginTop:3, [isAr?'marginRight':'marginLeft']:8 }}>
+                    <div style={timeStyle}>
                       {new Date(m.time).toLocaleTimeString(isAr?'ar':'en', {hour:'2-digit',minute:'2-digit'})}
                     </div>
                   </>
                 )}
               </div>
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 
