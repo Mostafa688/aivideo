@@ -1346,7 +1346,7 @@ export default function AdminPage() {
                     {/* Messages */}
                     <div style={{ flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column', gap:10 }}>
                       {chatMessages.map((m,i) => (
-                        <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:m.role==='user'?'flex-start':'m.role==='admin'?'flex-end':'center' }}>
+                        <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:m.role==='user'?'flex-start':m.role==='admin'?'flex-end':'center' }}>
                           {m.role==='system' ? (
                             <div style={{ alignSelf:'center', padding:'6px 14px', borderRadius:20, background:'rgba(255,255,255,0.05)', fontSize:11, color:'rgba(255,255,255,0.4)' }}>{m.text}</div>
                           ) : (
