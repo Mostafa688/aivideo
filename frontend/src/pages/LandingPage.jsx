@@ -610,7 +610,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
             { title:'10 Video Hooks That Get Millions of Views on TikTok', tag:'Strategy', read:'4 min', img:'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&q=80', color:'#06b6d4' },
             { title:'Seedance vs Stock Footage: Which Makes Better Videos?', tag:'Comparison', read:'6 min', img:'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&q=80', color:'#e11d48' },
             { title:'How to Make $5,000/Month Selling AI Videos Online', tag:'Business', read:'8 min', img:'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&q=80', color:'#10b981' },
-            { title:'Islamic History Videos: A Creator's Complete AI Workflow', tag:'Case Study', read:'10 min', img:'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=600&q=80', color:'#7c6af7' },
+            { title:"Islamic History Videos: A Creator's Complete AI Workflow", tag:'Case Study', read:'10 min', img:'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=600&q=80', color:'#7c6af7' },
           ].map((post,i) => (
             <div key={i} className="ev-reveal" data-delay={i*60}
               onClick={() => onNavigate?.('blog')}
