@@ -225,7 +225,7 @@ function AffiliateModal({ user, onClose }) {
   );
 }
 
-export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null }) {
+export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '' }) {
   const [open, setOpen] = useState(false);
   const [showAffiliate, setShowAffiliate] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
@@ -336,6 +336,28 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Mobile Nav — only on small screens */}
+            <div style={{ padding:'6px 6px 0' }} className="um-mobile-nav">
+              <style>{`.um-mobile-nav{display:none} @media(max-width:640px){.um-mobile-nav{display:block!important}}`}</style>
+              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
+              {[
+                { key:'home', icon:'🏠', label:'Home' },
+                { key:'pricing', icon:'💎', label:'Pricing' },
+                { key:'templates', icon:'🎬', label:'Templates' },
+                { key:'support', icon:'💬', label:'Support' },
+                { key:'faq', icon:'❓', label:'FAQ' },
+              ].map(item => (
+                <button key={item.key} className="um-item"
+                  onClick={() => { setOpen(false); onNavigate?.(item.key); }}
+                  style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 10px', borderRadius:10, border:'none', background: currentPage===item.key ? 'rgba(124,106,247,0.1)' : 'transparent', color: currentPage===item.key ? '#a78bfa' : '#9ca3af', cursor:'pointer', fontSize:13, fontWeight: currentPage===item.key ? 700 : 500, textAlign:'left' }}>
+                  <span style={{ fontSize:15, width:22, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
+                  <span>{item.label}</span>
+                  {currentPage===item.key && <div style={{ marginLeft:'auto', width:6, height:6, borderRadius:'50%', background:'#a78bfa' }} />}
+                </button>
+              ))}
+              <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'6px 0 0' }} />
             </div>
 
             {/* Groups */}

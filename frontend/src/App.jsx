@@ -351,14 +351,26 @@ export default function App() {
 
   const Header = () => (
     <header className="app-header" style={{ gap:8 }}>
+      <style>{`
+        @media(max-width:640px){
+          .header-nav-desktop{display:none!important}
+          .header-credits-full{display:none!important}
+          .header-plan-badge{display:none!important}
+          .header-model-badge{display:none!important}
+        }
+        @media(min-width:641px){
+          .header-credits-mobile{display:none!important}
+        }
+      `}</style>
+
       {/* Logo */}
       <div style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', flexShrink:0 }} onClick={() => handleNavigate('home')}>
         <img src={LOGO} alt="Erivion" style={{ width:26, height:26, objectFit:'contain' }} />
         <span style={{ fontSize:16, fontWeight:800, color:'#fff', letterSpacing:'-0.4px', fontFamily:"'Bricolage Grotesque', sans-serif" }}>Erivion</span>
       </div>
 
-      {/* Center Nav */}
-      <nav className="header-nav" style={{ display:'flex', alignItems:'center', gap:2 }}>
+      {/* Center Nav — desktop only */}
+      <nav className="header-nav-desktop" style={{ display:'flex', alignItems:'center', gap:2, flex:1, justifyContent:'center' }}>
         {NAV_ITEMS.map(item => (
           <button key={item.key} className={`nav-link${page === item.key || (item.key === 'pricing' && showPricing) ? ' active' : ''}`}
             onClick={() => handleNavigate(item.key)}>{item.label}</button>
@@ -366,10 +378,11 @@ export default function App() {
       </nav>
 
       {/* Right side */}
-      <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-        {/* M1&2 Credits */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, marginLeft:'auto' }}>
+
+        {/* M1&2 Credits — desktop only */}
         {credits && (
-          <button onClick={fetchCredits} title="Click to refresh" className="header-credits"
+          <button onClick={fetchCredits} title="Click to refresh" className="header-credits header-credits-full"
             style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'4px 10px', cursor:'pointer', transition:'all 0.15s' }}
             onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'}
             onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.04)'}>
@@ -379,7 +392,16 @@ export default function App() {
           </button>
         )}
 
-        {/* Model credits */}
+        {/* M1&2 Credits — mobile compact */}
+        {credits && (
+          <div className="header-credits-mobile"
+            style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'4px 8px' }}>
+            <span style={{ fontSize:11, fontWeight:700, color:creditsColor() }}>{formatNumber(credits.remaining)}</span>
+            <span style={{ fontSize:9, color:'var(--text3)' }}>cr</span>
+          </div>
+        )}
+
+        {/* Model credits — desktop only */}
         {credits && model3Access && (() => {
           const m3cr = credits.model3_credits;
           const rem = m3cr ? Math.max(0,(m3cr.credits_total||0)-(m3cr.credits_used||0)) : 0;
@@ -396,12 +418,14 @@ export default function App() {
           return <div className="header-model-badge" style={{ background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.25)', color:'#e11d48' }}><span>🎭</span><span>{rem}cr</span></div>;
         })()}
 
-        {/* Plan badge */}
+        {/* Plan badge — desktop only */}
         <div className="header-plan-badge" style={{ background:`${planColor}18`, border:`1px solid ${planColor}40`, color:planColor }}>
           {userPlan.toUpperCase()}
         </div>
 
-        <UserMenu user={user} plan={userPlan} onLogout={handleLogout} onNavigate={handleNavigate} model3Access={model3Access} model4Access={model4Access} model5Access={model5Access} model6Access={model6Access} avatar={userAvatar} />
+        <UserMenu user={user} plan={userPlan} onLogout={handleLogout} onNavigate={handleNavigate}
+          model3Access={model3Access} model4Access={model4Access} model5Access={model5Access} model6Access={model6Access}
+          avatar={userAvatar} currentPage={page} />
       </div>
     </header>
   );
@@ -427,24 +451,7 @@ export default function App() {
         />
       )}
 
-      {/* ── Mobile Bottom Nav ── */}
-      <div className="mobile-nav" style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:99, background:'var(--bg)', borderTop:'1px solid var(--border)', padding:'6px 8px', display:'none', alignItems:'center', justifyContent:'space-around' }}>
-        <button onClick={() => handleNavigate('home')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color: page==='input'?'#a78bfa':'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
-          <span style={{ fontSize:18 }}>🏠</span><span>Home</span>
-        </button>
-        <button onClick={() => handleNavigate('templates')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color: page==='templates'?'#a78bfa':'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
-          <span style={{ fontSize:18 }}>🎬</span><span>Templates</span>
-        </button>
-
-        <button onClick={() => setShowPricing(true)} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color:'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
-          <span style={{ fontSize:18 }}>💎</span><span>Pricing</span>
-        </button>
-        <button onClick={() => handleNavigate('support')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, background:'none', border:'none', cursor:'pointer', color: page==='support'?'#a78bfa':'#6b7280', fontSize:10, fontWeight:600, padding:'4px 8px' }}>
-          <span style={{ fontSize:18 }}>💬</span><span>Support</span>
-        </button>
-      </div>
-
-      <div style={{ paddingTop: 54, paddingBottom: 60 }}>
+      <div style={{ paddingTop: 54, paddingBottom: 20 }}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
         {page === 'input' && <InputPage
