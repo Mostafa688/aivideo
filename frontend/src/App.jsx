@@ -19,6 +19,7 @@ import ModelCinematicPage from './pages/ModelCinematicPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
 import ModelErivionPage from './pages/ModelErivionPage.jsx';
 import FAQPage from './pages/FAQPage.jsx';
+import SupportPage from './pages/SupportPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -468,7 +469,8 @@ export default function App() {
         {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />}
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
-        {['terms','privacy','support','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
+        {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
+        {page === 'support' && <SupportPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
         {page === 'faq' && <FAQPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
       </div>
     </>
