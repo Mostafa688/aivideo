@@ -67,13 +67,17 @@ router.get('/payments', adminAuth, async (req, res) => {
 });
 router.get('/users', adminAuth, async (req, res) => {
   try {
+    // Ensure banned column exists
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned INTEGER DEFAULT 0').catch(() => {});
     const { plan, search, limit = 50 } = req.query;
     let where = [], params = [], idx = 1;
     if (plan) { where.push(`plan = $${idx++}`); params.push(plan); }
     if (search) { where.push(`(email ILIKE $${idx++} OR name ILIKE $${idx - 1})`); params.push(`%${search}%`); }
     const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
     const { rows } = await pool.query(`
-      SELECT u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model4_access, u.model4_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at,
+      SELECT u.id, u.email, u.name, u.plan, u.verified,
+             u.model3_access, u.model3_plan, u.model4_access, u.model4_plan,
+             u.model5_access, u.model5_plan, u.ref_code, u.created_at,
              COALESCE(u.banned, 0) as banned,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
@@ -82,12 +86,13 @@ router.get('/users', adminAuth, async (req, res) => {
       LEFT JOIN user_usage uu ON uu.user_id = u.id
       LEFT JOIN videos v ON v.user_id = u.id
       ${whereClause}
-      GROUP BY u.id, u.email, u.name, u.plan, u.verified, u.model3_access, u.model3_plan, u.model4_access, u.model4_plan, u.model5_access, u.model5_plan, u.ref_code, u.created_at, uu.credits_used, uu.videos_this_week, u.banned
+      GROUP BY u.id, uu.credits_used, uu.videos_this_week
       ORDER BY u.id DESC
       LIMIT $${idx}
     `, [...params, parseInt(limit)]);
     res.json({ users: rows });
   } catch (err) {
+    console.error('[Admin Users]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
