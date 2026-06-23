@@ -561,6 +561,15 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
         .m4-dur{transition:all 0.2s!important}
         .m4-dur:hover{border-color:rgba(168,85,247,0.5)!important;background:rgba(168,85,247,0.06)!important}
         .m4-card{background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:20px;margin-bottom:16px}
+        .m4-section-label{font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+        .m4-section-label::before{content:'';width:3px;height:12px;border-radius:2px;background:#a855f7;display:inline-block}
+        @media(max-width:600px){
+          .m4-style-grid{grid-template-columns:repeat(4,1fr)!important;gap:6px!important}
+          .m4-dur-grid{grid-template-columns:repeat(3,1fr)!important}
+          .m4-settings-grid{grid-template-columns:1fr!important}
+          .m4-lang-row{flex-wrap:wrap!important}
+          .m4-ratio-row{flex-wrap:nowrap!important}
+        }
       `}</style>
 
       {/* Header */}
@@ -666,7 +675,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
         {/* Video Style */}
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>🎨 VIDEO STYLE</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          <div className="m4-style-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
             {VIDEO_STYLES_M4.map(s => (
               <div key={s.key} onClick={() => setVideoStyle(s.key)}
                 style={{ padding: '10px 8px', borderRadius: 12, cursor: 'pointer', textAlign: 'center', border: `1px solid ${videoStyle===s.key ? '#a855f7' : 'rgba(255,255,255,0.07)'}`, background: videoStyle===s.key ? 'rgba(168,85,247,0.12)' : 'rgba(255,255,255,0.02)', transition: 'all 0.15s' }}>
@@ -686,7 +695,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
               ✨ Auto-detected: <strong>{getSmartDuration()}</strong> based on script length
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, opacity: (mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) ? 0.4 : 1, pointerEvents: (mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) ? 'none' : 'auto' }}>
+          <div className="m4-dur-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, opacity: (mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) ? 0.4 : 1, pointerEvents: (mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) ? 'none' : 'auto' }}>
             {Object.entries(DURATION_CONFIG).map(([d, cfg]) => {
               const allowed = allowedDurations.includes(d);
               return (
@@ -703,7 +712,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
         </div>
 
         {/* Settings */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+        <div className="m4-settings-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>ASPECT RATIO</p>
             <div style={{ display: 'flex', gap: 6 }}>

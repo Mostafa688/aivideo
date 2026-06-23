@@ -590,6 +590,53 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         </div>
       </section>
 
+
+      {/* ── BLOG / ARTICLES ─────────────────────────────────────────────────── */}
+      <section style={{ padding:'80px 24px', maxWidth:1100, margin:'0 auto' }}>
+        <div className="ev-reveal" style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:48, flexWrap:'wrap', gap:16 }}>
+          <div>
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.15em', color:'#a78bfa', textTransform:'uppercase', marginBottom:12 }}>Learn & Grow</div>
+            <h2 style={{ fontSize:'clamp(28px,4vw,44px)', fontWeight:900, letterSpacing:'-1.5px', fontFamily:"'Bricolage Grotesque', sans-serif", color:'#fff', lineHeight:1.1 }}>Tips, guides &<br />creator stories</h2>
+          </div>
+          <button onClick={() => onNavigate?.('blog')} style={{ padding:'10px 22px', borderRadius:10, border:'1px solid rgba(124,106,247,0.3)', background:'rgba(124,106,247,0.08)', color:'#a78bfa', fontWeight:600, fontSize:13, cursor:'pointer', fontFamily:'inherit', transition:'all 0.2s', whiteSpace:'nowrap' }}
+            onMouseEnter={e=>{e.target.style.background='rgba(124,106,247,0.15)'}} onMouseLeave={e=>{e.target.style.background='rgba(124,106,247,0.08)'}}>
+            View all articles →
+          </button>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20 }}>
+          {[
+            { title:'How to Create Viral Historical Videos with AI in 2025', tag:'Tutorial', read:'5 min', img:'https://images.unsplash.com/photo-1461360370896-922624d12aa1?w=600&q=80', color:'#f59e0b' },
+            { title:'The Complete Guide to Arabic AI Voiceover for YouTube', tag:'Guide', read:'7 min', img:'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&q=80', color:'#a855f7' },
+            { title:'10 Video Hooks That Get Millions of Views on TikTok', tag:'Strategy', read:'4 min', img:'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&q=80', color:'#06b6d4' },
+            { title:'Seedance vs Stock Footage: Which Makes Better Videos?', tag:'Comparison', read:'6 min', img:'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&q=80', color:'#e11d48' },
+            { title:'How to Make $5,000/Month Selling AI Videos Online', tag:'Business', read:'8 min', img:'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&q=80', color:'#10b981' },
+            { title:'Islamic History Videos: A Creator's Complete AI Workflow', tag:'Case Study', read:'10 min', img:'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=600&q=80', color:'#7c6af7' },
+          ].map((post,i) => (
+            <div key={i} className="ev-reveal" data-delay={i*60}
+              onClick={() => onNavigate?.('blog')}
+              style={{ borderRadius:18, overflow:'hidden', cursor:'pointer', border:'1px solid rgba(255,255,255,0.06)', background:'rgba(255,255,255,0.02)', transition:'all 0.3s cubic-bezier(0.16,1,0.3,1)' }}
+              onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.borderColor='rgba(124,106,247,0.3)'; e.currentTarget.style.boxShadow='0 20px 48px rgba(0,0,0,0.4)'; }}
+              onMouseLeave={e=>{ e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.06)'; e.currentTarget.style.boxShadow='none'; }}>
+              <div style={{ height:180, position:'relative', overflow:'hidden' }}>
+                <img src={post.img} alt={post.title} loading="lazy"
+                  style={{ width:'100%', height:'100%', objectFit:'cover', filter:'brightness(0.7)' }} />
+                <div style={{ position:'absolute', inset:0, background:`linear-gradient(to top, rgba(5,5,8,0.9) 0%, transparent 50%)` }} />
+                <div style={{ position:'absolute', top:12, left:12, padding:'3px 10px', borderRadius:999, background:post.color, fontSize:9, fontWeight:700, color:'#fff', letterSpacing:'0.08em' }}>{post.tag.toUpperCase()}</div>
+              </div>
+              <div style={{ padding:'16px 18px 20px' }}>
+                <h3 style={{ fontSize:14, fontWeight:700, color:'#e5e7eb', lineHeight:1.5, marginBottom:10, fontFamily:"'Bricolage Grotesque', sans-serif" }}>{post.title}</h3>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <div style={{ width:20, height:20, borderRadius:'50%', background:`linear-gradient(135deg,${post.color},${post.color}88)`, fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}>E</div>
+                  <span style={{ fontSize:11, color:'#6b7280' }}>Erivion Blog</span>
+                  <span style={{ fontSize:11, color:'#374151' }}>·</span>
+                  <span style={{ fontSize:11, color:'#6b7280' }}>{post.read} read</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── CTA BANNER ─────────────────────────────────────────────────────── */}
       <section style={{ padding:'80px 24px' }}>
         <div className="ev-reveal" style={{ maxWidth:900, margin:'0 auto', borderRadius:28, background:'linear-gradient(135deg, rgba(124,106,247,0.15) 0%, rgba(6,182,212,0.08) 100%)', border:'1px solid rgba(124,106,247,0.2)', padding:'64px 48px', textAlign:'center', position:'relative', overflow:'hidden' }}>

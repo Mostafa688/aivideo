@@ -956,7 +956,21 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
         .pc-popular{transform:scale(1.03)!important}
         .pc-popular:hover{transform:scale(1.03) translateY(-6px)!important}
         .pc-btn{transition:all 0.2s ease!important}
-        .pc-btn:hover{opacity:0.9!important;transform:scale(1.02)!important}
+        .pc-btn:hover{opacity:0.9!important;transform:translateY(-1px)!important}
+        .pc-feature-check{width:18px;height:18px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px}
+        .pc-tab-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;font-weight:700;font-size:13px;transition:all 0.2s;font-family:inherit}
+        @media(max-width:900px){
+          .pc-plans-grid{grid-template-columns:repeat(2,1fr)!important}
+          .pc-models-grid{grid-template-columns:repeat(2,1fr)!important}
+        }
+        @media(max-width:600px){
+          .pc-plans-grid{grid-template-columns:1fr!important}
+          .pc-models-grid{grid-template-columns:1fr!important}
+          .pc-tabs{gap:4px!important}
+          .pc-tab-btn{padding:9px 12px!important;font-size:11px!important}
+          .pc-header-h1{font-size:clamp(26px,8vw,42px)!important}
+          .pc-billing-toggle{flex-direction:row!important}
+        }
       `}</style>
       <PricingSEO />
 
@@ -990,15 +1004,14 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
       </div>
 
       {/* Tab Switcher */}
-      <div style={{ display:'flex', gap:4, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:4, marginBottom:36 }}>
+      <div className="pc-tabs" style={{ display:'flex', gap:4, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:4, marginBottom:36, flexWrap:'wrap' }}>
         {[
-          { key:'main', label:'Model 1 & 2 Plans', icon:'🎬', badge:null },
-          { key:'more', label:'Model 3, 4 & 5 Plans', icon:'✨', badge:null },
+          { key:'main', label:'Model 1 & 2 Plans', icon:'🎬' },
+          { key:'more', label:'Model 3, 4 & 5 Plans', icon:'✨' },
         ].map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-            style={{ padding:'11px 28px', borderRadius:12, border:'none', cursor:'pointer', fontWeight:700, fontSize:14, transition:'all 0.2s', background:activeTab===tab.key?'linear-gradient(135deg,#7c6af7,#6d28d9)':'transparent', color:activeTab===tab.key?'#fff':'rgba(255,255,255,0.4)', display:'flex', alignItems:'center', gap:8, boxShadow:activeTab===tab.key?'0 4px 16px rgba(124,106,247,0.35)':'none' }}>
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="pc-tab-btn"
+            style={{ flex:1, borderRadius:12, cursor:'pointer', fontWeight:700, transition:'all 0.2s', background:activeTab===tab.key?'linear-gradient(135deg,#7c6af7,#6d28d9)':'transparent', color:activeTab===tab.key?'#fff':'rgba(255,255,255,0.4)', display:'flex', alignItems:'center', justifyContent:'center', gap:6, boxShadow:activeTab===tab.key?'0 4px 16px rgba(124,106,247,0.35)':'none', whiteSpace:'nowrap' }}>
             {tab.icon} {tab.label}
-            {tab.badge && <span style={{ background:'rgba(245,158,11,0.2)', border:'1px solid rgba(245,158,11,0.35)', color:'#f59e0b', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:999 }}>{tab.badge}</span>}
           </button>
         ))}
       </div>
@@ -1017,7 +1030,7 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
             ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, width: '100%', maxWidth: 1100 }}>
+          <div className="pc-plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, width: '100%', maxWidth: 1100 }}>
             {PLANS.map((plan, idx) => {
               const isCurrentPlan = currentPlan === plan.key;
               const isHovered = hoveredPlan === plan.key;
@@ -1038,18 +1051,23 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                   <div style={{ height:3, background:`linear-gradient(90deg,${plan.color},${plan.color}66,transparent)`, opacity: isHovered || plan.popular ? 1 : 0.4, transition:'opacity 0.3s' }} />
                   <div style={{ padding:'28px 24px' }}>
                   {plan.popular && (
-                    <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #7c6af7, #06b6d4)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 16px', borderRadius: 999, letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>⭐ MOST POPULAR</div>
+                    <div style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #7c6af7, #a855f7)', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 18px', borderRadius: 999, letterSpacing: '0.08em', whiteSpace: 'nowrap', boxShadow:'0 4px 12px rgba(124,106,247,0.5)' }}>⭐ MOST POPULAR</div>
                   )}
                   {isCurrentPlan && (
-                    <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', color: '#22c55e', fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 999 }}>Current</div>
+                    <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', color: '#22c55e', fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }}>✓ Current</div>
                   )}
-                  <div style={{ marginBottom: 16 }}>
-                    <span style={{ fontSize: 32 }}>{plan.icon}</span>
-                    <h3 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: '8px 0 4px' }}>{plan.name}</h3>
-                    <div style={{ fontSize: 28, fontWeight: 800, color: plan.color }}>{getPrice(plan)}</div>
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+                      <div style={{ width:40, height:40, borderRadius:12, background:`linear-gradient(135deg,${plan.color}cc,${plan.color}66)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, boxShadow:`0 4px 16px ${plan.color}40` }}>{plan.icon}</div>
+                      <h3 style={{ fontSize: 20, fontWeight: 800, color: '#fff', margin: 0 }}>{plan.name}</h3>
+                    </div>
+                    <div style={{ fontSize: 30, fontWeight: 900, color: plan.color, letterSpacing:'-1px' }}>{getPrice(plan)}</div>
                     {billing === 'yearly' && plan.key !== 'free' && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{plan.price_yearly} EGP / year</div>}
-                    {getOffer(plan) && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 4, fontWeight: 600 }}>{getOffer(plan)}</div>}
-                    {plan.creditNote && plan.key !== 'free' && <div style={{ fontSize:11, color:'#4b5563', marginTop:6 }}>💡 {plan.creditNote}</div>}
+                    {plan.creditNote && plan.key !== 'free' && (
+                      <div style={{ marginTop:10, display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:999, background:`${plan.color}12`, border:`1px solid ${plan.color}28`, fontSize:10, fontWeight:700, color:plan.color }}>
+                        🪙 {plan.creditNote}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 20, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '10px 12px' }}>
                     <div style={{ flex: 1, textAlign: 'center' }}>
@@ -1062,13 +1080,17 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                       <div style={{ fontSize: 10, color: '#6b7280' }}>credits</div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 24 }}>
                     {plan.features.map((feat, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 14, flexShrink: 0 }}>{feat.included ? '✅' : '❌'}</span>
-                        <span style={{ fontSize: 13, color: feat.included ? '#d1d5db' : '#4b5563', flex: 1 }}>{feat.text}</span>
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div className="pc-feature-check" style={{ background: feat.included ? `${plan.color}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${feat.included ? plan.color + '33' : 'rgba(255,255,255,0.08)'}` }}>
+                          {feat.included
+                            ? <span style={{ color: plan.color, fontSize: 10, fontWeight: 800 }}>✓</span>
+                            : <span style={{ color: '#374151', fontSize: 10 }}>–</span>}
+                        </div>
+                        <span style={{ fontSize: 12.5, color: feat.included ? '#d1d5db' : '#374151', flex: 1, lineHeight: 1.4 }}>{feat.text}</span>
                         {feat.badge && (
-                          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: feat.badge === 'PRO' ? 'rgba(124,106,247,0.2)' : feat.badge === 'PLUS' ? 'rgba(6,182,212,0.2)' : 'rgba(245,158,11,0.2)', color: feat.badge === 'PRO' ? '#7c6af7' : feat.badge === 'PLUS' ? '#06b6d4' : '#f59e0b', letterSpacing: '0.04em' }}>{feat.badge}</span>
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: 'rgba(124,106,247,0.12)', color: '#7c6af7', letterSpacing: '0.05em', flexShrink: 0 }}>{feat.badge}</span>
                         )}
                       </div>
                     ))}
@@ -1108,7 +1130,7 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                 ⚠️ These plans are exclusive to <strong style={{ color:'#fbbf24' }}>Model 3</strong> only — separate from Model 1, 2, 4 & 5 plans
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+            <div className="pc-models-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
               {MODEL3_PLANS.map((plan, idx) => (
                 <div key={plan.key}
                   onMouseEnter={() => setHoveredPlan('m3_' + plan.key)}
@@ -1183,7 +1205,7 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                 ⚠️ These plans are exclusive to <strong style={{ color:'#d8b4fe' }}>Model 4</strong> only — subscribing to Model 2 does NOT unlock Model 4
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+            <div className="pc-models-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
               {MODEL4_PLANS_LIST.map((plan, idx) => (
                 <div key={plan.key}
                   onMouseEnter={() => setHoveredPlan('m4_' + plan.key)}
@@ -1251,7 +1273,7 @@ export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip
                 ⚠️ These plans are exclusive to <strong style={{ color:'#fda4af' }}>Model 5 (Cinematic)</strong> only — separate from all other models
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+            <div className="pc-models-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
               {MC_PLANS_LIST.map((plan, idx) => (
                 <div key={plan.key}
                   onMouseEnter={() => setHoveredPlan('mc_' + plan.key)}

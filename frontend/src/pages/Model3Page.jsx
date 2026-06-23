@@ -420,6 +420,13 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         .m3-sel.active{border-color:#f59e0b!important;background:rgba(245,158,11,0.08)!important}
         .m3-toggle{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:12px;cursor:pointer;transition:all 0.15s;border:1px solid transparent}
         .m3-toggle:hover{background:rgba(255,255,255,0.04)}
+        @media(max-width:600px){
+          .m3-card{padding:16px!important;border-radius:14px!important}
+          .m3-style-grid{grid-template-columns:repeat(3,1fr)!important;gap:8px!important}
+          .m3-dur-grid{grid-template-columns:repeat(3,1fr)!important}
+          .m3-lang-grid{grid-template-columns:repeat(4,1fr)!important;gap:6px!important}
+          .m3-ratio-grid{grid-template-columns:repeat(3,1fr)!important}
+        }
       `}</style>
 
       <div style={{ width:'100%', maxWidth:660, animation:'fadeUp 0.4s ease' }}>
@@ -575,7 +582,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         {/* Video Style */}
         <div className="m3-card">
           <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:14 }}>🎨 Visual Style</p>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+          <div className="m3-style-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
             {VIDEO_STYLES.map(s => (
               <div key={s.key} onClick={() => setVideoStyle(s.key)} style={{ padding:'14px 10px', borderRadius:12, cursor:'pointer', textAlign:'center', border:'1px solid ' + (videoStyle===s.key ? '#f59e0b' : 'var(--border)'), background: videoStyle===s.key ? 'rgba(245,158,11,0.08)' : 'var(--bg3)', transition:'all 0.15s' }}>
                 <div style={{ fontSize:24, marginBottom:6 }}>{s.emoji}</div>

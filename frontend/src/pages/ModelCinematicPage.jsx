@@ -389,8 +389,17 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         @keyframes pulse{0%,100%{opacity:0.5}50%{opacity:1}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         .char-input:focus{border-color:rgba(225,29,72,0.5)!important;box-shadow:0 0 0 3px rgba(225,29,72,0.08)!important;outline:none}
-        .style-card:hover{border-color:rgba(225,29,72,0.35)!important;background:rgba(225,29,72,0.05)!important;transform:translateY(-2px)}
+        .style-card{transition:all 0.2s!important;cursor:pointer}
+        .style-card:hover{border-color:rgba(225,29,72,0.4)!important;background:rgba(225,29,72,0.07)!important;transform:translateY(-2px)}
         .mc-section{background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:20px;margin-bottom:18px}
+        .mc-section-label{font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+        .mc-section-label::before{content:'';width:3px;height:12px;border-radius:2px;background:#e11d48;display:inline-block}
+        @media(max-width:600px){
+          .mc-style-grid{grid-template-columns:repeat(3,1fr)!important;gap:8px!important}
+          .mc-dur-grid{grid-template-columns:repeat(3,1fr)!important}
+          .mc-ratio-grid{grid-template-columns:repeat(3,1fr)!important}
+          .mc-section{padding:14px!important}
+        }
       `}</style>
 
       <div style={{ padding:'clamp(24px,4vw,36px) clamp(16px,4vw,24px) 20px', borderBottom:'1px solid rgba(225,29,72,0.08)', position:'relative', overflow:'hidden' }}>
@@ -517,7 +526,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         {/* Video Style */}
         <div style={{ marginBottom:22 }}>
           <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>🎨 Video Style</label>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+          <div className="mc-style-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
             {VIDEO_STYLES.map(s => (
               <div key={s.key} onClick={()=>setVideoStyle(s.key)} className="style-card"
                 style={{ padding:'14px 10px', borderRadius:12, cursor:'pointer', textAlign:'center', border:`1px solid ${videoStyle===s.key?'rgba(225,29,72,0.6)':'rgba(255,255,255,0.07)'}`, background:videoStyle===s.key?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', transition:'all 0.15s', boxShadow:videoStyle===s.key?'0 0 16px rgba(225,29,72,0.2)':'none' }}>

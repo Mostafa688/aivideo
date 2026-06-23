@@ -742,6 +742,11 @@ export default function AdminPage() {
   const [rechargeModel, setRechargeModel] = useState('m12');
   const [rechargeEmail, setRechargeEmail] = useState('');
   const [rechargeAmount, setRechargeAmount] = useState('');
+  const [supportChats, setSupportChats] = useState([]);
+  const [activeChat, setActiveChat] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [adminReply, setAdminReply] = useState('');
+  const [supportPoll, setSupportPoll] = useState(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -799,30 +804,66 @@ export default function AdminPage() {
 
   const handleAddCredits = handleRecharge;
 
-  const loadUsers    = useCallback(async () => { setLoading(true); try { const params = new URLSearchParams(); if (planFilter) params.set('plan', planFilter); if (search) params.set('search', search); const r = await fetch('/api/admin/users?' + params, { headers }); const d = await r.json(); setUsers(d.users || []); } catch (e) { console.error(e); } setLoading(false); }, [planFilter, search]);
-
-  useEffect(() => {
-    const saveModelAccess = async (model, access, plan) => {
-    if (!editUser) return;
-    setSaving(true);
+  const loadSupport = useCallback(async () => {
+    setLoading(true);
     try {
-      const r = await fetch(`/api/admin/user/${model}`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ email: editUser.email, access: access ? 1 : 0, plan }),
-      });
+      const r = await fetch('/api/support/chats', { headers: { ...headers, 'x-admin-secret': headers.Authorization?.replace('Bearer ','') || sessionStorage.getItem('erivion_admin_ok') } });
       const d = await r.json();
-      if (d.success) { showToast(`✅ Model ${model} updated`); loadUsers(); }
-      else showToast('❌ ' + d.error);
-    } catch (e) { showToast('❌ Error: ' + e.message); }
-    setSaving(false);
+      setSupportChats(d.chats || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
+  const loadChatMessages = async (chatId) => {
+    try {
+      const r = await fetch(`/api/support/messages/${chatId}`);
+      const d = await r.json();
+      if (d.messages) setChatMessages(d.messages);
+    } catch {}
   };
 
-  if (!authed) return;
+  const sendAdminReply = async () => {
+    if (!adminReply.trim() || !activeChat) return;
+    try {
+      await fetch('/api/support/admin-reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: activeChat.id, text: adminReply.trim(), secret: process.env.ADMIN_SECRET }),
+      });
+      setAdminReply('');
+      await loadChatMessages(activeChat.id);
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+
+  const deleteChat = async (chatId) => {
+    if (!confirm('Delete this chat?')) return;
+    try {
+      await fetch(`/api/support/chat/${chatId}`, { method: 'DELETE', headers: { 'x-admin-secret': sessionStorage.getItem('erivion_admin_secret') || '' } });
+      setSupportChats(prev => prev.filter(c => c.id !== chatId));
+      if (activeChat?.id === chatId) { setActiveChat(null); setChatMessages([]); }
+      showToast('✅ Chat deleted');
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+
+  const loadUsers = useCallback(async () => { setLoading(true); try { const params = new URLSearchParams(); if (planFilter) params.set('plan', planFilter); if (search) params.set('search', search); const r = await fetch('/api/admin/users?' + params, { headers }); const d = await r.json(); setUsers(d.users || []); } catch (e) { console.error(e); } setLoading(false); }, [planFilter, search]);
+
+  useEffect(() => {
+    if (!authed) return;
     if (tab === 'overview') loadStats();
     else if (tab === 'users') loadUsers();
     else if (tab === 'payments') loadPayments();
     else if (tab === 'videos') loadVideos();
-  }, [authed, tab, loadStats, loadUsers, loadPayments, loadVideos]);
+    else if (tab === 'support') { loadSupport(); }
+  }, [authed, tab, loadStats, loadUsers, loadPayments, loadVideos, loadSupport]);
+
+  // Poll support messages when chat is open
+  useEffect(() => {
+    if (activeChat) {
+      loadChatMessages(activeChat.id);
+      const iv = setInterval(() => loadChatMessages(activeChat.id), 5000);
+      return () => clearInterval(iv);
+    }
+  }, [activeChat]);
 
   const savePlan = async () => {
     if (!editUser) return;
@@ -874,10 +915,10 @@ export default function AdminPage() {
     { key: 'users',      label: '👥 Users'       },
     { key: 'payments',   label: '💰 Payments'    },
     { key: 'videos',     label: '🎬 Videos'      },
+    { key: 'support',    label: `💬 Support${supportChats.length>0?' ('+supportChats.length+')':''}` },
     { key: 'affiliates', label: '🤝 Affiliates'  },
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'answers',    label: '📋 Answers'     },
-    { key: 'studio',     label: '🎥 My Studio'   },
   ];
 
   return (
@@ -1241,6 +1282,106 @@ export default function AdminPage() {
         )}
 
         {tab === 'studio' && <StudioTab s={s} />}
+
+        {/* ── Support Chat Tab ── */}
+        {tab === 'support' && (
+          <div>
+            <div style={s.topbar}>
+              <div style={s.title}>💬 Support Chats ({supportChats.length})</div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button style={s.btn('#374151')} onClick={async () => { await fetch('/api/support/cleanup', {method:'POST'}); loadSupport(); }}>🗑️ Cleanup Expired</button>
+                <button style={s.btn()} onClick={loadSupport}>🔄 Refresh</button>
+              </div>
+            </div>
+
+            {supportChats.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'60px 20px', color:'#4b5563' }}>
+                <div style={{ fontSize:40, marginBottom:12 }}>💬</div>
+                <p>No active support chats.</p>
+                <p style={{ fontSize:12, marginTop:6 }}>Chats auto-delete after 24 hours.</p>
+              </div>
+            ) : (
+              <div style={{ display:'grid', gridTemplateColumns:activeChat?'280px 1fr':'1fr', gap:16, height:'calc(100vh - 180px)' }}>
+                {/* Chat List */}
+                <div style={{ display:'flex', flexDirection:'column', gap:8, overflowY:'auto' }}>
+                  {supportChats.map(chat => (
+                    <div key={chat.id}
+                      onClick={() => setActiveChat(chat)}
+                      style={{ padding:'14px 16px', borderRadius:12, border:`1px solid ${activeChat?.id===chat.id?'rgba(124,106,247,0.5)':'#1a1a2e'}`, background:activeChat?.id===chat.id?'rgba(124,106,247,0.1)':'#0f0f1a', cursor:'pointer', transition:'all 0.15s' }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                        <div style={{ fontWeight:700, fontSize:13, color:'#fff' }}>{chat.name}</div>
+                        <div style={{ fontSize:10, padding:'2px 8px', borderRadius:999, background:chat.language==='ar'?'rgba(52,211,153,0.15)':'rgba(6,182,212,0.15)', color:chat.language==='ar'?'#34d399':'#06b6d4', fontWeight:700 }}>
+                          {chat.language==='ar'?'🇸🇦 AR':'🇺🇸 EN'}
+                        </div>
+                      </div>
+                      <div style={{ fontSize:11, color:'#6b7280', marginBottom:4 }}>{chat.email}</div>
+                      {chat.last_message && <div style={{ fontSize:11, color:'#4b5563', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{chat.last_message}</div>}
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
+                        <div style={{ fontSize:10, color:'#374151' }}>{new Date(chat.created_at).toLocaleString()}</div>
+                        <div style={{ display:'flex', gap:8, fontSize:10, color:'#6b7280' }}>
+                          <span>👤 {chat.user_msg_count}</span>
+                          <span>💬 {chat.admin_msg_count}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Chat Window */}
+                {activeChat && (
+                  <div style={{ display:'flex', flexDirection:'column', background:'#0f0f1a', border:'1px solid #1a1a2e', borderRadius:16, overflow:'hidden' }}>
+                    {/* Chat Header */}
+                    <div style={{ padding:'14px 18px', borderBottom:'1px solid #1a1a2e', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:14, color:'#fff' }}>{activeChat.name}</div>
+                        <div style={{ fontSize:12, color:'#6b7280' }}>{activeChat.email} · {activeChat.language==='ar'?'Arabic':'English'}</div>
+                      </div>
+                      <div style={{ display:'flex', gap:8 }}>
+                        <button style={s.btn('#1e3a2f')} onClick={() => { window.location.href=`mailto:${activeChat.email}`; }}>📧 Email</button>
+                        <button style={s.btn('#7f1d1d')} onClick={() => deleteChat(activeChat.id)}>🗑️ Delete</button>
+                        <button style={{ ...s.btn('#374151') }} onClick={() => { setActiveChat(null); setChatMessages([]); }}>✕</button>
+                      </div>
+                    </div>
+
+                    {/* Messages */}
+                    <div style={{ flex:1, overflowY:'auto', padding:'16px', display:'flex', flexDirection:'column', gap:10 }}>
+                      {chatMessages.map((m,i) => (
+                        <div key={i} style={{ display:'flex', flexDirection:'column', alignItems:m.role==='user'?'flex-start':'m.role==='admin'?'flex-end':'center' }}>
+                          {m.role==='system' ? (
+                            <div style={{ alignSelf:'center', padding:'6px 14px', borderRadius:20, background:'rgba(255,255,255,0.05)', fontSize:11, color:'rgba(255,255,255,0.4)' }}>{m.text}</div>
+                          ) : (
+                            <>
+                              <div style={{ fontSize:10, color:'#4b5563', marginBottom:3 }}>{m.role==='user'?activeChat.name:'You (Admin)'}</div>
+                              <div style={{ maxWidth:'75%', padding:'10px 14px', borderRadius:14, fontSize:13, lineHeight:1.7, whiteSpace:'pre-line',
+                                background:m.role==='user'?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#7c6af7,#a855f7)',
+                                color:'#e5e7eb', border:m.role==='user'?'1px solid #1a1a2e':'none' }}>
+                                {m.text}
+                              </div>
+                              <div style={{ fontSize:10, color:'#374151', marginTop:2 }}>{new Date(m.time).toLocaleTimeString()}</div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Reply Input */}
+                    <div style={{ padding:'12px 16px', borderTop:'1px solid #1a1a2e', display:'flex', gap:8 }}>
+                      <textarea value={adminReply} onChange={e=>setAdminReply(e.target.value)}
+                        onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAdminReply();} }}
+                        placeholder={activeChat.language==='ar'?'اكتب ردك هنا...':'Type your reply...'}
+                        rows={2}
+                        style={{ flex:1, ...s.input, resize:'none', fontFamily:'inherit', fontSize:13, direction:activeChat.language==='ar'?'rtl':'ltr' }} />
+                      <button onClick={sendAdminReply} disabled={!adminReply.trim()}
+                        style={{ ...s.btn(), padding:'0 18px', opacity:adminReply.trim()?1:0.4 }}>
+                        Send →
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </div>
