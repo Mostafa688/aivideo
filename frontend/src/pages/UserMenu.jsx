@@ -227,14 +227,27 @@ function AffiliateModal({ user, onClose }) {
 
 export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '' }) {
   const [open, setOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
+  const [showMobileDrawer, setShowMobileDrawer] = useState(false);
   const [showAffiliate, setShowAffiliate] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [hovered, setHovered] = useState(null);
   const menuRef = useRef(null);
 
+  const handleToggle = () => {
+    if (window.innerWidth <= 640) {
+      setShowMobileDrawer(d => !d);
+      setOpen(false);
+    } else {
+      setOpen(o => !o);
+      setShowMobileDrawer(false);
+    }
+  };
+
   useEffect(() => {
-    const fn = () => setIsMobile(window.innerWidth <= 640);
+    const fn = () => {
+      if (window.innerWidth > 640) setShowMobileDrawer(false);
+      else setOpen(false);
+    };
     window.addEventListener('resize', fn);
     return () => window.removeEventListener('resize', fn);
   }, []);
@@ -276,6 +289,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
 
   const handleItemClick = (key) => {
     setOpen(false);
+    setShowMobileDrawer(false);
     if (key === 'affiliate') setShowAffiliate(true);
     else if (key === 'howto') setShowHowTo(true);
     else onNavigate?.(key);
@@ -298,7 +312,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
       <div ref={menuRef} style={{ position:'relative' }}>
 
         {/* Avatar button */}
-        <button className="um-avatar" onClick={() => setOpen(o => !o)} style={{
+        <button className="um-avatar" onClick={handleToggle} style={{
           width:36, height:36, borderRadius:'50%', cursor:'pointer',
           background: avatar ? 'transparent' : `linear-gradient(135deg, ${meta.color}22, ${meta.color}44)`,
           border:`2px solid ${meta.color}`,
@@ -318,7 +332,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         </button>
 
         {/* Dropdown - desktop only */}
-        {open && !isMobile && (
+        {open && (
           <div style={{
             position:'fixed', top:58, right:12, zIndex:9999,
             background:'#09090f',
@@ -422,9 +436,9 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
       </div>
 
       {/* Mobile Drawer */}
-      {open && isMobile && (
+      {showMobileDrawer && (
         <>
-          <div onClick={() => setOpen(false)} style={{ position:'fixed', inset:0, zIndex:9998, background:'rgba(0,0,0,0.5)' }} />
+          <div onClick={() => setShowMobileDrawer(false)} style={{ position:'fixed', inset:0, zIndex:9998, background:'rgba(0,0,0,0.5)' }} />
           <div style={{ position:'fixed', top:0, right:0, bottom:0, width:280, zIndex:9999, background:'#09090f', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', overflowY:'auto', boxShadow:'-8px 0 32px rgba(0,0,0,0.6)', animation:'drawerIn 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
             <style>{`@keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
 
@@ -439,14 +453,14 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                   <div style={{ fontSize:11, color:meta.color, fontWeight:700, marginTop:2 }}>{meta.label} Plan</div>
                 </div>
               </div>
-              <button onClick={() => setOpen(false)} style={{ width:30, height:30, borderRadius:8, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'#9ca3af', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+              <button onClick={() => setShowMobileDrawer(false)} style={{ width:30, height:30, borderRadius:8, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'#9ca3af', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
             </div>
 
             {/* Nav */}
             <div style={{ padding:'10px 8px 4px' }}>
               <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0 8px 8px' }}>NAVIGATE</div>
               {[{key:'home',icon:'🏠',label:'Home'},{key:'pricing',icon:'💎',label:'Pricing'},{key:'templates',icon:'🎬',label:'Templates'},{key:'support',icon:'💬',label:'Support'},{key:'faq',icon:'❓',label:'FAQ'}].map(item => (
-                <button key={item.key} onClick={() => { setOpen(false); onNavigate?.(item.key); }} className="um-item"
+                <button key={item.key} onClick={() => { setShowMobileDrawer(false); onNavigate?.(item.key); }} className="um-item"
                   style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'11px 10px', borderRadius:10, border:'none', background:currentPage===item.key?`${meta.color}18`:'transparent', color:currentPage===item.key?meta.color:'#d1d5db', cursor:'pointer', fontSize:14, fontWeight:currentPage===item.key?700:500, textAlign:'left' }}>
                   <span style={{ fontSize:18, width:24, textAlign:'center' }}>{item.icon}</span>
                   {item.label}
@@ -479,7 +493,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
             </div>
 
             <div style={{ padding:'8px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
-              <button onClick={() => { setOpen(false); onLogout?.(); }}
+              <button onClick={() => { setShowMobileDrawer(false); onLogout?.(); }}
                 style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'12px 10px', borderRadius:10, border:'none', background:'rgba(239,68,68,0.06)', color:'#ef4444', cursor:'pointer', fontSize:14, fontWeight:600, textAlign:'left' }}>
                 <span style={{ fontSize:16, width:24, textAlign:'center' }}>→</span>Sign Out
               </button>
