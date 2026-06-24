@@ -43,32 +43,20 @@ router.post('/start', async (req, res) => {
       [chatId, name.trim(), email.trim(), language || 'en']
     );
 
-    // Notify admin by email
-    const isAr = language === 'ar';
+    // Notify admin by email via Resend
     try {
-      await fetch(`${process.env.BACKEND_URL || 'http://localhost:3000'}/api/auth/send-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
-          subject: `💬 New Support Chat — ${name} (${language === 'ar' ? 'Arabic' : 'English'})`,
-          html: `
-            <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
-              <h2 style="color:#a78bfa;margin:0 0 16px">💬 New Support Chat Started</h2>
-              <table style="width:100%;border-collapse:collapse;margin:16px 0">
-                <tr><td style="color:#888;padding:8px 0;width:100px">Name</td><td style="color:#fff;font-weight:600">${name}</td></tr>
-                <tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff">${email}</td></tr>
-                <tr><td style="color:#888;padding:8px 0">Language</td><td style="color:#fff">${language === 'ar' ? '🇸🇦 Arabic' : '🇺🇸 English'}</td></tr>
-                <tr><td style="color:#888;padding:8px 0">Chat ID</td><td style="color:#7c6af7;font-family:monospace;font-size:12px">${chatId}</td></tr>
-              </table>
-              <p style="color:#888;font-size:13px">Reply to this customer from your Admin Panel → Support tab.</p>
-              <div style="margin-top:20px;padding:12px;background:rgba(124,106,247,0.1);border-radius:8px;border:1px solid rgba(124,106,247,0.2)">
-                <p style="color:#a78bfa;font-size:13px;margin:0">⚡ This chat will auto-delete in 24 hours.</p>
-              </div>
-            </div>
-          `,
-        }),
-      });
+      if (process.env.RESEND_API_KEY) {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Erivion Support <support@erivion.net>',
+            to: [process.env.ADMIN_EMAIL || 'digidelight33@gmail.com'],
+            subject: `💬 New Support Chat — ${name} (${language === 'ar' ? 'Arabic' : 'English'})`,
+            html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#a78bfa;margin:0 0 16px">💬 New Support Chat Started</h2><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr><td style="color:#888;padding:8px 0;width:100px">Name</td><td style="color:#fff;font-weight:600">${name}</td></tr><tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff">${email}</td></tr><tr><td style="color:#888;padding:8px 0">Language</td><td style="color:#fff">${language === 'ar' ? '🇸🇦 Arabic' : '🇺🇸 English'}</td></tr><tr><td style="color:#888;padding:8px 0">Chat ID</td><td style="color:#7c6af7;font-family:monospace;font-size:12px">${chatId}</td></tr></table><p style="color:#888;font-size:13px">Reply from Admin Panel → Support tab.</p></div>`,
+          }),
+        });
+      }
     } catch (e) { console.warn('[Support] Email notify failed:', e.message); }
 
     res.json({ chatId, success: true });
@@ -118,16 +106,34 @@ router.get('/chats', async (req, res) => {
   const secret = req.headers['x-admin-secret'] || req.query.secret;
   if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
   try {
+    // Add read_at column if not exists
+    await pool.query(`ALTER TABLE support_chats ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ DEFAULT NULL`).catch(()=>{});
     const { rows } = await pool.query(`
-      SELECT sc.*, 
+      SELECT sc.*,
         (SELECT text FROM support_messages WHERE chat_id = sc.id ORDER BY created_at DESC LIMIT 1) as last_message,
+        (SELECT created_at FROM support_messages WHERE chat_id = sc.id ORDER BY created_at DESC LIMIT 1) as last_message_at,
         (SELECT COUNT(*) FROM support_messages WHERE chat_id = sc.id AND role = 'user') as user_msg_count,
-        (SELECT COUNT(*) FROM support_messages WHERE chat_id = sc.id AND role = 'admin') as admin_msg_count
+        (SELECT COUNT(*) FROM support_messages WHERE chat_id = sc.id AND role = 'admin') as admin_msg_count,
+        (SELECT COUNT(*) FROM support_messages WHERE chat_id = sc.id AND role = 'user'
+          AND created_at > COALESCE(sc.read_at, '2000-01-01')) as unread_count
       FROM support_chats sc
       WHERE sc.expires_at > NOW()
       ORDER BY sc.created_at DESC
     `);
     res.json({ chats: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Mark chat as read ─────────────────────────────────────────────────────────
+router.post('/mark-read', async (req, res) => {
+  const secret = req.headers['x-admin-secret'] || req.body.secret;
+  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+  const { chatId } = req.body;
+  try {
+    await pool.query(`UPDATE support_chats SET read_at = NOW() WHERE id = $1`, [chatId]);
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

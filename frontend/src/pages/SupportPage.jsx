@@ -80,8 +80,13 @@ export default function SupportPage({ onBack, onNavigate }) {
             : `Hi ${name}! A team member will reply to you shortly. Feel free to send your message now.`,
           time: new Date().toISOString(),
         }]);
+      } else {
+        // Show error to user
+        alert(d.error || (isAr ? 'حدث خطأ، حاول مرة أخرى' : 'Something went wrong, please try again'));
       }
-    } catch {}
+    } catch(e) {
+      alert(isAr ? 'تعذّر الاتصال بالخادم، حاول مرة أخرى' : 'Could not connect to server, please try again');
+    }
     setSending(false);
   };
 

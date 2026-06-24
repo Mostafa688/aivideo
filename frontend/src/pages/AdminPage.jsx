@@ -747,6 +747,7 @@ export default function AdminPage() {
   const [chatMessages, setChatMessages] = useState([]);
   const [adminReply, setAdminReply] = useState('');
   const [supportPoll, setSupportPoll] = useState(null);
+  const totalUnread = supportChats.reduce((sum, c) => sum + (parseInt(c.unread_count)||0), 0);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -807,12 +808,30 @@ export default function AdminPage() {
   const loadSupport = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/support/chats', { headers: { ...headers, 'x-admin-secret': headers.Authorization?.replace('Bearer ','') || sessionStorage.getItem('erivion_admin_ok') } });
+      const r = await fetch('/api/support/chats', { headers: { ...headers, 'x-admin-secret': ADMIN_SECRET } });
       const d = await r.json();
       setSupportChats(d.chats || []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
+
+  // Auto-refresh support every 30s
+  useEffect(() => {
+    if (!authed) return;
+    const iv = setInterval(() => loadSupport(), 30000);
+    return () => clearInterval(iv);
+  }, [authed, loadSupport]);
+
+  const markChatRead = async (chatId) => {
+    try {
+      await fetch('/api/support/mark-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, secret: ADMIN_SECRET }),
+      });
+      setSupportChats(prev => prev.map(c => c.id === chatId ? { ...c, unread_count: 0 } : c));
+    } catch {}
+  };
 
   const loadChatMessages = async (chatId) => {
     try {
@@ -828,17 +847,18 @@ export default function AdminPage() {
       await fetch('/api/support/admin-reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: activeChat.id, text: adminReply.trim(), secret: process.env.ADMIN_SECRET }),
+        body: JSON.stringify({ chatId: activeChat.id, text: adminReply.trim(), secret: ADMIN_SECRET }),
       });
       setAdminReply('');
       await loadChatMessages(activeChat.id);
+      await markChatRead(activeChat.id);
     } catch (e) { showToast('❌ ' + e.message); }
   };
 
   const deleteChat = async (chatId) => {
     if (!confirm('Delete this chat?')) return;
     try {
-      await fetch(`/api/support/chat/${chatId}`, { method: 'DELETE', headers: { 'x-admin-secret': sessionStorage.getItem('erivion_admin_secret') || '' } });
+      await fetch(`/api/support/chat/${chatId}`, { method: 'DELETE', headers: { 'x-admin-secret': ADMIN_SECRET } });
       setSupportChats(prev => prev.filter(c => c.id !== chatId));
       if (activeChat?.id === chatId) { setActiveChat(null); setChatMessages([]); }
       showToast('✅ Chat deleted');
@@ -915,7 +935,7 @@ export default function AdminPage() {
     { key: 'users',      label: '👥 Users'       },
     { key: 'payments',   label: '💰 Payments'    },
     { key: 'videos',     label: '🎬 Videos'      },
-    { key: 'support',    label: `💬 Support${supportChats.length>0?' ('+supportChats.length+')':''}` },
+    { key: 'support',    label: `💬 Support${totalUnread > 0 ? ` 🔴${totalUnread}` : supportChats.length > 0 ? ` (${supportChats.length})` : ''}` },
     { key: 'affiliates', label: '🤝 Affiliates'  },
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'answers',    label: '📋 Answers'     },
@@ -1304,27 +1324,42 @@ export default function AdminPage() {
               <div style={{ display:'grid', gridTemplateColumns:activeChat?'280px 1fr':'1fr', gap:16, height:'calc(100vh - 180px)' }}>
                 {/* Chat List */}
                 <div style={{ display:'flex', flexDirection:'column', gap:8, overflowY:'auto' }}>
-                  {supportChats.map(chat => (
+                  {supportChats.map(chat => {
+                    const unread = parseInt(chat.unread_count) || 0;
+                    return (
                     <div key={chat.id}
-                      onClick={() => setActiveChat(chat)}
-                      style={{ padding:'14px 16px', borderRadius:12, border:`1px solid ${activeChat?.id===chat.id?'rgba(124,106,247,0.5)':'#1a1a2e'}`, background:activeChat?.id===chat.id?'rgba(124,106,247,0.1)':'#0f0f1a', cursor:'pointer', transition:'all 0.15s' }}>
+                      onClick={() => {
+                        setActiveChat(chat);
+                        if (unread > 0) markChatRead(chat.id);
+                      }}
+                      style={{ padding:'14px 16px', borderRadius:12, border:`1px solid ${activeChat?.id===chat.id?'rgba(124,106,247,0.5)':unread>0?'rgba(34,197,94,0.3)':'#1a1a2e'}`, background:activeChat?.id===chat.id?'rgba(124,106,247,0.1)':unread>0?'rgba(34,197,94,0.04)':'#0f0f1a', cursor:'pointer', transition:'all 0.15s', position:'relative' }}>
                       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                        <div style={{ fontWeight:700, fontSize:13, color:'#fff' }}>{chat.name}</div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <div style={{ fontWeight:700, fontSize:13, color:'#fff' }}>{chat.name}</div>
+                          {unread > 0 && (
+                            <div style={{ minWidth:18, height:18, borderRadius:999, background:'#22c55e', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, color:'#fff', padding:'0 5px' }}>
+                              {unread}
+                            </div>
+                          )}
+                        </div>
                         <div style={{ fontSize:10, padding:'2px 8px', borderRadius:999, background:chat.language==='ar'?'rgba(52,211,153,0.15)':'rgba(6,182,212,0.15)', color:chat.language==='ar'?'#34d399':'#06b6d4', fontWeight:700 }}>
                           {chat.language==='ar'?'🇸🇦 AR':'🇺🇸 EN'}
                         </div>
                       </div>
                       <div style={{ fontSize:11, color:'#6b7280', marginBottom:4 }}>{chat.email}</div>
-                      {chat.last_message && <div style={{ fontSize:11, color:'#4b5563', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{chat.last_message}</div>}
+                      {chat.last_message && <div style={{ fontSize:11, color: unread>0 ? '#9ca3af' : '#4b5563', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontWeight: unread>0 ? 600 : 400 }}>{chat.last_message}</div>}
                       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
-                        <div style={{ fontSize:10, color:'#374151' }}>{new Date(chat.created_at).toLocaleString()}</div>
+                        <div style={{ fontSize:10, color:'#374151' }}>
+                          {chat.last_message_at ? new Date(chat.last_message_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : new Date(chat.created_at).toLocaleString()}
+                        </div>
                         <div style={{ display:'flex', gap:8, fontSize:10, color:'#6b7280' }}>
                           <span>👤 {chat.user_msg_count}</span>
                           <span>💬 {chat.admin_msg_count}</span>
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Chat Window */}
