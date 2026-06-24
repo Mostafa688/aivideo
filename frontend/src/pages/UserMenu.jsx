@@ -227,39 +227,23 @@ function AffiliateModal({ user, onClose }) {
 
 export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '' }) {
   const [open, setOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 640);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   const [showAffiliate, setShowAffiliate] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [hovered, setHovered] = useState(null);
   const menuRef = useRef(null);
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth <= 640);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const fn = () => setIsMobile(window.innerWidth <= 640);
+    window.addEventListener('resize', fn);
+    return () => window.removeEventListener('resize', fn);
   }, []);
 
   useEffect(() => {
-    const handler = (e) => {
-      if (!isMobile && menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
-    };
+    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [isMobile]);
-
-  // Push page content when mobile drawer opens
-  useEffect(() => {
-    if (!isMobile) return;
-    const el = document.getElementById('app-main');
-    if (!el) return;
-    el.style.transition = 'transform 0.3s cubic-bezier(0.16,1,0.3,1)';
-    el.style.transform = open ? 'translateX(-280px)' : 'translateX(0)';
-    document.body.style.overflowX = open ? 'hidden' : '';
-    return () => {
-      el.style.transform = 'translateX(0)';
-      document.body.style.overflowX = '';
-    };
-  }, [open, isMobile]);
+  }, []);
 
   const meta = PLAN_META[plan] || PLAN_META.free;
   const firstLetter = (user?.name || user?.email || 'U')[0].toUpperCase();
@@ -300,8 +284,10 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
   return (
     <>
       <style>{`
-        @keyframes drawerIn  { from { transform:translateX(100%); } to { transform:translateX(0); } }
-        @keyframes menuSlide { from { opacity:0; transform:translateY(-12px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
+        @keyframes menuSlide {
+          from { opacity:0; transform:translateY(-12px) scale(0.95); }
+          to   { opacity:1; transform:translateY(0) scale(1); }
+        }
         .um-item { transition: all 0.15s ease !important; }
         .um-item:hover { background: rgba(255,255,255,0.05) !important; }
         .um-item-accent:hover { background: rgba(34,197,94,0.08) !important; }
@@ -310,6 +296,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
       `}</style>
 
       <div ref={menuRef} style={{ position:'relative' }}>
+
         {/* Avatar button */}
         <button className="um-avatar" onClick={() => setOpen(o => !o)} style={{
           width:36, height:36, borderRadius:'50%', cursor:'pointer',
@@ -322,21 +309,26 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         }}>
           {avatar
             ? <img src={avatar} alt="avatar" style={{ width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover' }} onError={e => { e.target.style.display='none'; }} />
-            : firstLetter}
+            : firstLetter
+          }
+          {/* Plan indicator dot */}
           <div style={{ position:'absolute', bottom:-1, right:-1, width:12, height:12, borderRadius:'50%', background:meta.color, border:'2px solid var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:6 }}>
             {plan !== 'free' && <span style={{ color:'#fff' }}>✓</span>}
           </div>
         </button>
 
-        {/* ── DESKTOP DROPDOWN ──────────────────────────────────────────────── */}
+        {/* Dropdown - desktop only */}
         {open && !isMobile && (
           <div style={{
             position:'fixed', top:58, right:12, zIndex:9999,
-            background:'#09090f', border:'1px solid rgba(255,255,255,0.08)',
-            borderRadius:18, overflow:'hidden', width:256,
-            boxShadow:'0 24px 64px rgba(0,0,0,0.8)',
+            background:'#09090f',
+            border:'1px solid rgba(255,255,255,0.08)',
+            borderRadius:18, overflow:'hidden',
+            width:256,
+            boxShadow:'0 24px 64px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04)',
             animation:'menuSlide 0.2s cubic-bezier(0.16,1,0.3,1)',
           }}>
+
             {/* User header */}
             <div style={{ padding:'16px 16px 14px', background:'rgba(255,255,255,0.02)', borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -346,82 +338,17 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, color:'#fff', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
                   <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}>
-                    <div style={{ width:6, height:6, borderRadius:'50%', background:meta.color }} />
-                    <span style={{ fontSize:11, color:meta.color, fontWeight:700 }}>{meta.label} Plan</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            {/* Groups */}
-            <div style={{ padding:'6px' }}>
-              {groups.map((group, gi) => (
-                <div key={gi}>
-                  {gi > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }} />}
-                  {group.items.map(item => (
-                    <button key={item.key} className={item.accent ? 'um-item um-item-accent' : 'um-item'}
-                      onClick={() => handleItemClick(item.key)}
-                      style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 10px', borderRadius:10, border:'none', background: item.key === 'affiliate' ? 'rgba(34,197,94,0.06)' : item.key === 'howto' ? 'rgba(6,182,212,0.06)' : 'transparent', color: item.accent ? item.accent : '#9ca3af', cursor:'pointer', fontSize:13, fontWeight: item.accent ? 600 : 500, textAlign:'left' }}>
-                      <span style={{ fontSize:15, width:22, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight: item.accent ? 600 : 500, color: item.accent ? item.accent : '#d1d5db', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.label}</div>
-                        {item.sub && <div style={{ fontSize:10, color: item.accent ? `${item.accent}99` : '#4b5563', marginTop:1 }}>{item.sub}</div>}
-                      </div>
-                      {item.badge && <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4, background: item.key === 'howto' ? 'rgba(6,182,212,0.15)' : 'rgba(34,197,94,0.15)', color: item.key === 'howto' ? '#06b6d4' : '#22c55e', letterSpacing:'0.06em', border: item.key === 'howto' ? '1px solid rgba(6,182,212,0.2)' : '1px solid rgba(34,197,94,0.2)' }}>{item.badge}</span>}
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-            <div style={{ padding:'6px', borderTop:'1px solid rgba(255,255,255,0.05)' }}>
-              <button onClick={() => { setOpen(false); onLogout?.(); }}
-                style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 10px', borderRadius:10, border:'none', background:'transparent', color:'#6b7280', cursor:'pointer', fontSize:13, textAlign:'left', transition:'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.08)'; e.currentTarget.style.color='#ef4444'; }}
-                onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#6b7280'; }}>
-                <span style={{ fontSize:15, width:22, textAlign:'center' }}>→</span>Sign Out
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── MOBILE SIDE DRAWER ────────────────────────────────────────────────── */}
-      {open && isMobile && (
-        <>
-          {/* Tap outside to close */}
-          <div onClick={() => setOpen(false)}
-            style={{ position:'fixed', inset:0, zIndex:99997, background:'transparent' }}
-          />
-          {/* Drawer panel */}
-          <div style={{
-            position:'fixed', top:0, right:0, bottom:0,
-            width:280, zIndex:99998,
-            background:'#09090f',
-            borderLeft:'1px solid rgba(255,255,255,0.1)',
-            display:'flex', flexDirection:'column',
-            animation:'drawerIn 0.3s cubic-bezier(0.16,1,0.3,1)',
-            overflowY:'auto',
-            boxShadow:'-12px 0 40px rgba(0,0,0,0.7)',
-          }}>
-            {/* Header */}
-            <div style={{ padding:'20px 16px 16px', background:`linear-gradient(135deg,${meta.color}18,transparent)`, borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ width:44, height:44, borderRadius:14, background: avatar ? 'transparent' : `linear-gradient(135deg,${meta.color}33,${meta.color}66)`, border:`2px solid ${meta.color}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:800, color:'#fff', overflow:'hidden', padding:0, flexShrink:0 }}>
-                  {avatar ? <img src={avatar} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:12 }} onError={e=>e.target.style.display='none'} /> : firstLetter}
-                </div>
-                <div>
-                  <div style={{ fontSize:13, color:'#fff', fontWeight:700, maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
-                  <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:3 }}>
                     <div style={{ width:6, height:6, borderRadius:'50%', background:meta.color, boxShadow:`0 0 6px ${meta.color}` }} />
-                    <span style={{ fontSize:11, color:meta.color, fontWeight:700 }}>{meta.label} Plan</span>
+                    <span style={{ fontSize:11, color:meta.color, fontWeight:700, letterSpacing:'0.04em' }}>{meta.label} Plan</span>
                   </div>
                 </div>
               </div>
-              <button onClick={() => setOpen(false)} style={{ width:32, height:32, borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'#9ca3af', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
             </div>
 
-            {/* Navigate */}
-            <div style={{ padding:'12px 10px 4px' }}>
-              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0 6px 8px' }}>NAVIGATE</div>
+            {/* Mobile Nav — only on small screens */}
+            <div style={{ padding:'6px 6px 0' }} className="um-mobile-nav">
+              <style>{`.um-mobile-nav{display:none} @media(max-width:640px){.um-mobile-nav{display:block!important}}`}</style>
+              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
               {[
                 { key:'home', icon:'🏠', label:'Home' },
                 { key:'pricing', icon:'💎', label:'Pricing' },
@@ -431,32 +358,49 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
               ].map(item => (
                 <button key={item.key} className="um-item"
                   onClick={() => { setOpen(false); onNavigate?.(item.key); }}
-                  style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'11px 10px', borderRadius:12, border:'none', background: currentPage===item.key ? `${meta.color}15` : 'transparent', color: currentPage===item.key ? meta.color : '#d1d5db', cursor:'pointer', fontSize:14, fontWeight: currentPage===item.key ? 700 : 500, textAlign:'left' }}>
-                  <span style={{ fontSize:18, width:24, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
-                  <span style={{ flex:1 }}>{item.label}</span>
-                  {currentPage===item.key && <div style={{ width:6, height:6, borderRadius:'50%', background:meta.color }} />}
+                  style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 10px', borderRadius:10, border:'none', background: currentPage===item.key ? 'rgba(124,106,247,0.1)' : 'transparent', color: currentPage===item.key ? '#a78bfa' : '#9ca3af', cursor:'pointer', fontSize:13, fontWeight: currentPage===item.key ? 700 : 500, textAlign:'left' }}>
+                  <span style={{ fontSize:15, width:22, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
+                  <span>{item.label}</span>
+                  {currentPage===item.key && <div style={{ marginLeft:'auto', width:6, height:6, borderRadius:'50%', background:'#a78bfa' }} />}
                 </button>
               ))}
+              <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'6px 0 0' }} />
             </div>
 
-            <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 10px' }} />
-
-            {/* Account items */}
-            <div style={{ padding:'4px 10px', flex:1 }}>
-              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.12em', textTransform:'uppercase', padding:'8px 6px 8px' }}>ACCOUNT</div>
+            {/* Groups */}
+            <div style={{ padding:'6px' }}>
               {groups.map((group, gi) => (
                 <div key={gi}>
-                  {gi > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'6px 0' }} />}
+                  {gi > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }} />}
                   {group.items.map(item => (
-                    <button key={item.key} className={item.accent ? 'um-item um-item-accent' : 'um-item'}
+                    <button key={item.key}
+                      className={item.accent ? 'um-item um-item-accent' : 'um-item'}
+                      onMouseEnter={() => setHovered(item.key)}
+                      onMouseLeave={() => setHovered(null)}
                       onClick={() => handleItemClick(item.key)}
-                      style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'11px 10px', borderRadius:12, border:'none', background: item.key === 'affiliate' ? 'rgba(34,197,94,0.06)' : item.key === 'howto' ? 'rgba(6,182,212,0.06)' : 'transparent', color: item.accent ? item.accent : '#9ca3af', cursor:'pointer', fontSize:14, fontWeight: item.accent ? 600 : 500, textAlign:'left' }}>
-                      <span style={{ fontSize:18, width:24, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
+                      style={{
+                        width:'100%', display:'flex', alignItems:'center', gap:10,
+                        padding:'9px 10px', borderRadius:10, border:'none',
+                        background: item.key === 'affiliate' ? 'rgba(34,197,94,0.06)' : item.key === 'howto' ? 'rgba(6,182,212,0.06)' : 'transparent',
+                        color: item.accent ? item.accent : '#9ca3af',
+                        cursor:'pointer', fontSize:13, fontWeight: item.accent ? 600 : 500,
+                        textAlign:'left',
+                      }}>
+                      <span style={{ fontSize:15, width:22, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight: item.accent ? 700 : 500, color: item.accent ? item.accent : '#d1d5db' }}>{item.label}</div>
-                        {item.sub && <div style={{ fontSize:10, color:'#4b5563', marginTop:1 }}>{item.sub}</div>}
+                        <div style={{ fontSize:13, fontWeight: item.accent ? 600 : 500, color: item.accent ? item.accent : '#d1d5db', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.label}</div>
+                        {item.sub && <div style={{ fontSize:10, color: item.accent ? `${item.accent}99` : '#4b5563', marginTop:1 }}>{item.sub}</div>}
                       </div>
-                      {item.badge && <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4, background: item.key === 'howto' ? 'rgba(6,182,212,0.15)' : 'rgba(34,197,94,0.15)', color: item.key === 'howto' ? '#06b6d4' : '#22c55e', border: item.key === 'howto' ? '1px solid rgba(6,182,212,0.2)' : '1px solid rgba(34,197,94,0.2)' }}>{item.badge}</span>}
+                      {item.badge && (
+                        <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                          background: item.key === 'howto' ? 'rgba(6,182,212,0.15)' : 'rgba(34,197,94,0.15)',
+                          color: item.key === 'howto' ? '#06b6d4' : '#22c55e',
+                          letterSpacing:'0.06em',
+                          border: item.key === 'howto' ? '1px solid rgba(6,182,212,0.2)' : '1px solid rgba(34,197,94,0.2)',
+                        }}>
+                          {item.badge}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -464,10 +408,80 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
             </div>
 
             {/* Sign out */}
-            <div style={{ padding:'8px 10px 24px', borderTop:'1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ padding:'6px', borderTop:'1px solid rgba(255,255,255,0.05)' }}>
               <button onClick={() => { setOpen(false); onLogout?.(); }}
-                style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'12px 10px', borderRadius:12, border:'none', background:'rgba(239,68,68,0.05)', color:'#ef4444', cursor:'pointer', fontSize:14, fontWeight:600, textAlign:'left' }}>
-                <span style={{ fontSize:18, width:24, textAlign:'center' }}>→</span>Sign Out
+                style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 10px', borderRadius:10, border:'none', background:'transparent', color:'#6b7280', cursor:'pointer', fontSize:13, fontWeight:500, textAlign:'left', transition:'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.08)'; e.currentTarget.style.color='#ef4444'; }}
+                onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#6b7280'; }}>
+                <span style={{ fontSize:15, width:22, textAlign:'center' }}>→</span>
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Drawer */}
+      {open && isMobile && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position:'fixed', inset:0, zIndex:9998, background:'rgba(0,0,0,0.5)' }} />
+          <div style={{ position:'fixed', top:0, right:0, bottom:0, width:280, zIndex:9999, background:'#09090f', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', overflowY:'auto', boxShadow:'-8px 0 32px rgba(0,0,0,0.6)', animation:'drawerIn 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
+            <style>{`@keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
+
+            {/* Header */}
+            <div style={{ padding:'20px 16px', background:`linear-gradient(135deg,${meta.color}15,transparent)`, borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:40, height:40, borderRadius:12, background:`linear-gradient(135deg,${meta.color}44,${meta.color}22)`, border:`2px solid ${meta.color}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:800, color:'#fff', overflow:'hidden' }}>
+                  {avatar ? <img src={avatar} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.style.display='none'} /> : firstLetter}
+                </div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#fff', maxWidth:170, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
+                  <div style={{ fontSize:11, color:meta.color, fontWeight:700, marginTop:2 }}>{meta.label} Plan</div>
+                </div>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ width:30, height:30, borderRadius:8, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'#9ca3af', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+            </div>
+
+            {/* Nav */}
+            <div style={{ padding:'10px 8px 4px' }}>
+              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0 8px 8px' }}>NAVIGATE</div>
+              {[{key:'home',icon:'🏠',label:'Home'},{key:'pricing',icon:'💎',label:'Pricing'},{key:'templates',icon:'🎬',label:'Templates'},{key:'support',icon:'💬',label:'Support'},{key:'faq',icon:'❓',label:'FAQ'}].map(item => (
+                <button key={item.key} onClick={() => { setOpen(false); onNavigate?.(item.key); }} className="um-item"
+                  style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'11px 10px', borderRadius:10, border:'none', background:currentPage===item.key?`${meta.color}18`:'transparent', color:currentPage===item.key?meta.color:'#d1d5db', cursor:'pointer', fontSize:14, fontWeight:currentPage===item.key?700:500, textAlign:'left' }}>
+                  <span style={{ fontSize:18, width:24, textAlign:'center' }}>{item.icon}</span>
+                  {item.label}
+                  {currentPage===item.key && <div style={{ marginLeft:'auto', width:6, height:6, borderRadius:'50%', background:meta.color }} />}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ height:1, background:'rgba(255,255,255,0.06)', margin:'4px 8px' }} />
+
+            {/* Account */}
+            <div style={{ padding:'4px 8px', flex:1 }}>
+              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'8px 8px' }}>ACCOUNT</div>
+              {groups.map((group, gi) => (
+                <div key={gi}>
+                  {gi > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }} />}
+                  {group.items.map(item => (
+                    <button key={item.key} onClick={() => handleItemClick(item.key)} className="um-item"
+                      style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'11px 10px', borderRadius:10, border:'none', background:'transparent', color:item.accent||'#9ca3af', cursor:'pointer', fontSize:13, fontWeight:item.accent?600:500, textAlign:'left' }}>
+                      <span style={{ fontSize:16, width:24, textAlign:'center' }}>{item.icon}</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ color:item.accent||'#d1d5db', fontSize:13, fontWeight:item.accent?600:500 }}>{item.label}</div>
+                        {item.sub && <div style={{ fontSize:10, color:'#4b5563' }}>{item.sub}</div>}
+                      </div>
+                      {item.badge && <span style={{ fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4, background:item.key==='howto'?'rgba(6,182,212,0.15)':'rgba(34,197,94,0.15)', color:item.key==='howto'?'#06b6d4':'#22c55e', border:`1px solid ${item.key==='howto'?'rgba(6,182,212,0.2)':'rgba(34,197,94,0.2)'}` }}>{item.badge}</span>}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding:'8px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
+              <button onClick={() => { setOpen(false); onLogout?.(); }}
+                style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'12px 10px', borderRadius:10, border:'none', background:'rgba(239,68,68,0.06)', color:'#ef4444', cursor:'pointer', fontSize:14, fontWeight:600, textAlign:'left' }}>
+                <span style={{ fontSize:16, width:24, textAlign:'center' }}>→</span>Sign Out
               </button>
             </div>
           </div>
