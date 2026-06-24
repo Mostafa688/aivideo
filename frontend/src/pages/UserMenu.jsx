@@ -388,19 +388,21 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
 
       {/* ── MOBILE SIDE DRAWER ────────────────────────────────────────────────── */}
       {open && (
-        <div className="um-drawer" style={{ position:'fixed', top:0, right:0, bottom:0, zIndex:99998, width:280 }}>
-          {/* Thin dark edge on left side */}
+        <div className="um-drawer">
+          {/* Tap outside to close */}
           <div onClick={() => setOpen(false)}
-            style={{ position:'fixed', inset:0, zIndex:-1 }}
+            style={{ position:'fixed', inset:0, zIndex:99997 }}
           />
-          {/* Drawer panel */}
+          {/* Drawer panel - fixed to viewport right edge, independent of page transform */}
           <div style={{
-            width:280, height:'100%', background:'#09090f',
-            borderLeft:'1px solid rgba(255,255,255,0.08)',
+            position:'fixed', top:0, right:0, bottom:0,
+            width:280, zIndex:99998,
+            background:'#09090f',
+            borderLeft:'1px solid rgba(255,255,255,0.1)',
             display:'flex', flexDirection:'column',
             animation:'drawerIn 0.3s cubic-bezier(0.16,1,0.3,1)',
             overflowY:'auto',
-            boxShadow:'-8px 0 32px rgba(0,0,0,0.5)',
+            boxShadow:'-12px 0 40px rgba(0,0,0,0.7)',
           }}>
             {/* Header */}
             <div style={{ padding:'20px 16px 16px', background:`linear-gradient(135deg,${meta.color}18,transparent)`, borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
