@@ -227,27 +227,39 @@ function AffiliateModal({ user, onClose }) {
 
 export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '' }) {
   const [open, setOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 640);
   const [showAffiliate, setShowAffiliate] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [hovered, setHovered] = useState(null);
   const menuRef = useRef(null);
 
   useEffect(() => {
-    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const onResize = () => setIsMobile(window.innerWidth <= 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Push page when drawer opens on mobile
   useEffect(() => {
-    if (window.innerWidth > 640) return;
-    const el = document.getElementById('app-main') || document.querySelector('.app-content') || document.querySelector('div[style*="paddingTop"]');
+    const handler = (e) => {
+      if (!isMobile && menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isMobile]);
+
+  // Push page content when mobile drawer opens
+  useEffect(() => {
+    if (!isMobile) return;
+    const el = document.getElementById('app-main');
     if (!el) return;
     el.style.transition = 'transform 0.3s cubic-bezier(0.16,1,0.3,1)';
-    el.style.transform = open ? 'translateX(-280px)' : '';
+    el.style.transform = open ? 'translateX(-280px)' : 'translateX(0)';
     document.body.style.overflowX = open ? 'hidden' : '';
-    return () => { el.style.transform = ''; document.body.style.overflowX = ''; };
-  }, [open]);
+    return () => {
+      el.style.transform = 'translateX(0)';
+      document.body.style.overflowX = '';
+    };
+  }, [open, isMobile]);
 
   const meta = PLAN_META[plan] || PLAN_META.free;
   const firstLetter = (user?.name || user?.email || 'U')[0].toUpperCase();
@@ -289,26 +301,12 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
     <>
       <style>{`
         @keyframes drawerIn  { from { transform:translateX(100%); } to { transform:translateX(0); } }
-        @keyframes overlayIn { from { opacity:0; } to { opacity:1; } }
         @keyframes menuSlide { from { opacity:0; transform:translateY(-12px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
         .um-item { transition: all 0.15s ease !important; }
         .um-item:hover { background: rgba(255,255,255,0.05) !important; }
         .um-item-accent:hover { background: rgba(34,197,94,0.08) !important; }
         .um-avatar { transition: all 0.2s ease; }
         .um-avatar:hover { transform: scale(1.08); }
-        .um-drawer { display: none !important; }
-        .um-dropdown { display: block !important; }
-        @media (max-width: 640px) {
-          .um-drawer { display: block !important; }
-          .um-dropdown { display: none !important; }
-        }
-        .page-push {
-          transition: transform 0.3s cubic-bezier(0.16,1,0.3,1) !important;
-        }
-        .page-push-active {
-          transform: translateX(-280px) !important;
-          pointer-events: none !important;
-        }
       `}</style>
 
       <div ref={menuRef} style={{ position:'relative' }}>
@@ -331,8 +329,8 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         </button>
 
         {/* ── DESKTOP DROPDOWN ──────────────────────────────────────────────── */}
-        {open && (
-          <div className="um-dropdown" style={{
+        {open && !isMobile && (
+          <div style={{
             position:'fixed', top:58, right:12, zIndex:9999,
             background:'#09090f', border:'1px solid rgba(255,255,255,0.08)',
             borderRadius:18, overflow:'hidden', width:256,
@@ -387,14 +385,14 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
       </div>
 
       {/* ── MOBILE SIDE DRAWER ────────────────────────────────────────────────── */}
-      {open && (
+      {open && isMobile && (
         <>
-          {/* Tap outside to close - mobile only */}
-          <div className="um-drawer" onClick={() => setOpen(false)}
+          {/* Tap outside to close */}
+          <div onClick={() => setOpen(false)}
             style={{ position:'fixed', inset:0, zIndex:99997, background:'transparent' }}
           />
           {/* Drawer panel */}
-          <div className="um-drawer" style={{
+          <div style={{
             position:'fixed', top:0, right:0, bottom:0,
             width:280, zIndex:99998,
             background:'#09090f',
