@@ -245,24 +245,16 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
     {
       items: [
         { icon: '📖', label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
-        ...(model3Access ? [{ icon: '🖼️', label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
         { icon: '💰', label: 'Earn with Erivion', sub: 'Affiliate — 50% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
+        ...(model3Access ? [{ icon: '🖼️', label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
       ]
     },
     {
       items: [
         { icon: '⚙️', label: 'Settings', key: 'settings' },
-        { icon: '💳', label: 'Pricing & Plans', key: 'pricing' },
-        { icon: '🛟', label: 'Support', key: 'support' },
-        { icon: '❓', label: 'FAQ', key: 'faq' },
         { icon: 'ℹ️', label: 'About Us', key: 'about' },
-      ]
-    },
-    {
-      items: [
         { icon: '📄', label: 'Terms of Service', key: 'terms' },
         { icon: '🔒', label: 'Privacy Policy', key: 'privacy' },
-        { icon: '💸', label: 'Refund Policy', key: 'refund' },
       ]
     },
   ];
