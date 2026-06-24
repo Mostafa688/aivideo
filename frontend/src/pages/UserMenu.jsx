@@ -388,13 +388,13 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
 
       {/* ── MOBILE SIDE DRAWER ────────────────────────────────────────────────── */}
       {open && (
-        <div className="um-drawer">
-          {/* Tap outside to close */}
-          <div onClick={() => setOpen(false)}
-            style={{ position:'fixed', inset:0, zIndex:99997 }}
+        <>
+          {/* Tap outside to close - mobile only */}
+          <div className="um-drawer" onClick={() => setOpen(false)}
+            style={{ position:'fixed', inset:0, zIndex:99997, background:'transparent' }}
           />
-          {/* Drawer panel - fixed to viewport right edge, independent of page transform */}
-          <div style={{
+          {/* Drawer panel */}
+          <div className="um-drawer" style={{
             position:'fixed', top:0, right:0, bottom:0,
             width:280, zIndex:99998,
             background:'#09090f',
@@ -473,7 +473,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {showAffiliate && <AffiliateModal user={user} onClose={() => setShowAffiliate(false)} />}
