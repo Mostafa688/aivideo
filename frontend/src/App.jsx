@@ -451,7 +451,7 @@ export default function App() {
         />
       )}
 
-      <div style={{ paddingTop: 54, paddingBottom: 20 }}>
+      <div id="app-main" style={{ paddingTop: 54, paddingBottom: 20 }}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
         {page === 'input' && <InputPage

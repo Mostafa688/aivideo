@@ -238,6 +238,17 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Push page when drawer opens on mobile
+  useEffect(() => {
+    if (window.innerWidth > 640) return;
+    const el = document.getElementById('app-main') || document.querySelector('.app-content') || document.querySelector('div[style*="paddingTop"]');
+    if (!el) return;
+    el.style.transition = 'transform 0.3s cubic-bezier(0.16,1,0.3,1)';
+    el.style.transform = open ? 'translateX(-280px)' : '';
+    document.body.style.overflowX = open ? 'hidden' : '';
+    return () => { el.style.transform = ''; document.body.style.overflowX = ''; };
+  }, [open]);
+
   const meta = PLAN_META[plan] || PLAN_META.free;
   const firstLetter = (user?.name || user?.email || 'U')[0].toUpperCase();
 
@@ -278,7 +289,6 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
     <>
       <style>{`
         @keyframes drawerIn  { from { transform:translateX(100%); } to { transform:translateX(0); } }
-        @keyframes drawerOut { from { transform:translateX(0); } to { transform:translateX(100%); } }
         @keyframes overlayIn { from { opacity:0; } to { opacity:1; } }
         @keyframes menuSlide { from { opacity:0; transform:translateY(-12px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
         .um-item { transition: all 0.15s ease !important; }
@@ -286,12 +296,18 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         .um-item-accent:hover { background: rgba(34,197,94,0.08) !important; }
         .um-avatar { transition: all 0.2s ease; }
         .um-avatar:hover { transform: scale(1.08); }
-        /* On mobile: use drawer. On desktop: use dropdown */
         .um-drawer { display: none !important; }
         .um-dropdown { display: block !important; }
         @media (max-width: 640px) {
-          .um-drawer { display: flex !important; }
+          .um-drawer { display: block !important; }
           .um-dropdown { display: none !important; }
+        }
+        .page-push {
+          transition: transform 0.3s cubic-bezier(0.16,1,0.3,1) !important;
+        }
+        .page-push-active {
+          transform: translateX(-280px) !important;
+          pointer-events: none !important;
         }
       `}</style>
 
@@ -372,17 +388,19 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
 
       {/* ── MOBILE SIDE DRAWER ────────────────────────────────────────────────── */}
       {open && (
-        <div className="um-drawer" style={{ position:'fixed', inset:0, zIndex:99998, flexDirection:'row' }}>
-          {/* Overlay */}
+        <div className="um-drawer" style={{ position:'fixed', top:0, right:0, bottom:0, zIndex:99998, width:280 }}>
+          {/* Thin dark edge on left side */}
           <div onClick={() => setOpen(false)}
-            style={{ flex:1, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(4px)', animation:'overlayIn 0.25s ease' }} />
+            style={{ position:'fixed', inset:0, zIndex:-1 }}
+          />
           {/* Drawer panel */}
           <div style={{
-            width: 280, height:'100%', background:'#09090f',
+            width:280, height:'100%', background:'#09090f',
             borderLeft:'1px solid rgba(255,255,255,0.08)',
             display:'flex', flexDirection:'column',
             animation:'drawerIn 0.3s cubic-bezier(0.16,1,0.3,1)',
             overflowY:'auto',
+            boxShadow:'-8px 0 32px rgba(0,0,0,0.5)',
           }}>
             {/* Header */}
             <div style={{ padding:'20px 16px 16px', background:`linear-gradient(135deg,${meta.color}18,transparent)`, borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
