@@ -227,30 +227,10 @@ function AffiliateModal({ user, onClose }) {
 
 export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '' }) {
   const [open, setOpen] = useState(false);
-  const [showMobileDrawer, setShowMobileDrawer] = useState(false);
   const [showAffiliate, setShowAffiliate] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [hovered, setHovered] = useState(null);
   const menuRef = useRef(null);
-
-  const handleToggle = () => {
-    if (window.innerWidth <= 640) {
-      setShowMobileDrawer(d => !d);
-      setOpen(false);
-    } else {
-      setOpen(o => !o);
-      setShowMobileDrawer(false);
-    }
-  };
-
-  useEffect(() => {
-    const fn = () => {
-      if (window.innerWidth > 640) setShowMobileDrawer(false);
-      else setOpen(false);
-    };
-    window.addEventListener('resize', fn);
-    return () => window.removeEventListener('resize', fn);
-  }, []);
 
   useEffect(() => {
     const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
@@ -289,7 +269,6 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
 
   const handleItemClick = (key) => {
     setOpen(false);
-    setShowMobileDrawer(false);
     if (key === 'affiliate') setShowAffiliate(true);
     else if (key === 'howto') setShowHowTo(true);
     else onNavigate?.(key);
@@ -312,7 +291,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
       <div ref={menuRef} style={{ position:'relative' }}>
 
         {/* Avatar button */}
-        <button className="um-avatar" onClick={handleToggle} style={{
+        <button className="um-avatar" onClick={() => setOpen(o => !o)} style={{
           width:36, height:36, borderRadius:'50%', cursor:'pointer',
           background: avatar ? 'transparent' : `linear-gradient(135deg, ${meta.color}22, ${meta.color}44)`,
           border:`2px solid ${meta.color}`,
@@ -331,10 +310,10 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
           </div>
         </button>
 
-        {/* Dropdown - desktop only */}
+        {/* Dropdown */}
         {open && (
           <div style={{
-            position:'fixed', top:56, right:0, zIndex:9999,
+            position:'fixed', top:58, right:12, zIndex:9999,
             background:'#09090f',
             border:'1px solid rgba(255,255,255,0.08)',
             borderRadius:18, overflow:'hidden',
@@ -379,6 +358,23 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                 </button>
               ))}
               <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'6px 0 0' }} />
+            </div>
+
+            {/* Mobile Nav Links - shown on small screens */}
+            <div style={{ padding:'6px 6px 0' }}>
+              <style>{`@media(min-width:641px){.um-mobile-nav-section{display:none!important}}`}</style>
+              <div className="um-mobile-nav-section">
+                <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
+                {[{key:'home',icon:'🏠',label:'Home'},{key:'pricing',icon:'💎',label:'Pricing'},{key:'templates',icon:'🎬',label:'Templates'},{key:'support',icon:'💬',label:'Support'},{key:'faq',icon:'❓',label:'FAQ'}].map(item=>(
+                  <button key={item.key} onClick={()=>{setOpen(false);onNavigate?.(item.key);}} className="um-item"
+                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key?700:500,textAlign:'left'}}>
+                    <span style={{fontSize:15,width:22,textAlign:'center'}}>{item.icon}</span>
+                    <span>{item.label}</span>
+                    {currentPage===item.key&&<div style={{marginLeft:'auto',width:5,height:5,borderRadius:'50%',background:'#a78bfa'}}/>}
+                  </button>
+                ))}
+                <div style={{height:1,background:'rgba(255,255,255,0.05)',margin:'4px 0'}}/>
+              </div>
             </div>
 
             {/* Groups */}
@@ -434,73 +430,6 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
           </div>
         )}
       </div>
-
-      {/* Mobile Drawer */}
-      {showMobileDrawer && (
-        <>
-          <div onClick={() => setShowMobileDrawer(false)} style={{ position:'fixed', inset:0, zIndex:9998, background:'rgba(0,0,0,0.5)' }} />
-          <div style={{ position:'fixed', top:0, right:0, bottom:0, width:'80vw', maxWidth:300, zIndex:9999, background:'#09090f', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', overflowY:'auto', boxShadow:'-8px 0 32px rgba(0,0,0,0.6)', animation:'drawerIn 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
-            <style>{`@keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
-
-            {/* Header */}
-            <div style={{ padding:'20px 16px', background:`linear-gradient(135deg,${meta.color}15,transparent)`, borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{ width:40, height:40, borderRadius:12, background:`linear-gradient(135deg,${meta.color}44,${meta.color}22)`, border:`2px solid ${meta.color}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:800, color:'#fff', overflow:'hidden' }}>
-                  {avatar ? <img src={avatar} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.style.display='none'} /> : firstLetter}
-                </div>
-                <div>
-                  <div style={{ fontSize:13, fontWeight:700, color:'#fff', maxWidth:170, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
-                  <div style={{ fontSize:11, color:meta.color, fontWeight:700, marginTop:2 }}>{meta.label} Plan</div>
-                </div>
-              </div>
-              <button onClick={() => setShowMobileDrawer(false)} style={{ width:30, height:30, borderRadius:8, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'#9ca3af', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
-            </div>
-
-            {/* Nav */}
-            <div style={{ padding:'10px 8px 4px' }}>
-              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0 8px 8px' }}>NAVIGATE</div>
-              {[{key:'home',icon:'🏠',label:'Home'},{key:'pricing',icon:'💎',label:'Pricing'},{key:'templates',icon:'🎬',label:'Templates'},{key:'support',icon:'💬',label:'Support'},{key:'faq',icon:'❓',label:'FAQ'}].map(item => (
-                <button key={item.key} onClick={() => { setShowMobileDrawer(false); onNavigate?.(item.key); }} className="um-item"
-                  style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'11px 10px', borderRadius:10, border:'none', background:currentPage===item.key?`${meta.color}18`:'transparent', color:currentPage===item.key?meta.color:'#d1d5db', cursor:'pointer', fontSize:14, fontWeight:currentPage===item.key?700:500, textAlign:'left' }}>
-                  <span style={{ fontSize:18, width:24, textAlign:'center' }}>{item.icon}</span>
-                  {item.label}
-                  {currentPage===item.key && <div style={{ marginLeft:'auto', width:6, height:6, borderRadius:'50%', background:meta.color }} />}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ height:1, background:'rgba(255,255,255,0.06)', margin:'4px 8px' }} />
-
-            {/* Account */}
-            <div style={{ padding:'4px 8px', flex:1 }}>
-              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'8px 8px' }}>ACCOUNT</div>
-              {groups.map((group, gi) => (
-                <div key={gi}>
-                  {gi > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }} />}
-                  {group.items.map(item => (
-                    <button key={item.key} onClick={() => handleItemClick(item.key)} className="um-item"
-                      style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'11px 10px', borderRadius:10, border:'none', background:'transparent', color:item.accent||'#9ca3af', cursor:'pointer', fontSize:13, fontWeight:item.accent?600:500, textAlign:'left' }}>
-                      <span style={{ fontSize:16, width:24, textAlign:'center' }}>{item.icon}</span>
-                      <div style={{ flex:1 }}>
-                        <div style={{ color:item.accent||'#d1d5db', fontSize:13, fontWeight:item.accent?600:500 }}>{item.label}</div>
-                        {item.sub && <div style={{ fontSize:10, color:'#4b5563' }}>{item.sub}</div>}
-                      </div>
-                      {item.badge && <span style={{ fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4, background:item.key==='howto'?'rgba(6,182,212,0.15)':'rgba(34,197,94,0.15)', color:item.key==='howto'?'#06b6d4':'#22c55e', border:`1px solid ${item.key==='howto'?'rgba(6,182,212,0.2)':'rgba(34,197,94,0.2)'}` }}>{item.badge}</span>}
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-
-            <div style={{ padding:'8px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
-              <button onClick={() => { setShowMobileDrawer(false); onLogout?.(); }}
-                style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'12px 10px', borderRadius:10, border:'none', background:'rgba(239,68,68,0.06)', color:'#ef4444', cursor:'pointer', fontSize:14, fontWeight:600, textAlign:'left' }}>
-                <span style={{ fontSize:16, width:24, textAlign:'center' }}>→</span>Sign Out
-              </button>
-            </div>
-          </div>
-        </>
-      )}
 
       {showAffiliate && <AffiliateModal user={user} onClose={() => setShowAffiliate(false)} />}
       {showHowTo && <HowToModal onClose={() => setShowHowTo(false)} />}
