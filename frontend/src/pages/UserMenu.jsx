@@ -334,7 +334,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         {/* Dropdown - desktop only */}
         {open && (
           <div style={{
-            position:'fixed', top:58, right:12, zIndex:9999,
+            position:'fixed', top:56, right:0, zIndex:9999,
             background:'#09090f',
             border:'1px solid rgba(255,255,255,0.08)',
             borderRadius:18, overflow:'hidden',
@@ -439,7 +439,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
       {showMobileDrawer && (
         <>
           <div onClick={() => setShowMobileDrawer(false)} style={{ position:'fixed', inset:0, zIndex:9998, background:'rgba(0,0,0,0.5)' }} />
-          <div style={{ position:'fixed', top:0, right:0, bottom:0, width:280, zIndex:9999, background:'#09090f', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', overflowY:'auto', boxShadow:'-8px 0 32px rgba(0,0,0,0.6)', animation:'drawerIn 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
+          <div style={{ position:'fixed', top:0, right:0, bottom:0, width:'80vw', maxWidth:300, zIndex:9999, background:'#09090f', borderLeft:'1px solid rgba(255,255,255,0.1)', display:'flex', flexDirection:'column', overflowY:'auto', boxShadow:'-8px 0 32px rgba(0,0,0,0.6)', animation:'drawerIn 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
             <style>{`@keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
 
             {/* Header */}

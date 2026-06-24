@@ -350,7 +350,7 @@ export default function App() {
   ];
 
   const Header = () => (
-    <header className="app-header" style={{ gap:8 }}>
+    <header className="app-header" style={{ gap:8, zIndex:10000 }}>
       <style>{`
         @media(max-width:640px){
           .header-nav-desktop{display:none!important}
