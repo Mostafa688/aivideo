@@ -51,7 +51,7 @@ router.post('/render',
   ]),
   async (req, res) => {
     try {
-      const user = await getUserById(req.user.id);
+      const user = await getUserById(req.user.userId);
       if (!user) return res.status(401).json({ error: 'User not found' });
 
       // ── Access check ──
@@ -60,7 +60,7 @@ router.post('/render',
       }
 
       // ── Credit check ──
-      const check = await canUserMakeModel7Video(req.user.id);
+      const check = await canUserMakeModel7Video(req.user.userId);
       if (!check.allowed) {
         return res.status(402).json({
           error: 'insufficient_credits',
@@ -88,7 +88,7 @@ router.post('/render',
       }
 
       // ── Deduct credits immediately ──
-      await incrementModel7Video(req.user.id);
+      await incrementModel7Video(req.user.userId);
 
       // ── Create job ──
       const jobId = `ads_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -99,7 +99,7 @@ router.post('/render',
         status: 'processing',
         step: 'starting',
         msg: 'Initializing ad generation...',
-        userId: req.user.id,
+        userId: req.user.userId,
         productName: productName.trim(),
         createdAt: Date.now(),
       });
@@ -152,14 +152,14 @@ router.post('/render',
 router.get('/status/:jobId', authMiddleware, (req, res) => {
   const job = getAdsJob(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
-  if (String(job.userId) !== String(req.user.id)) return res.status(403).json({ error: 'Forbidden' });
+  if (String(job.userId) !== String(req.user.userId)) return res.status(403).json({ error: 'Forbidden' });
   res.json(job);
 });
 
 // ── GET /api/ads/credits ──────────────────────────────────────────────────────
 router.get('/credits', authMiddleware, async (req, res) => {
   try {
-    const credits = await getModel7Credits(req.user.id);
+    const credits = await getModel7Credits(req.user.userId);
     const remaining = Math.max(0, (credits.credits_total || 0) - (credits.credits_used || 0));
     res.json({ credits_total: credits.credits_total || 0, credits_used: credits.credits_used || 0, remaining, cost_per_video: ADS_CREDIT_COST });
   } catch (err) {
