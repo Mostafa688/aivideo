@@ -203,6 +203,258 @@ app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 
+// ── Community API ──────────────────────────────────────────────────────────────
+const cPool = new _TPool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
+});
+
+// Create tables
+cPool.query(`
+  CREATE TABLE IF NOT EXISTS community_posts (
+    id SERIAL PRIMARY KEY,
+    author_email TEXT,
+    author_name TEXT NOT NULL,
+    avatar_letter TEXT,
+    avatar_color TEXT DEFAULT '#7c6af7',
+    plan TEXT DEFAULT 'Free',
+    content TEXT NOT NULL,
+    image_url TEXT,
+    tag TEXT DEFAULT 'Showcase',
+    likes INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS community_comments (
+    id SERIAL PRIMARY KEY,
+    post_id INTEGER REFERENCES community_posts(id) ON DELETE CASCADE,
+    author_email TEXT,
+    author_name TEXT NOT NULL,
+    avatar_letter TEXT,
+    avatar_color TEXT DEFAULT '#7c6af7',
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS community_likes (
+    post_id INTEGER REFERENCES community_posts(id) ON DELETE CASCADE,
+    ip TEXT,
+    user_email TEXT,
+    PRIMARY KEY (post_id, ip)
+  );
+`).catch(e => console.error('[Community] DB init error:', e.message));
+
+// GET /api/community/posts — get all posts with comments
+app.get('/api/community/posts', async (req, res) => {
+  try {
+    const { rows: posts } = await cPool.query(`
+      SELECT p.*, 
+        COALESCE(json_agg(
+          json_build_object(
+            'id', c.id,
+            'author', c.author_name,
+            'letter', c.avatar_letter,
+            'color', c.avatar_color,
+            'text', c.content,
+            'created_at', c.created_at
+          ) ORDER BY c.created_at ASC
+        ) FILTER (WHERE c.id IS NOT NULL), '[]') AS comments
+      FROM community_posts p
+      LEFT JOIN community_comments c ON c.post_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+      LIMIT 100
+    `);
+    // format posts for frontend
+    const formatted = posts.map(p => ({
+      id: String(p.id),
+      author: p.author_name,
+      avatar_letter: p.avatar_letter || (p.author_name?.[0] || 'U').toUpperCase(),
+      avatar_color: p.avatar_color || '#7c6af7',
+      plan: p.plan || 'Free',
+      content: p.content,
+      image_url: p.image_url || null,
+      tag: p.tag || 'Showcase',
+      likes: parseInt(p.likes) || 0,
+      liked: false,
+      comments: p.comments || [],
+      created_at: p.created_at,
+    }));
+    res.json({ posts: formatted });
+  } catch (e) {
+    console.error('[Community] GET posts error:', e.message);
+    res.json({ posts: [] });
+  }
+});
+
+// POST /api/community/posts — create post
+app.post('/api/community/posts', async (req, res) => {
+  try {
+    const { content, tag, image_url } = req.body;
+    if (!content || content.trim().length < 10) return res.status(400).json({ error: 'Content too short' });
+    if (content.length > 1000) return res.status(400).json({ error: 'Content too long' });
+
+    // Get user info from token if available
+    let authorName = 'Anonymous';
+    let authorEmail = null;
+    let avatarLetter = 'A';
+    let avatarColor = '#7c6af7';
+    let plan = 'Free';
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.slice(7);
+        const { rows } = await cPool.query(
+          `SELECT email, plan FROM users WHERE token = $1 LIMIT 1`,
+          [token]
+        );
+        if (rows[0]) {
+          authorEmail = rows[0].email;
+          authorName = rows[0].email.split('@')[0];
+          avatarLetter = authorName[0].toUpperCase();
+          plan = rows[0].plan ? (rows[0].plan.charAt(0).toUpperCase() + rows[0].plan.slice(1)) : 'Free';
+          const colors = ['#7c6af7','#06b6d4','#f59e0b','#10b981','#e11d48','#a855f7'];
+          avatarColor = colors[authorName.charCodeAt(0) % colors.length];
+        }
+      } catch {}
+    }
+
+    // Validate image (base64 images only, no mp4)
+    let finalImageUrl = null;
+    if (image_url) {
+      if (image_url.includes('video') || image_url.includes('.mp4')) {
+        return res.status(400).json({ error: 'Videos not allowed' });
+      }
+      // Accept base64 images or HTTPS image URLs
+      if (image_url.startsWith('data:image/') || image_url.startsWith('https://')) {
+        finalImageUrl = image_url.length > 5 * 1024 * 1024 ? null : image_url; // 5MB limit
+      }
+    }
+
+    const validTags = ['Showcase', 'Tips', 'Question', 'Workflow', 'Success'];
+    const finalTag = validTags.includes(tag) ? tag : 'Showcase';
+
+    const { rows } = await cPool.query(
+      `INSERT INTO community_posts (author_email, author_name, avatar_letter, avatar_color, plan, content, image_url, tag)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [authorEmail, authorName, avatarLetter, avatarColor, plan, content.trim(), finalImageUrl, finalTag]
+    );
+    res.json({ id: String(rows[0].id), success: true });
+  } catch (e) {
+    console.error('[Community] POST post error:', e.message);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+// POST /api/community/posts/:id/like — toggle like
+app.post('/api/community/posts/:id/like', async (req, res) => {
+  try {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) return res.status(400).json({ error: 'Invalid post ID' });
+
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const userEmail = null; // Could add auth check
+
+    // Check if already liked
+    const { rows: existing } = await cPool.query(
+      `SELECT 1 FROM community_likes WHERE post_id=$1 AND ip=$2`,
+      [postId, ip]
+    );
+
+    if (existing.length > 0) {
+      // Unlike
+      await cPool.query(`DELETE FROM community_likes WHERE post_id=$1 AND ip=$2`, [postId, ip]);
+      await cPool.query(`UPDATE community_posts SET likes = GREATEST(0, likes-1) WHERE id=$1`, [postId]);
+      res.json({ liked: false });
+    } else {
+      // Like
+      await cPool.query(`INSERT INTO community_likes (post_id, ip) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [postId, ip]);
+      await cPool.query(`UPDATE community_posts SET likes = likes+1 WHERE id=$1`, [postId]);
+      res.json({ liked: true });
+    }
+  } catch (e) {
+    console.error('[Community] Like error:', e.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// POST /api/community/posts/:id/comments — add comment
+app.post('/api/community/posts/:id/comments', async (req, res) => {
+  try {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) return res.status(400).json({ error: 'Invalid post ID' });
+
+    const { content } = req.body;
+    if (!content || content.trim().length < 1) return res.status(400).json({ error: 'Empty comment' });
+    if (content.length > 500) return res.status(400).json({ error: 'Comment too long' });
+
+    let authorName = 'Anonymous';
+    let avatarLetter = 'A';
+    let avatarColor = '#7c6af7';
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.slice(7);
+        const { rows } = await cPool.query(`SELECT email FROM users WHERE token=$1 LIMIT 1`, [token]);
+        if (rows[0]) {
+          authorName = rows[0].email.split('@')[0];
+          avatarLetter = authorName[0].toUpperCase();
+          const colors = ['#7c6af7','#06b6d4','#f59e0b','#10b981','#e11d48','#a855f7'];
+          avatarColor = colors[authorName.charCodeAt(0) % colors.length];
+        }
+      } catch {}
+    }
+
+    const { rows } = await cPool.query(
+      `INSERT INTO community_comments (post_id, author_name, avatar_letter, avatar_color, content)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
+      [postId, authorName, avatarLetter, avatarColor, content.trim()]
+    );
+    res.json({
+      id: String(rows[0].id),
+      author: authorName,
+      letter: avatarLetter,
+      color: avatarColor,
+      text: content.trim(),
+      created_at: rows[0].created_at,
+    });
+  } catch (e) {
+    console.error('[Community] Comment error:', e.message);
+    res.status(500).json({ error: 'Failed to add comment' });
+  }
+});
+
+// DELETE /api/community/posts/:id — delete post (owner or admin)
+app.delete('/api/community/posts/:id', async (req, res) => {
+  try {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) return res.status(400).json({ error: 'Invalid ID' });
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+
+    const token = authHeader.slice(7);
+    const { rows } = await cPool.query(`SELECT email, is_admin FROM users WHERE token=$1 LIMIT 1`, [token]);
+    if (!rows[0]) return res.status(401).json({ error: 'Invalid token' });
+
+    const { email, is_admin } = rows[0];
+    const authorName = email.split('@')[0];
+
+    // Check ownership
+    const { rows: post } = await cPool.query(`SELECT author_name FROM community_posts WHERE id=$1`, [postId]);
+    if (!post[0]) return res.status(404).json({ error: 'Post not found' });
+
+    if (!is_admin && post[0].author_name !== authorName) {
+      return res.status(403).json({ error: 'Not authorized to delete this post' });
+    }
+
+    await cPool.query(`DELETE FROM community_posts WHERE id=$1`, [postId]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Community] Delete error:', e.message);
+    res.status(500).json({ error: 'Failed to delete' });
+  }
+});
+
+
 // ── Transcribe ─────────────────────────────────────────────────────────────
 app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Audio file required' });

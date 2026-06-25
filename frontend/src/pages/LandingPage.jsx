@@ -62,7 +62,7 @@ export function AppFooter({ onNavigate, onGetStarted }) {
             </div>
           </div>
           {[
-            { title:'Product', links:[{label:'Get Started',action:()=>onGetStarted?.()},{label:'Pricing',action:()=>onGetStarted?.()},{label:'Templates',action:()=>onNavigate?.('templates')}] },
+            { title:'Product', links:[{label:'Get Started',action:()=>onGetStarted?.()},{label:'Pricing',action:()=>onGetStarted?.()},{label:'Templates',action:()=>onNavigate?.('templates')},{label:'Community',action:()=>onNavigate?.('community')}] },
             { title:'Company', links:[{label:'About Us',action:()=>onNavigate?.('about')},{label:'Blog',action:()=>onNavigate?.('blog')},{label:'Support',action:()=>onNavigate?.('support')}] },
             { title:'Legal', links:[{label:'Terms of Service',action:()=>onNavigate?.('terms')},{label:'Privacy Policy',action:()=>onNavigate?.('privacy')},{label:'Refund Policy',action:()=>onNavigate?.('refund')}] },
           ].map(col=>(
@@ -351,9 +351,10 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
           <span style={{ fontSize:18, fontWeight:800, letterSpacing:'-0.5px', color:'#fff' }}>Erivion</span>
         </div>
         <div className="ev-nav-links" style={{ display:'flex', alignItems:'center', gap:28 }}>
-          {[['home','Home'],['templates','Templates'],['pricing','Pricing'],['faq','FAQ'],['support','Support']].map(([k,l]) => (
+          {[['home','Home'],['templates','Templates'],['pricing','Pricing'],['community','🌍 Community'],['faq','FAQ'],['support','Support']].map(([k,l]) => (
             <button key={k} className="ev-nav-link" onClick={() => {
               if (k === 'support') { onNavigate?.(k); return; }
+              if (k === 'community') { onNavigate?.(k); return; }
               onGetStarted?.();
             }}>{l}</button>
           ))}
@@ -398,7 +399,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
 
         {/* Subhead */}
         <p style={{ fontSize:'clamp(16px,2.5vw,20px)', color:'#6b7280', maxWidth:600, lineHeight:1.7, marginBottom:48, animation:'fadeUp 0.7s ease 0.2s both', fontWeight:400 }}>
-          AI writes the script, generates the visuals, adds voiceover in 8+ languages, and renders a production-ready video — in minutes.
+          The #1 AI video generator — writes the script, generates visuals, adds voiceover in 8+ languages, and renders a production-ready video in minutes. Free to start.
         </p>
 
         {/* Prompt Input */}
@@ -644,6 +645,33 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── SEO KEYWORDS SECTION (hidden visually, for search engines) ─────── */}
+      <section aria-label="Related topics" style={{ padding: '0 24px 40px', maxWidth: 1100, margin: '0 auto' }}>
+        <div style={{ background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 18, padding: '28px 32px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: '#374151', textTransform: 'uppercase', marginBottom: 16 }}>
+            Also available on Erivion
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {[
+              'AI Video Generator', 'AI Video Maker', 'Text to Video AI', 'AI Video Creator',
+              'Free AI Video Generator', 'AI Video Generator from Text', 'Arabic AI Video',
+              'AI Voiceover Generator', 'Faceless YouTube Channel', 'AI Content Creator',
+              'Seedance AI Video', 'Stability AI Images', 'YouTube Automation AI',
+              'AI Script Generator', 'Video Generation AI', 'AI Video Editor Online',
+              'AI Documentary Maker', 'Arabic Voiceover AI', 'AI YouTube Video Maker',
+              'Automated Video Creation', 'AI Short Video Generator', 'Text to Speech Video',
+              'AI Motivational Video', 'Historical Video AI', 'Educational Video AI',
+              'AI Reels Generator', 'TikTok AI Video', 'AI Map Video Maker',
+              'Cinematic AI Video', 'AI Character Video', 'No-Code Video AI',
+            ].map(kw => (
+              <span key={kw} style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 500, background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.12)', color: '#6b7280', cursor: 'default' }}>
+                {kw}
+              </span>
+            ))}
+          </div>
         </div>
       </section>
 
