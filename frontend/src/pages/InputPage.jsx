@@ -654,6 +654,20 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
     }
   }, []);
 
+  // ── Auto-correct duration if plan doesn't allow current value ──
+  const PLAN_DURATIONS_EARLY = {
+    free:  ['30s'],
+    pro:   ['30s', '1min', '2min'],
+    plus:  ['30s', '1min', '2min', '3min', '4min', '5min'],
+    max:   ['30s', '1min', '2min', '3min', '4min', '5min', '8min', '10min'],
+  };
+  useEffect(() => {
+    const allowed = PLAN_DURATIONS_EARLY[userPlan] || PLAN_DURATIONS_EARLY.free;
+    if (!allowed.includes(duration)) {
+      setDuration(allowed[0]);
+    }
+  }, [userPlan]);
+
   if (!selectedModel) return (
     <ModelSelector
       onSelect={(model) => {
@@ -690,14 +704,6 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   };
   const CREDIT_COSTS_12 = { '30s': 3, 'auto': 3, '1min': 6, '2min': 12, '3min': 18, '4min': 24, '5min': 30, '8min': 48, '10min': 60 };
   const allowedDurations = PLAN_DURATIONS[userPlan] || PLAN_DURATIONS.free;
-
-  // Auto-correct duration if current plan doesn't allow it
-  useEffect(() => {
-    const allowed = PLAN_DURATIONS[userPlan] || PLAN_DURATIONS.free;
-    if (!allowed.includes(duration)) {
-      setDuration(allowed[0]);
-    }
-  }, [userPlan]);
 
   // ── Script length limit (max ~8 min = ~4800 chars) ─────────────────────────
   const MAX_SCRIPT_CHARS = 4800;

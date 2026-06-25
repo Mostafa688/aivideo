@@ -7,7 +7,7 @@ const PLAN_META = {
   max:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.35)',  icon: '♛',  label: 'Max',   ring: '#92400e' },
 };
 
-function HowToModal({ onClose }) {
+export function HowToModal({ onClose }) {
   const [activeTab, setActiveTab] = useState(0);
 
   const TABS = [
@@ -128,7 +128,7 @@ function HowToModal({ onClose }) {
   );
 }
 
-function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
+export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
   const [step, setStep] = useState('form');
   const [email, setEmail] = useState(user?.email || '');
   const [instapay, setInstapay] = useState('');
@@ -228,10 +228,8 @@ function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
   );
 }
 
-export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '' }) {
+export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '', onShowHowTo, onShowAffiliate }) {
   const [open, setOpen] = useState(false);
-  const [showAffiliate, setShowAffiliate] = useState(false);
-  const [showHowTo, setShowHowTo] = useState(false);
   const [hovered, setHovered] = useState(null);
   const menuRef = useRef(null);
 
@@ -264,8 +262,8 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
 
   const handleItemClick = (key) => {
     setOpen(false);
-    if (key === 'affiliate') setShowAffiliate(true);
-    else if (key === 'howto') setShowHowTo(true);
+    if (key === 'affiliate') { onShowAffiliate?.(); }
+    else if (key === 'howto') { onShowHowTo?.(); }
     else onNavigate?.(key);
   };
 
@@ -342,7 +340,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
               <div className="um-nav-mobile">
                 <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
                 {[{key:'home',icon:'🏠',label:'Home'},{key:'pricing',icon:'💎',label:'Pricing'},{key:'templates',icon:'🎬',label:'Templates'},{key:'support',icon:'💬',label:'Support'},{key:'faq',icon:'❓',label:'FAQ'},{key:'affiliate',icon:'💰',label:'Affiliate'}].map(item=>(
-                  <button key={item.key} onClick={()=>{setOpen(false); if(item.key==='affiliate'){setShowAffiliate(true);}else{onNavigate?.(item.key);}}} className="um-item"
+                  <button key={item.key} onClick={()=>{setOpen(false); if(item.key==='affiliate'){onShowAffiliate?.();}else if(item.key==='howto'){onShowHowTo?.();}else{onNavigate?.(item.key);}}} className="um-item"
                     style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:item.key==='affiliate'?'#22c55e':currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key||item.key==='affiliate'?700:500,textAlign:'left'}}>
                     <span style={{fontSize:15,width:22,textAlign:'center'}}>{item.icon}</span>
                     <span>{item.label}</span>
@@ -407,8 +405,6 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         )}
       </div>
 
-      {showAffiliate && <AffiliateModal user={user} onClose={() => setShowAffiliate(false)} onNavigateAffiliate={() => { setShowAffiliate(false); onNavigate?.('affiliate'); }} />}
-      {showHowTo && <HowToModal onClose={() => setShowHowTo(false)} />}
     </>
   );
 }

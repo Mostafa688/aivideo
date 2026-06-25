@@ -6,7 +6,7 @@ import RenderPage from './pages/RenderPage.jsx';
 import AuthPage from './pages/AuthPage.jsx';
 import VideosPage from './pages/VideosPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
-import UserMenu from './pages/UserMenu.jsx';
+import UserMenu, { HowToModal, AffiliateModal } from './pages/UserMenu.jsx';
 import LandingPage from './pages/LandingPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import SubPage from './pages/SubPage.jsx';
@@ -123,6 +123,9 @@ export default function App() {
       }).catch(() => {});
     }
   }, []);
+
+  const [showHowToModal, setShowHowToModal] = useState(false);
+  const [showAffiliateModal, setShowAffiliateModal] = useState(false);
 
   // ── Handle browser back/forward button ──────────────────────────────────
   useEffect(() => {
@@ -444,7 +447,9 @@ export default function App() {
 
         <UserMenu user={user} plan={userPlan} onLogout={handleLogout} onNavigate={handleNavigate}
           model3Access={model3Access} model4Access={model4Access} model5Access={model5Access} model6Access={model6Access}
-          avatar={userAvatar} currentPage={page} />
+          avatar={userAvatar} currentPage={page}
+          onShowHowTo={() => setShowHowToModal(true)}
+          onShowAffiliate={() => setShowAffiliateModal(true)} />
       </div>
     </header>
   );
@@ -454,6 +459,10 @@ export default function App() {
     <>
       <Header />
       {showVideos && <VideosPage onClose={() => setShowVideos(false)} />}
+
+      {/* App-level modals — rendered outside header to avoid overflow issues */}
+      {showHowToModal && <HowToModal onClose={() => setShowHowToModal(false)} />}
+      {showAffiliateModal && <AffiliateModal user={user} onClose={() => setShowAffiliateModal(false)} onNavigateAffiliate={() => { setShowAffiliateModal(false); handleNavigate('affiliate'); }} />}
 
       {/* Model Welcome Modal */}
       {pendingModelKey && (

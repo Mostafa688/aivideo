@@ -615,12 +615,12 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20 }}>
           {[
-            { id:'viral-historical', title:'How to Create Viral Historical Videos with AI in 2025', tag:'Tutorial', read:'5 min', img:'https://images.unsplash.com/photo-1461360370896-922624d12aa1?w=600&q=80', color:'#f59e0b' },
-            { id:'arabic-voiceover', title:'The Complete Guide to Arabic AI Voiceover for YouTube', tag:'Guide', read:'7 min', img:'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&q=80', color:'#a855f7' },
-            { id:'video-hooks', title:'10 Video Hooks That Get Millions of Views on TikTok', tag:'Strategy', read:'4 min', img:'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&q=80', color:'#06b6d4' },
-            { id:'seedance-vs-stock', title:'Seedance vs Stock Footage: Which Makes Better Videos?', tag:'Comparison', read:'6 min', img:'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&q=80', color:'#e11d48' },
-            { id:'make-money-ai', title:'How to Make $5,000/Month Selling AI Videos Online', tag:'Business', read:'8 min', img:'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&q=80', color:'#10b981' },
-            { id:'content-strategy', title:'The Ultimate Content Strategy for YouTube Creators in 2025', tag:'Strategy', read:'9 min', img:'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=600&q=80', color:'#7c6af7' },
+            { id:'make-money-youtube-ai-videos-2025', title:'How to Make Money on YouTube with AI Videos in 2025', tag:'Tutorial', read:'8 min', img:'https://images.unsplash.com/photo-1461360370896-922624d12aa1?w=600&q=80', color:'#f59e0b' },
+            { id:'ai-video-creation-complete-beginners-guide', title:'AI Video Creation: The Complete Beginners Guide', tag:'Guide', read:'12 min', img:'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&q=80', color:'#a855f7' },
+            { id:'faceless-youtube-channel-ideas-5k-per-month', title:'Faceless YouTube Channel Ideas That Make 5K Per Month', tag:'Strategy', read:'10 min', img:'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&q=80', color:'#06b6d4' },
+            { id:'repurpose-youtube-videos-facebook-tiktok', title:'How to Repurpose YouTube Videos for Facebook and TikTok', tag:'Tips', read:'6 min', img:'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&q=80', color:'#e11d48' },
+            { id:'best-ai-video-niches-low-competition-2025', title:'Best AI Video Niches with Low Competition in 2025', tag:'Research', read:'9 min', img:'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&q=80', color:'#10b981' },
+            { id:'grow-0-to-10k-subscribers-ai-videos', title:'How to Grow from 0 to 10K Subscribers Using AI Videos', tag:'Growth', read:'11 min', img:'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=600&q=80', color:'#7c6af7' },
           ].map((post,i) => (
             <div key={i} className="ev-reveal" data-delay={i*60}
               onClick={() => onOpenBlog?.(post.id)}
