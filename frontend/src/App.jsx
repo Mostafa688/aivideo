@@ -20,6 +20,7 @@ import TemplatesPage from './pages/TemplatesPage.jsx';
 import ModelErivionPage from './pages/ModelErivionPage.jsx';
 import FAQPage from './pages/FAQPage.jsx';
 import SupportPage from './pages/SupportPage.jsx';
+import CommunityPage from './pages/CommunityPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -165,6 +166,7 @@ export default function App() {
     if (window.location.pathname === '/privacy') { window.history.replaceState({}, '', '/privacy'); setPage('privacy'); setAuthChecked(true); return; }
     if (window.location.pathname === '/refund') { window.history.replaceState({}, '', '/refund'); setPage('refund'); setAuthChecked(true); return; }
     if (window.location.pathname === '/affiliate') { setPage('affiliate'); setAuthChecked(true); return; }
+    if (window.location.pathname === '/community') { setPage('community'); setAuthChecked(true); return; }
     if (window.location.pathname === '/pricing') {
       const token = localStorage.getItem('token');
       const email = localStorage.getItem('email');
@@ -283,6 +285,7 @@ export default function App() {
 
   const handleNavigate = (key) => {
     switch (key) {
+      case 'community': setPage('community'); break;
       case 'affiliate':  setPage('affiliate'); break;
       case 'model3':     setPage('model3'); break;
       case 'model4':     setPage('model4'); break;
@@ -326,7 +329,8 @@ export default function App() {
       if (!planChosenBefore) setShowPricing(true);
     }} />;
     if (blogPostId) return <BlogPostPage postId={blogPostId} onBack={() => setBlogPostId(null)} />;
-    return <LandingPage onGetStarted={() => setShowAuth(true)} onOpenBlog={(id) => setBlogPostId(id)} />;
+    if (page === 'community') return <CommunityPage onBack={() => setPage('input')} user={null} onNavigate={(k) => { if(k==='auth') setShowAuth(true); else if(k==='community') {} else setShowAuth(true); }} />;
+    return <LandingPage onGetStarted={() => setShowAuth(true)} onOpenBlog={(id) => setBlogPostId(id)} onNavigate={(k) => { if(k==='support'||k==='community') setPage(k); else setShowAuth(true); }} />;
   }
 
   if (showAuth) return <AuthPage onAuth={(data) => {
@@ -366,6 +370,7 @@ export default function App() {
     { key: 'home', label: 'Home' },
     { key: 'pricing', label: 'Pricing' },
     { key: 'templates', label: 'Templates' },
+    { key: 'community', label: '🌍 Community' },
     { key: 'about', label: 'About Us' },
     { key: 'support', label: 'Support' },
     { key: 'affiliate', label: '💰 Affiliate' },
@@ -505,6 +510,7 @@ export default function App() {
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
+        {page === 'community' && <CommunityPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'support' && <SupportPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
         {page === 'faq' && <FAQPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
       </div>
