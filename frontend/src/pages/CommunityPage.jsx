@@ -141,7 +141,7 @@ function Avatar({ letter, color, size = 36, img }) {
   );
 }
 
-function PostCard({ post, currentUser, onLike, onComment, onDelete }) {
+function PostCard({ post, currentUser, onLike, onComment, onDelete, onAskSupport }) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -211,6 +211,19 @@ function PostCard({ post, currentUser, onLike, onComment, onDelete }) {
           <span>💬</span>
           <span>{post.comments?.length || 0} {post.comments?.length === 1 ? 'comment' : 'comments'}</span>
         </button>
+        {!post.seed && !post.support_requested && (
+          <button onClick={() => onAskSupport(post.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 20, padding: '6px 14px', color: '#6b7280', cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all 0.15s', fontFamily: 'inherit', marginLeft: 'auto' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(245,158,11,0.5)'; e.currentTarget.style.color = '#f59e0b'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(245,158,11,0.2)'; e.currentTarget.style.color = '#6b7280'; }}>
+            🆘 Ask Support
+          </button>
+        )}
+        {post.support_requested && (
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 4 }}>
+            ⏳ Support notified
+          </span>
+        )}
       </div>
 
       {/* Comments */}
@@ -373,17 +386,26 @@ export default function CommunityPage({ onBack, user, onNavigate }) {
       if (res.ok) {
         const data = await res.json();
         if (data.posts && data.posts.length > 0) {
-          // Merge backend posts with seed posts, backend first
+          // Backend posts first, then seed posts that aren't duplicates
           const backendIds = new Set(data.posts.map(p => p.id));
           const seeds = SEED_POSTS.filter(s => !backendIds.has(s.id));
           setPosts([...data.posts, ...seeds]);
         }
+        // else keep seed posts as-is
       }
     } catch (e) {
       // Use seed posts only
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAskSupport = async (postId) => {
+    if (postId.startsWith('seed_')) return;
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, support_requested: true } : p));
+    try {
+      await fetch(`/api/community/posts/${postId}/ask-support`, { method: 'POST' });
+    } catch {}
   };
 
   const handleLike = async (postId) => {
@@ -586,7 +608,7 @@ export default function CommunityPage({ onBack, user, onNavigate }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {filtered.map((post, i) => (
                   <div key={post.id} className="comm-post" style={{ animationDelay: `${i * 0.05}s` }}>
-                    <PostCard post={post} currentUser={user} onLike={handleLike} onComment={handleComment} onDelete={handleDelete} />
+                    <PostCard post={post} currentUser={user} onLike={handleLike} onComment={handleComment} onDelete={handleDelete} onAskSupport={handleAskSupport} />
                   </div>
                 ))}
               </div>

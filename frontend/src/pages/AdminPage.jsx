@@ -723,6 +723,11 @@ export default function AdminPage() {
   const [payments, setPayments] = useState([]);
   const [videos, setVideos] = useState([]);
   const [answers, setAnswers] = useState([]);
+  const [communityPosts, setCommunityPosts] = useState([]);
+  const [communityQuestions, setCommunityQuestions] = useState([]);
+  const [communityView, setCommunityView] = useState('questions'); // 'questions' | 'all'
+  const [communityReply, setCommunityReply] = useState('');
+  const [replyingTo, setReplyingTo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
@@ -755,6 +760,20 @@ export default function AdminPage() {
   const loadPayments = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/payments', { headers }); const d = await r.json(); setPayments(d.payments || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadVideos   = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/videos', { headers }); const d = await r.json(); setVideos(d.videos || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadAnswers  = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/onboarding-answers', { headers }); const d = await r.json(); setAnswers(d.answers || []); } catch (e) { console.error(e); } setLoading(false); }, []);
+  const loadCommunity = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [qRes, aRes] = await Promise.all([
+        fetch('/api/admin/community-questions', { headers }),
+        fetch('/api/admin/community-all', { headers }),
+      ]);
+      const qData = await qRes.json();
+      const aData = await aRes.json();
+      setCommunityQuestions(qData.questions || []);
+      setCommunityPosts(aData.posts || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
   const handleResetCredits = async (email) => {
     if (!confirm(`Reset weekly credits for ${email}?`)) return;
     setResetingCredits(email);
@@ -874,7 +893,8 @@ export default function AdminPage() {
     else if (tab === 'payments') loadPayments();
     else if (tab === 'videos') loadVideos();
     else if (tab === 'support') { loadSupport(); }
-  }, [authed, tab, loadStats, loadUsers, loadPayments, loadVideos, loadSupport]);
+    else if (tab === 'community') { loadCommunity(); }
+  }, [authed, tab, loadStats, loadUsers, loadPayments, loadVideos, loadSupport, loadCommunity]);
 
   // Poll support messages when chat is open
   useEffect(() => {
@@ -939,6 +959,7 @@ export default function AdminPage() {
     { key: 'affiliates', label: '🤝 Affiliates'  },
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'answers',    label: '📋 Answers'     },
+    { key: 'community',  label: '🌍 Community'   },
   ];
 
   return (
@@ -1302,6 +1323,109 @@ export default function AdminPage() {
         )}
 
         {tab === 'studio' && <StudioTab s={s} />}
+
+        {/* ── Community Tab ── */}
+        {tab === 'community' && (
+          <div>
+            <div style={s.topbar}>
+              <div style={s.title}>🌍 Community ({communityView === 'questions' ? communityQuestions.length + ' support requests' : communityPosts.length + ' total posts'})</div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button style={s.btn(communityView==='questions'?'#7c6af7':'')} onClick={() => setCommunityView('questions')}>❓ Support Requests</button>
+                <button style={s.btn(communityView==='all'?'#7c6af7':'')} onClick={() => setCommunityView('all')}>📋 All Posts</button>
+                <button style={s.btn()} onClick={loadCommunity}>🔄 Refresh</button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div style={{ textAlign:'center', padding:40, color:'#6b7280' }}>Loading...</div>
+            ) : (
+              <div>
+                {(communityView === 'questions' ? communityQuestions : communityPosts).length === 0 ? (
+                  <div style={{ textAlign:'center', padding:60, color:'#4b5563' }}>
+                    <div style={{ fontSize:36, marginBottom:12 }}>{communityView==='questions'?'✅':'📭'}</div>
+                    <p>{communityView==='questions'?'No pending support requests':'No community posts yet'}</p>
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:900 }}>
+                    {(communityView === 'questions' ? communityQuestions : communityPosts).map(post => (
+                      <div key={post.id} style={{ background:'#0f0f1a', border:`1px solid ${post.needs_support?'rgba(245,158,11,0.4)':'#1a1a2e'}`, borderRadius:16, padding:20 }}>
+
+                        {/* Post header */}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                            <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#7c6af7,#a855f7)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, color:'#fff' }}>
+                              {post.avatar_letter || post.author_name?.[0] || 'U'}
+                            </div>
+                            <div>
+                              <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{post.author_name}</div>
+                              <div style={{ fontSize:11, color:'#4b5563' }}>{new Date(post.created_at).toLocaleString()} · <span style={{ color: post.tag==='Question'?'#f59e0b':'#7c6af7' }}>{post.tag}</span>{post.needs_support && <span style={{ color:'#f59e0b', marginLeft:8 }}>⚠️ Needs Support</span>}</div>
+                            </div>
+                          </div>
+                          <button onClick={async () => {
+                            if (!confirm('Delete this post?')) return;
+                            await fetch(`/api/admin/community-post/${post.id}`, { method:'DELETE', headers });
+                            loadCommunity();
+                            showToast('Post deleted');
+                          }} style={{ ...s.btn('#7f1d1d'), fontSize:12 }}>🗑️ Delete</button>
+                        </div>
+
+                        {/* Post content */}
+                        <div style={{ fontSize:14, color:'#d1d5db', lineHeight:1.7, marginBottom:14, padding:'12px 16px', background:'rgba(255,255,255,0.03)', borderRadius:10 }}>
+                          {post.content}
+                        </div>
+
+                        {/* Existing comments */}
+                        {post.comments && post.comments.length > 0 && (
+                          <div style={{ marginBottom:14 }}>
+                            <div style={{ fontSize:11, color:'#4b5563', marginBottom:8, fontWeight:700 }}>COMMENTS ({post.comments.length})</div>
+                            {post.comments.map((c, ci) => (
+                              <div key={ci} style={{ padding:'8px 12px', background: c.author==='⚡ Erivion Support'?'rgba(124,106,247,0.08)':'rgba(255,255,255,0.02)', borderRadius:8, marginBottom:6, borderLeft:`3px solid ${c.author==='⚡ Erivion Support'?'#7c6af7':'#1a1a2e'}` }}>
+                                <span style={{ fontSize:12, fontWeight:700, color: c.author==='⚡ Erivion Support'?'#a78bfa':'#9ca3af' }}>{c.author}: </span>
+                                <span style={{ fontSize:12, color:'#9ca3af' }}>{c.text}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Reply input */}
+                        <div style={{ display:'flex', gap:8 }}>
+                          <textarea
+                            value={replyingTo === post.id ? communityReply : ''}
+                            onChange={e => { setReplyingTo(post.id); setCommunityReply(e.target.value); }}
+                            placeholder="Reply as ⚡ Erivion Support..."
+                            rows={2}
+                            style={{ flex:1, ...s.input, resize:'none', fontFamily:'inherit', fontSize:13 }}
+                          />
+                          <button
+                            disabled={replyingTo !== post.id || !communityReply.trim()}
+                            onClick={async () => {
+                              if (!communityReply.trim()) return;
+                              try {
+                                const r = await fetch('/api/admin/community-reply', {
+                                  method:'POST',
+                                  headers: { ...headers, 'Content-Type':'application/json' },
+                                  body: JSON.stringify({ post_id: post.id, content: communityReply }),
+                                });
+                                if (r.ok) {
+                                  showToast('Reply posted ✅');
+                                  setCommunityReply('');
+                                  setReplyingTo(null);
+                                  loadCommunity();
+                                }
+                              } catch (e) { showToast('Error posting reply'); }
+                            }}
+                            style={{ ...s.btn(), padding:'0 18px', opacity: replyingTo===post.id && communityReply.trim() ? 1 : 0.4, alignSelf:'flex-end' }}>
+                            Reply →
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Support Chat Tab ── */}
         {tab === 'support' && (

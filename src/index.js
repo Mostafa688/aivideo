@@ -245,8 +245,10 @@ cPool.query(`
 // GET /api/community/posts — get all posts with comments
 app.get('/api/community/posts', async (req, res) => {
   try {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+
     const { rows: posts } = await cPool.query(`
-      SELECT p.*, 
+      SELECT p.*,
         COALESCE(json_agg(
           json_build_object(
             'id', c.id,
@@ -256,14 +258,15 @@ app.get('/api/community/posts', async (req, res) => {
             'text', c.content,
             'created_at', c.created_at
           ) ORDER BY c.created_at ASC
-        ) FILTER (WHERE c.id IS NOT NULL), '[]') AS comments
+        ) FILTER (WHERE c.id IS NOT NULL), '[]') AS comments,
+        EXISTS(SELECT 1 FROM community_likes l WHERE l.post_id = p.id AND l.ip = $1) AS user_liked
       FROM community_posts p
       LEFT JOIN community_comments c ON c.post_id = p.id
       GROUP BY p.id
       ORDER BY p.created_at DESC
       LIMIT 100
-    `);
-    // format posts for frontend
+    `, [ip]);
+
     const formatted = posts.map(p => ({
       id: String(p.id),
       author: p.author_name,
@@ -274,7 +277,7 @@ app.get('/api/community/posts', async (req, res) => {
       image_url: p.image_url || null,
       tag: p.tag || 'Showcase',
       likes: parseInt(p.likes) || 0,
-      liked: false,
+      liked: p.user_liked === true,
       comments: p.comments || [],
       created_at: p.created_at,
     }));
@@ -454,8 +457,125 @@ app.delete('/api/community/posts/:id', async (req, res) => {
   }
 });
 
+// POST /api/community/posts/:id/ask-support — flag post for admin attention
+app.post('/api/community/posts/:id/ask-support', async (req, res) => {
+  try {
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) return res.status(400).json({ error: 'Invalid ID' });
 
-// ── Transcribe ─────────────────────────────────────────────────────────────
+    // Add a flag column if not exists
+    await cPool.query(`ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS needs_support BOOLEAN DEFAULT FALSE`).catch(()=>{});
+    await cPool.query(`ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS support_requested_at TIMESTAMPTZ`).catch(()=>{});
+
+    await cPool.query(
+      `UPDATE community_posts SET needs_support=TRUE, support_requested_at=NOW() WHERE id=$1`,
+      [postId]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Community] Ask support error:', e.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// GET /api/admin/community-questions — get posts flagged for support (admin only)
+app.get('/api/admin/community-questions', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+
+    await cPool.query(`ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS needs_support BOOLEAN DEFAULT FALSE`).catch(()=>{});
+
+    const { rows } = await cPool.query(`
+      SELECT p.*,
+        COALESCE(json_agg(
+          json_build_object(
+            'id', c.id,
+            'author', c.author_name,
+            'text', c.content,
+            'created_at', c.created_at
+          ) ORDER BY c.created_at ASC
+        ) FILTER (WHERE c.id IS NOT NULL), '[]') AS comments
+      FROM community_posts p
+      LEFT JOIN community_comments c ON c.post_id = p.id
+      WHERE p.needs_support = TRUE
+      GROUP BY p.id
+      ORDER BY p.support_requested_at DESC
+      LIMIT 50
+    `);
+    res.json({ questions: rows });
+  } catch (e) {
+    console.error('[Community] Admin get questions error:', e.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// GET /api/admin/community-all — get ALL community posts for admin
+app.get('/api/admin/community-all', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+
+    const { rows } = await cPool.query(`
+      SELECT p.*,
+        COALESCE(json_agg(
+          json_build_object(
+            'id', c.id,
+            'author', c.author_name,
+            'text', c.content,
+            'created_at', c.created_at
+          ) ORDER BY c.created_at ASC
+        ) FILTER (WHERE c.id IS NOT NULL), '[]') AS comments
+      FROM community_posts p
+      LEFT JOIN community_comments c ON c.post_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ posts: rows });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// POST /api/admin/community-reply — admin replies as comment on a post
+app.post('/api/admin/community-reply', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+
+    const { post_id, content } = req.body;
+    if (!post_id || !content?.trim()) return res.status(400).json({ error: 'Missing fields' });
+
+    const { rows } = await cPool.query(
+      `INSERT INTO community_comments (post_id, author_name, avatar_letter, avatar_color, content)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+      [parseInt(post_id), '⚡ Erivion Support', 'E', '#7c6af7', content.trim()]
+    );
+
+    // Mark as resolved
+    await cPool.query(`UPDATE community_posts SET needs_support=FALSE WHERE id=$1`, [parseInt(post_id)]);
+
+    res.json({ success: true, comment_id: rows[0].id });
+  } catch (e) {
+    console.error('[Community] Admin reply error:', e.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// DELETE /api/admin/community-post/:id — admin delete any post
+app.delete('/api/admin/community-post/:id', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    await cPool.query(`DELETE FROM community_posts WHERE id=$1`, [parseInt(req.params.id)]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+
 app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Audio file required' });
   // model 4 = max 2.5 min (~8MB), model 3 = max 3 min (~10MB), default = 3 min
