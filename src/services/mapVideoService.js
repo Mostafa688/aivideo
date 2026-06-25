@@ -555,7 +555,6 @@ export function generateSVGFrame({ baseSvg, highlights, style, viewBox, w, h, ev
     // Labels removed
   }
 
-  return
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${viewBox}" width="${w}" height="${h}">
   <defs>
