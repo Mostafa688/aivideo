@@ -2,18 +2,18 @@ import React, { useState, useEffect } from 'react';
 
 // ── جدول هامش الربح والعمولة الحقيقية ──────────────────────────────────
 const COMMISSION_TABLE = [
-  { plan: '⚡ Pro (M1/M2)',    price: '80 EGP/mo',    cost: '10 EGP',   profit: '70 EGP',  commission: '35 EGP' },
-  { plan: '🚀 Plus (M1/M2)',   price: '180 EGP/mo',   cost: '38 EGP',   profit: '142 EGP', commission: '71 EGP' },
-  { plan: '👑 Max (M1/M2)',    price: '400 EGP/mo',   cost: '90 EGP',   profit: '310 EGP', commission: '155 EGP' },
-  { plan: '🖼️ M3 Starter',    price: '300 EGP/mo',   cost: '190 EGP',  profit: '110 EGP', commission: '55 EGP' },
-  { plan: '🖼️ M3 Pro',        price: '750 EGP/mo',   cost: '560 EGP',  profit: '190 EGP', commission: '95 EGP' },
-  { plan: '🖼️ M3 Max',        price: '1,400 EGP/mo', cost: '1,050 EGP',profit: '350 EGP', commission: '175 EGP' },
-  { plan: '🎬 M4 Starter',    price: '450 EGP/mo',   cost: '300 EGP',  profit: '150 EGP', commission: '75 EGP' },
-  { plan: '🎬 M4 Creator',    price: '800 EGP/mo',   cost: '575 EGP',  profit: '225 EGP', commission: '112 EGP' },
-  { plan: '🎬 M4 Pro',        price: '2,250 EGP/mo', cost: '1,725 EGP',profit: '525 EGP', commission: '262 EGP' },
-  { plan: '🎭 Cinematic Starter', price: '400 EGP/mo',  cost: '260 EGP',  profit: '140 EGP', commission: '70 EGP' },
-  { plan: '🎭 Cinematic Pro',     price: '750 EGP/mo',  cost: '510 EGP',  profit: '240 EGP', commission: '120 EGP' },
-  { plan: '🎭 Cinematic Max',     price: '1,500 EGP/mo',cost: '1,050 EGP',profit: '450 EGP', commission: '225 EGP' },
+  { plan: '⚡ Pro (M1/M2)',    price: '100 EGP/mo',   cost: '10 EGP',    profit: '90 EGP',  commission: '45 EGP' },
+  { plan: '🚀 Plus (M1/M2)',   price: '220 EGP/mo',   cost: '38 EGP',    profit: '182 EGP', commission: '91 EGP' },
+  { plan: '👑 Max (M1/M2)',    price: '550 EGP/mo',   cost: '90 EGP',    profit: '460 EGP', commission: '230 EGP' },
+  { plan: '🖼️ M3 Starter',    price: '300 EGP/mo',   cost: '190 EGP',   profit: '110 EGP', commission: '55 EGP' },
+  { plan: '🖼️ M3 Pro',        price: '750 EGP/mo',   cost: '560 EGP',   profit: '190 EGP', commission: '95 EGP' },
+  { plan: '🖼️ M3 Max',        price: '1,400 EGP/mo', cost: '1,050 EGP', profit: '350 EGP', commission: '175 EGP' },
+  { plan: '🎬 M4 Starter',    price: '450 EGP/mo',   cost: '300 EGP',   profit: '150 EGP', commission: '75 EGP' },
+  { plan: '🎬 M4 Creator',    price: '800 EGP/mo',   cost: '575 EGP',   profit: '225 EGP', commission: '112 EGP' },
+  { plan: '🎬 M4 Pro',        price: '2,250 EGP/mo', cost: '1,725 EGP', profit: '525 EGP', commission: '262 EGP' },
+  { plan: '🎭 Cinematic Starter', price: '400 EGP/mo',   cost: '260 EGP',   profit: '140 EGP', commission: '70 EGP' },
+  { plan: '🎭 Cinematic Pro',     price: '750 EGP/mo',   cost: '510 EGP',   profit: '240 EGP', commission: '120 EGP' },
+  { plan: '🎭 Cinematic Max',     price: '1,500 EGP/mo', cost: '1,050 EGP', profit: '450 EGP', commission: '225 EGP' },
 ];
 
 export default function AffiliatePage({ onBack }) {

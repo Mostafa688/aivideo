@@ -628,7 +628,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   const [showIdeaPrompts, setShowIdeaPrompts] = useState(false);
   const [showScriptPrompts, setShowScriptPrompts] = useState(false);
   const [ratio, setRatio] = useState('9:16');
-  const [duration, setDuration] = useState('1min');
+  const [duration, setDuration] = useState('30s');
   const [music, setMusic] = useState(true);
   const [captions, setCaptions] = useState(true);
   const [soundEffects, setSoundEffects] = useState(false);
@@ -690,6 +690,14 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   };
   const CREDIT_COSTS_12 = { '30s': 3, 'auto': 3, '1min': 6, '2min': 12, '3min': 18, '4min': 24, '5min': 30, '8min': 48, '10min': 60 };
   const allowedDurations = PLAN_DURATIONS[userPlan] || PLAN_DURATIONS.free;
+
+  // Auto-correct duration if current plan doesn't allow it
+  useEffect(() => {
+    const allowed = PLAN_DURATIONS[userPlan] || PLAN_DURATIONS.free;
+    if (!allowed.includes(duration)) {
+      setDuration(allowed[0]);
+    }
+  }, [userPlan]);
 
   // ── Script length limit (max ~8 min = ~4800 chars) ─────────────────────────
   const MAX_SCRIPT_CHARS = 4800;

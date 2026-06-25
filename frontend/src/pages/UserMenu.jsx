@@ -128,7 +128,7 @@ function HowToModal({ onClose }) {
   );
 }
 
-function AffiliateModal({ user, onClose }) {
+function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
   const [step, setStep] = useState('form');
   const [email, setEmail] = useState(user?.email || '');
   const [instapay, setInstapay] = useState('');
@@ -170,7 +170,7 @@ function AffiliateModal({ user, onClose }) {
         {step === 'form' && (
           <>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:24 }}>
-              {[['Pro','22 EGP'],['Plus','47 EGP'],['Max','122 EGP'],['M3 Max','175 EGP']].map(([plan,earn]) => (
+              {[['Pro','45 EGP'],['Plus','91 EGP'],['Max','230 EGP'],['M3 Max','175 EGP']].map(([plan,earn]) => (
                 <div key={plan} style={{ background:'rgba(34,197,94,0.05)', border:'1px solid rgba(34,197,94,0.12)', borderRadius:10, padding:'10px 12px' }}>
                   <div style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>{plan}</div>
                   <div style={{ fontSize:16, fontWeight:800, color:'#22c55e' }}>{earn}</div>
@@ -217,6 +217,9 @@ function AffiliateModal({ user, onClose }) {
             </div>
             <button onClick={onClose} style={{ width:'100%', background:'linear-gradient(135deg,#22c55e,#16a34a)', border:'none', borderRadius:12, padding:'12px', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer' }}>
               ✅ Start Marketing!
+            </button>
+            <button onClick={() => { onClose(); onNavigateAffiliate?.(); }} style={{ width:'100%', marginTop:8, background:'transparent', border:'1px solid rgba(34,197,94,0.3)', borderRadius:12, padding:'10px', color:'#22c55e', fontWeight:600, fontSize:13, cursor:'pointer' }}>
+              📊 View Full Dashboard →
             </button>
           </div>
         )}
@@ -338,9 +341,9 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
               <style>{`@media(min-width:641px){.um-nav-mobile{display:none!important}}`}</style>
               <div className="um-nav-mobile">
                 <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
-                {[{key:'home',icon:'🏠',label:'Home'},{key:'pricing',icon:'💎',label:'Pricing'},{key:'templates',icon:'🎬',label:'Templates'},{key:'support',icon:'💬',label:'Support'},{key:'faq',icon:'❓',label:'FAQ'}].map(item=>(
-                  <button key={item.key} onClick={()=>{setOpen(false);onNavigate?.(item.key);}} className="um-item"
-                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key?700:500,textAlign:'left'}}>
+                {[{key:'home',icon:'🏠',label:'Home'},{key:'pricing',icon:'💎',label:'Pricing'},{key:'templates',icon:'🎬',label:'Templates'},{key:'support',icon:'💬',label:'Support'},{key:'faq',icon:'❓',label:'FAQ'},{key:'affiliate',icon:'💰',label:'Affiliate'}].map(item=>(
+                  <button key={item.key} onClick={()=>{setOpen(false); if(item.key==='affiliate'){setShowAffiliate(true);}else{onNavigate?.(item.key);}}} className="um-item"
+                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:item.key==='affiliate'?'#22c55e':currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key||item.key==='affiliate'?700:500,textAlign:'left'}}>
                     <span style={{fontSize:15,width:22,textAlign:'center'}}>{item.icon}</span>
                     <span>{item.label}</span>
                     {currentPage===item.key&&<div style={{marginLeft:'auto',width:5,height:5,borderRadius:'50%',background:'#a78bfa'}}/>}
@@ -404,7 +407,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         )}
       </div>
 
-      {showAffiliate && <AffiliateModal user={user} onClose={() => setShowAffiliate(false)} />}
+      {showAffiliate && <AffiliateModal user={user} onClose={() => setShowAffiliate(false)} onNavigateAffiliate={() => { setShowAffiliate(false); onNavigate?.('affiliate'); }} />}
       {showHowTo && <HowToModal onClose={() => setShowHowTo(false)} />}
     </>
   );

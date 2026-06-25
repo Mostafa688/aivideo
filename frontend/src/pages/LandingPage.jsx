@@ -330,10 +330,14 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
           .ev-stats-grid { grid-template-columns:repeat(2,1fr) !important; }
           .ev-footer-grid { grid-template-columns:1fr 1fr !important; }
         }
+        @media (max-width:480px) {
+          .ev-landing-nav { padding: 0 16px !important; }
+          .ev-landing-nav-btns button { padding: 7px 12px !important; font-size: 12px !important; }
+        }
       `}</style>
 
       {/* ── NAVBAR ─────────────────────────────────────────────────────────── */}
-      <nav style={{
+      <nav className="ev-landing-nav" style={{
         position:'fixed', top:0, left:0, right:0, zIndex:100,
         padding:'0 40px', height:64,
         display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -348,16 +352,19 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         </div>
         <div className="ev-nav-links" style={{ display:'flex', alignItems:'center', gap:28 }}>
           {[['home','Home'],['templates','Templates'],['pricing','Pricing'],['faq','FAQ'],['support','Support']].map(([k,l]) => (
-            <button key={k} className="ev-nav-link" onClick={() => onNavigate?.(k)}>{l}</button>
+            <button key={k} className="ev-nav-link" onClick={() => {
+              if (k === 'support') { onNavigate?.(k); return; }
+              onGetStarted?.();
+            }}>{l}</button>
           ))}
         </div>
-        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          <button onClick={() => onNavigate?.('auth')} style={{ padding:'8px 18px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'transparent', color:'rgba(255,255,255,0.7)', fontSize:13, fontWeight:600, cursor:'pointer', transition:'all 0.2s', fontFamily:'inherit' }}
+        <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+          <button onClick={() => onNavigate?.('auth')} style={{ padding:'8px 16px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'transparent', color:'rgba(255,255,255,0.7)', fontSize:13, fontWeight:600, cursor:'pointer', transition:'all 0.2s', fontFamily:'inherit', whiteSpace:'nowrap' }}
             onMouseEnter={e=>{e.target.style.background='rgba(255,255,255,0.06)';e.target.style.color='#fff'}}
             onMouseLeave={e=>{e.target.style.background='transparent';e.target.style.color='rgba(255,255,255,0.7)'}}>
             Log in
           </button>
-          <button onClick={() => onGetStarted?.()} className="ev-cta-btn" style={{ padding:'8px 20px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#7c6af7,#6d28d9)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', boxShadow:'0 4px 20px rgba(124,106,247,0.4)', fontFamily:'inherit' }}>
+          <button onClick={() => onGetStarted?.()} className="ev-cta-btn" style={{ padding:'8px 16px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#7c6af7,#6d28d9)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', boxShadow:'0 4px 20px rgba(124,106,247,0.4)', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             Get Started Free
           </button>
         </div>
@@ -571,6 +578,9 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
             { name:'Ahmed K.', role:'YouTube Creator · 120K subs', text:'I make 3 videos a week now instead of one. Erivion handles the heavy work while I focus on ideas. Genuinely changed my workflow.', color:'#7c6af7' },
             { name:'Sara M.', role:'Education Content Creator', text:'The Arabic voiceover quality is unmatched. My students love the videos and engagement went up 60% since I started using Erivion.', color:'#06b6d4' },
             { name:'Omar T.', role:'Digital Marketing Agency', text:'We use Model 4 for client content. The AI video quality looks genuinely cinematic. Clients are amazed we produce this in-house.', color:'#f59e0b' },
+            { name:'Khalid A.', role:'Islamic History Channel · 45K subs', text:'Creating historical videos used to take me days. Now I produce a full episode in under an hour. The quality is incredible for the price.', color:'#10b981' },
+            { name:'Nour H.', role:'Freelance Video Producer', text:'I offer AI video services to clients using Erivion. It\'s been a game changer for my business — clients get premium quality fast.', color:'#e11d48' },
+            { name:'Ramy S.', role:'Motivational Content Creator', text:'The Arabic Egyptian voiceover sounds completely natural. My audience can\'t believe it\'s AI. Best investment I\'ve made for my channel.', color:'#a855f7' },
           ].map((t,i) => (
             <div key={i} className="ev-reveal" data-delay={i*100}
               style={{ padding:'28px 24px', borderRadius:18, border:'1px solid rgba(255,255,255,0.06)', background:'rgba(255,255,255,0.02)' }}>
@@ -605,15 +615,15 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20 }}>
           {[
-            { title:'How to Create Viral Historical Videos with AI in 2025', tag:'Tutorial', read:'5 min', img:'https://images.unsplash.com/photo-1461360370896-922624d12aa1?w=600&q=80', color:'#f59e0b' },
-            { title:'The Complete Guide to Arabic AI Voiceover for YouTube', tag:'Guide', read:'7 min', img:'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&q=80', color:'#a855f7' },
-            { title:'10 Video Hooks That Get Millions of Views on TikTok', tag:'Strategy', read:'4 min', img:'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&q=80', color:'#06b6d4' },
-            { title:'Seedance vs Stock Footage: Which Makes Better Videos?', tag:'Comparison', read:'6 min', img:'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&q=80', color:'#e11d48' },
-            { title:'How to Make $5,000/Month Selling AI Videos Online', tag:'Business', read:'8 min', img:'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&q=80', color:'#10b981' },
-            { title:"Islamic History Videos: A Creator's Complete AI Workflow", tag:'Case Study', read:'10 min', img:'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?w=600&q=80', color:'#7c6af7' },
+            { id:'viral-historical', title:'How to Create Viral Historical Videos with AI in 2025', tag:'Tutorial', read:'5 min', img:'https://images.unsplash.com/photo-1461360370896-922624d12aa1?w=600&q=80', color:'#f59e0b' },
+            { id:'arabic-voiceover', title:'The Complete Guide to Arabic AI Voiceover for YouTube', tag:'Guide', read:'7 min', img:'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&q=80', color:'#a855f7' },
+            { id:'video-hooks', title:'10 Video Hooks That Get Millions of Views on TikTok', tag:'Strategy', read:'4 min', img:'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&q=80', color:'#06b6d4' },
+            { id:'seedance-vs-stock', title:'Seedance vs Stock Footage: Which Makes Better Videos?', tag:'Comparison', read:'6 min', img:'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=600&q=80', color:'#e11d48' },
+            { id:'make-money-ai', title:'How to Make $5,000/Month Selling AI Videos Online', tag:'Business', read:'8 min', img:'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&q=80', color:'#10b981' },
+            { id:'content-strategy', title:'The Ultimate Content Strategy for YouTube Creators in 2025', tag:'Strategy', read:'9 min', img:'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=600&q=80', color:'#7c6af7' },
           ].map((post,i) => (
             <div key={i} className="ev-reveal" data-delay={i*60}
-              onClick={() => onNavigate?.('blog')}
+              onClick={() => onOpenBlog?.(post.id)}
               style={{ borderRadius:18, overflow:'hidden', cursor:'pointer', border:'1px solid rgba(255,255,255,0.06)', background:'rgba(255,255,255,0.02)', transition:'all 0.3s cubic-bezier(0.16,1,0.3,1)' }}
               onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.borderColor='rgba(124,106,247,0.3)'; e.currentTarget.style.boxShadow='0 20px 48px rgba(0,0,0,0.4)'; }}
               onMouseLeave={e=>{ e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.06)'; e.currentTarget.style.boxShadow='none'; }}>

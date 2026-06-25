@@ -124,6 +124,24 @@ export default function App() {
     }
   }, []);
 
+  // ── Handle browser back/forward button ──────────────────────────────────
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path === '/' || path === '') {
+        setShowPricing(false);
+        setShowAuth(false);
+        setPage('input');
+      } else if (path === '/pricing') {
+        setShowPricing(true);
+      } else if (path === '/affiliate') {
+        setPage('affiliate');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const googleToken = params.get('google_token');
@@ -347,6 +365,7 @@ export default function App() {
     { key: 'templates', label: 'Templates' },
     { key: 'about', label: 'About Us' },
     { key: 'support', label: 'Support' },
+    { key: 'affiliate', label: '💰 Affiliate' },
   ];
 
   const Header = () => (
