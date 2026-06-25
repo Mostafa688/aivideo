@@ -193,7 +193,7 @@ async function checkAndResetUsage(userId) {
 
 export async function getUserById(userId) {
   const { rows } = await pool.query(
-    'SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model3_trial_used, model4_access, model4_plan, model4_trial_used, model5_access, model5_plan, erivion_access, erivion_plan, created_at FROM users WHERE id = $1',
+    'SELECT id, email, name, avatar, plan, plan_billing, plan_expires_at, verified, model3_access, model3_plan, model3_trial_used, model4_access, model4_plan, model4_trial_used, model5_access, model5_plan, erivion_access, erivion_plan, model7_access, model7_plan, created_at FROM users WHERE id = $1',
     [userId]
   );
   return rows[0] || null;
