@@ -427,7 +427,7 @@ function MapVideoForm({ onSubmit, onBack }) {
 }
 
 // ── Model Selector ──────────────────────────────────────────────────────────
-function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access, model7Access }) {
+function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access, model7Access, isAdmin }) {
   const [hovered, setHovered] = useState(null);
   const [showModel3Modal, setShowModel3Modal] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
@@ -473,7 +473,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       color:'#f97316', glow:'rgba(249,115,22,0.25)',
       desc:'Upload your product photo and get a cinematic AI video ad — scenes, voiceover, and transitions included.',
       tags:['FLUX Reference','Seedance Video','AI Voiceover','10 Credits/ad'],
-      badge:'NEW', free:false, cat:'premium', needsAccess: !model7Access,
+      badge:'SOON', free:false, cat:'premium', needsAccess: !model7Access, comingSoon: true, adminOnly: true,
     },
     {
       key:'ai', tag:'MODEL 1', name:'AI Slices', icon:'🎨',
@@ -485,6 +485,18 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
   ];
 
   const filtered = activeTab === 'all' ? MODELS : MODELS.filter(m => m.cat === activeTab);
+
+  // Admin check من الـ JWT في localStorage
+  const getAdminEmail = () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return '';
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.email || '';
+    } catch { return ''; }
+  };
+  const ADMIN_EMAIL = 'digidelight33@gmail.com';
+  const userIsAdmin = isAdmin || getAdminEmail() === ADMIN_EMAIL;
 
   return (
     <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', background:'#050508', position:'relative', overflow:'hidden' }}>
@@ -553,6 +565,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => {
                   if (m.deprecated) return;
+                  if (m.comingSoon && !(m.adminOnly && userIsAdmin)) return;
                   onSelect(m.key);
                 }}
                 style={{
@@ -564,7 +577,8 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                   padding:'28px 24px',
                   boxShadow: isHov ? `0 24px 56px ${m.color}18` : 'none',
                   animation: `fadeUp 0.4s ease ${i*0.06}s both`,
-                  opacity: m.deprecated ? 0.55 : 1,
+                  opacity: m.deprecated ? 0.55 : (m.comingSoon && !(m.adminOnly && userIsAdmin)) ? 0.7 : 1,
+                  cursor: (m.deprecated || (m.comingSoon && !(m.adminOnly && userIsAdmin))) ? 'default' : 'pointer',
                 }}>
 
                 {/* Top row */}
@@ -597,6 +611,17 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                   <div style={{ padding:'10px 14px', borderRadius:12, background:'rgba(248,113,113,0.06)', border:'1px solid rgba(248,113,113,0.15)', display:'flex', alignItems:'center', gap:8 }}>
                     <span style={{ fontSize:11, color:'#f87171', fontFamily:"'DM Sans', sans-serif" }}>⚠️ Being replaced — use Model 2 instead</span>
                   </div>
+                ) : (m.comingSoon && !(m.adminOnly && userIsAdmin)) ? (
+                  <div style={{ padding:'10px 14px', borderRadius:12, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontSize:16 }}>🔒</span>
+                      <div>
+                        <div style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.35)', fontFamily:"'DM Sans', sans-serif" }}>Coming Soon</div>
+                        <div style={{ fontSize:9, color:'rgba(255,255,255,0.2)', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>قريباً — ترقّبوا الإطلاق</div>
+                      </div>
+                    </div>
+                    <div style={{ padding:'3px 10px', borderRadius:999, background:`${m.color}15`, border:`1px solid ${m.color}30`, fontSize:9, fontWeight:700, color:m.color, fontFamily:"'DM Sans', sans-serif", letterSpacing:'0.08em' }}>SOON</div>
+                  </div>
                 ) : (
                   <div style={{ padding:'10px 14px', borderRadius:12, background:isHov?`linear-gradient(135deg,${m.color},${m.color}99)`:`${m.color}12`, border:`1px solid ${m.color}${isHov?'00':'28'}`, display:'flex', alignItems:'center', justifyContent:'space-between', transition:'all 0.25s', boxShadow:isHov?`0 6px 20px ${m.glow}`:'none' }}>
                     <div>
@@ -624,7 +649,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
 
 
 // ── Main Form ───────────────────────────────────────────────────────────────
-export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, model7Access = false, userPlan = 'free', credits = null }) {
+export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, model7Access = false, userPlan = 'free', credits = null, userEmail = '' }) {
   const [selectedModel, setSelectedModel] = useState(null);
   const [mode, setMode] = useState('idea');
   const [idea, setIdea] = useState('');
@@ -691,6 +716,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
       model5Access={model5Access}
       model6Access={model6Access}
       model7Access={model7Access}
+      isAdmin={userEmail === 'digidelight33@gmail.com'}
     />
   );
 
