@@ -160,6 +160,17 @@ app.use('/outputs', express.static('outputs'));
 app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'templates')));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
+// ── sitemap.xml ───────────────────────────────────────────────────────────────
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://erivion.net/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://erivion.net/?page=pricing</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://erivion.net/?page=faq</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://erivion.net/?page=templates</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+</urlset>`);
+});
+
 // ── robots.txt ────────────────────────────────────────────────────────────────
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(`User-agent: *
