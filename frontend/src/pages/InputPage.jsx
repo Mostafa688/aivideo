@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import VoiceUpload from './VoiceUpload.jsx';
+import ModelAdsPage from './ModelAdsPage.jsx';
 
 const TONES = ['Motivational', 'Storytelling', 'Educational'];
 
@@ -426,7 +427,7 @@ function MapVideoForm({ onSubmit, onBack }) {
 }
 
 // ── Model Selector ──────────────────────────────────────────────────────────
-function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access }) {
+function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access, model7Access }) {
   const [hovered, setHovered] = useState(null);
   const [showModel3Modal, setShowModel3Modal] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
@@ -466,6 +467,13 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       desc:'Animated geographic maps — countries highlight, zoom, and change color as your story unfolds.',
       tags:['170+ countries','Auto zoom','Dynamic colors','Free'],
       badge:'FREE', free:true, cat:'free',
+    },
+    {
+      key:'model7', tag:'ADS', name:'Ad Creator', icon:'📢',
+      color:'#f97316', glow:'rgba(249,115,22,0.25)',
+      desc:'Upload your product photo and get a cinematic AI video ad — scenes, voiceover, and transitions included.',
+      tags:['FLUX Reference','Seedance Video','AI Voiceover','10 Credits/ad'],
+      badge:'NEW', free:false, cat:'premium', needsAccess: !model7Access,
     },
     {
       key:'ai', tag:'MODEL 1', name:'AI Slices', icon:'🎨',
@@ -616,7 +624,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
 
 
 // ── Main Form ───────────────────────────────────────────────────────────────
-export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, userPlan = 'free', credits = null }) {
+export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, model7Access = false, userPlan = 'free', credits = null }) {
   const [selectedModel, setSelectedModel] = useState(null);
   const [mode, setMode] = useState('idea');
   const [idea, setIdea] = useState('');
@@ -675,19 +683,25 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
         if (model === 'model4') { onSubmit({ videoType: 'model4' }); return; }
         if (model === 'model5') { onSubmit({ videoType: 'model5' }); return; }
         if (model === 'model6') { setSelectedModel('model6'); return; }
-        if (model === 'model7') { onSubmit({ videoType: 'model7' }); return; }
+        if (model === 'model7') { setSelectedModel('model7'); return; }
         setSelectedModel(model);
       }}
       model3Access={model3Access}
       model4Access={model4Access}
       model5Access={model5Access}
       model6Access={model6Access}
+      model7Access={model7Access}
     />
   );
 
   // ── Model 6: Atlas Map Video Form ──
   if (selectedModel === 'model6') {
     return <MapVideoForm onSubmit={onSubmit} onBack={() => setSelectedModel(null)} />;
+  }
+
+  // ── Model 7: Ads Creator ──
+  if (selectedModel === 'model7') {
+    return <ModelAdsPage onBack={() => setSelectedModel(null)} userLanguage={videoLanguage} credits={credits} />;
   }
 
   const isAI = selectedModel === 'ai';

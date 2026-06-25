@@ -679,3 +679,62 @@ export async function canUserMakeModel5Video(userId, duration) {
   if (remaining < cost) return { allowed: false, reason: 'quota_exceeded', remaining, cost };
   return { allowed: true, remaining, cost };
 }
+// ── Model 7 (Ads) ──────────────────────────────────────────────────────────
+export const MODEL7_PLANS = {
+  ads_starter: { name: 'Starter', price: 400,  credits: 15  },
+  ads_pro:     { name: 'Pro',     price: 900,  credits: 40  },
+  ads_max:     { name: 'Max',     price: 1800, credits: 100 },
+};
+
+export const ADS_CREDIT_COST = 10;
+
+(async () => {
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model7_access INTEGER DEFAULT 0`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model7_plan TEXT DEFAULT NULL`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS model7_credits (
+        user_id       INTEGER PRIMARY KEY REFERENCES users(id),
+        credits_total INTEGER DEFAULT 0,
+        credits_used  INTEGER DEFAULT 0,
+        updated_at    TEXT DEFAULT NOW()
+      );
+    `);
+    console.log('[DB] Model 7 (Ads) tables ready');
+  } catch (e) { console.warn('[DB] Model 7 init:', e.message); }
+})();
+
+export async function getModel7Credits(userId) {
+  const { rows } = await pool.query('SELECT * FROM model7_credits WHERE user_id = $1', [userId]);
+  if (rows.length === 0) return { credits_total: 0, credits_used: 0 };
+  return rows[0];
+}
+
+export async function addModel7Credits(userId, amount) {
+  await pool.query(
+    `INSERT INTO model7_credits (user_id, credits_total, credits_used)
+     VALUES ($1, $2, 0)
+     ON CONFLICT (user_id) DO UPDATE
+     SET credits_total = model7_credits.credits_total + $2, updated_at = NOW()`,
+    [userId, amount]
+  );
+}
+
+export async function canUserMakeModel7Video(userId) {
+  const user = await getUserById(userId);
+  if (!user || !user.model7_access) return { allowed: false, reason: 'no_access' };
+  const credits = await getModel7Credits(userId);
+  const remaining = (credits.credits_total || 0) - (credits.credits_used || 0);
+  if (remaining < ADS_CREDIT_COST) return { allowed: false, reason: 'quota_exceeded', remaining, cost: ADS_CREDIT_COST };
+  return { allowed: true, remaining, cost: ADS_CREDIT_COST };
+}
+
+export async function incrementModel7Video(userId) {
+  await pool.query(
+    `INSERT INTO model7_credits (user_id, credits_total, credits_used)
+     VALUES ($1, 0, $2)
+     ON CONFLICT (user_id) DO UPDATE
+     SET credits_used = model7_credits.credits_used + $2, updated_at = NOW()`,
+    [userId, ADS_CREDIT_COST]
+  );
+}
