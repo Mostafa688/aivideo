@@ -86,6 +86,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
   const [language, setLanguage] = useState('ar');
   const [sceneCount, setSceneCount] = useState(5);
   const [customHook, setCustomHook] = useState('');
+  const [showTitle, setShowTitle] = useState(true);
 
   // Job state
   const [jobId, setJobId] = useState(null);
@@ -176,6 +177,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
       formData.append('language', language);
       formData.append('sceneCount', String(sceneCount));
       formData.append('customHook', customHook);
+      formData.append('showTitle', String(showTitle));
       if (audioMode === 'upload' && uploadedAudio) {
         formData.append('voiceAudio', uploadedAudio);
       }
@@ -195,7 +197,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
     }
   };
 
-  const canSubmit = productImage && productName.trim() && !loading &&
+  const canSubmit = productImage && productName.trim() && productDesc.trim() && !loading &&
     (audioMode !== 'upload' || uploadedAudio);
 
   const stepLabel = STEP_LABELS[jobStep]?.[isAr ? 'ar' : 'en'] || jobMsg;
@@ -332,14 +334,29 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
                   placeholder={isAr ? 'مثال: كريم العناية بالبشرة' : 'e.g. Premium Skincare Cream'} />
               </div>
               <div style={{ marginBottom: 14 }}>
-                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 6, fontFamily: "'DM Sans', sans-serif" }}>{isAr ? 'وصف المنتج (اختياري)' : 'Product Description (optional)'}</p>
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 6, fontFamily: "'DM Sans', sans-serif" }}>{isAr ? 'وصف المنتج *' : 'Product Description *'}</p>
                 <textarea className="ads-input" rows={3} value={productDesc} onChange={e => setProductDesc(e.target.value)}
-                  placeholder={isAr ? 'اكتب مميزات المنتج... مثال: مرطب طبيعي 100% يجدد البشرة في 7 أيام' : 'e.g. 100% natural moisturizer that renews skin in 7 days'} />
+                  placeholder={isAr ? 'اكتب وصف المنتج ومميزاته... (مطلوب — يساعد الذكاء الاصطناعي يفهم المنتج ويختار المشاهد المناسبة)' : 'Describe your product and its benefits... (required — helps AI choose the right scenes)'} />
               </div>
               <div>
                 <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 6, fontFamily: "'DM Sans', sans-serif" }}>{isAr ? 'الجملة الافتتاحية (Hook) — اختياري' : 'Opening Hook — optional'}</p>
                 <input className="ads-input" value={customHook} onChange={e => setCustomHook(e.target.value)}
                   placeholder={isAr ? 'مثال: هل تعرف سر البشرة المثالية؟' : 'e.g. What if you could transform your skin in 7 days?'} />
+              </div>
+
+              <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: "'DM Sans', sans-serif" }}>
+                    {isAr ? '🎬 إظهار اسم المنتج في بداية الفيديو' : '🎬 Show product name title at start'}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: "'DM Sans', sans-serif", marginTop: 3 }}>
+                    {isAr ? 'اختياري — يظهر اسم المنتج بشكل احترافي في أول 3.5 ثانية' : 'Optional — product name appears elegantly for 3.5s at start'}
+                  </p>
+                </div>
+                <div onClick={() => setShowTitle(!showTitle)}
+                  style={{ width: 44, height: 24, borderRadius: 12, background: showTitle ? ACCENT : 'rgba(255,255,255,0.1)', cursor: 'pointer', transition: 'all 0.2s', position: 'relative', flexShrink: 0 }}>
+                  <div style={{ position: 'absolute', top: 3, left: showTitle ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'all 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }} />
+                </div>
               </div>
             </Section>
 
@@ -444,7 +461,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
               style={{ width: '100%', padding: '16px', borderRadius: 14, border: 'none', fontWeight: 800, fontSize: 16, cursor: canSubmit ? 'pointer' : 'not-allowed', color: '#fff', fontFamily: "'DM Sans', sans-serif", transition: 'all 0.3s cubic-bezier(0.16,1,0.3,1)', background: canSubmit ? `linear-gradient(135deg, ${ACCENT}, #ea580c)` : 'rgba(255,255,255,0.07)', opacity: canSubmit ? 1 : 0.5, boxShadow: canSubmit ? `0 6px 28px ${ACCENT_GLOW}` : 'none' }}>
               {canSubmit
                 ? (isAr ? '📢 أنشئ الإعلان ← 10 كريدت' : '📢 Generate Ad ← 10 Credits')
-                : (isAr ? 'ارفع صورة المنتج واكتب اسمه' : 'Upload product image and enter name')}
+                : (isAr ? 'ارفع صورة المنتج واكتب الاسم والوصف' : 'Upload image, name, and description')}
             </button>
             <p style={{ textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.18)', marginTop: 12, fontFamily: "'DM Sans', sans-serif" }}>
               Powered by FLUX Kontext · Seedance AI · FFmpeg

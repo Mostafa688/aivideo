@@ -74,7 +74,7 @@ router.post('/render',
       const productImage = req.files?.productImage?.[0];
       if (!productImage) return res.status(400).json({ error: 'Product image is required' });
 
-      const { productName, productDesc, audioMode, aiVoiceKey, ratio, language, sceneCount, customHook } = req.body;
+      const { productName, productDesc, audioMode, aiVoiceKey, ratio, language, sceneCount, customHook, showTitle } = req.body;
       if (!productName?.trim()) return res.status(400).json({ error: 'Product name is required' });
 
       // ── Handle uploaded voice audio ──
@@ -118,6 +118,7 @@ router.post('/render',
             language: language || 'ar',
             sceneCount: Math.min(Math.max(parseInt(sceneCount) || 5, 3), 6),
             customHook: customHook || '',
+            showTitle: showTitle !== 'false',
             outputDir,
             jobId,
             onProgress: ({ step, msg }) => setAdsJob(jobId, { step, msg }),
