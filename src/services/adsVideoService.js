@@ -118,7 +118,7 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
     body: JSON.stringify({
       input: {
         prompt,
-        image: `data:image/jpeg;base64,${productImageBase64}`,
+        input_image: `data:image/jpeg;base64,${productImageBase64}`,
         aspect_ratio: aspectRatio,
         output_format: 'jpg',
         output_quality: 90,
