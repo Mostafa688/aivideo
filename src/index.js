@@ -22,6 +22,7 @@ import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
 import mapVideoRouter from './services/mapVideoRoutes.js';
 import wanVideoRouter from './services/wanVideoRoutes.js';
+import adsRouter from './services/adsRoutes.js';
 import pgPkg from 'pg';
 const { Pool: _TPool } = pgPkg;
 
@@ -203,6 +204,7 @@ app.use('/api/support', supportRouter);
 app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
+app.use('/api/ads', adsRouter);
 
 // ── Community API ──────────────────────────────────────────────────────────────
 const cPool = new _TPool({
