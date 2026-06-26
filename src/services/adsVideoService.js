@@ -150,23 +150,33 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
 async function animateSceneImage(imageUrl, motionPrompt, hasVoiceover, ratio) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
 
-  // مع voice → seedance-1-pro-fast (أكثر استقراراً لمزامنة الصوت)
-  // بدون voice → seedance-2.0-fast (صوت طبيعي مع الصورة)
-  const modelPath = hasVoiceover
-    ? 'bytedance/seedance-1-pro-fast'
-    : 'bytedance/seedance-2.0-fast';
-
   const aspectRatio = ratio === '9:16' ? '9:16' : '16:9';
   const duration = hasVoiceover ? 5 : 6;
 
-  const input = {
-    prompt: motionPrompt,
-    aspect_ratio: aspectRatio,
-    resolution: '480p',
-    duration,
-    fps: 24,
-    first_frame_image: imageUrl,  // ← الصورة Reference كـ first frame
-  };
+  let modelPath, input;
+
+  if (hasVoiceover) {
+    // seedance-1-pro-fast: يستخدم first_frame_image
+    modelPath = 'bytedance/seedance-1-pro-fast';
+    input = {
+      prompt: motionPrompt,
+      aspect_ratio: aspectRatio,
+      resolution: '480p',
+      duration,
+      fps: 24,
+      first_frame_image: imageUrl,
+    };
+  } else {
+    // seedance-2.0-fast: يستخدم image array مع [Image1] في الـ prompt
+    modelPath = 'bytedance/seedance-2.0-fast';
+    input = {
+      prompt: `[Image1] ${motionPrompt}`,
+      aspect_ratio: aspectRatio,
+      resolution: '480p',
+      duration,
+      image: [imageUrl],
+    };
+  }
 
   const res = await fetch(`https://api.replicate.com/v1/models/${modelPath}/predictions`, {
     method: 'POST',
@@ -352,11 +362,15 @@ async function composeAdVideo({ animatedScenes, productName, audioPath, ratio, o
     .replace(/\]/g, '\\]');
   const fontSize = ratio === '9:16' ? 64 : 52;
 
+  // حساب y الـ drawbox بالقيم الحقيقية مش بـ H/W
+  const boxH = 200;
+  const boxY = Math.floor((H - boxH) / 2);
+
   filterParts.push(
     `[vconcat]` +
-    `drawbox=x=0:y=(H-200)/2:w=W:h=200:color=black@0.7:t=fill:enable='between(t,0,3)',` +
+    `drawbox=x=0:y=${boxY}:w=${W}:h=${boxH}:color=black@0.7:t=fill:enable='between(t,0,3)',` +
     `drawtext=fontfile=${fontFile}:text='${safeProductName}':fontcolor=white:fontsize=${fontSize}` +
-    `:x=(W-text_w)/2:y=(H-text_h)/2:enable='between(t,0,3)'` +
+    `:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,0,3)'` +
     `[vtitled]`
   );
 
