@@ -15,14 +15,13 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, canUserRender, getUserCredits, addUserTokens, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS, getModel5Credits, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, getModel7Credits, canUserMakeModel7Video, incrementModel7Video, addModel7Credits, MODEL7_PLANS, ADS_CREDIT_COST } from './services/authService.js';
+import { getUserById, PLANS, canUserRender, getUserCredits, addUserTokens, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS, getModel5Credits, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import supportRouter from './services/supportRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
 import mapVideoRouter from './services/mapVideoRoutes.js';
 import wanVideoRouter from './services/wanVideoRoutes.js';
-import adsRouter from './services/adsRoutes.js';
 import pgPkg from 'pg';
 const { Pool: _TPool } = pgPkg;
 
@@ -158,6 +157,7 @@ app.use('/api', (req, res, next) => {
 });
 
 app.use('/outputs', express.static('outputs'));
+app.use('/outputs/ads_img', express.static(join(process.cwd(), 'outputs', 'ads_img')));
 app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'templates')));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
@@ -203,7 +203,6 @@ app.use('/api/support', supportRouter);
 app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
-app.use('/api/ads', adsRouter);
 
 // ── Community API ──────────────────────────────────────────────────────────────
 const cPool = new _TPool({
@@ -1550,56 +1549,6 @@ app.get('/api/model5/usage', authMiddleware, async (req, res) => {
       usage: { videos_15s: usage.videos_15s || 0, videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0 },
       // Legacy quota fields for UI compatibility
       quota: { videos_15s: Math.floor(creditsRemaining/15), videos_30s: Math.floor(creditsRemaining/30), videos_1min: Math.floor(creditsRemaining/60) }
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── Model 7 (Ads) Routes ──────────────────────────────────────────────────
-app.post('/api/model7/payment-request', authMiddleware, async (req, res) => {
-  try {
-    const { plan, planName, amount, userEmail, screenshot } = req.body;
-    if (!plan || !amount || !userEmail || !screenshot) return res.status(400).json({ error: 'Missing required fields' });
-    const user = await getUserById(req.user.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const backendUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
-    const adminSecret = process.env.ADMIN_SECRET || '';
-    const attachments = [];
-    if (screenshot) {
-      const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '');
-      const ext = screenshot.includes('png') ? 'png' : 'jpg';
-      attachments.push({ filename: `m7_payment_${userEmail}_${Date.now()}.${ext}`, content: base64Data });
-    }
-    await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'Erivion Ads <noreply@erivion.net>',
-        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
-        subject: `📢 Ads Model Payment - ${planName} - ${userEmail}`,
-        html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#f97316">📢 New Ads Model Payment</h2><table style="width:100%;border-collapse:collapse;margin:20px 0"><tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff;font-weight:600">${userEmail}</td></tr><tr><td style="color:#888;padding:8px 0">Account</td><td style="color:#fff">${user.email}</td></tr><tr><td style="color:#888;padding:8px 0">Plan</td><td style="color:#f97316;font-weight:700">${planName}</td></tr><tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amount} EGP</td></tr></table><div style="margin-top:24px;display:flex;gap:12px"><a href="${backendUrl}/api/auth/model7-approve?email=${encodeURIComponent(userEmail)}&plan=${plan}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a><a href="${backendUrl}/api/auth/model7-reject?email=${encodeURIComponent(userEmail)}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a></div></div>`,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      }),
-    });
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.get('/api/model7/usage', authMiddleware, async (req, res) => {
-  try {
-    const user = await getUserById(req.user.userId);
-    if (!user?.model7_access) return res.json({ access: false });
-    const credits = await getModel7Credits(req.user.userId);
-    const plan = user.model7_plan || 'ads_starter';
-    const planData = MODEL7_PLANS[plan];
-    const creditsRemaining = Math.max(0, (credits.credits_total || 0) - (credits.credits_used || 0));
-    res.json({
-      access: true, plan, planData,
-      credits: { total: credits.credits_total || 0, used: credits.credits_used || 0, remaining: creditsRemaining },
-      cost_per_video: ADS_CREDIT_COST,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
