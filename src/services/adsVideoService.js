@@ -107,7 +107,7 @@ async function generateAdSceneImage(productImageUrl, productName, productDesc, s
     },
     body: JSON.stringify({
       input: {
-        image: productImageUrl,   // ← URL مش base64
+        input_image: productImageUrl,   // ← الاسم الصح لـ FLUX Kontext
         prompt,
         aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
         output_format: 'webp',
@@ -341,6 +341,7 @@ export async function renderAdVideo({
   for (let i = 0; i < selectedScenes.length; i++) {
     const sc = selectedScenes[i];
     try {
+      if (i > 0) await new Promise(r => setTimeout(r, 12000)); // delay عشان rate limit
       console.log(`[AdsService] [${i+1}/${count}] FLUX scene: ${sc.label}`);
       const imageUrl = await generateAdSceneImage(
         productImageUrl, productName, productDesc.trim(), sc, ratio
