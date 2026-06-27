@@ -71,29 +71,26 @@ async function downloadFile(url, destPath) {
   return destPath;
 }
 
-// ── Upload product image to Replicate Files API (returns URL) ─────────────────
+// ── Save product image on Railway and return public URL ──────────────────────
 async function uploadImageToReplicate(base64Data) {
   const b64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
   const buffer = Buffer.from(b64, 'base64');
 
-  // بعت raw binary بدون Content-Length — node-fetch بيتعامل معاه صح
-  const res = await fetch('https://api.replicate.com/v1/files', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
-      'Content-Type': 'image/jpeg',
-    },
-    body: buffer,
-  });
+  // نحفظ الصورة على Railway outputs وبنرجع URL عام — نفس pattern Seedance
+  const framesDir = join(process.cwd(), 'outputs', 'ads_frames');
+  fs.mkdirSync(framesDir, { recursive: true });
+  const filename = `product_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
+  const filePath = join(framesDir, filename);
+  fs.writeFileSync(filePath, buffer);
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Replicate file upload failed ${res.status}: ${err.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const url = data.urls?.get || data.url;
-  if (!url) throw new Error('No URL returned from Replicate file upload');
-  console.log(`[AdsService] Product image uploaded to Replicate: ${url}`);
+  const RAILWAY_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : (process.env.BASE_URL || 'http://localhost:3000');
+  const url = `${RAILWAY_URL}/outputs/ads_frames/${filename}`;
+  console.log(`[AdsService] Product image saved on Railway: ${url}`);
+
+  // cleanup بعد ساعة
+  setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 60 * 60 * 1000);
   return url;
 }
 
