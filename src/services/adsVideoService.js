@@ -1,13 +1,7 @@
 // ── adsVideoService.js ────────────────────────────────────────────────────────
-// Pipeline:
-//   1. FLUX kontext-dev  → صورة reference لكل scene (بيرجع URL من Replicate)
-//   2. تحميل الصورة كـ buffer → تحويلها base64
-//   3. Seedance بـ base64 مباشرة في first_frame_image (مش محتاج URL عام)
-//   4. FFmpeg → دمج + عنوان احترافي (اختياري) + fade
-
 import fetch from 'node-fetch';
 import fs from 'fs';
-import { execFile } from 'child_process';
+import { execFile, execSync } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -15,100 +9,73 @@ import { generateVoiceover } from './voiceService.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
-// ── Scene configs ─────────────────────────────────────────────────────────────
+// ── Scene configs — prompts ذكية حسب نوع المنتج ──────────────────────────────
 const SCENE_CONFIGS = [
   {
     id: 'hero',
     label: 'Hero Shot',
     buildPrompt: (product, desc) =>
-      `Keep the exact same ${product} product from the reference image, preserve all details and shape. Place it centered on a sleek dark gradient background. ${desc}. Dramatic studio lighting from above, photorealistic commercial photography, 8K, luxury feel, sharp focus, advertisement quality.`,
-    motion: `The product slowly rotates 20 degrees clockwise, subtle light reflection shimmers across the surface, cinematic slow motion, elegant product reveal, professional advertisement`,
+      `Product photography advertisement. The exact same ${product} from the reference photo — keep every detail identical. Placed on a sleek dark gradient surface with dramatic overhead studio lighting, perfect reflections, 8K commercial photography, luxury advertisement quality. ${desc}.`,
+    motion: `Camera slowly orbits the product 20 degrees clockwise, subtle specular light shimmer across surface, cinematic slow motion product reveal, luxury advertisement`,
   },
   {
     id: 'lifestyle',
-    label: 'Lifestyle',
+    label: 'Lifestyle Scene',
     buildPrompt: (product, desc) =>
-      `Keep the exact same ${product} product from the reference image, preserve all details. Show it in a modern elegant lifestyle setting perfectly suited for: ${desc}. Natural warm sunlight, aspirational scene, professional commercial photography, photorealistic.`,
-    motion: `Gentle parallax motion, camera slowly zooms out revealing the elegant lifestyle scene, warm bokeh light particles, cinematic atmosphere`,
+      `Lifestyle advertisement photo. The exact same ${product} from the reference photo placed in a perfectly matching real-world environment for this type of product: ${desc}. Warm natural side lighting, aspirational elegant scene, shallow depth of field background, commercial photography style, photorealistic.`,
+    motion: `Gentle cinematic parallax, slow zoom out revealing elegant lifestyle context, warm bokeh particles float softly, aspirational advertisement feel`,
   },
   {
     id: 'closeup',
-    label: 'Close-up',
+    label: 'Close-up Detail',
     buildPrompt: (product, desc) =>
-      `Keep the exact same ${product} product from the reference image. Extreme close-up macro shot showing finest texture and premium material. ${desc}. Shallow depth of field, beautiful bokeh background, ultra sharp detail, luxury product photography.`,
-    motion: `Ultra slow macro push-in, finest product details emerge, very subtle camera drift left to right, luxury cinematic feel`,
+      `Macro product photography. Extreme close-up of the exact same ${product} from the reference photo revealing exquisite material texture and craftsmanship. ${desc}. Ultra-shallow depth of field with smooth bokeh, razor-sharp product detail, luxury product photography, cinematic.`,
+    motion: `Ultra-slow push-in macro, microscopic product surface details emerge, barely perceptible camera drift left, cinematic luxury feel`,
   },
   {
     id: 'angle45',
-    label: '45 Angle',
+    label: '45° Angle',
     buildPrompt: (product, desc) =>
-      `Keep the exact same ${product} product from the reference image. 45-degree angle on a sleek dark reflective surface. ${desc}. Dramatic side lighting creating depth and elegant shadow, high-end luxury brand photography.`,
-    motion: `Slow cinematic dolly move from left to right, dramatic shadow sweeps elegantly across surface, refined luxury product motion`,
+      `Commercial product photo. The exact same ${product} from the reference photo shot from a dynamic 45-degree angle on a reflective dark marble surface. ${desc}. Dramatic Rembrandt-style side lighting creating a long elegant shadow, high-end brand photography, luxury advertisement.`,
+    motion: `Slow cinematic dolly left to right, dramatic shadow glides across marble, spotlight follows the product, elegant refined motion`,
   },
   {
     id: 'minimal',
     label: 'Minimal White',
     buildPrompt: (product, desc) =>
-      `Keep the exact same ${product} product from the reference image. Pure white seamless background, clean minimal soft shadow. ${desc}. Modern minimal aesthetic, Apple-style product photography, high contrast, crisp and clean.`,
-    motion: `Product gently levitates upward slightly and returns with soft bounce, clean modern motion, subtle shadow pulse beneath`,
+      `Minimalist product advertisement. The exact same ${product} from the reference photo on a perfectly white seamless background with a soft natural shadow beneath. ${desc}. Clean Apple-style aesthetic, high contrast, crisp modern commercial photography, premium brand feel.`,
+    motion: `Product levitates gently upward 8px and settles back, clean minimal bounce, crisp modern motion, soft shadow pulses beneath`,
   },
   {
     id: 'action',
-    label: 'In Use',
+    label: 'Action / In Use',
     buildPrompt: (product, desc) =>
-      `Keep the exact same ${product} product from the reference image. Show it elegantly in an ideal aspirational scenario. ${desc}. Dynamic composition, cinematic depth of field, professional commercial photography.`,
-    motion: `Dynamic cinematic camera arc around product, aspirational lifestyle energy, depth of field shift, professional advertisement feel`,
+      `Dynamic product-in-use advertisement. The exact same ${product} from the reference photo shown being elegantly used in its ideal context. ${desc}. Motion implied, cinematic depth shift, aspirational lifestyle energy, dramatic lighting, professional commercial photography.`,
+    motion: `Cinematic camera arc reveals product in use, dynamic depth of field shift, aspirational energy, professional advertisement motion`,
   },
 ];
 
 const SCRIPT_TEMPLATES = {
-  ar: (productName, desc, hook) =>
-    `${hook || `هل تعرف سر ${productName}؟`}\n\n${desc}\n\nصُنع بدقة. صُمم لك.\n\n${productName} — لأنك تستحق الأفضل.`,
-  en: (productName, desc, hook) =>
-    `${hook || `What if one product could change everything?`}\n\nIntroducing ${productName}.\n\n${desc}\n\nCrafted with precision. Designed for you.\n\n${productName} — Because you deserve the best.`,
+  ar: (name, desc, hook) => `${hook || `هل تعرف سر ${name}؟`}\n\n${desc}\n\nصُنع بدقة. صُمم لك.\n\n${name} — لأنك تستحق الأفضل.`,
+  en: (name, desc, hook) => `${hook || `What if one product could change everything?`}\n\nIntroducing ${name}.\n\n${desc}\n\nCrafted with precision. Designed for you.\n\n${name} — Because you deserve the best.`,
 };
 
-// ── Helper: download file to disk ─────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 async function downloadFile(url, destPath) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed: ${res.status} - ${url}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(destPath, buf);
+  fs.writeFileSync(destPath, Buffer.from(await res.arrayBuffer()));
   return destPath;
 }
 
-// ── Helper: download as base64 ────────────────────────────────────────────────
-async function downloadAsBase64(url, mimeType = 'image/jpeg') {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Download failed: ${res.status} - ${url}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  return `data:${mimeType};base64,${buf.toString('base64')}`;
-}
-
-// ── Helper: poll Replicate ────────────────────────────────────────────────────
-async function pollReplicate(predictionId, timeoutMs = 300000, label = '') {
-  const headers = { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` };
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    await new Promise(r => setTimeout(r, 5000));
-    const res = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
-    if (!res.ok) { console.warn(`[AdsService] Poll ${res.status}`); continue; }
-    const data = await res.json();
-    console.log(`[AdsService] ${label} → ${data.status} (${Math.round((Date.now()-start)/1000)}s)`);
-    if (data.status === 'succeeded') return Array.isArray(data.output) ? data.output[0] : data.output;
-    if (data.status === 'failed' || data.status === 'canceled') {
-      throw new Error(`Replicate ${data.status}: ${data.error || 'unknown'}`);
-    }
-  }
-  throw new Error(`Replicate timed out after ${timeoutMs/1000}s`);
-}
-
-// ── Step 1: FLUX kontext-dev → صورة reference ────────────────────────────────
+// ── FLUX kontext-dev ─── نفس pattern الـ seedanceService ──────────────────────
 async function generateAdSceneImage(productImageBase64, productName, productDesc, sceneConfig, ratio) {
   const prompt = sceneConfig.buildPrompt(productName, productDesc);
+  const b64 = productImageBase64.replace(/^data:image\/\w+;base64,/, '');
+  const imageDataUrl = `data:image/jpeg;base64,${b64}`;
 
   const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
     method: 'POST',
@@ -119,10 +86,10 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
     },
     body: JSON.stringify({
       input: {
+        image: imageDataUrl,           // ← نفس اسم الـ param زي seedanceService
         prompt,
-        input_image: `data:image/jpeg;base64,${productImageBase64}`,
         aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
-        output_format: 'jpg',
+        output_format: 'webp',
         output_quality: 90,
         guidance: 3.5,
         num_inference_steps: 28,
@@ -137,40 +104,41 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
   const data = await res.json();
   if (data.error) throw new Error(`FLUX: ${data.error}`);
 
-  let imageUrl;
   if (data.status === 'succeeded' && data.output) {
-    imageUrl = Array.isArray(data.output) ? data.output[0] : data.output;
-  } else {
-    if (!data.id) throw new Error('No prediction ID from FLUX');
-    imageUrl = await pollReplicate(data.id, 180000, `FLUX "${sceneConfig.label}"`);
+    return Array.isArray(data.output) ? data.output[0] : data.output;
   }
 
-  console.log(`[AdsService] FLUX image URL: ${imageUrl}`);
-
-  // تحميل الصورة كـ base64 عشان نبعتها لـ Seedance مباشرة
-  const base64DataUrl = await downloadAsBase64(imageUrl, 'image/jpeg');
-  console.log(`[AdsService] Image downloaded as base64, size: ${Math.round(base64DataUrl.length/1024)}KB`);
-
-  return { imageUrl, base64DataUrl };
+  // Poll
+  if (!data.id) throw new Error('No prediction ID from FLUX');
+  const maxWait = 180000;
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    await new Promise(r => setTimeout(r, 5000));
+    const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${data.id}`, {
+      headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` },
+    });
+    const pollData = await pollRes.json();
+    console.log(`[AdsService] FLUX "${sceneConfig.label}" → ${pollData.status} (${Math.round((Date.now()-start)/1000)}s)`);
+    if (pollData.status === 'succeeded') return Array.isArray(pollData.output) ? pollData.output[0] : pollData.output;
+    if (pollData.status === 'failed' || pollData.status === 'canceled') throw new Error(`FLUX failed: ${pollData.error}`);
+  }
+  throw new Error('FLUX timed out');
 }
 
-// ── Step 2: Seedance → تحريك الصورة بـ base64 مباشرة ────────────────────────
-async function animateSceneImage(imageBase64DataUrl, motionPrompt, ratio) {
-  const aspectRatio = ratio === '9:16' ? '9:16' : '16:9';
-
-  // seedance-1-pro-fast: يقبل base64 في first_frame_image
+// ── Seedance 1-pro-fast ─── نفس pattern الـ seedanceService ───────────────────
+async function animateSceneImage(imageUrl, motionPrompt, ratio) {
+  // نفس نمط generateSeedanceClip بالظبط بس مع first_frame_image
   const input = {
     prompt: motionPrompt,
-    aspect_ratio: aspectRatio,
-    resolution: '480p',
+    aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
+    resolution: '720p',
     duration: 5,
     fps: 24,
-    first_frame_image: imageBase64DataUrl,  // base64 مباشرة ✅
+    camera_fixed: false,
+    first_frame_image: imageUrl,   // URL من Replicate يشتغل عادي زي seedanceService
   };
 
-  console.log(`[AdsService] Sending to Seedance with base64 image...`);
-
-  const res = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
+  const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
@@ -180,31 +148,53 @@ async function animateSceneImage(imageBase64DataUrl, motionPrompt, ratio) {
     body: JSON.stringify({ input }),
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Seedance error ${res.status}: ${err.slice(0, 300)}`);
+  if (!submitRes.ok) {
+    const err = await submitRes.text();
+    throw new Error(`Seedance error ${submitRes.status}: ${err.slice(0, 200)}`);
   }
-  const data = await res.json();
-  console.log(`[AdsService] Seedance response status: ${data.status}, error: ${data.error || 'none'}`);
-  if (data.error) throw new Error(`Seedance: ${data.error}`);
 
-  if (data.status === 'succeeded' && data.output) {
-    return Array.isArray(data.output) ? data.output[0] : data.output;
+  const prediction = await submitRes.json();
+  console.log(`[AdsService] Seedance status: ${prediction.status}, error: ${prediction.error || 'none'}`);
+
+  if (prediction.status === 'succeeded' && prediction.output) {
+    return Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
   }
-  if (!data.id) throw new Error('No prediction ID from Seedance');
-  return await pollReplicate(data.id, 420000, `Seedance`);
+
+  const predictionId = prediction.id;
+  if (!predictionId) throw new Error(`No prediction ID from Seedance: ${JSON.stringify(prediction)}`);
+
+  const maxWait = 300000;
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    await new Promise(r => setTimeout(r, 5000));
+    const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+      headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` },
+    });
+    if (!statusRes.ok) continue;
+    const statusData = await statusRes.json();
+    console.log(`[AdsService] Seedance status: ${statusData.status} (${Math.round((Date.now()-start)/1000)}s)`);
+    if (statusData.status === 'succeeded') {
+      const url = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
+      if (!url) throw new Error('No video URL in Seedance output');
+      return url;
+    }
+    if (statusData.status === 'failed' || statusData.status === 'canceled') {
+      throw new Error(`Seedance failed: ${statusData.error || 'unknown'}`);
+    }
+  }
+  throw new Error('Seedance timed out after 5 minutes');
 }
 
-// ── Step 3: FFmpeg compose ────────────────────────────────────────────────────
+// ── FFmpeg compose ────────────────────────────────────────────────────────────
 async function composeAdVideo({ animatedScenes, productName, showTitle, audioPath, ratio, outputDir, jobId }) {
   const [W, H] = ratio === '9:16' ? [1080, 1920] : [1920, 1080];
-  const tmpDir = join(outputDir, `ads_tmp_${jobId}`);
-  fs.mkdirSync(tmpDir, { recursive: true });
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
 
+  // تحميل الكليبات
   const clipPaths = [];
   for (let i = 0; i < animatedScenes.length; i++) {
-    const clipPath = join(tmpDir, `clip_${i}.mp4`);
-    console.log(`[AdsService] Downloading clip ${i+1}/${animatedScenes.length}: ${animatedScenes[i].videoUrl}`);
+    const clipPath = join(TEMP_DIR, `ads_clip_${jobId}_${i}.mp4`);
+    console.log(`[AdsService] Downloading clip ${i+1}/${animatedScenes.length}`);
     await downloadFile(animatedScenes[i].videoUrl, clipPath);
     clipPaths.push(clipPath);
   }
@@ -212,6 +202,7 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
   const numClips = clipPaths.length;
   const hasAudio = !!(audioPath && fs.existsSync(audioPath));
 
+  // فونت
   let fontFile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
   const arabicFonts = [
     '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf',
@@ -232,25 +223,23 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
       `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24[sv${i}]`
     );
   }
-
   const concatIn = clipPaths.map((_, i) => `[sv${i}]`).join('');
   filterParts.push(`${concatIn}concat=n=${numClips}:v=1:a=0[vconcat]`);
 
   if (showTitle && productName.trim()) {
-    const safeProductName = productName.trim()
+    const safe = productName.trim()
       .replace(/\\/g, '\\\\').replace(/'/g, '\u2019')
       .replace(/:/g, '\\:').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
-    const fontSize = ratio === '9:16' ? 72 : 60;
-    const boxH = ratio === '9:16' ? 240 : 200;
-    const boxY = Math.floor((H - boxH) / 2);
-
+    const fs2 = ratio === '9:16' ? 72 : 60;
+    const bH = ratio === '9:16' ? 240 : 200;
+    const bY = Math.floor((H - bH) / 2);
     filterParts.push(
       `[vconcat]` +
-      `drawbox=x=0:y=${boxY}:w=${W}:h=${boxH}:color=black@0.55:t=fill:enable='between(t,0,3.5)',` +
-      `drawbox=x=0:y=${boxY}:w=${W}:h=3:color=white@0.6:t=fill:enable='between(t,0,3.5)',` +
-      `drawbox=x=0:y=${boxY + boxH - 3}:w=${W}:h=3:color=white@0.6:t=fill:enable='between(t,0,3.5)',` +
-      `drawtext=fontfile=${fontFile}:text='${safeProductName}':fontcolor=black@0.5:fontsize=${fontSize}:x=(w-text_w)/2+3:y=(h-text_h)/2+3:enable='between(t,0,3.5)',` +
-      `drawtext=fontfile=${fontFile}:text='${safeProductName}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,0,3.5)'` +
+      `drawbox=x=0:y=${bY}:w=${W}:h=${bH}:color=black@0.55:t=fill:enable='between(t,0,3.5)',` +
+      `drawbox=x=0:y=${bY}:w=${W}:h=3:color=white@0.6:t=fill:enable='between(t,0,3.5)',` +
+      `drawbox=x=0:y=${bY+bH-3}:w=${W}:h=3:color=white@0.6:t=fill:enable='between(t,0,3.5)',` +
+      `drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=black@0.5:fontsize=${fs2}:x=(w-text_w)/2+3:y=(h-text_h)/2+3:enable='between(t,0,3.5)',` +
+      `drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=white:fontsize=${fs2}:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,0,3.5)'` +
       `[vtitled]`
     );
   } else {
@@ -258,19 +247,11 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
   }
 
   const totalDur = numClips * 5.5;
-  filterParts.push(
-    `[vtitled]fade=t=in:st=0:d=0.6,fade=t=out:st=${(totalDur - 1.2).toFixed(1)}:d=1.0[vfinal]`
-  );
+  filterParts.push(`[vtitled]fade=t=in:st=0:d=0.6,fade=t=out:st=${(totalDur-1.2).toFixed(1)}:d=1.0[vfinal]`);
 
   const outputPath = join(outputDir, `ad_${jobId}.mp4`);
-  const ffmpegArgs = [
-    ...inputArgs,
-    '-filter_complex', filterParts.join(';'),
-    '-map', '[vfinal]',
-  ];
-  if (hasAudio) {
-    ffmpegArgs.push('-map', `${numClips}:a`, '-c:a', 'aac', '-b:a', '128k', '-shortest');
-  }
+  const ffmpegArgs = [...inputArgs, '-filter_complex', filterParts.join(';'), '-map', '[vfinal]'];
+  if (hasAudio) ffmpegArgs.push('-map', `${numClips}:a`, '-c:a', 'aac', '-b:a', '128k', '-shortest');
   ffmpegArgs.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '22', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-y', outputPath);
 
   console.log(`[AdsService] FFmpeg composing ${numClips} clips...`);
@@ -282,27 +263,21 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
     throw new Error('FFmpeg failed: ' + stderr);
   }
 
-  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  // Cleanup clips
+  setTimeout(() => {
+    clipPaths.forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
+  }, 60000);
+
   console.log(`[AdsService] ✓ Final video: ${outputPath}`);
   return outputPath;
 }
 
 // ── Main pipeline ─────────────────────────────────────────────────────────────
 export async function renderAdVideo({
-  productImageBase64,
-  productName,
-  productDesc,
-  audioMode,
-  uploadedAudioPath,
-  aiVoiceKey,
-  ratio,
-  language,
-  sceneCount,
-  customHook,
-  showTitle,
-  outputDir,
-  jobId,
-  onProgress,
+  productImageBase64, productName, productDesc,
+  audioMode, uploadedAudioPath, aiVoiceKey,
+  ratio, language, sceneCount, customHook, showTitle,
+  outputDir, jobId, onProgress,
 }) {
   const progress = (step, msg) => {
     console.log(`[AdsService][${jobId}] ${step}: ${msg}`);
@@ -312,37 +287,34 @@ export async function renderAdVideo({
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   if (!productDesc?.trim()) throw new Error('Product description is required');
 
-  // عدد المشاهد صح — min 3, max 6
   const count = Math.min(Math.max(parseInt(sceneCount) || 5, 3), SCENE_CONFIGS.length);
   const selectedScenes = SCENE_CONFIGS.slice(0, count);
-  console.log(`[AdsService] Will generate ${count} scenes: ${selectedScenes.map(s => s.label).join(', ')}`);
+  console.log(`[AdsService] Generating ${count} scenes: ${selectedScenes.map(s=>s.label).join(', ')}`);
 
-  // ── 1. FLUX: توليد الصور ──────────────────────────────────────────────────
-  progress('scenes', `Generating ${count} product scene images...`);
+  // ── 1. FLUX ───────────────────────────────────────────────────────────────
+  progress('scenes', `Generating ${count} product scenes with FLUX...`);
   const sceneImages = [];
 
   for (let i = 0; i < selectedScenes.length; i++) {
-    const sceneConfig = selectedScenes[i];
+    const sc = selectedScenes[i];
     try {
-      console.log(`[AdsService] [${i+1}/${count}] Generating scene: ${sceneConfig.label}`);
-      const { imageUrl, base64DataUrl } = await generateAdSceneImage(
-        productImageBase64, productName, productDesc.trim(), sceneConfig, ratio
+      console.log(`[AdsService] [${i+1}/${count}] FLUX scene: ${sc.label}`);
+      const imageUrl = await generateAdSceneImage(
+        productImageBase64, productName, productDesc.trim(), sc, ratio
       );
-      sceneImages.push({ ...sceneConfig, imageUrl, base64DataUrl });
-      progress('scenes', `Scene ${i+1}/${count} ready: ${sceneConfig.label}`);
+      console.log(`[AdsService] ✓ Scene ${i+1} URL: ${imageUrl}`);
+      sceneImages.push({ ...sc, imageUrl });
+      progress('scenes', `Scene ${i+1}/${count} done: ${sc.label}`);
     } catch (err) {
-      console.error(`[AdsService] ✗ Scene "${sceneConfig.label}" failed: ${err.message}`);
-      // نكمل ولا نوقف — لو فضل صفر هنطلع error في الآخر
+      console.error(`[AdsService] ✗ Scene "${sc.label}" FAILED: ${err.message}`);
     }
   }
 
-  if (sceneImages.length === 0) throw new Error('All FLUX scene generation attempts failed');
-  console.log(`[AdsService] ${sceneImages.length}/${count} scenes ready for animation`);
+  if (sceneImages.length === 0) throw new Error('All FLUX scene generation attempts failed. Check REPLICATE_API_TOKEN.');
+  console.log(`[AdsService] ${sceneImages.length}/${count} scenes generated`);
 
   // ── 2. الصوت ──────────────────────────────────────────────────────────────
   let audioPath = null;
-  let hasVoiceover = false;
-
   if (audioMode === 'ai_voice') {
     progress('voice', 'Generating AI voiceover...');
     try {
@@ -350,36 +322,33 @@ export async function renderAdVideo({
       const script = SCRIPT_TEMPLATES[lang](productName, productDesc.trim(), customHook || '');
       const audioFilename = await generateVoiceover(script, aiVoiceKey || 'male_arabic', 'education', 0, language || 'ar');
       audioPath = join(process.cwd(), 'outputs', audioFilename);
-      hasVoiceover = true;
-    } catch (err) {
-      console.warn('[AdsService] Voiceover failed:', err.message);
-    }
+    } catch (err) { console.warn('[AdsService] Voiceover failed:', err.message); }
   } else if (audioMode === 'upload' && uploadedAudioPath) {
     audioPath = uploadedAudioPath;
-    hasVoiceover = true;
   }
 
-  // ── 3. Seedance: تحريك الصور بـ base64 ───────────────────────────────────
+  // ── 3. Seedance ───────────────────────────────────────────────────────────
   progress('animate', `Animating ${sceneImages.length} scenes...`);
   const animatedScenes = [];
 
   for (let i = 0; i < sceneImages.length; i++) {
     const scene = sceneImages[i];
     try {
-      console.log(`[AdsService] [${i+1}/${sceneImages.length}] Animating: ${scene.label}`);
-      const videoUrl = await animateSceneImage(scene.base64DataUrl, scene.motion, ratio);
+      console.log(`[AdsService] [${i+1}/${sceneImages.length}] Animating: ${scene.label} → ${scene.imageUrl}`);
+      const videoUrl = await animateSceneImage(scene.imageUrl, scene.motion, ratio);
       animatedScenes.push({ ...scene, videoUrl });
+      console.log(`[AdsService] ✓ Animated ${i+1}: ${scene.label}`);
       progress('animate', `Animated ${i+1}/${sceneImages.length}: ${scene.label}`);
     } catch (err) {
-      console.error(`[AdsService] ✗ Animate "${scene.label}" failed: ${err.message}`);
+      console.error(`[AdsService] ✗ Animate "${scene.label}" FAILED: ${err.message}`);
     }
   }
 
   if (animatedScenes.length === 0) throw new Error('All Seedance animation attempts failed');
-  console.log(`[AdsService] ${animatedScenes.length} scenes animated successfully`);
+  console.log(`[AdsService] ${animatedScenes.length} scenes animated`);
 
   // ── 4. FFmpeg ─────────────────────────────────────────────────────────────
-  progress('compose', `Composing ${animatedScenes.length} clips into final video...`);
+  progress('compose', `Composing ${animatedScenes.length} clips...`);
   const outputPath = await composeAdVideo({
     animatedScenes, productName,
     showTitle: showTitle !== false,
