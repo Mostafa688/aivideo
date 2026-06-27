@@ -76,12 +76,12 @@ async function uploadImageToReplicate(base64Data) {
   const b64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
   const buffer = Buffer.from(b64, 'base64');
 
+  // بعت raw binary بدون Content-Length — node-fetch بيتعامل معاه صح
   const res = await fetch('https://api.replicate.com/v1/files', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
       'Content-Type': 'image/jpeg',
-      'Content-Length': String(buffer.length),
     },
     body: buffer,
   });
