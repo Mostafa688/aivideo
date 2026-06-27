@@ -71,11 +71,35 @@ async function downloadFile(url, destPath) {
   return destPath;
 }
 
-// ── FLUX kontext-dev ─── نفس pattern الـ seedanceService ──────────────────────
-async function generateAdSceneImage(productImageBase64, productName, productDesc, sceneConfig, ratio) {
+// ── Upload product image to Replicate Files API (returns URL) ─────────────────
+async function uploadImageToReplicate(base64Data) {
+  const b64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
+  const buffer = Buffer.from(b64, 'base64');
+
+  const res = await fetch('https://api.replicate.com/v1/files', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(buffer.length),
+    },
+    body: buffer,
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Replicate file upload failed ${res.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const url = data.urls?.get || data.url;
+  if (!url) throw new Error('No URL returned from Replicate file upload');
+  console.log(`[AdsService] Product image uploaded to Replicate: ${url}`);
+  return url;
+}
+
+// ── FLUX kontext-dev ──────────────────────────────────────────────────────────
+async function generateAdSceneImage(productImageUrl, productName, productDesc, sceneConfig, ratio) {
   const prompt = sceneConfig.buildPrompt(productName, productDesc);
-  const b64 = productImageBase64.replace(/^data:image\/\w+;base64,/, '');
-  const imageDataUrl = `data:image/jpeg;base64,${b64}`;
 
   const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
     method: 'POST',
@@ -86,7 +110,7 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
     },
     body: JSON.stringify({
       input: {
-        image: imageDataUrl,           // ← نفس اسم الـ param زي seedanceService
+        image: productImageUrl,   // ← URL مش base64
         prompt,
         aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
         output_format: 'webp',
@@ -125,9 +149,22 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
   throw new Error('FLUX timed out');
 }
 
-// ── Seedance 1-pro-fast ─── نفس pattern الـ seedanceService ───────────────────
-async function animateSceneImage(imageUrl, motionPrompt, ratio) {
-  // نفس نمط generateSeedanceClip بالظبط بس مع first_frame_image
+// ── Seedance 1-pro-fast ───────────────────────────────────────────────────────
+async function animateSceneImage(fluxImageUrl, motionPrompt, ratio, jobId, sceneIndex) {
+  // حمّل صورة FLUX محلياً وارفعها على Railway عشان Seedance يقدر يوصلها
+  const framesDir = join(process.cwd(), 'outputs', 'ads_frames');
+  fs.mkdirSync(framesDir, { recursive: true });
+  const frameFilename = `frame_${jobId}_${sceneIndex}.jpg`;
+  const framePath = join(framesDir, frameFilename);
+
+  await downloadFile(fluxImageUrl, framePath);
+
+  const RAILWAY_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : (process.env.BASE_URL || 'http://localhost:3000');
+  const frameUrl = `${RAILWAY_URL}/outputs/ads_frames/${frameFilename}`;
+  console.log(`[AdsService] Frame URL for Seedance: ${frameUrl}`);
+
   const input = {
     prompt: motionPrompt,
     aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
@@ -135,7 +172,7 @@ async function animateSceneImage(imageUrl, motionPrompt, ratio) {
     duration: 5,
     fps: 24,
     camera_fixed: false,
-    first_frame_image: imageUrl,   // URL من Replicate يشتغل عادي زي seedanceService
+    first_frame_image: frameUrl,
   };
 
   const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
@@ -150,6 +187,7 @@ async function animateSceneImage(imageUrl, motionPrompt, ratio) {
 
   if (!submitRes.ok) {
     const err = await submitRes.text();
+    try { fs.unlinkSync(framePath); } catch {}
     throw new Error(`Seedance error ${submitRes.status}: ${err.slice(0, 200)}`);
   }
 
@@ -157,6 +195,7 @@ async function animateSceneImage(imageUrl, motionPrompt, ratio) {
   console.log(`[AdsService] Seedance status: ${prediction.status}, error: ${prediction.error || 'none'}`);
 
   if (prediction.status === 'succeeded' && prediction.output) {
+    try { fs.unlinkSync(framePath); } catch {}
     return Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
   }
 
@@ -176,12 +215,15 @@ async function animateSceneImage(imageUrl, motionPrompt, ratio) {
     if (statusData.status === 'succeeded') {
       const url = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
       if (!url) throw new Error('No video URL in Seedance output');
+      try { fs.unlinkSync(framePath); } catch {}
       return url;
     }
     if (statusData.status === 'failed' || statusData.status === 'canceled') {
+      try { fs.unlinkSync(framePath); } catch {}
       throw new Error(`Seedance failed: ${statusData.error || 'unknown'}`);
     }
   }
+  try { fs.unlinkSync(framePath); } catch {}
   throw new Error('Seedance timed out after 5 minutes');
 }
 
@@ -291,7 +333,11 @@ export async function renderAdVideo({
   const selectedScenes = SCENE_CONFIGS.slice(0, count);
   console.log(`[AdsService] Generating ${count} scenes: ${selectedScenes.map(s=>s.label).join(', ')}`);
 
-  // ── 1. FLUX ───────────────────────────────────────────────────────────────
+  // ── 1. رفع صورة المنتج على Replicate مرة واحدة ───────────────────────────
+  progress('scenes', 'Uploading product image...');
+  const productImageUrl = await uploadImageToReplicate(productImageBase64);
+
+  // ── 2. FLUX ───────────────────────────────────────────────────────────────
   progress('scenes', `Generating ${count} product scenes with FLUX...`);
   const sceneImages = [];
 
@@ -300,7 +346,7 @@ export async function renderAdVideo({
     try {
       console.log(`[AdsService] [${i+1}/${count}] FLUX scene: ${sc.label}`);
       const imageUrl = await generateAdSceneImage(
-        productImageBase64, productName, productDesc.trim(), sc, ratio
+        productImageUrl, productName, productDesc.trim(), sc, ratio
       );
       console.log(`[AdsService] ✓ Scene ${i+1} URL: ${imageUrl}`);
       sceneImages.push({ ...sc, imageUrl });
@@ -335,7 +381,7 @@ export async function renderAdVideo({
     const scene = sceneImages[i];
     try {
       console.log(`[AdsService] [${i+1}/${sceneImages.length}] Animating: ${scene.label} → ${scene.imageUrl}`);
-      const videoUrl = await animateSceneImage(scene.imageUrl, scene.motion, ratio);
+      const videoUrl = await animateSceneImage(scene.imageUrl, scene.motion, ratio, jobId, i);
       animatedScenes.push({ ...scene, videoUrl });
       console.log(`[AdsService] ✓ Animated ${i+1}: ${scene.label}`);
       progress('animate', `Animated ${i+1}/${sceneImages.length}: ${scene.label}`);
