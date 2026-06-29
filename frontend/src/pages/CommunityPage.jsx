@@ -186,6 +186,42 @@ function PostCard({ post, currentUser, onLike, onComment, onDelete, onAskSupport
         )}
       </div>
 
+      {/* Moderation Status Badge — visible only to post owner */}
+      {post.is_mine && post.status && post.status !== 'approved' && (
+        <div style={{ margin: '12px 20px 0', padding: '10px 14px', borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 10,
+          background: post.status === 'pending'
+            ? 'rgba(245,158,11,0.08)'
+            : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${post.status === 'pending' ? 'rgba(245,158,11,0.25)' : 'rgba(239,68,68,0.25)'}`,
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>
+            {post.status === 'pending' ? '⏳' : '❌'}
+          </span>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700,
+              color: post.status === 'pending' ? '#f59e0b' : '#ef4444',
+              marginBottom: post.status === 'rejected' && post.rejection_reason ? 4 : 0,
+            }}>
+              {post.status === 'pending'
+                ? (post.is_arabic ? 'هذا المنشور قيد المراجعة' : 'This post is under review')
+                : (post.is_arabic ? 'تم رفض هذا المنشور' : 'This post was rejected')}
+            </div>
+            {post.status === 'rejected' && post.rejection_reason && (
+              <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
+                {post.is_arabic ? `السبب: ${post.rejection_reason}` : `Reason: ${post.rejection_reason}`}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {post.is_mine && post.status === 'approved' && post._justApproved && (
+        <div style={{ margin: '12px 20px 0', padding: '8px 14px', borderRadius: 10,
+          background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
+          fontSize: 12, fontWeight: 700, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 8 }}>
+          ✅ {post.is_arabic ? 'تمت الموافقة على منشورك' : 'Your post has been approved'}
+        </div>
+      )}
+
       {/* Content */}
       <div style={{ padding: '14px 20px', fontSize: 14, color: '#d1d5db', lineHeight: 1.75 }}>{post.content}</div>
 
@@ -382,14 +418,20 @@ export default function CommunityPage({ onBack, user, onNavigate }) {
 
   const fetchPosts = async () => {
     try {
-      const res = await fetch('/api/community/posts');
+      const res = await fetch('/api/community/posts', {
+        headers: user ? { Authorization: 'Bearer ' + localStorage.getItem('token') } : {},
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.posts && data.posts.length > 0) {
-          // Backend posts first, then seed posts that aren't duplicates
-          const backendIds = new Set(data.posts.map(p => p.id));
+          // Each post has: status, is_mine, rejection_reason from backend
+          // Filter: show approved posts to everyone, show pending/rejected only to owner
+          const visiblePosts = data.posts.filter(p =>
+            p.status === 'approved' || p.is_mine
+          );
+          const backendIds = new Set(visiblePosts.map(p => p.id));
           const seeds = SEED_POSTS.filter(s => !backendIds.has(s.id));
-          setPosts([...data.posts, ...seeds]);
+          setPosts([...visiblePosts, ...seeds]);
         }
         // else keep seed posts as-is
       }
@@ -450,6 +492,7 @@ export default function CommunityPage({ onBack, user, onNavigate }) {
 
   const handleNewPost = async ({ content, tag, image_url }) => {
     const tempId = 'temp_' + Date.now();
+    const userLang = localStorage.getItem('language') || 'en';
     const newPost = {
       id: tempId,
       author: user?.email?.split('@')[0] || 'Anonymous',
@@ -464,6 +507,8 @@ export default function CommunityPage({ onBack, user, onNavigate }) {
       tag,
       time: 'just now',
       is_mine: true,
+      status: 'pending',
+      is_arabic: userLang === 'ar',
     };
     setPosts(prev => [newPost, ...prev]);
 
@@ -492,7 +537,11 @@ export default function CommunityPage({ onBack, user, onNavigate }) {
   };
 
   const filtered = posts
-    .filter(p => filter === 'All' || p.tag === filter)
+    .filter(p => {
+      // Hide pending/rejected from public feed, show only to owner
+      if (p.status && p.status !== 'approved' && !p.is_mine) return false;
+      return filter === 'All' || p.tag === filter;
+    })
     .sort((a, b) => {
       if (sortBy === 'popular') return (b.likes || 0) - (a.likes || 0);
       // recent: seed posts go last

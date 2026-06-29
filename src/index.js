@@ -225,6 +225,8 @@ cPool.query(`
     image_url TEXT,
     tag TEXT DEFAULT 'Showcase',
     likes INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'pending',
+    rejection_reason TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
   );
   CREATE TABLE IF NOT EXISTS community_comments (
@@ -245,10 +247,27 @@ cPool.query(`
   );
 `).catch(e => console.error('[Community] DB init error:', e.message));
 
+// Migration: add moderation columns if they don't exist yet
+cPool.query(`
+  ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
+  ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+`).catch(() => {});
+
 // GET /api/community/posts — get all posts with comments
 app.get('/api/community/posts', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+
+    // Identify logged-in user (to show their own pending/rejected posts)
+    let viewerEmail = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.slice(7);
+        const { rows } = await cPool.query(`SELECT email FROM users WHERE token=$1 LIMIT 1`, [token]);
+        if (rows[0]) viewerEmail = rows[0].email;
+      } catch {}
+    }
 
     const { rows: posts } = await cPool.query(`
       SELECT p.*,
@@ -270,20 +289,33 @@ app.get('/api/community/posts', async (req, res) => {
       LIMIT 100
     `, [ip]);
 
-    const formatted = posts.map(p => ({
-      id: String(p.id),
-      author: p.author_name,
-      avatar_letter: p.avatar_letter || (p.author_name?.[0] || 'U').toUpperCase(),
-      avatar_color: p.avatar_color || '#7c6af7',
-      plan: p.plan || 'Free',
-      content: p.content,
-      image_url: p.image_url || null,
-      tag: p.tag || 'Showcase',
-      likes: parseInt(p.likes) || 0,
-      liked: p.user_liked === true,
-      comments: p.comments || [],
-      created_at: p.created_at,
-    }));
+    const formatted = posts
+      .filter(p => {
+        // Show approved posts to everyone
+        // Show pending/rejected only to the author
+        const st = p.status || 'approved';
+        if (st === 'approved') return true;
+        if (viewerEmail && p.author_email === viewerEmail) return true;
+        return false;
+      })
+      .map(p => ({
+        id: String(p.id),
+        author: p.author_name,
+        avatar_letter: p.avatar_letter || (p.author_name?.[0] || 'U').toUpperCase(),
+        avatar_color: p.avatar_color || '#7c6af7',
+        plan: p.plan || 'Free',
+        content: p.content,
+        image_url: p.image_url || null,
+        tag: p.tag || 'Showcase',
+        likes: parseInt(p.likes) || 0,
+        liked: p.user_liked === true,
+        comments: p.comments || [],
+        created_at: p.created_at,
+        status: p.status || 'approved',
+        rejection_reason: p.rejection_reason || null,
+        is_mine: viewerEmail ? (p.author_email === viewerEmail) : false,
+        is_arabic: false, // frontend will determine from localStorage
+      }));
     res.json({ posts: formatted });
   } catch (e) {
     console.error('[Community] GET posts error:', e.message);
@@ -339,11 +371,11 @@ app.post('/api/community/posts', async (req, res) => {
     const finalTag = validTags.includes(tag) ? tag : 'Showcase';
 
     const { rows } = await cPool.query(
-      `INSERT INTO community_posts (author_email, author_name, avatar_letter, avatar_color, plan, content, image_url, tag)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      `INSERT INTO community_posts (author_email, author_name, avatar_letter, avatar_color, plan, content, image_url, tag, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING id`,
       [authorEmail, authorName, avatarLetter, avatarColor, plan, content.trim(), finalImageUrl, finalTag]
     );
-    res.json({ id: String(rows[0].id), success: true });
+    res.json({ id: String(rows[0].id), success: true, status: 'pending' });
   } catch (e) {
     console.error('[Community] POST post error:', e.message);
     res.status(500).json({ error: 'Failed to create post' });
@@ -574,6 +606,82 @@ app.delete('/api/admin/community-post/:id', async (req, res) => {
     await cPool.query(`DELETE FROM community_posts WHERE id=$1`, [parseInt(req.params.id)]);
     res.json({ success: true });
   } catch (e) {
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// GET /api/admin/community-pending — get posts awaiting moderation
+app.get('/api/admin/community-pending', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+
+    const { rows } = await cPool.query(`
+      SELECT p.*,
+        COALESCE(json_agg(
+          json_build_object('id', c.id, 'author', c.author_name, 'text', c.content, 'created_at', c.created_at)
+          ORDER BY c.created_at ASC
+        ) FILTER (WHERE c.id IS NOT NULL), '[]') AS comments
+      FROM community_posts p
+      LEFT JOIN community_comments c ON c.post_id = p.id
+      WHERE p.status = 'pending'
+      GROUP BY p.id
+      ORDER BY p.created_at ASC
+    `);
+
+    const posts = rows.map(p => ({
+      id: String(p.id),
+      author_name: p.author_name,
+      author_email: p.author_email,
+      avatar_letter: p.avatar_letter || (p.author_name?.[0] || 'U').toUpperCase(),
+      plan: p.plan || 'Free',
+      content: p.content,
+      image_url: p.image_url || null,
+      tag: p.tag || 'Showcase',
+      status: p.status,
+      created_at: p.created_at,
+      comments: p.comments || [],
+    }));
+    res.json({ posts });
+  } catch (e) {
+    console.error('[Community] GET pending error:', e.message);
+    res.status(500).json({ posts: [] });
+  }
+});
+
+// POST /api/admin/community-post/:id/approve — approve a pending post
+app.post('/api/admin/community-post/:id/approve', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) return res.status(400).json({ error: 'Invalid post ID' });
+    await cPool.query(
+      `UPDATE community_posts SET status='approved', rejection_reason=NULL WHERE id=$1`,
+      [postId]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Community] Approve error:', e.message);
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// POST /api/admin/community-post/:id/reject — reject a pending post with optional reason
+app.post('/api/admin/community-post/:id/reject', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    const postId = parseInt(req.params.id);
+    if (isNaN(postId)) return res.status(400).json({ error: 'Invalid post ID' });
+    const reason = (req.body.reason || '').trim() || null;
+    await cPool.query(
+      `UPDATE community_posts SET status='rejected', rejection_reason=$2 WHERE id=$1`,
+      [postId, reason]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Community] Reject error:', e.message);
     res.status(500).json({ error: 'Failed' });
   }
 });

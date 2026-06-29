@@ -725,8 +725,11 @@ export default function AdminPage() {
   const [answers, setAnswers] = useState([]);
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityQuestions, setCommunityQuestions] = useState([]);
-  const [communityView, setCommunityView] = useState('questions'); // 'questions' | 'all'
+  const [communityPending, setCommunityPending] = useState([]);
+  const [communityView, setCommunityView] = useState('pending'); // 'pending' | 'questions' | 'all'
   const [communityReply, setCommunityReply] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectingPostId, setRejectingPostId] = useState(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -763,14 +766,17 @@ export default function AdminPage() {
   const loadCommunity = useCallback(async () => {
     setLoading(true);
     try {
-      const [qRes, aRes] = await Promise.all([
+      const [qRes, aRes, pRes] = await Promise.all([
         fetch('/api/admin/community-questions', { headers }),
         fetch('/api/admin/community-all', { headers }),
+        fetch('/api/admin/community-pending', { headers }),
       ]);
       const qData = await qRes.json();
       const aData = await aRes.json();
+      const pData = await pRes.json();
       setCommunityQuestions(qData.questions || []);
       setCommunityPosts(aData.posts || []);
+      setCommunityPending(pData.posts || []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -1328,10 +1334,20 @@ export default function AdminPage() {
         {tab === 'community' && (
           <div>
             <div style={s.topbar}>
-              <div style={s.title}>🌍 Community ({communityView === 'questions' ? communityQuestions.length + ' support requests' : communityPosts.length + ' total posts'})</div>
+              <div style={s.title}>
+                🌍 Community
+                {communityPending.length > 0 && (
+                  <span style={{ marginLeft:10, padding:'2px 10px', borderRadius:999, background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontSize:12, fontWeight:700 }}>
+                    {communityPending.length} pending
+                  </span>
+                )}
+              </div>
               <div style={{ display:'flex', gap:8 }}>
+                <button style={s.btn(communityView==='pending'?'#ef4444':'')} onClick={() => setCommunityView('pending')}>
+                  📋 Post Moderation {communityPending.length > 0 ? `(${communityPending.length})` : ''}
+                </button>
                 <button style={s.btn(communityView==='questions'?'#7c6af7':'')} onClick={() => setCommunityView('questions')}>❓ Support Requests</button>
-                <button style={s.btn(communityView==='all'?'#7c6af7':'')} onClick={() => setCommunityView('all')}>📋 All Posts</button>
+                <button style={s.btn(communityView==='all'?'#7c6af7':'')} onClick={() => setCommunityView('all')}>📂 All Posts</button>
                 <button style={s.btn()} onClick={loadCommunity}>🔄 Refresh</button>
               </div>
             </div>
@@ -1340,88 +1356,223 @@ export default function AdminPage() {
               <div style={{ textAlign:'center', padding:40, color:'#6b7280' }}>Loading...</div>
             ) : (
               <div>
-                {(communityView === 'questions' ? communityQuestions : communityPosts).length === 0 ? (
-                  <div style={{ textAlign:'center', padding:60, color:'#4b5563' }}>
-                    <div style={{ fontSize:36, marginBottom:12 }}>{communityView==='questions'?'✅':'📭'}</div>
-                    <p>{communityView==='questions'?'No pending support requests':'No community posts yet'}</p>
-                  </div>
-                ) : (
-                  <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:900 }}>
-                    {(communityView === 'questions' ? communityQuestions : communityPosts).map(post => (
-                      <div key={post.id} style={{ background:'#0f0f1a', border:`1px solid ${post.needs_support?'rgba(245,158,11,0.4)':'#1a1a2e'}`, borderRadius:16, padding:20 }}>
 
-                        {/* Post header */}
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                            <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#7c6af7,#a855f7)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, color:'#fff' }}>
-                              {post.avatar_letter || post.author_name?.[0] || 'U'}
-                            </div>
-                            <div>
-                              <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{post.author_name}</div>
-                              <div style={{ fontSize:11, color:'#4b5563' }}>{new Date(post.created_at).toLocaleString()} · <span style={{ color: post.tag==='Question'?'#f59e0b':'#7c6af7' }}>{post.tag}</span>{post.needs_support && <span style={{ color:'#f59e0b', marginLeft:8 }}>⚠️ Needs Support</span>}</div>
-                            </div>
-                          </div>
-                          <button onClick={async () => {
-                            if (!confirm('Delete this post?')) return;
-                            await fetch(`/api/admin/community-post/${post.id}`, { method:'DELETE', headers });
-                            loadCommunity();
-                            showToast('Post deleted');
-                          }} style={{ ...s.btn('#7f1d1d'), fontSize:12 }}>🗑️ Delete</button>
-                        </div>
-
-                        {/* Post content */}
-                        <div style={{ fontSize:14, color:'#d1d5db', lineHeight:1.7, marginBottom:14, padding:'12px 16px', background:'rgba(255,255,255,0.03)', borderRadius:10 }}>
-                          {post.content}
-                        </div>
-
-                        {/* Existing comments */}
-                        {post.comments && post.comments.length > 0 && (
-                          <div style={{ marginBottom:14 }}>
-                            <div style={{ fontSize:11, color:'#4b5563', marginBottom:8, fontWeight:700 }}>COMMENTS ({post.comments.length})</div>
-                            {post.comments.map((c, ci) => (
-                              <div key={ci} style={{ padding:'8px 12px', background: c.author==='⚡ Erivion Support'?'rgba(124,106,247,0.08)':'rgba(255,255,255,0.02)', borderRadius:8, marginBottom:6, borderLeft:`3px solid ${c.author==='⚡ Erivion Support'?'#7c6af7':'#1a1a2e'}` }}>
-                                <span style={{ fontSize:12, fontWeight:700, color: c.author==='⚡ Erivion Support'?'#a78bfa':'#9ca3af' }}>{c.author}: </span>
-                                <span style={{ fontSize:12, color:'#9ca3af' }}>{c.text}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Reply input */}
-                        <div style={{ display:'flex', gap:8 }}>
-                          <textarea
-                            value={replyingTo === post.id ? communityReply : ''}
-                            onChange={e => { setReplyingTo(post.id); setCommunityReply(e.target.value); }}
-                            placeholder="Reply as ⚡ Erivion Support..."
-                            rows={2}
-                            style={{ flex:1, ...s.input, resize:'none', fontFamily:'inherit', fontSize:13 }}
-                          />
-                          <button
-                            disabled={replyingTo !== post.id || !communityReply.trim()}
-                            onClick={async () => {
-                              if (!communityReply.trim()) return;
-                              try {
-                                const r = await fetch('/api/admin/community-reply', {
-                                  method:'POST',
-                                  headers: { ...headers, 'Content-Type':'application/json' },
-                                  body: JSON.stringify({ post_id: post.id, content: communityReply }),
-                                });
-                                if (r.ok) {
-                                  showToast('Reply posted ✅');
-                                  setCommunityReply('');
-                                  setReplyingTo(null);
-                                  loadCommunity();
-                                }
-                              } catch (e) { showToast('Error posting reply'); }
-                            }}
-                            style={{ ...s.btn(), padding:'0 18px', opacity: replyingTo===post.id && communityReply.trim() ? 1 : 0.4, alignSelf:'flex-end' }}>
-                            Reply →
-                          </button>
-                        </div>
+                {/* ── Pending Moderation ── */}
+                {communityView === 'pending' && (
+                  <div>
+                    {communityPending.length === 0 ? (
+                      <div style={{ textAlign:'center', padding:60, color:'#4b5563' }}>
+                        <div style={{ fontSize:36, marginBottom:12 }}>✅</div>
+                        <p>No posts pending review</p>
                       </div>
-                    ))}
+                    ) : (
+                      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:900 }}>
+                        {communityPending.map(post => (
+                          <div key={post.id} style={{ background:'#0f0f1a', border:'1px solid rgba(245,158,11,0.35)', borderRadius:16, padding:20 }}>
+
+                            {/* Post header */}
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                                <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#7c6af7,#a855f7)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, color:'#fff' }}>
+                                  {post.avatar_letter || post.author_name?.[0] || 'U'}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{post.author_name}</div>
+                                  <div style={{ fontSize:11, color:'#4b5563' }}>
+                                    {new Date(post.created_at).toLocaleString()} ·{' '}
+                                    <span style={{ color:'#7c6af7' }}>{post.tag}</span>
+                                    <span style={{ color:'#f59e0b', marginLeft:8 }}>⏳ Pending Review</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Post content */}
+                            <div style={{ fontSize:14, color:'#d1d5db', lineHeight:1.7, marginBottom:16, padding:'12px 16px', background:'rgba(255,255,255,0.03)', borderRadius:10 }}>
+                              {post.content}
+                            </div>
+
+                            {post.image_url && (
+                              <img src={post.image_url} alt="post" style={{ maxWidth:'100%', maxHeight:200, borderRadius:10, marginBottom:16, objectFit:'cover' }} />
+                            )}
+
+                            {/* Approve / Reject buttons */}
+                            <div style={{ display:'flex', gap:10, alignItems:'flex-start', flexWrap:'wrap' }}>
+                              <button onClick={async () => {
+                                await fetch(`/api/admin/community-post/${post.id}/approve`, { method:'POST', headers });
+                                showToast('✅ Post approved');
+                                loadCommunity();
+                              }} style={{ ...s.btn('#14532d'), fontSize:13, padding:'8px 20px' }}>✅ Approve</button>
+
+                              {rejectingPostId === post.id ? (
+                                <div style={{ display:'flex', gap:8, flex:1, flexWrap:'wrap', alignItems:'center' }}>
+                                  <input
+                                    value={rejectionReason}
+                                    onChange={e => setRejectionReason(e.target.value)}
+                                    placeholder="Reason for rejection (optional)..."
+                                    style={{ flex:1, minWidth:200, ...s.input, fontSize:13 }}
+                                  />
+                                  <button onClick={async () => {
+                                    await fetch(`/api/admin/community-post/${post.id}/reject`, {
+                                      method:'POST',
+                                      headers: { ...headers, 'Content-Type':'application/json' },
+                                      body: JSON.stringify({ reason: rejectionReason }),
+                                    });
+                                    showToast('❌ Post rejected');
+                                    setRejectingPostId(null);
+                                    setRejectionReason('');
+                                    loadCommunity();
+                                  }} style={{ ...s.btn('#7f1d1d'), fontSize:13, padding:'8px 18px' }}>Confirm Reject</button>
+                                  <button onClick={() => { setRejectingPostId(null); setRejectionReason(''); }}
+                                    style={{ ...s.btn(), fontSize:13, padding:'8px 14px' }}>Cancel</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => { setRejectingPostId(post.id); setRejectionReason(''); }}
+                                  style={{ ...s.btn('#7f1d1d'), fontSize:13, padding:'8px 20px' }}>❌ Reject</button>
+                              )}
+
+                              <button onClick={async () => {
+                                if (!confirm('Delete this post?')) return;
+                                await fetch(`/api/admin/community-post/${post.id}`, { method:'DELETE', headers });
+                                showToast('Post deleted');
+                                loadCommunity();
+                              }} style={{ ...s.btn('#374151'), fontSize:12, padding:'8px 14px', marginLeft:'auto' }}>🗑️ Delete</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* ── Support Requests ── */}
+                {communityView === 'questions' && (
+                  <div>
+                    {communityQuestions.length === 0 ? (
+                      <div style={{ textAlign:'center', padding:60, color:'#4b5563' }}>
+                        <div style={{ fontSize:36, marginBottom:12 }}>✅</div>
+                        <p>No pending support requests</p>
+                      </div>
+                    ) : (
+                      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:900 }}>
+                        {communityQuestions.map(post => (
+                          <div key={post.id} style={{ background:'#0f0f1a', border:`1px solid ${post.needs_support?'rgba(245,158,11,0.4)':'#1a1a2e'}`, borderRadius:16, padding:20 }}>
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                                <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#7c6af7,#a855f7)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, color:'#fff' }}>
+                                  {post.avatar_letter || post.author_name?.[0] || 'U'}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{post.author_name}</div>
+                                  <div style={{ fontSize:11, color:'#4b5563' }}>{new Date(post.created_at).toLocaleString()} · <span style={{ color: post.tag==='Question'?'#f59e0b':'#7c6af7' }}>{post.tag}</span>{post.needs_support && <span style={{ color:'#f59e0b', marginLeft:8 }}>⚠️ Needs Support</span>}</div>
+                                </div>
+                              </div>
+                              <button onClick={async () => {
+                                if (!confirm('Delete this post?')) return;
+                                await fetch(`/api/admin/community-post/${post.id}`, { method:'DELETE', headers });
+                                loadCommunity();
+                                showToast('Post deleted');
+                              }} style={{ ...s.btn('#7f1d1d'), fontSize:12 }}>🗑️ Delete</button>
+                            </div>
+                            <div style={{ fontSize:14, color:'#d1d5db', lineHeight:1.7, marginBottom:14, padding:'12px 16px', background:'rgba(255,255,255,0.03)', borderRadius:10 }}>
+                              {post.content}
+                            </div>
+                            {post.comments && post.comments.length > 0 && (
+                              <div style={{ marginBottom:14 }}>
+                                <div style={{ fontSize:11, color:'#4b5563', marginBottom:8, fontWeight:700 }}>COMMENTS ({post.comments.length})</div>
+                                {post.comments.map((c, ci) => (
+                                  <div key={ci} style={{ padding:'8px 12px', background: c.author==='⚡ Erivion Support'?'rgba(124,106,247,0.08)':'rgba(255,255,255,0.02)', borderRadius:8, marginBottom:6, borderLeft:`3px solid ${c.author==='⚡ Erivion Support'?'#7c6af7':'#1a1a2e'}` }}>
+                                    <span style={{ fontSize:12, fontWeight:700, color: c.author==='⚡ Erivion Support'?'#a78bfa':'#9ca3af' }}>{c.author}: </span>
+                                    <span style={{ fontSize:12, color:'#9ca3af' }}>{c.text}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div style={{ display:'flex', gap:8 }}>
+                              <textarea
+                                value={replyingTo === post.id ? communityReply : ''}
+                                onChange={e => { setReplyingTo(post.id); setCommunityReply(e.target.value); }}
+                                placeholder="Reply as ⚡ Erivion Support..."
+                                rows={2}
+                                style={{ flex:1, ...s.input, resize:'none', fontFamily:'inherit', fontSize:13 }}
+                              />
+                              <button
+                                disabled={replyingTo !== post.id || !communityReply.trim()}
+                                onClick={async () => {
+                                  if (!communityReply.trim()) return;
+                                  try {
+                                    const r = await fetch('/api/admin/community-reply', {
+                                      method:'POST',
+                                      headers: { ...headers, 'Content-Type':'application/json' },
+                                      body: JSON.stringify({ post_id: post.id, content: communityReply }),
+                                    });
+                                    if (r.ok) {
+                                      showToast('Reply posted ✅');
+                                      setCommunityReply('');
+                                      setReplyingTo(null);
+                                      loadCommunity();
+                                    }
+                                  } catch (e) { showToast('Error posting reply'); }
+                                }}
+                                style={{ ...s.btn(), padding:'0 18px', opacity: replyingTo===post.id && communityReply.trim() ? 1 : 0.4, alignSelf:'flex-end' }}>
+                                Reply →
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── All Posts ── */}
+                {communityView === 'all' && (
+                  <div>
+                    {communityPosts.length === 0 ? (
+                      <div style={{ textAlign:'center', padding:60, color:'#4b5563' }}>
+                        <div style={{ fontSize:36, marginBottom:12 }}>📭</div>
+                        <p>No community posts yet</p>
+                      </div>
+                    ) : (
+                      <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:900 }}>
+                        {communityPosts.map(post => (
+                          <div key={post.id} style={{ background:'#0f0f1a', border:`1px solid #1a1a2e`, borderRadius:16, padding:20 }}>
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                                <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#7c6af7,#a855f7)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, color:'#fff' }}>
+                                  {post.avatar_letter || post.author_name?.[0] || 'U'}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{post.author_name}</div>
+                                  <div style={{ fontSize:11, color:'#4b5563' }}>
+                                    {new Date(post.created_at).toLocaleString()} · <span style={{ color:'#7c6af7' }}>{post.tag}</span>
+                                    <span style={{ marginLeft:8, padding:'1px 8px', borderRadius:999, fontSize:10, fontWeight:700,
+                                      background: post.status==='approved' ? 'rgba(34,197,94,0.1)' : post.status==='rejected' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+                                      color: post.status==='approved' ? '#22c55e' : post.status==='rejected' ? '#ef4444' : '#f59e0b',
+                                      border: `1px solid ${post.status==='approved' ? 'rgba(34,197,94,0.3)' : post.status==='rejected' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                                    }}>
+                                      {post.status==='approved' ? '✅ Approved' : post.status==='rejected' ? '❌ Rejected' : '⏳ Pending'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <button onClick={async () => {
+                                if (!confirm('Delete this post?')) return;
+                                await fetch(`/api/admin/community-post/${post.id}`, { method:'DELETE', headers });
+                                loadCommunity();
+                                showToast('Post deleted');
+                              }} style={{ ...s.btn('#7f1d1d'), fontSize:12 }}>🗑️ Delete</button>
+                            </div>
+                            <div style={{ fontSize:14, color:'#d1d5db', lineHeight:1.7, padding:'12px 16px', background:'rgba(255,255,255,0.03)', borderRadius:10 }}>
+                              {post.content}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
               </div>
             )}
           </div>
