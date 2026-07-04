@@ -15,7 +15,7 @@ const RATIOS = {
 };
 
 // ── توليد صورة واحدة من Replicate (xai/grok-imagine-image) ────────────────
-async function generateImage(prompt, ratio = '16:9') {
+async function generateImageOnce(prompt, ratio) {
   const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set in environment');
 
@@ -71,6 +71,24 @@ async function generateImage(prompt, ratio = '16:9') {
   if (!imgRes.ok) throw new Error('Image download failed: ' + imgRes.status);
   const buffer = await imgRes.arrayBuffer();
   return Buffer.from(buffer);
+}
+
+// ✅ retry مرتين قبل ما نسيب الفولباك يشتغل — لأي فشل مؤقت (rate limit / cold start)
+async function generateImage(prompt, ratio = '16:9') {
+  const MAX_ATTEMPTS = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await generateImageOnce(prompt, ratio);
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[Model3] generateImage attempt ${attempt}/${MAX_ATTEMPTS} failed: ${e.message}`);
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 4000 * attempt)); // backoff: 4s, 8s
+      }
+    }
+  }
+  throw lastErr;
 }
 
 // ── Ken Burns zoom effect على صورة واحدة ──────────────────────────────────
