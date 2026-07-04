@@ -20,6 +20,7 @@ router.get('/stats', adminAuth, async (req, res) => {
     const [
       totalUsers, verifiedUsers, planDist, totalVideos, recentUsers,
       totalRevenue, pendingPayments, weeklySignups, model3Users, videosPerDay, topUsers,
+      signupsToday, loginsToday, monthlySubs,
     ] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM users'),
       pool.query('SELECT COUNT(*) FROM users WHERE verified = 1'),
@@ -32,6 +33,17 @@ router.get('/stats', adminAuth, async (req, res) => {
       pool.query('SELECT COUNT(*) FROM users WHERE model3_access = 1'),
       pool.query(`SELECT DATE(created_at::timestamp) as day, COUNT(*) as count FROM videos WHERE created_at::timestamp >= NOW() - INTERVAL '7 days' GROUP BY DATE(created_at::timestamp) ORDER BY day ASC`),
       pool.query(`SELECT u.email, u.plan, COUNT(v.id) as video_count FROM users u LEFT JOIN videos v ON v.user_id = u.id GROUP BY u.id, u.email, u.plan ORDER BY video_count DESC LIMIT 5`),
+      pool.query(`SELECT COUNT(*) FROM users WHERE DATE(created_at::timestamp) = CURRENT_DATE`),
+      pool.query(`SELECT COUNT(*) FROM login_events WHERE DATE(created_at::timestamp) = CURRENT_DATE`).catch(() => ({ rows: [{ count: 0 }] })),
+      pool.query(`
+        SELECT TO_CHAR(created_at::timestamp, 'YYYY-MM') as month,
+               COUNT(*) as count,
+               COALESCE(SUM(amount), 0) as revenue
+        FROM payment_requests
+        WHERE status = 'approved' AND created_at::timestamp >= NOW() - INTERVAL '12 months'
+        GROUP BY month
+        ORDER BY month ASC
+      `),
     ]);
     res.json({
       overview: {
@@ -42,11 +54,14 @@ router.get('/stats', adminAuth, async (req, res) => {
         pending_payments: parseInt(pendingPayments.rows[0].count),
         weekly_signups: parseInt(weeklySignups.rows[0].count),
         model3_users: parseInt(model3Users.rows[0].count),
+        signups_today: parseInt(signupsToday.rows[0].count),
+        logins_today: parseInt(loginsToday.rows[0].count),
       },
       plan_distribution: planDist.rows,
       recent_users: recentUsers.rows,
       videos_per_day: videosPerDay.rows,
       top_users: topUsers.rows,
+      monthly_subscriptions: monthlySubs.rows,
     });
   } catch (err) {
     console.error('[Admin Stats]', err.message);

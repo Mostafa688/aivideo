@@ -132,6 +132,15 @@ async function initDB() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model3_trial_used INTEGER DEFAULT 0`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_plan TEXT DEFAULT NULL`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS model4_trial_used INTEGER DEFAULT 0`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS login_events (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      email TEXT,
+      method TEXT DEFAULT 'password',
+      created_at TEXT DEFAULT NOW()
+    );
+  `);
   console.log('[DB] PostgreSQL tables ready');
 }
 
@@ -189,6 +198,12 @@ async function checkAndResetUsage(userId) {
     return { credits_used: 0, videos_this_week: 0 };
   }
   return { credits_used: row.credits_used || 0, videos_this_week: row.videos_this_week || 0 };
+}
+
+export async function logLoginEvent(userId, email, method = 'password') {
+  try {
+    await pool.query('INSERT INTO login_events (user_id, email, method) VALUES ($1, $2, $3)', [userId, email, method]);
+  } catch (e) { console.warn('[LoginEvent] failed:', e.message); }
 }
 
 export async function getUserById(userId) {
@@ -357,6 +372,7 @@ export async function login(email, password) {
         : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:52px;margin-bottom:12px">🎬</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a></div></div>`,
     }),
   }).catch(e => console.warn('[Login] Marketing email failed:', e.message));
+  logLoginEvent(user.id, email, 'password').catch(() => {});
   return { token, email, plan: user.plan || 'free', isNewUser: false };
 }
 
@@ -372,6 +388,7 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
   }
   await checkAndResetUsage(user.id);
   const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+  logLoginEvent(user.id, user.email, 'google').catch(() => {});
   return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: false };
 }
 

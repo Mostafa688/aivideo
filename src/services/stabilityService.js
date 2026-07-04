@@ -5,7 +5,6 @@ import path from 'path';
 import { mkdir } from 'fs/promises';
 import { execSync } from 'child_process';
 
-const STABILITY_API_KEY = process.env.STABILITY_API_KEY;
 const OUTPUTS_DIR = 'outputs';
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
@@ -15,33 +14,62 @@ const RATIOS = {
   '1:1':  { w: 720, h: 720 },
 };
 
-// ── توليد صورة واحدة من Stability AI ──────────────────────────────────────
+// ── توليد صورة واحدة من Replicate (xai/grok-imagine-image) ────────────────
 async function generateImage(prompt, ratio = '16:9') {
-  if (!STABILITY_API_KEY) throw new Error('STABILITY_API_KEY not set in environment');
+  const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set in environment');
 
-  const { w, h } = RATIOS[ratio] || RATIOS['16:9'];
+  const headers = {
+    'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'wait',
+  };
 
-  const response = await fetch('https://api.stability.ai/v2beta/stable-image/generate/core', {
+  const submitRes = await fetch('https://api.replicate.com/v1/models/xai/grok-imagine-image/predictions', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${STABILITY_API_KEY}`,
-      Accept: 'image/*',
-    },
-    body: (() => {
-      const form = new FormData();
-      form.append('prompt', prompt);
-      form.append('output_format', 'jpeg');
-      form.append('aspect_ratio', ratio === '16:9' ? '16:9' : ratio === '9:16' ? '9:16' : '1:1');
-      return form;
-    })(),
+    headers,
+    body: JSON.stringify({
+      input: { prompt, aspect_ratio: ratio },
+    }),
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Stability API error ${response.status}: ${errText}`);
+  if (!submitRes.ok) {
+    const err = await submitRes.text();
+    throw new Error(`Replicate error ${submitRes.status}: ${err}`);
   }
 
-  const buffer = await response.arrayBuffer();
+  let prediction = await submitRes.json();
+  let imageUrl = null;
+
+  if (prediction.status === 'succeeded' && prediction.output) {
+    imageUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  } else {
+    const predictionId = prediction.id;
+    if (!predictionId) throw new Error(`No prediction ID: ${JSON.stringify(prediction)}`);
+
+    const maxWait = 120_000;
+    const pollInterval = 3_000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
+      if (!statusRes.ok) continue;
+      const data = await statusRes.json();
+      if (data.status === 'succeeded') {
+        imageUrl = Array.isArray(data.output) ? data.output[0] : data.output;
+        break;
+      }
+      if (data.status === 'failed' || data.status === 'canceled') {
+        throw new Error(`Replicate failed: ${data.error || 'unknown'}`);
+      }
+    }
+    if (!imageUrl) throw new Error('Timeout waiting for image generation');
+  }
+
+  const imgRes = await fetch(imageUrl);
+  if (!imgRes.ok) throw new Error('Image download failed: ' + imgRes.status);
+  const buffer = await imgRes.arrayBuffer();
   return Buffer.from(buffer);
 }
 

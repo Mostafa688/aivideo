@@ -697,7 +697,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         )}
 
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:12 }}>
-          Stability AI · {selectedStyle?.emoji} {selectedStyle?.label} · Ken Burns zoom · FFmpeg render
+          Grok Imagine · {selectedStyle?.emoji} {selectedStyle?.label} · Ken Burns zoom · FFmpeg render
         </p>
       </div>
       {showPlans && <PlansModal currentPlan={model3Plan} onClose={() => setShowPlans(false)} usage={usage} quotas={quotas} onNavigate={onNavigate} />}

@@ -92,6 +92,42 @@ function BarChart({ data }) {
   );
 }
 
+// ── Monthly Subscriptions Bar Chart ───────────────────────────────────────
+function MonthlyBarChart({ data }) {
+  if (!data?.length) return <div style={{ color: '#4b5563', fontSize: 13 }}>No data</div>;
+  const max = Math.max(...data.map(d => parseInt(d.count)), 1);
+  const bestMonth = data.reduce((best, d) => parseInt(d.count) > parseInt(best.count) ? d : best, data[0]);
+  const monthLabel = (m) => {
+    const [y, mo] = m.split('-');
+    return new Date(y, mo - 1, 1).toLocaleDateString('en', { month: 'short' });
+  };
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 100 }}>
+        {data.map((d, i) => {
+          const isBest = d.month === bestMonth.month && parseInt(d.count) > 0;
+          return (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 10, color: isBest ? '#22c55e' : '#6b7280', fontWeight: isBest ? 700 : 400 }}>{d.count}</span>
+              <div style={{
+                width: '100%', borderRadius: '3px 3px 0 0',
+                background: isBest ? '#22c55e' : '#7c6af7',
+                height: `${Math.max(8, (parseInt(d.count) / max) * 72)}px`,
+              }} />
+              <span style={{ fontSize: 9, color: '#4b5563' }}>{monthLabel(d.month)}</span>
+            </div>
+          );
+        })}
+      </div>
+      {parseInt(bestMonth.count) > 0 && (
+        <div style={{ marginTop: 14, fontSize: 12, color: '#22c55e' }}>
+          🏆 أفضل شهر: <strong>{monthLabel(bestMonth.month)}</strong> — {bestMonth.count} اشتراك ({fmt(bestMonth.revenue)} EGP)
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Login Screen ───────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [secret, setSecret] = useState('');
@@ -999,11 +1035,17 @@ export default function AdminPage() {
             {stats && <>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
                 <StatCard label="Total Users" value={fmt(stats.overview.total_users)} sub={`${stats.overview.verified_users} verified`} />
+                <StatCard label="Signups Today" value={fmt(stats.overview.signups_today)} color="#22c55e" />
+                <StatCard label="Logins Today" value={fmt(stats.overview.logins_today)} color="#06b6d4" />
                 <StatCard label="Weekly Signups" value={fmt(stats.overview.weekly_signups)} color="#22c55e" />
                 <StatCard label="Total Videos" value={fmt(stats.overview.total_videos)} />
                 <StatCard label="Revenue (EGP)" value={fmt(stats.overview.total_revenue_egp)} color="#f59e0b" />
                 <StatCard label="Pending Payments" value={stats.overview.pending_payments} color={stats.overview.pending_payments > 0 ? '#ef4444' : '#9ca3af'} />
                 <StatCard label="Model 3 Users" value={stats.overview.model3_users} color="#7c6af7" />
+              </div>
+              <div style={s.card}>
+                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Subscriptions per month — last 12 months</div>
+                <MonthlyBarChart data={stats.monthly_subscriptions} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 16 }}>
                 <div style={s.card}>
