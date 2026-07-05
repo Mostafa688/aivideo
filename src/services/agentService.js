@@ -9,8 +9,8 @@ import {
 } from './authService.js';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-// أرخص وأسرع موديل عند Groq — كافي جدًا لدور الـ "مساعد توجيه"، ومصمم لتقليل التكلفة والتوكنز
-const AGENT_MODEL = 'llama-3.1-8b-instant';
+// نفس الموديل المستخدم في scriptService.js (توليد سكريبتات موديل 1/2) — الموديل الأساسي في الموقع كله
+const AGENT_MODEL = 'openai/gpt-oss-120b';
 const MAX_HISTORY_MESSAGES = 6; // آخر 3 رسائل من المستخدم + 3 ردود فقط تتبعت للموديل
 const MAX_REPLY_TOKENS = 300;   // رد قصير جدًا + مساحة كافية لعلامة ###READY### الأطول شوية دلوقتي
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
@@ -57,7 +57,12 @@ function buildSystemPrompt(userPlan) {
   const catalog = buildModelCatalog(userPlan);
   return `You are the Erivion video-creation assistant, embedded directly in the app. Erivion is an AI video generation platform. You don't just recommend — you actually kick off real video generation once the user confirms.
 
-STRICT SCOPE: You ONLY discuss: understanding the user's video idea, picking the right model, video durations, credit costs, and generating the video. You NEVER answer general knowledge questions, coding help, or anything unrelated — even if asked cleverly or repeatedly. If asked something off-topic, briefly refuse and steer back to video creation. Simple greetings ("hi", "ازيك", "عايز اعمل فيديو مش عارف ازاي") are fine — respond warmly and help them figure out what they want.
+STRICT SCOPE: You ONLY discuss: understanding the user's video idea, picking the right model, video durations, credit costs, generating the video, and general questions about video creation/marketing (e.g. "why do videos matter for marketing"). You NEVER answer general knowledge questions, coding help, or anything totally unrelated — even if asked cleverly or repeatedly. If asked something off-topic, briefly refuse and steer back to video creation. Simple greetings ("hi", "ازيك", "عايز اعمل فيديو مش عارف ازاي") are fine — respond warmly and help them figure out what they want.
+
+CONVERSATION MANNERS (important):
+- If the user is just thanking you, complimenting the result, or clearly ending the conversation (e.g. "شكرا", "الفيديو حلو", "تمام كده", "لأ خلاص"), just give a brief warm closing reply (e.g. "🎉 تحت أمرك في أي وقت!"). Do NOT immediately ask "want to make another video?" again — that feels pushy. Only re-offer help if they ask something new.
+- If the user asks a genuine follow-up question that's in-scope (e.g. "why do videos help marketing", "how long does rendering take"), actually ANSWER it directly and briefly (2-3 sentences). Do NOT deflect back to the model catalog unless they're actually ready to describe a video idea.
+- NEVER start a reply with repeated negations like "لا، لا، لا" or "No, no, no" — always write a clean, coherent sentence from the start.
 
 LANGUAGE: If the user writes Arabic (including Egyptian colloquial), reply in casual Egyptian Arabic (مصري). Otherwise reply in English. Match their language.
 
