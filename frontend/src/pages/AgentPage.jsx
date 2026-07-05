@@ -251,14 +251,27 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (!scenesRes.ok) throw new Error(scenesData.error || 'Scene generation failed');
       const scenes = scenesData.scenes || [];
 
+      // توليد صوت حقيقي قبل الرندر (زي صفحات الموديلات بالظبط) — إلا لو موديل 5 (بدون تعليق صوتي أصلاً)
+      let audioUrl = null;
+      if (ready.model !== 5 && scenes.length) {
+        updateJob({ status: 'scenes' });
+        const voiceKey = lang === 'ar' ? 'female_arabic' : 'female_american';
+        const fullText = scenes.map(s => s.text).join(' ');
+        try {
+          const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: fullText, voice: voiceKey, videoLanguage: lang === 'ar' ? 'ar_eg' : 'en' }) });
+          const voiceData = await voiceRes.json();
+          if (voiceRes.ok) audioUrl = voiceData.audioUrl;
+        } catch { /* لو فشل التعليق الصوتي، هيكمل الفيديو من غير صوت */ }
+      }
+
       updateJob({ status: 'rendering' });
       const timer = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
 
       let renderBody;
       if (ready.model === 3) {
-        renderBody = { scenes, audioUrl: null, ratio: ready.ratio, captions: true, transitions: false, music: false, videoLanguage: lang === 'ar' ? 'ar' : 'en', duration: ready.duration, videoStyle: style, styleSuffix: '' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, transitions: false, music: false, videoLanguage: lang === 'ar' ? 'ar_eg' : 'en', duration: ready.duration, videoStyle: style, styleSuffix: '' };
       } else if (ready.model === 4) {
-        renderBody = { scenes, audioUrl: null, ratio: ready.ratio, captions: true, music: false, videoLanguage: lang === 'ar' ? 'ar' : 'en', duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, music: false, videoLanguage: lang === 'ar' ? 'ar_eg' : 'en', duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
       } else {
         renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhoto ? [lastUploadedPhoto] : [] };
       }

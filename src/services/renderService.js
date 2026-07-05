@@ -306,7 +306,7 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
   const WORDS_PER_CHUNK = isRTL ? 3 : 4;
 
   scenes.forEach((scene, i) => {
-    const sceneDur = sceneDurations[i] || 7;
+    const sceneDur = (sceneDurations && sceneDurations[i]) || 7;
     const words = scene.text
       .replace(/[':]/g, '').replace(/\\/g, '').replace(/\n/g, ' ')
       .trim().split(/\s+/).filter(Boolean);
