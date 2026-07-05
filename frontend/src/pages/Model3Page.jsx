@@ -1,206 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import VoiceUpload from './VoiceUpload.jsx';
 
-const MODEL3_PLANS_INFO = [
-  { key: 'm3_starter', name: 'Starter', icon: '🚀', color: '#f59e0b', price: '450 EGP/month', price_usd: 14, quota: { '30s': 5, '1min': 10, '3min': 0, '5min': 0 }, features: ['5 × 30s videos', '10 × 1min videos'] },
-  { key: 'm3_pro', name: 'Pro', icon: '⚡', color: '#7c6af7', price: '1,100 EGP/month', price_usd: 28, badge: 'Most Popular', quota: { '30s': 5, '1min': 5, '3min': 10, '5min': 0 }, features: ['5 × 30s videos', '5 × 1min videos', '10 × 3min videos'] },
-  { key: 'm3_max', name: 'Max', icon: '👑', color: '#22c55e', price: '2,000 EGP/month', price_usd: 45, quota: { '30s': 0, '1min': 5, '3min': 5, '5min': 10 }, features: ['5 × 1min videos', '5 × 3min videos', '10 × 5min videos'] },
-];
-
-const MODEL3_GUMROAD = {
-  m3_starter: 'https://digiwhirl23.gumroad.com/l/osibu',
-  m3_pro:     'https://digiwhirl23.gumroad.com/l/zfdge',
-  m3_max:     'https://digiwhirl23.gumroad.com/l/fgydww',
-};
-
-const INSTAPAY_NUMBER = '01091917832';
-
-function PlansModal({ currentPlan, onClose, usage, quotas, onNavigate }) {
-  const [selectedPlan, setSelectedPlan] = useState(null);
-  const [step, setStep] = useState('plans');
-  const [email, setEmail] = useState('');
-  const [screenshot, setScreenshot] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [intlDone, setIntlDone] = useState(false);
-  const region = localStorage.getItem('erivion_region') || 'eg';
-  const [copied, setCopied] = useState(false);
-
-  const handleFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => { setScreenshot(ev.target.result); setPreview(ev.target.result); };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async () => {
-    if (!email.trim()) { setError('Please enter your email'); return; }
-    if (!screenshot) { setError('Please upload your transfer screenshot'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/auth/model3-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
-        body: JSON.stringify({ plan: selectedPlan.key, planName: selectedPlan.name, amount: selectedPlan.price, userEmail: email, screenshot }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      setStep('pending');
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
-  };
-
-  return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000, padding:16 }}>
-      <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}`}</style>
-      <div style={{ background:'#0a0a12', border:'1px solid rgba(124,106,247,0.3)', borderRadius:24, width:'100%', maxWidth:500, maxHeight:'90vh', overflowY:'auto', animation:'slideUp 0.3s ease' }}>
-        {step === 'intl' ? (
-          <div style={{ padding:28 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-              <button onClick={() => setStep('plans')} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>←</button>
-              <div>
-                <h3 style={{ fontSize:17, fontWeight:800, color:'#fff', margin:0 }}>{selectedPlan?.icon} {selectedPlan?.name} — International</h3>
-                <p style={{ fontSize:13, color:selectedPlan?.color, margin:'2px 0 0', fontWeight:700 }}>${selectedPlan?.price_usd}/month</p>
-              </div>
-              <button onClick={onClose} style={{ marginLeft:'auto', background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>✕</button>
-            </div>
-            {intlDone ? (
-              <div style={{ textAlign:'center', padding:'20px 0' }}>
-                <div style={{ fontSize:64, marginBottom:16 }}>⏳</div>
-                <h3 style={{ fontSize:20, fontWeight:800, color:'#fff', marginBottom:12 }}>Request Submitted!</h3>
-                <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:24 }}>We'll verify your Gumroad payment and activate your plan within <strong style={{ color:'#22c55e' }}>24 hours</strong>.</p>
-                <button onClick={onClose} style={{ background:selectedPlan?.color, color:'#fff', border:'none', borderRadius:12, padding:'13px 36px', fontWeight:700, fontSize:15, cursor:'pointer' }}>Got it! 🚀</button>
-              </div>
-            ) : (
-              <>
-                <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:14, padding:18, marginBottom:20 }}>
-                  <p style={{ fontSize:13, fontWeight:700, color:'#d1d5db', margin:'0 0 14px' }}>💳 How to subscribe:</p>
-                  {['Click "Pay on Gumroad" below', 'Complete payment with your card', "Come back here and click \"I've Paid\"", "We'll verify and activate within 24h"].map((s,i) => (
-                    <div key={i} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                      <div style={{ width:22, height:22, borderRadius:'50%', background:`${selectedPlan?.color}22`, border:`1px solid ${selectedPlan?.color}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:selectedPlan?.color, flexShrink:0 }}>{i+1}</div>
-                      <span style={{ fontSize:13, color:'#d1d5db' }}>{s}</span>
-                    </div>
-                  ))}
-                </div>
-                <a href={MODEL3_GUMROAD[selectedPlan?.key]} target="_blank" rel="noreferrer"
-                  style={{ display:'block', width:'100%', padding:'14px', borderRadius:12, background:`linear-gradient(135deg, ${selectedPlan?.color}, ${selectedPlan?.color}bb)`, color: selectedPlan?.color === '#f59e0b' || selectedPlan?.color === '#22c55e' ? '#000' : '#fff', fontWeight:700, fontSize:15, textAlign:'center', textDecoration:'none', marginBottom:10, boxSizing:'border-box' }}>
-                  🔗 Pay on Gumroad — ${selectedPlan?.price_usd}
-                </a>
-                <button onClick={async () => {
-                  try {
-                    const res = await fetch('/api/auth/intl-payment/request', {
-                      method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+localStorage.getItem('token') },
-                      body: JSON.stringify({ planKey: selectedPlan?.key, planName: 'Model 3 ' + selectedPlan?.name, usdPrice: selectedPlan?.price_usd }),
-                    });
-                    if (res.ok) setIntlDone(true);
-                  } catch(e) {}
-                }}
-                  style={{ width:'100%', padding:'13px', borderRadius:12, border:`1px solid ${selectedPlan?.color}44`, background:'rgba(255,255,255,0.04)', color:selectedPlan?.color, fontWeight:700, fontSize:14, cursor:'pointer' }}>
-                  ✅ I've Paid — Notify Admin
-                </button>
-              </>
-            )}
-          </div>
-        ) : step === 'pending' ? (
-          <div style={{ padding:40, textAlign:'center' }}>
-            <div style={{ fontSize:64, marginBottom:16 }}>⏳</div>
-            <h3 style={{ fontSize:20, fontWeight:800, color:'#fff', marginBottom:12 }}>Request Received!</h3>
-            <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:24 }}>We'll review your transfer and activate your plan within a few hours.</p>
-            <button onClick={onClose} style={{ padding:'12px 32px', borderRadius:10, background:'#7c6af7', color:'#fff', fontWeight:700, fontSize:14, border:'none', cursor:'pointer' }}>Got it!</button>
-          </div>
-        ) : step === 'payment' ? (
-          <div style={{ padding:28 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-              <button onClick={() => setStep('plans')} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>←</button>
-              <div>
-                <h3 style={{ fontSize:17, fontWeight:800, color:'#fff', margin:0 }}>{selectedPlan?.icon} Upgrade to {selectedPlan?.name}</h3>
-                <p style={{ fontSize:12, color:selectedPlan?.color, margin:'2px 0 0', fontWeight:700 }}>{selectedPlan?.price}</p>
-              </div>
-              <button onClick={onClose} style={{ marginLeft:'auto', background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>✕</button>
-            </div>
-            <div style={{ background:'rgba(124,106,247,0.06)', border:'1px solid rgba(124,106,247,0.2)', borderRadius:12, padding:18, marginBottom:16 }}>
-              <p style={{ fontSize:12, fontWeight:700, color:'#7c6af7', margin:'0 0 12px' }}>💳 Payment Steps</p>
-              {['Open InstaPay app', `Transfer ${selectedPlan?.price} to:`, 'Take a screenshot', 'Upload it below ⬇️'].map((s, i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                  <div style={{ width:20, height:20, borderRadius:'50%', background:'rgba(124,106,247,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'#7c6af7', flexShrink:0 }}>{i+1}</div>
-                  <span style={{ fontSize:12, color:'#d1d5db' }}>{s}</span>
-                </div>
-              ))}
-              <div style={{ margin:'12px 0', padding:'10px 14px', background:'#1a1a2e', border:'1px solid rgba(124,106,247,0.3)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontSize:18, fontWeight:800, color:'#fff' }}>{INSTAPAY_NUMBER}</span>
-                <button onClick={() => { navigator.clipboard?.writeText(INSTAPAY_NUMBER); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={{ padding:'5px 12px', borderRadius:6, background: copied ? 'rgba(34,197,94,0.2)' : 'rgba(124,106,247,0.2)', border:`1px solid ${copied ? 'rgba(34,197,94,0.4)' : 'rgba(124,106,247,0.4)'}`, color: copied ? '#22c55e' : '#7c6af7', cursor:'pointer', fontSize:11 }}>
-                  {copied ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
-            </div>
-            <div style={{ marginBottom:14 }}>
-              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6, fontWeight:600 }}>📧 Your email</p>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="example@gmail.com"
-                style={{ width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,0.1)', background:'#111120', color:'#fff', fontSize:13, fontFamily:'inherit', outline:'none' }} />
-            </div>
-            <div style={{ marginBottom:14 }}>
-              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6, fontWeight:600 }}>📎 Transfer screenshot</p>
-              <label style={{ display:'block', border:'2px dashed rgba(124,106,247,0.3)', borderRadius:10, padding:16, textAlign:'center', cursor:'pointer', background:'rgba(124,106,247,0.03)' }}>
-                {preview ? <img src={preview} alt="ss" style={{ maxWidth:'100%', maxHeight:140, borderRadius:6, objectFit:'contain' }} />
-                  : <><div style={{ fontSize:28, marginBottom:6 }}>📷</div><p style={{ color:'#7c6af7', fontSize:12, margin:0 }}>Click to upload screenshot</p></>}
-                <input type="file" accept="image/*" onChange={handleFile} style={{ display:'none' }} />
-              </label>
-            </div>
-            {error && <p style={{ color:'#ef4444', fontSize:12, marginBottom:10 }}>{error}</p>}
-            <button onClick={handleSubmit} disabled={loading || !screenshot || !email}
-              style={{ width:'100%', padding:'13px', borderRadius:10, border:'none', background: loading || !screenshot || !email ? '#374151' : selectedPlan?.color, color:'#fff', fontWeight:700, fontSize:14, cursor: loading || !screenshot || !email ? 'not-allowed' : 'pointer' }}>
-              {loading ? '⏳ Submitting...' : '✅ Submit Subscription Request'}
-            </button>
-          </div>
-        ) : (
-          <div style={{ padding:24 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-              <h3 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:0 }}>🖼️ Model 3 Plans</h3>
-              <button onClick={onClose} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>✕</button>
-            </div>
-            {usage && quotas && (
-              <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:14, marginBottom:18 }}>
-                <p style={{ fontSize:11, color:'#6b7280', margin:'0 0 10px', fontWeight:600 }}>Current Usage</p>
-                <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-                  {[['30s', usage.videos_30s, quotas['30s']], ['1min', usage.videos_1min, quotas['1min']], ['3min', usage.videos_3min, quotas['3min']], ['5min', usage.videos_5min, quotas['5min']]].filter(([, , q]) => q > 0).map(([dur, used, quota]) => (
-                    <div key={dur} style={{ padding:'6px 12px', borderRadius:8, background:'rgba(255,255,255,0.05)', fontSize:12 }}>
-                      <span style={{ color:'#9ca3af' }}>{dur}: </span>
-                      <span style={{ color: used >= quota ? '#ef4444' : '#22c55e', fontWeight:700 }}>{used}/{quota}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {MODEL3_PLANS_INFO.map(plan => (
-                <div key={plan.key} onClick={() => {
-                  if (region === 'intl') { setSelectedPlan(plan); setStep('intl'); }
-                  else { setSelectedPlan(plan); setStep('payment'); }
-                }}
-                  style={{ padding:'18px', borderRadius:14, cursor:'pointer', background: currentPlan === plan.key ? `rgba(${plan.color === '#22c55e' ? '34,197,94' : plan.color === '#7c6af7' ? '124,106,247' : '245,158,11'},0.1)` : '#111120', border:`1px solid ${plan.color}${currentPlan === plan.key ? '88' : '33'}`, transition:'all 0.2s', position:'relative' }}>
-                  {plan.badge && <div style={{ position:'absolute', top:10, right:10, padding:'2px 8px', borderRadius:999, background:`${plan.color}22`, fontSize:10, fontWeight:700, color:plan.color }}>{plan.badge}</div>}
-                  {currentPlan === plan.key && <div style={{ position:'absolute', top:10, left:10, padding:'2px 8px', borderRadius:999, background:'rgba(34,197,94,0.2)', fontSize:10, fontWeight:700, color:'#22c55e' }}>✓ Current Plan</div>}
-                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, marginTop: currentPlan === plan.key ? 20 : 0 }}>
-                    <span style={{ fontSize:22 }}>{plan.icon}</span>
-                    <div>
-                      <div style={{ fontSize:15, fontWeight:800, color:'#fff' }}>{plan.name}</div>
-                      <div style={{ fontSize:13, fontWeight:700, color:plan.color }}>{region === 'intl' ? `$${plan.price_usd}/month` : plan.price}</div>
-                    </div>
-                  </div>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                    {plan.features.map((f, i) => <span key={i} style={{ fontSize:11, color:'#9ca3af' }}>✓ {f}</span>)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 const VOICE_OPTIONS = [
   { key: 'male_american',   label: 'American Man',  emoji: '🇺🇸', gender: 'male' },
   { key: 'male_arabic',     label: 'Arabic Man',    emoji: '🇸🇦', gender: 'male' },
@@ -289,7 +89,6 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
   const [renderStatus, setRenderStatus] = useState('');
   const [videoUrl, setVideoUrl]     = useState(null);
   const [error, setError]           = useState('');
-  const [showPlans, setShowPlans]   = useState(false);
   const [usage, setUsage]           = useState(null);
   const [quotas, setQuotas]         = useState(null);
   const [trialUsed, setTrialUsed]   = useState(false);
@@ -385,7 +184,16 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
       const renderData = await renderRes.json();
       if (!renderRes.ok) {
         if (renderData.show_upgrade || renderData.error === 'subscribe_required' || renderData.error === 'no_access') {
-          setShowPlans(true); setStep('setup'); return;
+          setStep('setup');
+          setError('🔒 You need an active plan to generate this video. Go to Pricing to subscribe.');
+          return;
+        }
+        if (renderData.reason === 'quota_exceeded' || renderData.error === 'quota_exceeded') {
+          setStep('setup');
+          const need = renderData.cost || creditCost;
+          const have = renderData.remaining ?? 0;
+          setError(`🪙 This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
+          return;
         }
         throw new Error(renderData.error || 'Render failed');
       }
@@ -436,8 +244,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, padding:'8px 14px', fontWeight:500 }}>← Models</button>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ padding:'6px 14px', borderRadius:999, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', fontSize:10, color:'#f59e0b', fontWeight:700, letterSpacing:'0.1em' }}>MODEL 3 · AI IMAGES</div>
-            <button onClick={() => setShowPlans(true)} style={{ padding:'8px 14px', borderRadius:10, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-              Plans & Usage
+            <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ padding:'8px 14px', borderRadius:10, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+              💳 Pricing
             </button>
           </div>
         </div>
@@ -472,7 +280,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
                 <p style={{ margin:'2px 0 0', fontSize:12, color:'rgba(255,255,255,0.4)' }}>Subscribe to generate unlimited videos</p>
               </div>
             </div>
-            <button onClick={() => setShowPlans(true)} style={{ background:'linear-gradient(135deg,#f59e0b,#ef4444)', color:'#fff', border:'none', borderRadius:10, padding:'9px 18px', fontWeight:700, fontSize:12, cursor:'pointer', whiteSpace:'nowrap', boxShadow:'0 4px 12px rgba(245,158,11,0.3)' }}>Upgrade →</button>
+            <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ background:'linear-gradient(135deg,#f59e0b,#ef4444)', color:'#fff', border:'none', borderRadius:10, padding:'9px 18px', fontWeight:700, fontSize:12, cursor:'pointer', whiteSpace:'nowrap', boxShadow:'0 4px 12px rgba(245,158,11,0.3)' }}>Upgrade →</button>
           </div>
         )}
 
@@ -482,7 +290,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
             const locked = !hasAccess && trialUsed && m !== 'idea';
             const active = inputMode === m;
             return (
-              <button key={m} onClick={() => { if (locked) { setShowPlans(true); return; } setInputMode(m); }}
+              <button key={m} onClick={() => { if (locked) { (onNavigate && onNavigate('pricing')); return; } setInputMode(m); }}
                 style={{ flex:1, padding:'11px 8px', borderRadius:12, border:`1px solid ${active?'#f59e0b':'rgba(255,255,255,0.08)'}`, fontWeight:600, fontSize:13, cursor:'pointer', transition:'all 0.2s', background: active ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)', color: active ? '#f59e0b' : locked ? '#374151' : 'rgba(255,255,255,0.5)', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                 <span style={{ fontSize:16 }}>{locked?'🔒':ic}</span>
                 <span style={{ fontSize:11 }}>{label}</span>
@@ -566,7 +374,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
               const allowed = canUseDuration(d.value);
               const isTrial30 = !hasAccess && !trialUsed && d.value === '30s';
               return (
-                <div key={d.value} onClick={() => allowed ? setDuration(d.value) : setShowPlans(true)}
+                <div key={d.value} onClick={() => allowed ? setDuration(d.value) : (onNavigate && onNavigate('pricing'))}
                   style={{ padding:'16px', borderRadius:12, cursor: allowed ? 'pointer' : 'pointer', textAlign:'center', border:'1px solid ' + (duration === d.value && allowed ? '#f59e0b' : allowed ? 'var(--border)' : 'var(--border)'), background: duration === d.value && allowed ? 'rgba(245,158,11,0.08)' : 'var(--bg3)', opacity: allowed ? 1 : 0.4, position:'relative' }}>
                   {!allowed && <div style={{ position:'absolute', top:8, right:8, fontSize:12 }}>🔒</div>}
                   <div style={{ fontSize:16, fontWeight:800, color: duration === d.value && allowed ? '#f59e0b' : allowed ? 'var(--text)' : 'var(--text3)', marginBottom:2 }}>{d.label}</div>
@@ -651,7 +459,14 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           ))}
         </div>
 
-        {error && <div style={{ padding:'12px 16px', borderRadius:10, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontSize:13, marginBottom:16 }}>{error}</div>}
+        {error && (
+          <div style={{ padding:'12px 16px', borderRadius:10, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontSize:13, marginBottom:16 }}>
+            <span>{error}</span>
+            {(error.includes('credits') || error.includes('plan')) && (
+              <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ display:'block', marginTop:8, background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontWeight:700, textDecoration:'underline', fontSize:13, padding:0 }}>Go to Pricing →</button>
+            )}
+          </div>
+        )}
 
         {/* Quota / Trial status */}
         {hasAccess && usage && quotas && (() => {
@@ -659,10 +474,10 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           const quota = quotas[duration] || 0;
           const used = usage[col] || 0;
           if (quota === 0) return <div style={{ padding:'12px 16px', borderRadius:10, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontSize:13, marginBottom:16, textAlign:'center' }}>
-            🔒 {duration} not available on your plan — <button onClick={() => setShowPlans(true)} style={{ background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontWeight:700, textDecoration:'underline', fontSize:13 }}>Upgrade now</button>
+            🔒 {duration} not available on your plan — <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontWeight:700, textDecoration:'underline', fontSize:13 }}>Upgrade now</button>
           </div>;
           if (used >= quota) return <div style={{ padding:'12px 16px', borderRadius:10, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontSize:13, marginBottom:16, textAlign:'center' }}>
-            ⚠️ Quota used ({used}/{quota} {duration} videos) — <button onClick={() => setShowPlans(true)} style={{ background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontWeight:700, textDecoration:'underline', fontSize:13 }}>Subscribe again or upgrade</button>
+            ⚠️ Quota used ({used}/{quota} {duration} videos) — <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontWeight:700, textDecoration:'underline', fontSize:13 }}>Subscribe again or upgrade</button>
           </div>;
           return <div style={{ padding:'8px 14px', borderRadius:8, background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', fontSize:12, color:'#22c55e', marginBottom:12, textAlign:'center' }}>
             Remaining: {quota - used} {duration} videos
@@ -681,7 +496,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
 
         {/* CTA */}
         {!hasAccess && trialUsed ? (
-          <button onClick={() => setShowPlans(true)} style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background:'linear-gradient(135deg, #f59e0b, #ef4444)', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 4px 20px rgba(245,158,11,0.3)' }}>
+          <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background:'linear-gradient(135deg, #f59e0b, #ef4444)', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 4px 20px rgba(245,158,11,0.3)' }}>
             🚀 Subscribe to Generate More Videos →
           </button>
         ) : (
@@ -700,7 +515,6 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           Grok Imagine · {selectedStyle?.emoji} {selectedStyle?.label} · Ken Burns zoom · FFmpeg render
         </p>
       </div>
-      {showPlans && <PlansModal currentPlan={model3Plan} onClose={() => setShowPlans(false)} usage={usage} quotas={quotas} onNavigate={onNavigate} />}
     </div>
   );
 
@@ -796,12 +610,11 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           <button onClick={() => { setStep('setup'); setIdea(''); setScript(''); setScenes([]); setVideoUrl(null); setVoiceAudioUrl(null); }} style={{ padding:'13px 28px', borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'rgba(255,255,255,0.7)', fontWeight:600, fontSize:14, cursor:'pointer' }}>🔄 New Video</button>
         </div>
         {isTrial && (
-          <button onClick={() => setShowPlans(true)} style={{ width:'100%', background:'linear-gradient(135deg,#f59e0b,#ef4444)', color:'#fff', border:'none', borderRadius:14, padding:'15px', fontWeight:800, fontSize:16, cursor:'pointer', boxShadow:'0 6px 24px rgba(245,158,11,0.4)', marginTop:4 }}>
+          <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ width:'100%', background:'linear-gradient(135deg,#f59e0b,#ef4444)', color:'#fff', border:'none', borderRadius:14, padding:'15px', fontWeight:800, fontSize:16, cursor:'pointer', boxShadow:'0 6px 24px rgba(245,158,11,0.4)', marginTop:4 }}>
             🚀 Subscribe to Create More →
           </button>
         )}
       </div>
-      {showPlans && <PlansModal currentPlan={model3Plan} onClose={() => setShowPlans(false)} usage={usage} quotas={quotas} onNavigate={onNavigate} />}
     </div>
   );
 

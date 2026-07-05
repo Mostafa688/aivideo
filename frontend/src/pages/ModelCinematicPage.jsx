@@ -1,19 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const INSTAPAY_NUMBER = import.meta.env.VITE_INSTAPAY_NUMBER || '01091917832';
-
-const MC_PLANS = [
-  { key:'mc_starter', name:'Starter', icon:'🎬', price_egp:550, price_usd:22, videos_15s:5, videos_30s:0, videos_1min:0, color:'#fb7185', glow:'rgba(251,113,133,0.3)', features:['5 × 15s cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
-  { key:'mc_pro', name:'Pro', icon:'🎥', price_egp:1050, price_usd:38, videos_15s:0, videos_30s:5, videos_1min:0, badge:'Most Popular', color:'#e11d48', glow:'rgba(225,29,72,0.35)', features:['5 × 30s cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
-  { key:'mc_max', name:'Max', icon:'🏆', price_egp:2200, price_usd:72, videos_15s:0, videos_30s:0, videos_1min:5, color:'#9f1239', glow:'rgba(159,18,57,0.3)', features:['5 × 1min cinematic videos','Up to 5 characters','Seedance 2.0 Fast','With original audio'] },
-];
-
-const MC_GUMROAD = {
-  mc_starter: 'https://digiwhirl23.gumroad.com/l/dnkam',
-  mc_pro:     'https://digiwhirl23.gumroad.com/l/gohhdt',
-  mc_max:     'https://digiwhirl23.gumroad.com/l/ukgdl',
-};
-
 const VIDEO_STYLES = [
   { key:'cinematic',  label:'Cinematic',  emoji:'🎬', desc:'Dramatic · Film-like',   suffix:'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading' },
   { key:'realistic',  label:'Realistic',  emoji:'📸', desc:'Real · Photographic',    suffix:'photorealistic, natural lighting, high detail, documentary style, authentic' },
@@ -27,169 +13,6 @@ function authHeaders() {
   return { 'Content-Type':'application/json', Authorization:'Bearer '+localStorage.getItem('token') };
 }
 
-function PaymentModal({ onClose, fetchUsage }) {
-  const [selectedPlan, setSelectedPlan] = useState('mc_pro');
-  const [step, setStep] = useState('select');
-  const [email, setEmail] = useState('');
-  const [screenshot, setScreenshot] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [intlDone, setIntlDone] = useState(false);
-  const fileRef = useRef();
-  const region = localStorage.getItem('erivion_region') || 'eg';
-  const plan = MC_PLANS.find(p=>p.key===selectedPlan);
-
-  const handleFile = (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => { setScreenshot(ev.target.result); setPreview(ev.target.result); };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async () => {
-    if (!email||!screenshot) { setError('Please fill all fields'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/model5/payment-request', { method:'POST', headers:authHeaders(), body:JSON.stringify({ plan:plan.key, planName:plan.name, amount:plan.price_egp, userEmail:email, screenshot }) });
-      if (!res.ok) throw new Error((await res.json()).error||'Failed');
-      setStep('done');
-    } catch(e){ setError(e.message); } finally { setLoading(false); }
-  };
-
-  return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', padding:16, backdropFilter:'blur(8px)' }}>
-      <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.95) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
-      <div style={{ background:'linear-gradient(135deg,#0d0508,#100308)', border:'1px solid rgba(225,29,72,0.25)', borderRadius:24, width:'100%', maxWidth:500, maxHeight:'92vh', overflowY:'auto', animation:'modalIn 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
-        {step==='done' ? (
-          <div style={{ padding:48, textAlign:'center' }}>
-            <div style={{ fontSize:72, marginBottom:20 }}>🎬</div>
-            <h3 style={{ fontSize:24, fontWeight:900, color:'#fff', marginBottom:12 }}>Request Submitted!</h3>
-            <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:28 }}>We'll activate your Cinematic plan within a few hours.</p>
-            <button onClick={()=>{ onClose(); if(fetchUsage) fetchUsage(); }} style={{ background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', border:'none', borderRadius:12, padding:'13px 36px', fontWeight:700, fontSize:15, cursor:'pointer' }}>Got it! 🚀</button>
-          </div>
-        ) : step==='intl' ? (
-          <div style={{ padding:28 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-              <button onClick={()=>setStep('select')} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:18 }}>←</button>
-              <div>
-                <h2 style={{ fontSize:18, fontWeight:900, margin:0, color:'#fff' }}>{plan?.icon} {plan?.name} — International</h2>
-                <p style={{ margin:0, fontSize:12, color:plan?.color }}>${plan?.price_usd}/month</p>
-              </div>
-              <button onClick={onClose} style={{ marginLeft:'auto', background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:20 }}>✕</button>
-            </div>
-            {intlDone ? (
-              <div style={{ textAlign:'center', padding:'20px 0' }}>
-                <div style={{ fontSize:64, marginBottom:16 }}>⏳</div>
-                <h3 style={{ fontSize:20, fontWeight:800, color:'#fff', marginBottom:12 }}>Request Submitted!</h3>
-                <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:24 }}>We'll verify your Gumroad payment and activate your plan within <strong style={{ color:'#22c55e' }}>24 hours</strong>.</p>
-                <button onClick={onClose} style={{ background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', border:'none', borderRadius:12, padding:'13px 36px', fontWeight:700, fontSize:15, cursor:'pointer' }}>Got it! 🚀</button>
-              </div>
-            ) : (
-              <>
-                <div style={{ background:'rgba(225,29,72,0.06)', border:'1px solid rgba(225,29,72,0.2)', borderRadius:14, padding:18, marginBottom:20 }}>
-                  <p style={{ fontSize:13, fontWeight:700, color:'#fb7185', margin:'0 0 14px' }}>💳 How to subscribe:</p>
-                  {['Click "Pay on Gumroad" below','Complete payment with your card',"Come back here and click \"I've Paid\"","We'll verify and activate within 24h"].map((s,i) => (
-                    <div key={i} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                      <div style={{ width:22, height:22, borderRadius:'50%', background:'rgba(225,29,72,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#fb7185', flexShrink:0 }}>{i+1}</div>
-                      <span style={{ fontSize:13, color:'#d1d5db' }}>{s}</span>
-                    </div>
-                  ))}
-                </div>
-                <a href={MC_GUMROAD[selectedPlan]} target="_blank" rel="noreferrer"
-                  style={{ display:'block', width:'100%', padding:'14px', borderRadius:12, background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', fontWeight:700, fontSize:15, textAlign:'center', textDecoration:'none', marginBottom:10, boxSizing:'border-box' }}>
-                  🔗 Pay on Gumroad — ${plan?.price_usd}
-                </a>
-                <button onClick={async()=>{
-                  try {
-                    const res = await fetch('/api/auth/intl-payment/request', {
-                      method:'POST', headers:authHeaders(),
-                      body:JSON.stringify({ planKey:selectedPlan, planName:'Cinematic '+plan?.name, usdPrice:plan?.price_usd }),
-                    });
-                    if(res.ok) setIntlDone(true);
-                  } catch(e){}
-                }}
-                  style={{ width:'100%', padding:'13px', borderRadius:12, border:'1px solid rgba(225,29,72,0.4)', background:'rgba(255,255,255,0.04)', color:'#fb7185', fontWeight:700, fontSize:14, cursor:'pointer' }}>
-                  ✅ I've Paid — Notify Admin
-                </button>
-              </>
-            )}
-          </div>
-        ) : step==='select' ? (
-          <div style={{ padding:28 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:28 }}>
-              <div>
-                <h2 style={{ fontSize:20, fontWeight:900, color:'#fff', margin:0 }}>🎬 Erivion Cinematic</h2>
-                <p style={{ fontSize:12, color:'#6b7280', margin:'4px 0 0' }}>Choose your plan</p>
-              </div>
-              <button onClick={onClose} style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'#6b7280', cursor:'pointer', fontSize:13, padding:'6px 12px' }}>✕</button>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:24 }}>
-              {MC_PLANS.map(p => (
-                <div key={p.key} onClick={()=>setSelectedPlan(p.key)}
-                  style={{ border:`2px solid ${selectedPlan===p.key?p.color:'rgba(255,255,255,0.07)'}`, borderRadius:16, padding:'18px 20px', cursor:'pointer', background:selectedPlan===p.key?`${p.color}12`:'transparent', transition:'all 0.15s', position:'relative', boxShadow:selectedPlan===p.key?`0 0 24px ${p.glow}`:'none' }}>
-                  {p.badge && <div style={{ position:'absolute', top:-10, right:16, padding:'2px 12px', borderRadius:999, background:p.color, fontSize:10, fontWeight:800, color:'#fff' }}>{p.badge}</div>}
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                    <span style={{ fontWeight:900, fontSize:17, color:selectedPlan===p.key?p.color:'#fff' }}>{p.icon} {p.name}</span>
-                    <span style={{ fontSize:22, fontWeight:900, color:'#22c55e' }}>
-                      {region === 'intl' ? `$${p.price_usd}` : p.price_egp}
-                      <span style={{ fontSize:11, color:'#6b7280', fontWeight:400 }}>{region === 'intl' ? ' USD' : ' EGP'}</span>
-                    </span>
-                  </div>
-                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                    {p.videos_15s>0 && <span style={{ fontSize:11, color:'#9ca3af', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', padding:'2px 10px', borderRadius:20 }}>🎬 {p.videos_15s}×15s</span>}
-                    {p.videos_30s>0 && <span style={{ fontSize:11, color:'#9ca3af', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', padding:'2px 10px', borderRadius:20 }}>🎬 {p.videos_30s}×30s</span>}
-                    {p.videos_1min>0 && <span style={{ fontSize:11, color:'#9ca3af', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', padding:'2px 10px', borderRadius:20 }}>🎬 {p.videos_1min}×1min</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button onClick={()=> region === 'intl' ? setStep('intl') : setStep('pay')} style={{ width:'100%', background:`linear-gradient(135deg,#e11d48,#9f1239)`, color:'#fff', border:'none', borderRadius:12, padding:'15px', fontWeight:800, fontSize:16, cursor:'pointer', boxShadow:`0 4px 24px ${plan?.glow}` }}>
-              {region === 'intl' ? `Pay $${plan?.price_usd} — Gumroad →` : `Subscribe to ${plan?.name} — ${plan?.price_egp} EGP →`}
-            </button>
-          </div>
-        ) : (
-          <div style={{ padding:28 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-              <button onClick={()=>setStep('select')} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:18 }}>←</button>
-              <div>
-                <h2 style={{ fontSize:18, fontWeight:900, margin:0, color:'#fff' }}>Complete Payment</h2>
-                <p style={{ margin:0, fontSize:12, color:plan?.color }}>{plan?.name} — {plan?.price_egp} EGP</p>
-              </div>
-            </div>
-            <div style={{ background:'rgba(225,29,72,0.06)', border:'1px solid rgba(225,29,72,0.2)', borderRadius:14, padding:18, marginBottom:18 }}>
-              <p style={{ fontSize:13, fontWeight:700, color:'#fb7185', margin:'0 0 12px' }}>💳 Payment Steps</p>
-              {['Open InstaPay app',`Transfer ${plan?.price_egp} EGP to:`,'Screenshot the transfer','Upload below ⬇️'].map((s,i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-                  <div style={{ width:22, height:22, borderRadius:'50%', background:'rgba(225,29,72,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#fb7185', flexShrink:0 }}>{i+1}</div>
-                  <span style={{ fontSize:13, color:'#d1d5db' }}>{s}</span>
-                </div>
-              ))}
-              <div style={{ margin:'14px 0 0', padding:'12px 16px', background:'rgba(0,0,0,0.4)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontSize:20, fontWeight:800, color:'#fff', letterSpacing:1 }}>{INSTAPAY_NUMBER}</span>
-                <button onClick={()=>{ navigator.clipboard?.writeText(INSTAPAY_NUMBER); setCopied(true); setTimeout(()=>setCopied(false),2000); }} style={{ padding:'6px 14px', borderRadius:8, background:copied?'rgba(34,197,94,0.2)':'rgba(225,29,72,0.2)', border:`1px solid ${copied?'rgba(34,197,94,0.4)':'rgba(225,29,72,0.4)'}`, color:copied?'#22c55e':'#fb7185', cursor:'pointer', fontSize:12, fontWeight:600 }}>
-                  {copied?'✓ Copied':'Copy'}
-                </button>
-              </div>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:16 }}>
-              <input type="email" placeholder="Your email address *" value={email} onChange={e=>setEmail(e.target.value)} style={{ padding:'12px 14px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'#fff', fontSize:14, outline:'none', fontFamily:'inherit' }} />
-              <div onClick={()=>fileRef.current?.click()} style={{ border:`2px dashed ${preview?'#22c55e':'rgba(225,29,72,0.3)'}`, borderRadius:12, padding:24, textAlign:'center', cursor:'pointer' }}>
-                {preview?<img src={preview} alt="receipt" style={{ maxHeight:120, borderRadius:8, maxWidth:'100%' }} />:<><div style={{ fontSize:32, marginBottom:8 }}>📎</div><p style={{ color:'#6b7280', fontSize:13, margin:0 }}>Click to upload transfer screenshot</p></>}
-                <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display:'none' }} />
-              </div>
-            </div>
-            {error && <p style={{ color:'#ef4444', fontSize:13, marginBottom:12 }}>{error}</p>}
-            <button onClick={handleSubmit} disabled={loading||!screenshot||!email} style={{ width:'100%', background:loading||!screenshot||!email?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#e11d48,#9f1239)', color:loading||!screenshot||!email?'#4b5563':'#fff', border:'none', borderRadius:12, padding:'14px', fontWeight:700, fontSize:15, cursor:loading||!screenshot||!email?'not-allowed':'pointer' }}>
-              {loading?'⏳ Submitting...':'✅ Submit Payment Request'}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function SceneCard({ scene, index, onChange }) {
   const [editing, setEditing] = useState(false);
@@ -230,8 +53,6 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
   const [videoUrl, setVideoUrl] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [usage, setUsage] = useState(null);
-  const [showPayment, setShowPayment] = useState(false);
-  const [showPricing, setShowPricing] = useState(false);
   const pollRef = useRef(null);
   const timerRef = useRef(null);
   const region = localStorage.getItem('erivion_region') || 'eg';
@@ -290,7 +111,17 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
       const res = await fetch('/api/model5/render', { method:'POST', headers:authHeaders(), body:JSON.stringify({ scenes, ratio, duration, characterPhotos: characterPhotos.map(p => p.photo) }) });
       const data = await res.json();
       if (!res.ok) {
-        if (data.show_upgrade||data.error==='no_access') { setShowPayment(true); setLoading(false); return; }
+        if (data.error === 'quota_exceeded') {
+          const COST = { '15s':15, '30s':30, '1min':60 };
+          const need = data.cost || COST[duration] || 15;
+          const have = data.remaining ?? 0;
+          setError(`🪙 This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
+          setLoading(false); return;
+        }
+        if (data.show_upgrade||data.error==='no_access') {
+          setError('🔒 You need an active plan to generate this video. Go to Pricing to subscribe.');
+          setLoading(false); return;
+        }
         throw new Error(data.message||data.error||'Render failed');
       }
       setStep('render');
@@ -372,13 +203,19 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
           {scenes.map((scene,i) => <SceneCard key={i} scene={scene} index={i} onChange={updated=>setScenes(s=>s.map((sc,idx)=>idx===i?updated:sc))} />)}
         </div>
-        {error && <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:12, padding:14, marginBottom:16, color:'#ef4444', fontSize:13 }}>{error}</div>}
+        {error && (
+          <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:12, padding:14, marginBottom:16, color:'#ef4444', fontSize:13 }}>
+            <span>{error}</span>
+            {(error.includes('credits') || error.includes('plan')) && (
+              <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ display:'block', marginTop:8, background:'none', border:'none', color:'#fb7185', cursor:'pointer', fontWeight:700, textDecoration:'underline', fontSize:13, padding:0 }}>Go to Pricing →</button>
+            )}
+          </div>
+        )}
         <button onClick={handleRender} disabled={loading} style={{ width:'100%', background:loading?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:loading?'#4b5563':'#fff', border:'none', borderRadius:14, padding:'16px', fontWeight:800, fontSize:16, cursor:loading?'not-allowed':'pointer', boxShadow:!loading?'0 6px 24px rgba(225,29,72,0.4)':'none', transition:'all 0.2s' }}>
           {loading?'⏳ Starting...':'🎬 Generate Cinematic Video →'}
         </button>
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:10 }}>Seedance v1 Pro · Character consistency · No voiceover</p>
       </div>
-      {showPayment && <PaymentModal onClose={()=>setShowPayment(false)} fetchUsage={fetchUsage} />}
     </div>
   );
 
@@ -407,7 +244,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         <div style={{ maxWidth:700, margin:'0 auto', position:'relative' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
             <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, padding:'8px 14px' }}>← Models</button>
-            {usage?.access && <button onClick={()=>setShowPayment(true)} style={{ fontSize:11, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.08)', border:'1px solid rgba(225,29,72,0.25)', borderRadius:8, padding:'6px 14px', cursor:'pointer' }}>+ Get More Videos</button>}
+            {usage?.access && <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ fontSize:11, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.08)', border:'1px solid rgba(225,29,72,0.25)', borderRadius:8, padding:'6px 14px', cursor:'pointer' }}>+ Get More Videos</button>}
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:16 }}>
             <div style={{ width:56, height:56, borderRadius:18, background:'linear-gradient(135deg,#e11d48,#9f1239)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0, boxShadow:'0 8px 32px rgba(225,29,72,0.5)' }}>🎭</div>
@@ -440,7 +277,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
                   </div>
                 );
               })}
-              <button onClick={()=>setShowPayment(true)} style={{ fontSize:11, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'5px 12px', cursor:'pointer' }}>+ Get More</button>
+              <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ fontSize:11, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'5px 12px', cursor:'pointer' }}>+ Get More</button>
             </div>
           )}
         </div>
@@ -448,31 +285,12 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
 
       <div style={{ maxWidth:700, margin:'0 auto', padding:'28px 20px 0' }}>
 
-        {/* Pricing Toggle */}
+        {/* Pricing → dedicated Pricing page */}
         <div style={{ marginBottom:24 }}>
-          <button onClick={()=>setShowPricing(!showPricing)} style={{ width:'100%', background:'rgba(225,29,72,0.06)', border:'1px solid rgba(225,29,72,0.2)', borderRadius:14, padding:'14px 20px', color:'#fb7185', fontWeight:700, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span>💎 Plans & Pricing</span>
-            <span style={{ transition:'transform 0.2s', transform:showPricing?'rotate(180deg)':'none', display:'inline-block' }}>⌄</span>
+          <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ width:'100%', background:'rgba(225,29,72,0.06)', border:'1px solid rgba(225,29,72,0.2)', borderRadius:14, padding:'14px 20px', color:'#fb7185', fontWeight:700, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span>💎 View Plans & Pricing</span>
+            <span>→</span>
           </button>
-          {showPricing && (
-            <div style={{ marginTop:12, display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
-              {MC_PLANS.map(p => (
-                <div key={p.key} style={{ background:'linear-gradient(135deg,rgba(225,29,72,0.08),rgba(0,0,0,0.5))', border:`1px solid ${p.color}33`, borderRadius:14, padding:16, textAlign:'center', position:'relative' }}>
-                  {p.badge && <div style={{ position:'absolute', top:-10, left:'50%', transform:'translateX(-50%)', padding:'2px 10px', borderRadius:999, background:p.color, fontSize:9, fontWeight:800, color:'#fff', whiteSpace:'nowrap' }}>{p.badge}</div>}
-                  <div style={{ fontSize:22, marginBottom:6 }}>{p.icon}</div>
-                  <div style={{ fontSize:14, fontWeight:800, color:'#fff', marginBottom:6 }}>{p.name}</div>
-                  <div style={{ fontSize:20, fontWeight:900, color:p.color, marginBottom:8 }}>
-                    {region === 'intl' ? `$${p.price_usd}` : p.price_egp}
-                    <span style={{ fontSize:10, color:'#6b7280' }}>{region === 'intl' ? ' USD' : ' EGP'}</span>
-                  </div>
-                  {p.videos_15s>0 && <div style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>{p.videos_15s} × 15s</div>}
-                  {p.videos_30s>0 && <div style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>{p.videos_30s} × 30s</div>}
-                  {p.videos_1min>0 && <div style={{ fontSize:11, color:'#6b7280', marginBottom:8 }}>{p.videos_1min} × 1min</div>}
-                  <button onClick={()=>setShowPayment(true)} style={{ width:'100%', background:`linear-gradient(135deg,${p.color},${p.color}88)`, color:'#fff', border:'none', borderRadius:8, padding:'8px', fontWeight:700, fontSize:12, cursor:'pointer' }}>Subscribe →</button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Idea */}
@@ -569,7 +387,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         {error && <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:12, padding:14, marginBottom:16, color:'#ef4444', fontSize:13 }}>{error}</div>}
 
         {!model5Access ? (
-          <button onClick={()=>setShowPayment(true)} style={{ width:'100%', background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:'pointer', boxShadow:'0 6px 32px rgba(225,29,72,0.45)' }}>
+          <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ width:'100%', background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:'pointer', boxShadow:'0 6px 32px rgba(225,29,72,0.45)' }}>
             🎬 Subscribe to Get Started →
           </button>
         ) : (
@@ -581,7 +399,6 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.15)', marginTop:14 }}>Seedance v1 Pro · Groq AI · Character consistency · No voiceover</p>
       </div>
 
-      {showPayment && <PaymentModal onClose={()=>{ setShowPayment(false); fetchUsage(); }} fetchUsage={fetchUsage} />}
     </div>
   );
 }
