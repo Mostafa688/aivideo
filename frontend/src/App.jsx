@@ -303,7 +303,7 @@ export default function App() {
       case 'faq':        setPage('faq'); break;
       case 'howto':      setPage('howto'); break;
       case 'templates':  setPage('templates'); break;
-      case 'home':       setPage('input'); break;
+      case 'home':       setPage('agent'); break;
       default:           setPage('input'); break;
     }
   };
@@ -402,7 +402,7 @@ export default function App() {
       {/* Center Nav — desktop only */}
       <nav className="header-nav-desktop" style={{ display:'flex', alignItems:'center', gap:2, flex:1, justifyContent:'center' }}>
         {NAV_ITEMS.map(item => (
-          <button key={item.key} className={`nav-link${page === item.key || (item.key === 'pricing' && showPricing) ? ' active' : ''}`}
+          <button key={item.key} className={`nav-link${page === item.key || (item.key === 'pricing' && showPricing) || (item.key === 'home' && page === 'agent') ? ' active' : ''}`}
             onClick={() => handleNavigate(item.key)}>{item.label}</button>
         ))}
       </nav>
