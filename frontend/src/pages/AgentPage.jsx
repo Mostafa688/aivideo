@@ -37,6 +37,8 @@ const T = {
     failed: 'حصلت مشكلة أثناء إنشاء الفيديو',
     goToPricing: 'اذهب لصفحة الأسعار →',
     uploadCharacterFirst: 'ارفع صورة الشخصية الأول من زر 🖼️ تحت',
+    stop: 'إيقاف',
+    stopped: '⏹️ تم الإيقاف — الفيديو مستمر في الخلفية وسيتم خصم الكريديت',
   },
   en: {
     heroTitle: 'What video do you have in mind?',
@@ -65,6 +67,8 @@ const T = {
     failed: 'Something went wrong generating the video',
     goToPricing: 'Go to Pricing →',
     uploadCharacterFirst: 'Upload the character photo first with the 🖼️ button below',
+    stop: 'Stop',
+    stopped: '⏹️ Stopped watching — the video keeps rendering in the background and credits will still be deducted',
   },
 };
 
@@ -72,6 +76,7 @@ const RATIO_BOX = { '9:16': { w: 152, h: 270 }, '16:9': { w: 270, h: 152 }, '1:1
 const MODEL_STYLE_DEFAULTS = { 3: 'cinematic', 4: 'cinematic', 5: 'cinematic' };
 const MODEL3_IMAGE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
 const MODEL4_SCENE_COUNT = { '30s': 4, '1min': 8, '3min': 24 };
+const VIDEO_TYPE_BY_MODEL = { 1: 'ai_slices', 2: 'pexels_clips' };
 
 function RenderCard({ job, lang, onNavigate }) {
   const box = RATIO_BOX[job.ratio] || RATIO_BOX['9:16'];
@@ -85,6 +90,14 @@ function RenderCard({ job, lang, onNavigate }) {
           <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 700 }}>✅ {t.done} {job.cost || ''} {t.credits}</span>
           <a href={job.videoUrl} download style={{ fontSize: 11, color: '#a99bff', fontWeight: 700, textDecoration: 'none' }}>⬇️ {t.download}</a>
         </div>
+      </div>
+    );
+  }
+
+  if (job.status === 'stopped') {
+    return (
+      <div style={{ maxWidth: 280, padding: '12px 16px', borderRadius: 14, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+        <div style={{ fontSize: 13, color: '#f59e0b' }}>{t.stopped}</div>
       </div>
     );
   }
@@ -142,12 +155,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const imageInputRef = useRef();
   const scrollRef = useRef();
   const pollRef = useRef(null);
+  const timerRef = useRef(null);
+  const abortRef = useRef(null);
+  const activeJobRef = useRef(null); // الكارت الحالي اللي بيتولد — للـ Stop
 
   const started = messages.length > 0;
 
   useEffect(() => {
     fetch('/api/agent/limits', { headers: tokenHeader() }).then(r => r.json()).then(setLimits).catch(() => {});
-    return () => clearInterval(pollRef.current);
+    return () => { clearInterval(pollRef.current); clearInterval(timerRef.current); };
   }, []);
 
   useEffect(() => {
@@ -202,7 +218,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
       if (currentImage) body.imageBase64 = currentImage;
 
-      const res = await fetch('/api/agent/chat', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+      abortRef.current = new AbortController();
+      const res = await fetch('/api/agent/chat', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body), signal: abortRef.current.signal });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setMessages(m => [...m, { role: 'assistant', content: data.reply }]);
@@ -215,10 +232,29 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         }
       }
     } catch (e) {
-      setError(e.message);
+      if (e.name !== 'AbortError') setError(e.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  // ── إيقاف — سواء كان الأجنت لسه بيفكر، أو فيديو قيد الإنشاء ─────────────
+  const stopEverything = () => {
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+    if (activeJobRef.current) {
+      clearInterval(pollRef.current); clearInterval(timerRef.current);
+      const job = activeJobRef.current;
+      setMessages(m => {
+        const copy = [...m];
+        const idx = copy.map(x => x.type).lastIndexOf('render');
+        if (idx !== -1 && (copy[idx].job.status === 'scenes' || copy[idx].job.status === 'rendering')) {
+          copy[idx] = { ...copy[idx], job: { ...copy[idx].job, status: 'stopped' } };
+        }
+        return copy;
+      });
+      activeJobRef.current = null;
+    }
+    setLoading(false);
   };
 
   const startGeneration = async (ready) => {
@@ -233,28 +269,90 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       });
       Object.assign(job, patch);
     };
+    activeJobRef.current = job;
 
-    const prefix = `model${ready.model}`;
     const style = ready.videoStyle || MODEL_STYLE_DEFAULTS[ready.model];
+    const isM12 = ready.model === 1 || ready.model === 2;
+
+    // ── قارئ بسيط لـ Server-Sent Events فوق fetch عادي (موديل 1 و2 بيرجعوا SSE) ──
+    async function readSSE(url, body) {
+      const res = await fetch(url, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Request failed'); }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const collected = [];
+      let doneData = null, errorMsg = null;
+      while (true) {
+        if (!activeJobRef.current) break; // اتوقف من الـ Stop
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop();
+        for (const part of parts) {
+          const evMatch = part.match(/^event: (.+)$/m);
+          const dataMatch = part.match(/^data: (.+)$/m);
+          if (!dataMatch) continue;
+          const ev = evMatch ? evMatch[1] : 'message';
+          let data; try { data = JSON.parse(dataMatch[1]); } catch { continue; }
+          if (ev === 'scene') collected.push(data);
+          else if (ev === 'done') doneData = data;
+          else if (ev === 'error') errorMsg = data.message;
+        }
+      }
+      if (errorMsg && !collected.length && !doneData) throw new Error(errorMsg);
+      return { scenes: collected, done: doneData };
+    }
 
     try {
-      let scenesBody;
-      if (ready.model === 3) {
-        scenesBody = { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: lang === 'ar' ? 'ar' : 'en', ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
-      } else if (ready.model === 4) {
-        scenesBody = { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: lang === 'ar' ? 'ar' : 'en', videoStyle: style, styleSuffix: '' };
-      } else {
-        scenesBody = { idea: ready.idea, characters: lastUploadedPhoto ? [{ prompt: '', photo: lastUploadedPhoto }] : [], duration: ready.duration, videoStyle: style, styleSuffix: '' };
-      }
-      const scenesRes = await fetch(`/api/${prefix}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
-      const scenesData = await scenesRes.json();
-      if (!scenesRes.ok) throw new Error(scenesData.error || 'Scene generation failed');
-      const scenes = scenesData.scenes || [];
+      let scenes = [];
 
-      // توليد صوت حقيقي قبل الرندر (زي صفحات الموديلات بالظبط) — إلا لو موديل 5 (بدون تعليق صوتي أصلاً)
+      if (isM12) {
+        // موديل 1/2: توليد السكريبت أولاً عبر SSE
+        const durMap = { '30s': 'auto', '1min': '1min', '2min': '2min', '3min': '3min', '4min': '4min', '5min': '5min', '8min': '8min', '10min': '10min' };
+        const { scenes: gotScenes } = await readSSE('/api/generate-scenes', {
+          idea: ready.idea, script: null, tone: ready.tone || 'motivational',
+          duration: durMap[ready.duration] || ready.duration, mode: 'idea',
+          videoLanguage: lang === 'ar' ? 'ar_eg' : 'en',
+        });
+        if (!activeJobRef.current) return;
+        scenes = gotScenes;
+        if (!scenes.length) throw new Error('Scene generation failed');
+
+        if (ready.model === 1) {
+          // موديل 1: توليد صور/مشاهد AI عبر SSE
+          const { done: aiDone } = await readSSE('/api/generate-ai-video', { scenes, ratio: ready.ratio });
+          if (!activeJobRef.current) return;
+          scenes = aiDone?.scenes || scenes;
+        } else {
+          // موديل 2: جلب فيديوهات ستوك حقيقية
+          const mediaRes = await fetch('/api/fetch-media', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, ratio: ready.ratio, jobId: 'agent_' + Date.now() }) });
+          const mediaData = await mediaRes.json();
+          if (!mediaRes.ok) throw new Error(mediaData.error || 'Media fetch failed');
+          scenes = mediaData.scenes || scenes;
+        }
+      } else {
+        // موديل 3/4/5: JSON عادي
+        let scenesBody;
+        if (ready.model === 3) {
+          scenesBody = { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: lang === 'ar' ? 'ar' : 'en', ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
+        } else if (ready.model === 4) {
+          scenesBody = { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: lang === 'ar' ? 'ar' : 'en', videoStyle: style, styleSuffix: '' };
+        } else {
+          scenesBody = { idea: ready.idea, characters: lastUploadedPhoto ? [{ prompt: '', photo: lastUploadedPhoto }] : [], duration: ready.duration, videoStyle: style, styleSuffix: '' };
+        }
+        const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
+        const scenesData = await scenesRes.json();
+        if (!scenesRes.ok) throw new Error(scenesData.error || 'Scene generation failed');
+        scenes = scenesData.scenes || [];
+      }
+
+      if (!activeJobRef.current) return;
+
+      // توليد صوت حقيقي قبل الرندر — إلا لو موديل 5 (بدون تعليق صوتي أصلاً)
       let audioUrl = null;
       if (ready.model !== 5 && scenes.length) {
-        updateJob({ status: 'scenes' });
         const voiceKey = lang === 'ar' ? 'female_arabic' : 'female_american';
         const fullText = scenes.map(s => s.text).join(' ');
         try {
@@ -263,33 +361,41 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           if (voiceRes.ok) audioUrl = voiceData.audioUrl;
         } catch { /* لو فشل التعليق الصوتي، هيكمل الفيديو من غير صوت */ }
       }
+      if (!activeJobRef.current) return;
 
       updateJob({ status: 'rendering' });
-      const timer = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
+      timerRef.current = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
 
-      let renderBody;
-      if (ready.model === 3) {
+      let renderUrl, renderBody;
+      if (isM12) {
+        renderUrl = '/api/render';
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: false, captions: true, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: lang === 'ar' ? 'ar_eg' : 'en' };
+      } else if (ready.model === 3) {
+        renderUrl = '/api/model3/render';
         renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, transitions: false, music: false, videoLanguage: lang === 'ar' ? 'ar_eg' : 'en', duration: ready.duration, videoStyle: style, styleSuffix: '' };
       } else if (ready.model === 4) {
+        renderUrl = '/api/model4/render';
         renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, music: false, videoLanguage: lang === 'ar' ? 'ar_eg' : 'en', duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
       } else {
+        renderUrl = '/api/model5/render';
         renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhoto ? [lastUploadedPhoto] : [] };
       }
-      const renderRes = await fetch(`/api/${prefix}/render`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(renderBody) });
+      const renderRes = await fetch(renderUrl, { method: 'POST', headers: authHeaders(), body: JSON.stringify(renderBody) });
       const renderData = await renderRes.json();
+      if (!activeJobRef.current) return;
       if (!renderRes.ok) {
-        clearInterval(timer);
-        if (renderData.error === 'quota_exceeded' || renderData.reason === 'quota_exceeded') {
+        clearInterval(timerRef.current);
+        if (renderData.error === 'quota_exceeded' || renderData.reason === 'quota_exceeded' || renderData.error === 'credits_exhausted') {
           const need = renderData.cost;
           const have = renderData.remaining ?? 0;
-          updateJob({ status: 'failed', creditError: true, error: lang === 'ar' ? `محتاج ${need} كريديت ومعاك ${have} بس` : `Needs ${need} credits, you have ${have}` });
+          updateJob({ status: 'failed', creditError: true, error: need ? (lang === 'ar' ? `محتاج ${need} كريديت ومعاك ${have} بس` : `Needs ${need} credits, you have ${have}`) : (renderData.message || renderData.error) });
           return;
         }
         if (renderData.show_upgrade || renderData.error === 'no_access' || renderData.error === 'subscribe_required') {
           updateJob({ status: 'failed', creditError: true, error: lang === 'ar' ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video' });
           return;
         }
-        throw new Error(renderData.error || 'Render failed');
+        throw new Error(renderData.error || renderData.message || 'Render failed');
       }
 
       const jobId = renderData.jobId;
@@ -298,16 +404,19 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           const sr = await fetch(`/api/render-status/${jobId}`, { headers: tokenHeader() });
           const sd = await sr.json();
           if (sd.status === 'done') {
-            clearInterval(pollRef.current); clearInterval(timer);
-            updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: renderData.cost });
+            clearInterval(pollRef.current); clearInterval(timerRef.current);
+            updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: renderData.creditCost || renderData.cost });
+            activeJobRef.current = null;
           } else if (sd.status === 'failed') {
-            clearInterval(pollRef.current); clearInterval(timer);
+            clearInterval(pollRef.current); clearInterval(timerRef.current);
             updateJob({ status: 'failed', error: sd.error });
+            activeJobRef.current = null;
           }
         } catch {}
       }, 5000);
     } catch (e) {
-      updateJob({ status: 'failed', error: e.message });
+      if (activeJobRef.current) updateJob({ status: 'failed', error: e.message });
+      activeJobRef.current = null;
     }
   };
 
@@ -448,8 +557,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             rows={1}
             style={{ flex: 1, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 14, fontFamily: 'inherit', padding: '9px 6px', direction: isArabic(input) ? 'rtl' : 'ltr', maxHeight: 100 }}
           />
-          <button onClick={() => sendMessage()} disabled={loading || (!input.trim() && !voiceFile && !imageFile)}
-            style={{ width: 38, height: 38, borderRadius: 10, background: loading || (!input.trim() && !voiceFile && !imageFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontSize: 15, flexShrink: 0 }}>➤</button>
+          {(loading || activeJobRef.current) ? (
+            <button onClick={stopEverything} title={t.stop}
+              style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', fontSize: 14, flexShrink: 0 }}>⏹️</button>
+          ) : (
+            <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFile}
+              style={{ width: 38, height: 38, borderRadius: 10, background: (!input.trim() && !voiceFile && !imageFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>➤</button>
+          )}
         </div>
         <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
       </div>

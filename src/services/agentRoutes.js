@@ -1,6 +1,7 @@
 import express from 'express';
 import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, AGENT_LIMITS } from './agentService.js';
+import { getUserById } from './authService.js';
 
 const router = express.Router();
 
@@ -43,7 +44,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
 
-    const rawReply = await agentChat({ message, history, attachmentNote });
+    const user = await getUserById(userId).catch(() => null);
+    const userPlan = user?.plan || 'free';
+
+    const rawReply = await agentChat({ message, history, attachmentNote, userPlan });
 
     // ── فصل رسالة الشات عن الأمر التقني (###READY###{...}) اللي بيبدأ التوليد الفعلي ──
     let reply = rawReply;
@@ -54,7 +58,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       const jsonPart = rawReply.slice(markerIdx + '###READY###'.length).trim();
       try {
         const parsed = JSON.parse(jsonPart);
-        if ([3, 4, 5].includes(parsed.model)) ready = parsed;
+        if ([1, 2, 3, 4, 5].includes(parsed.model)) ready = parsed;
       } catch (e) { console.warn('[Agent] Could not parse READY marker:', e.message); }
     }
 
