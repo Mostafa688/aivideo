@@ -21,6 +21,7 @@ import ModelErivionPage from './pages/ModelErivionPage.jsx';
 import FAQPage from './pages/FAQPage.jsx';
 import SupportPage from './pages/SupportPage.jsx';
 import CommunityPage from './pages/CommunityPage.jsx';
+import AgentPage from './pages/AgentPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -85,7 +86,7 @@ function ModelWelcomeModal({ modelKey, userRegion, onContinue }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState('input');
+  const [page, setPage] = useState('agent');
   const [formData, setFormData] = useState(null);
   const [scenes, setScenes] = useState([]);
   const [user, setUser] = useState(null);
@@ -286,6 +287,8 @@ export default function App() {
   const handleNavigate = (key) => {
     switch (key) {
       case 'community': setPage('community'); break;
+      case 'agent':      setPage('agent'); break;
+      case 'models':     setPage('input'); break;
       case 'affiliate':  setPage('affiliate'); break;
       case 'model3':     setPage('model3'); break;
       case 'model4':     setPage('model4'); break;
@@ -465,6 +468,18 @@ export default function App() {
       <Header />
       {showVideos && <VideosPage onClose={() => setShowVideos(false)} />}
 
+      {/* Floating Agent toggle — visible on the Models grid page */}
+      {page === 'input' && (
+        <button onClick={() => setPage('agent')} style={{
+          position: 'fixed', top: 66, insetInlineEnd: 16, zIndex: 500,
+          padding: '9px 16px', borderRadius: 10, background: 'rgba(124,106,247,0.12)',
+          border: '1px solid rgba(124,106,247,0.35)', color: '#a99bff', fontSize: 13, fontWeight: 700,
+          cursor: 'pointer', boxShadow: '0 4px 16px rgba(124,106,247,0.25)', backdropFilter: 'blur(8px)',
+        }}>
+          🤖 Agent →
+        </button>
+      )}
+
       {/* App-level modals — rendered outside header to avoid overflow issues */}
       {showHowToModal && <HowToModal onClose={() => setShowHowToModal(false)} />}
       {showAffiliateModal && <AffiliateModal user={user} onClose={() => setShowAffiliateModal(false)} onNavigateAffiliate={() => { setShowAffiliateModal(false); handleNavigate('affiliate'); }} />}
@@ -487,6 +502,7 @@ export default function App() {
       <div id="app-main" style={{ paddingTop: 54, paddingBottom: 20 }}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
+        {page === 'agent' && <AgentPage onNavigate={handleNavigate} onSwitchToModels={() => setPage('input')} />}
         {page === 'input' && <InputPage
           onSubmit={(data) => {
             if (data.videoType === 'model3') { setPage('model3'); return; }

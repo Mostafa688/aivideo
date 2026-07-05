@@ -23,6 +23,7 @@ import affiliateRouter from './services/affiliateRoutes.js';
 import mapVideoRouter from './services/mapVideoRoutes.js';
 import wanVideoRouter from './services/wanVideoRoutes.js';
 import adsRouter from './services/adsRoutes.js';
+import agentRouter from './services/agentRoutes.js';
 import pgPkg from 'pg';
 const { Pool: _TPool } = pgPkg;
 
@@ -205,6 +206,7 @@ app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
+app.use('/api/agent', agentRouter);
 
 // ── Community API ──────────────────────────────────────────────────────────────
 const cPool = new _TPool({
