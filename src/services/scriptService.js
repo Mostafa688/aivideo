@@ -105,7 +105,7 @@ function splitScriptIntoSegments(script, count) {
 // ============================================================
 // fetchChunk للـ IDEA mode فقط (بيكتب محتوى جديد)
 // ============================================================
-async function fetchChunkIdea({ fromIndex, toIndex, idea, toneGuide, langGuide, totalScenes }) {
+async function fetchChunkIdea({ fromIndex, toIndex, idea, toneGuide, langGuide, totalScenes, previousScenes = [] }) {
   const chunkCount = toIndex - fromIndex + 1;
 
   // ✅ HOOK في الأول بس، ENDING في الآخر بس، كل الباقي body
@@ -136,12 +136,20 @@ The hook MUST grab the viewer in the first 3 seconds — use ONE of these techni
 NEVER start with "في هذا الفيديو" or "سنتحدث عن" — that kills engagement instantly.
 ` : '';
 
-  const prompt = `You are an elite video scriptwriter specializing in viral documentary content. Output EXACTLY ${chunkCount} JSON lines, no more, no less.
+  // ✅ FIX: نمرر السياق السردي من المشاهد السابقة عشان القصة تكمل مباشرة، مش تبدأ من جديد كل chunk
+  const continuityBlock = previousScenes.length > 0 ? `
+STORY SO FAR — DO NOT REPEAT ANY OF THESE IDEAS:
+${previousScenes.slice(-6).map(s => `Scene ${s.index}: ${s.text}`).join('\n')}
+
+CONTINUE the story DIRECTLY from scene ${fromIndex - 1}. Each new scene must be a DIRECT continuation of the previous scene's action/event — like the next moment in a film, not a new topic. Cover NEW story events only — never repeat.
+` : '';
+
+  const prompt = `You are an elite video scriptwriter specializing in viral documentary content with sequential, connected storytelling — each scene continues directly from the one before it, like chapters in a film. Output EXACTLY ${chunkCount} JSON lines, no more, no less.
 
 TONE: ${toneGuide}
 LANGUAGE: ${langGuide}
 Index range: ${fromIndex} to ${toIndex}
-${hookInstructions}
+${hookInstructions}${continuityBlock}
 TYPE RULES (STRICTLY FOLLOW):
 ${typeRules.join('\n')}
 
@@ -151,6 +159,7 @@ Rules:
 - Natural voiceover text - 1-2 sentences per scene, conversational and engaging
 - Do NOT repeat the same sentence across scenes
 - Do NOT add extra hooks or endings beyond what is specified above
+- Each scene must flow as the NEXT moment in one continuous story — never an isolated, generic statement
 
 Format: {"index":N,"type":"hook|body|ending","text":"...","keywords":["w1","w2"],"visual":"specific visual description for this exact scene"}
 
@@ -340,6 +349,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
   let totalEmitted  = 0;
   let totalTokens   = 0;
   const totalChunks = Math.ceil(sceneCount / SCENES_PER_CHUNK);
+  const allScenesAccum = []; // ✅ لتمرير سياق القصة السابقة لكل chunk جديد (استمرارية بين الـ batches)
 
   // ✅ للـ script mode: نقسم الاسكريبت مرة واحدة في الأول
   let scriptSegments = null;
@@ -391,6 +401,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
           idea,
           toneGuide, langGuide,
           totalScenes: sceneCount,
+          previousScenes: allScenesAccum,
         }));
 
         // ✅ نتأكد من النوع الصح بعد رجوع الـ AI
@@ -409,6 +420,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
       for (const scene of scenes) {
         send('scene', scene);
         totalEmitted++;
+        allScenesAccum.push(scene);
       }
 
       // ✅ لو الـ chunk ناقص في الـ idea mode، نعيد مرة واحدة بس
@@ -423,6 +435,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
             const { scenes: retryScenes, tokensUsed: rt } = await fetchChunkIdea({
               fromIndex: missingFrom, toIndex: missingTo,
               idea, toneGuide, langGuide, totalScenes: sceneCount,
+              previousScenes: allScenesAccum,
             });
             const fixedRetry = retryScenes.map(scene => {
               if (scene.index === 1) scene.type = 'hook';
@@ -434,6 +447,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
             for (const scene of fixedRetry) {
               send('scene', scene);
               totalEmitted++;
+              allScenesAccum.push(scene);
             }
           } catch (e) {
             console.warn('[Script] Retry failed:', e.message);

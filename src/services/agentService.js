@@ -12,7 +12,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 // أرخص وأسرع موديل عند Groq — كافي جدًا لدور الـ "مساعد توجيه"، ومصمم لتقليل التكلفة والتوكنز
 const AGENT_MODEL = 'llama-3.1-8b-instant';
 const MAX_HISTORY_MESSAGES = 6; // آخر 3 رسائل من المستخدم + 3 ردود فقط تتبعت للموديل
-const MAX_REPLY_TOKENS = 260;   // رد قصير جدًا + مساحة كافية لعلامة ###READY### لما يلزم
+const MAX_REPLY_TOKENS = 300;   // رد قصير جدًا + مساحة كافية لعلامة ###READY### الأطول شوية دلوقتي
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
 const MAX_AUDIO_SEC = 120;      // دقيقتين بالظبط زي ما اتفقنا
@@ -72,12 +72,14 @@ HOW TO OPERATE:
 4. Once you know: model (1-5), duration (must EXACTLY match one of that model's supported durations above), ratio, and the idea/topic — ask the user to confirm before generating (e.g. "جاهز أبدأ؟" / "Ready to generate?").
 5. Model 5 requires a reference photo of the character before you can generate — if the user picked Model 5 and hasn't uploaded a photo yet, ask them to upload one first. Do not mark ready without it.
 6. ONLY once the user has explicitly confirmed (said yes / ابدأ / اعمل الفيديو / etc.) AND you have all required info, end your reply with this exact machine-readable marker on its own line (the user will not see it, so keep your visible reply natural and short before it):
-###READY###{"model":3,"duration":"1min","ratio":"9:16","idea":"short clear description of the video topic in the user's language","videoStyle":"cinematic","tone":"motivational","needsCharacterPhoto":false}
+###READY###{"model":3,"duration":"1min","ratio":"9:16","idea":"short clear description of the video topic in the user's language","videoStyle":"cinematic","tone":"motivational","videoLanguage":"en","voice":"male_wise","needsCharacterPhoto":false}
    - "model" must be 1, 2, 3, 4, or 5 (number).
    - "duration" must EXACTLY match one of the supported values for that model/plan combo above.
    - "ratio" must be "9:16", "16:9", or "1:1".
    - "videoStyle" pick a sensible default style key for models 3/4/5 if the user didn't specify one (ignored for 1/2).
    - "tone" for models 1/2 only: one of motivational, education, story (default motivational).
+   - "videoLanguage": the language of the NARRATION inside the video (NOT your chat reply language — those are independent). DEFAULT is always "en" (English) UNLESS the user explicitly asked for the video/narration itself to be in another language (e.g. "بالعربي" / "in Spanish" / "بالمصري"). Valid values: en, ar (formal Arabic), ar_eg (Egyptian Arabic), ar_gulf (Gulf Arabic), es, fr, de, etc. The chat conversation being in Arabic does NOT by itself mean the video should be in Arabic — only switch if the user explicitly says so.
+   - "voice": DEFAULT is always "male_wise" (a deep, wise, professional narrator voice) UNLESS the user explicitly asked for a specific voice/gender/accent. Available voices: male_american, male_arabic, male_wise, female_american, female_arabic, none. If videoLanguage is Arabic and the user didn't specify a voice, use "male_arabic" instead of "male_wise" (male_wise is English-only). Ignored for Model 5 (no voiceover).
    - "needsCharacterPhoto" true only for Model 5.
    - Do NOT emit this marker speculatively or before explicit confirmation — wait for the user's go-ahead.
 7. Never invent a duration or price outside the catalog.`;

@@ -199,3 +199,78 @@ export async function generateVoiceover(text, voiceKey = 'male_american', videoT
     return null;
   }
 }
+
+// ── FIX: توليد صوت لكل مشهد لوحده وقياس مدته الحقيقية بالـ ffprobe ─────────
+// بدل تقدير الوقت بعدد الكلمات، بنعرف بالظبط كل مشهد هياخد قد إيه من الوقت،
+// وده بيضمن إن الصوت والمشهد يبدأوا وينتهوا مع بعض بالظبط في كل الموديلات
+export async function generateVoiceoverPerScene(scenes, voiceKey = 'male_american', videoType = 'education', speed = 0, videoLanguage = 'en') {
+  await mkdir(OUTPUTS_DIR, { recursive: true });
+
+  const voiceData = resolveVoice(voiceKey, videoType, videoLanguage);
+  const voiceName = voiceData.voice;
+  const pitch = PITCH_BY_TYPE[videoType] || '+0Hz';
+
+  const langDefaultRate = LANG_DEFAULT_RATE[videoLanguage] || 0;
+  const baseSpeed = (Number(speed) === 0) ? langDefaultRate : Number(speed);
+  const clampedSpeed = Math.max(-50, Math.min(50, baseSpeed));
+  const rateStr = (clampedSpeed >= 0 ? '+' : '') + clampedSpeed + '%';
+
+  console.log(`[TTS] Per-scene mode | ${scenes.length} scenes | Voice: ${voiceName} | Lang: ${videoLanguage}`);
+
+  const sceneFiles = [];
+  const sceneDurations = [];
+
+  for (let i = 0; i < scenes.length; i++) {
+    const text = (scenes[i].text || '').trim();
+    const chunkFile = path.join(OUTPUTS_DIR, `tmp_scene_${Date.now()}_${i}.mp3`);
+
+    if (!text) {
+      // مشهد من غير نص (نادر) — سكوت قصير بدل ما نكسر التزامن العام
+      try {
+        execSync(`ffmpeg -f lavfi -i anullsrc=r=48000:cl=mono -t 1.5 -c:a mp3 -y "${chunkFile}"`, { stdio: 'pipe' });
+        sceneFiles.push(chunkFile);
+        sceneDurations.push(1.5);
+      } catch {}
+      continue;
+    }
+
+    try {
+      const ok = await runEdgeTTS(text, voiceName, rateStr, pitch, chunkFile);
+      if (!ok) throw new Error('TTS returned no file');
+      let dur = null;
+      try {
+        dur = parseFloat(execSync(
+          `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${chunkFile}"`,
+          { encoding: 'utf8' }
+        ).trim());
+      } catch {}
+      if (!dur || dur <= 0) dur = Math.max(1.5, text.split(/\s+/).length / 2.3);
+      sceneFiles.push(chunkFile);
+      sceneDurations.push(dur);
+    } catch (e) {
+      console.warn(`[TTS] Scene ${i} failed, using silence fallback:`, e.message);
+      const fallbackDur = Math.max(1.5, text.split(/\s+/).length / 2.3);
+      try {
+        execSync(`ffmpeg -f lavfi -i anullsrc=r=48000:cl=mono -t ${fallbackDur} -c:a mp3 -y "${chunkFile}"`, { stdio: 'pipe' });
+        sceneFiles.push(chunkFile);
+        sceneDurations.push(fallbackDur);
+      } catch {}
+    }
+  }
+
+  if (sceneFiles.length === 0) {
+    console.warn('[TTS] Per-scene: all scenes failed');
+    return null;
+  }
+
+  const filename = 'voice_' + Date.now() + '.mp3';
+  const filepath = path.join(OUTPUTS_DIR, filename);
+  mergeAudioFiles(sceneFiles, filepath);
+
+  if (fs.existsSync(filepath) && fs.statSync(filepath).size > 1000) {
+    console.log(`[TTS] Per-scene success: ${filename} | durations: ${sceneDurations.map(d => d.toFixed(1)).join(', ')}`);
+    return { filename, sceneDurations };
+  }
+  console.warn('[TTS] Per-scene: merged file empty');
+  return null;
+}

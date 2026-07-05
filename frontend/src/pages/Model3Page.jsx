@@ -168,19 +168,22 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
     setStep('render'); setRenderStatus('Preparing voiceover...'); setError('');
     try {
       let audioUrl = null;
+      let sceneDurations = null;
       if (voiceAudioUrl) {
         audioUrl = voiceAudioUrl;
         setRenderStatus('Using your uploaded voice recording...');
+        // ملحوظة: مفيش مدد حقيقية للمشاهد هنا لأن ده تسجيل صوتي واحد كامل من المستخدم، مش مقسّم لكل مشهد
       } else if (voice !== 'none') {
-        const fullText = scenes.map(s => s.text).join(' ');
-        const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: fullText, voice, videoLanguage }) });
+        // ✅ FIX: نولّد صوت لكل مشهد لوحده عشان نعرف مدته الحقيقية بالظبط ونضمن التزامن التام مع المشهد
+        const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, voice, videoLanguage }) });
         const voiceData = await voiceRes.json();
         if (!voiceRes.ok) throw new Error(voiceData.error || 'Voiceover failed');
         audioUrl = voiceData.audioUrl;
+        sceneDurations = voiceData.sceneDurations || null;
       }
 
       setRenderStatus('Starting AI image generation...');
-      const renderRes = await fetch('/api/model3/render', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, audioUrl, ratio, captions, transitions: false, music, videoLanguage, duration: inputMode === 'script' ? getSmartDuration() : duration, videoStyle, styleSuffix: selectedStyle?.suffix || '' }) });
+      const renderRes = await fetch('/api/model3/render', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, audioUrl, ratio, captions, transitions: false, music, videoLanguage, duration: inputMode === 'script' ? getSmartDuration() : duration, videoStyle, styleSuffix: selectedStyle?.suffix || '', sceneDurations }) });
       const renderData = await renderRes.json();
       if (!renderRes.ok) {
         if (renderData.show_upgrade || renderData.error === 'subscribe_required' || renderData.error === 'no_access') {

@@ -133,6 +133,16 @@ function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
 }
 
 // ── Transition بين كليبين ──────────────────────────────────────────────────
+// ── توزيع نسبي لمدة كل مشهد حسب طول الكلام فيه (بدل التقسيم بالتساوي) ──────
+function computeProportionalDurations(scenes, totalDuration, minSec = 1.8) {
+  const wordCounts = scenes.map(s => Math.max((s.text || '').trim().split(/\s+/).filter(Boolean).length, 1));
+  const totalWords = wordCounts.reduce((a, b) => a + b, 0) || scenes.length;
+  let durations = wordCounts.map(wc => Math.max((wc / totalWords) * totalDuration, minSec));
+  const sum = durations.reduce((a, b) => a + b, 0);
+  const scale = sum > 0 ? totalDuration / sum : 1;
+  return durations.map(d => d * scale);
+}
+
 function applyTransition(clip1, clip2, outputPath, duration1, transitionDuration = 0.5) {
   const offset = Math.max(duration1 - transitionDuration, transitionDuration);
   const transTypes = ['fade', 'slideleft', 'slideright', 'dissolve', 'wipeleft', 'wiperight'];
@@ -281,6 +291,7 @@ export async function renderModel3Video({
   videoLanguage = 'en',
   captionStyle = 'classic',
   onProgress = null,
+  sceneDurations: realSceneDurations = null,
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -347,23 +358,28 @@ export async function renderModel3Video({
 
   // نستخدم مدة الـ audio لو موجودة، وإلا نستخدم الـ target
   const actualDuration = audioDurationEarly || targetVideoDuration;
-  const SEC_PER_IMAGE = Math.ceil((actualDuration + 1) / totalImages);
-  console.log(`[Model3] Audio: ${audioDurationEarly?.toFixed(1) || 'none'}s | SEC_PER_IMAGE: ${SEC_PER_IMAGE}s`);
+  // ✅ FIX: لو معانا مدد حقيقية مقاسة فعليًا (من صوت اتولد لكل مشهد لوحده)، نستخدمها بالظبط
+  const sceneDurations = (Array.isArray(realSceneDurations) && realSceneDurations.length === totalImages)
+    ? realSceneDurations
+    : computeProportionalDurations(scenes, actualDuration + 1);
+  const avgSecPerImage = sceneDurations.reduce((a, b) => a + b, 0) / totalImages;
+  console.log(`[Model3] Audio: ${audioDurationEarly?.toFixed(1) || 'none'}s | avg SEC_PER_IMAGE: ${avgSecPerImage.toFixed(1)}s (${realSceneDurations ? 'REAL measured' : 'proportional estimate'})`);
 
   // ── Step 2: Ken Burns على كل صورة ────────────────────────────────────
   const clipPaths = [];
   for (let i = 0; i < imagePaths.length; i++) {
     const clipPath = path.join(TEMP_DIR, `m3_clip_${id}_${i}.mp4`);
+    const secForThisImage = sceneDurations[i];
     if (onProgress) onProgress({ step: 'kenburns', current: i + 1, total: totalImages });
-    console.log(`[Model3] Ken Burns ${i + 1}/${totalImages}`);
+    console.log(`[Model3] Ken Burns ${i + 1}/${totalImages} (${secForThisImage.toFixed(1)}s)`);
 
     try {
-      applyKenBurns(imagePaths[i], clipPath, SEC_PER_IMAGE, w, h, i);
+      applyKenBurns(imagePaths[i], clipPath, secForThisImage, w, h, i);
       clipPaths.push(clipPath);
     } catch (e) {
       console.error(`[Model3] Ken Burns ${i + 1} failed:`, e.message);
       execSync(
-        `ffmpeg -loop 1 -i "${imagePaths[i]}" -t ${SEC_PER_IMAGE} -r 30 ` +
+        `ffmpeg -loop 1 -i "${imagePaths[i]}" -t ${secForThisImage} -r 30 ` +
         `-vf "scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1" ` +
         `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
         `-pix_fmt yuv420p -movflags +faststart -y "${clipPath}"`,
@@ -381,9 +397,13 @@ export async function renderModel3Video({
 
   if (transitions && clipPaths.length > 1) {
     let current = clipPaths[0];
+    // ✅ FIX: نتابع المدة التراكمية الحقيقية بدل ما نبعت مدة ثابتة لكل transition
+    let cumulativeDuration = sceneDurations[0];
+    const TRANS_DUR = 0.5;
     for (let i = 1; i < clipPaths.length; i++) {
       const transOut = path.join(TEMP_DIR, `m3_trans_${id}_${i}.mp4`);
-      applyTransition(current, clipPaths[i], transOut, SEC_PER_IMAGE);
+      applyTransition(current, clipPaths[i], transOut, cumulativeDuration, TRANS_DUR);
+      cumulativeDuration = cumulativeDuration - TRANS_DUR + sceneDurations[i];
       current = transOut;
     }
     fs.copyFileSync(current, mergedPath);
@@ -481,7 +501,7 @@ export async function renderModel3Video({
       console.log('[Model3] Using Groq Whisper for real captions');
       await addRealCaptionsForModel(withAudioPath, audioPath, withCaptionsPath, captionStyle, ratio, videoLanguage);
     } else {
-      await addCaptionsWithTimingForModel(withAudioPath, scenes, withCaptionsPath, null, captionStyle, ratio, videoLanguage);
+      await addCaptionsWithTimingForModel(withAudioPath, scenes, withCaptionsPath, sceneDurations, captionStyle, ratio, videoLanguage);
     }
   } else {
     fs.copyFileSync(withAudioPath, withCaptionsPath);

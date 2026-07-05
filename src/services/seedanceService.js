@@ -15,6 +15,17 @@ const RATIOS = {
   '1:1':  { w: 720,  h: 720  },
 };
 
+// ── توزيع نسبي لمدة كل مشهد حسب طول الكلام فيه (بدل تثبيت مدة واحدة لكل الكليبات) ──
+// ده بيمنع إن الصوت يسبق المشهد أو المشهد يسبق الصوت، وبيمنع تكرار/قطع الفيديو كله عشان يطابق الصوت
+function computeProportionalDurations(scenes, totalDuration, minSec = 3.5, maxSec = 14) {
+  const wordCounts = scenes.map(s => Math.max((s.text || '').trim().split(/\s+/).filter(Boolean).length, 1));
+  const totalWords = wordCounts.reduce((a, b) => a + b, 0) || scenes.length;
+  let durations = wordCounts.map(wc => Math.min(Math.max((wc / totalWords) * totalDuration, minSec), maxSec));
+  const sum = durations.reduce((a, b) => a + b, 0);
+  const scale = sum > 0 ? totalDuration / sum : 1;
+  return durations.map(d => Math.max(Math.min(d * scale, maxSec), minSec));
+}
+
 async function generateSeedanceClip(prompt, ratio = '16:9') {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
 
@@ -302,6 +313,7 @@ export async function renderModel4Video({
   onProgress = null,
   videoStyle = 'cinematic',
   styleSuffix = '',
+  sceneDurations: realSceneDurations = null,
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -314,8 +326,25 @@ export async function renderModel4Video({
 
   console.log(`[Model4] START | ${total} scenes | ${ratio} | style: ${videoStyle}`);
 
-  const SEC_PER_CLIP = 7;
-  console.log(`[Model4] SEC_PER_CLIP: ${SEC_PER_CLIP}s | Total video: ${total * SEC_PER_CLIP}s`);
+  // ✅ FIX: مدة كل كليب بقت نسبية لطول كلام المشهد بدل ثابتة 7 ثواني للكل
+  // أولاً نحسب مدة الصوت الكلي (لو موجود) عشان نوزع المدد عليه بدل تخمين
+  let earlyAudioDur = null;
+  if (audioUrl) {
+    const c = path.join(OUTPUTS_DIR, path.basename(audioUrl));
+    if (fs.existsSync(c) && fs.statSync(c).size > 1000) {
+      try {
+        earlyAudioDur = parseFloat(execSync(
+          `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${c}"`,
+          { encoding: 'utf8' }
+        ).trim());
+      } catch {}
+    }
+  }
+  const targetTotalDuration = (earlyAudioDur || (total * 7)) + 1;
+  const sceneDurations = (Array.isArray(realSceneDurations) && realSceneDurations.length === total)
+    ? realSceneDurations
+    : computeProportionalDurations(scenes, targetTotalDuration);
+  console.log(`[Model4] Total target: ${targetTotalDuration.toFixed(1)}s | per-scene durations (${realSceneDurations ? 'REAL measured' : 'proportional estimate'}): ${sceneDurations.map(d => d.toFixed(1)).join(', ')}`);
 
   const rawPaths = [];
   for (let i = 0; i < scenes.length; i++) {
@@ -348,7 +377,7 @@ export async function renderModel4Video({
   for (let i = 0; i < rawPaths.length; i++) {
     const slowPath = path.join(TEMP_DIR, `m4_slow_${id}_${i}.mp4`);
     if (onProgress) onProgress({ step: 'processing', current: i + 1, total });
-    slowDownClip(rawPaths[i], slowPath, SEC_PER_CLIP);
+    slowDownClip(rawPaths[i], slowPath, sceneDurations[i]);
     slowPaths.push(slowPath);
   }
 
@@ -372,28 +401,9 @@ export async function renderModel4Video({
   const withAudioPath = path.join(TEMP_DIR, `m4_audio_${id}.mp4`);
 
   if (audioPath) {
-    let audioDur = null;
-    try {
-      audioDur = parseFloat(execSync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`,
-        { encoding: 'utf8' }
-      ).trim());
-    } catch {}
-
-    const videoExtended = path.join(TEMP_DIR, `m4_extended_${id}.mp4`);
-    if (audioDur && audioDur > 0) {
-      const targetDur = audioDur + 1;
-      try {
-        execSync(
-          `ffmpeg -stream_loop -1 -i "${mergedPath}" -t ${targetDur} ` +
-          `-c:v libx264 -crf 18 -preset fast -profile:v high -level 4.1 ` +
-          `-pix_fmt yuv420p -movflags +faststart -y "${videoExtended}"`,
-          { stdio: 'pipe' }
-        );
-      } catch { fs.copyFileSync(mergedPath, videoExtended); }
-    } else {
-      fs.copyFileSync(mergedPath, videoExtended);
-    }
+    // ✅ FIX: مبقناش محتاجين نمط/نكرر الفيديو كله عشان يطابق الصوت — المشاهد بقت متزامنة من الأساس
+    // بس بنعمل هامش أمان صغير جدًا (±0.3s) لو فيه اختلاف بسيط بين مجموع مدد المشاهد ومدة الصوت الفعلية بعد المعالجة
+    const videoExtended = mergedPath;
 
     const musicDir = path.join(process.cwd(), 'assets', 'music');
     const musicFiles = music && fs.existsSync(musicDir)

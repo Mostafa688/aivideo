@@ -9,7 +9,7 @@ import multer from 'multer';
 import fs from 'fs';
 import { generateScenesStream } from './services/scriptService.js';
 import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/mediaService.js';
-import { generateVoiceover, VOICE_OPTIONS } from './services/voiceService.js';
+import { generateVoiceover, generateVoiceoverPerScene, VOICE_OPTIONS } from './services/voiceService.js';
 import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
@@ -23,7 +23,6 @@ import affiliateRouter from './services/affiliateRoutes.js';
 import mapVideoRouter from './services/mapVideoRoutes.js';
 import wanVideoRouter from './services/wanVideoRoutes.js';
 import adsRouter from './services/adsRoutes.js';
-import agentRouter from './services/agentRoutes.js';
 import pgPkg from 'pg';
 const { Pool: _TPool } = pgPkg;
 
@@ -206,7 +205,6 @@ app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
-app.use('/api/agent', agentRouter);
 
 // ── Community API ──────────────────────────────────────────────────────────────
 const cPool = new _TPool({
@@ -820,9 +818,16 @@ app.post('/api/fetch-media', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/generate-voice', authMiddleware, async (req, res) => {
-  const { text, voice, videoType, speed, videoLanguage } = req.body;
-  if (!text) return res.status(400).json({ error: 'text required' });
+  const { text, scenes, voice, videoType, speed, videoLanguage } = req.body;
+  if (!text && !(Array.isArray(scenes) && scenes.length)) return res.status(400).json({ error: 'text or scenes is required' });
   try {
+    // ✅ FIX: لو اتبعتلنا scenes (بدل نص واحد مجمّع)، نولّد صوت لكل مشهد لوحده
+    // ونقيس مدته الحقيقية عشان الصوت يتزامن مع كل مشهد بالظبط
+    if (Array.isArray(scenes) && scenes.length) {
+      const result = await generateVoiceoverPerScene(scenes, voice || 'male_american', videoType || 'education', speed || 0, videoLanguage || 'en');
+      if (!result) return res.status(500).json({ error: 'Voice generation failed' });
+      return res.json({ audioUrl: '/outputs/' + result.filename, sceneDurations: result.sceneDurations });
+    }
     const audioPath = await generateVoiceover(text, voice || 'male_american', videoType || 'education', speed || 0, videoLanguage || 'en');
     res.json({ audioUrl: '/outputs/' + audioPath });
   } catch (err) {
@@ -851,7 +856,7 @@ app.get('/api/credit-cost', authMiddleware, (req, res) => {
 });
 
 app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, audioUrl, ratio, jobId, duration, music, captions, transitions, soundEffects, videoType, captionStyle, musicVolume, sfxVolume, videoEffect } = req.body;
+  const { scenes, audioUrl, ratio, jobId, duration, music, captions, transitions, soundEffects, videoType, captionStyle, musicVolume, sfxVolume, videoEffect, sceneDurations } = req.body;
   const renderJobId = String(jobId || Date.now());
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   try {
@@ -890,7 +895,7 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost });
     (async () => {
       try {
-        const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en' });
+        const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null });
         // ── Deduct credits based on video duration ──
         try { await addUserTokens(req.user.userId, creditCost); } catch(e) { console.warn('[Render] Credit deduct failed:', e.message); }
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost });
@@ -1005,6 +1010,7 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
 
   // استخلاص وصف الشخصيات والأماكن من الـ idea تلقائياً
   let characterLock = '';
+  let outfitLock = '';
   let locationLock = '';
   if (isIdeaMode && idea) {
     try {
@@ -1014,14 +1020,14 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile', max_tokens: 300, temperature: 0.3,
           messages: [
-            { role: 'system', content: 'Extract visual consistency info. Output ONLY JSON: {"characters":"...","location":"..."}. English only. Be concise.' },
-            { role: 'user', content: `Video idea: "${idea}"\n\nExtract:\n- characters: physical appearance of main characters (clothing, age, look) max 25 words\n- location: main setting/environment max 15 words\nIf generic topic with no specific character/place, use ""\n\nJSON only:` }
+            { role: 'system', content: 'Extract visual consistency info. Output ONLY JSON: {"characters":"...","outfit":"...","location":"..."}. English only. Be concise.' },
+            { role: 'user', content: `Video idea: "${idea}"\n\nExtract:\n- characters: PERMANENT physical identity of main characters ONLY - face, body build, age, hair, skin tone, distinguishing features. Do NOT include clothing here. Max 20 words.\n- outfit: their DEFAULT starting outfit or clothing, max 15 words. This is a baseline only; the outfit MAY change later in the story if the narrative logically requires it (different day, event, role, or scene context), but the physical identity above must NEVER change.\n- location: main setting/environment max 15 words\nIf generic topic with no specific character/place, use ""\n\nJSON only:` }
           ]
         }),
       });
       const extractData = await extractRes.json();
       const extractRaw = (extractData.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
-      try { const ex = JSON.parse(extractRaw); characterLock = ex.characters || ''; locationLock = ex.location || ''; } catch {}
+      try { const ex = JSON.parse(extractRaw); characterLock = ex.characters || ''; outfitLock = ex.outfit || ''; locationLock = ex.location || ''; } catch {}
     } catch (e) { console.warn('[Model3] Extract failed:', e.message); }
   }
 
@@ -1048,7 +1054,10 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
       let userPrompt, systemPrompt;
 
       if (isIdeaMode) {
-        const charBlock = characterLock ? `\nCHARACTER (include in EVERY prompt verbatim): ${characterLock}` : '';
+        const charBlock = characterLock
+          ? `\nCHARACTER IDENTITY (physical traits - include in EVERY prompt verbatim, NEVER changes): ${characterLock}`
+            + (outfitLock ? `\nDEFAULT OUTFIT: ${outfitLock} (use this outfit unless the story's current scene logically calls for a different one - e.g. sleepwear at night, armor in battle, formal wear at an event; when it changes, state the new outfit clearly and keep it consistent across scenes in that same context)` : '')
+          : '';
         const locBlock = locationLock ? `\nLOCATION (keep in EVERY prompt): ${locationLock}` : '';
         const typeRules = [];
         const isFirstBatch = batchStart === 1;
@@ -1099,7 +1108,8 @@ SEQUENTIAL STORY FLOW (CRITICAL):
 
 "prompt" RULES (English only, 40-55 words):
 - Cinematic AI image generation: subject + action + environment + lighting + camera angle + style
-${characterLock ? `- MUST include character: "${characterLock}"` : ''}
+${characterLock ? `- MUST include character identity: "${characterLock}"` : ''}
+${outfitLock ? `- Outfit: "${outfitLock}" by default, but change it if this scene's moment in the story logically requires a different outfit (keep the new outfit consistent across scenes in that same context)` : ''}
 ${locationLock ? `- MUST include location: "${locationLock}"` : ''}
 - VISUALLY CONTINUES from the previous scene — show the NEXT moment/event
 - Each prompt distinct but connected — shows story PROGRESSION
@@ -1155,7 +1165,7 @@ Output ONLY JSON array:
 });
 
 app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, videoStyle, styleSuffix } = req.body;
+  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, videoStyle, styleSuffix, sceneDurations } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const quotaCheck = await canUserMakeModel3Video(req.user.userId, duration || '1min');
   if (!quotaCheck.allowed) {
@@ -1179,7 +1189,7 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
   res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false, creditCost: m3CreditCost });
   (async () => {
     try {
-      const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '' });
+      const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null });
       if (quotaCheck.is_trial) {
         await markModel3TrialUsed(req.user.userId);
       } else {
@@ -1232,6 +1242,7 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
 
   // استخلاص وصف الشخصيات والأماكن من الـ idea تلقائياً
   let characterLock = '';
+  let outfitLock = '';
   let locationLock = '';
   const isIdeaMode = inputMode === 'idea';
   if (isIdeaMode && idea) {
@@ -1242,14 +1253,14 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile', max_tokens: 300, temperature: 0.3,
           messages: [
-            { role: 'system', content: 'Extract visual consistency info. Output ONLY JSON: {"characters":"...","location":"..."}. English only. Be concise.' },
-            { role: 'user', content: `Video idea: "${idea}"\n\nExtract:\n- characters: physical appearance of main characters (clothing, age, look) max 25 words\n- location: main setting/environment max 15 words\nIf generic topic with no specific character/place, use ""\n\nJSON only:` }
+            { role: 'system', content: 'Extract visual consistency info. Output ONLY JSON: {"characters":"...","outfit":"...","location":"..."}. English only. Be concise.' },
+            { role: 'user', content: `Video idea: "${idea}"\n\nExtract:\n- characters: PERMANENT physical identity of main characters ONLY - face, body build, age, hair, skin tone, distinguishing features. Do NOT include clothing here. Max 20 words.\n- outfit: their DEFAULT starting outfit or clothing, max 15 words. This is a baseline only; the outfit MAY change later in the story if the narrative logically requires it (different day, event, role, or scene context), but the physical identity above must NEVER change.\n- location: main setting/environment max 15 words\nIf generic topic with no specific character/place, use ""\n\nJSON only:` }
           ]
         }),
       });
       const extractData = await extractRes.json();
       const extractRaw = (extractData.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
-      try { const ex = JSON.parse(extractRaw); characterLock = ex.characters || ''; locationLock = ex.location || ''; } catch {}
+      try { const ex = JSON.parse(extractRaw); characterLock = ex.characters || ''; outfitLock = ex.outfit || ''; locationLock = ex.location || ''; } catch {}
     } catch (e) { console.warn('[Model4] Extract failed:', e.message); }
   }
 
@@ -1276,7 +1287,10 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
       let userPrompt, systemPrompt;
 
       if (isIdeaMode) {
-        const charBlock = characterLock ? `\nCHARACTER (include in EVERY prompt verbatim): ${characterLock}` : '';
+        const charBlock = characterLock
+          ? `\nCHARACTER IDENTITY (physical traits - include in EVERY prompt verbatim, NEVER changes): ${characterLock}`
+            + (outfitLock ? `\nDEFAULT OUTFIT: ${outfitLock} (use this outfit unless the story's current scene logically calls for a different one - e.g. sleepwear at night, armor in battle, formal wear at an event; when it changes, state the new outfit clearly and keep it consistent across scenes in that same context)` : '')
+          : '';
         const locBlock = locationLock ? `\nLOCATION (keep in EVERY prompt): ${locationLock}` : '';
         const typeRules = [];
         const isFirstBatch = batchStart === 1;
@@ -1327,7 +1341,8 @@ SEQUENTIAL CONTINUITY (CRITICAL):
 "prompt" RULES (English only, 30-45 words — for AI VIDEO generation):
 - Describe a MOVING SCENE continuing from the previous: subject + action/motion + environment + lighting + camera movement
 - ${styleHint}
-${characterLock ? `- MUST include character: "${characterLock}"` : ''}
+${characterLock ? `- MUST include character identity: "${characterLock}"` : ''}
+${outfitLock ? `- Outfit: "${outfitLock}" by default, but change it if this scene's moment in the story logically requires a different outfit (keep the new outfit consistent across scenes in that same context)` : ''}
 ${locationLock ? `- MUST include location: "${locationLock}"` : ''}
 - Each prompt shows the NEXT moment/event — visual story PROGRESSION
 - Think: camera slowly pans, character walks forward, scene unfolds — dynamic
@@ -1382,7 +1397,7 @@ Output ONLY JSON array:
 });
 
 app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, inputMode, videoStyle, styleSuffix } = req.body;
+  const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, inputMode, videoStyle, styleSuffix, sceneDurations } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const quotaCheck = await canUserMakeModel4Video(req.user.userId, duration || '30s');
   if (!quotaCheck.allowed) {
@@ -1407,27 +1422,26 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
   (async () => {
     try {
       let finalAudioUrl = audioUrl;
-      if (!audioUrl && scenes?.length > 0) {
+      let finalSceneDurations = Array.isArray(sceneDurations) ? sceneDurations : null;
+      // ✅ FIX: لو مفيش صوت متبعت من الفرونت إند، نولّد صوت لكل مشهد لوحده ونقيس مدته الحقيقية
+      // بدل التخمين القديم اللي كان مبني على افتراض 7 ثواني ثابتة لكل مشهد (متشال دلوقتي)
+      if (!audioUrl && scenes?.length > 0 && !finalSceneDurations) {
         try {
-          const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
-          if (fullText.trim()) {
-            const voiceKey = videoLanguage === 'ar' ? 'male_arabic' : 'male_american';
-            const maxAudioSeconds = (scenes.length * 7) - 2;
-            const maxWords = Math.floor(maxAudioSeconds * 2.5);
-            const words = fullText.trim().split(/\s+/);
-            const trimmedText = words.length > maxWords ? words.slice(0, maxWords).join(' ') : fullText.trim();
-            console.log(`[Model4] Text: ${words.length} words trimmed to ${trimmedText.split(/\s+/).length} (max ${maxWords} for ${maxAudioSeconds}s)`);
-            const audioFilename = await generateVoiceover(trimmedText, voiceKey, 'education', 0, videoLanguage || 'en');
-            if (audioFilename) {
-              finalAudioUrl = '/outputs/' + audioFilename;
-              console.log(`[Model4] Voiceover generated: ${audioFilename}`);
+          const hasText = scenes.some(s => (s.text || '').trim());
+          if (hasText) {
+            const voiceKey = (videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise';
+            const voiceResult = await generateVoiceoverPerScene(scenes, voiceKey, 'education', 0, videoLanguage || 'en');
+            if (voiceResult) {
+              finalAudioUrl = '/outputs/' + voiceResult.filename;
+              finalSceneDurations = voiceResult.sceneDurations;
+              console.log(`[Model4] Per-scene voiceover generated: ${voiceResult.filename}`);
             }
           }
         } catch (voiceErr) {
           console.warn('[Model4] Voiceover failed, continuing without audio:', voiceErr.message);
         }
       }
-      const videoPath = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '' });
+      const videoPath = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: finalSceneDurations });
       await incrementModel4Video(req.user.userId, duration || '30s');
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
@@ -1518,7 +1532,7 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
 
     const charSection = characterBlock ? `\n\nCHARACTERS — COPY EXACT DESCRIPTION INTO EVERY SCENE PROMPT:
 ${characterBlock}
-⚠️ CRITICAL: Every single prompt MUST include the FULL character description above. Never abbreviate or omit it.` : '';
+⚠️ CRITICAL: Every single prompt MUST include the character's PHYSICAL IDENTITY (face, body, age, hair, skin) exactly as described above — this NEVER changes, especially since a reference photo is used for visual consistency. If the description mentions specific clothing, treat that as the DEFAULT outfit only — you may change the outfit in later scenes if the story's progression logically calls for it (different moment, event, or setting), but keep the outfit consistent across scenes that share the same context, and never touch the physical identity.` : '';
 
     const userPrompt = `CINEMATIC VIDEO: "${idea}"
 STYLE: ${styleInstruction}${charSection}
@@ -1526,10 +1540,10 @@ STYLE: ${styleInstruction}${charSection}
 Generate EXACTLY ${sceneCount} scenes. Each scene = 5 seconds of AI video, NO voiceover, pure visual storytelling.
 
 PROMPT RULES (English only, 45-65 words per prompt):
-1. STRUCTURE: [Character full description] + [specific action/motion] + [environment/setting] + [camera movement] + [lighting] + [style]
+1. STRUCTURE: [Character physical identity + current outfit] + [specific action/motion] + [environment/setting] + [camera movement] + [lighting] + [style]
 2. MOTION: Always describe movement — "slowly walks", "camera pulls back", "wind moves through hair", "turns and looks at camera"
 3. CINEMATIC: Use film techniques — "rack focus", "slow motion", "golden hour light", "volumetric fog", "anamorphic lens flare"
-4. CONSISTENCY: ${characterDescs.length > 0 ? 'Copy the EXACT character description from above into EVERY prompt without shortening' : 'Keep the same location/environment across all scenes'}
+4. CONSISTENCY: ${characterDescs.length > 0 ? 'Copy the EXACT physical identity from above into EVERY prompt without shortening; keep the outfit consistent unless the story logically calls for a change' : 'Keep the same location/environment across all scenes'}
 5. PROGRESSION: Each scene advances the story visually — show change, emotion, action building up
 6. NO TEXT in frame, no watermarks, no UI elements
 

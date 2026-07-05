@@ -189,7 +189,18 @@ function concatVideos(listFile, output) {
   });
 }
 
-async function concatWithTransitions(slideFiles, output, id, secPerScene) {
+// ── توزيع نسبي لمدة كل مشهد حسب طول الكلام فيه (بدل التقسيم بالتساوي) ──────
+// ده بيمنع إن الصوت يسبق المشهد أو المشهد يسبق الصوت لما المشاهد متفاوتة في طول النص
+function computeProportionalDurations(scenes, totalDuration, minSec = 1.8) {
+  const wordCounts = scenes.map(s => Math.max((s.text || '').trim().split(/\s+/).filter(Boolean).length, 1));
+  const totalWords = wordCounts.reduce((a, b) => a + b, 0) || scenes.length;
+  let durations = wordCounts.map(wc => Math.max((wc / totalWords) * totalDuration, minSec));
+  const sum = durations.reduce((a, b) => a + b, 0);
+  const scale = sum > 0 ? totalDuration / sum : 1;
+  return durations.map(d => d * scale);
+}
+
+async function concatWithTransitions(slideFiles, output, id, sceneDurations) {
   if (slideFiles.length === 1) {
     fs.copyFileSync(slideFiles[0], output);
     return;
@@ -206,16 +217,17 @@ async function concatWithTransitions(slideFiles, output, id, secPerScene) {
     inputArgs += ` -i "${f}"`;
   }
 
-  // Build filter_complex
-  // Each clip offset = i * (secPerScene - TRANSITION_DURATION)
+  // ── كل مشهد offset بيتحسب تراكميًا حسب مدته الفعلية (مش مدة ثابتة) ────────
   let filterParts = [];
   let lastLabel = '[0:v]';
+  let cumulative = sceneDurations[0] || 0;
   for (let i = 1; i < n; i++) {
     const transType = transTypes[i % transTypes.length];
-    const offset = i * (secPerScene - TRANSITION_DURATION);
+    const offset = cumulative - i * TRANSITION_DURATION;
     const outLabel = i === n - 1 ? '[vout]' : `[v${i}]`;
-    filterParts.push(`${lastLabel}[${i}:v]xfade=transition=${transType}:duration=${TRANSITION_DURATION}:offset=${offset}${outLabel}`);
+    filterParts.push(`${lastLabel}[${i}:v]xfade=transition=${transType}:duration=${TRANSITION_DURATION}:offset=${offset.toFixed(3)}${outLabel}`);
     lastLabel = `[v${i}]`;
+    cumulative += sceneDurations[i] || 0;
   }
 
   const filterComplex = filterParts.join(';');
@@ -499,14 +511,19 @@ function addWatermark(inputFile, outputFile) {
   });
 }
 
-async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions) {
+async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions, realSceneDurations = null) {
   const sceneCount = scenes.length;
   const videoDuration = audioDuration + 3;
   const totalTransitionOverlap = transitions && sceneCount > 1
     ? (sceneCount - 1) * TRANSITION_DURATION
     : 0;
-  const secPerScene = (videoDuration + totalTransitionOverlap) / sceneCount;
-  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | sec/scene: ${secPerScene.toFixed(2)}s`);
+  // ✅ FIX: لو معانا مدد حقيقية مقاسة فعليًا من الصوت (لكل مشهد لوحده)، نستخدمها بالظبط
+  // بدل التقدير بعدد الكلمات — ده أعلى دقة ممكنة لتزامن الصوت مع المشهد
+  const sceneDurations = (Array.isArray(realSceneDurations) && realSceneDurations.length === sceneCount)
+    ? realSceneDurations
+    : computeProportionalDurations(scenes, videoDuration + totalTransitionOverlap);
+  const avgSecPerScene = sceneDurations.reduce((a, b) => a + b, 0) / sceneCount;
+  console.log(`[Render] ${sceneCount} scenes | audio: ${audioDuration.toFixed(1)}s | video: ${videoDuration.toFixed(1)}s | avg sec/scene: ${avgSecPerScene.toFixed(2)}s (${realSceneDurations ? 'REAL measured' : 'proportional estimate'})`);
 
   // ── Sequential scene processing ──────────────────────────────────────────
   const slideFiles = [];
@@ -514,6 +531,7 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
     const slideFile = path.join(TEMP_DIR, `slide_${id}_${i}.mp4`);
+    const secPerScene = sceneDurations[i];
 
     if (scene.aiVideo) {
       const aiVideoPath = path.join(process.cwd(), scene.aiVideo.replace('/outputs/', 'outputs/'));
@@ -540,14 +558,14 @@ async function buildVideoFromScenes(scenes, audioDuration, w, h, id, transitions
 
   const concatFile = path.join(TEMP_DIR, `concat_${id}.mp4`);
   if (transitions && slideFiles.length > 1) {
-    await concatWithTransitions(slideFiles, concatFile, id, secPerScene);
+    await concatWithTransitions(slideFiles, concatFile, id, sceneDurations);
   } else {
     const listFile = path.join(TEMP_DIR, `list_${id}.txt`);
     const listContent = slideFiles.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n');
     fs.writeFileSync(listFile, listContent);
     await concatVideos(listFile, concatFile);  }
 
-  return { concatFile, slideFiles, secPerScene };
+  return { concatFile, slideFiles, secPerScene: avgSecPerScene, sceneDurations };
 }
 
 function finalizeVideo(inputFile, output) {
@@ -816,6 +834,7 @@ export async function renderVideo({
   videoEffect = 'none',
   applyWatermark = true,
   videoLanguage = 'en',
+  sceneDurations: realSceneDurations = null,
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -851,8 +870,8 @@ export async function renderVideo({
     console.log(`[Render] No audio - using estimated duration: ${audioDuration}s`);
   }
 
-  const { concatFile, slideFiles, secPerScene } = await buildVideoFromScenes(
-    scenes, audioDuration, w, h, id, transitions
+  const { concatFile, slideFiles, secPerScene, sceneDurations } = await buildVideoFromScenes(
+    scenes, audioDuration, w, h, id, transitions, realSceneDurations
   );
 
   const step3 = path.join(TEMP_DIR, `step3_${id}.mp4`);
@@ -894,9 +913,7 @@ export async function renderVideo({
       console.log('[Captions] Using Groq Whisper for real captions');
       await addRealCaptions(step5, audioPath, step6, captionStyle, ratio, videoLanguage, applyWatermark);
     } else {
-      const totalDur = audioDuration || (secPerScene * scenes.length);
-      const perScene = totalDur / scenes.length;
-      const sceneDurations = scenes.map(() => perScene);
+      // ✅ FIX: نستخدم نفس المدد النسبية الحقيقية اللي اتحسبت في buildVideoFromScenes بدل تقسيم متساوي جديد
       await addCaptionsWithTiming(step5, scenes, step6, sceneDurations, videoType, captionStyle, ratio, videoLanguage, applyWatermark);
     }
     console.log(`[Watermark] ${applyWatermark ? 'Merged with captions' : 'Skipped (paid plan)'}`);

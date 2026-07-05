@@ -273,6 +273,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
     const style = ready.videoStyle || MODEL_STYLE_DEFAULTS[ready.model];
     const isM12 = ready.model === 1 || ready.model === 2;
+    // ✅ لغة الفيديو وصوته بييجوا من فهم الأجنت لطلب العميل، مش من لغة واجهة الموقع —
+    // افتراضيًا إنجليزي + صوت "wise man" إلا لو العميل حدد غير كده صراحة
+    const videoLang = ready.videoLanguage || 'en';
+    const voiceKey = ready.voice || (videoLang.startsWith('ar') ? 'male_arabic' : 'male_wise');
 
     // ── قارئ بسيط لـ Server-Sent Events فوق fetch عادي (موديل 1 و2 بيرجعوا SSE) ──
     async function readSSE(url, body) {
@@ -314,7 +318,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         const { scenes: gotScenes } = await readSSE('/api/generate-scenes', {
           idea: ready.idea, script: null, tone: ready.tone || 'motivational',
           duration: durMap[ready.duration] || ready.duration, mode: 'idea',
-          videoLanguage: lang === 'ar' ? 'ar_eg' : 'en',
+          videoLanguage: videoLang,
         });
         if (!activeJobRef.current) return;
         scenes = gotScenes;
@@ -336,9 +340,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         // موديل 3/4/5: JSON عادي
         let scenesBody;
         if (ready.model === 3) {
-          scenesBody = { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: lang === 'ar' ? 'ar' : 'en', ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
+          scenesBody = { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
         } else if (ready.model === 4) {
-          scenesBody = { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: lang === 'ar' ? 'ar' : 'en', videoStyle: style, styleSuffix: '' };
+          scenesBody = { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' };
         } else {
           scenesBody = { idea: ready.idea, characters: lastUploadedPhoto ? [{ prompt: '', photo: lastUploadedPhoto }] : [], duration: ready.duration, videoStyle: style, styleSuffix: '' };
         }
@@ -351,14 +355,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (!activeJobRef.current) return;
 
       // توليد صوت حقيقي قبل الرندر — إلا لو موديل 5 (بدون تعليق صوتي أصلاً)
+      // ✅ FIX: صوت لكل مشهد لوحده عشان نعرف مدته الحقيقية بالظبط (مش تخمين بعدد الكلمات)
       let audioUrl = null;
+      let sceneDurations = null;
       if (ready.model !== 5 && scenes.length) {
-        const voiceKey = lang === 'ar' ? 'female_arabic' : 'female_american';
-        const fullText = scenes.map(s => s.text).join(' ');
         try {
-          const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: fullText, voice: voiceKey, videoLanguage: lang === 'ar' ? 'ar_eg' : 'en' }) });
+          const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, voice: voiceKey, videoLanguage: videoLang }) });
           const voiceData = await voiceRes.json();
-          if (voiceRes.ok) audioUrl = voiceData.audioUrl;
+          if (voiceRes.ok) { audioUrl = voiceData.audioUrl; sceneDurations = voiceData.sceneDurations || null; }
         } catch { /* لو فشل التعليق الصوتي، هيكمل الفيديو من غير صوت */ }
       }
       if (!activeJobRef.current) return;
@@ -369,13 +373,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       let renderUrl, renderBody;
       if (isM12) {
         renderUrl = '/api/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: false, captions: true, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: lang === 'ar' ? 'ar_eg' : 'en' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: false, captions: true, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: videoLang, sceneDurations };
       } else if (ready.model === 3) {
         renderUrl = '/api/model3/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, transitions: false, music: false, videoLanguage: lang === 'ar' ? 'ar_eg' : 'en', duration: ready.duration, videoStyle: style, styleSuffix: '' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, transitions: false, music: false, videoLanguage: videoLang, duration: ready.duration, videoStyle: style, styleSuffix: '', sceneDurations };
       } else if (ready.model === 4) {
         renderUrl = '/api/model4/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, music: false, videoLanguage: lang === 'ar' ? 'ar_eg' : 'en', duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, music: false, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '', sceneDurations };
       } else {
         renderUrl = '/api/model5/render';
         renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhoto ? [lastUploadedPhoto] : [] };
