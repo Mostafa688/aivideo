@@ -18,6 +18,7 @@ import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, canUserRender, getUserCredits, addUserTokens, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS, getModel5Credits, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import supportRouter from './services/supportRoutes.js';
+import agentRouter from './services/agentRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
 import mapVideoRouter from './services/mapVideoRoutes.js';
@@ -205,6 +206,7 @@ app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
+app.use('/api/agent', agentRouter);
 
 // ── Community API ──────────────────────────────────────────────────────────────
 const cPool = new _TPool({
