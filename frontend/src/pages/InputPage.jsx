@@ -649,7 +649,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
 
 
 // ── Main Form ───────────────────────────────────────────────────────────────
-export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, model7Access = false, userPlan = 'free', credits = null, userEmail = '' }) {
+export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, model7Access = false, userPlan = 'free', credits = null, userEmail = '', onNavigate }) {
   const [selectedModel, setSelectedModel] = useState(null);
   const [mode, setMode] = useState('idea');
   const [idea, setIdea] = useState('');

@@ -134,7 +134,6 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
   const pollRef = useRef(null);
   const timerRef = useRef(null);
 
-  const planData = MODEL4_PLANS[model4Plan] || MODEL4_PLANS.m4_plan1;
   const durConfig = DURATION_CONFIG[duration];
 
   useEffect(() => { fetchUsage(); }, []);

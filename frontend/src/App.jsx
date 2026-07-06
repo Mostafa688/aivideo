@@ -474,7 +474,7 @@ export default function App() {
             goToModelWithWelcome(modelKey, () => { setFormData(data); setPage('scenes'); });
           }}
           model3Access={model3Access} model4Access={model4Access} model5Access={model5Access}
-          userPlan={userPlan} credits={credits}
+          userPlan={userPlan} credits={credits} onNavigate={handleNavigate}
         />}
         {page === 'model3' && <Model3Page onBack={() => setPage('input')} model3Plan={model3Plan} model3Access={model3Access} userPlan={userPlan} onNavigate={handleNavigate} />}
         {page === 'model4' && <Model4Page onBack={() => { setPage('input'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} userPlan={userPlan} onNavigate={handleNavigate} />}
