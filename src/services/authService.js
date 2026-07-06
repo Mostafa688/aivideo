@@ -377,6 +377,7 @@ export async function approveCreditsPayment(email, plan) {
 }
 
 
+export async function createPaymentRequest(userId, userEmail, plan, billing, amount, screenshotData, creditsPurchased = null) {
   const { rows } = await pool.query('INSERT INTO payment_requests (user_id, user_email, plan, billing, amount, screenshot_data, status, credits_purchased) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id', [userId, userEmail, plan, billing, amount, screenshotData || null, 'pending', creditsPurchased]);
   return rows[0].id;
 }
