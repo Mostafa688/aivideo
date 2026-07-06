@@ -42,6 +42,7 @@ const fmt = (n) => {
 
 const PLAN_COLOR = {
   free:  { bg: '#1f2937', text: '#9ca3af', border: '#374151' },
+  paid:  { bg: '#2e1a4d', text: '#c4b5fd', border: '#7c6af7' },
   pro:   { bg: '#1e1b4b', text: '#a5b4fc', border: '#4338ca' },
   plus:  { bg: '#164e63', text: '#67e8f9', border: '#0e7490' },
   max:   { bg: '#451a03', text: '#fbbf24', border: '#d97706' },
@@ -774,12 +775,7 @@ export default function AdminPage() {
   const [resetingCredits, setResetingCredits] = useState(null); // email being reset
   const [editPlan, setEditPlan] = useState('free');
   const [saving, setSaving] = useState(false);
-  const [editM3, setEditM3] = useState(false);
-  const [editM3Plan, setEditM3Plan] = useState('m3_starter');
-  const [editM4, setEditM4] = useState(false);
-  const [editM4Plan, setEditM4Plan] = useState('m4_plan1');
-  const [editM5, setEditM5] = useState(false);
-  const [editM5Plan, setEditM5Plan] = useState('mc_starter');
+  const [creditsDelta, setCreditsDelta] = useState('');
   const [toast, setToast] = useState('');
   const [addCreditsEmail, setAddCreditsEmail] = useState('');
   const [addCreditsAmount, setAddCreditsAmount] = useState('');
@@ -860,14 +856,10 @@ export default function AdminPage() {
 
   const handleRecharge = async () => {
     if (!rechargeEmail || !rechargeAmount) return;
-    const endpoint = rechargeModel === 'm12' ? '/api/admin/user/add-credits'
-      : rechargeModel === 'm3' ? '/api/admin/user/recharge-m3'
-      : rechargeModel === 'm4' ? '/api/admin/user/recharge-m4'
-      : '/api/admin/user/recharge-m5';
     try {
-      const r = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ email: rechargeEmail, amount: parseInt(rechargeAmount) }) });
+      const r = await fetch('/api/admin/user/credits', { method: 'POST', headers, body: JSON.stringify({ email: rechargeEmail, delta: parseInt(rechargeAmount) }) });
       const d = await r.json();
-      if (d.success) { showToast('✅ ' + d.message); setRechargeEmail(''); setRechargeAmount(''); loadUsers(); }
+      if (d.success) { showToast(`✅ New balance: ${d.credits_balance}`); setRechargeEmail(''); setRechargeAmount(''); loadUsers(); }
       else showToast('❌ ' + d.error);
     } catch (e) { showToast('❌ ' + e.message); }
   };
@@ -967,17 +959,21 @@ export default function AdminPage() {
     setSaving(false);
   };
 
-  const saveModelAccess = async (model, access, plan) => {
-    if (!editUser) return;
+  const saveCreditsAdjust = async (delta) => {
+    if (!editUser || !delta) return;
     setSaving(true);
     try {
-      const r = await fetch(`/api/admin/user/${model}`, {
+      const r = await fetch('/api/admin/user/credits', {
         method: 'POST', headers,
-        body: JSON.stringify({ email: editUser.email, access: access ? 1 : 0, plan }),
+        body: JSON.stringify({ email: editUser.email, delta: parseInt(delta, 10) }),
       });
       const d = await r.json();
-      if (d.success) { showToast(`✅ Model ${model} updated`); loadUsers(); }
-      else showToast('❌ ' + d.error);
+      if (d.success) {
+        showToast(`✅ Credits updated — new balance: ${d.credits_balance}`);
+        setEditUser(u => u ? { ...u, credits_balance: d.credits_balance } : u);
+        setCreditsDelta('');
+        loadUsers();
+      } else showToast('❌ ' + d.error);
     } catch (e) { showToast('❌ Error: ' + e.message); }
     setSaving(false);
   };
@@ -1107,23 +1103,17 @@ export default function AdminPage() {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input style={{ ...s.input, width: 180 }} placeholder="Search email..." value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadUsers()} />
                 <select style={s.input} value={planFilter} onChange={e => setPlanFilter(e.target.value)}>
-                  <option value="">All plans</option><option value="free">Free</option><option value="pro">Pro</option><option value="plus">Plus</option><option value="max">Max</option><option value="m3_starter">M3 Starter</option><option value="m3_pro">M3 Pro</option><option value="m3_max">M3 Max</option>
+                  <option value="">All plans</option><option value="free">Free</option><option value="paid">Paid</option>
                 </select>
                 <button style={s.btn()} onClick={loadUsers}>🔍 Search</button>
               </div>
             </div>
             {/* Recharge Credits Panel */}
             <div style={{ display:'flex', gap:8, marginBottom:16, background:'#0f0f1a', border:'1px solid #1a1a2e', borderRadius:10, padding:'12px 16px', alignItems:'center', flexWrap:'wrap' }}>
-              <span style={{ fontSize:12, color:'#6b7280', fontWeight:600 }}>🪙 Recharge Credits:</span>
-              <select style={{ ...s.input, width:100 }} value={rechargeModel} onChange={e=>setRechargeModel(e.target.value)}>
-                <option value="m12">M1&2</option>
-                <option value="m3">Model 3</option>
-                <option value="m4">Model 4</option>
-                <option value="m5">Model 5</option>
-              </select>
+              <span style={{ fontSize:12, color:'#6b7280', fontWeight:600 }}>💎 Adjust Credits:</span>
               <input style={{ ...s.input, width:200 }} placeholder="user@email.com" value={rechargeEmail} onChange={e=>setRechargeEmail(e.target.value)} />
-              <input style={{ ...s.input, width:80 }} type="number" placeholder="amount" value={rechargeAmount} onChange={e=>setRechargeAmount(e.target.value)} />
-              <button style={s.btn('#22c55e')} onClick={handleRecharge}>+ Recharge</button>
+              <input style={{ ...s.input, width:100 }} type="number" placeholder="±amount" value={rechargeAmount} onChange={e=>setRechargeAmount(e.target.value)} />
+              <button style={s.btn('#22c55e')} onClick={handleRecharge}>Apply</button>
             </div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
             <div style={{ ...s.card, overflowX:'auto' }}>
@@ -1132,10 +1122,7 @@ export default function AdminPage() {
                   <th style={s.th}>Email</th>
                   <th style={s.th}>Plan</th>
                   <th style={s.th}>Region</th>
-                  <th style={s.th}>M1&2 Credits</th>
-                  <th style={s.th}>M3 Credits</th>
-                  <th style={s.th}>M4 Credits</th>
-                  <th style={s.th}>M5 Credits</th>
+                  <th style={s.th}>Credits Balance</th>
                   <th style={s.th}>Videos</th>
                   <th style={s.th}>Status</th>
                   <th style={s.th}>Joined</th>
@@ -1143,13 +1130,6 @@ export default function AdminPage() {
                 </tr></thead>
                 <tbody>
                   {users.map(u => {
-                    const plan = PLANS[u.plan] || PLANS.free;
-                    const m12used = u.credits_used || 0;
-                    const m12total = plan.credits_weekly || 0;
-                    const m12rem = Math.max(0, m12total - m12used);
-                    const m3rem = Math.max(0, (u.m3_credits_total||0) - (u.m3_credits_used||0));
-                    const m4rem = Math.max(0, (u.m4_credits_total||0) - (u.m4_credits_used||0));
-                    const m5rem = Math.max(0, (u.m5_credits_total||0) - (u.m5_credits_used||0));
                     return (
                       <tr key={u.id} style={{ background: u.banned==1 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
                         <td style={s.td}>
@@ -1170,23 +1150,7 @@ export default function AdminPage() {
                           </span>
                         </td>
                         <td style={s.td}>
-                          <div style={{ fontSize:12, color: m12rem===0?'#ef4444':'#d1d5db' }}>{m12rem}/{m12total}</div>
-                          <div style={{ fontSize:10, color:'#4b5563' }}>used: {m12used}</div>
-                        </td>
-                        <td style={s.td}>
-                          {u.model3_access==1
-                            ? <div><div style={{ fontSize:12, color:m3rem===0?'#ef4444':'#f59e0b' }}>{m3rem} left</div><div style={{ fontSize:10, color:'#4b5563' }}>{u.m3_credits_used||0}/{u.m3_credits_total||0}</div></div>
-                            : <span style={{ color:'#374151', fontSize:11 }}>–</span>}
-                        </td>
-                        <td style={s.td}>
-                          {u.model4_access==1
-                            ? <div><div style={{ fontSize:12, color:m4rem===0?'#ef4444':'#a855f7' }}>{m4rem} left</div><div style={{ fontSize:10, color:'#4b5563' }}>{u.m4_credits_used||0}/{u.m4_credits_total||0}</div></div>
-                            : <span style={{ color:'#374151', fontSize:11 }}>–</span>}
-                        </td>
-                        <td style={s.td}>
-                          {u.model5_access==1
-                            ? <div><div style={{ fontSize:12, color:m5rem===0?'#ef4444':'#e11d48' }}>{m5rem} left</div><div style={{ fontSize:10, color:'#4b5563' }}>{u.m5_credits_used||0}/{u.m5_credits_total||0}</div></div>
-                            : <span style={{ color:'#374151', fontSize:11 }}>–</span>}
+                          <span style={{ fontSize:13, fontWeight:700, color: (u.credits_balance||0)===0 ? '#ef4444' : '#a99bff' }}>💎 {u.credits_balance || 0}</span>
                         </td>
                         <td style={s.td}>{u.total_videos}</td>
                         <td style={s.td}>
@@ -1196,7 +1160,7 @@ export default function AdminPage() {
                         </td>
                         <td style={s.td}>{new Date(u.created_at).toLocaleDateString()}</td>
                         <td style={{ ...s.td, display:'flex', gap:4, flexWrap:'wrap' }}>
-                          <button style={s.btn('#374151')} title="Edit" onClick={() => { setEditUser(u); setEditPlan(u.plan); setEditM3(u.model3_access==1); setEditM3Plan(u.model3_plan||'m3_starter'); setEditM4(u.model4_access==1); setEditM4Plan(u.model4_plan||'m4_plan1'); setEditM5(u.model5_access==1); setEditM5Plan(u.model5_plan||'mc_starter'); }}>✏️</button>
+                          <button style={s.btn('#374151')} title="Edit" onClick={() => { setEditUser(u); setEditPlan(u.plan); }}>✏️</button>
                           <button style={s.btn('#1e3a2f')} disabled={resetingCredits===u.email} title="Reset M1&2 credits" onClick={() => handleResetCredits(u.email)}>
                             {resetingCredits===u.email ? '...' : '🔄'}
                           </button>
@@ -1219,52 +1183,19 @@ export default function AdminPage() {
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Plan</div>
                     <select style={{ ...s.input, width: '100%' }} value={editPlan} onChange={e => setEditPlan(e.target.value)}>
-                      <option value="free">Free</option>
-                      <option value="pro">Pro — 50 EGP / $4</option>
-                      <option value="plus">Plus — 100 EGP / $8</option>
-                      <option value="max">Max — 250 EGP / $13</option>
+                      <option value="free">Free (Model 2 only + watermark)</option>
+                      <option value="paid">Paid (all models unlocked)</option>
                     </select>
                   </div>
-                  {/* Model 3 */}
-                  <div style={{ marginBottom: 12, paddingTop: 12, borderTop: '1px solid #1f2937' }}>
-                    <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6, fontWeight: 700 }}>🖼️ Model 3 — AI Images</div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                      <button onClick={() => setEditM3(!editM3)} style={{ ...s.btn(editM3 ? '#22c55e' : '#374151'), fontSize: 12, padding: '4px 12px' }}>{editM3 ? '✅ Active' : '❌ Inactive'}</button>
-                      {editM3 && <select style={{ ...s.input, flex: 1, fontSize: 12 }} value={editM3Plan} onChange={e => setEditM3Plan(e.target.value)}>
-                        <option value="m3_starter">Starter — 300 EGP / $12</option>
-                        <option value="m3_pro">Pro — 750 EGP / $20</option>
-                        <option value="m3_max">Max — 1400 EGP / $32</option>
-                      </select>}
-                    </div>
-                    <button style={{ ...s.btn('#f59e0b'), fontSize: 11, padding: '4px 10px' }} onClick={() => saveModelAccess('model3', editM3, editM3Plan)} disabled={saving}>Save Model 3</button>
-                  </div>
 
-                  {/* Model 4 */}
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 12, color: '#a855f7', marginBottom: 6, fontWeight: 700 }}>🎬 Model 4 — Seedance AI</div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                      <button onClick={() => setEditM4(!editM4)} style={{ ...s.btn(editM4 ? '#22c55e' : '#374151'), fontSize: 12, padding: '4px 12px' }}>{editM4 ? '✅ Active' : '❌ Inactive'}</button>
-                      {editM4 && <select style={{ ...s.input, flex: 1, fontSize: 12 }} value={editM4Plan} onChange={e => setEditM4Plan(e.target.value)}>
-                        <option value="m4_plan1">Starter — 450 EGP / $15</option>
-                        <option value="m4_plan2">Creator — 800 EGP / $25</option>
-                        <option value="m4_plan3">Pro — 2250 EGP / $55</option>
-                      </select>}
+                  {/* Credits Balance Adjuster */}
+                  <div style={{ marginBottom: 16, paddingTop: 12, borderTop: '1px solid #1f2937' }}>
+                    <div style={{ fontSize: 12, color: '#a99bff', marginBottom: 8, fontWeight: 700 }}>💎 Credits Balance: {editUser.credits_balance || 0}</div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input type="number" placeholder="e.g. 100 or -50" style={{ ...s.input, flex: 1 }} value={creditsDelta} onChange={e => setCreditsDelta(e.target.value)} />
+                      <button style={{ ...s.btn('#7c6af7'), fontSize: 12, padding: '6px 14px' }} onClick={() => saveCreditsAdjust(creditsDelta)} disabled={saving || !creditsDelta}>Apply</button>
                     </div>
-                    <button style={{ ...s.btn('#a855f7'), fontSize: 11, padding: '4px 10px' }} onClick={() => saveModelAccess('model4', editM4, editM4Plan)} disabled={saving}>Save Model 4</button>
-                  </div>
-
-                  {/* Model 5 */}
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 12, color: '#e11d48', marginBottom: 6, fontWeight: 700 }}>🎭 Cinematic — Seedance 2.0</div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                      <button onClick={() => setEditM5(!editM5)} style={{ ...s.btn(editM5 ? '#22c55e' : '#374151'), fontSize: 12, padding: '4px 12px' }}>{editM5 ? '✅ Active' : '❌ Inactive'}</button>
-                      {editM5 && <select style={{ ...s.input, flex: 1, fontSize: 12 }} value={editM5Plan} onChange={e => setEditM5Plan(e.target.value)}>
-                        <option value="mc_starter">Starter — 5×15s — 400 EGP / $20</option>
-                        <option value="mc_pro">Pro — 5×30s — 750 EGP / $35</option>
-                        <option value="mc_max">Max — 5×1min — 1500 EGP / $65</option>
-                      </select>}
-                    </div>
-                    <button style={{ ...s.btn('#e11d48'), fontSize: 11, padding: '4px 10px' }} onClick={() => saveModelAccess('model5', editM5, editM5Plan)} disabled={saving}>Save Cinematic</button>
+                    <p style={{ fontSize: 10, color: '#4b5563', margin: '6px 0 0' }}>موجب = إضافة كريديت، سالب = خصم كريديت</p>
                   </div>
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>

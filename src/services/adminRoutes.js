@@ -120,6 +120,7 @@ router.get('/users', adminAuth, async (req, res) => {
     const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
     const { rows } = await pool.query(`
       SELECT u.id, u.email, u.name, u.plan, u.verified,
+             COALESCE(u.credits_balance, 0) as credits_balance,
              u.model3_access, u.model3_plan, u.model4_access, u.model4_plan,
              u.model5_access, u.model5_plan, u.ref_code, u.created_at,
              u.plan_expires_at,
@@ -127,24 +128,12 @@ router.get('/users', adminAuth, async (req, res) => {
              COALESCE(u.region, 'unknown') as region,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
-             COUNT(v.id) as total_videos,
-             COALESCE(m3c.credits_total, 0) as m3_credits_total,
-             COALESCE(m3c.credits_used, 0) as m3_credits_used,
-             COALESCE(m4c.credits_total, 0) as m4_credits_total,
-             COALESCE(m4c.credits_used, 0) as m4_credits_used,
-             COALESCE(m5c.credits_total, 0) as m5_credits_total,
-             COALESCE(m5c.credits_used, 0) as m5_credits_used
+             COUNT(v.id) as total_videos
       FROM users u
       LEFT JOIN user_usage uu ON uu.user_id = u.id
       LEFT JOIN videos v ON v.user_id = u.id
-      LEFT JOIN model3_credits m3c ON m3c.user_id = u.id
-      LEFT JOIN model4_credits m4c ON m4c.user_id = u.id
-      LEFT JOIN model5_credits m5c ON m5c.user_id = u.id
       ${whereClause}
-      GROUP BY u.id, uu.credits_used, uu.videos_this_week,
-               m3c.credits_total, m3c.credits_used,
-               m4c.credits_total, m4c.credits_used,
-               m5c.credits_total, m5c.credits_used
+      GROUP BY u.id, uu.credits_used, uu.videos_this_week
       ORDER BY u.id DESC
       LIMIT $${idx}
     `, [...params, parseInt(limit)]);
@@ -166,6 +155,23 @@ router.get('/videos', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ── تعديل رصيد كريديت أي عميل يدويًا (دعم فني / مجاملة) ───────────────────
+router.post('/user/credits', adminAuth, async (req, res) => {
+  try {
+    const { email, delta } = req.body;
+    const deltaNum = parseInt(delta, 10);
+    if (!email || !deltaNum) return res.status(400).json({ error: 'email and non-zero delta required' });
+    const { rows } = await pool.query(
+      'UPDATE users SET credits_balance = GREATEST(0, COALESCE(credits_balance, 0) + $1) WHERE email = $2 RETURNING credits_balance',
+      [deltaNum, email]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ success: true, credits_balance: rows[0].credits_balance });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/user/plan', adminAuth, async (req, res) => {
   try {
     const { email, plan, model3_access, model3_plan } = req.body;

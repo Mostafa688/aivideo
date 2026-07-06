@@ -260,15 +260,6 @@ export default function App() {
         const data = await res.json();
         setCredits(data);
         setUserPlan(data.plan || 'free');
-        setModel3Access(data.model3_access === 1 || data.model3_access === true);
-        setModel3Plan(data.model3_plan || 'm3_starter');
-        setModel4Access(data.model4_access === 1 || data.model4_access === true);
-        setModel4Plan(data.model4_plan || 'm4_plan1');
-        setModel4TrialUsed(data.model4_trial_used === 1 || data.model4_trial_used === true);
-        setModel5Access(data.model5_access === 1 || data.model5_access === true);
-        setModel5Plan(data.model5_plan || 'mc_starter');
-        setErivionAccess(data.erivion_access === 1 || data.erivion_access === true);
-        setErivionPlan(data.erivion_plan || null);
         localStorage.setItem('plan', data.plan || 'free');
         if (data.avatar) { setUserAvatar(data.avatar); localStorage.setItem('avatar', data.avatar); }
       }
@@ -410,48 +401,17 @@ export default function App() {
       {/* Right side */}
       <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, marginLeft:'auto' }}>
 
-        {/* M1&2 Credits — desktop only */}
+        {/* رصيد الكريديت الموحد — عداد واحد بس */}
         {credits && (
           <button onClick={fetchCredits} title="Click to refresh" className="header-credits header-credits-full"
-            style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'4px 10px', cursor:'pointer', transition:'all 0.15s' }}
-            onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'}
-            onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.04)'}>
-            <span style={{ fontSize:10, color:'var(--text3)' }}>Credits:</span>
-            <span style={{ fontSize:13, fontWeight:700, color:creditsColor() }}>{formatNumber(credits.remaining)}</span>
-            <span style={{ fontSize:10, color:'var(--text3)' }}>/{formatNumber(credits.limit)}</span>
+            style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(124,106,247,0.08)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:8, padding:'5px 12px', cursor:'pointer', transition:'all 0.15s' }}
+            onMouseEnter={e=>e.currentTarget.style.background='rgba(124,106,247,0.14)'}
+            onMouseLeave={e=>e.currentTarget.style.background='rgba(124,106,247,0.08)'}>
+            <span style={{ fontSize:13 }}>💎</span>
+            <span style={{ fontSize:13, fontWeight:700, color:'#a99bff' }}>{formatNumber(credits.credits_balance ?? 0)}</span>
+            <span style={{ fontSize:10, color:'var(--text3)' }}>credits</span>
           </button>
         )}
-
-        {/* M1&2 Credits — mobile compact */}
-        {credits && (
-          <div className="header-credits-mobile"
-            style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'4px 8px' }}>
-            <span style={{ fontSize:11, fontWeight:700, color:creditsColor() }}>{formatNumber(credits.remaining)}</span>
-            <span style={{ fontSize:9, color:'var(--text3)' }}>cr</span>
-          </div>
-        )}
-
-        {/* Model credits — desktop only */}
-        {credits && model3Access && (() => {
-          const m3cr = credits.model3_credits;
-          const rem = m3cr ? Math.max(0,(m3cr.credits_total||0)-(m3cr.credits_used||0)) : 0;
-          return <div className="header-model-badge" style={{ background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', color:'#f59e0b' }}><span>✨</span><span>{rem}cr</span></div>;
-        })()}
-        {credits && model4Access && (() => {
-          const m4cr = credits.model4_credits;
-          const rem = m4cr ? Math.max(0,(m4cr.credits_total||0)-(m4cr.credits_used||0)) : 0;
-          return <div className="header-model-badge" style={{ background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.25)', color:'#a855f7' }}><span>🎞️</span><span>{rem}cr</span></div>;
-        })()}
-        {credits && model5Access && (() => {
-          const m5cr = credits.model5_credits;
-          const rem = m5cr ? Math.max(0,(m5cr.credits_total||0)-(m5cr.credits_used||0)) : 0;
-          return <div className="header-model-badge" style={{ background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.25)', color:'#e11d48' }}><span>🎭</span><span>{rem}cr</span></div>;
-        })()}
-
-        {/* Plan badge — desktop only */}
-        <div className="header-plan-badge" style={{ background:`${planColor}18`, border:`1px solid ${planColor}40`, color:planColor }}>
-          {userPlan.toUpperCase()}
-        </div>
 
         <UserMenu user={user} plan={userPlan} onLogout={handleLogout} onNavigate={handleNavigate}
           model3Access={model3Access} model4Access={model4Access} model5Access={model5Access} model6Access={model6Access}

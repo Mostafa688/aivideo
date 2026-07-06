@@ -188,47 +188,11 @@ router.post('/save-video', authMiddleware, async (req, res) => {
 
 router.get('/credits', authMiddleware, async (req, res) => {
   try {
-    const credits = await getUserCredits(req.user.userId);
     const user = await getUserById(req.user.userId);
-    const uid = req.user.userId;
-
-    // Model 3 credits
-    const m3plan = user?.model3_plan || 'm3_starter';
-    const model3Credits = user?.model3_access ? await getModel3Credits(uid) : null;
-    const model3Usage = user?.model3_access ? await getModel3Usage(uid) : null;
-
-    // Model 4 credits
-    const m4plan = user?.model4_plan || 'm4_plan1';
-    const model4Credits = user?.model4_access ? await getModel4Credits(uid) : null;
-    const model4Usage = user?.model4_access ? await getModel4Usage(uid) : null;
-
-    // Model 5 credits
-    const m5plan = user?.model5_plan || 'mc_starter';
-    const model5Credits = user?.model5_access ? await getModel5Credits(uid) : null;
-    const model5Usage = user?.model5_access ? await getModel5Usage(uid) : null;
-
+    const balance = await getCreditsBalance(req.user.userId);
     res.json({
-      ...credits,
-      // Model 3
-      model3_access: user?.model3_access || 0,
-      model3_plan: m3plan,
-      model3_credits: model3Credits,
-      model3_usage: model3Usage,
-      model3_trial_used: user?.model3_trial_used || 0,
-      // Model 4
-      model4_access: user?.model4_access || 0,
-      model4_plan: m4plan,
-      model4_credits: model4Credits,
-      model4_usage: model4Usage,
-      model4_trial_used: user?.model4_trial_used || 0,
-      // Model 5
-      model5_access: user?.model5_access || 0,
-      model5_plan: m5plan,
-      model5_credits: model5Credits,
-      model5_usage: model5Usage,
-      // Other
-      erivion_access: user?.erivion_access || 0,
-      erivion_plan: user?.erivion_plan || null,
+      plan: user?.plan || 'free',
+      credits_balance: balance,
       avatar: user?.avatar || null,
       user_name: user?.name || null,
     });
