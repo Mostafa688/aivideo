@@ -11,6 +11,11 @@ const GUMROAD_PACKAGES = [
   { key: 'credits_creator', name: 'Creator', tagline: 'For regular creators', credits: 1400,  usd: 28,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: '⭐', popular: true },
   { key: 'credits_studio',  name: 'Studio',  tagline: 'For heavy usage', credits: 3000,  usd: 60,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: '🏆' },
 ];
+const GUMROAD_MORE_PACKAGES = [
+  { key: 'credits_team',    name: 'Team',    tagline: 'For teams and bulk usage', credits: 6000,  usd: 120, url: 'https://digiwhirl23.gumroad.com/l/vmzubx', color: '#0891b2', icon: '👥' },
+  { key: 'credits_agency',  name: 'Agency',  tagline: 'For agencies at scale', credits: 12000, usd: 240, url: 'https://digiwhirl23.gumroad.com/l/ckvlgo', color: '#f59e0b', icon: '🏢' },
+];
+
 // معدل تحويل تقريبي للدولي: نفس نسبة المصري لكن بالدولار (~$0.02 لكل كريديت، ضعف السعر المصري تقريبًا)
 const USD_PER_CREDIT = 0.02;
 
@@ -245,6 +250,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
   const [egPending, setEgPending] = useState(false);
   const [intlModalPkg, setIntlModalPkg] = useState(null);
   const [studioSliderCredits, setStudioSliderCredits] = useState(3000);
+  const [showMore, setShowMore] = useState(false);
   const [balance, setBalance] = useState(null);
 
   useEffect(() => {
@@ -362,52 +368,68 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
           </div>
         )}
 
-        {/* ══════════════ دولي: باقات Gumroad — نفس تصميم المصري بالظبط ══════════════ */}
+        {/* ══════════════ دولي: باقات Gumroad — أسعار ثابتة (Gumroad ملوش سعر متغير) ══════════════ */}
         {region === 'intl' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
-            {GUMROAD_PACKAGES.map(pkg => {
-              const isLast = pkg.key === 'credits_studio';
-              const displayCredits = isLast ? studioSliderCredits : pkg.credits;
-              const displayUsd = isLast ? Math.round(studioSliderCredits * USD_PER_CREDIT) : pkg.usd;
-              return (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20, marginBottom: 20 }}>
+              {GUMROAD_PACKAGES.map(pkg => (
                 <div key={pkg.key} style={{ position: 'relative', background: '#0e0e16', border: pkg.popular ? `1px solid ${pkg.color}` : '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '30px 26px', display: 'flex', flexDirection: 'column' }}>
                   {pkg.popular && <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', padding: '4px 14px', borderRadius: 999, background: pkg.color, fontSize: 10.5, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', letterSpacing: '0.02em' }}>MOST POPULAR</div>}
                   <div style={{ fontSize: 19, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{pkg.name}</div>
                   <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 22 }}>{pkg.tagline}</div>
 
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 2 }}>
-                    <span style={{ fontSize: 34, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>${displayUsd}</span>
+                    <span style={{ fontSize: 34, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>${pkg.usd}</span>
                   </div>
                   <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
 
-                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: isLast ? 16 : 22 }}>
-                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{displayCredits.toLocaleString()} credits is enough for:</p>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 22 }}>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits is enough for:</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(displayCredits / 5)} videos (Model 2, 30s)</span>
-                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(displayCredits / 100)} videos (Model 4, 30s)</span>
+                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(pkg.credits / 5)} videos (Model 2, 30s)</span>
+                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(pkg.credits / 100)} videos (Model 4, 30s)</span>
                     </div>
                   </div>
 
-                  {isLast && (
-                    <div style={{ marginBottom: 22 }}>
-                      <input type="range" min={3000} max={12000} step={100} value={studioSliderCredits} onChange={e => setStudioSliderCredits(parseInt(e.target.value, 10))}
-                        style={{ width: '100%', accentColor: pkg.color, height: 6, marginBottom: 6 }} />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#4b5563' }}>
-                        <span>3,000</span>
-                        <span>12,000+</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <button onClick={() => setIntlModalPkg({ ...pkg, credits: displayCredits, usd: displayUsd })} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: pkg.popular ? pkg.color : 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
+                  <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: pkg.popular ? pkg.color : 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
                     Get {pkg.name}
                   </button>
 
                   <FeatureList color={pkg.popular ? pkg.color : '#9ca3af'} />
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+
+            <div style={{ textAlign: 'center', marginBottom: showMore ? 20 : 0 }}>
+              <button onClick={() => setShowMore(v => !v)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: '8px 20px', color: '#8b8b96', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+                {showMore ? 'Hide larger plans' : 'More Plans — Team & Agency'}
+              </button>
+            </div>
+
+            {showMore && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
+                {GUMROAD_MORE_PACKAGES.map(pkg => (
+                  <div key={pkg.key} style={{ background: '#0e0e16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '30px 26px', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ fontSize: 19, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{pkg.name}</div>
+                    <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 22 }}>{pkg.tagline}</div>
+                    <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 2, letterSpacing: '-0.02em' }}>${pkg.usd}</div>
+                    <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
+                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 22 }}>
+                      <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits is enough for:</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(pkg.credits / 5)} videos (Model 2, 30s)</span>
+                        <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(pkg.credits / 100)} videos (Model 4, 30s)</span>
+                      </div>
+                    </div>
+                    <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
+                      Get {pkg.name}
+                    </button>
+                    <FeatureList color="#9ca3af" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
