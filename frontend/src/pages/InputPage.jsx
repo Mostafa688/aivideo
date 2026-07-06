@@ -736,14 +736,9 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   const modelLabel = isAI ? '🎨 Model 1 — AI Slices' : '🎬 Model 2 — Pexels Clips';
 
   // ── Plan-based duration locks ─────────────────────────────────────────────
-  const PLAN_DURATIONS = {
-    free:  ['30s'],
-    pro:   ['30s', '1min', '2min'],
-    plus:  ['30s', '1min', '2min', '3min', '4min', '5min'],
-    max:   ['30s', '1min', '2min', '3min', '4min', '5min', '8min', '10min'],
-  };
-  const CREDIT_COSTS_12 = { '30s': 3, 'auto': 3, '1min': 6, '2min': 12, '3min': 18, '4min': 24, '5min': 30, '8min': 48, '10min': 60 };
-  const allowedDurations = PLAN_DURATIONS[userPlan] || PLAN_DURATIONS.free;
+  // ✅ نظام الكريديت الموحد: كل المدد متاحة للجميع، الكريديت هو القيد الوحيد
+  const CREDIT_COSTS_12 = { '30s': 5, 'auto': 5, '1min': 10, '2min': 20, '3min': 30, '4min': 40, '5min': 50, '8min': 80, '10min': 100 };
+  const allowedDurations = Object.keys(CREDIT_COSTS_12);
 
   // ── Script length limit (max ~8 min = ~4800 chars) ─────────────────────────
   const MAX_SCRIPT_CHARS = 4800;
@@ -1072,26 +1067,23 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
                   {/* Custom duration selector */}
                   <div className="dur-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:6 }}>
                     {[
-                      { val:'30s',   label:'30s',  sub:'4 scenes',  cost:3  },
-                      { val:'1min',  label:'1m',   sub:'8 scenes',  cost:6  },
-                      { val:'2min',  label:'2m',   sub:'17 scenes', cost:12 },
-                      { val:'3min',  label:'3m',   sub:'26 scenes', cost:18 },
-                      { val:'5min',  label:'5m',   sub:'42 scenes', cost:30 },
-                      { val:'8min',  label:'8m',   sub:'56 scenes', cost:48 },
-                      { val:'10min', label:'10m',  sub:'70 scenes', cost:60 },
+                      { val:'30s',   label:'30s',  sub:'4 scenes',  cost:5  },
+                      { val:'1min',  label:'1m',   sub:'8 scenes',  cost:10 },
+                      { val:'2min',  label:'2m',   sub:'17 scenes', cost:20 },
+                      { val:'3min',  label:'3m',   sub:'26 scenes', cost:30 },
+                      { val:'5min',  label:'5m',   sub:'42 scenes', cost:50 },
+                      { val:'8min',  label:'8m',   sub:'56 scenes', cost:80 },
+                      { val:'10min', label:'10m',  sub:'70 scenes', cost:100 },
                     ].map(d => {
-                      const isAllowed = allowedDurations.includes(d.val);
                       const isActive = (mode==='script'&&script.length>20?getSmartDuration():duration)===d.val;
                       return (
                         <div key={d.val}
-                          className={`dur-option${isActive&&isAllowed?' active':''}`}
-                          onClick={() => isAllowed ? setDuration(d.val) : null}
-                          style={{ opacity: isAllowed ? 1 : 0.4, cursor: isAllowed ? 'pointer' : 'not-allowed', position:'relative' }}>
-                          {!isAllowed && <div style={{ position:'absolute', top:4, right:4, fontSize:9 }}>🔒</div>}
-                          <div style={{ fontSize:13, fontWeight:700, color:isActive&&isAllowed ? accentColor : isAllowed ? '#fff' : '#6b7280', fontFamily:"'DM Sans', sans-serif" }}>{d.label}</div>
-                          <div style={{ fontSize:9, color: isAllowed ? 'rgba(255,255,255,0.3)' : '#374151', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>{d.sub}</div>
-                          {isAllowed && <div style={{ fontSize:8, color: accentColor, fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>{d.cost}cr</div>}
-                          {!isAllowed && <div style={{ fontSize:8, color:'#374151', fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>Upgrade</div>}
+                          className={`dur-option${isActive?' active':''}`}
+                          onClick={() => setDuration(d.val)}
+                          style={{ cursor:'pointer' }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:isActive ? accentColor : '#fff', fontFamily:"'DM Sans', sans-serif" }}>{d.label}</div>
+                          <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>{d.sub}</div>
+                          <div style={{ fontSize:8, color: accentColor, fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>{d.cost}cr</div>
                         </div>
                       );
                     })}

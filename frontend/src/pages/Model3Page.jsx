@@ -22,10 +22,10 @@ const VIDEO_LANGUAGES = [
 const RATIOS = ['9:16', '16:9', '1:1'];
 
 const ALL_DURATIONS = [
-  { value: '30s',  label: '30 seconds', images: 3,  plans: ['m3_starter','m3_pro','m3_max'] },
-  { value: '1min', label: '1 minute',   images: 6,  plans: ['m3_starter','m3_pro','m3_max'] },
-  { value: '3min', label: '3 minutes',  images: 18, plans: ['m3_pro','m3_max'] },
-  { value: '5min', label: '5 minutes',  images: 30, plans: ['m3_max'] },
+  { value: '30s',  label: '30 seconds', images: 3,  credits: 20 },
+  { value: '1min', label: '1 minute',   images: 6,  credits: 40 },
+  { value: '3min', label: '3 minutes',  images: 18, credits: 120 },
+  { value: '5min', label: '5 minutes',  images: 30, credits: 200 },
 ];
 
 const VIDEO_STYLES = [
@@ -89,23 +89,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
   const [renderStatus, setRenderStatus] = useState('');
   const [videoUrl, setVideoUrl]     = useState(null);
   const [error, setError]           = useState('');
-  const [usage, setUsage]           = useState(null);
-  const [quotas, setQuotas]         = useState(null);
-  const [trialUsed, setTrialUsed]   = useState(false);
-  const [isTrial, setIsTrial]       = useState(false);
   const [creditCost, setCreditCost] = useState(5);
   const pollRef                     = useRef(null);
-
-  useEffect(() => {
-    fetch('/api/auth/credits', { headers: { Authorization: 'Bearer ' + localStorage.getItem('token') } })
-      .then(r => r.json())
-      .then(d => {
-        setUsage(d.model3_usage);
-        setQuotas(d.model3_quotas);
-        setTrialUsed(d.model3_trial_used === 1 || d.model3_trial_used === true);
-      })
-      .catch(() => {});
-  }, []);
 
   // fetch credit cost when duration changes
   useEffect(() => {
@@ -114,17 +99,10 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
       .then(r => r.json()).then(d => setCreditCost(d.creditCost || 5)).catch(() => {});
   }, [duration, inputMode, script]);
 
-  const DURATIONS = ALL_DURATIONS.filter(d => d.plans.includes(model3Plan));
+  const DURATIONS = ALL_DURATIONS;
   const selectedDuration = ALL_DURATIONS.find(d => d.value === duration);
   const imageCount       = selectedDuration?.images || 3;
   const selectedStyle    = VIDEO_STYLES.find(s => s.key === videoStyle);
-
-  // لو مش مشترك — بس 30s متاح للـ trial
-  const hasAccess = model3Access === true || model3Access === 1;
-  const canUseDuration = (d) => {
-    if (hasAccess) return ALL_DURATIONS.find(dur => dur.value === d)?.plans.includes(model3Plan);
-    return d === '30s' && !trialUsed; // trial = 30s only
-  };
 
   const MAX_SCRIPT_CHARS = 3000; // max = 5min
 
@@ -200,7 +178,6 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         }
         throw new Error(renderData.error || 'Render failed');
       }
-      setIsTrial(renderData.is_trial || false);
       const newJobId = renderData.jobId;
       setRenderStatus('AI is generating images... This takes 5-15 minutes.');
 
@@ -264,38 +241,14 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           </div>
         </div>
 
-        {/* Trial Banners */}
-        {!hasAccess && !trialUsed && (
-          <div style={{ marginBottom:16, background:'linear-gradient(135deg,rgba(245,158,11,0.1),rgba(239,68,68,0.07))', border:'1px solid rgba(245,158,11,0.25)', borderRadius:14, padding:'14px 18px', display:'flex', alignItems:'center', gap:14 }}>
-            <div style={{ width:40, height:40, borderRadius:12, background:'rgba(245,158,11,0.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🎁</div>
-            <div>
-              <p style={{ margin:0, fontSize:13, fontWeight:700, color:'#f59e0b' }}>Free Trial Available</p>
-              <p style={{ margin:'2px 0 0', fontSize:12, color:'rgba(255,255,255,0.4)' }}>Generate 1 free 30s video — no payment needed · Idea mode only</p>
-            </div>
-          </div>
-        )}
-        {!hasAccess && trialUsed && (
-          <div style={{ marginBottom:16, background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:14, padding:'14px 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:40, height:40, borderRadius:12, background:'rgba(239,68,68,0.12)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🔒</div>
-              <div>
-                <p style={{ margin:0, fontSize:13, fontWeight:700, color:'#fff' }}>Trial Completed</p>
-                <p style={{ margin:'2px 0 0', fontSize:12, color:'rgba(255,255,255,0.4)' }}>Subscribe to generate unlimited videos</p>
-              </div>
-            </div>
-            <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ background:'linear-gradient(135deg,#f59e0b,#ef4444)', color:'#fff', border:'none', borderRadius:10, padding:'9px 18px', fontWeight:700, fontSize:12, cursor:'pointer', whiteSpace:'nowrap', boxShadow:'0 4px 12px rgba(245,158,11,0.3)' }}>Upgrade →</button>
-          </div>
-        )}
-
         {/* Mode Tabs */}
         <div style={{ display:'flex', gap:6, marginBottom:16 }}>
           {[['idea','💡','Idea'],['script','📝','Script'],['voice','🎙️','Voice']].map(([m,ic,label]) => {
-            const locked = !hasAccess && trialUsed && m !== 'idea';
             const active = inputMode === m;
             return (
-              <button key={m} onClick={() => { if (locked) { (onNavigate && onNavigate('pricing')); return; } setInputMode(m); }}
-                style={{ flex:1, padding:'11px 8px', borderRadius:12, border:`1px solid ${active?'#f59e0b':'rgba(255,255,255,0.08)'}`, fontWeight:600, fontSize:13, cursor:'pointer', transition:'all 0.2s', background: active ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)', color: active ? '#f59e0b' : locked ? '#374151' : 'rgba(255,255,255,0.5)', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                <span style={{ fontSize:16 }}>{locked?'🔒':ic}</span>
+              <button key={m} onClick={() => setInputMode(m)}
+                style={{ flex:1, padding:'11px 8px', borderRadius:12, border:`1px solid ${active?'#f59e0b':'rgba(255,255,255,0.08)'}`, fontWeight:600, fontSize:13, cursor:'pointer', transition:'all 0.2s', background: active ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)', color: active ? '#f59e0b' : 'rgba(255,255,255,0.5)', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                <span style={{ fontSize:16 }}>{ic}</span>
                 <span style={{ fontSize:11 }}>{label}</span>
               </button>
             );
@@ -373,20 +326,14 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
             </div>
           )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, opacity: (inputMode === 'script' || inputMode === 'voice') && script.length > 20 ? 0.4 : 1, pointerEvents: (inputMode === 'script' || inputMode === 'voice') && script.length > 20 ? 'none' : 'auto' }}>
-            {ALL_DURATIONS.map(d => {
-              const allowed = canUseDuration(d.value);
-              const isTrial30 = !hasAccess && !trialUsed && d.value === '30s';
-              return (
-                <div key={d.value} onClick={() => allowed ? setDuration(d.value) : (onNavigate && onNavigate('pricing'))}
-                  style={{ padding:'16px', borderRadius:12, cursor: allowed ? 'pointer' : 'pointer', textAlign:'center', border:'1px solid ' + (duration === d.value && allowed ? '#f59e0b' : allowed ? 'var(--border)' : 'var(--border)'), background: duration === d.value && allowed ? 'rgba(245,158,11,0.08)' : 'var(--bg3)', opacity: allowed ? 1 : 0.4, position:'relative' }}>
-                  {!allowed && <div style={{ position:'absolute', top:8, right:8, fontSize:12 }}>🔒</div>}
-                  <div style={{ fontSize:16, fontWeight:800, color: duration === d.value && allowed ? '#f59e0b' : allowed ? 'var(--text)' : 'var(--text3)', marginBottom:2 }}>{d.label}</div>
-                  <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{d.images} AI images</div>
-                  {isTrial30 && <div style={{ fontSize:10, color:'#f59e0b', fontWeight:700 }}>FREE TRIAL</div>}
-                  {!allowed && <div style={{ fontSize:10, color:'#ef4444', fontWeight:600 }}>Upgrade required</div>}
-                </div>
-              );
-            })}
+            {ALL_DURATIONS.map(d => (
+              <div key={d.value} onClick={() => setDuration(d.value)}
+                style={{ padding:'16px', borderRadius:12, cursor:'pointer', textAlign:'center', border:'1px solid ' + (duration === d.value ? '#f59e0b' : 'var(--border)'), background: duration === d.value ? 'rgba(245,158,11,0.08)' : 'var(--bg3)' }}>
+                <div style={{ fontSize:16, fontWeight:800, color: duration === d.value ? '#f59e0b' : 'var(--text)', marginBottom:2 }}>{d.label}</div>
+                <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{d.images} AI images</div>
+                <div style={{ fontSize:10, color:'#a99bff', fontWeight:700 }}>🪙 {d.credits} credits</div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -471,24 +418,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           </div>
         )}
 
-        {/* Quota / Trial status */}
-        {hasAccess && usage && quotas && (() => {
-          const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : duration === '3min' ? 'videos_3min' : 'videos_5min';
-          const quota = quotas[duration] || 0;
-          const used = usage[col] || 0;
-          if (quota === 0) return <div style={{ padding:'12px 16px', borderRadius:10, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontSize:13, marginBottom:16, textAlign:'center' }}>
-            🔒 {duration} not available on your plan — <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontWeight:700, textDecoration:'underline', fontSize:13 }}>Upgrade now</button>
-          </div>;
-          if (used >= quota) return <div style={{ padding:'12px 16px', borderRadius:10, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontSize:13, marginBottom:16, textAlign:'center' }}>
-            ⚠️ Quota used ({used}/{quota} {duration} videos) — <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ background:'none', border:'none', color:'#f59e0b', cursor:'pointer', fontWeight:700, textDecoration:'underline', fontSize:13 }}>Subscribe again or upgrade</button>
-          </div>;
-          return <div style={{ padding:'8px 14px', borderRadius:8, background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', fontSize:12, color:'#22c55e', marginBottom:12, textAlign:'center' }}>
-            Remaining: {quota - used} {duration} videos
-          </div>;
-        })()}
-
         {/* Credit cost badge */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:10 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:16 }}>
           <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(245,158,11,0.12)', border:'1px solid rgba(245,158,11,0.3)', fontSize:12, fontWeight:700, color:'#f59e0b' }}>
             🪙 {creditCost} credits per video
           </div>
@@ -498,21 +429,10 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         </div>
 
         {/* CTA */}
-        {!hasAccess && trialUsed ? (
-          <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background:'linear-gradient(135deg, #f59e0b, #ef4444)', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 4px 20px rgba(245,158,11,0.3)' }}>
-            🚀 Subscribe to Generate More Videos →
-          </button>
-        ) : (
-          <button onClick={generateScenes} disabled={generating || !canSubmit || inputMode === 'voice' || (() => {
-            if (hasAccess && usage && quotas) {
-              const col = duration === '30s' ? 'videos_30s' : duration === '1min' ? 'videos_1min' : duration === '3min' ? 'videos_3min' : 'videos_5min';
-              return (quotas[duration] || 0) === 0 || (usage[col] || 0) >= (quotas[duration] || 0);
-            }
-            return false;
-          })()} style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background: generating || !canSubmit ? 'var(--bg3)' : 'linear-gradient(135deg, #f59e0b, #ef4444)', color: generating || !canSubmit ? 'var(--text3)' : '#fff', fontWeight:700, fontSize:15, cursor: generating || !canSubmit ? 'not-allowed' : 'pointer', boxShadow: canSubmit ? '0 4px 20px rgba(245,158,11,0.3)' : 'none', transition:'all 0.15s' }}>
-            {generating ? '⏳ Generating scenes...' : !hasAccess && !trialUsed ? `🎁 Try Free — Generate ${imageCount} Scenes →` : `✨ Generate ${imageCount} Scenes — ${creditCost} Credits →`}
-          </button>
-        )}
+        <button onClick={generateScenes} disabled={generating || !canSubmit || inputMode === 'voice'}
+          style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background: generating || !canSubmit ? 'var(--bg3)' : 'linear-gradient(135deg, #f59e0b, #ef4444)', color: generating || !canSubmit ? 'var(--text3)' : '#fff', fontWeight:700, fontSize:15, cursor: generating || !canSubmit ? 'not-allowed' : 'pointer', boxShadow: canSubmit ? '0 4px 20px rgba(245,158,11,0.3)' : 'none', transition:'all 0.15s' }}>
+          {generating ? '⏳ Generating scenes...' : `✨ Generate ${imageCount} Scenes — ${creditCost} Credits →`}
+        </button>
 
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:12 }}>
           Grok Imagine · {selectedStyle?.emoji} {selectedStyle?.label} · Ken Burns zoom · FFmpeg render
@@ -598,25 +518,15 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', fontSize:12, color:'rgba(255,255,255,0.5)', fontWeight:600 }}>{selectedDuration?.label}</span>
           <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', fontSize:12, color:'rgba(255,255,255,0.5)', fontWeight:600 }}>{scenes.length} images</span>
         </div>
-        {isTrial && (
-          <div style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:12, padding:'12px 20px', marginBottom:20, fontSize:13, color:'#f59e0b', lineHeight:1.6 }}>
-            ✨ Free trial video complete. Subscribe for unlimited creation.
-          </div>
-        )}
         {videoUrl && (
           <div style={{ borderRadius:18, overflow:'hidden', border:'1px solid rgba(255,255,255,0.08)', marginBottom:20, background:'#000', boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }}>
             <video src={videoUrl} controls style={{ width:'100%', maxHeight:420, display:'block' }} />
           </div>
         )}
-        <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap', marginBottom: isTrial ? 14 : 0 }}>
+        <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
           {videoUrl && <a href={videoUrl} download style={{ padding:'13px 28px', borderRadius:12, background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#fff', fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(34,197,94,0.35)', display:'flex', alignItems:'center', gap:8 }}>⬇️ Download</a>}
           <button onClick={() => { setStep('setup'); setIdea(''); setScript(''); setScenes([]); setVideoUrl(null); setVoiceAudioUrl(null); }} style={{ padding:'13px 28px', borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'rgba(255,255,255,0.7)', fontWeight:600, fontSize:14, cursor:'pointer' }}>🔄 New Video</button>
         </div>
-        {isTrial && (
-          <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ width:'100%', background:'linear-gradient(135deg,#f59e0b,#ef4444)', color:'#fff', border:'none', borderRadius:14, padding:'15px', fontWeight:800, fontSize:16, cursor:'pointer', boxShadow:'0 6px 24px rgba(245,158,11,0.4)', marginTop:4 }}>
-            🚀 Subscribe to Create More →
-          </button>
-        )}
       </div>
     </div>
   );

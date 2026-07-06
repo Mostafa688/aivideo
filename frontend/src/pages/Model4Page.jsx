@@ -247,12 +247,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
     } catch (e) { setError(e.message); setStep('scenes'); } finally { setLoading(false); }
   };
 
-  const allowedDurations = model4Access
-    ? Object.keys(DURATION_CONFIG).filter(d => {
-        const k = d === '30s' ? 'videos_30s' : d === '1min' ? 'videos_1min' : 'videos_3min';
-        return (planData[k] || 0) > 0;
-      })
-    : [];
+  const allowedDurations = Object.keys(DURATION_CONFIG);
 
   // ── Done ──────────────────────────────────────────────────────────────
   if (step === 'done' && videoUrl) {
@@ -385,7 +380,6 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
         <div style={{ maxWidth:680, margin:'0 auto', position:'relative' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
             <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, padding:'8px 14px' }}>← Models</button>
-            {model4Access && <div style={{ padding:'6px 14px', borderRadius:999, background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', fontSize:12, color:'#4ade80', fontWeight:700 }}>✓ {planData.name} Active</div>}
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:16 }}>
             <div style={{ width:56, height:56, borderRadius:18, background:'linear-gradient(135deg,#a855f7,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0, boxShadow:'0 6px 24px rgba(168,85,247,0.45)' }}>🎞️</div>
@@ -402,42 +396,14 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
 
       <div style={{ maxWidth:680, margin:'0 auto', padding:'24px clamp(16px,4vw,24px) 0', animation:'fadeUp 0.4s ease' }}>
 
-        {/* Usage Counter */}
-        {usage && usage.access && (
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px 16px', marginBottom: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Monthly Usage</p>
-              <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ fontSize: 11, fontWeight: 700, color: '#a855f7', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>+ Get More Videos</button>
-            </div>
-            <UsageBar label="30-second videos" used={usage.usage?.videos_30s || 0} quota={usage.quota?.videos_30s || 0} />
-            <UsageBar label="1-minute videos" used={usage.usage?.videos_1min || 0} quota={usage.quota?.videos_1min || 0} />
-            <UsageBar label="3-minute videos" used={usage.usage?.videos_3min || 0} quota={usage.quota?.videos_3min || 0} />
-            {(() => {
-              const q30 = usage.quota?.videos_30s || 0, q1 = usage.quota?.videos_1min || 0, q3 = usage.quota?.videos_3min || 0;
-              const u30 = usage.usage?.videos_30s || 0, u1 = usage.usage?.videos_1min || 0, u3 = usage.usage?.videos_3min || 0;
-              const allUsed = (q30 === 0 || u30 >= q30) && (q1 === 0 || u1 >= q1) && (q3 === 0 || u3 >= q3);
-              if (!allUsed) return null;
-              return (
-                <div style={{ marginTop: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 600 }}>⚠️ All videos used for this plan</span>
-                  <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Subscribe Again →</button>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
         {/* Mode Tabs */}
         <div style={{ display: 'flex', gap: 0, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 4, marginBottom: 24 }}>
-          {[{ key: 'idea', icon: '💡', label: 'Idea', needsSub: false }, { key: 'script', icon: '📝', label: 'Script', needsSub: true }, { key: 'voice', icon: '🎙️', label: 'Voice', needsSub: true }].map(m => {
-            const locked = m.needsSub && !model4Access;
-            return (
-              <button key={m.key} onClick={() => { if (locked) { (onNavigate && onNavigate('pricing')); return; } setMode(m.key); }} className="m4-tab"
-                style={{ flex: 1, padding: '11px 8px', borderRadius: 10, border: 'none', background: mode === m.key ? 'linear-gradient(135deg,#a855f7,#7c3aed)' : 'transparent', color: mode === m.key ? '#fff' : locked ? '#374151' : '#4b5563', fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s', boxShadow: mode === m.key ? '0 2px 12px rgba(168,85,247,0.4)' : 'none' }}>
-                {locked ? '🔒 ' : m.icon + ' '}{m.label}
-              </button>
-            );
-          })}
+          {[{ key: 'idea', icon: '💡', label: 'Idea' }, { key: 'script', icon: '📝', label: 'Script' }, { key: 'voice', icon: '🎙️', label: 'Voice' }].map(m => (
+            <button key={m.key} onClick={() => setMode(m.key)} className="m4-tab"
+              style={{ flex: 1, padding: '11px 8px', borderRadius: 10, border: 'none', background: mode === m.key ? 'linear-gradient(135deg,#a855f7,#7c3aed)' : 'transparent', color: mode === m.key ? '#fff' : '#4b5563', fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s', boxShadow: mode === m.key ? '0 2px 12px rgba(168,85,247,0.4)' : 'none' }}>
+              {m.icon} {m.label}
+            </button>
+          ))}
         </div>
 
         {/* Input */}
@@ -582,15 +548,9 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
         </div>
 
         {/* CTA */}
-        {!model4Access ? (
-          <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ width: '100%', background: 'linear-gradient(135deg,#a855f7,#7c3aed)', color: '#fff', border: 'none', borderRadius: 12, padding: '15px', fontWeight: 800, fontSize: 16, cursor: 'pointer', boxShadow: '0 4px 24px rgba(168,85,247,0.4)' }}>
-            🚀 Subscribe to Get Started →
-          </button>
-        ) : (
-          <button onClick={handleGenerateScenes} disabled={!canGenerate} style={{ width: '100%', background: !canGenerate ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg,#a855f7,#7c3aed)', color: !canGenerate ? '#374151' : '#fff', border: 'none', borderRadius: 12, padding: '15px', fontWeight: 800, fontSize: 16, cursor: !canGenerate ? 'not-allowed' : 'pointer', boxShadow: canGenerate ? '0 4px 24px rgba(168,85,247,0.4)' : 'none', transition: 'all 0.2s' }}>
-            {loading ? '⏳ Generating...' : `✨ Generate Scenes — ${creditCost} Credits →`}
-          </button>
-        )}
+        <button onClick={handleGenerateScenes} disabled={!canGenerate} style={{ width: '100%', background: !canGenerate ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg,#a855f7,#7c3aed)', color: !canGenerate ? '#374151' : '#fff', border: 'none', borderRadius: 12, padding: '15px', fontWeight: 800, fontSize: 16, cursor: !canGenerate ? 'not-allowed' : 'pointer', boxShadow: canGenerate ? '0 4px 24px rgba(168,85,247,0.4)' : 'none', transition: 'all 0.2s' }}>
+          {loading ? '⏳ Generating...' : `✨ Generate Scenes — ${creditCost} Credits →`}
+        </button>
 
         <p style={{ textAlign: 'center', fontSize: 11, color: '#1f2937', marginTop: 12 }}>Powered by Seedance v1 Pro · Replicate API · FFmpeg</p>
       </div>

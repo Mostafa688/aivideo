@@ -260,24 +260,10 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
             </div>
           </div>
 
-          {usage?.access && (
-            <div style={{ marginTop:16, background:'rgba(0,0,0,0.3)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:12, padding:'12px 16px', display:'flex', gap:16, alignItems:'center', flexWrap:'wrap' }}>
-              {[{label:'15s',used:usage.usage?.videos_15s||0,quota:usage.quota?.videos_15s||0},{label:'30s',used:usage.usage?.videos_30s||0,quota:usage.quota?.videos_30s||0},{label:'1min',used:usage.usage?.videos_1min||0,quota:usage.quota?.videos_1min||0}].filter(u=>u.quota>0).map(u=>{
-                const pct=Math.min((u.used/u.quota)*100,100);
-                const color=pct>=100?'#ef4444':pct>=70?'#f59e0b':'#22c55e';
-                return (
-                  <div key={u.label} style={{ flex:1, minWidth:100 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                      <span style={{ fontSize:11, color:'#6b7280' }}>{u.label} videos</span>
-                      <span style={{ fontSize:11, fontWeight:700, color }}>{u.used}/{u.quota}</span>
-                    </div>
-                    <div style={{ height:4, background:'rgba(255,255,255,0.06)', borderRadius:99, overflow:'hidden' }}>
-                      <div style={{ width:pct+'%', height:'100%', background:`linear-gradient(90deg,${color},${color}88)`, borderRadius:99 }} />
-                    </div>
-                  </div>
-                );
-              })}
-              <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ fontSize:11, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'5px 12px', cursor:'pointer' }}>+ Get More</button>
+          {usage?.access && usage.credits_balance != null && (
+            <div style={{ marginTop:16, background:'rgba(0,0,0,0.3)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:12, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span style={{ fontSize:12, color:'#9ca3af' }}>💎 Credits balance: <strong style={{ color:'#fb7185' }}>{usage.credits_balance.toLocaleString()}</strong></span>
+              <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ fontSize:11, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'5px 12px', cursor:'pointer' }}>+ Top Up</button>
             </div>
           )}
         </div>
@@ -360,17 +346,13 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         <div style={{ marginBottom:22 }}>
           <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>⏱ Duration</label>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            {[{value:'15s',label:'15 Seconds',scenes:3},{value:'30s',label:'30 Seconds',scenes:6},{value:'1min',label:'1 Minute',scenes:12}].map(d => {
-              const allowed = model5Access?(d.value==='15s'?(usage?.quota?.videos_15s||0)>0:d.value==='30s'?(usage?.quota?.videos_30s||0)>0:(usage?.quota?.videos_1min||0)>0):d.value==='15s';
-              return (
-                <div key={d.value} onClick={()=>allowed&&setDuration(d.value)}
-                  style={{ borderRadius:14, padding:'18px 16px', textAlign:'center', cursor:allowed?'pointer':'not-allowed', border:`2px solid ${duration===d.value&&allowed?'#e11d48':'rgba(255,255,255,0.07)'}`, background:duration===d.value&&allowed?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', opacity:allowed?1:0.35, transition:'all 0.15s', position:'relative', boxShadow:duration===d.value&&allowed?'0 0 20px rgba(225,29,72,0.2)':'none' }}>
-                  {!allowed && <div style={{ position:'absolute', top:8, right:10, fontSize:12 }}>🔒</div>}
-                  <p style={{ margin:'0 0 4px', fontSize:18, fontWeight:900, color:duration===d.value&&allowed?'#fb7185':'#fff' }}>{d.label}</p>
-                  <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{d.scenes} cinematic scenes</p>
-                </div>
-              );
-            })}
+            {[{value:'15s',label:'15 Seconds',scenes:3},{value:'30s',label:'30 Seconds',scenes:6},{value:'1min',label:'1 Minute',scenes:12}].map(d => (
+              <div key={d.value} onClick={()=>setDuration(d.value)}
+                style={{ borderRadius:14, padding:'18px 16px', textAlign:'center', cursor:'pointer', border:`2px solid ${duration===d.value?'#e11d48':'rgba(255,255,255,0.07)'}`, background:duration===d.value?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', transition:'all 0.15s', boxShadow:duration===d.value?'0 0 20px rgba(225,29,72,0.2)':'none' }}>
+                <p style={{ margin:'0 0 4px', fontSize:18, fontWeight:900, color:duration===d.value?'#fb7185':'#fff' }}>{d.label}</p>
+                <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{d.scenes} cinematic scenes</p>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -386,15 +368,9 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
 
         {error && <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:12, padding:14, marginBottom:16, color:'#ef4444', fontSize:13 }}>{error}</div>}
 
-        {!model5Access ? (
-          <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ width:'100%', background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:'pointer', boxShadow:'0 6px 32px rgba(225,29,72,0.45)' }}>
-            🎬 Subscribe to Get Started →
-          </button>
-        ) : (
-          <button onClick={handleGenerate} disabled={loading||!idea.trim()} style={{ width:'100%', background:loading||!idea.trim()?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:loading||!idea.trim()?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:loading||!idea.trim()?'not-allowed':'pointer', boxShadow:idea.trim()?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
-            {loading?'⏳ Generating Scenes...':`🎬 Generate ${sceneCount} Cinematic Scenes →`}
-          </button>
-        )}
+        <button onClick={handleGenerate} disabled={loading||!idea.trim()} style={{ width:'100%', background:loading||!idea.trim()?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:loading||!idea.trim()?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:loading||!idea.trim()?'not-allowed':'pointer', boxShadow:idea.trim()?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
+          {loading?'⏳ Generating Scenes...':`🎬 Generate ${sceneCount} Cinematic Scenes →`}
+        </button>
 
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.15)', marginTop:14 }}>Seedance v1 Pro · Groq AI · Character consistency · No voiceover</p>
       </div>
