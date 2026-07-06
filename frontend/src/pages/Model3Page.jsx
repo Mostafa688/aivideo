@@ -71,7 +71,7 @@ function SceneEditor({ scenes, onChange }) {
   );
 }
 
-export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Access = false, onNavigate }) {
+export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Access = false, userPlan = 'free', onNavigate }) {
   const [step, setStep]             = useState('setup');
   const [inputMode, setInputMode]   = useState('idea');
   const [idea, setIdea]             = useState('');
@@ -130,6 +130,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
     : script.trim().length > 30) && !scriptOverLimit;
 
   const generateScenes = async () => {
+    if (userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
     setGenerating(true); setError('');
     try {
       const res = await fetch('/api/model3/generate-scenes', {
@@ -326,14 +327,18 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
             </div>
           )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, opacity: (inputMode === 'script' || inputMode === 'voice') && script.length > 20 ? 0.4 : 1, pointerEvents: (inputMode === 'script' || inputMode === 'voice') && script.length > 20 ? 'none' : 'auto' }}>
-            {ALL_DURATIONS.map(d => (
-              <div key={d.value} onClick={() => setDuration(d.value)}
-                style={{ padding:'16px', borderRadius:12, cursor:'pointer', textAlign:'center', border:'1px solid ' + (duration === d.value ? '#f59e0b' : 'var(--border)'), background: duration === d.value ? 'rgba(245,158,11,0.08)' : 'var(--bg3)' }}>
-                <div style={{ fontSize:16, fontWeight:800, color: duration === d.value ? '#f59e0b' : 'var(--text)', marginBottom:2 }}>{d.label}</div>
-                <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{d.images} AI images</div>
-                <div style={{ fontSize:10, color:'#a99bff', fontWeight:700 }}>🪙 {d.credits} credits</div>
-              </div>
-            ))}
+            {ALL_DURATIONS.map(d => {
+              const allowed = userPlan !== 'free';
+              return (
+                <div key={d.value} onClick={() => allowed ? setDuration(d.value) : (onNavigate && onNavigate('pricing'))}
+                  style={{ padding:'16px', borderRadius:12, cursor:'pointer', textAlign:'center', border:'1px solid ' + (duration === d.value && allowed ? '#f59e0b' : 'var(--border)'), background: duration === d.value && allowed ? 'rgba(245,158,11,0.08)' : 'var(--bg3)', opacity: allowed ? 1 : 0.5, position:'relative' }}>
+                  {!allowed && <div style={{ position:'absolute', top:8, right:8, fontSize:12 }}>🔒</div>}
+                  <div style={{ fontSize:16, fontWeight:800, color: duration === d.value && allowed ? '#f59e0b' : allowed ? 'var(--text)' : 'var(--text3)', marginBottom:2 }}>{d.label}</div>
+                  <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{d.images} AI images</div>
+                  {allowed ? <div style={{ fontSize:10, color:'#a99bff', fontWeight:700 }}>🪙 {d.credits} credits</div> : <div style={{ fontSize:9, color:'#ef4444', fontWeight:700 }}>Subscribe to unlock</div>}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -429,9 +434,9 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         </div>
 
         {/* CTA */}
-        <button onClick={generateScenes} disabled={generating || !canSubmit || inputMode === 'voice'}
-          style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background: generating || !canSubmit ? 'var(--bg3)' : 'linear-gradient(135deg, #f59e0b, #ef4444)', color: generating || !canSubmit ? 'var(--text3)' : '#fff', fontWeight:700, fontSize:15, cursor: generating || !canSubmit ? 'not-allowed' : 'pointer', boxShadow: canSubmit ? '0 4px 20px rgba(245,158,11,0.3)' : 'none', transition:'all 0.15s' }}>
-          {generating ? '⏳ Generating scenes...' : `✨ Generate ${imageCount} Scenes — ${creditCost} Credits →`}
+        <button onClick={() => userPlan === 'free' ? (onNavigate && onNavigate('pricing')) : generateScenes()} disabled={userPlan !== 'free' && (generating || !canSubmit || inputMode === 'voice')}
+          style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background: (userPlan !== 'free' && (generating || !canSubmit)) ? 'var(--bg3)' : 'linear-gradient(135deg, #f59e0b, #ef4444)', color: (userPlan !== 'free' && (generating || !canSubmit)) ? 'var(--text3)' : '#fff', fontWeight:700, fontSize:15, cursor: (userPlan !== 'free' && (generating || !canSubmit)) ? 'not-allowed' : 'pointer', boxShadow: canSubmit ? '0 4px 20px rgba(245,158,11,0.3)' : 'none', transition:'all 0.15s' }}>
+          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : generating ? '⏳ Generating scenes...' : `✨ Generate ${imageCount} Scenes — ${creditCost} Credits →`}
         </button>
 
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:12 }}>

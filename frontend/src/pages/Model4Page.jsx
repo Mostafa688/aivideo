@@ -107,7 +107,7 @@ function EditableSceneCard({ scene, index, onChange }) {
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────
-export default function Model4Page({ onBack, model4Plan, model4Access, onNavigate }) {
+export default function Model4Page({ onBack, model4Plan, model4Access, userPlan = 'free', onNavigate }) {
   const [mode, setMode] = useState('idea');
   const [idea, setIdea] = useState('');
   const [script, setScript] = useState('');
@@ -186,6 +186,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
   };
 
   const handleGenerateScenes = async () => {
+    if (userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
     const inputText = mode === 'idea' ? idea : mode === 'script' ? script : voiceTranscript;
     if (!inputText?.trim()) { setError('Please enter your idea or script first'); return; }
     setLoading(true); setError('');
@@ -247,7 +248,8 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
     } catch (e) { setError(e.message); setStep('scenes'); } finally { setLoading(false); }
   };
 
-  const allowedDurations = Object.keys(DURATION_CONFIG);
+  // ✅ الموديل ده مش من ضمن اللي المجاني يقدر يستخدمه — كل المدد مقفولة، الصفحة تفضل مفتوحة يتصفحها
+  const allowedDurations = userPlan === 'free' ? [] : Object.keys(DURATION_CONFIG);
 
   // ── Done ──────────────────────────────────────────────────────────────
   if (step === 'done' && videoUrl) {
@@ -348,7 +350,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
   const scriptCharCount = script.length;
   const scriptOverLimit = mode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
 
-  const canGenerate = !loading && !scriptOverLimit && (
+  const canGenerate = userPlan !== 'free' && !loading && !scriptOverLimit && (
     mode === 'idea' ? idea.trim().length > 5 :
     mode === 'script' ? script.trim().length > 20 :
     voiceTranscript.trim().length > 0
@@ -472,8 +474,8 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
             {Object.entries(DURATION_CONFIG).map(([d, cfg]) => {
               const allowed = allowedDurations.includes(d);
               return (
-                <div key={d} onClick={() => allowed && setDuration(d)} className={allowed ? 'm4-dur' : ''}
-                  style={{ borderRadius: 14, padding: '16px 12px', textAlign: 'center', cursor: allowed ? 'pointer' : 'not-allowed', border: `2px solid ${duration === d && allowed ? '#a855f7' : 'rgba(255,255,255,0.07)'}`, background: duration === d && allowed ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.02)', opacity: allowed ? 1 : 0.35, transition: 'all 0.15s', position: 'relative' }}>
+                <div key={d} onClick={() => allowed ? setDuration(d) : (onNavigate && onNavigate('pricing'))} className={allowed ? 'm4-dur' : ''}
+                  style={{ borderRadius: 14, padding: '16px 12px', textAlign: 'center', cursor: 'pointer', border: `2px solid ${duration === d && allowed ? '#a855f7' : 'rgba(255,255,255,0.07)'}`, background: duration === d && allowed ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.02)', opacity: allowed ? 1 : 0.35, transition: 'all 0.15s', position: 'relative' }}>
                   {!allowed && <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10 }}>🔒</div>}
                   <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, color: duration === d && allowed ? '#c084fc' : '#fff' }}>{cfg.label}</p>
                   <p style={{ margin: 0, fontSize: 11, color: '#4b5563' }}>{cfg.sublabel}</p>
@@ -548,8 +550,8 @@ export default function Model4Page({ onBack, model4Plan, model4Access, onNavigat
         </div>
 
         {/* CTA */}
-        <button onClick={handleGenerateScenes} disabled={!canGenerate} style={{ width: '100%', background: !canGenerate ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg,#a855f7,#7c3aed)', color: !canGenerate ? '#374151' : '#fff', border: 'none', borderRadius: 12, padding: '15px', fontWeight: 800, fontSize: 16, cursor: !canGenerate ? 'not-allowed' : 'pointer', boxShadow: canGenerate ? '0 4px 24px rgba(168,85,247,0.4)' : 'none', transition: 'all 0.2s' }}>
-          {loading ? '⏳ Generating...' : `✨ Generate Scenes — ${creditCost} Credits →`}
+        <button onClick={() => userPlan === 'free' ? (onNavigate && onNavigate('pricing')) : handleGenerateScenes()} disabled={userPlan !== 'free' && !canGenerate} style={{ width: '100%', background: (userPlan !== 'free' && !canGenerate) ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg,#a855f7,#7c3aed)', color: (userPlan !== 'free' && !canGenerate) ? '#374151' : '#fff', border: 'none', borderRadius: 12, padding: '15px', fontWeight: 800, fontSize: 16, cursor: (userPlan !== 'free' && !canGenerate) ? 'not-allowed' : 'pointer', boxShadow: canGenerate ? '0 4px 24px rgba(168,85,247,0.4)' : 'none', transition: 'all 0.2s' }}>
+          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : loading ? '⏳ Generating...' : `✨ Generate Scenes — ${creditCost} Credits →`}
         </button>
 
         <p style={{ textAlign: 'center', fontSize: 11, color: '#1f2937', marginTop: 12 }}>Powered by Seedance v1 Pro · Replicate API · FFmpeg</p>

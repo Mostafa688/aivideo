@@ -11,6 +11,9 @@ import { renderAdVideo } from './adsVideoService.js';
 const router = express.Router();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// ── موديل الإعلانات لسه تحت الصيانة — مقفول للجميع ماعدا إيميل الأدمن ──────
+const ADS_ADMIN_ONLY_EMAIL = process.env.ADMIN_EMAIL || 'digidelight33@gmail.com';
+
 // ── multer for product image + optional voice audio ───────────────────────────
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -51,6 +54,11 @@ router.post('/render',
     try {
       const user = await getUserById(req.user.userId);
       if (!user) return res.status(401).json({ error: 'User not found' });
+
+      // 🚧 تحت الصيانة — مقفول للجميع ماعدا إيميل الأدمن
+      if (user.email !== ADS_ADMIN_ONLY_EMAIL) {
+        return res.status(403).json({ error: 'under_maintenance', message: 'Ads Creator is currently under maintenance and will be available soon.' });
+      }
 
       // ✅ العميل على "free" (لسه ما شحنش رصيد حقيقي) مقصور على موديل 2 بس
       if ((user.plan || 'free') === 'free') {

@@ -687,17 +687,10 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
     }
   }, []);
 
-  // ── Auto-correct duration if plan doesn't allow current value ──
-  const PLAN_DURATIONS_EARLY = {
-    free:  ['30s'],
-    pro:   ['30s', '1min', '2min'],
-    plus:  ['30s', '1min', '2min', '3min', '4min', '5min'],
-    max:   ['30s', '1min', '2min', '3min', '4min', '5min', '8min', '10min'],
-  };
+  // ── لسه على الخطة المجانية؟ يبقى 30 ثانية بس متاحة لحد ما يشترك ──
   useEffect(() => {
-    const allowed = PLAN_DURATIONS_EARLY[userPlan] || PLAN_DURATIONS_EARLY.free;
-    if (!allowed.includes(duration)) {
-      setDuration(allowed[0]);
+    if (userPlan === 'free' && duration !== '30s') {
+      setDuration('30s');
     }
   }, [userPlan]);
 
@@ -736,9 +729,9 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
   const modelLabel = isAI ? '🎨 Model 1 — AI Slices' : '🎬 Model 2 — Pexels Clips';
 
   // ── Plan-based duration locks ─────────────────────────────────────────────
-  // ✅ نظام الكريديت الموحد: كل المدد متاحة للجميع، الكريديت هو القيد الوحيد
+  // ✅ نظام الكريديت الموحد: الكريديت هو القيد الأساسي، بس المجاني مقصور على 30 ثانية لحد ما يشترك
   const CREDIT_COSTS_12 = { '30s': 5, 'auto': 5, '1min': 10, '2min': 20, '3min': 30, '4min': 40, '5min': 50, '8min': 80, '10min': 100 };
-  const allowedDurations = Object.keys(CREDIT_COSTS_12);
+  const allowedDurations = userPlan === 'free' ? ['30s', 'auto'] : Object.keys(CREDIT_COSTS_12);
 
   // ── Script length limit (max ~8 min = ~4800 chars) ─────────────────────────
   const MAX_SCRIPT_CHARS = 4800;
@@ -1075,15 +1068,18 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
                       { val:'8min',  label:'8m',   sub:'56 scenes', cost:80 },
                       { val:'10min', label:'10m',  sub:'70 scenes', cost:100 },
                     ].map(d => {
+                      const isAllowed = allowedDurations.includes(d.val);
                       const isActive = (mode==='script'&&script.length>20?getSmartDuration():duration)===d.val;
                       return (
                         <div key={d.val}
-                          className={`dur-option${isActive?' active':''}`}
-                          onClick={() => setDuration(d.val)}
-                          style={{ cursor:'pointer' }}>
-                          <div style={{ fontSize:13, fontWeight:700, color:isActive ? accentColor : '#fff', fontFamily:"'DM Sans', sans-serif" }}>{d.label}</div>
-                          <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>{d.sub}</div>
-                          <div style={{ fontSize:8, color: accentColor, fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>{d.cost}cr</div>
+                          className={`dur-option${isActive&&isAllowed?' active':''}`}
+                          onClick={() => isAllowed ? setDuration(d.val) : (onNavigate && onNavigate('pricing'))}
+                          style={{ opacity: isAllowed ? 1 : 0.4, cursor: 'pointer', position:'relative' }}>
+                          {!isAllowed && <div style={{ position:'absolute', top:4, right:4, fontSize:9 }}>🔒</div>}
+                          <div style={{ fontSize:13, fontWeight:700, color:isActive&&isAllowed ? accentColor : isAllowed ? '#fff' : '#6b7280', fontFamily:"'DM Sans', sans-serif" }}>{d.label}</div>
+                          <div style={{ fontSize:9, color: isAllowed ? 'rgba(255,255,255,0.3)' : '#374151', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>{d.sub}</div>
+                          {isAllowed && <div style={{ fontSize:8, color: accentColor, fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>{d.cost}cr</div>}
+                          {!isAllowed && <div style={{ fontSize:8, color:'#374151', fontFamily:"'DM Sans', sans-serif", marginTop:1 }}>Subscribe</div>}
                         </div>
                       );
                     })}

@@ -847,6 +847,10 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
     if ((user?.plan || 'free') === 'free' && videoType !== 'pexels_clips') {
       return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock all models.', show_upgrade: true });
     }
+    // ✅ العميل على "free" مقصور على مدة 30 ثانية بس لحد ما يشترك (نفس القفل الظاهر في الواجهة، بس هنا في السيرفر عشان محدش يتخطاه)
+    if ((user?.plan || 'free') === 'free' && duration !== '30s' && duration !== 'auto') {
+      return res.status(403).json({ error: 'no_access', message: 'Free plan is limited to 30-second videos. Top up credits to unlock all durations.', show_upgrade: true });
+    }
     const creditCost = MODEL12_CREDIT_COSTS[duration] || 5;
     const currentBalance = await getCreditsBalance(req.user.userId);
     if (currentBalance < creditCost) {
@@ -953,8 +957,9 @@ app.get('/api/model4/credit-cost', authMiddleware, (req, res) => {
   res.json({ creditCost: MODEL4_CREDIT_COSTS[duration] || 10, duration });
 });
 app.get('/api/model5/credit-cost', authMiddleware, (req, res) => {
-  const { duration } = req.query;
-  res.json({ creditCost: MODEL5_CREDIT_COSTS[duration] || 15, duration });
+  const { duration, hasPhoto } = req.query;
+  const table = hasPhoto === 'true' ? MODEL5_CREDIT_COSTS_WITH_PHOTO : MODEL5_CREDIT_COSTS;
+  res.json({ creditCost: table[duration] || 65, duration });
 });
 
 // ── Model 3 Routes ─────────────────────────────────────────────────────────

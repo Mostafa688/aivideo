@@ -407,8 +407,7 @@ export default function App() {
             style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(124,106,247,0.08)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:8, padding:'5px 12px', cursor:'pointer', transition:'all 0.15s' }}
             onMouseEnter={e=>e.currentTarget.style.background='rgba(124,106,247,0.14)'}
             onMouseLeave={e=>e.currentTarget.style.background='rgba(124,106,247,0.08)'}>
-            <span style={{ fontSize:13 }}>💎</span>
-            <span style={{ fontSize:13, fontWeight:700, color:'#a99bff' }}>{formatNumber(credits.credits_balance ?? 0)}</span>
+            <span style={{ fontSize:13, fontWeight:700, color:'#a99bff' }}>{(credits.credits_balance ?? 0).toLocaleString()}</span>
             <span style={{ fontSize:10, color:'var(--text3)' }}>credits</span>
           </button>
         )}
@@ -477,9 +476,9 @@ export default function App() {
           model3Access={model3Access} model4Access={model4Access} model5Access={model5Access}
           userPlan={userPlan} credits={credits}
         />}
-        {page === 'model3' && <Model3Page onBack={() => setPage('input')} model3Plan={model3Plan} model3Access={model3Access} onNavigate={handleNavigate} />}
-        {page === 'model4' && <Model4Page onBack={() => { setPage('input'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} onNavigate={handleNavigate} />}
-        {page === 'model5' && <ModelCinematicPage onBack={() => { setPage('input'); fetchCredits(); }} model5Plan={model5Plan} model5Access={model5Access} onNavigate={handleNavigate} />}
+        {page === 'model3' && <Model3Page onBack={() => setPage('input')} model3Plan={model3Plan} model3Access={model3Access} userPlan={userPlan} onNavigate={handleNavigate} />}
+        {page === 'model4' && <Model4Page onBack={() => { setPage('input'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} userPlan={userPlan} onNavigate={handleNavigate} />}
+        {page === 'model5' && <ModelCinematicPage onBack={() => { setPage('input'); fetchCredits(); }} model5Plan={model5Plan} model5Access={model5Access} userPlan={userPlan} onNavigate={handleNavigate} />}
         {page === 'model6' && <MapVideoPage formData={formData} onBack={() => setPage('input')} />}
         {page === 'model7' && <ModelErivionPage onBack={() => { setPage('input'); fetchCredits(); }} erivionPlan={erivionPlan} erivionAccess={erivionAccess} onNavigate={handleNavigate} />}
         {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />}

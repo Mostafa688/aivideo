@@ -38,7 +38,7 @@ function SceneCard({ scene, index, onChange }) {
   );
 }
 
-export default function ModelCinematicPage({ onBack, model5Access, model5Plan, onNavigate }) {
+export default function ModelCinematicPage({ onBack, model5Access, model5Plan, userPlan = 'free', onNavigate }) {
   const [step, setStep] = useState('input');
   const [idea, setIdea] = useState('');
   // characters: { id, prompt, photo: base64|null, photoPreview: url|null }
@@ -53,12 +53,18 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
   const [videoUrl, setVideoUrl] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [usage, setUsage] = useState(null);
+  const [creditCost, setCreditCost] = useState(65);
   const pollRef = useRef(null);
   const timerRef = useRef(null);
   const region = localStorage.getItem('erivion_region') || 'eg';
 
   useEffect(() => { fetchUsage(); }, []);
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
+  useEffect(() => {
+    const hasPhoto = characters.some(c => c.photo);
+    fetch(`/api/model5/credit-cost?duration=${duration}&hasPhoto=${hasPhoto}`, { headers: authHeaders() })
+      .then(r => r.json()).then(d => setCreditCost(d.creditCost || 65)).catch(() => {});
+  }, [duration, characters]);
 
   const fetchUsage = async () => {
     try {
@@ -89,6 +95,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
   const sceneCount = duration==='1min'?12:duration==='30s'?6:1;
 
   const handleGenerate = async () => {
+    if (userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
     if (!idea.trim()) { setError('Please describe your video idea'); return; }
     setLoading(true); setError('');
     try {
@@ -346,13 +353,18 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
         <div style={{ marginBottom:22 }}>
           <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>⏱ Duration</label>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            {[{value:'15s',label:'15 Seconds',scenes:3},{value:'30s',label:'30 Seconds',scenes:6},{value:'1min',label:'1 Minute',scenes:12}].map(d => (
-              <div key={d.value} onClick={()=>setDuration(d.value)}
-                style={{ borderRadius:14, padding:'18px 16px', textAlign:'center', cursor:'pointer', border:`2px solid ${duration===d.value?'#e11d48':'rgba(255,255,255,0.07)'}`, background:duration===d.value?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', transition:'all 0.15s', boxShadow:duration===d.value?'0 0 20px rgba(225,29,72,0.2)':'none' }}>
-                <p style={{ margin:'0 0 4px', fontSize:18, fontWeight:900, color:duration===d.value?'#fb7185':'#fff' }}>{d.label}</p>
-                <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{d.scenes} cinematic scenes</p>
-              </div>
-            ))}
+            {[{value:'15s',label:'15 Seconds',scenes:3},{value:'30s',label:'30 Seconds',scenes:6},{value:'1min',label:'1 Minute',scenes:12}].map(d => {
+              const allowed = userPlan !== 'free';
+              return (
+                <div key={d.value} onClick={()=>allowed ? setDuration(d.value) : (onNavigate && onNavigate('pricing'))}
+                  style={{ borderRadius:14, padding:'18px 16px', textAlign:'center', cursor:'pointer', border:`2px solid ${duration===d.value&&allowed?'#e11d48':'rgba(255,255,255,0.07)'}`, background:duration===d.value&&allowed?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', opacity: allowed ? 1 : 0.4, transition:'all 0.15s', position:'relative', boxShadow:duration===d.value&&allowed?'0 0 20px rgba(225,29,72,0.2)':'none' }}>
+                  {!allowed && <div style={{ position:'absolute', top:8, right:10, fontSize:12 }}>🔒</div>}
+                  <p style={{ margin:'0 0 4px', fontSize:18, fontWeight:900, color:duration===d.value&&allowed?'#fb7185':'#fff' }}>{d.label}</p>
+                  <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{d.scenes} cinematic scenes</p>
+                  {!allowed && <p style={{ margin:'4px 0 0', fontSize:9, color:'#ef4444', fontWeight:700 }}>Subscribe to unlock</p>}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -368,8 +380,16 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, o
 
         {error && <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:12, padding:14, marginBottom:16, color:'#ef4444', fontSize:13 }}>{error}</div>}
 
-        <button onClick={handleGenerate} disabled={loading||!idea.trim()} style={{ width:'100%', background:loading||!idea.trim()?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:loading||!idea.trim()?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:loading||!idea.trim()?'not-allowed':'pointer', boxShadow:idea.trim()?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
-          {loading?'⏳ Generating Scenes...':`🎬 Generate ${sceneCount} Cinematic Scenes →`}
+        {userPlan !== 'free' && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:16 }}>
+            <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(225,29,72,0.12)', border:'1px solid rgba(225,29,72,0.3)', fontSize:12, fontWeight:700, color:'#fb7185' }}>
+              🪙 {creditCost} credits per video
+            </div>
+          </div>
+        )}
+
+        <button onClick={handleGenerate} disabled={userPlan !== 'free' && (loading||!idea.trim())} style={{ width:'100%', background:(userPlan !== 'free' && (loading||!idea.trim()))?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:(userPlan !== 'free' && (loading||!idea.trim()))?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:(userPlan !== 'free' && (loading||!idea.trim()))?'not-allowed':'pointer', boxShadow:idea.trim()?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
+          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : loading?'⏳ Generating Scenes...':`🎬 Generate ${sceneCount} Cinematic Scenes — ${creditCost} Credits →`}
         </button>
 
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.15)', marginTop:14 }}>Seedance v1 Pro · Groq AI · Character consistency · No voiceover</p>

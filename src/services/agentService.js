@@ -5,7 +5,7 @@ import { mkdir } from 'fs/promises';
 import { execSync } from 'child_process';
 import {
   MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS,
-  MODEL5_CREDIT_COSTS, ADS_CREDIT_COST, PLANS,
+  MODEL5_CREDIT_COSTS, ADS_CREDIT_COST, PLANS, SIGNUP_BONUS_CREDITS,
 } from './authService.js';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -35,21 +35,27 @@ function fmtCosts(obj, onlyKeys = null) {
 
 function buildModelCatalog(userPlan = 'free') {
   const m12Durations = m12AllowedDurations(userPlan);
-  const freeCredits = PLANS.free.credits_weekly; // 10
-  const cost30s = MODEL12_CREDIT_COSTS['30s']; // 3
-  const approxFreeVideos = Math.floor(freeCredits / cost30s);
+  const isFree = userPlan === 'free';
+  const cost30s = MODEL12_CREDIT_COSTS['30s'];
+  const approxFreeVideos = Math.floor(SIGNUP_BONUS_CREDITS / cost30s);
+
+  const premiumNote = isFree
+    ? `⚠️ This user is on the FREE plan — Models 3, 4, 5, and 7 (Ads) are NOT accessible at all until they top up credits (subscribe). Do NOT recommend them or generate a READY marker for them — if the user wants one of these, tell them briefly they need to top up credits first and point them to Pricing. Only Model 1/2 (Real Footage, 30s only) work on the free plan.`
+    : `This user has an active paid balance — all models and durations below are available to them, gated only by having enough credits.`;
 
   return `
 MODELS AVAILABLE ON ERIVION (only ever offer durations/costs listed here — never invent others):
 
 - Model 1 "AI Slices": stock images + Ken Burns zoom animation, voiceover, captions. Good for: any general topic video, cheapest option. This user's plan (${userPlan}) allows durations: ${fmtCosts(MODEL12_CREDIT_COSTS, m12Durations)}.
 - Model 2 "Real Footage": real HD stock video clips matched to the script instead of static images. Good for: documentary/realistic feel. Same durations & cost as Model 1 for this user: ${fmtCosts(MODEL12_CREDIT_COSTS, m12Durations)}.
-  (Model 1 & 2 share the same weekly credit pool. Free plan = ${freeCredits} credits/week ≈ ${approxFreeVideos} free 30s videos to try either model.)
+  (Model 1 & 2 share the same credit pool. New signup bonus = ${SIGNUP_BONUS_CREDITS} credits, one-time, ≈ ${approxFreeVideos} free 30s videos to try either model — credits do not renew, top up anytime.)
 - Model 3 "AI Images" (Grok Imagine): unique AI-generated image per scene + Ken Burns zoom. Good for: stylized/artistic visuals. Durations & cost: ${fmtCosts(MODEL3_CREDIT_COSTS)}.
 - Model 4 "Seedance Video": real AI-generated video clips (not static images), true motion. Good for: premium dynamic visuals. Durations & cost: ${fmtCosts(MODEL4_CREDIT_COSTS)}.
 - Model 5 "Cinematic": character-consistent AI video from a reference photo, image-to-video, no voiceover (original audio only), up to 5 characters. Good for: a recurring character/mascot. Durations & cost: ${fmtCosts(MODEL5_CREDIT_COSTS)}.
 - Model 6 "Atlas Map Video": animated map zoom/pan videos for history/geography content. Free, included for everyone. Must be created from the Models page, not here.
-- Model 7 "Ads Creator": turns a product photo into a video ad. Flat cost ${ADS_CREDIT_COST} credits per ad. Must be created from the Models page, not here.
+- Model 7 "Ads Creator": turns a product photo into a video ad. 🚧 Currently under maintenance — NOT available to anyone right now regardless of plan. If asked about it, say it's temporarily under maintenance and will be back soon.
+
+${premiumNote}
 `.trim();
 }
 
@@ -73,7 +79,7 @@ ${catalog}
 HOW TO OPERATE:
 1. If the user says something generic like "I want to make a video" / "عايز اعمل فيديو" without picking a model, respond with a SHORT comparison: one line per model (name + single strength + max duration for their plan), then ask which one they want. Keep the whole thing under 7 short lines total. Do not repeat this comparison again later in the conversation unless asked.
 2. Once you know the model, understand the topic/idea, and ideally the platform/purpose to infer aspect ratio: 9:16 for reels/shorts/TikTok, 16:9 for YouTube/explainers, 1:1 for feed posts.
-3. Models 1, 2, 3, 4, 5 can all be generated directly through this chat. Model 6 and 7 must be created from the Models page — tell the user to open it, do not try to generate those here.
+3. Models 1, 2, 3, 4, 5 can all be generated directly through this chat. Model 6 and 7 must be created from the Models page — tell the user to open it, do not try to generate those here. Remember: if this user is on the free plan, only Models 1/2 at 30s work — never emit a READY marker for Model 3/4/5 for a free-plan user.
 4. Once you know: model (1-5), duration (must EXACTLY match one of that model's supported durations above), ratio, and the idea/topic — ask the user to confirm before generating (e.g. "جاهز أبدأ؟" / "Ready to generate?").
 5. Model 5 requires a reference photo of the character before you can generate — if the user picked Model 5 and hasn't uploaded a photo yet, ask them to upload one first. Do not mark ready without it.
 6. ONLY once the user has explicitly confirmed (said yes / ابدأ / اعمل الفيديو / etc.) AND you have all required info, end your reply with this exact machine-readable marker on its own line (the user will not see it, so keep your visible reply natural and short before it):

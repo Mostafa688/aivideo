@@ -314,10 +314,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
       if (isM12) {
         // موديل 1/2: توليد السكريبت أولاً عبر SSE
-        const durMap = { '30s': 'auto', '1min': '1min', '2min': '2min', '3min': '3min', '4min': '4min', '5min': '5min', '8min': '8min', '10min': '10min' };
+        // ✅ FIX: كنا بنحوّل "30s" غلط لـ "auto" وده كان بيولّد 8 مشاهد (حجم دقيقة) بدل 4 (حجم 30 ثانية فعليًا)
         const { scenes: gotScenes } = await readSSE('/api/generate-scenes', {
           idea: ready.idea, script: null, tone: ready.tone || 'motivational',
-          duration: durMap[ready.duration] || ready.duration, mode: 'idea',
+          duration: ready.duration, mode: 'idea',
           videoLanguage: videoLang,
         });
         if (!activeJobRef.current) return;
@@ -396,7 +396,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           return;
         }
         if (renderData.show_upgrade || renderData.error === 'no_access' || renderData.error === 'subscribe_required') {
-          updateJob({ status: 'failed', creditError: true, error: lang === 'ar' ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video' });
+          updateJob({ status: 'failed', creditError: true, error: renderData.message ? `🔒 ${renderData.message}` : (lang === 'ar' ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video') });
           return;
         }
         throw new Error(renderData.error || renderData.message || 'Render failed');
