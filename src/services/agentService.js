@@ -12,7 +12,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 // نفس الموديل المستخدم في scriptService.js (توليد سكريبتات موديل 1/2) — الموديل الأساسي في الموقع كله
 const AGENT_MODEL = 'openai/gpt-oss-120b';
 const MAX_HISTORY_MESSAGES = 6; // آخر 3 رسائل من المستخدم + 3 ردود فقط تتبعت للموديل
-const MAX_REPLY_TOKENS = 300;   // رد قصير جدًا + مساحة كافية لعلامة ###READY### الأطول شوية دلوقتي
+const MAX_REPLY_TOKENS = 450;   // مساحة كافية عشان الـ JSON بتاع ###READY### ميتقطعش نص الكلام أبدًا
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
 const MAX_AUDIO_SEC = 120;      // دقيقتين بالظبط زي ما اتفقنا
@@ -77,7 +77,7 @@ HOW TO OPERATE:
 4. Once you know: model (1-5), duration (must EXACTLY match one of that model's supported durations above), ratio, and the idea/topic — ask the user to confirm before generating (e.g. "جاهز أبدأ؟" / "Ready to generate?").
 5. Model 5 requires a reference photo of the character before you can generate — if the user picked Model 5 and hasn't uploaded a photo yet, ask them to upload one first. Do not mark ready without it.
 6. ONLY once the user has explicitly confirmed (said yes / ابدأ / اعمل الفيديو / etc.) AND you have all required info, end your reply with this exact machine-readable marker on its own line (the user will not see it, so keep your visible reply natural and short before it):
-###READY###{"model":3,"duration":"1min","ratio":"9:16","idea":"short clear description of the video topic in the user's language","videoStyle":"cinematic","tone":"motivational","videoLanguage":"en","voice":"male_wise","needsCharacterPhoto":false}
+###READY###{"model":3,"duration":"1min","ratio":"9:16","idea":"topic in 6 words or fewer","videoStyle":"cinematic","tone":"motivational","videoLanguage":"en","voice":"male_wise","needsCharacterPhoto":false}
    - "model" must be 1, 2, 3, 4, or 5 (number).
    - "duration" must EXACTLY match one of the supported values for that model/plan combo above.
    - "ratio" must be "9:16", "16:9", or "1:1".
