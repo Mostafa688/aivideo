@@ -7,13 +7,18 @@ const SLIDER_MAX = 10000;
 
 // ── الباقات الدولية الثابتة (مرتبطة بمنتجات Gumroad حقيقية — دفعة واحدة) ──
 const GUMROAD_PACKAGES = [
-  { key: 'credits_starter', name: 'Starter', credits: 600,   usd: 12,  url: 'https://digiwhirl23.gumroad.com/l/ukgdl',  color: '#7c6af7', icon: '🎬' },
-  { key: 'credits_creator', name: 'Creator', credits: 1400,  usd: 28,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: '⭐', popular: true },
-  { key: 'credits_studio',  name: 'Studio',  credits: 3000,  usd: 60,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: '🏆' },
+  { key: 'credits_starter', name: 'Starter', tagline: 'Getting started', credits: 600,   usd: 12,  url: 'https://digiwhirl23.gumroad.com/l/ukgdl',  color: '#7c6af7', icon: '🎬' },
+  { key: 'credits_creator', name: 'Creator', tagline: 'For regular creators', credits: 1400,  usd: 28,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: '⭐', popular: true },
+  { key: 'credits_studio',  name: 'Studio',  tagline: 'For heavy usage', credits: 3000,  usd: 60,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: '🏆' },
 ];
-const GUMROAD_MORE_PACKAGES = [
-  { key: 'credits_team',    name: 'Team',    credits: 6000,  usd: 120, url: 'https://digiwhirl23.gumroad.com/l/vmzubx', color: '#0891b2', icon: '👥' },
-  { key: 'credits_agency',  name: 'Agency',  credits: 12000, usd: 240, url: 'https://digiwhirl23.gumroad.com/l/ckvlgo', color: '#f59e0b', icon: '🏢' },
+// معدل تحويل تقريبي للدولي: نفس نسبة المصري لكن بالدولار (~$0.02 لكل كريديت، ضعف السعر المصري تقريبًا)
+const USD_PER_CREDIT = 0.02;
+
+// ── باقات مصر الثابتة (بنفس سعر الكريديت 0.5 ج.م) — تُعرض كخطط منفصلة زي الدولي ──
+const EG_PACKAGES = [
+  { key: 'starter', name: 'Starter', tagline: 'للبداية والتجربة', credits: 600,  egp: 300 },
+  { key: 'creator', name: 'Creator', tagline: 'لصنّاع المحتوى المنتظمين', credits: 1400, egp: 700, popular: true },
+  { key: 'studio',  name: 'Studio',  tagline: 'للاستخدام المكثف', credits: 3000, egp: 1500 },
 ];
 
 // ── حساب "الرصيد ده يكفي لعمل كام فيديو" — موديل رخيص (2) وموديل مميز (4) كمرجع ──
@@ -239,7 +244,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
   const [egModalOpen, setEgModalOpen] = useState(false);
   const [egPending, setEgPending] = useState(false);
   const [intlModalPkg, setIntlModalPkg] = useState(null);
-  const [showMore, setShowMore] = useState(false);
+  const [studioSliderCredits, setStudioSliderCredits] = useState(3000);
   const [balance, setBalance] = useState(null);
 
   useEffect(() => {
@@ -251,7 +256,6 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
   }, []);
 
   const amountEgp = Math.round(sliderCredits * EGP_PER_CREDIT);
-  const quickJump = (val) => setSliderCredits(val);
 
   if (egPending) return <EgPendingScreen onNavigate={onNavigate} onSkip={() => { if (onSkip) onSkip(); }} />;
 
@@ -290,7 +294,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#050508', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 'clamp(32px,5vw,56px) clamp(16px,4vw,24px) 80px', opacity: visible ? 1 : 0, transition: 'opacity 0.4s ease' }}>
-      <div style={{ width: '100%', maxWidth: region === 'eg' ? 460 : 920 }}>
+      <div style={{ width: '100%', maxWidth: 920 }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
           <button onClick={() => setRegion(null)} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer' }}>← Region</button>
@@ -309,84 +313,101 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
           )}
         </div>
 
-        {/* ══════════════ مصري: كارت واحد بسلايدر ══════════════ */}
+        {/* ══════════════ مصري: 3 خطط كبيرة، آخر واحدة فيها سلايدر مدمج للزيادة ══════════════ */}
         {region === 'eg' && (
-          <div style={{ background: '#0e0e16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 'clamp(24px,4vw,32px)' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 28 }}>
-              {[{ label: 'Starter', val: 600 }, { label: 'Creator', val: 1400 }, { label: 'Studio', val: 3000 }].map(q => (
-                <button key={q.label} onClick={() => quickJump(q.val)}
-                  style={{ flex: 1, padding: '8px 6px', borderRadius: 10, border: sliderCredits === q.val ? '1px solid #7c6af7' : '1px solid rgba(255,255,255,0.1)', background: sliderCredits === q.val ? 'rgba(124,106,247,0.14)' : 'transparent', color: sliderCredits === q.val ? '#a99bff' : '#6b7280', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>
-                  {q.label}
-                </button>
-              ))}
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
+            {EG_PACKAGES.map(pkg => {
+              const isLast = pkg.key === 'studio';
+              const displayCredits = isLast ? studioSliderCredits : pkg.credits;
+              const displayEgp = isLast ? Math.round(studioSliderCredits * EGP_PER_CREDIT) : pkg.egp;
+              return (
+                <div key={pkg.key} style={{ position: 'relative', background: '#0e0e16', border: pkg.popular ? '1px solid #7c6af7' : '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '30px 26px', display: 'flex', flexDirection: 'column' }}>
+                  {pkg.popular && <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', padding: '4px 14px', borderRadius: 999, background: '#7c6af7', fontSize: 10.5, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', letterSpacing: '0.02em' }}>الأكثر طلبًا</div>}
+                  <div style={{ fontSize: 19, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{pkg.name}</div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 22 }}>{pkg.tagline}</div>
 
-            <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ fontSize: 40, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>{sliderCredits.toLocaleString()}</div>
-              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 10 }}>credits</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#22c55e' }}>{amountEgp.toLocaleString()} EGP</div>
-            </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 2 }}>
+                    <span style={{ fontSize: 34, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>{displayEgp.toLocaleString()}</span>
+                    <span style={{ fontSize: 14, color: '#9ca3af' }}>ج.م</span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>دفعة واحدة · لا يتجدد</div>
 
-            <input type="range" min={SLIDER_MIN} max={SLIDER_MAX} step={100} value={sliderCredits} onChange={e => setSliderCredits(parseInt(e.target.value, 10))}
-              style={{ width: '100%', accentColor: '#7c6af7', height: 6, marginBottom: 6 }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#4b5563', marginBottom: 26 }}>
-              <span>{SLIDER_MIN.toLocaleString()}</span>
-              <span>{SLIDER_MAX.toLocaleString()}+</span>
-            </div>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: isLast ? 16 : 22 }}>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{displayCredits.toLocaleString()} كريديت يكفي لـ:</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(displayCredits / 5)} فيديو (Model 2, 30 ثانية)</span>
+                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(displayCredits / 100)} فيديو (Model 4, 30 ثانية)</span>
+                    </div>
+                  </div>
 
-            <EnoughForLines credits={sliderCredits} lang="ar" />
+                  {isLast && (
+                    <div style={{ marginBottom: 22 }}>
+                      <input type="range" min={3000} max={12000} step={100} value={studioSliderCredits} onChange={e => setStudioSliderCredits(parseInt(e.target.value, 10))}
+                        style={{ width: '100%', accentColor: '#7c6af7', height: 6, marginBottom: 6 }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#4b5563' }}>
+                        <span>3,000</span>
+                        <span>12,000+</span>
+                      </div>
+                    </div>
+                  )}
 
-            <button onClick={() => setEgModalOpen(true)} style={{ width: '100%', padding: '15px', borderRadius: 12, border: 'none', background: '#7c6af7', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginTop: 22 }}>
-              Get {sliderCredits.toLocaleString()} credits — {amountEgp.toLocaleString()} EGP
-            </button>
+                  <button onClick={() => { setSliderCredits(displayCredits); setEgModalOpen(true); }} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: pkg.popular ? '#7c6af7' : 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
+                    اشترك في {pkg.name}
+                  </button>
 
-            <FeatureList color="#7c6af7" />
+                  <FeatureList color={pkg.popular ? '#7c6af7' : '#9ca3af'} />
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {/* ══════════════ دولي: باقات Gumroad ══════════════ */}
+        {/* ══════════════ دولي: باقات Gumroad — نفس تصميم المصري بالظبط ══════════════ */}
         {region === 'intl' && (
-          <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 16, marginBottom: 20 }}>
-              {GUMROAD_PACKAGES.map(pkg => (
-                <div key={pkg.key} style={{ position: 'relative', background: '#0e0e16', border: pkg.popular ? `1px solid ${pkg.color}` : '1px solid rgba(255,255,255,0.1)', borderRadius: 18, padding: 26 }}>
-                  {pkg.popular && <div style={{ position: 'absolute', top: -11, left: '50%', transform: 'translateX(-50%)', padding: '3px 12px', borderRadius: 999, background: pkg.color, fontSize: 10, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', letterSpacing: '0.02em' }}>MOST POPULAR</div>}
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#9ca3af', marginBottom: 10 }}>{pkg.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
-                    <span style={{ fontSize: 32, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>${pkg.usd}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
+            {GUMROAD_PACKAGES.map(pkg => {
+              const isLast = pkg.key === 'credits_studio';
+              const displayCredits = isLast ? studioSliderCredits : pkg.credits;
+              const displayUsd = isLast ? Math.round(studioSliderCredits * USD_PER_CREDIT) : pkg.usd;
+              return (
+                <div key={pkg.key} style={{ position: 'relative', background: '#0e0e16', border: pkg.popular ? `1px solid ${pkg.color}` : '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '30px 26px', display: 'flex', flexDirection: 'column' }}>
+                  {pkg.popular && <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', padding: '4px 14px', borderRadius: 999, background: pkg.color, fontSize: 10.5, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', letterSpacing: '0.02em' }}>MOST POPULAR</div>}
+                  <div style={{ fontSize: 19, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{pkg.name}</div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 22 }}>{pkg.tagline}</div>
+
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 2 }}>
+                    <span style={{ fontSize: 34, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>${displayUsd}</span>
                   </div>
-                  <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>{pkg.credits.toLocaleString()} credits · one-time</div>
-                  <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: pkg.popular ? pkg.color : 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', marginBottom: 20 }}>Get {pkg.name}</button>
-                  <EnoughForLines credits={pkg.credits} lang="en" />
+                  <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: isLast ? 16 : 22 }}>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{displayCredits.toLocaleString()} credits is enough for:</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(displayCredits / 5)} videos (Model 2, 30s)</span>
+                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(displayCredits / 100)} videos (Model 4, 30s)</span>
+                    </div>
+                  </div>
+
+                  {isLast && (
+                    <div style={{ marginBottom: 22 }}>
+                      <input type="range" min={3000} max={12000} step={100} value={studioSliderCredits} onChange={e => setStudioSliderCredits(parseInt(e.target.value, 10))}
+                        style={{ width: '100%', accentColor: pkg.color, height: 6, marginBottom: 6 }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#4b5563' }}>
+                        <span>3,000</span>
+                        <span>12,000+</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button onClick={() => setIntlModalPkg({ ...pkg, credits: displayCredits, usd: displayUsd })} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: pkg.popular ? pkg.color : 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
+                    Get {pkg.name}
+                  </button>
+
+                  <FeatureList color={pkg.popular ? pkg.color : '#9ca3af'} />
                 </div>
-              ))}
-            </div>
-
-            <div style={{ textAlign: 'center', marginBottom: showMore ? 20 : 0 }}>
-              <button onClick={() => setShowMore(v => !v)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: '7px 18px', color: '#8b8b96', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
-                {showMore ? 'Hide larger plans' : 'View larger plans (Team, Agency)'}
-              </button>
-            </div>
-
-            {showMore && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 16, marginBottom: 20 }}>
-                {GUMROAD_MORE_PACKAGES.map(pkg => (
-                  <div key={pkg.key} style={{ background: '#0e0e16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 18, padding: 26 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#9ca3af', marginBottom: 10 }}>{pkg.name}</div>
-                    <div style={{ fontSize: 32, fontWeight: 800, color: '#fff', marginBottom: 4, letterSpacing: '-0.02em' }}>${pkg.usd}</div>
-                    <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>{pkg.credits.toLocaleString()} credits · one-time</div>
-                    <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', marginBottom: 20 }}>Get {pkg.name}</button>
-                    <EnoughForLines credits={pkg.credits} lang="en" />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div style={{ background: '#0e0e16', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 24, marginTop: 8 }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', margin: '0 0 14px' }}>Included in every plan</p>
-              <FeatureList color="#22c55e" />
-            </div>
-          </>
+              );
+            })}
+          </div>
         )}
       </div>
 
