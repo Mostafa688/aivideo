@@ -85,7 +85,7 @@ function RenderCard({ job, lang, onNavigate }) {
   if (job.status === 'done') {
     return (
       <div style={{ width: box.w + 20 }}>
-        <video src={job.videoUrl} controls autoPlay muted loop style={{ width: box.w, height: box.h, borderRadius: 14, objectFit: 'cover', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+        <video src={job.videoUrl} controls autoPlay muted style={{ width: box.w, height: box.h, borderRadius: 14, objectFit: 'cover', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 700 }}>✅ {t.done} {job.cost || ''} {t.credits}</span>
           <a href={job.videoUrl} download style={{ fontSize: 11, color: '#a99bff', fontWeight: 700, textDecoration: 'none' }}>⬇️ {t.download}</a>
@@ -202,6 +202,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const sendMessage = async (overrideText) => {
     const textToSend = overrideText !== undefined ? overrideText : input;
     if (!textToSend.trim() && !voiceFile && !imageFile) return;
+    if (loading || activeJobRef.current) return; // ✅ FIX: منع إرسال رسالة تانية لحد ما الحالية تخلص، عشان محدش يبعت "ابدأ" مرتين ويعمل تضارب رندر
     setError('');
     const userMsg = { role: 'user', content: textToSend.trim() || (lang === 'ar' ? '🎙️ رسالة صوتية' : '🎙️ Voice message'), hasVoice: !!voiceFile, imagePreview };
     const nextMessages = [...messages, userMsg];
@@ -243,10 +244,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     if (activeJobRef.current) {
       clearInterval(pollRef.current); clearInterval(timerRef.current);
-      const job = activeJobRef.current;
+      const activeUid = activeJobRef.current.uid;
       setMessages(m => {
         const copy = [...m];
-        const idx = copy.map(x => x.type).lastIndexOf('render');
+        const idx = copy.findIndex(x => x.type === 'render' && x.job?.uid === activeUid);
         if (idx !== -1 && (copy[idx].job.status === 'scenes' || copy[idx].job.status === 'rendering')) {
           copy[idx] = { ...copy[idx], job: { ...copy[idx].job, status: 'stopped' } };
         }
@@ -258,12 +259,17 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   };
 
   const startGeneration = async (ready) => {
-    const job = { status: 'scenes', ratio: ready.ratio || '9:16', elapsed: 0, model: ready.model };
+    // ✅ FIX: منع بدء رندر جديد لو فيه واحد شغال بالفعل — كان بيحصل تضارب لو الأجنت
+    // حاول يبدأ مرتين قريبين من بعض، وكل جوب كان بيحدّث آخر كارت في الشات بغض النظر عن صاحبه
+    if (activeJobRef.current) return;
+
+    const jobUid = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const job = { uid: jobUid, status: 'scenes', ratio: ready.ratio || '9:16', elapsed: 0, model: ready.model };
     setMessages(m => [...m, { role: 'assistant', type: 'render', job }]);
     const updateJob = (patch) => {
       setMessages(m => {
         const copy = [...m];
-        const idx = copy.map(x => x.type).lastIndexOf('render');
+        const idx = copy.findIndex(x => x.type === 'render' && x.job?.uid === jobUid);
         if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
         return copy;
       });
@@ -354,15 +360,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
       if (!activeJobRef.current) return;
 
-      // توليد صوت حقيقي قبل الرندر — إلا لو موديل 5 (بدون تعليق صوتي أصلاً)
-      // ✅ FIX: صوت لكل مشهد لوحده عشان نعرف مدته الحقيقية بالظبط (مش تخمين بعدد الكلمات)
+      // توليد صوت — بنفس الطريقة اللي صفحة الموديل نفسها بتستخدمها بالظبط (نص واحد مجمّع)
+      // عشان الفيديو يطلع مطابق تمامًا للي بيحصل لما العميل يستخدم الموديل مباشرة، من غير أي حسابات إضافية من عندنا
       let audioUrl = null;
-      let sceneDurations = null;
       if (ready.model !== 5 && scenes.length) {
         try {
-          const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ scenes, voice: voiceKey, videoLanguage: videoLang }) });
+          const fullText = scenes.map(s => s.text).join(' ');
+          const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: fullText, voice: voiceKey, videoLanguage: videoLang }) });
           const voiceData = await voiceRes.json();
-          if (voiceRes.ok) { audioUrl = voiceData.audioUrl; sceneDurations = voiceData.sceneDurations || null; }
+          if (voiceRes.ok) audioUrl = voiceData.audioUrl;
         } catch { /* لو فشل التعليق الصوتي، هيكمل الفيديو من غير صوت */ }
       }
       if (!activeJobRef.current) return;
@@ -373,13 +379,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       let renderUrl, renderBody;
       if (isM12) {
         renderUrl = '/api/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: false, captions: true, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: videoLang, sceneDurations };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: false, captions: true, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: videoLang };
       } else if (ready.model === 3) {
         renderUrl = '/api/model3/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, transitions: false, music: false, videoLanguage: videoLang, duration: ready.duration, videoStyle: style, styleSuffix: '', sceneDurations };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, transitions: false, music: false, videoLanguage: videoLang, duration: ready.duration, videoStyle: style, styleSuffix: '' };
       } else if (ready.model === 4) {
         renderUrl = '/api/model4/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, music: false, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '', sceneDurations };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, music: false, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
       } else {
         renderUrl = '/api/model5/render';
         renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhoto ? [lastUploadedPhoto] : [] };
