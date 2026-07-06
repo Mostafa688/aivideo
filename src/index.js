@@ -15,10 +15,9 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, canUserRender, getUserCredits, addUserTokens, canUserMakeModel3Video, incrementModel3Video, canUserMakeModel4Video, incrementModel4Video, getModel4Usage, MODEL4_PLANS, markModel4TrialUsed, markModel3TrialUsed, canUserMakeModel5Video, incrementModel5Video, getModel5Usage, MODEL5_PLANS, getModel5Credits, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS } from './services/authService.js';
+import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, ADS_CREDIT_COST } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import supportRouter from './services/supportRoutes.js';
-import agentRouter from './services/agentRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
 import mapVideoRouter from './services/mapVideoRoutes.js';
@@ -206,7 +205,6 @@ app.use('/api/affiliate', affiliateRouter);
 app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
-app.use('/api/agent', agentRouter);
 
 // ── Community API ──────────────────────────────────────────────────────────────
 const cPool = new _TPool({
@@ -762,28 +760,7 @@ Sitemap: https://erivion.net/sitemap.xml`);
 app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) => {
   const { idea, script, tone, duration, mode, videoLanguage } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script is required' });
-  try {
-    const user = await getUserById(req.user.userId);
-    const planData = PLANS[user?.plan || 'free'];
-    const DURATION_LIMITS = {
-      free: ['30s', 'auto'],
-      pro:  ['30s', 'auto', '1min', '2min'],
-      plus: ['30s', 'auto', '1min', '2min', '3min', '4min', '5min'],
-      max:  ['30s', 'auto', '1min', '2min', '3min', '4min', '5min', '8min', '10min'],
-    };
-    const allowedDurations = DURATION_LIMITS[user?.plan || 'free'] || DURATION_LIMITS.free;
-    if (duration && !allowedDurations.includes(duration)) {
-      return res.status(403).json({ error: `Your plan does not support ${duration} duration.` });
-    }
-    if (!planData.all_languages && videoLanguage) {
-      const allowed = planData.languages || ['en', 'ar'];
-      if (!allowed.includes(videoLanguage)) {
-        return res.status(403).json({ error: `Your plan only supports: ${allowed.join(', ')}.` });
-      }
-    }
-  } catch (err) {
-    return res.status(500).json({ error: 'Failed to check plan: ' + err.message });
-  }
+  // ✅ نظام الكريديت الموحد: أي مدة أو لغة متاحة للجميع — الكريديت هو القيد الوحيد، بيتفحص وقت الرندر
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -864,24 +841,14 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   try {
     const user = await getUserById(req.user.userId);
     const planData = PLANS[user?.plan || 'free'];
-    const renderCheck = await canUserRender(req.user.userId);
-    if (!renderCheck.allowed) {
-      const credits = await getUserCredits(req.user.userId);
-      const now = new Date();
-      const daysUntilSat = (6 - now.getDay() + 7) % 7 || 7;
-      const nextSat = new Date(now);
-      nextSat.setDate(now.getDate() + daysUntilSat);
-      const resetDate = nextSat.toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' });
-      const isMaxPlan = user?.plan === 'max';
-      const planName = planData.name;
-      if (renderCheck.reason === 'credits_exhausted') {
-        if (isMaxPlan) return res.status(403).json({ error: 'credits_exhausted', message: `You've used all your ${credits.limit.toLocaleString()} credits this week. Resets on ${resetDate}.`, reset_date: resetDate, action: 'resubscribe', plan: user?.plan });
-        return res.status(403).json({ error: 'credits_exhausted', message: `You've used all your weekly credits on the ${planName} plan. Resets on ${resetDate}.`, reset_date: resetDate, action: 'upgrade_or_wait', plan: user?.plan });
-      }
-      if (renderCheck.reason === 'videos_limit_reached') {
-        if (isMaxPlan) return res.status(403).json({ error: 'videos_limit_reached', message: `You've reached your video limit this week. Resets on ${resetDate}.`, reset_date: resetDate, action: 'resubscribe', plan: user?.plan });
-        return res.status(403).json({ error: 'videos_limit_reached', message: `You've reached your ${credits.videos_limit} videos/week limit on the ${planName} plan.`, reset_date: resetDate, action: 'upgrade_or_wait', plan: user?.plan });
-      }
+    // ✅ العميل على "free" (لسه ما شحنش رصيد حقيقي) مقصور على موديل 2 (Real Footage) بس
+    if ((user?.plan || 'free') === 'free' && videoType !== 'pexels_clips') {
+      return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock all models.', show_upgrade: true });
+    }
+    const creditCost = MODEL12_CREDIT_COSTS[duration] || 5;
+    const currentBalance = await getCreditsBalance(req.user.userId);
+    if (currentBalance < creditCost) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${creditCost} credits, you have ${currentBalance}.`, cost: creditCost, remaining: currentBalance });
     }
     if (soundEffects && !planData.sound_effects) return res.status(403).json({ error: 'Sound effects require Plus plan or higher.' });
     if (videoEffect && videoEffect !== 'none' && !planData.video_effects) return res.status(403).json({ error: 'Video effects require Max plan.' });
@@ -891,15 +858,14 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
       return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
     }
 
-    const creditCost = MODEL12_CREDIT_COSTS[duration] || 3;
     activeRenderCount++;
     setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
     res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost });
     (async () => {
       try {
         const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null });
-        // ── Deduct credits based on video duration ──
-        try { await addUserTokens(req.user.userId, creditCost); } catch(e) { console.warn('[Render] Credit deduct failed:', e.message); }
+        // ── خصم الكريديت من الرصيد الموحد بعد نجاح الفيديو ──
+        try { await chargeCredits(req.user.userId, creditCost); } catch(e) { console.warn('[Render] Credit deduct failed:', e.message); }
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost });
       } catch (jobErr) {
         setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
@@ -1169,35 +1135,27 @@ Output ONLY JSON array:
 app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, videoStyle, styleSuffix, sceneDurations } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
-  const quotaCheck = await canUserMakeModel3Video(req.user.userId, duration || '1min');
-  if (!quotaCheck.allowed) {
-    return res.status(403).json({
-      error: quotaCheck.reason,
-      message: quotaCheck.reason === 'quota_exceeded'
-        ? `You've used all your ${duration} videos (${quotaCheck.used}/${quotaCheck.quota}). Subscribe again to continue.`
-        : quotaCheck.reason === 'no_access'
-        ? 'subscribe_required'
-        : `${duration} is not available on your plan.`,
-      show_upgrade: true,
-    });
+  const m3User = await getUserById(req.user.userId);
+  if ((m3User?.plan || 'free') === 'free') {
+    return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 3.', show_upgrade: true });
+  }
+  const m3CreditCost = MODEL3_CREDIT_COSTS[duration] || 20;
+  const m3Balance = await getCreditsBalance(req.user.userId);
+  if (m3Balance < m3CreditCost) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m3CreditCost} credits, you have ${m3Balance}.`, cost: m3CreditCost, remaining: m3Balance });
   }
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
-  const m3CreditCost = MODEL3_CREDIT_COSTS[duration] || 5;
   activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
-  res.status(202).json({ jobId: renderJobId, status: 'processing', is_trial: quotaCheck.is_trial || false, creditCost: m3CreditCost });
+  res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m3CreditCost });
   (async () => {
     try {
       const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null });
-      if (quotaCheck.is_trial) {
-        await markModel3TrialUsed(req.user.userId);
-      } else {
-        await incrementModel3Video(req.user.userId, duration || '1min');
-      }
-      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), is_trial: quotaCheck.is_trial || false });
+      await chargeCredits(req.user.userId, m3CreditCost).catch(e => console.warn('[Model3] Credit deduct failed:', e.message));
+      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
     } finally {
@@ -1401,23 +1359,19 @@ Output ONLY JSON array:
 app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, audioUrl, ratio, captions, music, videoLanguage, duration, inputMode, videoStyle, styleSuffix, sceneDurations } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
-  const quotaCheck = await canUserMakeModel4Video(req.user.userId, duration || '30s');
-  if (!quotaCheck.allowed) {
-    return res.status(403).json({
-      error: quotaCheck.reason,
-      message: quotaCheck.reason === 'quota_exceeded'
-        ? `You've used all your videos for this plan. Please subscribe to a new plan to continue.`
-        : quotaCheck.reason === 'plan_not_support'
-        ? `${duration} videos are not available on your plan. Upgrade to unlock.`
-        : 'subscribe_required',
-      show_upgrade: true,
-    });
+  const m4User = await getUserById(req.user.userId);
+  if ((m4User?.plan || 'free') === 'free') {
+    return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 4.', show_upgrade: true });
+  }
+  const m4CreditCost = MODEL4_CREDIT_COSTS[duration] || 100;
+  const m4Balance = await getCreditsBalance(req.user.userId);
+  if (m4Balance < m4CreditCost) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m4CreditCost} credits, you have ${m4Balance}.`, cost: m4CreditCost, remaining: m4Balance });
   }
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
   const renderJobId = String(Date.now());
-  const m4CreditCost = MODEL4_CREDIT_COSTS[duration] || 10;
   activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m4CreditCost });
@@ -1444,7 +1398,7 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
         }
       }
       const videoPath = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: finalSceneDurations });
-      await incrementModel4Video(req.user.userId, duration || '30s');
+      await chargeCredits(req.user.userId, m4CreditCost).catch(e => console.warn('[Model4] Credit deduct failed:', e.message));
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       console.error('[Model4 Render] Failed:', jobErr.message);
@@ -1483,13 +1437,9 @@ app.post('/api/model4/payment-request', authMiddleware, async (req, res) => {
 
 app.get('/api/model4/usage', authMiddleware, async (req, res) => {
   try {
-    const user = await getUserById(req.user.userId);
-    const trialUsed = user?.model4_trial_used || 0;
-    if (!user?.model4_access) return res.json({ access: false, trial_used: trialUsed });
-    const usage = await getModel4Usage(req.user.userId);
-    const plan = user.model4_plan || 'm4_plan1';
-    const planData = MODEL4_PLANS[plan];
-    res.json({ access: true, plan, planData, trial_used: trialUsed, usage: { videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0, videos_3min: usage.videos_3min || 0 }, quota: { videos_30s: planData?.videos_30s || 0, videos_1min: planData?.videos_1min || 0, videos_3min: planData?.videos_3min || 0 } });
+    // ✅ نظام الكريديت الموحد: الكل عنده access، القيد الوحيد هو رصيد الكريديت
+    const balance = await getCreditsBalance(req.user.userId);
+    res.json({ access: true, credits_balance: balance, costs: MODEL4_CREDIT_COSTS });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1585,20 +1535,9 @@ Output ONLY JSON array (${sceneCount} items):
 app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, ratio, duration, characterPhotos } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
-  const quotaCheck = await canUserMakeModel5Video(req.user.userId, duration || '30s');
-  if (!quotaCheck.allowed) {
-    return res.status(403).json({
-      error: quotaCheck.reason,
-      message: quotaCheck.reason === 'quota_exceeded'
-        ? `You've used all your ${duration} videos for this plan.`
-        : quotaCheck.reason === 'plan_not_support'
-        ? `${duration} is not available on your plan.`
-        : 'subscribe_required',
-      show_upgrade: true,
-    });
-  }
-  if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
-    return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+  const m5User = await getUserById(req.user.userId);
+  if ((m5User?.plan || 'free') === 'free') {
+    return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 5.', show_upgrade: true });
   }
 
   // ── Attach character photos to scenes for reference image generation ──
@@ -1612,15 +1551,25 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     console.log(`[Model5] ${photos.length} character photo(s) attached to ${scenesWithPhotos.length} scenes`);
   }
 
+  // ✅ نظام الكريديت الموحد: تكلفة أعلى شوية لو فيه صورة شخصية (رفرنس لكل مشهد)
+  const costTable = photos.length > 0 ? MODEL5_CREDIT_COSTS_WITH_PHOTO : MODEL5_CREDIT_COSTS;
+  const m5CreditCost = costTable[duration] || 65;
+  const m5Balance = await getCreditsBalance(req.user.userId);
+  if (m5Balance < m5CreditCost) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m5CreditCost} credits, you have ${m5Balance}.`, cost: m5CreditCost, remaining: m5Balance });
+  }
+  if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+    return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+  }
+
   const renderJobId = String(Date.now());
-  const m5CreditCost = MODEL5_CREDIT_COSTS[duration] || 15;
   activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
   res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m5CreditCost });
   (async () => {
     try {
       const videoPath = await renderModel5Video({ scenes: scenesWithPhotos, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s' });
-      await incrementModel5Video(req.user.userId, duration || '30s');
+      await chargeCredits(req.user.userId, m5CreditCost).catch(e => console.warn('[Model5] Credit deduct failed:', e.message));
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
@@ -1662,22 +1611,9 @@ app.post('/api/model5/payment-request', authMiddleware, async (req, res) => {
 
 app.get('/api/model5/usage', authMiddleware, async (req, res) => {
   try {
-    const user = await getUserById(req.user.userId);
-    if (!user?.model5_access) return res.json({ access: false });
-    const usage = await getModel5Usage(req.user.userId);
-    const credits = await getModel5Credits(req.user.userId);
-    const plan = user.model5_plan || 'mc_starter';
-    const planData = MODEL5_PLANS[plan];
-    const totalCredits = planData?.credits || 75;
-    const creditsUsed = credits.credits_used || 0;
-    const creditsRemaining = Math.max(0, (credits.credits_total || 0) - creditsUsed);
-    res.json({
-      access: true, plan, planData,
-      credits: { total: credits.credits_total || 0, used: creditsUsed, remaining: creditsRemaining },
-      usage: { videos_15s: usage.videos_15s || 0, videos_30s: usage.videos_30s || 0, videos_1min: usage.videos_1min || 0 },
-      // Legacy quota fields for UI compatibility
-      quota: { videos_15s: Math.floor(creditsRemaining/15), videos_30s: Math.floor(creditsRemaining/30), videos_1min: Math.floor(creditsRemaining/60) }
-    });
+    // ✅ نظام الكريديت الموحد: الكل عنده access، القيد الوحيد هو رصيد الكريديت
+    const balance = await getCreditsBalance(req.user.userId);
+    res.json({ access: true, credits_balance: balance, costs: MODEL5_CREDIT_COSTS, costs_with_photo: MODEL5_CREDIT_COSTS_WITH_PHOTO });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -14,6 +14,7 @@ import {
   getModel4Usage, MODEL4_PLANS, getModel4Credits, addModel4Credits,
   getModel5Usage, MODEL5_PLANS, getModel5Credits, addModel5Credits,
   resetModel3Usage, resetModel4Usage, resetModel5Usage,
+  EGP_PER_CREDIT, CREDITS_PACKAGES, getCreditsBalance, approveCreditsPayment,
 } from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
@@ -260,6 +261,121 @@ router.get('/payment/status', authMiddleware, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// نظام الكريديت الموحد — رصيد واحد مشترك بين كل الموديلات
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.get('/credits/balance', authMiddleware, async (req, res) => {
+  try {
+    const balance = await getCreditsBalance(req.user.userId);
+    res.json({ balance });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── مصري: شحن كريديت مرن بالسلايدر + InstaPay + إيصال ─────────────────────
+router.post('/credits/eg-request', authMiddleware, async (req, res) => {
+  try {
+    const { credits, screenshot } = req.body;
+    const creditsNum = parseInt(credits, 10);
+    if (!creditsNum || creditsNum < 100) return res.status(400).json({ error: 'Minimum 100 credits required' });
+    if (!screenshot) return res.status(400).json({ error: 'Payment screenshot required' });
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const amountEgp = Math.round(creditsNum * EGP_PER_CREDIT);
+    const requestId = await createPaymentRequest(req.user.userId, user.email, 'credits_custom', 'onetime', amountEgp, screenshot, creditsNum);
+
+    const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'https://erivion.net';
+    const adminSecret = process.env.ADMIN_SECRET || '';
+    const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '');
+    const ext = screenshot.includes('png') ? 'png' : 'jpg';
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+        subject: `💳 Credits Top-up — ${creditsNum} credits — ${user.email}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h2 style="color:#7c6af7">💳 New Credits Purchase (Egypt)</h2>
+          <table style="width:100%;border-collapse:collapse;margin:20px 0">
+            <tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff;font-weight:600">${user.email}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Credits</td><td style="color:#7c6af7;font-weight:700">${creditsNum.toLocaleString()}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amountEgp} EGP</td></tr>
+          </table>
+          <div style="margin-top:20px;display:flex;gap:12px">
+            <a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(user.email)}&plan=credits_custom&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
+            <a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(user.email)}&plan=credits_custom&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
+          </div>
+        </div>`,
+        attachments: [{ filename: `credits_payment_${user.email}_${Date.now()}.${ext}`, content: base64Data }],
+      }),
+    });
+    res.json({ success: true, requestId, amountEgp, credits: creditsNum });
+  } catch (e) {
+    console.error('[Credits EG Request]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── دولي: باقة ثابتة عبر Gumroad — العميل يدفع هناك ثم يبلغنا هنا ─────────
+router.post('/credits/intl-request', authMiddleware, async (req, res) => {
+  try {
+    const { packageKey } = req.body;
+    const pkg = CREDITS_PACKAGES[packageKey];
+    if (!pkg) return res.status(400).json({ error: 'Invalid package' });
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const requestId = await createPaymentRequest(req.user.userId, user.email, packageKey, 'onetime', pkg.usd, null, pkg.credits);
+
+    const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'https://erivion.net';
+    const adminSecret = process.env.ADMIN_SECRET || '';
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+        subject: `🌐 Credits Package (Gumroad) — ${pkg.name} — ${user.email}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h2 style="color:#22c55e">🌐 New International Credits Purchase</h2>
+          <table style="width:100%;border-collapse:collapse;margin:20px 0">
+            <tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff;font-weight:600">${user.email}</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Package</td><td style="color:#f59e0b;font-weight:700">${pkg.name} (${pkg.credits.toLocaleString()} credits)</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Price</td><td style="color:#22c55e;font-weight:700">$${pkg.usd} USD</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Payment</td><td style="color:#86efac">Gumroad (verify on dashboard)</td></tr>
+          </table>
+          <p style="color:#9ca3af;font-size:13px">Please check your Gumroad dashboard to verify payment, then approve or reject:</p>
+          <div style="margin-top:20px;display:flex;gap:12px">
+            <a href="${backendUrl}/api/auth/intl-approve?email=${encodeURIComponent(user.email)}&plan=${packageKey}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
+            <a href="${backendUrl}/api/auth/intl-reject?email=${encodeURIComponent(user.email)}&plan=${packageKey}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
+          </div>
+        </div>`,
+      }),
+    });
+
+    // إيميل تأكيد للعميل
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: user.email,
+        subject: `⏳ We received your ${pkg.name} purchase request`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7">⏳ Request Received</h2><p style="color:#9ca3af;font-size:14px;line-height:1.7">We'll verify your Gumroad payment for <strong style="color:#22c55e">${pkg.name} (${pkg.credits.toLocaleString()} credits)</strong> and add your credits within 24 hours.</p></div>`,
+      }),
+    }).catch(() => {});
+
+    res.json({ success: true, requestId });
+  } catch (e) {
+    console.error('[Credits Intl Request]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── أسعار الباقات للـ affiliate ───────────────────────────────────────────
 const PLAN_PRICES    = { pro: 100, plus: 220, max: 550 };
 const MODEL3_PRICES  = { m3_starter: 450, m3_pro: 1100, m3_max: 2000 };
@@ -269,6 +385,27 @@ router.get('/admin/approve', async (req, res) => {
   const { email, plan, billing, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (!email || !plan) return res.status(400).send('Missing fields');
+
+  // ✅ نظام الكريديت الموحد — لو الطلب ده شحن كريديت (مصري بالسلايدر) بدل خطة أسبوعية
+  if (plan === 'credits_custom' || plan.startsWith('credits_')) {
+    try {
+      const result = await approveCreditsPayment(email, plan);
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion <noreply@erivion.net>',
+          to: email,
+          subject: `🎉 ${result.creditsAdded.toLocaleString()} credits added to your account!`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center"><div style="font-size:56px;margin-bottom:12px">🎉</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Credits Added!</h2><p style="color:#9ca3af;font-size:14px">Your new balance: <strong style="color:#7c6af7">${result.newBalance.toLocaleString()} credits</strong></p><a href="${process.env.FRONTEND_URL || 'https://erivion.net'}" style="display:inline-block;margin-top:20px;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700">Start Creating →</a></div></div>`,
+        }),
+      }).catch(() => {});
+      return res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">✅</div><h2 style="color:#22c55e">Credits Added!</h2><p style="color:#9ca3af">${email}</p><p style="color:#7c6af7;font-weight:700;font-size:18px">+${result.creditsAdded.toLocaleString()} credits (balance: ${result.newBalance.toLocaleString()})</p></div></body></html>`);
+    } catch (e) {
+      return res.status(500).send('Error: ' + e.message);
+    }
+  }
+
   try {
     const result = await activateUserPlan(email, plan, billing || 'monthly');
     const planData = PLANS[plan];
@@ -428,6 +565,27 @@ router.get('/intl-approve', async (req, res) => {
   const { email, plan, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
   if (!email || !plan) return res.status(400).send('Missing fields');
+
+  // ✅ نظام الكريديت الموحد — باقة دولية ثابتة عبر Gumroad
+  if (plan.startsWith('credits_')) {
+    try {
+      const result = await approveCreditsPayment(email, plan);
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion <noreply@erivion.net>',
+          to: email,
+          subject: `🎉 ${result.creditsAdded.toLocaleString()} credits added to your account!`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center"><div style="font-size:56px;margin-bottom:12px">🎉</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Credits Added!</h2><p style="color:#9ca3af;font-size:14px">Your new balance: <strong style="color:#7c6af7">${result.newBalance.toLocaleString()} credits</strong></p><a href="${process.env.FRONTEND_URL || 'https://erivion.net'}" style="display:inline-block;margin-top:20px;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700">Start Creating →</a></div></div>`,
+        }),
+      }).catch(() => {});
+      return res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">✅</div><h2 style="color:#22c55e">Credits Added!</h2><p style="color:#9ca3af">${email}</p><p style="color:#7c6af7;font-weight:700;font-size:18px">+${result.creditsAdded.toLocaleString()} credits (balance: ${result.newBalance.toLocaleString()})</p></div></body></html>`);
+    } catch (e) {
+      return res.status(500).send('Error: ' + e.message);
+    }
+  }
+
   try {
     await activateUserPlan(email, plan, 'monthly');
     // Reset usage for M3/M4/M5 plans
@@ -458,6 +616,9 @@ router.get('/intl-approve', async (req, res) => {
 router.get('/intl-reject', async (req, res) => {
   const { email, plan, secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  if (email) {
+    try { await markLatestPaymentRequestRejected(email); } catch (dbErr) { console.error('[IntlReject] DB error:', dbErr.message); }
+  }
   if (email) {
     try {
       const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';

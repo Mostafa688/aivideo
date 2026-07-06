@@ -797,6 +797,14 @@ export default function AdminPage() {
 
   const loadStats    = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/stats', { headers }); const d = await r.json(); setStats(d); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadPayments = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/payments', { headers }); const d = await r.json(); setPayments(d.payments || []); } catch (e) { console.error(e); } setLoading(false); }, []);
+  const markPaid = useCallback(async (id, paid) => {
+    try {
+      const url = `/api/admin/payments/${id}/${paid ? 'mark-paid' : 'unmark-paid'}`;
+      const r = await fetch(url, { method: 'POST', headers });
+      const d = await r.json();
+      if (d.payment) setPayments(ps => ps.map(p => p.id === id ? { ...p, ...d.payment } : p));
+    } catch (e) { console.error(e); }
+  }, []);
   const loadVideos   = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/videos', { headers }); const d = await r.json(); setVideos(d.videos || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadAnswers  = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/onboarding-answers', { headers }); const d = await r.json(); setAnswers(d.answers || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadCommunity = useCallback(async () => {
@@ -1040,6 +1048,8 @@ export default function AdminPage() {
                 <StatCard label="Weekly Signups" value={fmt(stats.overview.weekly_signups)} color="#22c55e" />
                 <StatCard label="Total Videos" value={fmt(stats.overview.total_videos)} />
                 <StatCard label="Revenue (EGP)" value={fmt(stats.overview.total_revenue_egp)} color="#f59e0b" />
+                <StatCard label="Est. Cost (EGP)" value={fmt(stats.overview.total_cost_estimate_egp)} color="#ef4444" />
+                <StatCard label="Est. Profit (EGP)" value={fmt(stats.overview.total_profit_estimate_egp)} color="#22c55e" />
                 <StatCard label="Pending Payments" value={stats.overview.pending_payments} color={stats.overview.pending_payments > 0 ? '#ef4444' : '#9ca3af'} />
                 <StatCard label="Model 3 Users" value={stats.overview.model3_users} color="#7c6af7" />
               </div>
@@ -1272,9 +1282,12 @@ export default function AdminPage() {
           <>
             <div style={s.topbar}><div style={s.title}>Payment Requests</div><button style={s.btn()} onClick={loadPayments}>🔄 Refresh</button></div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 10 }}>
+              💡 التكلفة والربح تقديريان بناءً على متوسط هامش ربح ~72% — القيمة الفعلية بتختلف حسب الموديل اللي العميل هيستخدمه فعليًا
+            </div>
             <div style={s.card}>
               <table style={s.table}>
-                <thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Billing</th><th style={s.th}>Amount</th><th style={s.th}>Status</th><th style={s.th}>Date</th></tr></thead>
+                <thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Billing</th><th style={s.th}>Amount</th><th style={s.th}>Est. Cost</th><th style={s.th}>Est. Profit</th><th style={s.th}>Status</th><th style={s.th}>Date</th><th style={s.th}>Cost Paid?</th></tr></thead>
                 <tbody>
                   {payments.map(p => (
                     <tr key={p.id}>
@@ -1282,8 +1295,19 @@ export default function AdminPage() {
                       <td style={s.td}><span style={planStyle(p.plan)}>{p.plan}</span></td>
                       <td style={s.td}>{p.billing}</td>
                       <td style={{ ...s.td, color: '#22c55e', fontWeight: 700 }}>{p.amount} EGP</td>
+                      <td style={{ ...s.td, color: '#ef4444' }}>{p.costEstimate} EGP</td>
+                      <td style={{ ...s.td, color: '#7c6af7', fontWeight: 700 }}>{p.profitEstimate} EGP</td>
                       <td style={s.td}><span style={{ color: p.status === 'approved' ? '#22c55e' : p.status === 'rejected' ? '#ef4444' : '#f59e0b', fontWeight: 600, fontSize: 12 }}>{p.status === 'approved' ? '✅ Approved' : p.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}</span></td>
                       <td style={s.td}>{new Date(p.created_at).toLocaleDateString()}</td>
+                      <td style={s.td}>
+                        {p.status !== 'approved' ? (
+                          <span style={{ color: '#4b5563', fontSize: 11 }}>—</span>
+                        ) : p.paid_out ? (
+                          <button onClick={() => markPaid(p.id, false)} style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.4)', color: '#22c55e', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>✅ تم</button>
+                        ) : (
+                          <button onClick={() => markPaid(p.id, true)} style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: '#f59e0b', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>وضع تم</button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

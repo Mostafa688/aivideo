@@ -5,13 +5,11 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { authMiddleware } from './authRoutes.js';
-import { getUserById, getModel7Credits, canUserMakeModel7Video, incrementModel7Video } from './authService.js';
+import { getUserById, getCreditsBalance, chargeCredits, ADS_CREDIT_COST } from './authService.js';
 import { renderAdVideo } from './adsVideoService.js';
 
 const router = express.Router();
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const ADS_CREDIT_COST = 10;
 
 // ── multer for product image + optional voice audio ───────────────────────────
 const upload = multer({
@@ -54,19 +52,19 @@ router.post('/render',
       const user = await getUserById(req.user.userId);
       if (!user) return res.status(401).json({ error: 'User not found' });
 
-      // ── Access check ──
-      if (!user.model7_access) {
-        return res.status(403).json({ error: 'no_access', message: 'Ads Model subscription required' });
+      // ✅ العميل على "free" (لسه ما شحنش رصيد حقيقي) مقصور على موديل 2 بس
+      if ((user.plan || 'free') === 'free') {
+        return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Ads.', show_upgrade: true });
       }
 
-      // ── Credit check ──
-      const check = await canUserMakeModel7Video(req.user.userId);
-      if (!check.allowed) {
+      // ── نظام الكريديت الموحد ──
+      const balance = await getCreditsBalance(req.user.userId);
+      if (balance < ADS_CREDIT_COST) {
         return res.status(402).json({
-          error: 'insufficient_credits',
-          required: ADS_CREDIT_COST,
-          remaining: check.remaining || 0,
-          reason: check.reason,
+          error: 'quota_exceeded',
+          message: `This video needs ${ADS_CREDIT_COST} credits, you have ${balance}.`,
+          cost: ADS_CREDIT_COST,
+          remaining: balance,
         });
       }
 
@@ -87,8 +85,7 @@ router.post('/render',
         fs.writeFileSync(uploadedAudioPath, voiceAudioFile.buffer);
       }
 
-      // ── Deduct credits immediately ──
-      await incrementModel7Video(req.user.userId);
+      // (الخصم بيحصل بعد نجاح الفيديو فعليًا — تحت في الـ async block)
 
       // ── Create job ──
       const jobId = `ads_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -126,6 +123,7 @@ router.post('/render',
 
           // Build relative URL
           const relPath = result.outputPath.replace(join(process.cwd(), 'outputs'), '/outputs');
+          await chargeCredits(req.user.userId, ADS_CREDIT_COST).catch(e => console.warn('[AdsRoutes] Credit deduct failed:', e.message));
           setAdsJob(jobId, { status: 'done', step: 'done', msg: 'Ad video ready!', videoUrl: relPath });
           scheduleAdsCleanup(jobId);
         } catch (err) {
@@ -160,9 +158,8 @@ router.get('/status/:jobId', authMiddleware, (req, res) => {
 // ── GET /api/ads/credits ──────────────────────────────────────────────────────
 router.get('/credits', authMiddleware, async (req, res) => {
   try {
-    const credits = await getModel7Credits(req.user.userId);
-    const remaining = Math.max(0, (credits.credits_total || 0) - (credits.credits_used || 0));
-    res.json({ credits_total: credits.credits_total || 0, credits_used: credits.credits_used || 0, remaining, cost_per_video: ADS_CREDIT_COST });
+    const balance = await getCreditsBalance(req.user.userId);
+    res.json({ remaining: balance, cost_per_video: ADS_CREDIT_COST });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

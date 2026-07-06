@@ -11,16 +11,17 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
 });
 
-// ── Credit costs per duration for Model 1 & 2 ──────────────────────────────
+// ── Credit costs per duration — نظام الكريديت الموحد (نفس الرصيد لكل الموديلات) ──
 export const MODEL12_CREDIT_COSTS = {
-  '30s': 3, 'auto': 3, '1min': 6, '2min': 12,
-  '3min': 18, '4min': 24, '5min': 30, '8min': 48, '10min': 60,
+  '30s': 5, 'auto': 5, '1min': 10, '2min': 20,
+  '3min': 30, '4min': 40, '5min': 50, '8min': 80, '10min': 100,
 };
 
-// ── Credit costs per duration for Model 3, 4, 5 ───────────────────────────
-export const MODEL3_CREDIT_COSTS = { '30s': 5, '1min': 10, '2min': 20, '3min': 30, '5min': 50 };
-export const MODEL4_CREDIT_COSTS = { '30s': 10, '1min': 20, '2min': 40, '3min': 60 };
-export const MODEL5_CREDIT_COSTS = { '15s': 15, '30s': 30, '1min': 60 };
+export const MODEL3_CREDIT_COSTS = { '30s': 20, '1min': 40, '2min': 80, '3min': 120, '5min': 200 };
+export const MODEL4_CREDIT_COSTS = { '30s': 100, '1min': 200, '2min': 400, '3min': 600 };
+// موديل 5: أرخص لو من النص، أعلى شوية لو فيه صورة شخصية (رفرنس صورة لكل مشهد)
+export const MODEL5_CREDIT_COSTS = { '15s': 65, '30s': 130, '1min': 260 };
+export const MODEL5_CREDIT_COSTS_WITH_PHOTO = { '15s': 75, '30s': 160, '1min': 320 };
 
 export const PLANS = {
   free: {
@@ -51,6 +52,15 @@ export const PLANS = {
     name: 'Max', price_monthly: 550, price_first_month: 150, price_yearly: 3960,
     credits_weekly: 600,  // 600 credits/week → ~200 × 30s or ~10 × 10min
     videos_weekly: null,
+    max_duration: '10min', watermark: false, captions: true, music: true, transitions: true,
+    sound_effects: true, video_effects: true, edit_after_render: true,
+    languages: null, all_languages: true,
+  },
+  // ── يتفعّل تلقائيًا أول ما العميل يشحن أي رصيد كريديت حقيقي ──
+  // بيفتح كل الموديلات (1-5) ويشيل العلامة المائية — قبل كده العميل على "free" مقصور على موديل 2 بس + علامة مائية
+  paid: {
+    name: 'Paid', price_monthly: 0, price_yearly: 0,
+    credits_weekly: null, videos_weekly: null,
     max_duration: '10min', watermark: false, captions: true, music: true, transitions: true,
     sound_effects: true, video_effects: true, edit_after_render: true,
     languages: null, all_languages: true,
@@ -106,6 +116,10 @@ async function initDB() {
       status TEXT DEFAULT 'pending',
       created_at TEXT DEFAULT NOW()
     );
+    ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS paid_out INTEGER DEFAULT 0;
+    ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS paid_out_at TEXT DEFAULT NULL;
+    ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS credits_purchased INTEGER DEFAULT NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_balance INTEGER DEFAULT 0;
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS model3_usage (
@@ -307,8 +321,63 @@ export async function activateUserPlan(email, plan, billing = 'monthly') {
   return { success: true, plan, expires_at: expiresAt.toISOString() };
 }
 
-export async function createPaymentRequest(userId, userEmail, plan, billing, amount, screenshotData) {
-  const { rows } = await pool.query('INSERT INTO payment_requests (user_id, user_email, plan, billing, amount, screenshot_data, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id', [userId, userEmail, plan, billing, amount, screenshotData || null, 'pending']);
+// ═══════════════════════════════════════════════════════════════════════════
+// نظام الكريديت الموحد — رصيد واحد مشترك بين كل الموديلات، من غير تجديد أسبوعي
+// ═══════════════════════════════════════════════════════════════════════════
+
+// سعر الكريديت للمصريين (شحن مرن بالسلايدر)
+export const EGP_PER_CREDIT = 0.5;
+
+// باقات ثابتة للدوليين (مرتبطة بمنتجات Gumroad — دفعة واحدة، مش اشتراك)
+export const CREDITS_PACKAGES = {
+  credits_starter: { name: 'Starter', credits: 600,   usd: 12  },
+  credits_creator: { name: 'Creator', credits: 1400,  usd: 28  },
+  credits_studio:  { name: 'Studio',  credits: 3000,  usd: 60  },
+  credits_team:    { name: 'Team',    credits: 6000,  usd: 120 },
+  credits_agency:  { name: 'Agency',  credits: 12000, usd: 240 },
+};
+
+export async function getCreditsBalance(userId) {
+  const { rows } = await pool.query('SELECT COALESCE(credits_balance, 0) as balance FROM users WHERE id = $1', [userId]);
+  return rows[0]?.balance || 0;
+}
+
+export async function addCreditsBalance(userId, amount) {
+  const { rows } = await pool.query('UPDATE users SET credits_balance = COALESCE(credits_balance, 0) + $1 WHERE id = $2 RETURNING credits_balance', [amount, userId]);
+  return rows[0]?.credits_balance || 0;
+}
+
+export async function deductCreditsBalance(userId, amount) {
+  const current = await getCreditsBalance(userId);
+  if (current < amount) return { success: false, balance: current };
+  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 RETURNING credits_balance', [amount, userId]);
+  return { success: true, balance: rows[0]?.credits_balance || 0 };
+}
+
+// ── اعتماد عملية شراء كريديت (مصري بالسلايدر أو دولي بباقة ثابتة) ─────────
+// بيدور على أحدث طلب pending لنفس الإيميل والخطة، يضيف الكريديت المسجلة فيه، ويعتمد الطلب
+export async function approveCreditsPayment(email, plan) {
+  const userRow = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  if (userRow.rows.length === 0) throw new Error('User not found');
+  const userId = userRow.rows[0].id;
+
+  const reqRow = await pool.query(
+    "SELECT id, credits_purchased FROM payment_requests WHERE user_email = $1 AND plan = $2 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+    [email, plan]
+  );
+  if (reqRow.rows.length === 0) throw new Error('No pending credits request found');
+  const { id: requestId, credits_purchased: creditsToAdd } = reqRow.rows[0];
+  if (!creditsToAdd || creditsToAdd <= 0) throw new Error('Invalid credits amount on this request');
+
+  const newBalance = await addCreditsBalance(userId, creditsToAdd);
+  // ✅ أول ما العميل يشحن رصيد حقيقي، يتفتحله كل الموديلات وتتشال العلامة المائية تلقائيًا
+  await pool.query("UPDATE users SET plan = 'paid' WHERE id = $1 AND plan = 'free'", [userId]);
+  await pool.query("UPDATE payment_requests SET status = 'approved' WHERE id = $1", [requestId]);
+  return { userId, creditsAdded: creditsToAdd, newBalance };
+}
+
+
+  const { rows } = await pool.query('INSERT INTO payment_requests (user_id, user_email, plan, billing, amount, screenshot_data, status, credits_purchased) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id', [userId, userEmail, plan, billing, amount, screenshotData || null, 'pending', creditsPurchased]);
   return rows[0].id;
 }
 
@@ -327,7 +396,7 @@ export async function signUp(email, password) {
   const hashed = await bcrypt.hash(password, 10);
   const code = generateCode();
   const expires = Date.now() + 10 * 60 * 1000;
-  await pool.query('INSERT INTO users (email, password, plan) VALUES ($1, $2, $3)', [email, hashed, 'free']);
+  await pool.query('INSERT INTO users (email, password, plan, credits_balance) VALUES ($1, $2, $3, $4)', [email, hashed, 'free', SIGNUP_BONUS_CREDITS]);
   await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]);
   await pool.query('INSERT INTO verification_codes (email, code, expires_at) VALUES ($1, $2, $3)', [email, code, expires]);
   await sendVerificationEmail(email, code);
@@ -382,7 +451,7 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
   if (user) {
     if (!user.google_id) await pool.query('UPDATE users SET google_id = $1, avatar = $2, verified = 1 WHERE id = $3', [googleId, avatar, user.id]);
   } else {
-    await pool.query('INSERT INTO users (email, password, name, google_id, avatar, verified, plan) VALUES ($1, $2, $3, $4, $5, 1, $6)', [email, 'GOOGLE_AUTH_NO_PASSWORD', name || email.split('@')[0], googleId, avatar || null, 'free']);
+    await pool.query('INSERT INTO users (email, password, name, google_id, avatar, verified, plan, credits_balance) VALUES ($1, $2, $3, $4, $5, 1, $6, $7)', [email, 'GOOGLE_AUTH_NO_PASSWORD', name || email.split('@')[0], googleId, avatar || null, 'free', SIGNUP_BONUS_CREDITS]);
     const { rows: newRows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     user = newRows[0];
   }
@@ -511,6 +580,35 @@ export async function getAllPaymentRequests(status = null) {
   }
   const { rows } = await pool.query('SELECT * FROM payment_requests ORDER BY created_at DESC');
   return rows;
+}
+
+// ── حساب الربح التقديري لكل عملية دفع ──────────────────────────────────────
+// نسبة تكلفة تقديرية بناءً على متوسط استخدام متوقع عبر كل الموديلات (نسبة محافظة، مش أسوأ سيناريو)
+// أسوأ سيناريو (كل الكريديت على موديل 5) هامشه ~46%، وأحسن سيناريو (موديل 2 بس) هامشه ~92% —
+// النسبة دي بتاخد نقطة وسط منطقية للتخطيط، مش رقم فعلي دقيق 100% لأن التكلفة الحقيقية بتتحدد
+// بس لما العميل يستهلك الكريديت فعليًا على موديل معين
+const ESTIMATED_COST_RATIO = 0.28; // ≈ 72% هامش ربح تقديري بالمتوسط
+
+export function estimatePaymentProfit(amount) {
+  const costEstimate = Math.round(amount * ESTIMATED_COST_RATIO * 100) / 100;
+  const profitEstimate = Math.round((amount - costEstimate) * 100) / 100;
+  return { costEstimate, profitEstimate, marginPercent: Math.round((1 - ESTIMATED_COST_RATIO) * 100) };
+}
+
+export async function markPaymentPaidOut(paymentId) {
+  const { rows } = await pool.query(
+    "UPDATE payment_requests SET paid_out = 1, paid_out_at = NOW()::text WHERE id = $1 RETURNING *",
+    [paymentId]
+  );
+  return rows[0] || null;
+}
+
+export async function unmarkPaymentPaidOut(paymentId) {
+  const { rows } = await pool.query(
+    "UPDATE payment_requests SET paid_out = 0, paid_out_at = NULL WHERE id = $1 RETURNING *",
+    [paymentId]
+  );
+  return rows[0] || null;
 }
 
 // ── Model 4 ────────────────────────────────────────────────────────────────
@@ -703,7 +801,22 @@ export const MODEL7_PLANS = {
   ads_max:     { name: 'Max',     price: 1800, credits: 100 },
 };
 
-export const ADS_CREDIT_COST = 10;
+export const ADS_CREDIT_COST = 75;
+
+// ── خصم موحد من رصيد الكريديت — تستخدمه كل الموديلات (1 لحد 5 + Ads) ──────
+// بيتأكد إن الرصيد كافي، يخصم، ويرجع النتيجة. لو الرصيد مش كافي بيرجع remaining
+// عشان الفرونت إند يقدر يقول للعميل "محتاج X كريديت ومعاك Y بس"
+export async function chargeCredits(userId, cost) {
+  const balance = await getCreditsBalance(userId);
+  if (balance < cost) return { success: false, reason: 'quota_exceeded', remaining: balance, cost };
+  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 RETURNING credits_balance', [cost, userId]);
+  return { success: true, remaining: rows[0]?.credits_balance ?? (balance - cost), cost };
+}
+
+// ── رصيد ترحيبي بسيط لأول مرة بس (مش بيتجدد) — يكفي فيديو أو اتنين قصار للتجربة ──
+export const SIGNUP_BONUS_CREDITS = 15;
+
+
 
 (async () => {
   try {

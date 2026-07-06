@@ -1,373 +1,177 @@
 import React, { useState, useEffect } from 'react';
 
 const INSTAPAY_NUMBER = import.meta.env.VITE_INSTAPAY_NUMBER || '01091917832';
+const EGP_PER_CREDIT = 0.5;
+const SLIDER_MIN = 600;
+const SLIDER_MAX = 10000;
 
-// ─── Flash Offer (48h) ───────────────────────────────────────────────────
-// لتغيير وقت بداية العرض، غير التاريخ هنا (ISO format)
-const OFFER_END_TIME = new Date('2026-06-30T00:00:00+03:00').getTime(); // 48h من وقت النشر
-
-const EGP_OFFER_PRICES = {
-  pro:  { monthly: 60,  yearly: Math.round(60*12*0.6)  },
-  plus: { monthly: 130, yearly: Math.round(130*12*0.6) },
-  max:  { monthly: 250, yearly: Math.round(250*12*0.6) },
-};
-
-function useOfferCountdown() {
-  const [timeLeft, setTimeLeft] = React.useState(() => Math.max(0, OFFER_END_TIME - Date.now()));
-  React.useEffect(() => {
-    if (timeLeft <= 0) return;
-    const id = setInterval(() => {
-      const t = Math.max(0, OFFER_END_TIME - Date.now());
-      setTimeLeft(t);
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-  const active = timeLeft > 0;
-  const h = Math.floor(timeLeft / 3600000);
-  const m = Math.floor((timeLeft % 3600000) / 60000);
-  const s = Math.floor((timeLeft % 60000) / 1000);
-  return { active, h, m, s };
-}
-
-// ─── Model 1 & 2 Plans ────────────────────────────────────────────────────
-const PLANS = [
-  {
-    key: 'free',
-    name: 'Free',
-    icon: '🆓',
-    price_monthly: 0,
-    price_first_month: null,
-    price_yearly: 0,
-    color: '#6b7280',
-    gradient: 'linear-gradient(135deg, #1f2937 0%, #111827 100%)',
-    border: 'rgba(107,114,128,0.4)',
-    popular: false,
-    creditNote: '30s video = 3 credits',
-    features: [
-      { text: '10 credits / week', included: true },
-      { text: '30s max duration', included: true },
-      { text: '3 credits per 30s video', included: true },
-      { text: 'Captions', included: true },
-      { text: 'Music', included: true },
-      { text: 'Transitions', included: true },
-      { text: 'English & Arabic only', included: true },
-      { text: 'Watermark on videos', included: false, note: 'always' },
-      { text: 'Sound Effects', included: false, badge: 'PRO' },
-      { text: 'Video Effects', included: false, badge: 'PRO' },
-      { text: 'Edit after render', included: false, badge: 'PRO' },
-      { text: 'Longer durations', included: false, badge: 'PRO' },
-    ],
-    credits: '10 / week',
-    videos: 'Unlimited (credits permitting)',
-  },
-  {
-    key: 'pro',
-    name: 'Pro',
-    icon: '⚡',
-    price_monthly: 100,
-    price_first_month: null,
-    price_yearly: 720,
-    price_yearly_monthly: 60,
-    price_usd_monthly: 5,
-    price_usd_yearly: 30,
-    color: '#7c6af7',
-    gradient: 'linear-gradient(135deg, #2d1b69 0%, #1a0f3d 100%)',
-    border: 'rgba(124,106,247,0.5)',
-    popular: true,
-    creditNote: '30s=3cr · 1min=6cr · 2min=12cr',
-    features: [
-      { text: '400 credits / week', included: true },
-      { text: '2min max duration', included: true },
-      { text: '3 credits per 30s · 6 per 1min', included: true },
-      { text: 'No watermark', included: true },
-      { text: 'Captions', included: true },
-      { text: 'Music', included: true },
-      { text: 'Transitions', included: true },
-      { text: 'Edit after render', included: true },
-      { text: 'EN, AR, DE, FR', included: true },
-      { text: 'Sound Effects', included: false, badge: 'PLUS' },
-      { text: 'Video Effects', included: false, badge: 'PLUS' },
-      { text: 'Longer durations', included: false, badge: 'PLUS' },
-    ],
-    credits: '400 / week',
-    videos: 'Unlimited (credits permitting)',
-  },
-  {
-    key: 'plus',
-    name: 'Plus',
-    icon: '🚀',
-    price_monthly: 220,
-    price_first_month: null,
-    price_yearly: 1584,
-    price_yearly_monthly: 132,
-    price_usd_monthly: 11,
-    price_usd_yearly: 66,
-    color: '#06b6d4',
-    gradient: 'linear-gradient(135deg, #0c3a4a 0%, #061a22 100%)',
-    border: 'rgba(6,182,212,0.5)',
-    popular: false,
-    creditNote: '30s=3cr · 1min=6cr · 5min=30cr',
-    features: [
-      { text: '60 credits / week', included: true },
-      { text: '5min max duration', included: true },
-      { text: '3 credits per 30s · 6 per 1min', included: true },
-      { text: 'No watermark', included: true },
-      { text: 'Captions', included: true },
-      { text: 'Music', included: true },
-      { text: 'Transitions', included: true },
-      { text: 'Sound Effects', included: true },
-      { text: 'Edit after render', included: true },
-      { text: 'All languages', included: true },
-      { text: 'Video Effects', included: false, badge: 'MAX' },
-      { text: 'Longer durations', included: false, badge: 'MAX' },
-    ],
-    credits: '60 / week',
-    videos: 'Unlimited (credits permitting)',
-  },
-  {
-    key: 'max',
-    name: 'Max',
-    icon: '👑',
-    price_monthly: 550,
-    price_first_month: null,
-    price_yearly: 3960,
-    price_yearly_monthly: 330,
-    price_usd_monthly: 18,
-    price_usd_yearly: 108,
-    color: '#f59e0b',
-    gradient: 'linear-gradient(135deg, #451a03 0%, #1c0a00 100%)',
-    border: 'rgba(245,158,11,0.5)',
-    popular: false,
-    creditNote: '30s=3cr · 1min=6cr · 10min=60cr',
-    features: [
-      { text: '600 credits / week', included: true },
-      { text: '10min max duration', included: true },
-      { text: '3 credits per 30s · 60 per 10min', included: true },
-      { text: 'No watermark', included: true },
-      { text: 'Captions', included: true },
-      { text: 'Music', included: true },
-      { text: 'Transitions', included: true },
-      { text: 'Sound Effects', included: true },
-      { text: 'Video Effects', included: true },
-      { text: 'Edit after render', included: true },
-      { text: 'All languages', included: true },
-    ],
-    credits: '600 / week',
-    videos: 'Unlimited (credits permitting)',
-  },
+// ── الباقات الدولية الثابتة (مرتبطة بمنتجات Gumroad حقيقية — دفعة واحدة) ──
+const GUMROAD_PACKAGES = [
+  { key: 'credits_starter', name: 'Starter', credits: 600,   usd: 12,  url: 'https://digiwhirl23.gumroad.com/l/ukgdl',  color: '#7c6af7', icon: '🎬' },
+  { key: 'credits_creator', name: 'Creator', credits: 1400,  usd: 28,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: '⭐', popular: true },
+  { key: 'credits_studio',  name: 'Studio',  credits: 3000,  usd: 60,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: '🏆' },
+];
+const GUMROAD_MORE_PACKAGES = [
+  { key: 'credits_team',    name: 'Team',    credits: 6000,  usd: 120, url: 'https://digiwhirl23.gumroad.com/l/vmzubx', color: '#0891b2', icon: '👥' },
+  { key: 'credits_agency',  name: 'Agency',  credits: 12000, usd: 240, url: 'https://digiwhirl23.gumroad.com/l/ckvlgo', color: '#f59e0b', icon: '🏢' },
 ];
 
-// ─── Model 3 Plans ────────────────────────────────────────────────────────
-const MODEL3_PLANS = [
-  {
-    key: 'm3_starter',
-    name: 'Starter',
-    icon: '🚀',
-    color: '#f59e0b',
-    price_egp: 450,
-    price_usd: 14,
-    badge: null,
-    credits: 125,
-    creditNote: '30s = 5 cr · 1min = 10 cr · 3min = 30 cr',
-    features: ['125 Model 3 credits', '5 cr per 30s video', '10 cr per 1min video', 'Cinematic Ken Burns zoom', 'All video styles'],
-  },
-  {
-    key: 'm3_pro',
-    name: 'Pro',
-    icon: '⚡',
-    color: '#7c6af7',
-    price_egp: 1100,
-    price_usd: 28,
-    badge: 'Most Popular',
-    credits: 375,
-    creditNote: '30s = 5 cr · 1min = 10 cr · 5min = 50 cr',
-    features: ['375 Model 3 credits', '5 cr per 30s video', '10 cr per 1min video', '50 cr per 5min video', 'All video styles'],
-  },
-  {
-    key: 'm3_max',
-    name: 'Max',
-    icon: '👑',
-    color: '#22c55e',
-    price_egp: 2000,
-    price_usd: 45,
-    badge: null,
-    credits: 700,
-    creditNote: '30s = 5 cr · 1min = 10 cr · 5min = 50 cr',
-    features: ['700 Model 3 credits', '5 cr per 30s video', '10 cr per 1min video', '50 cr per 5min video', 'All video styles'],
-  },
-];
-
-// ─── Model 4 Plans ────────────────────────────────────────────────────────
-const MODEL4_PLANS_LIST = [
-  {
-    key: 'm4_plan1',
-    name: 'Starter',
-    icon: '🎬',
-    color: '#a855f7',
-    price_egp: 600,
-    price_usd: 18,
-    badge: null,
-    credits: 80,
-    creditNote: '30s = 10 cr · 1min = 20 cr · 3min = 60 cr',
-    features: ['80 Model 4 credits', '10 cr per 30s video', '20 cr per 1min video', 'Seedance v1 Pro', 'Captions + Music'],
-  },
-  {
-    key: 'm4_plan2',
-    name: 'Creator',
-    icon: '🎥',
-    color: '#a855f7',
-    price_egp: 1000,
-    price_usd: 28,
-    badge: 'Most Popular',
-    credits: 230,
-    creditNote: '30s = 10 cr · 1min = 20 cr · 3min = 60 cr',
-    features: ['230 Model 4 credits', '10 cr per 30s video', '20 cr per 1min video', '60 cr per 3min video', 'Seedance v1 Pro'],
-  },
-  {
-    key: 'm4_plan3',
-    name: 'Pro',
-    icon: '🏆',
-    color: '#a855f7',
-    price_egp: 2800,
-    price_usd: 72,
-    badge: 'Best Value',
-    credits: 690,
-    creditNote: '30s = 10 cr · 1min = 20 cr · 3min = 60 cr',
-    features: ['690 Model 4 credits', '10 cr per 30s video', '20 cr per 1min video', '60 cr per 3min video', 'Seedance v1 Pro'],
-  },
-];
-
-
-// ─── Model 5 Cinematic Plans ──────────────────────────────────────────────
-const MC_PLANS_LIST = [
-  {
-    key: 'mc_starter',
-    name: 'Starter',
-    icon: '🎭',
-    color: '#e11d48',
-    price_egp: 550,
-    price_usd: 22,
-    badge: null,
-    credits: 75,
-    creditNote: '15s = 15 cr · 30s = 30 cr · 1min = 60 cr',
-    features: ['75 Model 5 credits', '15 cr per 15s video', '30 cr per 30s video', 'Up to 5 characters', 'Seedance 2.0 Fast'],
-  },
-  {
-    key: 'mc_pro',
-    name: 'Pro',
-    icon: '🎥',
-    color: '#e11d48',
-    price_egp: 1050,
-    price_usd: 38,
-    badge: 'Most Popular',
-    credits: 150,
-    creditNote: '15s = 15 cr · 30s = 30 cr · 1min = 60 cr',
-    features: ['150 Model 5 credits', '15 cr per 15s video', '30 cr per 30s video', '60 cr per 1min video', 'Seedance 2.0 Fast'],
-  },
-  {
-    key: 'mc_max',
-    name: 'Max',
-    icon: '🏆',
-    color: '#e11d48',
-    price_egp: 2200,
-    price_usd: 72,
-    badge: null,
-    credits: 300,
-    creditNote: '15s = 15 cr · 30s = 30 cr · 1min = 60 cr',
-    features: ['300 Model 5 credits', '15 cr per 15s video', '30 cr per 30s video', '60 cr per 1min video', 'Seedance 2.0 Fast'],
-  },
+// ── جدول تكلفة الكريديت لكل موديل (مرجعي — لعرض "كام فيديو تقدر تعمل") ──
+const MODEL_COST_REFERENCE = [
+  { name: 'Model 1/2', example: '30s = 5cr · 1min = 10cr' },
+  { name: 'Model 3',   example: '30s = 20cr · 1min = 40cr' },
+  { name: 'Model 4',   example: '30s = 100cr · 1min = 200cr' },
+  { name: 'Model 5 / Ads', example: '15s = 65-75cr · 30s = 130-160cr' },
 ];
 
 function authHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: 'Bearer ' + localStorage.getItem('token'),
-  };
+  return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') };
 }
 
-// ─── Gumroad Links ────────────────────────────────────────────────────────
-const GUMROAD_LINKS = {
-  pro:        'https://digiwhirl23.gumroad.com/l/sesmk',
-  plus:       'https://digiwhirl23.gumroad.com/l/skpwha',
-  max:        'https://digiwhirl23.gumroad.com/l/kmiguq',
-  m3_starter: 'https://digiwhirl23.gumroad.com/l/osibu',
-  m3_pro:     'https://digiwhirl23.gumroad.com/l/zfdge',
-  m3_max:     'https://digiwhirl23.gumroad.com/l/fgydww',
-  m4_plan1:   'https://digiwhirl23.gumroad.com/l/hqsejc',
-  m4_plan2:   'https://digiwhirl23.gumroad.com/l/ckvlgo',
-  m4_plan3:   'https://digiwhirl23.gumroad.com/l/vmzubx',
-  mc_starter: 'https://digiwhirl23.gumroad.com/l/dnkam',
-  mc_pro:     'https://digiwhirl23.gumroad.com/l/gohhdt',
-  mc_max:     'https://digiwhirl23.gumroad.com/l/ukgdl',
-};
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
-const USD_PRICES = {
-  pro:        { monthly: 5,  yearly: 30  },
-  plus:       { monthly: 11, yearly: 66  },
-  max:        { monthly: 18, yearly: 108 },
-  m3_starter: 14, m3_pro: 28, m3_max: 45,
-  m4_plan1:   18, m4_plan2: 28, m4_plan3: 72,
-  mc_starter: 22, mc_pro: 38, mc_max: 72,
-};
+// ─── مودال الدفع المصري (InstaPay + إيصال) ──────────────────────────────────
+function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
+  const [screenshot, setScreenshot] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
 
-// ─── International Gumroad Modal ──────────────────────────────────────────
-function IntlPaymentModal({ planKey, planName, planIcon, planColor, usdPrice, gumroadUrl, onClose }) {
-  const [step, setStep] = React.useState('info');
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
+  const handleFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setScreenshot(file);
+    setPreview(URL.createObjectURL(file));
+  };
+
+  const copyNumber = () => {
+    navigator.clipboard.writeText(INSTAPAY_NUMBER);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const submit = async () => {
+    if (!screenshot) { setError('من فضلك ارفع صورة إيصال الدفع'); return; }
+    setLoading(true); setError('');
+    try {
+      const base64 = await fileToBase64(screenshot);
+      const res = await fetch('/api/auth/credits/eg-request', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ credits, screenshot: base64 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل الإرسال');
+      onSuccess();
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#0a0a18', border: '1px solid rgba(124,106,247,0.3)', borderRadius: 24, width: '100%', maxWidth: 460, padding: 28, maxHeight: '90vh', overflowY: 'auto', direction: 'rtl' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+          <div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0 }}>💳 شحن {credits.toLocaleString()} كريديت</h3>
+            <p style={{ fontSize: 15, color: '#7c6af7', margin: '4px 0 0', fontWeight: 700 }}>{amountEgp.toLocaleString()} جنيه</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
+        </div>
+
+        <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 18, marginBottom: 18 }}>
+          <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 10px' }}>حوّل المبلغ عن طريق InstaPay على الرقم:</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: 1 }}>{INSTAPAY_NUMBER}</span>
+            <button onClick={copyNumber} style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.35)', color: '#a99bff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{copied ? '✅ اتنسخ' : '📋 نسخ'}</button>
+          </div>
+        </div>
+
+        <label style={{ display: 'block', fontSize: 13, color: '#d1d5db', fontWeight: 700, marginBottom: 8 }}>ارفع صورة إيصال التحويل:</label>
+        <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, border: '2px dashed rgba(124,106,247,0.35)', borderRadius: 14, padding: preview ? 8 : 24, cursor: 'pointer', marginBottom: 18, background: 'rgba(124,106,247,0.03)' }}>
+          <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
+          {preview ? (
+            <img src={preview} alt="receipt" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 10 }} />
+          ) : (
+            <>
+              <span style={{ fontSize: 28 }}>📎</span>
+              <span style={{ fontSize: 13, color: '#9ca3af' }}>دوس هنا لرفع الصورة</span>
+            </>
+          )}
+        </label>
+
+        {error && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 14 }}>{error}</p>}
+
+        <button onClick={submit} disabled={loading} style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading ? 'rgba(124,106,247,0.3)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 700, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer' }}>
+          {loading ? '⏳ جاري الإرسال...' : 'إرسال طلب الشحن ✅'}
+        </button>
+        <p style={{ fontSize: 11, color: '#6b7280', textAlign: 'center', marginTop: 12 }}>هيتم مراجعة طلبك وإضافة الكريديت خلال 24 ساعة</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── مودال الدفع الدولي (Gumroad) ────────────────────────────────────────────
+function IntlPaymentModal({ pkg, onClose, onSuccess }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [step, setStep] = useState('info');
 
   const handlePaid = async () => {
     setLoading(true); setError('');
     try {
-      const res = await fetch('/api/auth/intl-payment/request', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ planKey, planName, usdPrice }),
+      const res = await fetch('/api/auth/credits/intl-request', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ packageKey: pkg.key }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
       setStep('pending');
-    } catch(e) { setError(e.message); } finally { setLoading(false); }
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
   };
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', zIndex:4000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div style={{ background:'#0a0a18', border:`1px solid ${planColor}44`, borderRadius:24, width:'100%', maxWidth:460, padding:28, animation:'intlFadeIn 0.3s ease' }}>
-        <style>{`@keyframes intlFadeIn { from{opacity:0;transform:translateY(-12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }`}</style>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#0a0a18', border: `1px solid ${pkg.color}44`, borderRadius: 24, width: '100%', maxWidth: 460, padding: 28 }}>
         {step === 'pending' ? (
-          <div style={{ textAlign:'center', padding:'20px 0' }}>
-            <div style={{ fontSize:64, marginBottom:16 }}>⏳</div>
-            <h3 style={{ fontSize:22, fontWeight:800, color:'#fff', marginBottom:12 }}>Request Submitted!</h3>
-            <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:8 }}>
-              We'll verify your Gumroad payment and activate your <strong style={{ color: planColor }}>{planName}</strong> plan within <strong style={{ color:'#22c55e' }}>24 hours</strong>.
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 64, marginBottom: 16 }}>⏳</div>
+            <h3 style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 12 }}>Request Submitted!</h3>
+            <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+              We'll verify your Gumroad payment and add <strong style={{ color: pkg.color }}>{pkg.credits.toLocaleString()} credits</strong> within <strong style={{ color: '#22c55e' }}>24 hours</strong>.
             </p>
-            <p style={{ color:'#6b7280', fontSize:12, marginBottom:24 }}>You'll receive a confirmation email once approved.</p>
-            <button onClick={onClose} style={{ background: planColor, color:'#fff', border:'none', borderRadius:12, padding:'13px 36px', fontWeight:700, fontSize:15, cursor:'pointer' }}>Got it! 🚀</button>
+            <button onClick={() => { onClose(); onSuccess(); }} style={{ background: pkg.color, color: '#fff', border: 'none', borderRadius: 12, padding: '13px 36px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Got it! 🚀</button>
           </div>
         ) : (
           <>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <div>
-                <h3 style={{ fontSize:18, fontWeight:800, color:'#fff', margin:0 }}>{planIcon} {planName}</h3>
-                <p style={{ fontSize:13, color: planColor, margin:'4px 0 0', fontWeight:700 }}>${usdPrice}</p>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0 }}>{pkg.icon} {pkg.name}</h3>
+                <p style={{ fontSize: 13, color: pkg.color, margin: '4px 0 0', fontWeight: 700 }}>${pkg.usd} — {pkg.credits.toLocaleString()} credits</p>
               </div>
-              <button onClick={onClose} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:22 }}>✕</button>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
             </div>
-            <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:14, padding:18, marginBottom:20 }}>
-              <p style={{ fontSize:13, fontWeight:700, color:'#d1d5db', margin:'0 0 14px' }}>💳 How to subscribe:</p>
-              {['Click "Pay on Gumroad" below','Complete payment with your card',"Come back here and click \"I've Paid\"",'We\'ll verify and activate within 24h'].map((s,i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                  <div style={{ width:22, height:22, borderRadius:'50%', background:`${planColor}22`, border:`1px solid ${planColor}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color: planColor, flexShrink:0 }}>{i+1}</div>
-                  <span style={{ fontSize:13, color:'#d1d5db' }}>{s}</span>
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 18, marginBottom: 20 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#d1d5db', margin: '0 0 14px' }}>💳 How to purchase:</p>
+              {['Click "Pay on Gumroad" below', 'Complete payment with your card', 'Come back here and click "I\'ve Paid"', "We'll verify and add your credits within 24h"].map((s, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: `${pkg.color}22`, border: `1px solid ${pkg.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: pkg.color, flexShrink: 0 }}>{i + 1}</div>
+                  <span style={{ fontSize: 13, color: '#d1d5db' }}>{s}</span>
                 </div>
               ))}
             </div>
-            {error && <p style={{ color:'#ef4444', fontSize:13, marginBottom:12 }}>{error}</p>}
-            <a href={gumroadUrl} target="_blank" rel="noreferrer"
-              style={{ display:'block', width:'100%', padding:'14px', borderRadius:12, background:`linear-gradient(135deg, ${planColor}, ${planColor}bb)`, color:'#fff', fontWeight:700, fontSize:15, textAlign:'center', textDecoration:'none', marginBottom:10, boxSizing:'border-box' }}>
-              🔗 Pay on Gumroad — ${usdPrice}
+            {error && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</p>}
+            <a href={pkg.url} target="_blank" rel="noreferrer"
+              style={{ display: 'block', width: '100%', padding: '14px', borderRadius: 12, background: `linear-gradient(135deg, ${pkg.color}, ${pkg.color}bb)`, color: '#fff', fontWeight: 700, fontSize: 15, textAlign: 'center', textDecoration: 'none', marginBottom: 10, boxSizing: 'border-box' }}>
+              🔗 Pay on Gumroad — ${pkg.usd}
             </a>
             <button onClick={handlePaid} disabled={loading}
-              style={{ width:'100%', padding:'13px', borderRadius:12, border:`1px solid ${planColor}44`, background:'rgba(255,255,255,0.04)', color: planColor, fontWeight:700, fontSize:14, cursor: loading ? 'not-allowed' : 'pointer' }}>
+              style={{ width: '100%', padding: '13px', borderRadius: 12, border: `1px solid ${pkg.color}44`, background: 'rgba(255,255,255,0.04)', color: pkg.color, fontWeight: 700, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer' }}>
               {loading ? '⏳ Submitting...' : "✅ I've Paid — Notify Admin"}
             </button>
           </>
@@ -377,1159 +181,185 @@ function IntlPaymentModal({ planKey, planName, planIcon, planColor, usdPrice, gu
   );
 }
 
-
-// ─── InstaPay Modal (Model 1 & 2) ─────────────────────────────────────────
-function PaymentModal({ plan, billing, onClose, onSuccess }) {
-  const [step, setStep] = useState('info');
-  const [screenshot, setScreenshot] = useState(null);
-  const [screenshotPreview, setScreenshotPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const baseAmount = billing === 'yearly' ? plan.price_yearly : plan.price_monthly;
-  const offerCheck = Math.max(0, OFFER_END_TIME - Date.now()) > 0;
-  const offerPrices = EGP_OFFER_PRICES[plan.key];
-  const amount = offerCheck && offerPrices
-    ? (billing === 'yearly' ? offerPrices.yearly : offerPrices.monthly)
-    : baseAmount;
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => { setScreenshot(ev.target.result); setScreenshotPreview(ev.target.result); };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async () => {
-    if (!screenshot) { setError('Please upload payment screenshot'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/auth/payment/request', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ plan: plan.key, billing, amount, screenshot }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to submit');
-      onSuccess();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+// ─── شاشة نجاح إرسال الطلب (مصري) ───────────────────────────────────────────
+function EgPendingScreen({ onNavigate, onSkip }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-      <div style={{ background: '#0f0f1a', border: '1px solid rgba(124,106,247,0.3)', borderRadius: 20, padding: 32, width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
-        {step === 'pending' ? (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <div style={{ fontSize: 64, marginBottom: 16 }}>⏳</div>
-            <h3 style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 12 }}>Request Submitted!</h3>
-            <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Your payment screenshot has been sent for review. We'll activate your <strong style={{ color: plan.color }}>{plan.name}</strong> plan within a few hours.
-            </p>
-            <button onClick={onClose} style={{ background: plan.color, color: '#fff', border: 'none', padding: '12px 32px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 15 }}>Got it!</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <div>
-                <h3 style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{plan.icon} Upgrade to {plan.name}</h3>
-                <p style={{ fontSize: 13, color: '#9ca3af' }}>
-                  {billing === 'yearly' ? 'Yearly' : 'Monthly'} · {amount} EGP
-                </p>
-              </div>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
-            </div>
-            <div style={{ background: 'rgba(124,106,247,0.08)', border: '1px solid rgba(124,106,247,0.2)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: '#7c6af7', marginBottom: 12 }}>📱 Payment Instructions</p>
-              <ol style={{ color: '#d1d5db', fontSize: 13, lineHeight: 2, paddingLeft: 18, margin: 0 }}>
-                <li>Open <strong style={{ color: '#fff' }}>InstaPay</strong> app</li>
-                <li>Send <strong style={{ color: '#22c55e', fontSize: 15 }}>{amount} EGP</strong> to:</li>
-              </ol>
-              <div style={{ background: '#1a1a2e', border: '1px solid rgba(124,106,247,0.3)', borderRadius: 10, padding: '12px 16px', margin: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 700, fontSize: 18, color: '#fff', letterSpacing: 1 }}>{INSTAPAY_NUMBER}</span>
-                <button onClick={() => navigator.clipboard?.writeText(INSTAPAY_NUMBER)} style={{ background: 'rgba(124,106,247,0.2)', border: '1px solid rgba(124,106,247,0.3)', color: '#7c6af7', padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Copy</button>
-              </div>
-              <ol start={3} style={{ color: '#d1d5db', fontSize: 13, lineHeight: 2, paddingLeft: 18, margin: 0 }}>
-                <li>Take a screenshot of the transfer confirmation</li>
-                <li>Upload it below ⬇️</li>
-              </ol>
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 10 }}>📎 Upload payment screenshot</p>
-              <label style={{ display: 'block', border: '2px dashed rgba(124,106,247,0.3)', borderRadius: 12, padding: 20, textAlign: 'center', cursor: 'pointer', background: screenshotPreview ? 'transparent' : 'rgba(124,106,247,0.04)' }}>
-                {screenshotPreview ? (
-                  <img src={screenshotPreview} alt="screenshot" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, objectFit: 'contain' }} />
-                ) : (
-                  <>
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
-                    <p style={{ color: '#7c6af7', fontSize: 13, fontWeight: 600 }}>Click to upload screenshot</p>
-                    <p style={{ color: '#6b7280', fontSize: 11, marginTop: 4 }}>JPG, PNG supported</p>
-                  </>
-                )}
-                <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
-              </label>
-            </div>
-            {error && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</p>}
-            <button onClick={handleSubmit} disabled={loading || !screenshot}
-              style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading || !screenshot ? '#374151' : plan.color, color: '#fff', fontWeight: 700, fontSize: 15, cursor: loading || !screenshot ? 'not-allowed' : 'pointer' }}>
-              {loading ? '⏳ Submitting...' : '✅ Submit Payment Request'}
-            </button>
-          </>
-        )}
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, #1a0f3d 0%, #0a0a0f 50%, #000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
+      <div style={{ maxWidth: 480, width: '100%', textAlign: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(124,106,247,0.2)', borderRadius: 24, padding: '48px 36px' }}>
+        <div style={{ fontSize: 72, marginBottom: 20 }}>⏳</div>
+        <h2 style={{ fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 12 }}>طلبك قيد المراجعة</h2>
+        <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 28 }}>هنراجع الإيصال ونضيف الكريديت لحسابك خلال 24 ساعة.</p>
+        <button onClick={onSkip} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: 'rgba(124,106,247,0.15)', color: '#a99bff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>الرجوع للموقع</button>
       </div>
     </div>
   );
 }
 
-// ─── Model 3 Payment Modal ────────────────────────────────────────────────
-function Model3PaymentModal({ plan, onClose }) {
-  const [email, setEmail] = useState('');
-  const [screenshot, setScreenshot] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const amount = plan.price_egp_offer || plan.price_egp;
-
-  const handleFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => { setScreenshot(ev.target.result); setPreview(ev.target.result); };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async () => {
-    if (!email.trim()) { setError('Please enter your email'); return; }
-    if (!screenshot) { setError('Please upload your transfer screenshot'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/auth/model3-payment', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ plan: plan.key, planName: plan.name, amount, userEmail: email, screenshot }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      setDone(true);
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
-  };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
-      <div style={{ background: '#0a0a12', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 24, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}>
-        {done ? (
-          <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <div style={{ fontSize: 64, marginBottom: 16 }}>⏳</div>
-            <h3 style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginBottom: 12 }}>Request Received!</h3>
-            <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>We'll review your transfer and activate your Model 3 plan within a few hours.</p>
-            <button onClick={onClose} style={{ padding: '12px 32px', borderRadius: 10, background: '#f59e0b', color: '#000', fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer' }}>Got it!</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <div>
-                <h3 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: 0 }}>{plan.icon} Model 3 — {plan.name}</h3>
-                <p style={{ fontSize: 13, color: plan.color, margin: '4px 0 0', fontWeight: 700 }}>{amount} EGP/month</p>
-              </div>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-            <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, padding: 18, marginBottom: 16 }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', margin: '0 0 12px' }}>💳 Payment Steps</p>
-              {['Open InstaPay app', `Transfer ${amount} EGP to:`, 'Take a screenshot', 'Upload it below ⬇️'].map((s, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#f59e0b', flexShrink: 0 }}>{i + 1}</div>
-                  <span style={{ fontSize: 12, color: '#d1d5db' }}>{s}</span>
-                </div>
-              ))}
-              <div style={{ margin: '12px 0 0', padding: '10px 14px', background: '#1a1a2e', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>{INSTAPAY_NUMBER}</span>
-                <button onClick={() => { navigator.clipboard?.writeText(INSTAPAY_NUMBER); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                  style={{ padding: '5px 12px', borderRadius: 6, background: copied ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)', border: `1px solid ${copied ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}`, color: copied ? '#22c55e' : '#f59e0b', cursor: 'pointer', fontSize: 11 }}>
-                  {copied ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, fontWeight: 600 }}>📧 Your email</p>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="example@gmail.com"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: '#111120', color: '#fff', fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6, fontWeight: 600 }}>📎 Transfer screenshot</p>
-              <label style={{ display: 'block', border: '2px dashed rgba(245,158,11,0.3)', borderRadius: 10, padding: 16, textAlign: 'center', cursor: 'pointer', background: 'rgba(245,158,11,0.03)' }}>
-                {preview ? <img src={preview} alt="ss" style={{ maxWidth: '100%', maxHeight: 140, borderRadius: 6, objectFit: 'contain' }} />
-                  : <><div style={{ fontSize: 28, marginBottom: 6 }}>📷</div><p style={{ color: '#f59e0b', fontSize: 12, margin: 0 }}>Click to upload screenshot</p></>}
-                <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
-              </label>
-            </div>
-            {error && <p style={{ color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</p>}
-            <button onClick={handleSubmit} disabled={loading || !screenshot || !email}
-              style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: loading || !screenshot || !email ? '#374151' : plan.color, color: loading || !screenshot || !email ? '#6b7280' : '#000', fontWeight: 700, fontSize: 14, cursor: loading || !screenshot || !email ? 'not-allowed' : 'pointer' }}>
-              {loading ? '⏳ Submitting...' : '✅ Submit Subscription Request'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Model 4 Payment Modal ────────────────────────────────────────────────
-
-// ─── InstaPay Modal (Model 5 Cinematic) ──────────────────────────────────
-function MCPaymentModal({ plan, onClose }) {
-  const [email, setEmail] = useState('');
-  const [screenshot, setScreenshot] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [done, setDone] = useState(false);
-  const fileRef = React.useRef();
-  const INSTAPAY = '01091917832';
-
-  const handleFile = (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => { setScreenshot(ev.target.result); setPreview(ev.target.result); };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async () => {
-    if (!email || !screenshot) { setError('Please fill all fields'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/model5/payment-request', {
-        method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ plan: plan.key, planName: plan.name, amount: plan.price_egp, userEmail: email, screenshot }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-      setDone(true);
-    } catch(e) { setError(e.message); } finally { setLoading(false); }
-  };
-
-  return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div style={{ background:'#0a0208', border:'1px solid rgba(225,29,72,0.3)', borderRadius:24, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto', padding:28 }}>
-        {done ? (
-          <div style={{ textAlign:'center', padding:'20px 0' }}>
-            <div style={{ fontSize:64, marginBottom:16 }}>🎬</div>
-            <h3 style={{ fontSize:22, fontWeight:800, color:'#fff', marginBottom:12 }}>Request Submitted!</h3>
-            <p style={{ color:'#9ca3af', fontSize:14, lineHeight:1.8, marginBottom:24 }}>We'll activate your Cinematic plan within a few hours.</p>
-            <button onClick={onClose} style={{ background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', border:'none', borderRadius:12, padding:'13px 36px', fontWeight:700, fontSize:15, cursor:'pointer' }}>Got it! 🚀</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-              <div>
-                <h2 style={{ fontSize:20, fontWeight:800, color:'#fff', margin:0 }}>🎭 Cinematic {plan.name}</h2>
-                <p style={{ fontSize:13, color:'#fb7185', margin:'4px 0 0', fontWeight:700 }}>{plan.price_egp} EGP</p>
-              </div>
-              <button onClick={onClose} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:22 }}>✕</button>
-            </div>
-            <div style={{ background:'rgba(225,29,72,0.06)', border:'1px solid rgba(225,29,72,0.2)', borderRadius:14, padding:18, marginBottom:18 }}>
-              <p style={{ fontSize:13, fontWeight:700, color:'#fb7185', margin:'0 0 12px' }}>💳 خطوات الدفع</p>
-              {['افتح تطبيق InstaPay', `حول ${plan.price_egp} جنيه على الرقم:`, 'خد screenshot للتحويل', 'ارفعه هنا تحت ⬇️'].map((s,i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-                  <div style={{ width:22, height:22, borderRadius:'50%', background:'rgba(225,29,72,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#fb7185', flexShrink:0 }}>{i+1}</div>
-                  <span style={{ fontSize:13, color:'#d1d5db' }}>{s}</span>
-                </div>
-              ))}
-              <div style={{ margin:'14px 0 0', padding:'12px 16px', background:'rgba(0,0,0,0.4)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontSize:20, fontWeight:800, color:'#fff', letterSpacing:1 }}>{INSTAPAY}</span>
-                <button onClick={()=>{ navigator.clipboard?.writeText(INSTAPAY); setCopied(true); setTimeout(()=>setCopied(false),2000); }} style={{ padding:'6px 14px', borderRadius:8, background:copied?'rgba(34,197,94,0.2)':'rgba(225,29,72,0.2)', border:`1px solid ${copied?'rgba(34,197,94,0.4)':'rgba(225,29,72,0.4)'}`, color:copied?'#22c55e':'#fb7185', cursor:'pointer', fontSize:12, fontWeight:600 }}>
-                  {copied?'✓ تم النسخ':'نسخ'}
-                </button>
-              </div>
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:16 }}>
-              <input type="email" placeholder="إيميلك *" value={email} onChange={e=>setEmail(e.target.value)} style={{ padding:'12px 14px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'#fff', fontSize:14, outline:'none', fontFamily:'inherit' }} />
-              <div onClick={()=>fileRef.current?.click()} style={{ border:`2px dashed ${preview?'#22c55e':'rgba(225,29,72,0.3)'}`, borderRadius:12, padding:24, textAlign:'center', cursor:'pointer' }}>
-                {preview?<img src={preview} alt="receipt" style={{ maxHeight:120, borderRadius:8, maxWidth:'100%' }} />:<><div style={{ fontSize:32, marginBottom:8 }}>📎</div><p style={{ color:'#6b7280', fontSize:13, margin:0 }}>اضغط لرفع صورة التحويل</p></>}
-                <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display:'none' }} />
-              </div>
-            </div>
-            {error && <p style={{ color:'#ef4444', fontSize:13, marginBottom:12 }}>{error}</p>}
-            <button onClick={handleSubmit} disabled={loading||!screenshot||!email} style={{ width:'100%', background:loading||!screenshot||!email?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#e11d48,#9f1239)', color:loading||!screenshot||!email?'#4b5563':'#fff', border:'none', borderRadius:12, padding:'14px', fontWeight:700, fontSize:15, cursor:loading||!screenshot||!email?'not-allowed':'pointer' }}>
-              {loading?'⏳ جاري الإرسال...':'✅ إرسال طلب الاشتراك'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Model4PaymentModal({ plan, onClose }) {
-  const [email, setEmail] = useState('');
-  const [screenshot, setScreenshot] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const amount = plan.price_egp_offer || plan.price_egp;
-
-  const handleFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => { setScreenshot(ev.target.result); setPreview(ev.target.result); };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async () => {
-    if (!email.trim()) { setError('Please enter your email'); return; }
-    if (!screenshot) { setError('Please upload your transfer screenshot'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/model4/payment-request', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ plan: plan.key, planName: plan.name, amount, userEmail: email, screenshot }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-      setDone(true);
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
-  };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
-      <div style={{ background: '#0d0d1a', border: '1px solid rgba(168,85,247,0.25)', borderRadius: 20, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}>
-        {done ? (
-          <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
-            <h3 style={{ fontSize: 22, fontWeight: 800, color: '#22c55e', marginBottom: 8 }}>Request Submitted!</h3>
-            <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>We'll review your payment and activate your Model 4 plan within a few hours.</p>
-            <button onClick={onClose} style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 32px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Got it!</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <div>
-                <h3 style={{ fontSize: 17, fontWeight: 800, color: '#fff', margin: 0 }}>{plan.icon} Model 4 — {plan.name}</h3>
-                <p style={{ fontSize: 13, color: '#a855f7', margin: '4px 0 0', fontWeight: 700 }}>{amount} EGP</p>
-              </div>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-            <div style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 14, padding: 18, marginBottom: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#c084fc', margin: '0 0 12px' }}>💳 Payment Steps</p>
-              {['Open InstaPay app', `Transfer ${amount} EGP to:`, 'Screenshot the transfer', 'Upload below ⬇️'].map((s, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#c084fc', flexShrink: 0 }}>{i + 1}</div>
-                  <span style={{ fontSize: 13, color: '#d1d5db' }}>{s}</span>
-                </div>
-              ))}
-              <div style={{ margin: '12px 0 0', padding: '12px 16px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: 1 }}>{INSTAPAY_NUMBER}</span>
-                <button onClick={() => { navigator.clipboard?.writeText(INSTAPAY_NUMBER); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                  style={{ padding: '6px 14px', borderRadius: 8, background: copied ? 'rgba(34,197,94,0.2)' : 'rgba(168,85,247,0.2)', border: `1px solid ${copied ? 'rgba(34,197,94,0.4)' : 'rgba(168,85,247,0.4)'}`, color: copied ? '#22c55e' : '#c084fc', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                  {copied ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
-              <input type="email" placeholder="Your email address *" value={email} onChange={e => setEmail(e.target.value)}
-                style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 14, outline: 'none', fontFamily: 'inherit' }} />
-              <label style={{ border: `2px dashed ${preview ? '#22c55e' : 'rgba(168,85,247,0.3)'}`, borderRadius: 12, padding: 24, textAlign: 'center', cursor: 'pointer', display: 'block' }}>
-                {preview ? <img src={preview} alt="receipt" style={{ maxHeight: 120, borderRadius: 8, maxWidth: '100%' }} />
-                  : <><div style={{ fontSize: 32, marginBottom: 8 }}>📎</div><p style={{ color: '#6b7280', fontSize: 13, margin: 0 }}>Click to upload transfer screenshot</p></>}
-                <input type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
-              </label>
-            </div>
-            {error && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</p>}
-            <button onClick={handleSubmit} disabled={loading || !screenshot || !email}
-              style={{ width: '100%', background: loading || !screenshot || !email ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #a855f7, #7c3aed)', color: loading || !screenshot || !email ? '#4b5563' : '#fff', border: 'none', borderRadius: 12, padding: '14px', fontWeight: 700, fontSize: 15, cursor: loading || !screenshot || !email ? 'not-allowed' : 'pointer' }}>
-              {loading ? '⏳ Submitting...' : '✅ Submit Payment Request'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── SEO Structured Data ──────────────────────────────────────────────────
-function PricingSEO() {
-  useEffect(() => {
-    // Update URL to /pricing for SEO without full reload
-    if (window.location.pathname !== '/pricing') {
-      window.history.pushState({}, '', '/pricing');
-    }
-
-    // Inject structured data
-    const existingScript = document.getElementById('pricing-structured-data');
-    if (existingScript) existingScript.remove();
-
-    const allOffers = [
-      ...PLANS.filter(p => p.key !== 'free').map(p => ({
-        '@type': 'Offer',
-        name: `Erivion ${p.name} Plan`,
-        price: p.price_monthly,
-        priceCurrency: 'EGP',
-        description: `${p.videos} videos, ${p.credits} credits`,
-      })),
-      ...MODEL3_PLANS.map(p => ({
-        '@type': 'Offer',
-        name: `Erivion Model 3 ${p.name}`,
-        price: p.price_egp,
-        priceCurrency: 'EGP',
-        description: p.features.join(', '),
-      })),
-      ...MODEL4_PLANS_LIST.map(p => ({
-        '@type': 'Offer',
-        name: `Erivion Model 4 ${p.name}`,
-        price: p.price_egp,
-        priceCurrency: 'EGP',
-        description: p.features.join(', '),
-      })),
-    ];
-
-    const structuredData = {
-      '@context': 'https://schema.org',
-      '@type': 'Product',
-      name: 'Erivion AI Video Generator',
-      description: 'AI-powered video generation platform — the first Arabic alternative to InVideo. Create professional videos with AI images, stock footage, and real AI-generated video clips.',
-      url: 'https://erivion.net/pricing',
-      brand: { '@type': 'Brand', name: 'Erivion' },
-      offers: allOffers,
-    };
-
-    const script = document.createElement('script');
-    script.id = 'pricing-structured-data';
-    script.type = 'application/ld+json';
-    script.textContent = JSON.stringify(structuredData);
-    document.head.appendChild(script);
-
-    // Update meta tags
-    document.title = 'Erivion Pricing — AI Video Generator Plans | Start Free';
-    let metaDesc = document.querySelector('meta[name="description"]');
-    if (!metaDesc) { metaDesc = document.createElement('meta'); metaDesc.name = 'description'; document.head.appendChild(metaDesc); }
-    metaDesc.content = 'Choose your Erivion plan. Free, Pro, Plus, and Max plans for AI video generation. Also AI image videos (Model 3) and real AI video clips (Model 4 — Seedance). Starting from 0 EGP.';
-
-    let canonical = document.querySelector('link[rel="canonical"]');
-    if (!canonical) { canonical = document.createElement('link'); canonical.rel = 'canonical'; document.head.appendChild(canonical); }
-    canonical.href = 'https://erivion.net/pricing';
-
-    return () => {
-      // Restore when leaving pricing page
-      const s = document.getElementById('pricing-structured-data');
-      if (s) s.remove();
-      window.history.pushState({}, '', '/');
-      document.title = 'Erivion — AI Video Generator';
-    };
-  }, []);
-
-  return null;
-}
-
-// ─── Main PricingPage ─────────────────────────────────────────────────────
-export default function PricingPage({ currentPlan = 'free', onSelectPlan, onSkip, onNavigate, onRegionSelect }) {
-  const [billing, setBilling] = useState('monthly');
-  const [activeTab, setActiveTab] = useState('main'); // 'main' | 'more'
-  const [selectedPlan, setSelectedPlan] = useState(null);       // M1/M2
-  const [selectedM3Plan, setSelectedM3Plan] = useState(null);   // M3
-  const [selectedM4Plan, setSelectedM4Plan] = useState(null);
-  const [selectedMCPlan, setSelectedMCPlan] = useState(null);   // M4
+export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
+  const [region, setRegion] = useState(null);
   const [visible, setVisible] = useState(false);
-  const [hoveredPlan, setHoveredPlan] = useState(null);
-  const [pendingRequest, setPendingRequest] = useState(null);
-  const [region, setRegion] = useState(null); // null | 'eg' | 'intl'
-  const [intlModal, setIntlModal] = useState(null); // { planKey, planName, planIcon, planColor, usdPrice, gumroadUrl }
+  const [sliderCredits, setSliderCredits] = useState(1000);
+  const [egModalOpen, setEgModalOpen] = useState(false);
+  const [egPending, setEgPending] = useState(false);
+  const [intlModalPkg, setIntlModalPkg] = useState(null);
+  const [showMore, setShowMore] = useState(false);
+  const [balance, setBalance] = useState(null);
 
   useEffect(() => {
     setTimeout(() => setVisible(true), 50);
     const savedRegion = localStorage.getItem('erivion_region');
     if (savedRegion) setRegion(savedRegion);
+    fetch('/api/auth/credits/balance', { headers: authHeaders() })
+      .then(r => r.json()).then(d => setBalance(d.balance ?? null)).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (currentPlan !== 'free') { setPendingRequest(null); return; }
-    let ignore = false;
-    fetch('/api/auth/payment/status', { headers: authHeaders() })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok || ignore) return;
-        setPendingRequest(data.request?.status === 'pending' ? data.request : null);
-      })
-      .catch(() => { if (!ignore) setPendingRequest(null); });
-    return () => { ignore = true; };
-  }, [currentPlan]);
+  const amountEgp = Math.round(sliderCredits * EGP_PER_CREDIT);
+  const quickJump = (val) => setSliderCredits(val);
 
-  const openPlan = (planKey, planName, planIcon, planColor, usdPrice) => {
-    const url = GUMROAD_LINKS[planKey];
-    if (region === 'intl') {
-      if (!url) { alert("International payment coming soon for this plan!"); return; }
-      setIntlModal({ planKey, planName, planIcon, planColor, usdPrice, gumroadUrl: url });
-    } else {
-      // handled by existing setSelected* pattern
-    }
-  };
+  if (egPending) return <EgPendingScreen onNavigate={onNavigate} onSkip={() => { if (onSkip) onSkip(); }} />;
 
-  const handleSelect = (plan) => {
-    if (plan.key === 'free') { onSelectPlan('free'); return; }
-    setSelectedPlan(plan);
-  };
-
-  const { active: offerActive, h: offerH, m: offerM, s: offerS } = useOfferCountdown();
-
-  const getPrice = (plan) => {
-    if (plan.key === 'free') return 'Free';
-    if (region === 'intl') {
-      const usd = USD_PRICES[plan.key];
-      if (usd) return '$' + (billing === 'yearly' ? usd.yearly + '/yr' : usd.monthly + '/mo');
-    }
-    // EGP with offer
-    if (region === 'eg' && offerActive && EGP_OFFER_PRICES[plan.key]) {
-      const op = EGP_OFFER_PRICES[plan.key];
-      return billing === 'yearly' ? op.yearly + ' EGP/yr' : op.monthly + ' EGP/mo';
-    }
-    if (billing === 'yearly') return plan.price_yearly_monthly + ' EGP/mo';
-    return plan.price_monthly + ' EGP/mo';
-  };
-
-  const getOriginalPrice = (plan) => {
-    if (plan.key === 'free' || region !== 'eg' || !offerActive || !EGP_OFFER_PRICES[plan.key]) return null;
-    return billing === 'yearly' ? plan.price_yearly_monthly + ' EGP/mo' : plan.price_monthly + ' EGP/mo';
-  };
-
-  const getOffer = (plan) => null;
-
-  // ── Pending payment screen ──
-  if (pendingRequest) {
-    const sp = PLANS.find(p => p.key === pendingRequest.plan);
-    return (
-      <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, #1a0f3d 0%, #0a0a0f 50%, #000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
-        <PricingSEO />
-        <div style={{ maxWidth: 520, width: '100%', textAlign: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(124,106,247,0.2)', borderRadius: 24, padding: '48px 36px' }}>
-          <div style={{ fontSize: 72, marginBottom: 20 }}>⏳</div>
-          <h2 style={{ fontSize: 26, fontWeight: 800, color: '#fff', marginBottom: 12 }}>Payment Under Review</h2>
-          <p style={{ color: '#9ca3af', fontSize: 15, lineHeight: 1.7, marginBottom: 32 }}>
-            Your payment request for the <strong style={{ color: sp ? sp.color : '#7c6af7' }}>{sp ? sp.name : pendingRequest.plan}</strong> plan has been received. Our team will review and activate within <strong style={{ color: '#22c55e' }}>24 hours</strong>.
-          </p>
-          <button onClick={() => { if (onNavigate) onNavigate('support'); }} style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#7c6af7', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>Contact Support</button>
-          <button onClick={() => { if (onSkip) onSkip(); }} style={{ width: '100%', padding: '10px', borderRadius: 10, border: 'none', background: 'transparent', color: '#6b7280', fontSize: 13, cursor: 'pointer' }}>Return to Dashboard</button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Region selector screen ──
+  // ── شاشة اختيار المنطقة ──
   if (!region) {
     return (
-      <div style={{ minHeight:'100vh', background:'radial-gradient(ellipse at top, #1a0f3d 0%, #0a0a0f 50%, #000 100%)', display:'flex', alignItems:'center', justifyContent:'center', padding:'40px 24px' }}>
+      <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, #1a0f3d 0%, #0a0a0f 50%, #000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
         <style>{`
           @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
           @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
           .region-selector-wrap { animation: fadeUp 0.5s cubic-bezier(0.16,1,0.3,1) both; }
-          @media(max-width:600px) {
-            .region-cards { flex-direction: row !important; flex-wrap: nowrap !important; }
-            .region-card { flex: 1 1 0 !important; min-width: 0 !important; max-width: none !important; padding: 20px 12px !important; }
-          }
         `}</style>
-        <PricingSEO />
-        <div className="region-selector-wrap" style={{ maxWidth:560, width:'100%', textAlign:'center' }}>
-          <div style={{ fontSize:52, marginBottom:16, animation:'pulse 2s ease infinite' }}>🌍</div>
-          <h2 style={{ fontSize:28, fontWeight:800, color:'#fff', marginBottom:8 }}>Where are you from?</h2>
-          <p style={{ color:'#9ca3af', fontSize:15, marginBottom:40 }}>We'll show you the right pricing for your region.</p>
-          <div className="region-cards" style={{ display:'flex', gap:16, justifyContent:'center', flexWrap:'wrap' }}>
-            <button className="region-card" onClick={() => { setRegion('eg'); if(onRegionSelect) onRegionSelect('eg'); localStorage.setItem('erivion_region','eg'); }}
-              style={{
-                flex:'1 1 200px', maxWidth:240, padding:'32px 24px', borderRadius:20,
-                background:'linear-gradient(135deg, #1a1a2e, #0f0f1a)',
-                border:'1px solid rgba(124,106,247,0.3)',
-                cursor:'pointer', textAlign:'center',
-                transition:'all 0.3s cubic-bezier(0.16,1,0.3,1)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.border='1px solid rgba(124,106,247,0.8)'; e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.boxShadow='0 20px 40px rgba(124,106,247,0.2)'; }}
-              onMouseLeave={e => { e.currentTarget.style.border='1px solid rgba(124,106,247,0.3)'; e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='none'; }}>
-              <div style={{ fontSize:48, marginBottom:12 }}>🇪🇬</div>
-              <div style={{ fontSize:18, fontWeight:800, color:'#fff', marginBottom:6 }}>Egyptian</div>
-
-              <div style={{ display:'inline-block', padding:'4px 14px', background:'rgba(124,106,247,0.15)', border:'1px solid rgba(124,106,247,0.3)', borderRadius:999, fontSize:12, color:'#a5b4fc', fontWeight:600 }}>Prices in EGP</div>
+        <div className="region-selector-wrap" style={{ maxWidth: 560, width: '100%', textAlign: 'center' }}>
+          <div style={{ fontSize: 52, marginBottom: 16, animation: 'pulse 2s ease infinite' }}>🌍</div>
+          <h2 style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 8 }}>Where are you from?</h2>
+          <p style={{ color: '#9ca3af', fontSize: 15, marginBottom: 40 }}>We'll show you the right pricing for your region.</p>
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => { setRegion('eg'); if (onRegionSelect) onRegionSelect('eg'); localStorage.setItem('erivion_region', 'eg'); }}
+              style={{ flex: '1 1 200px', maxWidth: 240, padding: '32px 24px', borderRadius: 20, background: 'linear-gradient(135deg, #1a1a2e, #0f0f1a)', border: '1px solid rgba(124,106,247,0.3)', cursor: 'pointer', textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🇪🇬</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 6 }}>Egyptian</div>
+              <div style={{ display: 'inline-block', padding: '4px 14px', background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.3)', borderRadius: 999, fontSize: 12, color: '#a5b4fc', fontWeight: 600 }}>Prices in EGP</div>
             </button>
-            <button className="region-card" onClick={() => { setRegion('intl'); if(onRegionSelect) onRegionSelect('intl'); localStorage.setItem('erivion_region','intl'); }}
-              style={{
-                flex:'1 1 200px', maxWidth:240, padding:'32px 24px', borderRadius:20,
-                background:'linear-gradient(135deg, #0a1a0a, #050f05)',
-                border:'1px solid rgba(34,197,94,0.3)',
-                cursor:'pointer', textAlign:'center',
-                transition:'all 0.3s cubic-bezier(0.16,1,0.3,1)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.border='1px solid rgba(34,197,94,0.8)'; e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.boxShadow='0 20px 40px rgba(34,197,94,0.15)'; }}
-              onMouseLeave={e => { e.currentTarget.style.border='1px solid rgba(34,197,94,0.3)'; e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='none'; }}>
-              <div style={{ fontSize:48, marginBottom:12 }}>🌐</div>
-              <div style={{ fontSize:18, fontWeight:800, color:'#fff', marginBottom:6 }}>International</div>
-
-              <div style={{ display:'inline-block', padding:'4px 14px', background:'rgba(34,197,94,0.1)', border:'1px solid rgba(34,197,94,0.3)', borderRadius:999, fontSize:12, color:'#86efac', fontWeight:600 }}>Prices in USD</div>
+            <button onClick={() => { setRegion('intl'); if (onRegionSelect) onRegionSelect('intl'); localStorage.setItem('erivion_region', 'intl'); }}
+              style={{ flex: '1 1 200px', maxWidth: 240, padding: '32px 24px', borderRadius: 20, background: 'linear-gradient(135deg, #0a1a0a, #050f05)', border: '1px solid rgba(34,197,94,0.3)', cursor: 'pointer', textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🌐</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 6 }}>International</div>
+              <div style={{ display: 'inline-block', padding: '4px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 999, fontSize: 12, color: '#86efac', fontWeight: 600 }}>Prices in USD</div>
             </button>
           </div>
-          {onSkip && (
-            <button onClick={onSkip} style={{ marginTop:28, background:'none', border:'none', color:'#4b5563', fontSize:13, cursor:'pointer' }}>Skip and continue with Free plan</button>
-          )}
+          {onSkip && <button onClick={onSkip} style={{ marginTop: 28, background: 'none', border: 'none', color: '#4b5563', fontSize: 13, cursor: 'pointer' }}>Skip and continue with Free plan</button>}
         </div>
       </div>
     );
   }
 
-
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,106,247,0.08) 0%, transparent 60%), #050508',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: 'clamp(32px,5vw,64px) clamp(16px,4vw,24px) 80px',
-      opacity: visible ? 1 : 0,
-      transform: visible ? 'translateY(0)' : 'translateY(20px)',
-      transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
-    }}>
-      <style>{`
-        @keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
-        @keyframes glow{0%,100%{opacity:0.5}50%{opacity:1}}
-        @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-        .pc-card{transition:transform 0.3s cubic-bezier(0.16,1,0.3,1),box-shadow 0.3s ease,border-color 0.25s ease!important}
-        .pc-card:hover{transform:translateY(-6px)!important}
-        .pc-popular{transform:scale(1.02)!important}
-        .pc-popular:hover{transform:scale(1.02) translateY(-5px)!important}
-        .pc-btn{transition:all 0.2s ease!important}
-        .pc-btn:hover{opacity:0.88!important;transform:translateY(-1px)!important}
-        .pc-feature-check{width:16px;height:16px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px}
-        .pc-tab-btn{padding:10px 20px;border-radius:11px;border:none;cursor:pointer;font-weight:600;font-size:13px;transition:all 0.2s;font-family:inherit}
-        @media(max-width:900px){
-          .pc-plans-grid{grid-template-columns:repeat(2,1fr)!important}
-          .pc-models-grid{grid-template-columns:repeat(2,1fr)!important}
-        }
-        @media(max-width:600px){
-          .pc-plans-grid{grid-template-columns:1fr!important}
-          .pc-models-grid{grid-template-columns:1fr!important}
-          .pc-tabs{gap:2px!important}
-          .pc-tab-btn{padding:9px 12px!important;font-size:11px!important}
-          .pc-header-h1{font-size:clamp(26px,8vw,42px)!important}
-          .pc-billing-toggle{flex-direction:row!important}
-        }
-      `}</style>
-      <PricingSEO />
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,106,247,0.08) 0%, transparent 60%), #050508', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 'clamp(32px,5vw,64px) clamp(16px,4vw,24px) 80px', opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease' }}>
+      <div style={{ width: '100%', maxWidth: 720 }}>
 
-      {onSkip && (
-        <div style={{ width: '100%', maxWidth: 1100, display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
-          <button onClick={onSkip} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 18px', color: '#d1d5db', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-            Skip and continue with Free plan
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <button onClick={() => setRegion(null)} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer' }}>← Change region</button>
+          {onSkip && <button onClick={onSkip} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer' }}>Skip →</button>}
         </div>
-      )}
 
-      {/* Header */}
-      <div style={{ textAlign:'center', marginBottom:48, animation:'fadeUp 0.5s ease', maxWidth: 680 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginBottom:20, flexWrap:'wrap' }}>
-          <div style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'5px 14px', background:'rgba(124,106,247,0.08)', border:'1px solid rgba(124,106,247,0.2)', borderRadius:999, fontSize:11, color:'#a78bfa', fontWeight:700, letterSpacing:'0.12em' }}>
-            <span style={{ width:6, height:6, borderRadius:'50%', background:'#22c55e', display:'inline-block', boxShadow:'0 0 8px #22c55e', animation:'glow 2s ease infinite' }} />
-            PLANS & PRICING
-          </div>
-          <button onClick={() => setRegion(null)}
-            style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'5px 13px', background:'transparent', border:'1px solid rgba(255,255,255,0.1)', borderRadius:999, fontSize:12, color:'rgba(255,255,255,0.5)', fontWeight:500, cursor:'pointer', transition:'all 0.2s' }}
-            onMouseEnter={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.25)'}
-            onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.1)'}>
-            {region==='eg'?'🇪🇬 Egypt — EGP':'🌐 International — USD'} <span style={{ opacity:0.4, fontSize:10 }}>↩</span>
-          </button>
-        </div>
-        <h1 style={{ fontSize:'clamp(32px,5vw,56px)', fontWeight:800, color:'#fff', marginBottom:16, lineHeight:1.08, letterSpacing:'-1.5px' }}>
-          Simple,{' '}
-          <span style={{ background:'linear-gradient(135deg,#7c6af7 0%,#a78bfa 50%,#06b6d4 100%)', backgroundSize:'200% auto', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', animation:'gradShift 4s ease infinite' }}>transparent</span>
-          {' '}pricing
-        </h1>
-        <p style={{ color:'rgba(255,255,255,0.35)', fontSize:17, maxWidth:480, margin:'0 auto', lineHeight:1.7, fontWeight:400 }}>
-          Pick the plan that fits your creative output. Upgrade or cancel anytime.
-        </p>
-      </div>
-
-      {/* ── Flash Offer Banner (EG only) ── */}
-      {region === 'eg' && offerActive && (
-        <div style={{
-          width: '100%', maxWidth: 1100, marginBottom: 28,
-          background: 'linear-gradient(135deg, rgba(124,106,247,0.12) 0%, rgba(245,158,11,0.1) 100%)',
-          border: '1px solid rgba(245,158,11,0.35)',
-          borderRadius: 16, padding: '16px 24px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 16, flexWrap: 'wrap',
-          animation: 'fadeUp 0.5s ease',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 10px #f59e0b', animation: 'glow 1.5s ease infinite', flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#fbbf24', letterSpacing: '0.04em' }}>🔥 عرض خاص لفترة محدودة</div>
-              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
-                Pro <span style={{ color:'#f59e0b', fontWeight:700 }}>60 EGP</span> · Plus <span style={{ color:'#f59e0b', fontWeight:700 }}>130 EGP</span> · Max <span style={{ color:'#f59e0b', fontWeight:700 }}>250 EGP</span> — بدلاً من الأسعار العادية
-              </div>
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <h1 style={{ fontSize: 30, fontWeight: 800, color: '#fff', margin: '0 0 10px' }}>💎 Erivion Credits</h1>
+          <p style={{ color: '#9ca3af', fontSize: 14, margin: 0 }}>كريديت واحد يشتغل على كل الموديلات — يتشحن مرة واحدة وميتجددش أسبوعيًا</p>
+          {balance != null && (
+            <div style={{ display: 'inline-block', marginTop: 14, padding: '6px 18px', borderRadius: 999, background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 13, fontWeight: 700 }}>
+              رصيدك الحالي: {balance.toLocaleString()} كريديت
             </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>ينتهي خلال</span>
-            {[
-              { v: String(offerH).padStart(2,'0'), label: 'س' },
-              { v: String(offerM).padStart(2,'0'), label: 'د' },
-              { v: String(offerS).padStart(2,'0'), label: 'ث' },
-            ].map((unit, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && <span style={{ color: '#f59e0b', fontWeight: 800, fontSize: 16 }}>:</span>}
-                <div style={{ textAlign: 'center', minWidth: 42 }}>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '4px 8px', fontVariantNumeric: 'tabular-nums' }}>{unit.v}</div>
-                  <div style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}>{unit.label}</div>
-                </div>
-              </React.Fragment>
-            ))}
-          </div>
+          )}
         </div>
-      )}
 
-      {/* Tab Switcher */}
-      <div className="pc-tabs" style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:14, padding:3, marginBottom:40, flexWrap:'wrap' }}>
-        {[
-          { key:'main', label:'Model 1 & 2 Plans', icon:'🎬' },
-          { key:'more', label:'Model 3, 4 & 5 Plans', icon:'✨' },
-        ].map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="pc-tab-btn"
-            style={{ flex:1, borderRadius:11, cursor:'pointer', fontWeight:600, fontSize:13, transition:'all 0.2s', background:activeTab===tab.key?'rgba(255,255,255,0.09)':'transparent', color:activeTab===tab.key?'#fff':'rgba(255,255,255,0.35)', display:'flex', alignItems:'center', justifyContent:'center', gap:6, border: activeTab===tab.key ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent', whiteSpace:'nowrap' }}>
-            <span style={{ fontSize:14 }}>{tab.icon}</span> {tab.label}
-          </button>
-        ))}
-      </div>
+        {/* ══════════════ مصري: سلايدر مرن ══════════════ */}
+        {region === 'eg' && (
+          <>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 24, padding: 'clamp(24px,4vw,36px)', marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 28, flexWrap: 'wrap' }}>
+                {[{ label: 'Starter', val: 600 }, { label: 'Creator', val: 1400 }, { label: 'Studio', val: 3000 }].map(q => (
+                  <button key={q.label} onClick={() => quickJump(q.val)}
+                    style={{ padding: '8px 18px', borderRadius: 999, border: sliderCredits === q.val ? '1px solid #7c6af7' : '1px solid rgba(255,255,255,0.12)', background: sliderCredits === q.val ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.03)', color: sliderCredits === q.val ? '#a99bff' : '#9ca3af', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    {q.label} · {q.val.toLocaleString()}cr
+                  </button>
+                ))}
+              </div>
 
-      {/* ── TAB: Main Plans (Model 1 & 2) ── */}
-      {activeTab === 'main' && (
-        <>
-          {/* Billing Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 44, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 999, padding: '5px' }}>
-            {['monthly', 'yearly'].map(b => (
-              <button key={b} onClick={() => setBilling(b)}
-                style={{ padding: '9px 24px', borderRadius: 999, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, transition: 'all 0.25s cubic-bezier(0.16,1,0.3,1)', background: billing === b ? '#fff' : 'transparent', color: billing === b ? '#0a0a0f' : '#6b7280', boxShadow: billing === b ? '0 2px 8px rgba(0,0,0,0.3)' : 'none' }}>
-                {b === 'monthly' ? 'Monthly' : 'Yearly'}
-                {b === 'yearly' && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: billing === 'yearly' ? '#059669' : '#06b6d4', background: billing === 'yearly' ? 'rgba(5,150,105,0.12)' : 'rgba(6,182,212,0.12)', padding: '2px 7px', borderRadius: 999 }}>Save 40%</span>}
+              <div style={{ textAlign: 'center', marginBottom: 22 }}>
+                <div style={{ fontSize: 42, fontWeight: 900, color: '#fff', marginBottom: 4 }}>{sliderCredits.toLocaleString()} <span style={{ fontSize: 18, color: '#7c6af7', fontWeight: 700 }}>كريديت</span></div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#22c55e' }}>{amountEgp.toLocaleString()} جنيه</div>
+              </div>
+
+              <input type="range" min={SLIDER_MIN} max={SLIDER_MAX} step={100} value={sliderCredits} onChange={e => setSliderCredits(parseInt(e.target.value, 10))}
+                style={{ width: '100%', accentColor: '#7c6af7', height: 8, marginBottom: 8 }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280', marginBottom: 26 }}>
+                <span>{SLIDER_MIN.toLocaleString()}</span>
+                <span>{SLIDER_MAX.toLocaleString()}+</span>
+              </div>
+
+              <button onClick={() => setEgModalOpen(true)} style={{ width: '100%', padding: '16px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 800, fontSize: 16, cursor: 'pointer', boxShadow: '0 8px 24px rgba(124,106,247,0.35)' }}>
+                اشحن {sliderCredits.toLocaleString()} كريديت — {amountEgp.toLocaleString()} جنيه
               </button>
+            </div>
+          </>
+        )}
+
+        {/* ══════════════ دولي: باقات Gumroad ══════════════ */}
+        {region === 'intl' && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 16, marginBottom: 18 }}>
+              {GUMROAD_PACKAGES.map(pkg => (
+                <div key={pkg.key} style={{ position: 'relative', background: 'rgba(255,255,255,0.03)', border: pkg.popular ? `2px solid ${pkg.color}` : '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 24, textAlign: 'center', transform: pkg.popular ? 'scale(1.03)' : 'none' }}>
+                  {pkg.popular && <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', padding: '3px 14px', borderRadius: 999, background: pkg.color, fontSize: 10, fontWeight: 800, color: '#fff', whiteSpace: 'nowrap' }}>MOST POPULAR</div>}
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>{pkg.icon}</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: '#fff', marginBottom: 6 }}>{pkg.name}</div>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: pkg.color, marginBottom: 4 }}>${pkg.usd}</div>
+                  <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 18 }}>{pkg.credits.toLocaleString()} credits</div>
+                  <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: `linear-gradient(135deg,${pkg.color},${pkg.color}bb)`, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Get {pkg.name} →</button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ textAlign: 'center', marginBottom: showMore ? 18 : 0 }}>
+              <button onClick={() => setShowMore(v => !v)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 999, padding: '8px 20px', color: '#9ca3af', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                {showMore ? '▲ Hide' : '▼ More Plans'}
+              </button>
+            </div>
+
+            {showMore && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 16, marginBottom: 18 }}>
+                {GUMROAD_MORE_PACKAGES.map(pkg => (
+                  <div key={pkg.key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 24, textAlign: 'center' }}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>{pkg.icon}</div>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: '#fff', marginBottom: 6 }}>{pkg.name}</div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: pkg.color, marginBottom: 4 }}>${pkg.usd}</div>
+                    <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 18 }}>{pkg.credits.toLocaleString()} credits</div>
+                    <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: `linear-gradient(135deg,${pkg.color},${pkg.color}bb)`, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Get {pkg.name} →</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── جدول مرجعي: كام فيديو تقريبًا ── */}
+        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 20, marginTop: 8 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', margin: '0 0 12px' }}>💡 تكلفة الكريديت التقريبية لكل موديل:</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            {MODEL_COST_REFERENCE.map(m => (
+              <div key={m.name} style={{ fontSize: 12, color: '#6b7280' }}>
+                <strong style={{ color: '#d1d5db' }}>{m.name}:</strong> {m.example}
+              </div>
             ))}
           </div>
-
-          <div className="pc-plans-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, width: '100%', maxWidth: 1100 }}>
-            {PLANS.map((plan, idx) => {
-              const isCurrentPlan = currentPlan === plan.key;
-              const isHovered = hoveredPlan === plan.key;
-              return (
-                <div key={plan.key}
-                  className={`pc-card${plan.popular?' pc-popular':''}`}
-                  onMouseEnter={() => setHoveredPlan(plan.key)}
-                  onMouseLeave={() => setHoveredPlan(null)}
-                  style={{
-                    background: plan.popular
-                      ? 'linear-gradient(160deg, #1a1535 0%, #0f0c22 100%)'
-                      : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${plan.popular ? 'rgba(124,106,247,0.5)' : isHovered ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)'}`,
-                    borderRadius: 20, padding: '0', position: 'relative', cursor: 'pointer', overflow: 'hidden',
-                    opacity: visible ? 1 : 0,
-                    transition: `opacity 0.5s ease ${idx * 0.08}s`,
-                    boxShadow: plan.popular ? `0 0 0 1px rgba(124,106,247,0.2), 0 24px 48px rgba(124,106,247,0.12)` : isHovered ? '0 12px 32px rgba(0,0,0,0.4)' : 'none',
-                  }}>
-                  {/* Top color line */}
-                  <div style={{ height:2, background:`linear-gradient(90deg,${plan.color},${plan.color}44,transparent)`, opacity: isHovered || plan.popular ? 1 : 0.3, transition:'opacity 0.3s' }} />
-                  <div style={{ padding:'28px 24px' }}>
-                  {plan.popular && (
-                    <div style={{ position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', background: plan.color, color: '#fff', fontSize: 10, fontWeight: 700, padding: '4px 16px', borderRadius: '0 0 10px 10px', letterSpacing: '0.1em', whiteSpace: 'nowrap' }}>MOST POPULAR</div>
-                  )}
-                  {isCurrentPlan && (
-                    <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.35)', color: '#22c55e', fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }}>✓ Current</div>
-                  )}
-                    <div style={{ marginBottom: 20 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
-                        <div style={{ width:36, height:36, borderRadius:10, background:`rgba(${plan.color === '#6b7280' ? '107,114,128' : plan.color === '#7c6af7' ? '124,106,247' : plan.color === '#06b6d4' ? '6,182,212' : '245,158,11'},0.12)`, border:`1px solid ${plan.color}22`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>{plan.icon}</div>
-                        <div>
-                          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#fff', margin: 0, letterSpacing:'-0.3px' }}>{plan.name}</h3>
-                          {plan.key !== 'free' && <div style={{ fontSize:11, color:'#4b5563', fontWeight:500 }}>{region==='eg'?'EGP':'USD'} · {billing==='monthly'?'Monthly':'Yearly'}</div>}
-                        </div>
-                      </div>
-                      <div style={{ display:'flex', alignItems:'baseline', gap:6, flexWrap:'wrap', marginBottom: 6 }}>
-                        {getOriginalPrice(plan) && (
-                          <span style={{ fontSize:14, color:'#374151', textDecoration:'line-through', fontWeight:500 }}>{getOriginalPrice(plan)}</span>
-                        )}
-                        <div style={{ fontSize: 32, fontWeight: 800, color: '#fff', letterSpacing:'-1.5px', lineHeight:1 }}>{getPrice(plan)}</div>
-                      </div>
-                      {region === 'eg' && offerActive && plan.key !== 'free' && EGP_OFFER_PRICES[plan.key] && (
-                        <div style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 9px', borderRadius:999, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', fontSize:10, fontWeight:700, color:'#f59e0b', marginBottom:4 }}>
-                          🔥 عرض لفترة محدودة
-                        </div>
-                      )}
-                      {billing === 'yearly' && plan.key !== 'free' && <div style={{ fontSize: 11, color: '#4b5563', marginTop: 2 }}>{plan.price_yearly} EGP billed yearly</div>}
-                      {plan.creditNote && plan.key !== 'free' && (
-                        <div style={{ marginTop:10, display:'inline-flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:999, background:`rgba(255,255,255,0.04)`, border:`1px solid rgba(255,255,255,0.08)`, fontSize:10, fontWeight:600, color:'#6b7280' }}>
-                          🪙 {plan.creditNote}
-                        </div>
-                      )}
-                    </div>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 20, background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#d1d5db' }}>{plan.videos}</div>
-                      <div style={{ fontSize: 10, color: '#374151', marginTop:2 }}>videos</div>
-                    </div>
-                    <div style={{ width: 1, background: 'rgba(255,255,255,0.06)' }} />
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#d1d5db' }}>{plan.credits}</div>
-                      <div style={{ fontSize: 10, color: '#374151', marginTop:2 }}>credits</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 28 }}>
-                    {plan.features.map((feat, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width:16, height:16, borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, background: feat.included ? `rgba(34,197,94,0.1)` : 'transparent', border: feat.included ? '1px solid rgba(34,197,94,0.2)' : 'none' }}>
-                          {feat.included
-                            ? <span style={{ color: '#22c55e', fontSize: 9, fontWeight: 800 }}>✓</span>
-                            : <span style={{ color: '#1f2937', fontSize: 11 }}>—</span>}
-                        </div>
-                        <span style={{ fontSize: 13, color: feat.included ? '#d1d5db' : '#2d3748', flex: 1, lineHeight: 1.4 }}>{feat.text}</span>
-                        {feat.badge && (
-                          <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.05)', color: '#4b5563', letterSpacing: '0.04em', flexShrink: 0 }}>{feat.badge}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <button className="pc-btn" onClick={() => {
-                    if (region === 'intl' && plan.key !== 'free') {
-                      const usd = USD_PRICES[plan.key];
-                      openPlan(plan.key, plan.name, plan.icon, plan.color, billing === 'yearly' ? usd.yearly + '/yr' : '$' + usd.monthly + '/mo');
-                    } else { handleSelect(plan); }
-                  }}
-                    style={{ width:'100%', padding:'13px', borderRadius:12, border: isCurrentPlan ? '1px solid rgba(255,255,255,0.1)' : plan.key === 'free' ? '1px solid rgba(255,255,255,0.12)' : 'none', background:isCurrentPlan?'transparent':plan.key==='free'?'rgba(255,255,255,0.06)':plan.popular?plan.color:`rgba(${plan.color === '#06b6d4' ? '6,182,212' : plan.color === '#f59e0b' ? '245,158,11' : '124,106,247'},0.15)`, color:isCurrentPlan?'#4b5563':plan.key==='free'?'#9ca3af':plan.popular?'#fff':plan.color, fontWeight:600, fontSize:14, cursor:isCurrentPlan?'default':'pointer', transition:'all 0.2s', boxShadow:plan.popular&&!isCurrentPlan?`0 4px 16px ${plan.color}44`:'none' }}>
-                    {isCurrentPlan ? '✓ Current Plan' : plan.key === 'free' ? 'Get started free' : region === 'intl' ? `Subscribe — $${USD_PRICES[plan.key]?.[billing] || ''}` : `Get ${plan.name} →`}
-                  </button>
-                  </div>{/* end inner padding */}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {/* ── TAB: More Plans (Model 3 & 4) ── */}
-      {activeTab === 'more' && (
-        <div style={{ width: '100%', maxWidth: 1100 }}>
-
-          {/* Model 3 Section */}
-          <div style={{ marginBottom: 60 }}>
-            <div style={{ textAlign: 'center', marginBottom: 32 }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 999, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', marginBottom: 12 }}>
-                <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, letterSpacing: '0.06em' }}>MODEL 3 — AI IMAGES</span>
-              </div>
-              <h2 style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 8 }}>🖼️ AI Image Videos</h2>
-              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto 16px' }}>
-                Generate stunning videos from AI-generated images. Powered by Stability AI with cinematic Ken Burns zoom effects.
-              </p>
-              <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 18px', borderRadius:10, background:'rgba(245,158,11,0.07)', border:'1px solid rgba(245,158,11,0.2)', fontSize:13, color:'#f59e0b', fontWeight:600 }}>
-                ⚠️ These plans are exclusive to <strong style={{ color:'#fbbf24' }}>Model 3</strong> only — separate from Model 1, 2, 4 & 5 plans
-              </div>
-            </div>
-            <div className="pc-models-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
-              {MODEL3_PLANS.map((plan, idx) => (
-                <div key={plan.key}
-                  onMouseEnter={() => setHoveredPlan('m3_' + plan.key)}
-                  onMouseLeave={() => setHoveredPlan(null)}
-                  style={{
-                    background: 'linear-gradient(135deg, #1a1200 0%, #0a0800 100%)',
-                    border: `1px solid ${hoveredPlan === 'm3_' + plan.key ? 'rgba(245,158,11,0.5)' : 'rgba(245,158,11,0.15)'}`,
-                    borderRadius: 20, padding: '28px 24px', position: 'relative',
-                    transform: visible ? (hoveredPlan === 'm3_' + plan.key ? 'translateY(-6px)' : 'translateY(0)') : 'translateY(40px)',
-                    opacity: visible ? 1 : 0,
-                    transition: `all 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.1}s`,
-                    boxShadow: hoveredPlan === 'm3_' + plan.key ? '0 20px 40px rgba(245,158,11,0.15)' : 'none',
-                  }}>
-                  {plan.badge && (
-                    <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: plan.color, color: '#000', fontSize: 11, fontWeight: 700, padding: '4px 16px', borderRadius: 999, whiteSpace: 'nowrap' }}>⭐ {plan.badge}</div>
-                  )}
-                  <div style={{ marginBottom: 16 }}>
-                    <span style={{ fontSize: 32 }}>{plan.icon}</span>
-                    <h3 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: '8px 0 4px' }}>{plan.name}</h3>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      {plan.price_egp_offer && region !== 'intl' && <span style={{ fontSize: 14, color: '#4b5563', textDecoration: 'line-through' }}>{plan.price_egp} EGP</span>}
-                      <span style={{ fontSize: 26, fontWeight: 800, color: plan.color }}>{region === 'intl' ? `$${USD_PRICES[plan.key]}` : `${plan.price_egp_offer || plan.price_egp} EGP`}</span>
-                      <span style={{ fontSize: 13, color: '#6b7280' }}>/month</span>
-                    </div>
-                    {plan.price_egp_offer && <div style={{ fontSize: 11, color: '#22c55e', fontWeight: 600, marginTop: 2 }}>🎉 First month offer!</div>}
-                    {plan.credits && (
-                      <div style={{ marginTop: 10, display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:999, background:`${plan.color}18`, border:`1px solid ${plan.color}44`, fontSize:12, fontWeight:700, color:plan.color }}>
-                        🪙 {plan.credits} Model 3 Credits
-                      </div>
-                    )}
-                    {plan.creditNote && <div style={{ fontSize:11, color:'#6b7280', marginTop:5 }}>{plan.creditNote}</div>}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-                    {plan.features.map((f, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ color: plan.color, fontSize: 14, flexShrink: 0 }}>✓</span>
-                        <span style={{ fontSize: 13, color: '#d1d5db' }}>{f}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={() => {
-                    if (region === 'intl') { openPlan(plan.key, 'Model 3 ' + plan.name, plan.icon, plan.color, USD_PRICES[plan.key]); }
-                    else { setSelectedM3Plan(plan); }
-                  }}
-                    style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: plan.color, color: plan.color === '#f59e0b' || plan.color === '#22c55e' ? '#000' : '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', transition: 'all 0.2s', boxShadow: `0 4px 20px ${plan.color}44` }}>
-                    {region === 'intl' ? `Pay $${USD_PRICES[plan.key]} →` : `Get ${plan.name} →`}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 60 }}>
-            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
-            <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>OR</span>
-            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
-          </div>
-
-          {/* Model 4 Section */}
-          <div>
-            <div style={{ textAlign: 'center', marginBottom: 32 }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 999, background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', marginBottom: 12 }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#a855f7', display: 'inline-block' }} />
-                <span style={{ fontSize: 11, color: '#c084fc', fontWeight: 700, letterSpacing: '0.06em' }}>MODEL 4 — REAL AI VIDEO</span>
-              </div>
-              <h2 style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 8 }}>🎬 Seedance AI Video</h2>
-              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto 16px' }}>
-                Real AI-generated video clips — not images. Powered by Seedance v1 Pro. The most advanced model on Erivion.
-              </p>
-              <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 18px', borderRadius:10, background:'rgba(168,85,247,0.07)', border:'1px solid rgba(168,85,247,0.2)', fontSize:13, color:'#c084fc', fontWeight:600 }}>
-                ⚠️ These plans are exclusive to <strong style={{ color:'#d8b4fe' }}>Model 4</strong> only — subscribing to Model 2 does NOT unlock Model 4
-              </div>
-            </div>
-            <div className="pc-models-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
-              {MODEL4_PLANS_LIST.map((plan, idx) => (
-                <div key={plan.key}
-                  onMouseEnter={() => setHoveredPlan('m4_' + plan.key)}
-                  onMouseLeave={() => setHoveredPlan(null)}
-                  style={{
-                    background: 'linear-gradient(135deg, #0d0518 0%, #060310 100%)',
-                    border: `1px solid ${hoveredPlan === 'm4_' + plan.key ? 'rgba(168,85,247,0.5)' : 'rgba(168,85,247,0.15)'}`,
-                    borderRadius: 20, padding: '28px 24px', position: 'relative',
-                    transform: visible ? (hoveredPlan === 'm4_' + plan.key ? 'translateY(-6px)' : 'translateY(0)') : 'translateY(40px)',
-                    opacity: visible ? 1 : 0,
-                    transition: `all 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.1}s`,
-                    boxShadow: hoveredPlan === 'm4_' + plan.key ? '0 20px 40px rgba(168,85,247,0.15)' : 'none',
-                  }}>
-                  {plan.badge && (
-                    <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 16px', borderRadius: 999, whiteSpace: 'nowrap' }}>⭐ {plan.badge}</div>
-                  )}
-                  <div style={{ marginBottom: 16 }}>
-                    <span style={{ fontSize: 32 }}>{plan.icon}</span>
-                    <h3 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: '8px 0 4px' }}>{plan.name}</h3>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      {plan.price_egp_offer && region !== 'intl' && <span style={{ fontSize: 14, color: '#4b5563', textDecoration: 'line-through' }}>{plan.price_egp} EGP</span>}
-                      <span style={{ fontSize: 26, fontWeight: 800, color: '#c084fc' }}>{region === 'intl' ? `$${USD_PRICES[plan.key]}` : `${plan.price_egp_offer || plan.price_egp} EGP`}</span>
-                      <span style={{ fontSize: 13, color: '#6b7280' }}>/month</span>
-                    </div>
-                    {plan.price_egp_offer && <div style={{ fontSize: 11, color: '#22c55e', fontWeight: 600, marginTop: 2 }}>🎉 First month offer!</div>}
-                    {plan.credits && (
-                      <div style={{ marginTop: 10, display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:999, background:'rgba(168,85,247,0.15)', border:'1px solid rgba(168,85,247,0.35)', fontSize:12, fontWeight:700, color:'#c084fc' }}>
-                        🪙 {plan.credits} Model 4 Credits
-                      </div>
-                    )}
-                    {plan.creditNote && <div style={{ fontSize:11, color:'#6b7280', marginTop:5 }}>{plan.creditNote}</div>}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-                    {plan.features.map((f, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ color: '#a855f7', fontSize: 14, flexShrink: 0 }}>✓</span>
-                        <span style={{ fontSize: 13, color: '#d1d5db' }}>{f}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={() => {
-                    if (region === 'intl') { openPlan(plan.key, 'Model 4 ' + plan.name, plan.icon, '#a855f7', USD_PRICES[plan.key]); }
-                    else { setSelectedM4Plan(plan); }
-                  }}
-                    style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 20px rgba(168,85,247,0.4)' }}>
-                    {region === 'intl' ? `Pay $${USD_PRICES[plan.key]} →` : `Get ${plan.name} →`}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Model 5 Cinematic Section */}
-          <div style={{ marginTop: 60 }}>
-            <div style={{ textAlign: 'center', marginBottom: 32 }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 999, background: 'rgba(225,29,72,0.1)', border: '1px solid rgba(225,29,72,0.3)', marginBottom: 12 }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#e11d48', display: 'inline-block' }} />
-                <span style={{ fontSize: 11, color: '#fb7185', fontWeight: 700, letterSpacing: '0.06em' }}>ERIVION CINEMATIC — MODEL 5</span>
-              </div>
-              <h2 style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 8 }}>🎭 Cinematic AI Video</h2>
-              <p style={{ color: '#9ca3af', fontSize: 15, maxWidth: 500, margin: '0 auto 16px' }}>
-                Character-consistent cinematic videos with original audio. No voiceover — pure visual storytelling. Powered by Seedance 2.0 Fast.
-              </p>
-              <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 18px', borderRadius:10, background:'rgba(225,29,72,0.07)', border:'1px solid rgba(225,29,72,0.2)', fontSize:13, color:'#fb7185', fontWeight:600 }}>
-                ⚠️ These plans are exclusive to <strong style={{ color:'#fda4af' }}>Model 5 (Cinematic)</strong> only — separate from all other models
-              </div>
-            </div>
-            <div className="pc-models-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
-              {MC_PLANS_LIST.map((plan, idx) => (
-                <div key={plan.key}
-                  onMouseEnter={() => setHoveredPlan('mc_' + plan.key)}
-                  onMouseLeave={() => setHoveredPlan(null)}
-                  style={{
-                    background: 'linear-gradient(135deg, #0d0508 0%, #060208 100%)',
-                    border: `1px solid ${hoveredPlan === 'mc_' + plan.key ? 'rgba(225,29,72,0.5)' : 'rgba(225,29,72,0.15)'}`,
-                    borderRadius: 20, padding: '28px 24px', position: 'relative',
-                    transform: visible ? (hoveredPlan === 'mc_' + plan.key ? 'translateY(-6px)' : 'translateY(0)') : 'translateY(40px)',
-                    opacity: visible ? 1 : 0,
-                    transition: `all 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.1}s`,
-                    boxShadow: hoveredPlan === 'mc_' + plan.key ? '0 20px 40px rgba(225,29,72,0.15)' : 'none',
-                  }}>
-                  {plan.badge && (
-                    <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg, #e11d48, #9f1239)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 16px', borderRadius: 999, whiteSpace: 'nowrap' }}>⭐ {plan.badge}</div>
-                  )}
-                  <div style={{ marginBottom: 16 }}>
-                    <span style={{ fontSize: 32 }}>{plan.icon}</span>
-                    <h3 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: '8px 0 4px' }}>{plan.name}</h3>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      <span style={{ fontSize: 26, fontWeight: 800, color: '#fb7185' }}>{region === 'intl' ? `$${USD_PRICES[plan.key]}` : `${plan.price_egp} EGP`}</span>
-                      <span style={{ fontSize: 13, color: '#6b7280' }}>/month</span>
-                    </div>
-                    {plan.credits && (
-                      <div style={{ marginTop: 10, display:'inline-flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:999, background:'rgba(225,29,72,0.15)', border:'1px solid rgba(225,29,72,0.35)', fontSize:12, fontWeight:700, color:'#fb7185' }}>
-                        🪙 {plan.credits} Model 5 Credits
-                      </div>
-                    )}
-                    {plan.creditNote && <div style={{ fontSize:11, color:'#6b7280', marginTop:5 }}>{plan.creditNote}</div>}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-                    {plan.features.map((f, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ color: '#e11d48', fontSize: 14, flexShrink: 0 }}>✓</span>
-                        <span style={{ fontSize: 13, color: '#d1d5db' }}>{f}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={() => {
-                    if (region === 'intl') { openPlan(plan.key, 'Cinematic ' + plan.name, plan.icon, '#e11d48', USD_PRICES[plan.key]); }
-                    else { setSelectedMCPlan(plan); }
-                  }}
-                    style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #e11d48, #9f1239)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 20px rgba(225,29,72,0.4)' }}>
-                    {region === 'intl' ? `Pay $${USD_PRICES[plan.key]} →` : `Get ${plan.name} →`}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
         </div>
+      </div>
+
+      {egModalOpen && (
+        <EgPaymentModal credits={sliderCredits} amountEgp={amountEgp} onClose={() => setEgModalOpen(false)}
+          onSuccess={() => { setEgModalOpen(false); setEgPending(true); }} />
       )}
-
-      {/* Modals */}
-      {selectedPlan && (
-        <PaymentModal
-          plan={selectedPlan}
-          billing={billing}
-          onClose={() => setSelectedPlan(null)}
-          onSuccess={() => {
-            setPendingRequest({ plan: selectedPlan.key, billing, status: 'pending' });
-            setSelectedPlan(null);
-          }}
-        />
+      {intlModalPkg && (
+        <IntlPaymentModal pkg={intlModalPkg} onClose={() => setIntlModalPkg(null)} onSuccess={() => {}} />
       )}
-      {selectedM3Plan && (
-        <Model3PaymentModal
-          plan={selectedM3Plan}
-          onClose={() => setSelectedM3Plan(null)}
-        />
-      )}
-      {selectedM4Plan && (
-        <Model4PaymentModal
-          plan={selectedM4Plan}
-          onClose={() => setSelectedM4Plan(null)}
-        />
-      )}
-      {selectedMCPlan && (
-        <MCPaymentModal
-          plan={selectedMCPlan}
-          onClose={() => setSelectedMCPlan(null)}
-        />
-      )}
-
-      {intlModal && (
-        <IntlPaymentModal
-          planKey={intlModal.planKey}
-          planName={intlModal.planName}
-          planIcon={intlModal.planIcon}
-          planColor={intlModal.planColor}
-          usdPrice={intlModal.usdPrice}
-          gumroadUrl={intlModal.gumroadUrl}
-          onClose={() => setIntlModal(null)}
-        />
-      )}
-
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-
-        @keyframes fadeInDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes fadeUp     { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes shimmer    { 0%{background-position:-200% center} 100%{background-position:200% center} }
-        @keyframes gradShift  { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
-        @keyframes float      { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-        @keyframes glow       { 0%,100%{opacity:0.5} 50%{opacity:1} }
-        @keyframes cardReveal { from{opacity:0;transform:translateY(24px) scale(0.98)} to{opacity:1;transform:translateY(0) scale(1)} }
-
-        .plan-card {
-          transition: all 0.4s cubic-bezier(0.16,1,0.3,1) !important;
-          position: relative;
-        }
-        .plan-card::before {
-          content: '';
-          position: absolute;
-          inset: -1px;
-          border-radius: inherit;
-          background: linear-gradient(135deg, transparent, rgba(255,255,255,0.05), transparent);
-          opacity: 0;
-          transition: opacity 0.3s;
-          pointer-events: none;
-        }
-        .plan-card:hover { transform: translateY(-8px) scale(1.01) !important; }
-        .plan-card:hover::before { opacity: 1; }
-
-        .billing-toggle {
-          transition: all 0.25s cubic-bezier(0.16,1,0.3,1) !important;
-        }
-        .billing-toggle:hover { opacity: 0.85; }
-
-        .region-btn {
-          transition: all 0.35s cubic-bezier(0.16,1,0.3,1) !important;
-          position: relative;
-          overflow: hidden;
-        }
-        .region-btn::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          border-radius: inherit;
-          background: linear-gradient(135deg, rgba(255,255,255,0.04), transparent);
-          opacity: 0;
-          transition: opacity 0.2s;
-        }
-        .region-btn:hover::after { opacity: 1; }
-
-        .tab-pill {
-          transition: all 0.2s cubic-bezier(0.16,1,0.3,1) !important;
-        }
-        .tab-pill:hover { opacity: 0.85; }
-
-        .pricing-bg {
-          background: radial-gradient(ellipse at top, rgba(124,106,247,0.07) 0%, transparent 50%),
-                      radial-gradient(ellipse at bottom right, rgba(6,182,212,0.05) 0%, transparent 50%);
-        }
-      `}</style>
     </div>
   );
 }

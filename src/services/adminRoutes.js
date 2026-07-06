@@ -3,6 +3,7 @@ import pkg from 'pg';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut } from './authService.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -45,12 +46,16 @@ router.get('/stats', adminAuth, async (req, res) => {
         ORDER BY month ASC
       `),
     ]);
+    const totalRevenueEgp = parseInt(totalRevenue.rows[0].total);
+    const revenueEstimate = estimatePaymentProfit(totalRevenueEgp);
     res.json({
       overview: {
         total_users: parseInt(totalUsers.rows[0].count),
         verified_users: parseInt(verifiedUsers.rows[0].count),
         total_videos: parseInt(totalVideos.rows[0].count),
-        total_revenue_egp: parseInt(totalRevenue.rows[0].total),
+        total_revenue_egp: totalRevenueEgp,
+        total_cost_estimate_egp: revenueEstimate.costEstimate,
+        total_profit_estimate_egp: revenueEstimate.profitEstimate,
         pending_payments: parseInt(pendingPayments.rows[0].count),
         weekly_signups: parseInt(weeklySignups.rows[0].count),
         model3_users: parseInt(model3Users.rows[0].count),
@@ -75,11 +80,35 @@ router.get('/payments', adminAuth, async (req, res) => {
     let params = [];
     if (status) { query = 'SELECT * FROM payment_requests WHERE status = $1 ORDER BY created_at DESC LIMIT 50'; params = [status]; }
     const { rows } = await pool.query(query, params);
-    res.json({ payments: rows });
+    // ✅ نحسب الربح والتكلفة التقديرية لكل عملية دفع مباشرة عشان الأدمن يشوفها من غير حسبة يدوية
+    const payments = rows.map(p => ({ ...p, ...estimatePaymentProfit(p.amount) }));
+    res.json({ payments });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── تسجيل إن التكلفة اتدفعت فعليًا لمصدر الخدمة (Replicate/Groq/إلخ) لعملية دفع معينة ──
+router.post('/payments/:id/mark-paid', adminAuth, async (req, res) => {
+  try {
+    const payment = await markPaymentPaidOut(req.params.id);
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    res.json({ payment: { ...payment, ...estimatePaymentProfit(payment.amount) } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/payments/:id/unmark-paid', adminAuth, async (req, res) => {
+  try {
+    const payment = await unmarkPaymentPaidOut(req.params.id);
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    res.json({ payment: { ...payment, ...estimatePaymentProfit(payment.amount) } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/users', adminAuth, async (req, res) => {
   try {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned INTEGER DEFAULT 0').catch(() => {});
