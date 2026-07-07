@@ -31,6 +31,10 @@ const T = {
     imageTooBig: (m) => `حجم الصورة أكبر من ${m}MB`,
     generating: 'جاري تجهيز المشاهد...',
     rendering: 'جاري إنشاء الفيديو...',
+    queued: 'السيرفر مشغول بفيديو تاني، هيبدأ فيديوك تلقائيًا حالًا...',
+    attachTitle: 'إضافة مرفق',
+    attachVoice: 'تسجيل صوتي',
+    attachPhoto: 'صورة (شخصية / منتج)',
     done: 'تم! تم خصم',
     credits: 'كريديت',
     download: 'تحميل',
@@ -61,6 +65,10 @@ const T = {
     imageTooBig: (m) => `Image exceeds ${m}MB`,
     generating: 'Preparing scenes...',
     rendering: 'Generating your video...',
+    queued: 'Server is busy with another video — yours will start automatically shortly...',
+    attachTitle: 'Add attachment',
+    attachVoice: 'Voice recording',
+    attachPhoto: 'Photo (character / product)',
     done: 'Done! Deducted',
     credits: 'credits',
     download: 'Download',
@@ -130,7 +138,7 @@ function RenderCard({ job, lang, onNavigate }) {
         </div>
       </div>
       <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>
-        {job.status === 'scenes' ? t.generating : t.rendering}
+        {job.status === 'queued' ? t.queued : job.status === 'scenes' ? t.generating : t.rendering}
         {job.elapsed > 0 && <span> ⏱ {Math.floor(job.elapsed / 60)}:{String(job.elapsed % 60).padStart(2, '0')}</span>}
       </div>
     </div>
@@ -390,9 +398,28 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         renderUrl = '/api/model5/render';
         renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhoto ? [lastUploadedPhoto] : [] };
       }
-      const renderRes = await fetch(renderUrl, { method: 'POST', headers: authHeaders(), body: JSON.stringify(renderBody) });
-      const renderData = await renderRes.json();
-      if (!activeJobRef.current) return;
+
+      // ── لو السيرفر مشغول بفيديو عميل تاني، نستنى ونعيد المحاولة تلقائيًا ────
+      // (نفس نظام "server busy" اللي شغال في صفحات الموديل العادية — عميل واحد بيرندر في وقت واحد بس)
+      let renderRes, renderData;
+      const RETRY_DELAY_MS = 8000;
+      const MAX_RETRIES = 60; // يعني نستنى لحد حوالي 8 دقايق قبل ما نستسلم
+      let retries = 0;
+      while (true) {
+        renderRes = await fetch(renderUrl, { method: 'POST', headers: authHeaders(), body: JSON.stringify(renderBody) });
+        renderData = await renderRes.json();
+        if (!activeJobRef.current) return;
+        if (renderRes.status === 429 && renderData.error === 'server_busy' && retries < MAX_RETRIES) {
+          retries++;
+          updateJob({ status: 'queued', queuePosition: retries });
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+          if (!activeJobRef.current) return;
+          updateJob({ status: 'rendering' });
+          continue;
+        }
+        break;
+      }
+
       if (!renderRes.ok) {
         clearInterval(timerRef.current);
         if (renderData.error === 'quota_exceeded' || renderData.reason === 'quota_exceeded' || renderData.error === 'credits_exhausted') {
@@ -434,15 +461,33 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+
   const AttachBar = () => (
-    <>
-      <input ref={voiceInputRef} type="file" accept="audio/*" onChange={handleVoiceFile} style={{ display: 'none' }} />
-      <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageFile} style={{ display: 'none' }} />
-      <button onClick={() => voiceInputRef.current?.click()} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}
-        style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>🎙️</button>
-      <button onClick={() => imageInputRef.current?.click()} title={t.imageTitle}
-        style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>🖼️</button>
-    </>
+    <div style={{ position: 'relative' }}>
+      <input ref={voiceInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
+      <input ref={imageInputRef} type="file" accept="image/*" onChange={(e) => { handleImageFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
+      <button onClick={() => setAttachMenuOpen(v => !v)} title={t.attachTitle}
+        style={{ width: 38, height: 38, borderRadius: 10, background: attachMenuOpen ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${attachMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: attachMenuOpen ? '#a99bff' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
+
+      {attachMenuOpen && (
+        <>
+          <div onClick={() => setAttachMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', bottom: 46, left: 0, background: '#141420', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <button onClick={() => { voiceInputRef.current?.click(); }} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span style={{ fontSize: 16 }}>🎙️</span>{t.attachVoice}
+            </button>
+            <button onClick={() => { imageInputRef.current?.click(); }} title={t.imageTitle}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span style={{ fontSize: 16 }}>🖼️</span>{t.attachPhoto}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 
   if (!started) {
@@ -456,7 +501,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           </div>
 
           <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, margin: '0 auto 18px', boxShadow: '0 8px 28px rgba(124,106,247,0.4)' }}>🤖</div>
+            <div style={{ marginBottom: 18 }}>
+              <span style={{ fontSize: 34, fontWeight: 900, letterSpacing: '0.02em', fontFamily: "'Georgia', 'Times New Roman', serif", background: 'linear-gradient(135deg,#c4b5fd,#7c6af7 50%,#6d28d9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', filter: 'drop-shadow(0 4px 16px rgba(124,106,247,0.45))' }}>Erivion</span>
+            </div>
             <h1 style={{ fontSize: 30, fontWeight: 800, color: '#fff', margin: '0 0 10px', direction: isArabic(t.heroTitle) ? 'rtl' : 'ltr' }}>{t.heroTitle}</h1>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0, maxWidth: 460, marginInline: 'auto', lineHeight: 1.7, direction: isArabic(t.heroSub) ? 'rtl' : 'ltr' }}>{t.heroSub}</p>
           </div>
@@ -509,9 +556,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       <div style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', flex: 1 }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🤖</div>
-            <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Erivion Agent</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span style={{ fontSize: 19, fontWeight: 900, letterSpacing: '0.01em', fontFamily: "'Georgia', 'Times New Roman', serif", background: 'linear-gradient(135deg,#c4b5fd,#7c6af7 50%,#6d28d9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Erivion</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>Agent</span>
           </div>
           <button onClick={onSwitchToModels} style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             🎬 {t.models} →
