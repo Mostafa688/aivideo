@@ -107,7 +107,7 @@ async function generateReferenceImage(photoBase64, scenePrompt) {
       },
       body: JSON.stringify({
         input: {
-          image: imageDataUrl,
+          input_image: imageDataUrl,
           prompt: `${scenePrompt}, keep the same person's face and identity from the reference image exactly, same facial features, same person`,
           aspect_ratio: '9:16',
           output_format: 'webp',
@@ -501,6 +501,11 @@ export async function renderModel5Video({
         // Fallback: generate reference image here if not already done
         console.log(`[Model5] Generating reference image for clip ${i + 1}...`);
         refImageUrl = await generateReferenceImage(scene.characterPhoto, seed2Prompt);
+        // ✅ FIX: العميل رفع صورة شخصية ومتوقع إنها تتحرك — لو فشل توليد الصورة المرجعية،
+        // لازم نوقف ونبلّغ بوضوح، مش نكمل بصمت بفيديو من غير الشخصية اللي طلبها أصلاً
+        if (!refImageUrl) {
+          throw new Error('Failed to process the uploaded character photo (reference image generation failed). Please try again or use a different photo.');
+        }
       }
 
       const url = await generateSeedance2Clip(seed2Prompt, ratio, CLIP_SEC, refImageUrl);
