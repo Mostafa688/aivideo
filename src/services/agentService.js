@@ -14,6 +14,7 @@ const AGENT_MODEL = 'openai/gpt-oss-120b';
 const MAX_HISTORY_MESSAGES = 6; // آخر 3 رسائل من المستخدم + 3 ردود فقط تتبعت للموديل
 const MAX_REPLY_TOKENS = 450;   // مساحة كافية عشان الـ JSON بتاع ###READY### ميتقطعش نص الكلام أبدًا
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
+const OUTPUTS_DIR = 'outputs';
 
 const MAX_AUDIO_SEC = 120;      // دقيقتين بالظبط زي ما اتفقنا
 const MAX_AUDIO_MB = 6;         // 6MB خام ≈ 8MB بعد base64 — بأمان تحت حد الـ 10mb بتاع express.json
@@ -80,6 +81,7 @@ HOW TO OPERATE:
 1. If the user says something generic like "I want to make a video" / "عايز اعمل فيديو" without picking a model, respond with a SHORT comparison: one line per model (name + single strength + max duration for their plan), then ask which one they want. Keep the whole thing under 7 short lines total. Do not repeat this comparison again later in the conversation unless asked.
 2. Once you know the model, understand the topic/idea, and ideally the platform/purpose to infer aspect ratio: 9:16 for reels/shorts/TikTok, 16:9 for YouTube/explainers, 1:1 for feed posts.
 3. Models 1, 2, 3, 4, 5 can all be generated directly through this chat. Model 6 and 7 must be created from the Models page — tell the user to open it, do not try to generate those here. Remember: if this user is on the free plan, only Models 1/2 at 30s work — never emit a READY marker for Model 3/4/5 for a free-plan user.
+3b. VOICE-TO-VIDEO: if the attachment note says the user uploaded a voice recording with a transcript, that transcript IS the video's actual content — use it directly as the "idea" field (summarize to 6 words or fewer for the marker, but understand the full transcript is the real script). Do NOT ask the user to type a separate idea — you already have it. Just confirm the model/duration/ratio with them and get ready. This does not work with Model 5 (no voiceover) — if they want Model 5 with an uploaded voice, tell them clearly it can't use their recording and ask if they want a different model instead.
 4. Once you know: model (1-5), duration (must EXACTLY match one of that model's supported durations above), ratio, and the idea/topic — ask the user to confirm before generating (e.g. "جاهز أبدأ؟" / "Ready to generate?").
 5. Model 5 requires a reference photo of the character before you can generate — if the user picked Model 5 and hasn't uploaded a photo yet, ask them to upload one first. Do not mark ready without it.
 6. ONLY once the user has explicitly confirmed (said yes / ابدأ / اعمل الفيديو / etc.) AND you have all required info, end your reply with this exact machine-readable marker on its own line (the user will not see it, so keep your visible reply natural and short before it):
@@ -141,11 +143,14 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
   return reply;
 }
 
-// ── تحويل الصوت لنص (Whisper عبر Groq) — للاستخدام مع Voice-to-Video ──────
+// ── تحويل الصوت لنص (Whisper عبر Groq) + حفظ الصوت نفسه للاستخدام الحقيقي في الفيديو ──
+// ده "Voice to Video" حقيقي: صوت العميل الأصلي بيتحفظ ويتستخدم كـ narration في الفيديو،
+// مش مجرد نص بيتحول لصوت صناعي جديد
 export async function transcribeVoiceForAgent(audioBase64, mimeExt = 'webm') {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
   await mkdir(TEMP_DIR, { recursive: true });
+  await mkdir(OUTPUTS_DIR, { recursive: true });
   const b64 = audioBase64.replace(/^data:audio\/\w+;base64,/, '');
   const buffer = Buffer.from(b64, 'base64');
 
@@ -155,18 +160,29 @@ export async function transcribeVoiceForAgent(audioBase64, mimeExt = 'webm') {
   const audioPath = path.join(TEMP_DIR, `agent_voice_${Date.now()}.${mimeExt}`);
   fs.writeFileSync(audioPath, buffer);
 
+  // تحقق من مدة الصوت — حد أقصى دقيقتين
+  let duration = 0;
   try {
-    // تحقق من مدة الصوت — حد أقصى دقيقتين
-    let duration = 0;
-    try {
-      const out = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`, { stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
-      duration = parseFloat(out) || 0;
-    } catch { /* ffprobe not available — skip duration check */ }
+    const out = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`, { stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
+    duration = parseFloat(out) || 0;
+  } catch { /* ffprobe not available — skip duration check */ }
 
-    if (duration > MAX_AUDIO_SEC) {
-      throw new Error(`Voice recording too long — max ${MAX_AUDIO_SEC / 60} minutes`);
-    }
+  if (duration > MAX_AUDIO_SEC) {
+    try { fs.unlinkSync(audioPath); } catch {}
+    throw new Error(`Voice recording too long — max ${MAX_AUDIO_SEC / 60} minutes`);
+  }
 
+  // ── تحويل لـ mp3 وحفظه بشكل دائم في outputs — ده اللي هيتستخدم كـ narration فعلي ──
+  const savedFilename = `agent_voice_${Date.now()}.mp3`;
+  const savedPath = path.join(OUTPUTS_DIR, savedFilename);
+  try {
+    execSync(`ffmpeg -i "${audioPath}" -ar 48000 -ac 1 -b:a 192k -y "${savedPath}"`, { stdio: 'pipe' });
+  } catch (e) {
+    console.warn('[Agent] ffmpeg conversion failed, using raw upload as-is:', e.message);
+    fs.copyFileSync(audioPath, savedPath.replace('.mp3', '.' + mimeExt));
+  }
+
+  try {
     const fileBuffer = fs.readFileSync(audioPath);
     const form = new FormData();
     form.append('file', new Blob([fileBuffer]), `voice.${mimeExt}`);
@@ -179,7 +195,7 @@ export async function transcribeVoiceForAgent(audioBase64, mimeExt = 'webm') {
     });
     if (!res.ok) throw new Error(`Whisper error ${res.status}: ${(await res.text()).slice(0, 150)}`);
     const data = await res.json();
-    return { text: data.text || '', duration };
+    return { text: data.text || '', duration, audioUrl: '/outputs/' + savedFilename };
   } finally {
     try { fs.unlinkSync(audioPath); } catch {}
   }

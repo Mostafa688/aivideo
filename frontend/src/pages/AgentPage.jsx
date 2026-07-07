@@ -159,6 +159,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [imagePreview, setImagePreview] = useState(null);
   const [limits, setLimits] = useState({ MAX_AUDIO_SEC: 120, MAX_AUDIO_MB: 10, MAX_IMAGE_MB: 5 });
   const [lastUploadedPhoto, setLastUploadedPhoto] = useState(null);
+  const [lastUploadedVoiceUrl, setLastUploadedVoiceUrl] = useState(null);
   const voiceInputRef = useRef();
   const imageInputRef = useRef();
   const scrollRef = useRef();
@@ -232,6 +233,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setMessages(m => [...m, { role: 'assistant', content: data.reply }]);
+      if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
 
       if (data.ready) {
         if (data.ready.model === 5 && !lastUploadedPhoto) {
@@ -368,10 +370,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
       if (!activeJobRef.current) return;
 
-      // توليد صوت — بنفس الطريقة اللي صفحة الموديل نفسها بتستخدمها بالظبط (نص واحد مجمّع)
-      // عشان الفيديو يطلع مطابق تمامًا للي بيحصل لما العميل يستخدم الموديل مباشرة، من غير أي حسابات إضافية من عندنا
+      // ✅ Voice-to-Video حقيقي: لو العميل رفع تسجيل صوتي، نستخدمه هو نفسه كـ narration في الفيديو
+      // من غير ما نولّد صوت صناعي جديد — بالظبط زي ما بيحصل في صفحة الموديل العادية
       let audioUrl = null;
-      if (ready.model !== 5 && scenes.length) {
+      if (ready.model !== 5 && lastUploadedVoiceUrl) {
+        audioUrl = lastUploadedVoiceUrl;
+      } else if (ready.model !== 5 && scenes.length) {
+        // مفيش صوت مرفوع — نولّد صوت صناعي بنفس الطريقة اللي صفحة الموديل نفسها بتستخدمها بالظبط
         try {
           const fullText = scenes.map(s => s.text).join(' ');
           const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: fullText, voice: voiceKey, videoLanguage: videoLang }) });

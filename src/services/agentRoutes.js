@@ -24,12 +24,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     let attachmentNote = null;
     let transcript = null;
+    let uploadedVoiceUrl = null;
 
     if (voiceBase64) {
       try {
         const result = await transcribeVoiceForAgent(voiceBase64);
         transcript = result.text;
-        attachmentNote = `User uploaded a voice recording (${Math.round(result.duration)}s). Transcript: "${transcript.slice(0, 300)}"`;
+        uploadedVoiceUrl = result.audioUrl;
+        attachmentNote = `User uploaded a voice recording (${Math.round(result.duration)}s) meant to be used AS THE REAL NARRATION AUDIO of the video (true voice-to-video — do NOT generate a new synthetic voice for this, their own recording will be used as-is). Transcript of what they said: "${transcript.slice(0, 500)}". Use this transcript's content directly as the video's script/idea — do NOT ask the user to type a separate idea, you already have it from their recording. Model 5 cannot use this (no voiceover support) — if they picked Model 5, tell them their voice can't be used there.`;
       } catch (e) {
         return res.status(400).json({ error: e.message });
       }
@@ -62,7 +64,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
       } catch (e) { console.warn('[Agent] Could not parse READY marker:', e.message); }
     }
 
-    res.json({ reply, transcript, ready });
+    // ✅ لو المستخدم رفع صوت في نفس الرسالة اللي وصلنا فيها READY، نرفق رابط الصوت الحقيقي
+    // عشان الفرونت إند يستخدمه كـ narration فعلي بدل ما يولّد صوت صناعي جديد
+    if (ready && uploadedVoiceUrl) {
+      ready.uploadedVoiceUrl = uploadedVoiceUrl;
+    }
+
+    res.json({ reply, transcript, ready, uploadedVoiceUrl });
   } catch (e) {
     console.error('[Agent Chat]', e.message);
     res.status(500).json({ error: e.message });
