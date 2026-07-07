@@ -1,29 +1,26 @@
 import React, { useState, useEffect } from 'react';
 
 const INSTAPAY_NUMBER = import.meta.env.VITE_INSTAPAY_NUMBER || '01091917832';
-const EGP_PER_CREDIT = 0.5;
+const EGP_PER_CREDIT = 0.7;
 const SLIDER_MIN = 600;
 const SLIDER_MAX = 10000;
 
 // ── الباقات الدولية الثابتة (مرتبطة بمنتجات Gumroad حقيقية — دفعة واحدة) ──
 const GUMROAD_PACKAGES = [
-  { key: 'credits_starter', name: 'Starter', tagline: 'Getting started', credits: 600,   usd: 12,  url: 'https://digiwhirl23.gumroad.com/l/ukgdl',  color: '#7c6af7', icon: '🎬' },
-  { key: 'credits_creator', name: 'Creator', tagline: 'For regular creators', credits: 1400,  usd: 28,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: '⭐', popular: true },
-  { key: 'credits_studio',  name: 'Studio',  tagline: 'For heavy usage', credits: 3000,  usd: 60,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: '🏆' },
+  { key: 'credits_starter', name: 'Starter', tagline: 'Getting started', credits: 600,   usd: 15,  url: 'https://digiwhirl23.gumroad.com/l/ukgdl',  color: '#7c6af7', icon: '🎬' },
+  { key: 'credits_creator', name: 'Creator', tagline: 'For regular creators', credits: 1400,  usd: 35,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: '⭐', popular: true },
+  { key: 'credits_studio',  name: 'Studio',  tagline: 'For heavy usage', credits: 3000,  usd: 84,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: '🏆' },
 ];
 const GUMROAD_MORE_PACKAGES = [
-  { key: 'credits_team',    name: 'Team',    tagline: 'For teams and bulk usage', credits: 6000,  usd: 120, url: 'https://digiwhirl23.gumroad.com/l/vmzubx', color: '#0891b2', icon: '👥' },
-  { key: 'credits_agency',  name: 'Agency',  tagline: 'For agencies at scale', credits: 12000, usd: 240, url: 'https://digiwhirl23.gumroad.com/l/ckvlgo', color: '#f59e0b', icon: '🏢' },
+  { key: 'credits_team',    name: 'Team',    tagline: 'For teams and bulk usage', credits: 6000,  usd: 168, url: 'https://digiwhirl23.gumroad.com/l/vmzubx', color: '#0891b2', icon: '👥' },
+  { key: 'credits_agency',  name: 'Agency',  tagline: 'For agencies at scale', credits: 12000, usd: 336, url: 'https://digiwhirl23.gumroad.com/l/ckvlgo', color: '#f59e0b', icon: '🏢' },
 ];
 
-// معدل تحويل تقريبي للدولي: نفس نسبة المصري لكن بالدولار (~$0.02 لكل كريديت، ضعف السعر المصري تقريبًا)
-const USD_PER_CREDIT = 0.02;
-
-// ── باقات مصر الثابتة (بنفس سعر الكريديت 0.5 ج.م) — تُعرض كخطط منفصلة زي الدولي ──
+// ── باقات مصر الثابتة (بنفس سعر الكريديت 0.7 ج.م) — تُعرض كخطط منفصلة زي الدولي ──
 const EG_PACKAGES = [
-  { key: 'starter', name: 'Starter', tagline: 'للبداية والتجربة', credits: 600,  egp: 300 },
-  { key: 'creator', name: 'Creator', tagline: 'لصنّاع المحتوى المنتظمين', credits: 1400, egp: 700, popular: true },
-  { key: 'studio',  name: 'Studio',  tagline: 'للاستخدام المكثف', credits: 3000, egp: 1500 },
+  { key: 'starter', name: 'Starter', tagline: 'للبداية والتجربة', credits: 600,  egp: 420 },
+  { key: 'creator', name: 'Creator', tagline: 'لصنّاع المحتوى المنتظمين', credits: 1400, egp: 980, popular: true },
+  { key: 'studio',  name: 'Studio',  tagline: 'للاستخدام المكثف', credits: 3000, egp: 2100 },
 ];
 
 // ── حساب "الرصيد ده يكفي لعمل كام فيديو" — موديل رخيص (2) وموديل مميز (4) كمرجع ──

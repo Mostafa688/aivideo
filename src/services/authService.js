@@ -20,8 +20,8 @@ export const MODEL12_CREDIT_COSTS = {
 export const MODEL3_CREDIT_COSTS = { '30s': 20, '1min': 40, '2min': 80, '3min': 120, '5min': 200 };
 export const MODEL4_CREDIT_COSTS = { '30s': 100, '1min': 200, '2min': 400, '3min': 600 };
 // موديل 5: أرخص لو من النص، أعلى شوية لو فيه صورة شخصية (رفرنس صورة لكل مشهد)
-export const MODEL5_CREDIT_COSTS = { '15s': 65, '30s': 130, '1min': 260 };
-export const MODEL5_CREDIT_COSTS_WITH_PHOTO = { '15s': 75, '30s': 160, '1min': 320 };
+export const MODEL5_CREDIT_COSTS = { '15s': 180, '30s': 360, '1min': 720 };
+export const MODEL5_CREDIT_COSTS_WITH_PHOTO = { '15s': 185, '30s': 390, '1min': 780 };
 
 export const PLANS = {
   free: {
@@ -326,15 +326,15 @@ export async function activateUserPlan(email, plan, billing = 'monthly') {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // سعر الكريديت للمصريين (شحن مرن بالسلايدر)
-export const EGP_PER_CREDIT = 0.5;
+export const EGP_PER_CREDIT = 0.7;
 
 // باقات ثابتة للدوليين (مرتبطة بمنتجات Gumroad — دفعة واحدة، مش اشتراك)
 export const CREDITS_PACKAGES = {
-  credits_starter: { name: 'Starter', credits: 600,   usd: 12  },
-  credits_creator: { name: 'Creator', credits: 1400,  usd: 28  },
-  credits_studio:  { name: 'Studio',  credits: 3000,  usd: 60  },
-  credits_team:    { name: 'Team',    credits: 6000,  usd: 120 },
-  credits_agency:  { name: 'Agency',  credits: 12000, usd: 240 },
+  credits_starter: { name: 'Starter', credits: 600,   usd: 15  },
+  credits_creator: { name: 'Creator', credits: 1400,  usd: 35  },
+  credits_studio:  { name: 'Studio',  credits: 3000,  usd: 84  },
+  credits_team:    { name: 'Team',    credits: 6000,  usd: 168 },
+  credits_agency:  { name: 'Agency',  credits: 12000, usd: 336 },
 };
 
 export async function getCreditsBalance(userId) {
@@ -759,7 +759,7 @@ export async function getModel5Usage(userId) {
 }
 
 export async function incrementModel5Video(userId, duration) {
-  const cost = MODEL5_CREDIT_COSTS[duration] || 15;
+  const cost = MODEL5_CREDIT_COSTS[duration] || 180;
   await pool.query(
     `INSERT INTO model5_credits (user_id, credits_total, credits_used)
      VALUES ($1, 0, $2)
@@ -789,7 +789,7 @@ export async function canUserMakeModel5Video(userId, duration) {
   const plan = user.model5_plan || 'mc_starter';
   const planData = MODEL5_PLANS[plan];
   if (!planData) return { allowed: false, reason: 'invalid_plan' };
-  const cost = MODEL5_CREDIT_COSTS[duration] || 15;
+  const cost = MODEL5_CREDIT_COSTS[duration] || 180;
   const credits = await getModel5Credits(userId);
   const remaining = (credits.credits_total || 0) - (credits.credits_used || 0);
   if (remaining < cost) return { allowed: false, reason: 'quota_exceeded', remaining, cost };
@@ -802,7 +802,7 @@ export const MODEL7_PLANS = {
   ads_max:     { name: 'Max',     price: 1800, credits: 100 },
 };
 
-export const ADS_CREDIT_COST = 75;
+export const ADS_CREDIT_COST = 185;
 
 // ── خصم موحد من رصيد الكريديت — تستخدمه كل الموديلات (1 لحد 5 + Ads) ──────
 // بيتأكد إن الرصيد كافي، يخصم، ويرجع النتيجة. لو الرصيد مش كافي بيرجع remaining

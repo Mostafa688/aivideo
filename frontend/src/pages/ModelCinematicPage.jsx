@@ -53,7 +53,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
   const [videoUrl, setVideoUrl] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [usage, setUsage] = useState(null);
-  const [creditCost, setCreditCost] = useState(65);
+  const [creditCost, setCreditCost] = useState(180);
   const pollRef = useRef(null);
   const timerRef = useRef(null);
   const region = localStorage.getItem('erivion_region') || 'eg';
@@ -63,7 +63,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
   useEffect(() => {
     const hasPhoto = characters.some(c => c.photo);
     fetch(`/api/model5/credit-cost?duration=${duration}&hasPhoto=${hasPhoto}`, { headers: authHeaders() })
-      .then(r => r.json()).then(d => setCreditCost(d.creditCost || 65)).catch(() => {});
+      .then(r => r.json()).then(d => setCreditCost(d.creditCost || 180)).catch(() => {});
   }, [duration, characters]);
 
   const fetchUsage = async () => {

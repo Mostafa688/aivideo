@@ -959,7 +959,7 @@ app.get('/api/model4/credit-cost', authMiddleware, (req, res) => {
 app.get('/api/model5/credit-cost', authMiddleware, (req, res) => {
   const { duration, hasPhoto } = req.query;
   const table = hasPhoto === 'true' ? MODEL5_CREDIT_COSTS_WITH_PHOTO : MODEL5_CREDIT_COSTS;
-  res.json({ creditCost: table[duration] || 65, duration });
+  res.json({ creditCost: table[duration] || 180, duration });
 });
 
 // ── Model 3 Routes ─────────────────────────────────────────────────────────
