@@ -15,41 +15,70 @@ import { generateVoiceover } from './voiceService.js';
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
+
+// ── تحديد مكان/بيئة ثابتة ومتسقة للإعلان بناءً على المنتج ووصفه ──────────────
+// عشان مثلاً علبة لبن تظهر في مزرعة أبقار، وساعة فاخرة تظهر في محل مجوهرات، إلخ
+// المكان ده بيتثبت ويتكرر في كل المشاهد عشان الإعلان يبقى متسق ومتتابع منطقيًا
+async function determineAdLocation(productName, productDesc) {
+  const fallback = 'a clean, modern professional studio setting appropriate for this product category';
+  if (!GROQ_API_KEY) return fallback;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 120, temperature: 0.4,
+        messages: [
+          { role: 'system', content: 'You are an expert commercial ad director. Given a product, pick ONE specific, realistic, visually-rich real-world location/environment that best fits this exact product for an advertisement — the kind a real ad agency would choose. Examples: milk product → a sunlit dairy farm with cows in the background; luxury watch → an elegant jewelry boutique display; running shoes → an outdoor running track at sunrise; coffee → a cozy rustic cafe interior. Output ONLY the location description in English, max 20 words, no explanation, no quotes.' },
+          { role: 'user', content: `Product: "${productName}". Description: "${productDesc}". Best advertisement location:` },
+        ],
+      }),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    const loc = (data.choices?.[0]?.message?.content || '').trim().replace(/^["']|["']$/g, '');
+    return loc || fallback;
+  } catch (e) {
+    console.warn('[AdsService] Location determination failed, using fallback:', e.message);
+    return fallback;
+  }
+}
 
 // ── Scene configs — بدون "dark background" في أي prompt ──────────────────────
 const SCENE_CONFIGS = [
   {
     id: 'hero',
     label: 'Hero Shot',
-    buildPrompt: (product, desc) =>
-      `Professional product advertisement. The exact ${product} from the reference image — keep every detail. ${desc}. Best fitting professional environment for this exact product. Perfect studio lighting matching the product type, photorealistic 8K commercial photography.`,
+    buildPrompt: (product, desc, location) =>
+      `Professional product advertisement. The exact ${product} from the reference image — keep every detail. ${desc}. Setting: ${location}. Perfect studio-quality lighting matching this environment, photorealistic 8K commercial photography.`,
     motion: (product) =>
-      `[Image1] ${product} product slowly rotates revealing all sides, subtle light shimmer, cinematic slow motion product reveal, professional advertisement`,
+      `The ${product} product slowly rotates revealing all sides, subtle light shimmer, cinematic slow motion product reveal, professional advertisement`,
   },
   {
     id: 'lifestyle',
     label: 'Lifestyle',
-    buildPrompt: (product, desc) =>
-      `Lifestyle advertisement. The exact ${product} from the reference image in its most natural real-world environment. ${desc}. Warm natural lighting, aspirational scene, photorealistic.`,
+    buildPrompt: (product, desc, location) =>
+      `Lifestyle advertisement. The exact ${product} from the reference image, shown naturally within this setting: ${location}. ${desc}. Warm natural lighting, aspirational scene, photorealistic.`,
     motion: (product) =>
-      `[Image1] ${product} in lifestyle setting, gentle parallax motion, slow zoom out revealing context, warm bokeh, aspirational advertisement`,
+      `The ${product} in lifestyle setting, gentle parallax motion, slow zoom out revealing context, warm bokeh, aspirational advertisement`,
   },
   {
     id: 'closeup',
     label: 'Close-up',
-    buildPrompt: (product, desc) =>
-      `Macro product photo. The exact ${product} from the reference image — extreme close-up of finest details. ${desc}. Ultra-shallow depth of field, razor-sharp, luxury photography.`,
+    buildPrompt: (product, desc, location) =>
+      `Macro product photo. The exact ${product} from the reference image — extreme close-up of finest details, with a softly blurred background hinting at this setting: ${location}. ${desc}. Ultra-shallow depth of field, razor-sharp, luxury photography.`,
     motion: (product) =>
-      `[Image1] ${product} ultra slow macro push-in, finest surface details emerge, barely perceptible camera drift, luxury cinematic`,
+      `The ${product} ultra slow macro push-in, finest surface details emerge, barely perceptible camera drift, luxury cinematic`,
   },
   {
     id: 'angle45',
     label: '45 Angle',
-    buildPrompt: (product, desc) =>
-      `Commercial product photo. The exact ${product} at a dynamic 45-degree angle on a matching surface. ${desc}. Dramatic side lighting, long elegant shadow, high-end photography.`,
+    buildPrompt: (product, desc, location) =>
+      `Commercial product photo. The exact ${product} at a dynamic 45-degree angle, on a surface and backdrop consistent with this setting: ${location}. ${desc}. Dramatic side lighting, long elegant shadow, high-end photography.`,
     motion: (product) =>
-      `[Image1] ${product} slow cinematic dolly left to right, shadow glides across surface, spotlight follows product`,
+      `The ${product} slow cinematic dolly left to right, shadow glides across surface, spotlight follows product`,
   },
   {
     id: 'minimal',
@@ -57,15 +86,15 @@ const SCENE_CONFIGS = [
     buildPrompt: (product, desc) =>
       `Minimalist ad. The exact ${product} on white seamless background, soft shadow below. ${desc}. Clean Apple-style aesthetic, crisp modern photography.`,
     motion: (product) =>
-      `[Image1] ${product} gently levitates upward and settles, clean modern bounce, soft shadow pulse beneath`,
+      `The ${product} gently levitates upward and settles, clean modern bounce, soft shadow pulse beneath`,
   },
   {
     id: 'action',
     label: 'In Use',
-    buildPrompt: (product, desc) =>
-      `Product-in-use advertisement. The exact ${product} being elegantly used in ideal context. ${desc}. Aspirational energy, cinematic depth shift, commercial photography.`,
+    buildPrompt: (product, desc, location) =>
+      `Product-in-use advertisement. The exact ${product} being elegantly used within this setting: ${location}. ${desc}. Aspirational energy, cinematic depth shift, commercial photography.`,
     motion: (product) =>
-      `[Image1] ${product} in use, cinematic camera arc reveals product, dynamic depth of field shift, aspirational energy`,
+      `The ${product} in use, cinematic camera arc reveals product, dynamic depth of field shift, aspirational energy`,
   },
 ];
 
@@ -79,6 +108,16 @@ async function downloadFile(url, destPath) {
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   fs.writeFileSync(destPath, Buffer.from(await res.arrayBuffer()));
   return destPath;
+}
+
+// ── موسيقى خلفية ثابتة من مجلد assets/music — نفس المقطوعة لكل مشاهد الإعلان ──
+// (بدل ما Seedance يولّد موسيقى عشوائية مختلفة في كل مشهد، ده كان بيكسر الاتساق)
+function findMusicFile() {
+  const dir = join(process.cwd(), 'assets', 'music');
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.mp3') || f.endsWith('.wav'));
+  if (!files.length) return null;
+  return join(dir, files[Math.floor(Math.random() * files.length)]);
 }
 
 // ── poll helper ───────────────────────────────────────────────────────────────
@@ -99,9 +138,9 @@ async function pollPrediction(predictionId, timeoutMs, label) {
 }
 
 // ── Step 1: FLUX kontext-dev ──────────────────────────────────────────────────
-async function generateAdSceneImage(productImageBase64, productName, productDesc, sceneConfig, ratio) {
+async function generateAdSceneImage(productImageBase64, productName, productDesc, sceneConfig, ratio, location) {
   const b64 = productImageBase64.replace(/^data:image\/\w+;base64,/, '');
-  const prompt = sceneConfig.buildPrompt(productName, productDesc);
+  const prompt = sceneConfig.buildPrompt(productName, productDesc, location);
 
   const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
     method: 'POST',
@@ -127,19 +166,21 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
   return await pollPrediction(data.id, 180000, `FLUX "${sceneConfig.label}"`);
 }
 
-// ── Step 2: Seedance 2.0 Fast I2V via [Image1] ───────────────────────────────
+// ── Step 2: Seedance 2.0 Fast I2V — تحريك حقيقي للصورة (first_frame_image) ────
+// ✅ FIX: كنا بنستخدم وضع "Reference" (images + [Image1] في البرومبت) وده بيخلي الموديل
+// حر يعمل مشهد جديد كليًا من الصفر بدل ما يحرك الصورة نفسها. الوضع الصح لتحريك صورة
+// بعينها كإطار أول هو first_frame_image (بارامتر مفرد)، من غير أي وسم [ImageN] في البرومبت
 async function animateWithSeedance2(imageUrl, motionPrompt, ratio) {
-  // seedance-2.0-fast يقبل reference image عن طريق [Image1] في الـ prompt
-  // ونحط الـ image URL في الـ images array
   const input = {
-    prompt: motionPrompt,  // اللي فيه [Image1] بالفعل
-    images: [imageUrl],    // ← الصورة المرفوعة
+    prompt: motionPrompt + ', no background music, sound effects and ambient audio only',
+    first_frame_image: imageUrl,   // ← تحريك حقيقي: الصورة دي هي الإطار الأول فعليًا
     aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
     resolution: '480p',
     duration: 5,
+    generate_audio: true,
   };
 
-  console.log(`[AdsService] Seedance 2.0 Fast I2V → ${imageUrl?.slice(0,80)}`);
+  console.log(`[AdsService] Seedance 2.0 Fast I2V (first_frame_image) → ${imageUrl?.slice(0,80)}`);
   console.log(`[AdsService] Motion prompt: ${motionPrompt.slice(0,100)}`);
 
   const res = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
@@ -171,7 +212,10 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
   }
 
   const numClips = clipPaths.length;
-  const hasAudio = !!(audioPath && fs.existsSync(audioPath));
+  const hasVoice = !!(audioPath && fs.existsSync(audioPath));
+  const musicFile = findMusicFile();
+  const hasMusic = !!musicFile;
+  console.log(`[AdsService] Audio layers → voice: ${hasVoice} | music: ${hasMusic ? musicFile : 'none found'}`);
 
   let fontFile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
   if (/[\u0600-\u06FF]/.test(productName)) {
@@ -180,14 +224,38 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
     }
   }
 
+  const totalDur = numClips * 5.5;
   const inputArgs = clipPaths.flatMap(p => ['-i', p]);
-  if (hasAudio) inputArgs.push('-i', audioPath);
+  let voiceInputIdx = -1, musicInputIdx = -1;
+  if (hasVoice) { voiceInputIdx = inputArgs.length / 2; inputArgs.push('-i', audioPath); }
+  if (hasMusic) { musicInputIdx = inputArgs.length / 2; inputArgs.push('-stream_loop', '-1', '-i', musicFile); }
 
   const fp = [];
+  // ── فيديو: قص وضبط كل مشهد ثم دمجهم ──
   for (let i = 0; i < numClips; i++) {
     fp.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24[sv${i}]`);
   }
   fp.push(`${clipPaths.map((_,i)=>`[sv${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat]`);
+
+  // ── صوت: نجمع المؤثرات الصوتية الأصلية من كل مشهد (لو موجودة) ──
+  for (let i = 0; i < numClips; i++) {
+    fp.push(`[${i}:a]atrim=0:5.5,asetpts=PTS-STARTPTS[sa${i}]`);
+  }
+  fp.push(`${clipPaths.map((_,i)=>`[sa${i}]`).join('')}concat=n=${numClips}:v=0:a=1[asfx]`);
+
+  // ── دمج المؤثرات + الموسيقى الثابتة + التعليق الصوتي (اللي موجود منهم) ──
+  const audioLayers = ['[asfx]'];
+  const audioFilters = [];
+  if (hasMusic) {
+    audioFilters.push(`[${musicInputIdx}:a]atrim=0:${totalDur.toFixed(1)},asetpts=PTS-STARTPTS,volume=0.18[amusic]`);
+    audioLayers.push('[amusic]');
+  }
+  if (hasVoice) {
+    audioFilters.push(`[${voiceInputIdx}:a]volume=1.0[avoice]`);
+    audioLayers.push('[avoice]');
+  }
+  fp.push(...audioFilters);
+  fp.push(`${audioLayers.join('')}amix=inputs=${audioLayers.length}:duration=first:dropout_transition=2[amixed]`);
 
   if (showTitle && productName.trim()) {
     const safe = productName.trim()
@@ -207,12 +275,10 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
     fp.push(`[vconcat]null[vtitled]`);
   }
 
-  const totalDur = numClips * 5.5;
   fp.push(`[vtitled]fade=t=in:st=0:d=0.6,fade=t=out:st=${(totalDur-1.2).toFixed(1)}:d=1.0[vfinal]`);
 
   const outputPath = join(outputDir, `ad_${jobId}.mp4`);
-  const args = [...inputArgs, '-filter_complex', fp.join(';'), '-map', '[vfinal]'];
-  if (hasAudio) args.push('-map', `${numClips}:a`, '-c:a', 'aac', '-b:a', '128k', '-shortest');
+  const args = [...inputArgs, '-filter_complex', fp.join(';'), '-map', '[vfinal]', '-map', '[amixed]', '-c:a', 'aac', '-b:a', '128k', '-shortest'];
   args.push('-c:v','libx264','-preset','fast','-crf','22','-pix_fmt','yuv420p','-movflags','+faststart','-y',outputPath);
 
   try {
@@ -241,6 +307,11 @@ export async function renderAdVideo({
   const selectedScenes = SCENE_CONFIGS.slice(0, count);
   console.log(`[AdsService] ${count} scenes: ${selectedScenes.map(s=>s.label).join(', ')}`);
 
+  // ── 0. تحديد مكان/بيئة ثابتة للإعلان كله بناءً على المنتج ─────────────────
+  progress('scenes', 'Determining the best setting for this product...');
+  const adLocation = await determineAdLocation(productName, productDesc.trim());
+  console.log(`[AdsService] Determined ad location: ${adLocation}`);
+
   // ── 1. FLUX ───────────────────────────────────────────────────────────────
   progress('scenes', `Generating ${count} scenes with FLUX...`);
   const sceneImages = [];
@@ -248,7 +319,7 @@ export async function renderAdVideo({
     const sc = selectedScenes[i];
     try {
       console.log(`[AdsService] [${i+1}/${count}] FLUX: ${sc.label}`);
-      const imageUrl = await generateAdSceneImage(productImageBase64, productName, productDesc.trim(), sc, ratio);
+      const imageUrl = await generateAdSceneImage(productImageBase64, productName, productDesc.trim(), sc, ratio, adLocation);
       console.log(`[AdsService] ✓ FLUX ${i+1}: ${imageUrl}`);
       sceneImages.push({ ...sc, imageUrl });
       progress('scenes', `Scene ${i+1}/${count}: ${sc.label} ✓`);

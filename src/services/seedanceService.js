@@ -572,11 +572,34 @@ export async function renderModel5Video({
     }
   }
 
-  // Step 3: Final output
-  try {
-    execSync(`ffmpeg -i "${mergedPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' });
-  } catch {
-    fs.copyFileSync(mergedPath, outputPath);
+  // Step 3: Final output — دمج موسيقى خلفية ثابتة من assets/music مع صوت المؤثرات الأصلي
+  // (Seedance بقى بيولّد مؤثرات صوتية بس من غير موسيقى، حسب تعليمات البرومبت، والموسيقى بتتضاف هنا)
+  const musicDir = path.join(process.cwd(), 'assets', 'music');
+  const musicFiles = fs.existsSync(musicDir)
+    ? fs.readdirSync(musicDir).filter(f => f.endsWith('.mp3') || f.endsWith('.wav'))
+    : [];
+
+  if (musicFiles.length > 0) {
+    const mf = path.join(musicDir, musicFiles[Math.floor(Math.random() * musicFiles.length)]);
+    try {
+      execSync(
+        `ffmpeg -i "${mergedPath}" -stream_loop -1 -i "${mf}" ` +
+        `-filter_complex "[1:a]volume=0.15[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
+        `-map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${outputPath}"`,
+        { stdio: 'pipe' }
+      );
+      console.log('[Model5] ✅ Background music mixed in');
+    } catch (e) {
+      console.warn('[Model5] Music mixing failed, using original audio:', e.message.slice(0, 80));
+      try { execSync(`ffmpeg -i "${mergedPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' }); }
+      catch { fs.copyFileSync(mergedPath, outputPath); }
+    }
+  } else {
+    try {
+      execSync(`ffmpeg -i "${mergedPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' });
+    } catch {
+      fs.copyFileSync(mergedPath, outputPath);
+    }
   }
 
   setTimeout(() => {

@@ -1505,6 +1505,7 @@ PROMPT RULES (English only, 45-65 words per prompt):
 4. CONSISTENCY: ${characterDescs.length > 0 ? 'Copy the EXACT physical identity from above into EVERY prompt without shortening; keep the outfit consistent unless the story logically calls for a change' : 'Keep the same location/environment across all scenes'}
 5. PROGRESSION: Each scene advances the story visually — show change, emotion, action building up
 6. NO TEXT in frame, no watermarks, no UI elements
+7. AUDIO: No background music in the generated clip — natural ambient sound and sound effects only (footsteps, wind, environment noise). Background music will be added separately in post-production for consistency across all scenes.
 
 SCENE STRUCTURE:
 - Scene 1: Establishing shot — introduce character/location dramatically
