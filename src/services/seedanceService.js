@@ -491,9 +491,13 @@ export async function renderModel5Video({
     const rawPath = path.join(TEMP_DIR, `m5_raw_${id}_${i}.mp4`);
     try {
       console.log(`[Model5] Clip ${i + 1}/${total}: ${(scene.prompt || '').slice(0, 60)}...`);
-      const seed2Prompt = scene.prompt
+      const basePrompt = scene.prompt
         || (scene.visual ? `${scene.visual}, cinematic motion, professional video` : null)
         || scene.text;
+      // ✅ FIX: لو معانا مدد حقيقية مقاسة فعليًا من الصوت (لكل مشهد لوحده)، نستخدمها كأساس
+      // ⚠️ Seedance موثّق رسميًا إنه ممكن "يقطع" لقطات مختلفة تلقائيًا في التوليدة الواحدة الطويلة —
+      // ده كان بيخلي الفيديو يبعد عن الصورة المرجعية بعد أول لحظة. لازم نمنع ده صراحة في البرومبت
+      const seed2Prompt = `${basePrompt}, single continuous unbroken shot, no cuts, no scene transitions, no camera cuts, the entire clip must continuously show the same person from the reference image in the same continuous take from start to finish, clearly visible continuous motion throughout, dynamic camera movement, no static frames, no background music, ambient sound and sound effects only`;
 
       // ── Reference image: generate with FLUX Kontext Dev if character photo exists ──
       let refImageUrl = scene.referenceImageUrl || null; // pre-generated in generate-scenes
