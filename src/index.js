@@ -1505,7 +1505,7 @@ PROMPT RULES (English only, 45-65 words per prompt):
 4. CONSISTENCY: ${characterDescs.length > 0 ? 'Copy the EXACT physical identity from above into EVERY prompt without shortening; keep the outfit consistent unless the story logically calls for a change' : 'Keep the same location/environment across all scenes'}
 5. PROGRESSION: Each scene advances the story visually — show change, emotion, action building up
 6. NO TEXT in frame, no watermarks, no UI elements
-7. AUDIO: No background music in the generated clip — natural ambient sound and sound effects only (footsteps, wind, environment noise). Background music will be added separately in post-production for consistency across all scenes.
+7. AUDIO: No background music, no music of any kind in the generated clip. Instead, explicitly describe 1-3 SPECIFIC, concrete sound effects that genuinely match what is happening in THIS exact scene (e.g. "footsteps on gravel", "wind rustling through robes", "distant camel bells", "crackling torch fire", "soft cloth movement", "muffled crowd murmur") — never a generic phrase like "ambient sound". Background music will be added separately in post-production for consistency across all scenes.
 
 SCENE STRUCTURE:
 - Scene 1: Establishing shot — introduce character/location dramatically
@@ -1521,17 +1521,13 @@ Output ONLY JSON array (${sceneCount} items):
     if (!scenes || scenes.length === 0) throw new Error('No scenes generated');
     scenes = scenes.slice(0, sceneCount);
 
-    // ── Attach character photos to scenes — reference images generated in seedanceService during render ──
+    // ── Attach ALL character photos to EVERY scene — reference images generated in seedanceService ──
+    // ✅ FIX: كانت بتتحط صورة واحدة بس بالتناوب لكل مشهد (شخصية مختلفة في كل مشهد)، وده غلط —
+    // المطلوب إن كل الشخصيات المرفوعة (لحد 5) تظهر مع بعض مربوطين في نفس المشهد الواحد.
     if (charsWithPhotos.length > 0) {
-      scenes = scenes.map((scene) => {
-        const charIndex = (scene.index - 1) % charsWithPhotos.length;
-        const refChar = charsWithPhotos[charIndex];
-        if (refChar?.photo) {
-          return { ...scene, characterPhoto: refChar.photo };
-        }
-        return scene;
-      });
-      console.log(`[Model5] Attached character photos to ${scenes.filter(s=>s.characterPhoto).length}/${scenes.length} scenes`);
+      const allPhotos = charsWithPhotos.map(c => c.photo).filter(Boolean);
+      scenes = scenes.map((scene) => ({ ...scene, characterPhotos: allPhotos }));
+      console.log(`[Model5] Attached all ${allPhotos.length} character photo(s) together to ${scenes.length} scenes`);
     }
 
     res.json({ scenes });
@@ -1548,15 +1544,18 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 5.', show_upgrade: true });
   }
 
-  // ── Attach character photos to scenes for reference image generation ──
+  // ── Attach ALL character photos together to EVERY scene for reference image generation ──
+  // ✅ FIX: كانت بتتحط صورة واحدة بس بالتناوب (photoIndex = i % photos.length) — شخصية
+  // مختلفة في كل مشهد. المطلوب إن كل الشخصيات المرفوعة (لحد 5) يظهروا مع بعض مربوطين
+  // في نفس المشهد الواحد حتى لو العميل رفع 5 صور مختلفة. seedanceService.js دلوقتي بيتعامل
+  // مع array من الصور ويحطهم مع بعض في نفس المشهد لو كانوا أكتر من واحدة.
   const photos = Array.isArray(characterPhotos) ? characterPhotos.filter(Boolean) : [];
-  const scenesWithPhotos = scenes.map((scene, i) => {
+  const scenesWithPhotos = scenes.map((scene) => {
     if (photos.length === 0) return scene;
-    const photoIndex = i % photos.length;
-    return { ...scene, characterPhoto: photos[photoIndex] };
+    return { ...scene, characterPhotos: photos };
   });
   if (photos.length > 0) {
-    console.log(`[Model5] ${photos.length} character photo(s) attached to ${scenesWithPhotos.length} scenes`);
+    console.log(`[Model5] All ${photos.length} character photo(s) linked together in ${scenesWithPhotos.length} scenes`);
   }
 
   // ✅ نظام الكريديت الموحد: تكلفة أعلى شوية لو فيه صورة شخصية (رفرنس لكل مشهد)

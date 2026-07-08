@@ -108,7 +108,7 @@ async function generateReferenceImage(photoBase64, scenePrompt) {
       body: JSON.stringify({
         input: {
           input_image: imageDataUrl,
-          prompt: `${scenePrompt}, keep the same person's face and identity from the reference image exactly, same facial features, same person`,
+          prompt: `${scenePrompt}, keep every person visible in the reference image exactly as they are — same faces, same identities, same facial features, same number of people, none added or removed, none replaced`,
           aspect_ratio: '9:16',
           output_format: 'webp',
           guidance: 3.5,
@@ -156,8 +156,16 @@ async function generateReferenceImage(photoBase64, scenePrompt) {
 }
 
 // ── Seedance 2.0 Fast for Model 5 ────────────────────────────────────────
-// imageUrl: optional — if provided, used as starting frame for image-to-video
-async function generateSeedance2Clip(prompt, ratio = '9:16', duration = 5, imageUrl = null) {
+// imageUrls: null | string | string[] — reference/character image(s) for this clip.
+//   - 1 image   → real image-to-video: that exact image is locked as the first frame.
+//   - 2-5 images → multimodal reference: all characters must appear TOGETHER in one scene.
+// ✅ REAL FIX (verified against Replicate's actual schema for bytedance/seedance-2.0-fast):
+// this model has NO "first_frame_image" field — it's a unified multimodal model whose only
+// image input is the "images" array (up to 9). Whether an image is used as "the first frame"
+// vs "a character reference" is decided ENTIRELY by how the prompt talks about [Image1]/[Image2]/etc,
+// not by a separate parameter. Sending first_frame_image (an unknown field) was being silently
+// ignored by Replicate, so the model fell back to pure text-to-video — which matches the bug reported.
+async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, imageUrls = null) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const headers = {
     'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
@@ -165,12 +173,20 @@ async function generateSeedance2Clip(prompt, ratio = '9:16', duration = 5, image
     'Prefer': 'wait',
   };
 
-  const input = { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24 };
-  // If reference image provided, pass as first_frame for character consistency
-  if (imageUrl) {
-    input.first_frame_image = imageUrl;
-    console.log(`[Model5] Using reference image for clip`);
+  const urls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : (imageUrls ? [imageUrls] : []);
+  let prompt = basePrompt;
+
+  if (urls.length === 1) {
+    prompt = `[Image1] is the exact first frame of this video — its composition, framing, subject and background must stay completely unchanged in the opening instant, then animate forward from it. ${basePrompt}`;
+    console.log(`[Model5] Seedance I2V — single reference image locked as first frame`);
+  } else if (urls.length > 1) {
+    const tags = urls.map((_, i) => `[Image${i + 1}]`).join(', ');
+    prompt = `${tags} are reference photos of the different characters in this story. All of them must appear together in this single unified scene, interacting with each other, each one keeping their exact face and identity from their own reference photo. ${basePrompt}`;
+    console.log(`[Model5] Seedance multi-character reference — ${urls.length} characters combined into one scene`);
   }
+
+  const input = { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24 };
+  if (urls.length > 0) input.images = urls;
 
   const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
     method: 'POST',
@@ -497,22 +513,40 @@ export async function renderModel5Video({
       // ✅ FIX: لو معانا مدد حقيقية مقاسة فعليًا من الصوت (لكل مشهد لوحده)، نستخدمها كأساس
       // ⚠️ Seedance موثّق رسميًا إنه ممكن "يقطع" لقطات مختلفة تلقائيًا في التوليدة الواحدة الطويلة —
       // ده كان بيخلي الفيديو يبعد عن الصورة المرجعية بعد أول لحظة. لازم نمنع ده صراحة في البرومبت
-      const seed2Prompt = `${basePrompt}, single continuous unbroken shot, no cuts, no scene transitions, no camera cuts, the entire clip must continuously show the same person from the reference image in the same continuous take from start to finish, clearly visible continuous motion throughout, dynamic camera movement, no static frames, no background music, ambient sound and sound effects only`;
+      const seed2Prompt = `${basePrompt}, single continuous unbroken shot, no cuts, no scene transitions, no camera cuts, clearly visible continuous motion throughout, dynamic camera movement, no static frames, no background music — layered ambient sound and specific sound effects appropriate to this exact scene only (e.g. footsteps, wind, cloth movement, distant crowd murmur, water, fire crackle — whatever genuinely fits what is shown), no music of any kind.`;
 
-      // ── Reference image: generate with FLUX Kontext Dev if character photo exists ──
-      let refImageUrl = scene.referenceImageUrl || null; // pre-generated in generate-scenes
-      if (!refImageUrl && scene.characterPhoto) {
-        // Fallback: generate reference image here if not already done
-        console.log(`[Model5] Generating reference image for clip ${i + 1}...`);
-        refImageUrl = await generateReferenceImage(scene.characterPhoto, seed2Prompt);
-        // ✅ FIX: العميل رفع صورة شخصية ومتوقع إنها تتحرك — لو فشل توليد الصورة المرجعية،
-        // لازم نوقف ونبلّغ بوضوح، مش نكمل بصمت بفيديو من غير الشخصية اللي طلبها أصلاً
-        if (!refImageUrl) {
+      // ── Reference image(s): character photos uploaded by the user for this video ──
+      // scene.characterPhotos = array of ALL uploaded character photos (up to 5), same for every scene,
+      // so that when more than one character was uploaded they appear TOGETHER, linked in one scene —
+      // not one different character per scene like before.
+      const rawPhotos = Array.isArray(scene.characterPhotos) ? scene.characterPhotos.filter(Boolean)
+        : (scene.characterPhoto ? [scene.characterPhoto] : []);
+
+      let refImageUrls = [];
+      if (scene.referenceImageUrl) {
+        // Pre-generated single reference (legacy path from generate-scenes)
+        refImageUrls = [scene.referenceImageUrl];
+      } else if (rawPhotos.length === 1) {
+        // ── Single character: compose them into the scene's location via FLUX Kontext first,
+        // then that ONE composed image is animated as a true locked first frame ──
+        console.log(`[Model5] Generating single-character reference image for clip ${i + 1}...`);
+        const refUrl = await generateReferenceImage(rawPhotos[0], seed2Prompt);
+        if (!refUrl) {
           throw new Error('Failed to process the uploaded character photo (reference image generation failed). Please try again or use a different photo.');
         }
+        refImageUrls = [refUrl];
+      } else if (rawPhotos.length > 1) {
+        // ── Multiple characters (2-5): feed all raw photos directly into Seedance's
+        // multimodal reference mode so it composes them TOGETHER in one scene while animating —
+        // no separate merge step needed, Seedance itself supports up to 9 reference images.
+        console.log(`[Model5] Using ${rawPhotos.length} character photos together for clip ${i + 1}...`);
+        refImageUrls = rawPhotos.map(p => {
+          const b64 = p.replace(/^data:image\/\w+;base64,/, '');
+          return `data:image/jpeg;base64,${b64}`;
+        });
       }
 
-      const url = await generateSeedance2Clip(seed2Prompt, ratio, CLIP_SEC, refImageUrl);
+      const url = await generateSeedance2Clip(seed2Prompt, ratio, CLIP_SEC, refImageUrls);
       await downloadVideo(url, rawPath);
     } catch (e) {
       console.error(`[Model5] Clip ${i + 1} failed:`, e.message);

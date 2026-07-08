@@ -10,7 +10,9 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { generateVoiceover } from './voiceService.js';
+// ── Ads model uses its OWN dedicated voice model (google/gemini-3.1-flash-tts on Replicate) ──
+// ⚠️ لا تستخدم generateVoiceover من voiceService.js هنا — كل باقي الموقع شغال بـ Edge TTS
+// وده متعمّد ومتفق عليه، وموديل الإعلانات بس هو المفروض يستخدم Gemini 3.1 Flash TTS.
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -120,7 +122,54 @@ function findMusicFile() {
   return join(dir, files[Math.floor(Math.random() * files.length)]);
 }
 
-// ── poll helper ───────────────────────────────────────────────────────────────
+// ── google/gemini-3.1-flash-tts (Replicate) — الصوت المخصص لموديل الإعلانات بس ────────
+// Schema اتأكد منه من صفحة الموديل الرسمية على Replicate: text / voice / prompt (style) / language_code
+const GEMINI_VOICE_MAP = {
+  male_arabic:   'Charon',   // Male, Informative — مناسب لصوت راوي إعلان واثق
+  female_arabic: 'Sulafat',  // Female, Warm
+  male_american: 'Puck',     // Male, Upbeat
+  female_american: 'Kore',   // Female, Firm
+  male_wise:     'Orus',
+  female_wise:   'Gacrux',
+  male_young:    'Fenrir',
+  female_young:  'Leda',
+  male_child:    'Achird',
+  female_child:  'Autonoe',
+};
+
+async function generateAdsVoiceover(script, aiVoiceKey, language) {
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+  const voice = GEMINI_VOICE_MAP[aiVoiceKey] || (String(aiVoiceKey||'').startsWith('female') ? 'Sulafat' : 'Charon');
+  const langCode = language?.startsWith('ar') ? 'ar-EG' : 'en-US';
+  const stylePrompt = 'A confident, warm advertisement narrator recording a commercial voiceover. Clear, persuasive, upbeat energy, natural pacing with brief pauses at commas and periods so the delivery breathes naturally — never rushed or robotic.';
+
+  const res = await fetch('https://api.replicate.com/v1/models/google/gemini-3.1-flash-tts/predictions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' },
+    body: JSON.stringify({ input: { text: script, voice, prompt: stylePrompt, language_code: langCode } }),
+  });
+  if (!res.ok) throw new Error(`GeminiTTS ${res.status}: ${(await res.text()).slice(0,300)}`);
+  const data = await res.json();
+  if (data.error) throw new Error(`GeminiTTS: ${data.error}`);
+
+  let audioUrl;
+  if (data.status === 'succeeded' && data.output) {
+    audioUrl = Array.isArray(data.output) ? data.output[0] : data.output;
+  } else if (data.id) {
+    audioUrl = await pollPrediction(data.id, 120000, 'Gemini 3.1 Flash TTS');
+  } else {
+    throw new Error(`No prediction ID from GeminiTTS: ${JSON.stringify(data).slice(0,200)}`);
+  }
+  if (!audioUrl) throw new Error('GeminiTTS returned no audio URL');
+
+  const fname = `ads_voice_${Date.now()}.mp3`;
+  const fpath = join(process.cwd(), 'outputs', fname);
+  await downloadFile(audioUrl, fpath);
+  console.log(`[AdsService] Gemini TTS voice generated (${voice}, ${langCode}) → ${fname}`);
+  return fpath;
+}
+
+
 async function pollPrediction(predictionId, timeoutMs, label) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -166,21 +215,28 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
   return await pollPrediction(data.id, 180000, `FLUX "${sceneConfig.label}"`);
 }
 
-// ── Step 2: Seedance 2.0 Fast I2V — تحريك حقيقي للصورة (first_frame_image) ────
-// ✅ FIX: كنا بنستخدم وضع "Reference" (images + [Image1] في البرومبت) وده بيخلي الموديل
-// حر يعمل مشهد جديد كليًا من الصفر بدل ما يحرك الصورة نفسها. الوضع الصح لتحريك صورة
-// بعينها كإطار أول هو first_frame_image (بارامتر مفرد)، من غير أي وسم [ImageN] في البرومبت
+// ── Step 2a: Seedance 2.0 Fast I2V — طريقة "من غير صوت متكلم" ─────────────────
+// ✅ REAL FIX (تم التأكد من الـ schema الرسمي بتاع Replicate): الموديل ده مالوش حقل اسمه
+// first_frame_image خالص — هو موديل موحّد (multimodal) والمدخل الوحيد بتاع الصور هو array
+// اسمه "images" (لحد 9 صور)، وتحديد إن الصورة دي "الإطار الأول" بيتحدد من صياغة البرومبت
+// نفسه ([Image1] + جملة توضح إنها الفريم الأول)، مش من parameter منفصل زي ما كنا فاكرين.
+// كان بيتبعت first_frame_image وهو حقل مش موجود، فـ Replicate كانت بتتجاهله بصمت وترجع
+// تعمل الفيديو من الصفر بناءً على البرومبت بس — وده بالظبط اللي كان بيحصل.
 async function animateWithSeedance2(imageUrl, motionPrompt, ratio) {
+  const anchoredPrompt =
+    `[Image1] is the exact first frame of this video — its composition, framing, product and background must stay completely unchanged in the opening instant, then animate forward from it. ${motionPrompt}. ` +
+    `No background music, no music of any kind — layered ambient sound and specific sound effects only, appropriate to exactly what is shown (e.g. soft product surface contact, subtle air/wind movement, ambient room tone matching the setting).`;
+
   const input = {
-    prompt: motionPrompt + ', no background music, sound effects and ambient audio only',
-    first_frame_image: imageUrl,   // ← تحريك حقيقي: الصورة دي هي الإطار الأول فعليًا
+    prompt: anchoredPrompt,
+    images: [imageUrl],   // ← المدخل الصح الوحيد للصور على الـ schema الموحّد ده
     aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
     resolution: '480p',
     duration: 5,
     generate_audio: true,
   };
 
-  console.log(`[AdsService] Seedance 2.0 Fast I2V (first_frame_image) → ${imageUrl?.slice(0,80)}`);
+  console.log(`[AdsService] Seedance 2.0 Fast I2V (images[] + [Image1] anchor) → ${imageUrl?.slice(0,80)}`);
   console.log(`[AdsService] Motion prompt: ${motionPrompt.slice(0,100)}`);
 
   const res = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
@@ -196,6 +252,35 @@ async function animateWithSeedance2(imageUrl, motionPrompt, ratio) {
   if (data.status === 'succeeded' && data.output) return Array.isArray(data.output) ? data.output[0] : data.output;
   if (!data.id) throw new Error(`No prediction ID from Seedance: ${JSON.stringify(data).slice(0,200)}`);
   return await pollPrediction(data.id, 420000, `Seedance 2.0 Fast`);
+}
+
+// ── Step 2b: Seedance 1.5 Pro Fast I2V — طريقة "مع صوت متكلم (voice over)" ────
+// ده endpoint منفصل تمامًا على Replicate (مش نفس الموديل الموحّد فوق)، وبياخد بارامتر
+// مفرد اسمه "image" (مش array) — ده مؤكد من صفحته الرسمية على Replicate.
+// الصوت هنا بيتعمل mute في الـ FFmpeg بعدين لأن الصوت النهائي = التعليق الصوتي + الموسيقى فقط.
+async function animateWithSeedance15Pro(imageUrl, motionPrompt, ratio) {
+  const input = {
+    prompt: `${motionPrompt}. Keep the exact product and setting from the reference image unchanged, only add motion.`,
+    image: imageUrl,   // ← بارامتر مفرد على الـ endpoint ده تحديدًا
+    aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
+    resolution: '480p',
+    duration: 5,
+  };
+
+  console.log(`[AdsService] Seedance 1.5 Pro Fast I2V (image) → ${imageUrl?.slice(0,80)}`);
+
+  const res = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-v1.5-pro/image-to-video-fast/predictions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' },
+    body: JSON.stringify({ input }),
+  });
+
+  if (!res.ok) throw new Error(`Seedance1.5 ${res.status}: ${(await res.text()).slice(0,300)}`);
+  const data = await res.json();
+  if (data.error) throw new Error(`Seedance1.5: ${data.error}`);
+  if (data.status === 'succeeded' && data.output) return Array.isArray(data.output) ? data.output[0] : data.output;
+  if (!data.id) throw new Error(`No prediction ID from Seedance1.5: ${JSON.stringify(data).slice(0,200)}`);
+  return await pollPrediction(data.id, 420000, `Seedance 1.5 Pro Fast`);
 }
 
 // ── Step 3: FFmpeg compose ────────────────────────────────────────────────────
@@ -237,15 +322,18 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
   }
   fp.push(`${clipPaths.map((_,i)=>`[sv${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat]`);
 
-  // ── صوت: نجمع المؤثرات الصوتية الأصلية من كل مشهد (لو موجودة) ──
-  for (let i = 0; i < numClips; i++) {
-    fp.push(`[${i}:a]atrim=0:5.5,asetpts=PTS-STARTPTS[sa${i}]`);
-  }
-  fp.push(`${clipPaths.map((_,i)=>`[sa${i}]`).join('')}concat=n=${numClips}:v=0:a=1[asfx]`);
-
-  // ── دمج المؤثرات + الموسيقى الثابتة + التعليق الصوتي (اللي موجود منهم) ──
-  const audioLayers = ['[asfx]'];
+  // ── صوت: نجمع المؤثرات الصوتية الأصلية من كل مشهد — بس لو مفيش تعليق صوتي ──
+  // (لو فيه voice over، الكليبات جايه من seedance-1.5-pro-fast وممكن تيجي من غير صوت أصلاً،
+  // وعلى العموم الصوت النهائي المطلوب في الحالة دي = التعليق + الموسيقى بس، فبنعمل mute للكليبات)
+  const audioLayers = [];
   const audioFilters = [];
+  if (!hasVoice) {
+    for (let i = 0; i < numClips; i++) {
+      fp.push(`[${i}:a]atrim=0:5.5,asetpts=PTS-STARTPTS[sa${i}]`);
+    }
+    fp.push(`${clipPaths.map((_,i)=>`[sa${i}]`).join('')}concat=n=${numClips}:v=0:a=1[asfx]`);
+    audioLayers.push('[asfx]');
+  }
   if (hasMusic) {
     audioFilters.push(`[${musicInputIdx}:a]atrim=0:${totalDur.toFixed(1)},asetpts=PTS-STARTPTS,volume=0.18[amusic]`);
     audioLayers.push('[amusic]');
@@ -333,26 +421,33 @@ export async function renderAdVideo({
   // ── 2. Audio ──────────────────────────────────────────────────────────────
   let audioPath = null;
   if (audioMode === 'ai_voice') {
-    progress('voice', 'Generating AI voiceover...');
+    progress('voice', 'Generating AI voiceover (Gemini 3.1 Flash TTS)...');
     try {
       const lang = language?.startsWith('ar') ? 'ar' : 'en';
       const script = SCRIPT_TEMPLATES[lang](productName, productDesc.trim(), customHook||'');
-      const af = await generateVoiceover(script, aiVoiceKey||'male_arabic', 'education', 0, language||'ar');
-      audioPath = join(process.cwd(), 'outputs', af);
+      audioPath = await generateAdsVoiceover(script, aiVoiceKey||'male_arabic', language||'ar');
     } catch (err) { console.warn('[AdsService] Voiceover failed:', err.message); }
   } else if (audioMode === 'upload' && uploadedAudioPath) {
     audioPath = uploadedAudioPath;
   }
+  const hasVoice = !!audioPath;
 
-  // ── 3. Seedance 2.0 Fast I2V ──────────────────────────────────────────────
-  progress('animate', `Animating ${sceneImages.length} scenes with Seedance 2.0...`);
+  // ── 3. Animate ────────────────────────────────────────────────────────────
+  // ✅ الطريقتين اللي كانوا متفقين عليهم من الأول:
+  //   - مع تعليق صوتي (voice over/uploaded) → seedance-1.5-pro-fast (endpoint منفصل، صوته
+  //     بيتعمله mute بعدين في الـ FFmpeg، الصوت النهائي = التعليق + الموسيقى فقط)
+  //   - من غير تعليق صوتي → seedance-2.0-fast مع generate_audio: true (موثرات صوتية فقط، no music)
+  const animateLabel = hasVoice ? 'Seedance 1.5 Pro Fast' : 'Seedance 2.0';
+  progress('animate', `Animating ${sceneImages.length} scenes with ${animateLabel}...`);
   const animatedScenes = [];
   for (let i = 0; i < sceneImages.length; i++) {
     const scene = sceneImages[i];
     try {
       const motionPrompt = scene.motion(productName);
-      console.log(`[AdsService] [${i+1}/${sceneImages.length}] Seedance: ${scene.label}`);
-      const videoUrl = await animateWithSeedance2(scene.imageUrl, motionPrompt, ratio);
+      console.log(`[AdsService] [${i+1}/${sceneImages.length}] ${animateLabel}: ${scene.label}`);
+      const videoUrl = hasVoice
+        ? await animateWithSeedance15Pro(scene.imageUrl, motionPrompt, ratio)
+        : await animateWithSeedance2(scene.imageUrl, motionPrompt, ratio);
       animatedScenes.push({ ...scene, videoUrl });
       console.log(`[AdsService] ✓ Animated ${i+1}: ${scene.label}`);
       progress('animate', `Animated ${i+1}/${sceneImages.length}: ${scene.label} ✓`);
