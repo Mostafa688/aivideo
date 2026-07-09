@@ -254,33 +254,36 @@ async function animateWithSeedance2(imageUrl, motionPrompt, ratio) {
   return await pollPrediction(data.id, 420000, `Seedance 2.0 Fast`);
 }
 
-// ── Step 2b: Seedance 1.5 Pro Fast I2V — طريقة "مع صوت متكلم (voice over)" ────
-// ده endpoint منفصل تمامًا على Replicate (مش نفس الموديل الموحّد فوق)، وبياخد بارامتر
-// مفرد اسمه "image" (مش array) — ده مؤكد من صفحته الرسمية على Replicate.
-// الصوت هنا بيتعمل mute في الـ FFmpeg بعدين لأن الصوت النهائي = التعليق الصوتي + الموسيقى فقط.
-async function animateWithSeedance15Pro(imageUrl, motionPrompt, ratio) {
+// ── Step 2b: Seedance 1 Pro Fast I2V — طريقة "مع صوت متكلم (voice over)" ──────
+// ✅ ده نفس الـ model slug (bytedance/seedance-1-pro-fast) اللي شغال بالفعل في موديل 4
+// (seedanceService.js) من غير صورة — يعني الـ endpoint ده مؤكد 100% إنه موجود، مفيش خطر 404.
+// الجديد هنا بس إننا بنضيف حقل "image" (مفرد) عشان يشتغل Image-to-Video بدل Text-to-Video —
+// اتأكد من اسم الحقل ده من أكتر من مصدر بيعكس نفس schema الـ Replicate الرسمي لنفس العيلة.
+// أرخص من seedance-2.0-fast زي ما طلبت، والصوت بيتعمله mute بعدين في الـ FFmpeg.
+async function animateWithSeedance1ProFast(imageUrl, motionPrompt, ratio) {
   const input = {
     prompt: `${motionPrompt}. Keep the exact product and setting from the reference image unchanged, only add motion.`,
-    image: imageUrl,   // ← بارامتر مفرد على الـ endpoint ده تحديدًا
+    image: imageUrl,   // ← بارامتر مفرد لتحريك الصورة
     aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
     resolution: '480p',
     duration: 5,
+    camera_fixed: false,
   };
 
-  console.log(`[AdsService] Seedance 1.5 Pro Fast I2V (image) → ${imageUrl?.slice(0,80)}`);
+  console.log(`[AdsService] Seedance 1 Pro Fast I2V (image) → ${imageUrl?.slice(0,80)}`);
 
-  const res = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-v1.5-pro/image-to-video-fast/predictions', {
+  const res = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' },
     body: JSON.stringify({ input }),
   });
 
-  if (!res.ok) throw new Error(`Seedance1.5 ${res.status}: ${(await res.text()).slice(0,300)}`);
+  if (!res.ok) throw new Error(`Seedance1ProFast ${res.status}: ${(await res.text()).slice(0,300)}`);
   const data = await res.json();
-  if (data.error) throw new Error(`Seedance1.5: ${data.error}`);
+  if (data.error) throw new Error(`Seedance1ProFast: ${data.error}`);
   if (data.status === 'succeeded' && data.output) return Array.isArray(data.output) ? data.output[0] : data.output;
-  if (!data.id) throw new Error(`No prediction ID from Seedance1.5: ${JSON.stringify(data).slice(0,200)}`);
-  return await pollPrediction(data.id, 420000, `Seedance 1.5 Pro Fast`);
+  if (!data.id) throw new Error(`No prediction ID from Seedance1ProFast: ${JSON.stringify(data).slice(0,200)}`);
+  return await pollPrediction(data.id, 420000, `Seedance 1 Pro Fast`);
 }
 
 // ── Step 3: FFmpeg compose ────────────────────────────────────────────────────
@@ -430,14 +433,13 @@ export async function renderAdVideo({
   } else if (audioMode === 'upload' && uploadedAudioPath) {
     audioPath = uploadedAudioPath;
   }
+
   const hasVoice = !!audioPath;
 
   // ── 3. Animate ────────────────────────────────────────────────────────────
-  // ✅ الطريقتين اللي كانوا متفقين عليهم من الأول:
-  //   - مع تعليق صوتي (voice over/uploaded) → seedance-1.5-pro-fast (endpoint منفصل، صوته
-  //     بيتعمله mute بعدين في الـ FFmpeg، الصوت النهائي = التعليق + الموسيقى فقط)
-  //   - من غير تعليق صوتي → seedance-2.0-fast مع generate_audio: true (موثرات صوتية فقط، no music)
-  const animateLabel = hasVoice ? 'Seedance 1.5 Pro Fast' : 'Seedance 2.0';
+  // مع صوت متكلم → seedance-1-pro-fast (أرخص، ونفس الـ model slug شغال بالفعل في موديل 4)
+  // من غير صوت → seedance-2.0-fast (بيولّد موثرات صوتية أصلية native audio)
+  const animateLabel = hasVoice ? 'Seedance 1 Pro Fast' : 'Seedance 2.0';
   progress('animate', `Animating ${sceneImages.length} scenes with ${animateLabel}...`);
   const animatedScenes = [];
   for (let i = 0; i < sceneImages.length; i++) {
@@ -446,7 +448,7 @@ export async function renderAdVideo({
       const motionPrompt = scene.motion(productName);
       console.log(`[AdsService] [${i+1}/${sceneImages.length}] ${animateLabel}: ${scene.label}`);
       const videoUrl = hasVoice
-        ? await animateWithSeedance15Pro(scene.imageUrl, motionPrompt, ratio)
+        ? await animateWithSeedance1ProFast(scene.imageUrl, motionPrompt, ratio)
         : await animateWithSeedance2(scene.imageUrl, motionPrompt, ratio);
       animatedScenes.push({ ...scene, videoUrl });
       console.log(`[AdsService] ✓ Animated ${i+1}: ${scene.label}`);
