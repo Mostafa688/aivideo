@@ -5,14 +5,11 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { authMiddleware } from './authRoutes.js';
-import { getUserById, getCreditsBalance, chargeCredits, ADS_CREDIT_COST } from './authService.js';
+import { getUserById, getCreditsBalance, chargeCredits, getAdsCreditCost, ADS_CREDIT_COSTS_NO_VOICE, ADS_CREDIT_COSTS_VOICE } from './authService.js';
 import { renderAdVideo } from './adsVideoService.js';
 
 const router = express.Router();
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// ── موديل الإعلانات لسه تحت الصيانة — مقفول للجميع ماعدا إيميل الأدمن ──────
-const ADS_ADMIN_ONLY_EMAIL = process.env.ADMIN_EMAIL || 'digidelight33@gmail.com';
 
 // ── multer for product image + optional voice audio ───────────────────────────
 const upload = multer({
@@ -55,25 +52,11 @@ router.post('/render',
       const user = await getUserById(req.user.userId);
       if (!user) return res.status(401).json({ error: 'User not found' });
 
-      // 🚧 تحت الصيانة — مقفول للجميع ماعدا إيميل الأدمن
-      if (user.email !== ADS_ADMIN_ONLY_EMAIL) {
-        return res.status(403).json({ error: 'under_maintenance', message: 'Ads Creator is currently under maintenance and will be available soon.' });
-      }
+      // ✅ موديل الإعلانات بقى متاح لكل المستخدمين (اتشال قفل الصيانة)
 
       // ✅ العميل على "free" (لسه ما شحنش رصيد حقيقي) مقصور على موديل 2 بس
       if ((user.plan || 'free') === 'free') {
         return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Ads.', show_upgrade: true });
-      }
-
-      // ── نظام الكريديت الموحد ──
-      const balance = await getCreditsBalance(req.user.userId);
-      if (balance < ADS_CREDIT_COST) {
-        return res.status(402).json({
-          error: 'quota_exceeded',
-          message: `This video needs ${ADS_CREDIT_COST} credits, you have ${balance}.`,
-          cost: ADS_CREDIT_COST,
-          remaining: balance,
-        });
       }
 
       // ── Validate inputs ──
@@ -91,6 +74,22 @@ router.post('/render',
         fs.mkdirSync(audioDir, { recursive: true });
         uploadedAudioPath = join(audioDir, `voice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.mp3`);
         fs.writeFileSync(uploadedAudioPath, voiceAudioFile.buffer);
+      }
+
+      // ── تكلفة الكريديت حسب عدد المشاهد ووجود صوت من عدمه ──
+      const finalSceneCount = Math.min(Math.max(parseInt(sceneCount) || 5, 3), 6);
+      const hasVoiceMode = audioMode === 'ai_voice' || (audioMode === 'upload' && !!uploadedAudioPath);
+      const adsCost = getAdsCreditCost(finalSceneCount, hasVoiceMode);
+
+      // ── نظام الكريديت الموحد ──
+      const balance = await getCreditsBalance(req.user.userId);
+      if (balance < adsCost) {
+        return res.status(402).json({
+          error: 'quota_exceeded',
+          message: `This video needs ${adsCost} credits, you have ${balance}.`,
+          cost: adsCost,
+          remaining: balance,
+        });
       }
 
       // (الخصم بيحصل بعد نجاح الفيديو فعليًا — تحت في الـ async block)
@@ -121,7 +120,7 @@ router.post('/render',
             aiVoiceKey: aiVoiceKey || 'male_arabic',
             ratio: ratio || '16:9',
             language: language || 'ar',
-            sceneCount: Math.min(Math.max(parseInt(sceneCount) || 5, 3), 6),
+            sceneCount: finalSceneCount,
             customHook: customHook || '',
             showTitle: showTitle !== 'false',
             outputDir,
@@ -131,7 +130,7 @@ router.post('/render',
 
           // Build relative URL
           const relPath = result.outputPath.replace(join(process.cwd(), 'outputs'), '/outputs');
-          await chargeCredits(req.user.userId, ADS_CREDIT_COST).catch(e => console.warn('[AdsRoutes] Credit deduct failed:', e.message));
+          await chargeCredits(req.user.userId, adsCost).catch(e => console.warn('[AdsRoutes] Credit deduct failed:', e.message));
           setAdsJob(jobId, { status: 'done', step: 'done', msg: 'Ad video ready!', videoUrl: relPath });
           scheduleAdsCleanup(jobId);
         } catch (err) {
@@ -167,7 +166,11 @@ router.get('/status/:jobId', authMiddleware, (req, res) => {
 router.get('/credits', authMiddleware, async (req, res) => {
   try {
     const balance = await getCreditsBalance(req.user.userId);
-    res.json({ remaining: balance, cost_per_video: ADS_CREDIT_COST });
+    res.json({
+      remaining: balance,
+      costs_no_voice: ADS_CREDIT_COSTS_NO_VOICE,
+      costs_voice: ADS_CREDIT_COSTS_VOICE,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

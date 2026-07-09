@@ -802,7 +802,22 @@ export const MODEL7_PLANS = {
   ads_max:     { name: 'Max',     price: 1800, credits: 100 },
 };
 
-export const ADS_CREDIT_COST = 185;
+// ✅ نظام كريديت متدرج حسب عدد المشاهد (كل مشهد = 5 ثواني) وحسب وجود صوت:
+// - "no voice" (seedance-2.0-fast، نفس موديل 5 بالظبط) → نفس معدل موديل 5 (~12 كريديت/ثانية)
+// - "with voice" (seedance-1-pro-fast، أرخص + صوت Gemini TTS) → أرخص شوية زي ما اتفقنا
+export const ADS_CREDIT_COSTS_NO_VOICE = { 3: 180, 4: 240, 5: 300, 6: 360 };
+export const ADS_CREDIT_COSTS_VOICE    = { 3: 150, 4: 200, 5: 250, 6: 300 };
+
+// دالة مساعدة لحساب التكلفة حسب عدد المشاهد ووجود صوت من عدمه
+export function getAdsCreditCost(sceneCount, hasVoice) {
+  const table = hasVoice ? ADS_CREDIT_COSTS_VOICE : ADS_CREDIT_COSTS_NO_VOICE;
+  const n = Math.min(Math.max(parseInt(sceneCount) || 3, 3), 6);
+  return table[n] || (hasVoice ? 150 : 180);
+}
+
+// ⚠️ الاسم القديم متسيب هنا بس كـ fallback لأي كود قديم لسه بينادي عليه — استخدم
+// getAdsCreditCost() في أي كود جديد. القيمة دي بقت غير دقيقة (كانت تكلفة ثابتة لكل الحالات).
+export const ADS_CREDIT_COST = 240;
 
 // ── خصم موحد من رصيد الكريديت — تستخدمه كل الموديلات (1 لحد 5 + Ads) ──────
 // بيتأكد إن الرصيد كافي، يخصم، ويرجع النتيجة. لو الرصيد مش كافي بيرجع remaining

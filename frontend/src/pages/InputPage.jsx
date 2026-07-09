@@ -472,8 +472,8 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       key:'model7', tag:'ADS', name:'Ad Creator', icon:'📢',
       color:'#f97316', glow:'rgba(249,115,22,0.25)',
       desc:'Upload your product photo and get a cinematic AI video ad — scenes, voiceover, and transitions included.',
-      tags:['FLUX Reference','Seedance Video','AI Voiceover','10 Credits/ad'],
-      badge:'SOON', free:false, cat:'premium', needsAccess: !model7Access, comingSoon: true, adminOnly: true,
+      tags:['FLUX Reference','Seedance Video','AI Voiceover','150-360 Credits/ad'],
+      badge:'NEW', free:false, cat:'premium', needsAccess: !model7Access, comingSoon: false, adminOnly: false,
     },
     {
       key:'ai', tag:'MODEL 1', name:'AI Slices', icon:'🎨',

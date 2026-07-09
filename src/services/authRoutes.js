@@ -354,6 +354,11 @@ router.get('/admin/approve', async (req, res) => {
   if (plan === 'credits_custom' || plan.startsWith('credits_')) {
     try {
       const result = await approveCreditsPayment(email, plan);
+      // ✅ FIX: تتبع عمولة المسوق كان مفقود تماماً لنظام الكريديت الموحد (المسار الأساسي دلوقتي)
+      try {
+        const amountEgp = Math.round(result.creditsAdded * EGP_PER_CREDIT);
+        if (amountEgp > 0) trackAffiliatePayment(result.userId, email, plan, amountEgp).catch(() => {});
+      } catch {}
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
@@ -534,6 +539,11 @@ router.get('/intl-approve', async (req, res) => {
   if (plan.startsWith('credits_')) {
     try {
       const result = await approveCreditsPayment(email, plan);
+      // ✅ FIX: تتبع عمولة المسوق كان مفقود تماماً لنظام الكريديت الموحد (المسار الأساسي دلوقتي)
+      try {
+        const amountEgp = Math.round(result.creditsAdded * EGP_PER_CREDIT);
+        if (amountEgp > 0) trackAffiliatePayment(result.userId, email, plan, amountEgp).catch(() => {});
+      } catch {}
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },

@@ -51,8 +51,18 @@ const PLAN_PRICES = {
   model4_pro:     2250,
 };
 
-// ── حساب العمولة = 50% من هامش الربح ────────────────────────────────────
+// ── نظام الكريديت الموحد (credits_starter...credits_agency، والشحن المصري بالسلايدر) ──
+// مفيش تكلفة ثابتة نقدر نحسب هامش ربح منها هنا، لأن الكريديت ممكن يتصرف على أي موديل
+// (موديل 1 رخيص جدًا، موديل 5/الإعلانات أغلى بكتير) — فبدل حساب هامش، بنستخدم نسبة
+// عمولة ثابتة من قيمة الشحنة نفسها. غيّر الرقم ده لو عايز نسبة مختلفة.
+const CREDIT_PACK_COMMISSION_RATE = 0.20; // 20% من قيمة أي شحن كريديت (مصري أو دولي)
+
+// ── حساب العمولة = 50% من هامش الربح (للخطط القديمة الثابتة) ────────────
 function calculateCommission(planKey, amountEgp) {
+  // ✅ شحن كريديت موحد (أي موديل، بما فيهم موديل الإعلانات دلوقتي) → نسبة ثابتة من قيمة الشحن
+  if (planKey === 'credits_custom' || String(planKey || '').startsWith('credits_')) {
+    return parseFloat(((amountEgp || 0) * CREDIT_PACK_COMMISSION_RATE).toFixed(2));
+  }
   const cost = PLAN_COSTS[planKey] || 0;
   const price = amountEgp || PLAN_PRICES[planKey] || 0;
   const profit = Math.max(0, price - cost);

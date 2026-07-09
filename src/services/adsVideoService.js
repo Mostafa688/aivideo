@@ -48,6 +48,34 @@ async function determineAdLocation(productName, productDesc) {
   }
 }
 
+// ── تحديد موثرات صوتية محددة ومناسبة للمنتج والمكان — بتتكرر في كل مشاهد ─────
+// بدل عبارة عامة زي "ambient sound"، بنطلب من الموديل يحدد 2-3 أصوات حقيقية
+// تناسب المنتج والمكان بالظبط (زي مثلاً علبة لبن في مزرعة → "cow moos, distant birdsong, gentle wind")
+async function determineAdSoundEffects(productName, productDesc, location) {
+  const fallback = 'soft ambient room tone, subtle air movement';
+  if (!GROQ_API_KEY) return fallback;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 80, temperature: 0.4,
+        messages: [
+          { role: 'system', content: 'You are a professional sound designer for commercial ads. Given a product and its setting, list 2-3 SPECIFIC, realistic sound effects that would genuinely be heard in that exact scene (never music, never generic words like "ambient sound"). Examples: dairy farm → "cow moos softly, distant birdsong, gentle breeze through grass"; jewelry boutique → "soft footsteps on marble, faint clink of glass display cases"; running track → "sneakers striking pavement, steady breathing, wind past ears". Output ONLY a short comma-separated list in English, max 15 words, no explanation, no quotes.' },
+          { role: 'user', content: `Product: "${productName}". Description: "${productDesc}". Setting: "${location}". Specific sound effects for this scene:` },
+        ],
+      }),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    const sfx = (data.choices?.[0]?.message?.content || '').trim().replace(/^["']|["']$/g, '');
+    return sfx || fallback;
+  } catch (e) {
+    console.warn('[AdsService] Sound effects determination failed, using fallback:', e.message);
+    return fallback;
+  }
+}
+
 // ── Scene configs — بدون "dark background" في أي prompt ──────────────────────
 const SCENE_CONFIGS = [
   {
@@ -172,16 +200,16 @@ async function generateAdsVoiceover(script, aiVoiceKey, language) {
 
 // ── إعادة محاولة تلقائية عند 429 (rate limit بسبب رصيد Replicate أقل من $5) ──
 // بيقرأ retry_after من رسالة الخطأ نفسها لو موجودة، وإلا بيستنى 15 ثانية افتراضيًا
-async function withRetry429(fn, maxRetries = 2) {
+async function withRetry429(fn, maxRetries = 4) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err) {
       const is429 = /429|throttled|rate limit/i.test(err.message || '');
       if (!is429 || attempt === maxRetries) throw err;
-      let waitSec = 15;
+      let waitSec = 18;
       const m = /retry_after["\s:]+(\d+(\.\d+)?)/i.exec(err.message || '');
-      if (m) waitSec = Math.max(parseFloat(m[1]) + 2, 5);
+      if (m) waitSec = Math.max(parseFloat(m[1]) + 3, 8);
       console.warn(`[AdsService] 429 rate limited, retrying in ${waitSec}s (attempt ${attempt+1}/${maxRetries})...`);
       await new Promise(r => setTimeout(r, waitSec * 1000));
     }
@@ -240,10 +268,11 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
 // نفسه ([Image1] + جملة توضح إنها الفريم الأول)، مش من parameter منفصل زي ما كنا فاكرين.
 // كان بيتبعت first_frame_image وهو حقل مش موجود، فـ Replicate كانت بتتجاهله بصمت وترجع
 // تعمل الفيديو من الصفر بناءً على البرومبت بس — وده بالظبط اللي كان بيحصل.
-async function animateWithSeedance2(imageUrl, motionPrompt, ratio) {
+async function animateWithSeedance2(imageUrl, motionPrompt, ratio, soundEffects) {
+  const sfx = soundEffects || 'soft ambient room tone, subtle air movement';
   const anchoredPrompt =
     `[Image1] is the exact first frame of this video — its composition, framing, product and background must stay completely unchanged in the opening instant, then animate forward from it. ${motionPrompt}. ` +
-    `No background music, no music of any kind — layered ambient sound and specific sound effects only, appropriate to exactly what is shown (e.g. soft product surface contact, subtle air/wind movement, ambient room tone matching the setting).`;
+    `No background music, no music of any kind. Sound design for this exact scene: ${sfx}.`;
 
   const input = {
     prompt: anchoredPrompt,
@@ -420,6 +449,9 @@ export async function renderAdVideo({
   progress('scenes', 'Determining the best setting for this product...');
   const adLocation = await determineAdLocation(productName, productDesc.trim());
   console.log(`[AdsService] Determined ad location: ${adLocation}`);
+  // ✅ موثرات صوتية محددة بدقة على حسب المنتج والمكان (مش عبارة عامة) — بتتكرر في كل مشاهد
+  const adSoundEffects = await determineAdSoundEffects(productName, productDesc.trim(), adLocation);
+  console.log(`[AdsService] Determined sound effects: ${adSoundEffects}`);
 
   // ── 1. FLUX ───────────────────────────────────────────────────────────────
   progress('scenes', `Generating ${count} scenes with FLUX...`);
@@ -467,7 +499,7 @@ export async function renderAdVideo({
       console.log(`[AdsService] [${i+1}/${sceneImages.length}] ${animateLabel}: ${scene.label}`);
       const videoUrl = hasVoice
         ? await withRetry429(() => animateWithSeedance1ProFast(scene.imageUrl, motionPrompt, ratio))
-        : await withRetry429(() => animateWithSeedance2(scene.imageUrl, motionPrompt, ratio));
+        : await withRetry429(() => animateWithSeedance2(scene.imageUrl, motionPrompt, ratio, adSoundEffects));
       animatedScenes.push({ ...scene, videoUrl });
       console.log(`[AdsService] ✓ Animated ${i+1}: ${scene.label}`);
       progress('animate', `Animated ${i+1}/${sceneImages.length}: ${scene.label} ✓`);
@@ -475,7 +507,7 @@ export async function renderAdVideo({
       console.error(`[AdsService] ✗ Animate "${scene.label}": ${err.message}`);
     }
     // ── تأخير بين كل مشهد ومشهد عشان نتجنب الـ 429 (نفس الأسلوب المستخدم مع FLUX) ──
-    if (i < sceneImages.length - 1) await new Promise(r => setTimeout(r, 12000));
+    if (i < sceneImages.length - 1) await new Promise(r => setTimeout(r, 16000));
   }
   if (animatedScenes.length === 0) throw new Error('All animation attempts failed');
 

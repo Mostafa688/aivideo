@@ -973,11 +973,21 @@ async function checkModel3Access(req, res, next) {
   }
 }
 
+// ── Stickman style rule — لو الستايل أو فكرة الفيديو نفسها بتطلب "stick man/stick figure"،
+// لازم خلفية بيضاء/رمادية فاتحة بسيطة، والشخصية تبقى ليها وش واضح (عيون وفم) مش دايرة فاضية.
+// بيتطبق في كل مكان بيتحدد فيه styleHint/styleInstruction (موديل 3، 4، 5)، وبيفحص نص الفكرة
+// نفسها كمان لأن غالبًا العميل بيكتب "stickman" جوه فكرة الفيديو مش في خانة الستايل بس.
+function applyStickmanStyleRule(styleText, ideaText = '') {
+  const combined = `${styleText || ''} ${ideaText || ''}`;
+  if (!/stick\s*-?\s*man|stick\s*-?\s*figure/i.test(combined)) return styleText;
+  return `${styleText || 'simple line-drawing animation style'}, plain minimal off-white/dusty-grey-pink background (no clutter, no scenery), the stick figure character MUST have a clearly visible simple face on the head (eyes and mouth, basic expression) in every single scene — never a blank/empty head`;
+}
+
 app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, script, inputMode, imageCount, videoLanguage, styleSuffix } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
   const isIdeaMode = inputMode === 'idea';
-  const styleHint = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic';
+  const styleHint = applyStickmanStyleRule(styleSuffix || 'cinematic photography, dramatic lighting, photorealistic', idea || script);
   const lang = videoLanguage || 'en';
   const BATCH_SIZE = 5;
   const allScenes = [];
@@ -1202,7 +1212,7 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, script, inputMode, sceneCount, videoLanguage, styleSuffix, videoStyle } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
   const lang = videoLanguage || 'en';
-  const styleHint = styleSuffix || 'cinematic, photorealistic, dramatic lighting, no text overlays, no watermarks';
+  const styleHint = applyStickmanStyleRule(styleSuffix || 'cinematic, photorealistic, dramatic lighting, no text overlays, no watermarks', idea || script);
   const BATCH_SIZE = 5;
   const allScenes = [];
   const totalBatches = Math.ceil(sceneCount / BATCH_SIZE);
@@ -1469,7 +1479,7 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
     : '';
 
   // الـ style suffix الكامل
-  const styleInstruction = styleSuffix || 'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading';
+  const styleInstruction = applyStickmanStyleRule(styleSuffix || 'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading', idea);
 
   async function groqBatch(systemPrompt, userPrompt) {
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {

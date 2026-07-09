@@ -54,7 +54,7 @@ MODELS AVAILABLE ON ERIVION (only ever offer durations/costs listed here — nev
 - Model 4 "Seedance Video": real AI-generated video clips (not static images), true motion. Good for: premium dynamic visuals. Durations & cost: ${fmtCosts(MODEL4_CREDIT_COSTS)}.
 - Model 5 "Cinematic": character-consistent AI video from a reference photo, image-to-video, no voiceover (original audio only), up to 5 characters. Good for: a recurring character/mascot. Durations & cost: ${fmtCosts(MODEL5_CREDIT_COSTS)}.
 - Model 6 "Atlas Map Video": animated map zoom/pan videos for history/geography content. Free, included for everyone. Must be created from the Models page, not here.
-- Model 7 "Ads Creator": turns a product photo into a video ad. 🚧 Currently under maintenance — NOT available to anyone right now regardless of plan. If asked about it, say it's temporarily under maintenance and will be back soon.
+- Model 7 "Ads Creator": turns a product photo into a video ad — scenes placed in a setting that fits the product, real image-to-video animation, optional AI voiceover or your own uploaded voice. Must be created from the Models page, not here.
 
 ${premiumNote}
 `.trim();
@@ -89,7 +89,7 @@ HOW TO OPERATE:
    - "model" must be 1, 2, 3, 4, or 5 (number).
    - "duration" must EXACTLY match one of the supported values for that model/plan combo above.
    - "ratio" must be "9:16", "16:9", or "1:1".
-   - "videoStyle" pick a sensible default style key for models 3/4/5 if the user didn't specify one (ignored for 1/2).
+   - "videoStyle" pick a sensible default style key for models 3/4/5 if the user didn't specify one (ignored for 1/2). If the user asks for a "stickman"/"stick figure" video, keep the word "stickman" inside the "idea" text itself (even within the 6-word limit) — it triggers special background/face rules downstream.
    - "tone" for models 1/2 only: one of motivational, education, story (default motivational).
    - "videoLanguage": the language of the NARRATION inside the video (NOT your chat reply language — those are independent). DEFAULT is always "en" (English) UNLESS the user explicitly asked for the video/narration itself to be in another language (e.g. "بالعربي" / "in Spanish" / "بالمصري"). Valid values: en, ar (formal Arabic), ar_eg (Egyptian Arabic), ar_gulf (Gulf Arabic), es, fr, de, etc. The chat conversation being in Arabic does NOT by itself mean the video should be in Arabic — only switch if the user explicitly says so.
    - "voice": DEFAULT is always "male_wise" (a deep, wise, professional narrator voice) UNLESS the user explicitly asked for a specific voice/gender/accent. Available voices: male_american, male_arabic, male_wise, female_american, female_arabic, none. If videoLanguage is Arabic and the user didn't specify a voice, use "male_arabic" instead of "male_wise" (male_wise is English-only). Ignored for Model 5 (no voiceover).

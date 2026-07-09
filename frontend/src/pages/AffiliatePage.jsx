@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
 
-// ── جدول هامش الربح والعمولة الحقيقية ──────────────────────────────────
+// ── جدول العمولة الحقيقي — نظام الكريديت الموحد (نفس الرصيد بيتصرف على كل
+// الموديلات بما فيهم موديل الإعلانات دلوقتي). العمولة = 20% ثابتة من قيمة أي شحن.
+const CREDIT_PACK_COMMISSION_RATE = 0.20;
+const EGP_PER_CREDIT = 0.7;
 const COMMISSION_TABLE = [
-  { plan: '⚡ Pro (M1/M2)',    price: '100 EGP/mo',   cost: '10 EGP',    profit: '90 EGP',  commission: '45 EGP' },
-  { plan: '🚀 Plus (M1/M2)',   price: '220 EGP/mo',   cost: '38 EGP',    profit: '182 EGP', commission: '91 EGP' },
-  { plan: '👑 Max (M1/M2)',    price: '550 EGP/mo',   cost: '90 EGP',    profit: '460 EGP', commission: '230 EGP' },
-  { plan: '🖼️ M3 Starter',    price: '300 EGP/mo',   cost: '190 EGP',   profit: '110 EGP', commission: '55 EGP' },
-  { plan: '🖼️ M3 Pro',        price: '750 EGP/mo',   cost: '560 EGP',   profit: '190 EGP', commission: '95 EGP' },
-  { plan: '🖼️ M3 Max',        price: '1,400 EGP/mo', cost: '1,050 EGP', profit: '350 EGP', commission: '175 EGP' },
-  { plan: '🎬 M4 Starter',    price: '450 EGP/mo',   cost: '300 EGP',   profit: '150 EGP', commission: '75 EGP' },
-  { plan: '🎬 M4 Creator',    price: '800 EGP/mo',   cost: '575 EGP',   profit: '225 EGP', commission: '112 EGP' },
-  { plan: '🎬 M4 Pro',        price: '2,250 EGP/mo', cost: '1,725 EGP', profit: '525 EGP', commission: '262 EGP' },
-  { plan: '🎭 Cinematic Starter', price: '400 EGP/mo',   cost: '260 EGP',   profit: '140 EGP', commission: '70 EGP' },
-  { plan: '🎭 Cinematic Pro',     price: '750 EGP/mo',   cost: '510 EGP',   profit: '240 EGP', commission: '120 EGP' },
-  { plan: '🎭 Cinematic Max',     price: '1,500 EGP/mo', cost: '1,050 EGP', profit: '450 EGP', commission: '225 EGP' },
+  { plan: '🎬 Starter',  price: '600 credits · $15',    value: '420 EGP',   commission: '84 EGP' },
+  { plan: '⭐ Creator',  price: '1,400 credits · $35',  value: '980 EGP',   commission: '196 EGP' },
+  { plan: '🏆 Studio',   price: '3,000 credits · $84',  value: '2,100 EGP', commission: '420 EGP' },
+  { plan: '👥 Team',     price: '6,000 credits · $168', value: '4,200 EGP', commission: '840 EGP' },
+  { plan: '🏢 Agency',   price: '12,000 credits · $336', value: '8,400 EGP', commission: '1,680 EGP' },
 ];
+// نفس النسبة (20%) بتتطبق على أي شحن مصري بالسلايدر بالظبط بنفس الحساب (قيمة الشحن × 0.20)
 
 export default function AffiliatePage({ onBack }) {
   const [step, setStep] = useState('landing');
@@ -102,11 +99,11 @@ export default function AffiliatePage({ onBack }) {
           <span style={{ background: 'linear-gradient(135deg, #22c55e, #86efac)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>From Every Sale</span>
         </h1>
         <p style={{ color: '#9ca3af', fontSize: 17, lineHeight: 1.7, maxWidth: 560, margin: '0 auto 16px' }}>
-          Share Erivion with your audience and earn <strong style={{ color: '#22c55e' }}>50% of the profit margin</strong> on every subscription. Paid directly to your InstaPay.
+          Share Erivion with your audience and earn <strong style={{ color: '#22c55e' }}>20% of every credit pack sale</strong> — credits work across every model, including Ads Creator. Paid directly to your InstaPay.
         </p>
         <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12, padding: '12px 20px', marginBottom: 32, display: 'inline-block', maxWidth: 500 }}>
           <p style={{ color: '#86efac', fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-            💡 <strong>How commission works:</strong> We calculate the profit after deducting platform costs (AI APIs, hosting), then pay you 50% of that profit. This ensures the platform stays sustainable while you earn fairly.
+            💡 <strong>How commission works:</strong> Whenever someone you referred buys credits — a fixed pack or an Egyptian InstaPay top-up — you get 20% of that sale, paid straight to your InstaPay. Simple and transparent.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -124,7 +121,7 @@ export default function AffiliatePage({ onBack }) {
       {/* Stats Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, width: '100%', maxWidth: 900, marginBottom: 64 }}>
         {[
-          { value: '50%', label: 'Of Profit Margin', icon: '💰', color: '#22c55e' },
+          { value: '20%', label: 'Of Every Sale', icon: '💰', color: '#22c55e' },
           { value: 'EGP', label: 'Paid via InstaPay', icon: '📱', color: '#7c6af7' },
           { value: '∞', label: 'No Earning Limit', icon: '🚀', color: '#f59e0b' },
           { value: '24h', label: 'Fast Payouts', icon: '⚡', color: '#06b6d4' },
@@ -145,7 +142,7 @@ export default function AffiliatePage({ onBack }) {
             { step: '01', icon: '📝', title: 'Register', desc: 'Sign up with your email and InstaPay number. Get your unique referral link instantly.' },
             { step: '02', icon: '🔗', title: 'Share', desc: 'Share your link on YouTube, Facebook, TikTok, or anywhere your audience is.' },
             { step: '03', icon: '💳', title: 'They Subscribe', desc: 'When someone subscribes through your link, we track the sale automatically.' },
-            { step: '04', icon: '💰', title: 'Get Paid', desc: 'You earn 50% of the profit margin after platform costs. Paid to InstaPay.' },
+            { step: '04', icon: '💰', title: 'Get Paid', desc: 'You earn 20% of every credit pack sale. Paid to InstaPay.' },
           ].map((s, i) => (
             <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '24px 20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -162,34 +159,30 @@ export default function AffiliatePage({ onBack }) {
       {/* Commission Table */}
       <div style={{ width: '100%', maxWidth: 900, marginBottom: 64 }}>
         <h2 style={{ fontSize: 28, fontWeight: 800, color: '#fff', textAlign: 'center', marginBottom: 8 }}>Your Earnings Per Sale</h2>
-        <p style={{ color: '#6b7280', fontSize: 14, textAlign: 'center', marginBottom: 32 }}>Commission = 50% of (Price − Platform Costs)</p>
+        <p style={{ color: '#6b7280', fontSize: 14, textAlign: 'center', marginBottom: 32 }}>Commission = 20% of every credit pack sale — credits work across every model, including Ads Creator</p>
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 20, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                {['Plan', 'Price', 'Platform Cost', 'Profit', 'Your Commission'].map(h => (
+                {['Pack', 'Price', 'EGP Value', 'Your Commission'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {COMMISSION_TABLE.map((row, i) => {
-                const isCinematic = row.plan.includes('Cinematic');
-                return (
-                  <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: isCinematic ? 'rgba(225,29,72,0.04)' : 'transparent' }}>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: isCinematic ? '#fb7185' : '#d1d5db', fontWeight: 600 }}>{row.plan}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#9ca3af' }}>{row.price}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#ef4444' }}>{row.cost}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#f59e0b' }}>{row.profit}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 800, color: '#22c55e' }}>{row.commission}</td>
-                  </tr>
-                );
-              })}
+              {COMMISSION_TABLE.map((row, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#d1d5db', fontWeight: 600 }}>{row.plan}</td>
+                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#9ca3af' }}>{row.price}</td>
+                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#9ca3af' }}>{row.value}</td>
+                  <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 800, color: '#22c55e' }}>{row.commission}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
         <p style={{ color: '#4b5563', fontSize: 12, textAlign: 'center', marginTop: 12 }}>
-          * Platform costs include AI API fees (Stability AI, Seedance) and hosting. Commission is calculated transparently.
+          * Same 20% rate applies to Egyptian InstaPay top-ups too (any amount, not just the packs above).
         </p>
       </div>
 
@@ -230,7 +223,7 @@ export default function AffiliatePage({ onBack }) {
         <div style={{ marginBottom: 28 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>💰</div>
           <h2 style={{ fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 8 }}>Join as Affiliate</h2>
-          <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6 }}>Get your unique link and start earning 50% of the profit margin on every sale.</p>
+          <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6 }}>Get your unique link and start earning 20% of every credit pack sale.</p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
@@ -292,7 +285,7 @@ export default function AffiliatePage({ onBack }) {
             {/* Commission Note */}
             <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, padding: '12px 18px', marginBottom: 20 }}>
               <p style={{ color: '#f59e0b', fontSize: 13, margin: 0 }}>
-                💡 Your commission is <strong>50% of the profit margin</strong> after platform costs. See the earnings table on the main page for details.
+                💡 Your commission is <strong>20% of every credit pack sale</strong> — no platform-cost deductions, no fine print. See the earnings table on the main page for details.
               </p>
             </div>
 
