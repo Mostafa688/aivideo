@@ -170,6 +170,24 @@ async function generateAdsVoiceover(script, aiVoiceKey, language) {
 }
 
 
+// ── إعادة محاولة تلقائية عند 429 (rate limit بسبب رصيد Replicate أقل من $5) ──
+// بيقرأ retry_after من رسالة الخطأ نفسها لو موجودة، وإلا بيستنى 15 ثانية افتراضيًا
+async function withRetry429(fn, maxRetries = 2) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const is429 = /429|throttled|rate limit/i.test(err.message || '');
+      if (!is429 || attempt === maxRetries) throw err;
+      let waitSec = 15;
+      const m = /retry_after["\s:]+(\d+(\.\d+)?)/i.exec(err.message || '');
+      if (m) waitSec = Math.max(parseFloat(m[1]) + 2, 5);
+      console.warn(`[AdsService] 429 rate limited, retrying in ${waitSec}s (attempt ${attempt+1}/${maxRetries})...`);
+      await new Promise(r => setTimeout(r, waitSec * 1000));
+    }
+  }
+}
+
 async function pollPrediction(predictionId, timeoutMs, label) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -410,7 +428,7 @@ export async function renderAdVideo({
     const sc = selectedScenes[i];
     try {
       console.log(`[AdsService] [${i+1}/${count}] FLUX: ${sc.label}`);
-      const imageUrl = await generateAdSceneImage(productImageBase64, productName, productDesc.trim(), sc, ratio, adLocation);
+      const imageUrl = await withRetry429(() => generateAdSceneImage(productImageBase64, productName, productDesc.trim(), sc, ratio, adLocation));
       console.log(`[AdsService] ✓ FLUX ${i+1}: ${imageUrl}`);
       sceneImages.push({ ...sc, imageUrl });
       progress('scenes', `Scene ${i+1}/${count}: ${sc.label} ✓`);
@@ -428,7 +446,7 @@ export async function renderAdVideo({
     try {
       const lang = language?.startsWith('ar') ? 'ar' : 'en';
       const script = SCRIPT_TEMPLATES[lang](productName, productDesc.trim(), customHook||'');
-      audioPath = await generateAdsVoiceover(script, aiVoiceKey||'male_arabic', language||'ar');
+      audioPath = await withRetry429(() => generateAdsVoiceover(script, aiVoiceKey||'male_arabic', language||'ar'));
     } catch (err) { console.warn('[AdsService] Voiceover failed:', err.message); }
   } else if (audioMode === 'upload' && uploadedAudioPath) {
     audioPath = uploadedAudioPath;
@@ -437,8 +455,8 @@ export async function renderAdVideo({
   const hasVoice = !!audioPath;
 
   // ── 3. Animate ────────────────────────────────────────────────────────────
-  // مع صوت متكلم → seedance-1-pro-fast (أرخص، ونفس الـ model slug شغال بالفعل في موديل 4)
-  // من غير صوت → seedance-2.0-fast (بيولّد موثرات صوتية أصلية native audio)
+  // ✅ FIX: الحساب عنده رصيد أقل من $5 فبيتقلل السرعة لـ 6 طلبات/دقيقة (طلب كل ~10 ثواني تقريبًا).
+  // زي ما عملنا مع FLUX بالظبط، لازم تأخير بين كل نداء animate + إعادة محاولة تلقائية لو حصل 429.
   const animateLabel = hasVoice ? 'Seedance 1 Pro Fast' : 'Seedance 2.0';
   progress('animate', `Animating ${sceneImages.length} scenes with ${animateLabel}...`);
   const animatedScenes = [];
@@ -448,14 +466,16 @@ export async function renderAdVideo({
       const motionPrompt = scene.motion(productName);
       console.log(`[AdsService] [${i+1}/${sceneImages.length}] ${animateLabel}: ${scene.label}`);
       const videoUrl = hasVoice
-        ? await animateWithSeedance1ProFast(scene.imageUrl, motionPrompt, ratio)
-        : await animateWithSeedance2(scene.imageUrl, motionPrompt, ratio);
+        ? await withRetry429(() => animateWithSeedance1ProFast(scene.imageUrl, motionPrompt, ratio))
+        : await withRetry429(() => animateWithSeedance2(scene.imageUrl, motionPrompt, ratio));
       animatedScenes.push({ ...scene, videoUrl });
       console.log(`[AdsService] ✓ Animated ${i+1}: ${scene.label}`);
       progress('animate', `Animated ${i+1}/${sceneImages.length}: ${scene.label} ✓`);
     } catch (err) {
       console.error(`[AdsService] ✗ Animate "${scene.label}": ${err.message}`);
     }
+    // ── تأخير بين كل مشهد ومشهد عشان نتجنب الـ 429 (نفس الأسلوب المستخدم مع FLUX) ──
+    if (i < sceneImages.length - 1) await new Promise(r => setTimeout(r, 12000));
   }
   if (animatedScenes.length === 0) throw new Error('All animation attempts failed');
 
