@@ -76,6 +76,40 @@ async function determineAdSoundEffects(productName, productDesc, location) {
   }
 }
 
+// ── كشف تلقائي: هل المنتج "ملبوس" (تيشيرت، حذاء، فستان...)؟ ولو كذلك، هل العميل
+// حدد رغبة معينة (يظهر على شخص ولا لأ، رجل ولا ست) من وصف المنتج نفسه؟ ─────────
+async function analyzeProductType(productName, productDesc, customHook) {
+  const fallback = { isWearable: false, showPerson: false, genderPref: 'unspecified' };
+  if (!GROQ_API_KEY) return fallback;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 100, temperature: 0,
+        messages: [
+          { role: 'system', content: `Classify a product for an ad video. Determine:
+1. "isWearable": true if the product is clothing, shoes, an accessory worn on the body, or similar (e.g. t-shirt, dress, watch, sunglasses, shoes, jacket, hijab, jewelry). false for anything else (food, drinks, electronics, furniture, cosmetics in a bottle, etc.)
+2. "showPerson": if isWearable, true UNLESS the product text explicitly says NOT to show it on a person/model (e.g. "no model", "without people", "on a mannequin", "flat lay only", "product only"). Default true when wearable and nothing is said either way.
+3. "genderPref": "male" if the text explicitly says men's/for him/boy, "female" if explicitly women's/for her/girl, otherwise "unspecified".
+Respond with ONLY raw JSON: {"isWearable": bool, "showPerson": bool, "genderPref": "male"|"female"|"unspecified"}` },
+          { role: 'user', content: `Product: "${productName}". Description: "${productDesc || ''}". Note: "${customHook || ''}"` },
+        ],
+      }),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) return fallback;
+    const parsed = JSON.parse(m[0]);
+    return { isWearable: !!parsed.isWearable, showPerson: parsed.showPerson !== false, genderPref: parsed.genderPref || 'unspecified' };
+  } catch (e) {
+    console.warn('[AdsService] Product type analysis failed, using fallback:', e.message);
+    return fallback;
+  }
+}
+
 // ── Scene configs — بدون "dark background" في أي prompt ──────────────────────
 const SCENE_CONFIGS = [
   {
@@ -233,9 +267,9 @@ async function pollPrediction(predictionId, timeoutMs, label) {
 }
 
 // ── Step 1: FLUX kontext-dev ──────────────────────────────────────────────────
-async function generateAdSceneImage(productImageBase64, productName, productDesc, sceneConfig, ratio, location) {
+async function generateAdSceneImage(productImageBase64, productName, productDesc, sceneConfig, ratio, location, wearableInstruction = '') {
   const b64 = productImageBase64.replace(/^data:image\/\w+;base64,/, '');
-  const prompt = sceneConfig.buildPrompt(productName, productDesc, location);
+  const prompt = sceneConfig.buildPrompt(productName, productDesc, location) + wearableInstruction;
 
   const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
     method: 'POST',
@@ -453,6 +487,18 @@ export async function renderAdVideo({
   const adSoundEffects = await determineAdSoundEffects(productName, productDesc.trim(), adLocation);
   console.log(`[AdsService] Determined sound effects: ${adSoundEffects}`);
 
+  // ✅ منتجات "ملبوسة" (تيشيرت، حذاء، فستان...) — نظهرها على شخص لابسها إلا لو
+  // العميل حدد صراحة إنه مش عايز كده، وبنحترم تفضيل الجنس لو حدده هو
+  const productTypeInfo = await analyzeProductType(productName, productDesc.trim(), customHook);
+  let wearableInstruction = '';
+  if (productTypeInfo.isWearable && productTypeInfo.showPerson) {
+    const genderText = productTypeInfo.genderPref === 'male' ? 'a man' : productTypeInfo.genderPref === 'female' ? 'a woman' : 'a person';
+    wearableInstruction = ` The product must be shown worn by ${genderText} with a natural, attractive appearance — not displayed as a flat, empty garment or on a mannequin.`;
+    console.log(`[AdsService] Wearable product detected — showing worn by ${genderText}`);
+  } else if (productTypeInfo.isWearable) {
+    console.log(`[AdsService] Wearable product detected — customer requested no person/model shown`);
+  }
+
   // ── 1. FLUX ───────────────────────────────────────────────────────────────
   progress('scenes', `Generating ${count} scenes with FLUX...`);
   const sceneImages = [];
@@ -460,7 +506,7 @@ export async function renderAdVideo({
     const sc = selectedScenes[i];
     try {
       console.log(`[AdsService] [${i+1}/${count}] FLUX: ${sc.label}`);
-      const imageUrl = await withRetry429(() => generateAdSceneImage(productImageBase64, productName, productDesc.trim(), sc, ratio, adLocation));
+      const imageUrl = await withRetry429(() => generateAdSceneImage(productImageBase64, productName, productDesc.trim(), sc, ratio, adLocation, wearableInstruction));
       console.log(`[AdsService] ✓ FLUX ${i+1}: ${imageUrl}`);
       sceneImages.push({ ...sc, imageUrl });
       progress('scenes', `Scene ${i+1}/${count}: ${sc.label} ✓`);
@@ -495,7 +541,7 @@ export async function renderAdVideo({
   for (let i = 0; i < sceneImages.length; i++) {
     const scene = sceneImages[i];
     try {
-      const motionPrompt = scene.motion(productName);
+      const motionPrompt = scene.motion(productName) + wearableInstruction;
       console.log(`[AdsService] [${i+1}/${sceneImages.length}] ${animateLabel}: ${scene.label}`);
       const videoUrl = hasVoice
         ? await withRetry429(() => animateWithSeedance1ProFast(scene.imageUrl, motionPrompt, ratio))
