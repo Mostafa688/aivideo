@@ -472,81 +472,117 @@ async function animateWithSeedance1ProFast(imageUrl, motionPrompt, ratio) {
 }
 
 // ── Step 3: FFmpeg compose ────────────────────────────────────────────────────
-// ✅ تغييرات: (1) اتشال عنوان اسم المنتج في أول الفيديو خالص، (2) انتقالات حقيقية
-// (crossfade) بين المشاهد بدل القطع الجاف، (3) كابشن اختياري، (4) لينك المنتج
-// كأنيميشن أنيق في آخر الفيديو لو العميل حدده.
+// ✅ بنفس الطريقة المضمونة الشغالة في موديل 5 بالظبط: 3 مراحل منفصلة بدل filter_complex
+// واحد ضخم — (1) تطبيع كل كليب لوحده، (2) دمج بانتقالات xfade+acrossfade حقيقية (مع
+// fallback لـ concat بسيط لو الانتقالات فشلت لأي سبب)، (3) تمريرة نهائية للصوت/الكابشن/اللينك.
 async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, jobId, captions, scriptText, productLink }) {
   const [W, H] = ratio === '9:16' ? [1080, 1920] : [1920, 1080];
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 
-  const clipPaths = [];
+  const rawPaths = [];
   for (let i = 0; i < animatedScenes.length; i++) {
-    const cp = join(TEMP_DIR, `ads_${jobId}_${i}.mp4`);
+    const cp = join(TEMP_DIR, `ads_raw_${jobId}_${i}.mp4`);
     await downloadFile(animatedScenes[i].videoUrl, cp);
-    clipPaths.push(cp);
+    rawPaths.push(cp);
     console.log(`[AdsService] ✓ Clip ${i+1} downloaded`);
   }
 
-  const numClips = clipPaths.length;
+  const numClips = rawPaths.length;
   const hasVoice = !!(audioPath && fs.existsSync(audioPath));
   const musicFile = findMusicFile();
   const hasMusic = !!musicFile;
   console.log(`[AdsService] Audio layers → voice: ${hasVoice} | music: ${hasMusic ? musicFile : 'none found'}`);
 
-  // ✅ FIX: مانفترضش إن كل كليب من Seedance بالظبط 5.0 ثانية — بيرجع أحيانًا أقصر شوية
-  // (4.7، 4.9...). لو حسبنا الـ xfade offset على أساس 5.0 ثابتة وكليب فعليًا أقصر،
-  // الـ offset بيبقى أكبر من مدة الكليب الحقيقية والـ xfade بيفشل تمامًا (بيطلع
-  // encoder error زي "Invalid argument"). بنقيس المدة الحقيقية الأقصر ونستخدمها كموحّد.
-  let CLIP_DUR = 5.0;
+  // ✅ مانفترضش إن كل كليب بالظبط 5.0 ثانية — بنقيس الحقيقي ونستخدم أقصر واحد كموحّد
+  let CLIP_SEC = 5.0;
   try {
-    const durations = await Promise.all(clipPaths.map(async (p) => {
+    const durations = await Promise.all(rawPaths.map(async (p) => {
       try {
         const { stdout } = await execFileAsync('ffprobe', ['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1', p]);
         return parseFloat(stdout.trim()) || 5.0;
       } catch { return 5.0; }
     }));
-    CLIP_DUR = Math.max(2.0, Math.min(5.0, ...durations) - 0.05); // هامش أمان بسيط تحت أقصر كليب
-    console.log(`[AdsService] Clip durations: [${durations.map(d=>d.toFixed(2)).join(', ')}] → using CLIP_DUR=${CLIP_DUR.toFixed(2)}s`);
+    CLIP_SEC = Math.max(2.0, Math.min(5.0, ...durations) - 0.05);
+    console.log(`[AdsService] Clip durations: [${durations.map(d=>d.toFixed(2)).join(', ')}] → using CLIP_SEC=${CLIP_SEC.toFixed(2)}s`);
   } catch (e) {
     console.warn('[AdsService] Clip duration probing failed, using default 5.0s:', e.message);
   }
-  const XFADE_DUR = Math.min(0.5, CLIP_DUR / 3); // الانتقال محدش يبقى أكبر من تلت الكليب
-  const totalDur = numClips > 1 ? (numClips * CLIP_DUR - (numClips - 1) * XFADE_DUR) : CLIP_DUR;
 
-  const inputArgs = clipPaths.flatMap(p => ['-i', p]);
-  let voiceInputIdx = -1, musicInputIdx = -1;
-  if (hasVoice) { voiceInputIdx = inputArgs.length / 2; inputArgs.push('-i', audioPath); }
-  if (hasMusic) { musicInputIdx = inputArgs.length / 2; inputArgs.push('-stream_loop', '-1', '-i', musicFile); }
+  // ── Stage 1: تطبيع كل كليب لوحده (نفس الأبعاد، نفس المدة، نفس fps) ──────────
+  const normPaths = [];
+  for (let i = 0; i < numClips; i++) {
+    const np = join(TEMP_DIR, `ads_norm_${jobId}_${i}.mp4`);
+    await execFileAsync('ffmpeg', [
+      '-i', rawPaths[i],
+      '-vf', `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24`,
+      '-t', String(CLIP_SEC),
+      '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+      '-movflags', '+faststart', '-y', np,
+    ], { maxBuffer: 200*1024*1024 });
+    normPaths.push(np);
+  }
+  console.log('[AdsService] ✓ All clips normalized');
+
+  // ── Stage 2: دمج بانتقالات xfade (فيديو) + acrossfade (صوت) — نفس طريقة موديل 5 ──
+  const mergedPath = join(TEMP_DIR, `ads_merged_${jobId}.mp4`);
+  const FADE_DUR = 0.5;
+  const CLIP_DURATION = CLIP_SEC - FADE_DUR;
+
+  if (numClips === 1) {
+    fs.copyFileSync(normPaths[0], mergedPath);
+  } else {
+    try {
+      const inputArgsN = normPaths.flatMap(p => ['-i', p]);
+      let filterComplex = '';
+      if (numClips === 2) {
+        filterComplex = `[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${CLIP_DURATION.toFixed(2)}[vout];[0:a][1:a]acrossfade=d=${FADE_DUR}[aout]`;
+      } else {
+        let lastV = '[0:v]', lastA = '[0:a]';
+        for (let i = 1; i < numClips; i++) {
+          const offset = (CLIP_DURATION * i).toFixed(2);
+          const isLast = i === numClips - 1;
+          const vNext = isLast ? '[vout]' : `[v${i}]`;
+          const aNext = isLast ? '[aout]' : `[a${i}]`;
+          filterComplex += `${lastV}[${i}:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}${vNext};`;
+          filterComplex += `${lastA}[${i}:a]acrossfade=d=${FADE_DUR}${aNext};`;
+          lastV = `[v${i}]`; lastA = `[a${i}]`;
+        }
+        filterComplex = filterComplex.replace(/;$/, '');
+      }
+      await execFileAsync('ffmpeg', [
+        ...inputArgsN, '-filter_complex', filterComplex, '-map', '[vout]', '-map', '[aout]',
+        '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-y', mergedPath,
+      ], { maxBuffer: 200*1024*1024 });
+      console.log('[AdsService] ✅ Crossfade transitions applied (video + audio)');
+    } catch (e) {
+      console.warn('[AdsService] Transitions failed, using simple concat fallback:', (e.stderr?.toString() || e.message).slice(0, 200));
+      const listFile = join(TEMP_DIR, `ads_list_${jobId}.txt`);
+      fs.writeFileSync(listFile, normPaths.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n'));
+      await execFileAsync('ffmpeg', [
+        '-f', 'concat', '-safe', '0', '-i', listFile,
+        '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-y', mergedPath,
+      ], { maxBuffer: 200*1024*1024 });
+      try { fs.unlinkSync(listFile); } catch {}
+    }
+  }
+  // مدة الفيديو النهائية الفعلية بعد الانتقالات (كل انتقال بياكل FADE_DUR من الإجمالي)
+  const totalDur = numClips > 1 ? (CLIP_SEC + (numClips - 1) * CLIP_DURATION) : CLIP_SEC;
+
+  // ── Stage 3: الصوت النهائي (تعليق صوتي/مؤثرات + موسيقى) + كابشن + لينك + fade ──
+  const inputArgs = ['-i', mergedPath];
+  let voiceInputIdx = 1, musicInputIdx = -1;
+  if (hasVoice) { inputArgs.push('-i', audioPath); musicInputIdx = 2; }
+  if (hasMusic) { inputArgs.push('-stream_loop', '-1', '-i', musicFile); if (!hasVoice) musicInputIdx = 1; }
 
   const fp = [];
-  // ── فيديو: قص كل مشهد لمدة ثابتة، ثم دمجهم بانتقال crossfade حقيقي بينهم ──
-  for (let i = 0; i < numClips; i++) {
-    fp.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24,trim=0:${CLIP_DUR},setpts=PTS-STARTPTS[sv${i}]`);
-  }
-  let vLabel;
-  if (numClips === 1) {
-    fp.push(`[sv0]null[vjoined]`);
-    vLabel = 'vjoined';
-  } else {
-    let prevLabel = 'sv0', cumulativeDur = CLIP_DUR;
-    for (let i = 1; i < numClips; i++) {
-      const offset = cumulativeDur - XFADE_DUR;
-      const outLabel = `vx${i}`;
-      fp.push(`[${prevLabel}][sv${i}]xfade=transition=fade:duration=${XFADE_DUR}:offset=${offset.toFixed(2)}[${outLabel}]`);
-      cumulativeDur = cumulativeDur + CLIP_DUR - XFADE_DUR;
-      prevLabel = outLabel;
-    }
-    vLabel = prevLabel;
-  }
-
-  // ── صوت: نجمع المؤثرات الصوتية الأصلية من كل مشهد — بس لو مفيش تعليق صوتي ──
   const audioLayers = [];
   const audioFilters = [];
   if (!hasVoice) {
-    for (let i = 0; i < numClips; i++) {
-      fp.push(`[${i}:a]atrim=0:${CLIP_DUR},asetpts=PTS-STARTPTS[sa${i}]`);
-    }
-    fp.push(`${clipPaths.map((_,i)=>`[sa${i}]`).join('')}concat=n=${numClips}:v=0:a=1[asfx]`);
+    // صوت الكليب المدموج نفسه (مؤثرات صوتية من Seedance) هو المصدر الوحيد لو مفيش تعليق صوتي
+    audioFilters.push(`[0:a]atrim=0:${totalDur.toFixed(1)},asetpts=PTS-STARTPTS[asfx]`);
     audioLayers.push('[asfx]');
   }
   if (hasMusic) {
@@ -568,7 +604,9 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
     }
   }
 
-  let vCurrent = vLabel;
+  let vCurrent = '0:v';
+  let needsVideoFilter = false;
+  const vFilterParts = [];
 
   // ── كابشن اختياري — بيتقسم على عدد المشاهد ويظهر كل جزء في توقيت مشهده ──
   if (captions && scriptText?.trim()) {
@@ -579,21 +617,15 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
     while (chunks.length < numClips) chunks.push('');
     const capFs = ratio === '9:16' ? 40 : 34;
     const capY = ratio === '9:16' ? H - 260 : H - 140;
-    let cumulativeDur = CLIP_DUR;
-    const capFilters = [];
     for (let i = 0; i < Math.min(chunks.length, numClips); i++) {
-      const t0 = i === 0 ? 0 : cumulativeDur - XFADE_DUR;
-      const t1 = i === 0 ? CLIP_DUR : cumulativeDur - XFADE_DUR + CLIP_DUR;
-      if (i > 0) cumulativeDur = cumulativeDur + CLIP_DUR - XFADE_DUR;
+      const t0 = i === 0 ? 0 : CLIP_SEC + (i - 1) * CLIP_DURATION;
+      const t1 = t0 + CLIP_SEC;
       const safe = chunks[i].replace(/\\/g,'\\\\').replace(/'/g,'\u2019').replace(/:/g,'\\:').replace(/\[/g,'\\[').replace(/\]/g,'\\]');
       if (!safe) continue;
-      capFilters.push(`drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=black@0.6:fontsize=${capFs}:x=(w-text_w)/2+2:y=${capY}+2:box=1:boxcolor=black@0.35:boxborderw=14:enable='between(t,${t0.toFixed(2)},${t1.toFixed(2)})',`+
-        `drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=white:fontsize=${capFs}:x=(w-text_w)/2:y=${capY}:enable='between(t,${t0.toFixed(2)},${t1.toFixed(2)})'`);
+      vFilterParts.push(`drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=black@0.6:fontsize=${capFs}:x=(w-text_w)/2+2:y=${capY}+2:box=1:boxcolor=black@0.35:boxborderw=14:enable='between(t,${t0.toFixed(2)},${t1.toFixed(2)})'`);
+      vFilterParts.push(`drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=white:fontsize=${capFs}:x=(w-text_w)/2:y=${capY}:enable='between(t,${t0.toFixed(2)},${t1.toFixed(2)})'`);
     }
-    if (capFilters.length) {
-      fp.push(`[${vCurrent}]${capFilters.join(',')}[vcaptioned]`);
-      vCurrent = 'vcaptioned';
-    }
+    needsVideoFilter = true;
   }
 
   // ── لينك المنتج — بانر أنيق يظهر بأنيميشن fade في آخر 3 ثواني من الفيديو ──
@@ -603,14 +635,14 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
     const bH = ratio==='9:16'?110:90;
     const bY = H - bH - (ratio==='9:16'?60:30);
     const fs2 = ratio==='9:16'?38:32;
-    fp.push(
-      `[${vCurrent}]drawbox=x=0:y=${bY}:w=${W}:h=${bH}:color=black@0.6:t=fill:enable='between(t,${linkStart.toFixed(2)},${totalDur.toFixed(2)})',`+
-      `drawtext=fontfile=${fontFile}:text='🔗 ${safeLink}':fontcolor=white:fontsize=${fs2}:x=(w-text_w)/2:y=${bY+bH/2}-text_h/2:alpha='if(lt(t,${linkStart.toFixed(2)}),0,if(lt(t,${(linkStart+0.4).toFixed(2)}),(t-${linkStart.toFixed(2)})/0.4,1))':enable='between(t,${linkStart.toFixed(2)},${totalDur.toFixed(2)})'[vlinked]`
-    );
-    vCurrent = 'vlinked';
+    vFilterParts.push(`drawbox=x=0:y=${bY}:w=${W}:h=${bH}:color=black@0.6:t=fill:enable='between(t,${linkStart.toFixed(2)},${totalDur.toFixed(2)})'`);
+    vFilterParts.push(`drawtext=fontfile=${fontFile}:text='🔗 ${safeLink}':fontcolor=white:fontsize=${fs2}:x=(w-text_w)/2:y=${bY+bH/2}-text_h/2:alpha='if(lt(t,${linkStart.toFixed(2)}),0,if(lt(t,${(linkStart+0.4).toFixed(2)}),(t-${linkStart.toFixed(2)})/0.4,1))':enable='between(t,${linkStart.toFixed(2)},${totalDur.toFixed(2)})'`);
+    needsVideoFilter = true;
   }
 
-  fp.push(`[${vCurrent}]fade=t=in:st=0:d=0.5,fade=t=out:st=${Math.max(0,totalDur-0.8).toFixed(1)}:d=0.8[vfinal]`);
+  vFilterParts.push(`fade=t=in:st=0:d=0.5`);
+  vFilterParts.push(`fade=t=out:st=${Math.max(0,totalDur-0.8).toFixed(1)}:d=0.8`);
+  fp.push(`[0:v]${vFilterParts.join(',')}[vfinal]`);
 
   const outputPath = join(outputDir, `ad_${jobId}.mp4`);
   const args = [...inputArgs, '-filter_complex', fp.join(';'), '-map', '[vfinal]', '-map', '[amixed]', '-c:a', 'aac', '-b:a', '128k', '-shortest'];
@@ -620,13 +652,14 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
     await execFileAsync('ffmpeg', args, { maxBuffer: 200*1024*1024 });
   } catch (err) {
     const fullErr = err.stderr?.toString() || err.message;
-    // ✅ آخر الرسالة غالبًا ملخص عام ("Invalid argument")، السبب الحقيقي غالبًا قبله —
-    // بنلقّط أول جزء (بداية اللوج) وآخر جزء مع بعض عشان نشوف السبب الفعلي مش بس الملخص
-    const errSnippet = fullErr.length > 1500 ? `${fullErr.slice(0, 700)}\n...\n${fullErr.slice(-800)}` : fullErr;
+    const errorLines = fullErr.split('\n').filter(l => /error|invalid|failed|no such|unable|cannot|could not/i.test(l));
+    const errSnippet = errorLines.length ? errorLines.slice(0, 15).join('\n') : fullErr.slice(-800);
     throw new Error('FFmpeg: ' + errSnippet);
   }
 
-  setTimeout(() => { clipPaths.forEach(f => { try { fs.unlinkSync(f); } catch {} }); }, 60000);
+  setTimeout(() => {
+    [...rawPaths, ...normPaths, mergedPath].forEach(f => { try { fs.unlinkSync(f); } catch {} });
+  }, 60000);
   return outputPath;
 }
 
