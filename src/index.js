@@ -1923,6 +1923,173 @@ app.post('/api/templates/delete', templateAdminAuth, async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+//  SEO & AI CRAWLER SUPPORT
+// ══════════════════════════════════════════════════════════════════════════
+// ✅ المشكلة: الموقع Single Page App (React) — أي زائر عادي بيحمّل index.html
+// فاضي وجافاسكريبت بيرسم المحتوى بعد كده. لكن أدوات زي ChatGPT's fetcher،
+// GPTBot، Google-Extended (اللي بيغذي Gemini)، وحتى محركات بحث تقليدية أحيانًا
+// بتعمل GET عادي وبتقرا الـ HTML الخام من غير ما تشغّل الجافاسكريبت خالص — فبيشوفوا
+// صفحة فاضية إلا اللاندينج بيدج (اللي فيها محتوى ثابت أصلاً). الحل المعروف
+// (Google نفسها كانت بتنصح بيه لسنين لمواقع الـ SPA) هو "Dynamic Rendering":
+// نكتشف لو الطلب جاي من بوت معروف، ونرجّعله صفحة HTML ثابتة فيها المحتوى
+// والعناوين والوصف الصح لنفس الرابط، بدل الـ SPA الفاضية.
+
+const BOT_UA_REGEX = /bot|crawl|spider|slurp|GPTBot|ChatGPT-User|OAI-SearchBot|Google-Extended|Applebot|Bingbot|DuckDuckBot|Baiduspider|YandexBot|facebookexternalhit|Twitterbot|LinkedInBot|WhatsApp|Slackbot|Discordbot|TelegramBot|anthropic-ai|Claude-Web|ClaudeBot|PerplexityBot|Meta-ExternalAgent/i;
+
+const SITE_URL = process.env.FRONTEND_URL || 'https://erivion.net';
+
+const SEO_PAGES = {
+  '/': {
+    title: 'Erivion — منصة إنشاء فيديوهات بالذكاء الاصطناعي بالعربي',
+    description: 'حوّل أي فكرة أو سكريبت أو صورة منتج إلى فيديو احترافي في دقائق. 7 موديلات AI: فيديوهات تعليمية وقصصية، فيديو حقيقي، صور AI، سينمائي بشخصيات ثابتة، إعلانات منتجات، وخرائط تفاعلية. مدعوم بالعربي والإنجليزي.',
+    h1: 'Erivion — إنشاء فيديوهات احترافية بالذكاء الاصطناعي',
+    body: [
+      'Erivion هي منصة عربية لإنشاء فيديوهات AI احترافية من فكرة نصية، سكريبت جاهز، أو صورة منتج — بدون خبرة مونتاج أو برامج معقدة.',
+      'موديل 1 (AI Slices) وموديل 2 (Real Footage): فيديوهات من صور أو مقاطع حقيقية مع تعليق صوتي وكابتشن، مثالية للمحتوى التعليمي والقصصي.',
+      'موديل 3 (AI Images) وموديل 4 (Seedance Video): صور ومقاطع فيديو مولّدة بالذكاء الاصطناعي بجودة سينمائية.',
+      'موديل 5 (Cinematic AI): فيديو بشخصيات ثابتة عبر كل المشاهد من صورة مرجعية واحدة، مع وضعين — فكرة تتحول لفيديو، أو برومبت مباشر تكتبه بنفسك.',
+      'موديل 6 (Map Video): فيديوهات خرائط جغرافية متحركة للمحتوى التاريخي والجغرافي.',
+      'موديل 7 (Ads Creator): ارفع صورة منتجك واحصل على إعلان فيديو كامل باحترافية — مشاهد، حركة، تعليق صوتي، وموسيقى.',
+      'يوجد أيضًا مساعد ذكي (AI Agent) يفهم فكرتك بالعربي أو الإنجليزي ويختار الموديل المناسب وينشئ الفيديو معك مباشرة في المحادثة.',
+      'الموقع يوفر باقات كريديت مرنة للمستخدمين المصريين (InstaPay) والدوليين (Gumroad)، مع حساب مجاني يبدأ برصيد تجريبي.',
+    ],
+  },
+  '/pricing': {
+    title: 'الأسعار والباقات — Erivion',
+    description: 'باقات كريديت مرنة لكل الميزانيات — من التجربة المجانية لباقات الوكالات. اشحن رصيدك واستخدمه على أي موديل فيديو AI في المنصة، شامل موديل الإعلانات الجديد.',
+    h1: 'أسعار وباقات Erivion',
+    body: [
+      'نظام كريديت موحّد يشتغل على كل الموديلات — اشتري رصيد مرة واحدة واستخدمه على أي موديل فيديو تحبه.',
+      'للمستخدمين المصريين: شحن مرن بالجنيه المصري عن طريق InstaPay، بأي مبلغ تحدده.',
+      'للمستخدمين الدوليين: باقات ثابتة بالدولار عن طريق Gumroad (Starter, Creator, Studio, Team, Agency).',
+      'كل حساب جديد يحصل على رصيد تجريبي مجاني للبدء.',
+      'برنامج تسويق بالعمولة (Affiliate) متاح — اربح 20% من قيمة أي عملية شحن تتم من خلال رابطك.',
+    ],
+  },
+  '/about': {
+    title: 'من نحن — Erivion',
+    description: 'Erivion منصة عربية لإنشاء فيديوهات بالذكاء الاصطناعي، هدفنا نخلي إنتاج الفيديو الاحترافي متاح لأي حد بدون خبرة أو معدات مكلفة.',
+    h1: 'من نحن',
+    body: [
+      'مهمتنا: نخلي إنتاج الفيديو الاحترافي متاح لأي حد — بدون برامج مونتاج مكلفة أو خبرة سابقة.',
+      'إيه اللي بنعمله: تديلنا فكرة، سكريبت، أو صورة منتج، وإحنا بنتولى المشاهد والفويس أوفر والكابشن والموسيقى والمؤثرات — شامل إعلانات فيديو كاملة من صورة منتج واحدة.',
+      'التكنولوجيا: نماذج لغوية متقدمة لكتابة السكريبتات، نماذج توليد صور وفيديو، تحويل نص لصوت طبيعي، وخط إنتاج احترافي مبني على FFmpeg. بدعم أكتر من 8 لغات.',
+      'معايير المحتوى: بنمنع بشكل صارم أي محتوى إباحي أو عنصري أو عنيف، وكل طلب بيمر على فحص تلقائي بالذكاء الاصطناعي بالإضافة لمراجعة يدوية.',
+      'تواصل معنا: digidelight33@gmail.com',
+    ],
+  },
+  '/support': {
+    title: 'الدعم — Erivion',
+    description: 'محتاج مساعدة في استخدام Erivion؟ تواصل مع فريق الدعم عن أي استفسار خاص بالفيديوهات، الاشتراكات، أو الاسترداد.',
+    h1: 'مركز الدعم',
+    body: [
+      'لو عندك أي استفسار عن استخدام الموقع، الموديلات المختلفة، أو مشكلة في فيديو، فريقنا جاهز يساعدك.',
+      'للاستفسارات عن الدفع والاسترداد: راجع صفحة سياسة الاسترداد، أو تواصل معنا مباشرة.',
+      'البريد الإلكتروني: digidelight33@gmail.com',
+    ],
+  },
+  '/templates': {
+    title: 'قوالب فيديو جاهزة — Erivion',
+    description: 'مكتبة قوالب فيديو جاهزة تقدر تستخدمها كنقطة بداية سريعة لفيديوهاتك على Erivion.',
+    h1: 'قوالب جاهزة',
+    body: ['تصفح مجموعة من قوالب الفيديو الجاهزة عبر كل الموديلات، واستخدمها كأساس سريع لمشروعك بدل البدء من الصفر.'],
+  },
+  '/community': {
+    title: 'مجتمع Erivion',
+    description: 'شوف فيديوهات صنعها مستخدمين تانيين على Erivion، واتفاعل مع المجتمع.',
+    h1: 'مجتمع Erivion',
+    body: ['استكشف فيديوهات المستخدمين، شارك أعمالك، واتعلم من غيرك في مجتمع Erivion.'],
+  },
+  '/terms': { title: 'شروط الخدمة — Erivion', description: 'شروط استخدام منصة Erivion لإنشاء الفيديوهات بالذكاء الاصطناعي.', h1: 'شروط الخدمة', body: ['راجع شروط الخدمة الكاملة الخاصة باستخدام منصة Erivion.'] },
+  '/privacy': { title: 'سياسة الخصوصية — Erivion', description: 'كيف تتعامل Erivion مع بياناتك الشخصية وخصوصيتك.', h1: 'سياسة الخصوصية', body: ['راجع سياسة الخصوصية الكاملة الخاصة بمنصة Erivion.'] },
+  '/refund': { title: 'سياسة الاسترداد — Erivion', description: 'شروط استرداد الأموال للمستخدمين المصريين والدوليين على Erivion.', h1: 'سياسة الاسترداد', body: ['المستخدمون المصريون: يمكن طلب الاسترداد خلال 4 ساعات من الشحن فقط. المستخدمون الدوليون: نظام الاسترداد غير متاح حاليًا وسيتم توفيره قريبًا.'] },
+};
+
+function renderBotHTML(pageData, path) {
+  const canonical = `${SITE_URL}${path === '/' ? '' : path}`;
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Erivion',
+    applicationCategory: 'MultimediaApplication',
+    operatingSystem: 'Web',
+    url: SITE_URL,
+    description: pageData.description,
+    offers: { '@type': 'Offer', priceCurrency: 'USD', price: '0', description: 'Free trial credits on signup' },
+  };
+  const bodyHtml = pageData.body.map(p => `<p>${p}</p>`).join('\n');
+  const navLinks = Object.keys(SEO_PAGES).map(p => `<a href="${SITE_URL}${p === '/' ? '' : p}">${SEO_PAGES[p].h1}</a>`).join(' | ');
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>${pageData.title}</title>
+<meta name="description" content="${pageData.description}">
+<link rel="canonical" href="${canonical}">
+<meta property="og:title" content="${pageData.title}">
+<meta property="og:description" content="${pageData.description}">
+<meta property="og:url" content="${canonical}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Erivion">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
+</head>
+<body>
+<h1>${pageData.h1}</h1>
+${bodyHtml}
+<nav>${navLinks}</nav>
+</body>
+</html>`;
+}
+
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  const ua = req.headers['user-agent'] || '';
+  if (BOT_UA_REGEX.test(ua) && SEO_PAGES[req.path]) {
+    return res.type('html').send(renderBotHTML(SEO_PAGES[req.path], req.path));
+  }
+  next();
+});
+
+// robots.txt — بترحّب صراحة بكل بوتات الـ AI والبحث المعروفة
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(`User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+Sitemap: ${SITE_URL}/sitemap.xml`);
+});
+
+// sitemap.xml — كل الصفحات الحقيقية عشان جوجل يقدر يفهرسها
+app.get('/sitemap.xml', (req, res) => {
+  const urls = Object.keys(SEO_PAGES).map(p => `  <url><loc>${SITE_URL}${p === '/' ? '' : p}</loc></url>`).join('\n');
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls}
+</urlset>`);
+});
+
 app.use(express.static(join(__dirname, '..', 'dist')));
 
 app.get('*', (req, res) => {
