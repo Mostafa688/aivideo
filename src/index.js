@@ -1700,6 +1700,13 @@ app.use((err, req, res, next) => {
 });
 
 app.get('/favicon.png', (req, res) => { res.sendFile(join(__dirname, '..', 'dist', 'favicon.png')); });
+app.get('/manifest.json', (req, res) => {
+  const fromDist = join(__dirname, '..', 'dist', 'manifest.json');
+  const fromPublic = join(__dirname, '..', 'frontend', 'public', 'manifest.json');
+  res.type('application/json');
+  if (fs.existsSync(fromDist)) return res.sendFile(fromDist);
+  res.sendFile(fromPublic);
+});
 app.get('/favicon.ico', (req, res) => { res.sendFile(join(__dirname, '..', 'dist', 'favicon.png')); });
 app.get('/logo.png', (req, res) => {
   const fromDist = join(__dirname, '..', 'dist', 'logo.png');

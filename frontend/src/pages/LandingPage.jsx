@@ -93,7 +93,7 @@ function VideoCard({ title, tag, color, duration, views, img }) {
     <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{ flexShrink:0, width:200, borderRadius:16, overflow:'hidden', position:'relative', cursor:'pointer', transform:hov?'scale(1.04)':'scale(1)', transition:'transform 0.3s cubic-bezier(0.16,1,0.3,1)', boxShadow:hov?`0 20px 48px rgba(0,0,0,0.6), 0 0 0 1px ${color}44`:'0 4px 16px rgba(0,0,0,0.4)' }}>
       <div style={{ width:'100%', height:300, background:`linear-gradient(160deg, ${color}33 0%, #050508 60%)`, display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
-        {img ? <img src={img} alt={title} style={{ width:'100%', height:'100%', objectFit:'cover', position:'absolute', inset:0, opacity:0.7 }} /> : null}
+        {img ? <img src={img} alt={title} loading="lazy" style={{ width:'100%', height:'100%', objectFit:'cover', position:'absolute', inset:0, opacity:0.7 }} /> : null}
         <div style={{ position:'absolute', inset:0, background:`linear-gradient(to top, #050508 0%, transparent 50%)` }} />
         {hov && <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:48, height:48, borderRadius:'50%', background:'rgba(255,255,255,0.9)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>▶</div>}
         <div style={{ position:'absolute', top:10, left:10, padding:'3px 8px', borderRadius:6, background:color, fontSize:9, fontWeight:700, color:'#fff', letterSpacing:'0.08em' }}>{tag}</div>
