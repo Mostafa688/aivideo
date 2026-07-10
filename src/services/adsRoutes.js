@@ -64,7 +64,7 @@ router.post('/render',
       const productImage = req.files?.productImage?.[0];
       if (!productImage) return res.status(400).json({ error: 'Product image is required' });
 
-      const { productName, productDesc, audioMode, aiVoiceKey, ratio, language, sceneCount, customHook, showTitle } = req.body;
+      const { productName, productDesc, audioMode, aiVoiceKey, ratio, language, sceneCount, customHook, captions, productLink } = req.body;
       if (!productName?.trim()) return res.status(400).json({ error: 'Product name is required' });
 
       // ✅ فحص أمان المحتوى قبل أي توليد — رفض المحتوى الإباحي/العنصري/العنيف
@@ -129,7 +129,8 @@ router.post('/render',
             language: language || 'ar',
             sceneCount: finalSceneCount,
             customHook: customHook || '',
-            showTitle: showTitle !== 'false',
+            captions: captions === 'true' || captions === true,
+            productLink: (productLink || '').trim(),
             outputDir,
             jobId,
             onProgress: ({ step, msg }) => setAdsJob(jobId, { step, msg }),

@@ -332,7 +332,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         const sceneCount = Math.min(Math.max(Math.round(seconds / 5), 3), 6);
         form.append('sceneCount', String(sceneCount));
         form.append('customHook', ready.customHook || '');
-        form.append('showTitle', 'true');
+        form.append('captions', String(!!ready.captions && ready.adsAudioMode === 'ai_voice'));
+        form.append('productLink', ready.productLink || '');
         if (ready.adsAudioMode === 'ai_voice') form.append('aiVoiceKey', voiceKey);
         if (ready.adsAudioMode === 'upload' && lastUploadedVoiceUrl) {
           const voiceBlob = await (await fetch(lastUploadedVoiceUrl)).blob();

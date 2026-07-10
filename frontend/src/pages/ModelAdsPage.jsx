@@ -86,7 +86,8 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
   const [language, setLanguage] = useState('ar');
   const [sceneCount, setSceneCount] = useState(5);
   const [customHook, setCustomHook] = useState('');
-  const [showTitle, setShowTitle] = useState(true);
+  const [captions, setCaptions] = useState(false);
+  const [productLink, setProductLink] = useState('');
   const [adsCosts, setAdsCosts] = useState({ costs_no_voice: {}, costs_voice: {} });
 
   useEffect(() => {
@@ -183,7 +184,8 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
       formData.append('language', language);
       formData.append('sceneCount', String(sceneCount));
       formData.append('customHook', customHook);
-      formData.append('showTitle', String(showTitle));
+      formData.append('captions', String(captions && audioMode === 'ai_voice'));
+      formData.append('productLink', productLink.trim());
       if (audioMode === 'upload' && uploadedAudio) {
         formData.append('voiceAudio', uploadedAudio);
       }
@@ -361,19 +363,32 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
                   placeholder={isAr ? 'مثال: هل تعرف سر البشرة المثالية؟' : 'e.g. What if you could transform your skin in 7 days?'} />
               </div>
 
-              <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', opacity: audioMode === 'ai_voice' ? 1 : 0.4 }}>
                 <div>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: "'DM Sans', sans-serif" }}>
-                    {isAr ? '🎬 إظهار اسم المنتج في بداية الفيديو' : '🎬 Show product name title at start'}
+                    {isAr ? '💬 إضافة كابشن' : '💬 Add captions'}
                   </p>
                   <p style={{ margin: 0, fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: "'DM Sans', sans-serif", marginTop: 3 }}>
-                    {isAr ? 'اختياري — يظهر اسم المنتج بشكل احترافي في أول 3.5 ثانية' : 'Optional — product name appears elegantly for 3.5s at start'}
+                    {audioMode === 'ai_voice'
+                      ? (isAr ? 'يظهر نص التعليق الصوتي مكتوب على الفيديو' : 'Shows the voiceover script as text on the video')
+                      : (isAr ? 'متاح بس مع صوت AI التلقائي' : 'Only available with AI Voiceover')}
                   </p>
                 </div>
-                <div onClick={() => setShowTitle(!showTitle)}
-                  style={{ width: 44, height: 24, borderRadius: 12, background: showTitle ? ACCENT : 'rgba(255,255,255,0.1)', cursor: 'pointer', transition: 'all 0.2s', position: 'relative', flexShrink: 0 }}>
-                  <div style={{ position: 'absolute', top: 3, left: showTitle ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'all 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }} />
+                <div onClick={() => audioMode === 'ai_voice' && setCaptions(!captions)}
+                  style={{ width: 44, height: 24, borderRadius: 12, background: (captions && audioMode === 'ai_voice') ? ACCENT : 'rgba(255,255,255,0.1)', cursor: audioMode === 'ai_voice' ? 'pointer' : 'not-allowed', transition: 'all 0.2s', position: 'relative', flexShrink: 0 }}>
+                  <div style={{ position: 'absolute', top: 3, left: (captions && audioMode === 'ai_voice') ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'all 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }} />
                 </div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 8, display: 'block', fontFamily: "'DM Sans', sans-serif" }}>
+                  {isAr ? '🔗 لينك المنتج (اختياري)' : '🔗 Product link (optional)'}
+                </label>
+                <input className="ads-input" value={productLink} onChange={e => setProductLink(e.target.value)}
+                  placeholder={isAr ? 'مثال: yourstore.com/product' : 'e.g. yourstore.com/product'} />
+                <p style={{ margin: '6px 0 0', fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: "'DM Sans', sans-serif" }}>
+                  {isAr ? 'هيظهر كبانر أنيق في آخر 3 ثواني من الفيديو' : 'Shows as an elegant banner in the last 3 seconds of the video'}
+                </p>
               </div>
             </Section>
 

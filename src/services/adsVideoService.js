@@ -116,56 +116,96 @@ const SCENE_CONFIGS = [
     id: 'hero',
     label: 'Hero Shot',
     buildPrompt: (product, desc, location) =>
-      `Professional product advertisement. The exact ${product} from the reference image — keep every detail. ${desc}. Setting: ${location}. Perfect studio-quality lighting matching this environment, photorealistic 8K commercial photography.`,
+      `Professional product advertisement. The exact ${product} from the reference image — keep every single visual detail (shape, color, label, material) perfectly unchanged. ${desc}. Placed naturally within this setting: ${location}. Perfect studio-quality lighting matching this environment, photorealistic 8K commercial photography.`,
     motion: (product) =>
-      `The ${product} product slowly rotates revealing all sides, subtle light shimmer, cinematic slow motion product reveal, professional advertisement`,
-  },
-  {
-    id: 'lifestyle',
-    label: 'Lifestyle',
-    buildPrompt: (product, desc, location) =>
-      `Lifestyle advertisement. The exact ${product} from the reference image, shown naturally within this setting: ${location}. ${desc}. Warm natural lighting, aspirational scene, photorealistic.`,
-    motion: (product) =>
-      `The ${product} in lifestyle setting, gentle parallax motion, slow zoom out revealing context, warm bokeh, aspirational advertisement`,
-  },
-  {
-    id: 'closeup',
-    label: 'Close-up',
-    buildPrompt: (product, desc, location) =>
-      `Macro product photo. The exact ${product} from the reference image — extreme close-up of finest details, with a softly blurred background hinting at this setting: ${location}. ${desc}. Ultra-shallow depth of field, razor-sharp, luxury photography.`,
-    motion: (product) =>
-      `The ${product} ultra slow macro push-in, finest surface details emerge, barely perceptible camera drift, luxury cinematic`,
-  },
-  {
-    id: 'angle45',
-    label: '45 Angle',
-    buildPrompt: (product, desc, location) =>
-      `Commercial product photo. The exact ${product} at a dynamic 45-degree angle, on a surface and backdrop consistent with this setting: ${location}. ${desc}. Dramatic side lighting, long elegant shadow, high-end photography.`,
-    motion: (product) =>
-      `The ${product} slow cinematic dolly left to right, shadow glides across surface, spotlight follows product`,
-  },
-  {
-    id: 'minimal',
-    label: 'Minimal',
-    buildPrompt: (product, desc) =>
-      `Minimalist ad. The exact ${product} on white seamless background, soft shadow below. ${desc}. Clean Apple-style aesthetic, crisp modern photography.`,
-    motion: (product) =>
-      `The ${product} gently levitates upward and settles, clean modern bounce, soft shadow pulse beneath`,
+      `The exact ${product} from the reference image slowly rotates 25 degrees revealing its side profile, a soft directional light sweeps across its surface creating a subtle shimmer, camera holds a slow, steady push-in, shallow depth of field, premium commercial product reveal, no other objects enter frame`,
   },
   {
     id: 'action',
     label: 'In Use',
     buildPrompt: (product, desc, location) =>
-      `Product-in-use advertisement. The exact ${product} being elegantly used within this setting: ${location}. ${desc}. Aspirational energy, cinematic depth shift, commercial photography.`,
+      `Continuing the same story — the exact ${product} from the reference image is now being naturally picked up and used by a real person within the exact same setting established: ${location}. ${desc}. The product itself must remain visually identical to the reference (same shape, color, label) as it moves. Warm, aspirational lighting, cinematic depth, photorealistic 8K commercial photography.`,
     motion: (product) =>
-      `The ${product} in use, cinematic camera arc reveals product, dynamic depth of field shift, aspirational energy`,
+      `A person's hand naturally reaches into frame and picks up the exact ${product} from the reference image, then uses it in a realistic, natural motion appropriate to what this product actually is, camera holds a smooth cinematic arc following the action, shallow depth of field with soft background blur, warm aspirational lighting, the product's exact appearance never changes throughout`,
+  },
+  {
+    id: 'lifestyle',
+    label: 'Lifestyle',
+    buildPrompt: (product, desc, location) =>
+      `Lifestyle advertisement. The exact ${product} from the reference image — every detail unchanged — shown naturally within this setting: ${location}. ${desc}. Warm natural lighting, aspirational scene, photorealistic.`,
+    motion: (product) =>
+      `The exact ${product} from the reference image sits in this lifestyle scene, camera performs a slow parallax drift sideways then gently zooms out to reveal the surrounding context, warm bokeh in the background, natural ambient movement (light curtains, soft steam, or similar) appropriate to the setting, aspirational commercial cinematography`,
+  },
+  {
+    id: 'closeup',
+    label: 'Close-up',
+    buildPrompt: (product, desc, location) =>
+      `Macro product photo. The exact ${product} from the reference image — extreme close-up of finest details, unchanged shape and color, with a softly blurred background hinting at this setting: ${location}. ${desc}. Ultra-shallow depth of field, razor-sharp, luxury photography.`,
+    motion: (product) =>
+      `Ultra slow macro push-in on the exact ${product} from the reference image, its finest surface textures and details gradually come into sharp focus, a single soft light reflection glides across its surface, barely perceptible camera drift, luxury cinematic product macro`,
+  },
+  {
+    id: 'angle45',
+    label: '45 Angle',
+    buildPrompt: (product, desc, location) =>
+      `Commercial product photo. The exact ${product} from the reference image — unchanged in every detail — at a dynamic 45-degree angle, on a surface and backdrop consistent with this setting: ${location}. ${desc}. Dramatic side lighting, long elegant shadow, high-end photography.`,
+    motion: (product) =>
+      `Slow cinematic dolly move left to right around the exact ${product} from the reference image, a long dramatic shadow glides across the surface in sync with the camera, a focused spotlight follows the product, premium high-end advertisement cinematography`,
+  },
+  {
+    id: 'minimal',
+    label: 'Minimal',
+    buildPrompt: (product, desc) =>
+      `Minimalist ad. The exact ${product} from the reference image, unchanged in every detail, on white seamless background, soft shadow below. ${desc}. Clean Apple-style aesthetic, crisp modern photography.`,
+    motion: (product) =>
+      `The exact ${product} from the reference image gently levitates a few centimeters upward with a soft, weightless motion, then settles back down with a subtle bounce, a soft shadow pulses beneath in sync with the movement, clean minimal modern commercial motion`,
   },
 ];
 
-const SCRIPT_TEMPLATES = {
-  ar: (n, d, h) => `${h||`هل تعرف سر ${n}؟`}\n\n${d}\n\nصُنع بدقة. صُمم لك.\n\n${n} — لأنك تستحق الأفضل.`,
-  en: (n, d, h) => `${h||`What if one product could change everything?`}\n\nIntroducing ${n}.\n\n${d}\n\nCrafted with precision. Designed for you.\n\n${n} — Because you deserve the best.`,
-};
+// ── سكريبت الإعلان — بيتولّد بـ Groq بميزانية كلمات محسوبة على حسب مدة الفيديو
+// الفعلية، عشان الصوت ميعديش وقت الفيديو أبدًا. هووك قوي جدًا + أسلوب إقناعي حقيقي ──
+async function generateAdScript(productName, productDesc, customHook, videoDurationSec, lang) {
+  // ✅ هامش أمان حقيقي: الكلام الصوتي يستهدف ~70% من مدة الفيديو فقط (مثلاً 10-11
+  // ثانية لفيديو 15 ثانية)، عشان الانتقالات بين المشاهد بتاخد وقت من الفيديو الفعلي،
+  // ولو TTS اتكلم أبطأ من المتوقع لسه في أمان وميعديش مدة الفيديو أبدًا
+  const narrationTarget = Math.max(6, Math.round(videoDurationSec * 0.7));
+  const maxWords = Math.round(narrationTarget * (lang === 'ar' ? 2.0 : 2.3)); // معدل كلام متحفظ (TTS بيتكلم أبطأ من الكلام العادي)
+  const isAr = lang === 'ar';
+  const fallback = isAr
+    ? `${customHook || `هل جربت ${productName}؟`} ${productDesc}. ${productName} — جربه دلوقتي.`
+    : `${customHook || `Meet ${productName}.`} ${productDesc}. Get ${productName} today.`;
+
+  if (!GROQ_API_KEY) return { script: fallback, targetSeconds: narrationTarget };
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 200, temperature: 0.8,
+        messages: [
+          { role: 'system', content: `You are an elite direct-response ad copywriter. Write a voiceover script for a short video ad that:
+1. Opens with a VERY strong, scroll-stopping hook in the first sentence — create curiosity, desire, or urgency immediately (not a generic greeting).
+2. Builds genuine desire for the product using the description given — make the viewer WANT it, don't just list facts.
+3. Ends with a short, punchy call-to-action naturally mentioning the product name.
+4. STRICT HARD LIMIT: maximum ${maxWords} words total (this is critical — the audio must fit inside a ${narrationTarget}-second video, going over will break the video). Count your words before answering.
+5. Write in ${isAr ? 'Egyptian-friendly Modern Standard Arabic' : 'English'}, natural spoken tone, no stage directions, no emojis, no quotation marks.
+Output ONLY the script text, nothing else.` },
+          { role: 'user', content: `Product: "${productName}". Description: "${productDesc}".${customHook ? ` Preferred hook idea: "${customHook}".` : ''} Max ${maxWords} words.` },
+        ],
+      }),
+    });
+    if (!res.ok) return { script: fallback, targetSeconds: narrationTarget };
+    const data = await res.json();
+    let script = (data.choices?.[0]?.message?.content || '').trim().replace(/^["']|["']$/g, '');
+    // ✅ شبكة أمان إضافية: لو Groq تجاوز حد الكلمات رغم التعليمات، نقصه يدويًا
+    const words = script.split(/\s+/).filter(Boolean);
+    if (words.length > maxWords + 5) script = words.slice(0, maxWords).join(' ') + '.';
+    return { script: script || fallback, targetSeconds: narrationTarget };
+  } catch (e) {
+    console.warn('[AdsService] Script generation failed, using fallback:', e.message);
+    return { script: fallback, targetSeconds: narrationTarget };
+  }
+}
 
 async function downloadFile(url, destPath) {
   const res = await fetch(url);
@@ -199,7 +239,32 @@ const GEMINI_VOICE_MAP = {
   female_child:  'Autonoe',
 };
 
-async function generateAdsVoiceover(script, aiVoiceKey, language) {
+// ── ضمان صارم: الصوت المولّد أبدًا ميتجاوزش مدة الفيديو، مهما كان تقدير الكلمات غير دقيق ──
+// بيقيس المدة الحقيقية بـ ffprobe، ولو أطول من المسموح بيسرّعه بلطف (atempo) لحد ما يظبط،
+// ولو لسه أطول حتى بعد أقصى تسريع معقول، بيقصه كملاذ أخير كضمان نهائي
+async function enforceAudioDuration(audioPath, maxSeconds) {
+  try {
+    const { stdout } = await execFileAsync('ffprobe', ['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1', audioPath]);
+    const actual = parseFloat(stdout.trim());
+    if (!actual || actual <= maxSeconds + 0.3) return; // في الحدود المسموحة بالفعل
+    const speedNeeded = actual / maxSeconds;
+    const tempPath = audioPath + '.tmp.mp3';
+    if (speedNeeded <= 1.35) {
+      // تسريع لطيف (atempo لسه بيحافظ على طبيعية الصوت لحد 1.35x تقريبًا)
+      await execFileAsync('ffmpeg', ['-i', audioPath, '-filter:a', `atempo=${speedNeeded.toFixed(3)}`, '-y', tempPath]);
+      console.warn(`[AdsService] Voiceover was ${actual.toFixed(1)}s (max ${maxSeconds}s) — sped up ${speedNeeded.toFixed(2)}x`);
+    } else {
+      // أطول بكتير من المتوقع — التسريع هيبقى غير طبيعي، فبنقص الصوت للحد المسموح كضمان أخير
+      await execFileAsync('ffmpeg', ['-i', audioPath, '-t', String(maxSeconds), '-y', tempPath]);
+      console.warn(`[AdsService] Voiceover was ${actual.toFixed(1)}s (max ${maxSeconds}s) — too long to speed up naturally, trimmed instead`);
+    }
+    fs.renameSync(tempPath, audioPath);
+  } catch (e) {
+    console.warn('[AdsService] Audio duration enforcement failed (non-fatal):', e.message);
+  }
+}
+
+async function generateAdsVoiceover(script, aiVoiceKey, language, targetSeconds = null) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const voice = GEMINI_VOICE_MAP[aiVoiceKey] || (String(aiVoiceKey||'').startsWith('female') ? 'Sulafat' : 'Charon');
   const langCode = language?.startsWith('ar') ? 'ar-EG' : 'en-US';
@@ -224,9 +289,48 @@ async function generateAdsVoiceover(script, aiVoiceKey, language) {
   }
   if (!audioUrl) throw new Error('GeminiTTS returned no audio URL');
 
+  const rawFname = `ads_voice_raw_${Date.now()}.mp3`;
+  const rawPath = join(process.cwd(), 'outputs', rawFname);
+  await downloadFile(audioUrl, rawPath);
+
   const fname = `ads_voice_${Date.now()}.mp3`;
   const fpath = join(process.cwd(), 'outputs', fname);
-  await downloadFile(audioUrl, fpath);
+
+  // ✅ FIX: التعليق الصوتي كان بيطلع أطول من الفيديو (23 ثانية على فيديو 15 ثانية).
+  // نقيس المدة الحقيقية، ولو أطول من المسموح بيتم تسريعه بلطف (atempo)، ولو لسه
+  // أطول حتى بعد أقصى تسريع معقول، بنقصه — عشان الصوت أبدًا ميعديش وقت الفيديو
+  if (targetSeconds) {
+    let actualDur = null;
+    try {
+      const { stdout } = await execFileAsync('ffprobe', ['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1', rawPath]);
+      actualDur = parseFloat(stdout.trim());
+    } catch (e) { console.warn('[AdsService] ffprobe failed on voiceover, skipping duration check:', e.message); }
+
+    if (actualDur && actualDur > targetSeconds + 0.5) {
+      const speedNeeded = Math.min(actualDur / targetSeconds, 1.3); // أقصى تسريع 1.3x عشان الصوت يفضل طبيعي
+      console.warn(`[AdsService] Voiceover ${actualDur.toFixed(1)}s > target ${targetSeconds}s — speeding up ${speedNeeded.toFixed(2)}x`);
+      try {
+        await execFileAsync('ffmpeg', ['-i', rawPath, '-filter:a', `atempo=${speedNeeded.toFixed(3)}`, '-y', fpath]);
+        // لو لسه أطول من المسموح حتى بعد التسريع (كلام كتير جدًا)، نقصه كملاذ أخير
+        const { stdout: d2 } = await execFileAsync('ffprobe', ['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1', fpath]);
+        const newDur = parseFloat(d2.trim());
+        if (newDur > targetSeconds + 0.8) {
+          const trimmed = fpath + '.trim.mp3';
+          await execFileAsync('ffmpeg', ['-i', fpath, '-t', String(targetSeconds), '-af', 'afade=t=out:st=' + Math.max(0, targetSeconds-0.4) + ':d=0.4', '-y', trimmed]);
+          fs.renameSync(trimmed, fpath);
+        }
+      } catch (e) {
+        console.warn('[AdsService] atempo speed-up failed, using raw audio as-is:', e.message);
+        fs.copyFileSync(rawPath, fpath);
+      }
+      try { fs.unlinkSync(rawPath); } catch {}
+    } else {
+      fs.renameSync(rawPath, fpath);
+    }
+  } else {
+    fs.renameSync(rawPath, fpath);
+  }
+
   console.log(`[AdsService] Gemini TTS voice generated (${voice}, ${langCode}) → ${fname}`);
   return fpath;
 }
@@ -368,7 +472,10 @@ async function animateWithSeedance1ProFast(imageUrl, motionPrompt, ratio) {
 }
 
 // ── Step 3: FFmpeg compose ────────────────────────────────────────────────────
-async function composeAdVideo({ animatedScenes, productName, showTitle, audioPath, ratio, outputDir, jobId }) {
+// ✅ تغييرات: (1) اتشال عنوان اسم المنتج في أول الفيديو خالص، (2) انتقالات حقيقية
+// (crossfade) بين المشاهد بدل القطع الجاف، (3) كابشن اختياري، (4) لينك المنتج
+// كأنيميشن أنيق في آخر الفيديو لو العميل حدده.
+async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, jobId, captions, scriptText, productLink }) {
   const [W, H] = ratio === '9:16' ? [1080, 1920] : [1920, 1080];
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 
@@ -386,34 +493,43 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
   const hasMusic = !!musicFile;
   console.log(`[AdsService] Audio layers → voice: ${hasVoice} | music: ${hasMusic ? musicFile : 'none found'}`);
 
-  let fontFile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
-  if (/[\u0600-\u06FF]/.test(productName)) {
-    for (const f of ['/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf']) {
-      if (fs.existsSync(f)) { fontFile = f; break; }
-    }
-  }
+  // ── كل كليب بيتقص لمدة ثابتة 5 ثواني بالظبط قبل أي حاجة، عشان توقيت الـ xfade يبقى دقيق ──
+  const CLIP_DUR = 5.0;
+  const XFADE_DUR = 0.5; // مدة الانتقال بين كل مشهد ومشهد
+  const totalDur = numClips > 1 ? (numClips * CLIP_DUR - (numClips - 1) * XFADE_DUR) : CLIP_DUR;
 
-  const totalDur = numClips * 5.5;
   const inputArgs = clipPaths.flatMap(p => ['-i', p]);
   let voiceInputIdx = -1, musicInputIdx = -1;
   if (hasVoice) { voiceInputIdx = inputArgs.length / 2; inputArgs.push('-i', audioPath); }
   if (hasMusic) { musicInputIdx = inputArgs.length / 2; inputArgs.push('-stream_loop', '-1', '-i', musicFile); }
 
   const fp = [];
-  // ── فيديو: قص وضبط كل مشهد ثم دمجهم ──
+  // ── فيديو: قص كل مشهد لمدة ثابتة، ثم دمجهم بانتقال crossfade حقيقي بينهم ──
   for (let i = 0; i < numClips; i++) {
-    fp.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24[sv${i}]`);
+    fp.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24,trim=0:${CLIP_DUR},setpts=PTS-STARTPTS[sv${i}]`);
   }
-  fp.push(`${clipPaths.map((_,i)=>`[sv${i}]`).join('')}concat=n=${numClips}:v=1:a=0[vconcat]`);
+  let vLabel;
+  if (numClips === 1) {
+    fp.push(`[sv0]null[vjoined]`);
+    vLabel = 'vjoined';
+  } else {
+    let prevLabel = 'sv0', cumulativeDur = CLIP_DUR;
+    for (let i = 1; i < numClips; i++) {
+      const offset = cumulativeDur - XFADE_DUR;
+      const outLabel = `vx${i}`;
+      fp.push(`[${prevLabel}][sv${i}]xfade=transition=fade:duration=${XFADE_DUR}:offset=${offset.toFixed(2)}[${outLabel}]`);
+      cumulativeDur = cumulativeDur + CLIP_DUR - XFADE_DUR;
+      prevLabel = outLabel;
+    }
+    vLabel = prevLabel;
+  }
 
   // ── صوت: نجمع المؤثرات الصوتية الأصلية من كل مشهد — بس لو مفيش تعليق صوتي ──
-  // (لو فيه voice over، الكليبات جايه من seedance-1.5-pro-fast وممكن تيجي من غير صوت أصلاً،
-  // وعلى العموم الصوت النهائي المطلوب في الحالة دي = التعليق + الموسيقى بس، فبنعمل mute للكليبات)
   const audioLayers = [];
   const audioFilters = [];
   if (!hasVoice) {
     for (let i = 0; i < numClips; i++) {
-      fp.push(`[${i}:a]atrim=0:5.5,asetpts=PTS-STARTPTS[sa${i}]`);
+      fp.push(`[${i}:a]atrim=0:${CLIP_DUR},asetpts=PTS-STARTPTS[sa${i}]`);
     }
     fp.push(`${clipPaths.map((_,i)=>`[sa${i}]`).join('')}concat=n=${numClips}:v=0:a=1[asfx]`);
     audioLayers.push('[asfx]');
@@ -429,25 +545,57 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
   fp.push(...audioFilters);
   fp.push(`${audioLayers.join('')}amix=inputs=${audioLayers.length}:duration=first:dropout_transition=2[amixed]`);
 
-  if (showTitle && productName.trim()) {
-    const safe = productName.trim()
-      .replace(/\\/g,'\\\\').replace(/'/g,'\u2019')
-      .replace(/:/g,'\\:').replace(/\[/g,'\\[').replace(/\]/g,'\\]');
-    const fs2 = ratio==='9:16'?72:60;
-    const bH = ratio==='9:16'?240:200;
-    const bY = Math.floor((H-bH)/2);
-    fp.push(
-      `[vconcat]drawbox=x=0:y=${bY}:w=${W}:h=${bH}:color=black@0.55:t=fill:enable='between(t,0,3.5)',`+
-      `drawbox=x=0:y=${bY}:w=${W}:h=3:color=white@0.6:t=fill:enable='between(t,0,3.5)',`+
-      `drawbox=x=0:y=${bY+bH-3}:w=${W}:h=3:color=white@0.6:t=fill:enable='between(t,0,3.5)',`+
-      `drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=black@0.5:fontsize=${fs2}:x=(w-text_w)/2+3:y=(h-text_h)/2+3:enable='between(t,0,3.5)',`+
-      `drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=white:fontsize=${fs2}:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,0,3.5)'[vtitled]`
-    );
-  } else {
-    fp.push(`[vconcat]null[vtitled]`);
+  let fontFile = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+  const hasArabicText = /[\u0600-\u06FF]/.test((scriptText || '') + (productLink || ''));
+  if (hasArabicText) {
+    for (const f of ['/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf']) {
+      if (fs.existsSync(f)) { fontFile = f; break; }
+    }
   }
 
-  fp.push(`[vtitled]fade=t=in:st=0:d=0.6,fade=t=out:st=${(totalDur-1.2).toFixed(1)}:d=1.0[vfinal]`);
+  let vCurrent = vLabel;
+
+  // ── كابشن اختياري — بيتقسم على عدد المشاهد ويظهر كل جزء في توقيت مشهده ──
+  if (captions && scriptText?.trim()) {
+    const sentences = scriptText.trim().split(/(?<=[.!?؟])\s+/).filter(Boolean);
+    const chunks = [];
+    const perChunk = Math.max(1, Math.ceil(sentences.length / numClips));
+    for (let i = 0; i < sentences.length; i += perChunk) chunks.push(sentences.slice(i, i + perChunk).join(' '));
+    while (chunks.length < numClips) chunks.push('');
+    const capFs = ratio === '9:16' ? 40 : 34;
+    const capY = ratio === '9:16' ? H - 260 : H - 140;
+    let cumulativeDur = CLIP_DUR;
+    const capFilters = [];
+    for (let i = 0; i < Math.min(chunks.length, numClips); i++) {
+      const t0 = i === 0 ? 0 : cumulativeDur - XFADE_DUR;
+      const t1 = i === 0 ? CLIP_DUR : cumulativeDur - XFADE_DUR + CLIP_DUR;
+      if (i > 0) cumulativeDur = cumulativeDur + CLIP_DUR - XFADE_DUR;
+      const safe = chunks[i].replace(/\\/g,'\\\\').replace(/'/g,'\u2019').replace(/:/g,'\\:').replace(/\[/g,'\\[').replace(/\]/g,'\\]');
+      if (!safe) continue;
+      capFilters.push(`drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=black@0.6:fontsize=${capFs}:x=(w-text_w)/2+2:y=${capY}+2:box=1:boxcolor=black@0.35:boxborderw=14:enable='between(t,${t0.toFixed(2)},${t1.toFixed(2)})',`+
+        `drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=white:fontsize=${capFs}:x=(w-text_w)/2:y=${capY}:enable='between(t,${t0.toFixed(2)},${t1.toFixed(2)})'`);
+    }
+    if (capFilters.length) {
+      fp.push(`[${vCurrent}]${capFilters.join(',')}[vcaptioned]`);
+      vCurrent = 'vcaptioned';
+    }
+  }
+
+  // ── لينك المنتج — بانر أنيق يظهر بأنيميشن fade في آخر 3 ثواني من الفيديو ──
+  if (productLink?.trim()) {
+    const safeLink = productLink.trim().replace(/\\/g,'\\\\').replace(/'/g,'\u2019').replace(/:/g,'\\:').replace(/\[/g,'\\[').replace(/\]/g,'\\]');
+    const linkStart = Math.max(0, totalDur - 3);
+    const bH = ratio==='9:16'?110:90;
+    const bY = H - bH - (ratio==='9:16'?60:30);
+    const fs2 = ratio==='9:16'?38:32;
+    fp.push(
+      `[${vCurrent}]drawbox=x=0:y=${bY}:w=${W}:h=${bH}:color=black@0.6:t=fill:enable='between(t,${linkStart.toFixed(2)},${totalDur.toFixed(2)})',`+
+      `drawtext=fontfile=${fontFile}:text='🔗 ${safeLink}':fontcolor=white:fontsize=${fs2}:x=(w-text_w)/2:y=${bY+bH/2}-text_h/2:alpha='if(lt(t,${linkStart.toFixed(2)}),0,if(lt(t,${(linkStart+0.4).toFixed(2)}),(t-${linkStart.toFixed(2)})/0.4,1))':enable='between(t,${linkStart.toFixed(2)},${totalDur.toFixed(2)})'[vlinked]`
+    );
+    vCurrent = 'vlinked';
+  }
+
+  fp.push(`[${vCurrent}]fade=t=in:st=0:d=0.5,fade=t=out:st=${Math.max(0,totalDur-0.8).toFixed(1)}:d=0.8[vfinal]`);
 
   const outputPath = join(outputDir, `ad_${jobId}.mp4`);
   const args = [...inputArgs, '-filter_complex', fp.join(';'), '-map', '[vfinal]', '-map', '[amixed]', '-c:a', 'aac', '-b:a', '128k', '-shortest'];
@@ -467,7 +615,8 @@ async function composeAdVideo({ animatedScenes, productName, showTitle, audioPat
 export async function renderAdVideo({
   productImageBase64, productName, productDesc,
   audioMode, uploadedAudioPath, aiVoiceKey,
-  ratio, language, sceneCount, customHook, showTitle,
+  ratio, language, sceneCount, customHook,
+  captions, productLink,
   outputDir, jobId, onProgress,
 }) {
   const progress = (step, msg) => { console.log(`[AdsService][${jobId}] ${step}: ${msg}`); onProgress?.({ step, msg }); };
@@ -519,12 +668,19 @@ export async function renderAdVideo({
 
   // ── 2. Audio ──────────────────────────────────────────────────────────────
   let audioPath = null;
+  let adScriptText = ''; // ✅ محتاجينه بره الـ if عشان نستخدمه في الكابشن لو العميل طلبها
+  const videoDurationSec = count * 5;
   if (audioMode === 'ai_voice') {
-    progress('voice', 'Generating AI voiceover (Gemini 3.1 Flash TTS)...');
+    progress('voice', 'Writing ad script (Groq)...');
     try {
       const lang = language?.startsWith('ar') ? 'ar' : 'en';
-      const script = SCRIPT_TEMPLATES[lang](productName, productDesc.trim(), customHook||'');
-      audioPath = await withRetry429(() => generateAdsVoiceover(script, aiVoiceKey||'male_arabic', language||'ar'));
+      const { script, targetSeconds } = await generateAdScript(productName, productDesc.trim(), customHook||'', videoDurationSec, lang);
+      console.log(`[AdsService] Ad script (target ${targetSeconds}s): ${script}`);
+      adScriptText = script;
+      progress('voice', 'Generating AI voiceover (Gemini 3.1 Flash TTS)...');
+      audioPath = await withRetry429(() => generateAdsVoiceover(script, aiVoiceKey||'male_arabic', language||'ar', targetSeconds));
+      // ✅ ضمان صارم: الصوت أبدًا مش هيتجاوز مدة الفيديو الفعلية (بهامش أمان ثانية واحدة)
+      await enforceAudioDuration(audioPath, Math.max(5, videoDurationSec - 1));
     } catch (err) { console.warn('[AdsService] Voiceover failed:', err.message); }
   } else if (audioMode === 'upload' && uploadedAudioPath) {
     audioPath = uploadedAudioPath;
@@ -560,8 +716,8 @@ export async function renderAdVideo({
   // ── 4. FFmpeg ─────────────────────────────────────────────────────────────
   progress('compose', `Composing ${animatedScenes.length} clips...`);
   const outputPath = await composeAdVideo({
-    animatedScenes, productName, showTitle: showTitle !== false,
-    audioPath, ratio, outputDir, jobId,
+    animatedScenes, audioPath, ratio, outputDir, jobId,
+    captions: !!captions, scriptText: adScriptText, productLink,
   });
 
   progress('done', 'Ad video ready!');
