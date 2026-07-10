@@ -217,15 +217,32 @@ function IntlPaymentModal({ pkg, onClose, onSuccess }) {
 }
 
 // ─── شاشة نجاح إرسال الطلب (مصري) ───────────────────────────────────────────
-function EgPendingScreen({ onNavigate, onSkip }) {
+function EgPendingScreen({ onNavigate, onSkip, info }) {
   return (
-    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, #1a0f3d 0%, #0a0a0f 50%, #000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
-      <div style={{ maxWidth: 480, width: '100%', textAlign: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(124,106,247,0.2)', borderRadius: 24, padding: '48px 36px' }}>
-        <div style={{ fontSize: 72, marginBottom: 20 }}>⏳</div>
-        <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 12, lineHeight: 1.5 }}>سيقوم فريق Erivion بمراجعة طلب الاشتراك خلال 24 ساعة</h2>
-        <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 28 }}>شكرًا لانتظاركم 🙏</p>
-        <button onClick={onSkip} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: 'rgba(124,106,247,0.15)', color: '#a99bff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>الرجوع للموقع</button>
-        <button onClick={() => onNavigate && onNavigate('support')} style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#9ca3af', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Contact Support</button>
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, #1a0f3d 0%, #0a0a0f 55%, #000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
+      <style>{`
+        @keyframes pendingFadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes pendingPulseRing { 0%{transform:scale(0.9);opacity:0.7} 70%{transform:scale(1.5);opacity:0} 100%{opacity:0} }
+        @keyframes pendingSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+      `}</style>
+      <div style={{ maxWidth: 480, width: '100%', textAlign: 'center', background: 'linear-gradient(180deg, rgba(124,106,247,0.08), rgba(255,255,255,0.02))', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 28, padding: '52px 36px', animation: 'pendingFadeUp 0.5s cubic-bezier(0.16,1,0.3,1) both', boxShadow: '0 24px 80px rgba(124,106,247,0.15)' }}>
+        <div style={{ position: 'relative', width: 96, height: 96, margin: '0 auto 28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(124,106,247,0.4)', animation: 'pendingPulseRing 2s ease-out infinite' }} />
+          <div style={{ position: 'absolute', inset: 10, borderRadius: '50%', border: '2px dashed rgba(124,106,247,0.5)', animation: 'pendingSpin 8s linear infinite' }} />
+          <div style={{ fontSize: 40 }}>⏳</div>
+        </div>
+        <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 10, lineHeight: 1.5 }}>سيقوم فريق Erivion بمراجعة طلب الاشتراك خلال 24 ساعة</h2>
+        <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: info ? 20 : 32 }}>شكرًا لانتظاركم 🙏</p>
+
+        {info && (
+          <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '14px 18px', marginBottom: 28, textAlign: 'right' }}>
+            {info.plan && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}><span style={{ color: '#6b7280' }}>الطلب</span><span style={{ color: '#a99bff', fontWeight: 700 }}>{info.plan.startsWith('credits') ? 'شحن كريديت' : info.plan}</span></div>}
+            {info.amount && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span style={{ color: '#6b7280' }}>المبلغ</span><span style={{ color: '#fff', fontWeight: 700 }}>{Number(info.amount).toLocaleString()} جنيه</span></div>}
+          </div>
+        )}
+
+        <button onClick={onSkip} style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12, boxShadow: '0 6px 24px rgba(124,106,247,0.35)' }}>الرجوع للموقع</button>
+        <button onClick={() => onNavigate && onNavigate('support')} style={{ width: '100%', padding: '12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#9ca3af', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Contact Support</button>
       </div>
     </div>
   );
@@ -241,6 +258,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
   const [studioSliderCredits, setStudioSliderCredits] = useState(3000);
   const [showMore, setShowMore] = useState(false);
   const [balance, setBalance] = useState(null);
+  const [pendingInfo, setPendingInfo] = useState(null);
 
   useEffect(() => {
     setTimeout(() => setVisible(true), 50);
@@ -248,11 +266,16 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
     if (savedRegion) setRegion(savedRegion);
     fetch('/api/auth/credits/balance', { headers: authHeaders() })
       .then(r => r.json()).then(d => setBalance(d.balance ?? null)).catch(() => {});
+    // ✅ لو عنده طلب شحن لسه pending، نوريه شاشة "قيد المراجعة" فورًا حتى لو خرج ودخل تاني
+    fetch('/api/auth/payment/status', { headers: authHeaders() })
+      .then(r => r.json()).then(d => {
+        if (d?.request?.status === 'pending') { setPendingInfo(d.request); setEgPending(true); }
+      }).catch(() => {});
   }, []);
 
   const amountEgp = Math.round(sliderCredits * EGP_PER_CREDIT);
 
-  if (egPending) return <EgPendingScreen onNavigate={onNavigate} onSkip={() => { if (onSkip) onSkip(); }} />;
+  if (egPending) return <EgPendingScreen onNavigate={onNavigate} onSkip={() => { if (onSkip) onSkip(); }} info={pendingInfo} />;
 
   // ── شاشة اختيار المنطقة ──
   if (!region) {

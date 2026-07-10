@@ -587,7 +587,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
           <div style={{ textAlign: 'center', marginBottom: 32 }}>
             <div style={{ marginBottom: 18 }}>
-              <span style={{ fontSize: 34, fontWeight: 900, letterSpacing: '0.02em', fontFamily: "'Georgia', 'Times New Roman', serif", background: 'linear-gradient(135deg,#c4b5fd,#7c6af7 50%,#6d28d9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', filter: 'drop-shadow(0 4px 16px rgba(124,106,247,0.45))' }}>Erivion</span>
+              <span style={{ fontSize: 36, fontWeight: 900, letterSpacing: '0.03em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 0 28px rgba(255,255,255,0.6), 0 0 8px rgba(196,181,253,0.65), 0 4px 20px rgba(124,106,247,0.35)' }}>Erivion</span>
             </div>
             <h1 style={{ fontSize: 30, fontWeight: 800, color: '#fff', margin: '0 0 10px', direction: isArabic(t.heroTitle) ? 'rtl' : 'ltr' }}>{t.heroTitle}</h1>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0, maxWidth: 460, marginInline: 'auto', lineHeight: 1.7, direction: isArabic(t.heroSub) ? 'rtl' : 'ltr' }}>{t.heroSub}</p>

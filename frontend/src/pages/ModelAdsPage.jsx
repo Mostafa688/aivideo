@@ -87,6 +87,12 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
   const [sceneCount, setSceneCount] = useState(5);
   const [customHook, setCustomHook] = useState('');
   const [showTitle, setShowTitle] = useState(true);
+  const [adsCosts, setAdsCosts] = useState({ costs_no_voice: {}, costs_voice: {} });
+
+  useEffect(() => {
+    fetch('/api/ads/credits', { headers: { Authorization: 'Bearer ' + localStorage.getItem('token') } })
+      .then(r => r.json()).then(d => setAdsCosts({ costs_no_voice: d.costs_no_voice || {}, costs_voice: d.costs_voice || {} })).catch(() => {});
+  }, []);
 
   // Job state
   const [jobId, setJobId] = useState(null);
@@ -188,7 +194,15 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
         body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to start job');
+      if (!res.ok) {
+        if (data.error === 'quota_exceeded') {
+          throw new Error(isAr ? `🪙 محتاج ${data.cost} كريدت ومعاك ${data.remaining} بس. اشحن رصيدك من صفحة الأسعار.` : `🪙 This video needs ${data.cost} credits, you have ${data.remaining}. Top up from Pricing.`);
+        }
+        if (data.error === 'no_access' || data.error === 'under_maintenance') {
+          throw new Error(data.message || (isAr ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video'));
+        }
+        throw new Error(data.error || 'Failed to start job');
+      }
       setJobId(data.jobId);
     } catch (err) {
       setError(err.message);
@@ -449,10 +463,14 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
             {/* ── Cost info ─────────────────────────────────────────────── */}
             <div style={{ padding: '12px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', fontFamily: "'DM Sans', sans-serif" }}>
-                {isAr ? `💳 رصيدك: ${credits} كريدت` : `💳 Credits: ${credits}`}
+                {isAr ? `💳 رصيدك: ${(credits?.credits_balance ?? credits ?? 0).toLocaleString()} كريدت` : `💳 Credits: ${(credits?.credits_balance ?? credits ?? 0).toLocaleString()}`}
               </span>
               <span style={{ fontSize: 13, fontWeight: 700, color: ACCENT, fontFamily: "'DM Sans', sans-serif" }}>
-                {isAr ? 'تكلفة: 10 كريدت' : 'Cost: 10 Credits'}
+                {(() => {
+                  const table = audioMode === 'none' ? adsCosts.costs_no_voice : adsCosts.costs_voice;
+                  const cost = table?.[sceneCount] ?? '—';
+                  return isAr ? `تكلفة: ${cost} كريدت` : `Cost: ${cost} Credits`;
+                })()}
               </span>
             </div>
 
