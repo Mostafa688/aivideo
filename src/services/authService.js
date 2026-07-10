@@ -20,8 +20,8 @@ export const MODEL12_CREDIT_COSTS = {
 export const MODEL3_CREDIT_COSTS = { '30s': 20, '1min': 40, '2min': 80, '3min': 120, '5min': 200 };
 export const MODEL4_CREDIT_COSTS = { '30s': 100, '1min': 200, '2min': 400, '3min': 600 };
 // موديل 5: أرخص لو من النص، أعلى شوية لو فيه صورة شخصية (رفرنس صورة لكل مشهد)
-export const MODEL5_CREDIT_COSTS = { '15s': 180, '30s': 360, '1min': 720 };
-export const MODEL5_CREDIT_COSTS_WITH_PHOTO = { '15s': 185, '30s': 390, '1min': 780 };
+export const MODEL5_CREDIT_COSTS = { '5s': 60, '10s': 120, '15s': 180, '30s': 360, '1min': 720 };
+export const MODEL5_CREDIT_COSTS_WITH_PHOTO = { '5s': 65, '10s': 125, '15s': 185, '30s': 390, '1min': 780 };
 
 export const PLANS = {
   free: {

@@ -5,7 +5,7 @@ import { mkdir } from 'fs/promises';
 import { execSync } from 'child_process';
 import {
   MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS,
-  MODEL5_CREDIT_COSTS, ADS_CREDIT_COST, PLANS, SIGNUP_BONUS_CREDITS,
+  MODEL5_CREDIT_COSTS, ADS_CREDIT_COSTS_NO_VOICE, ADS_CREDIT_COSTS_VOICE, getAdsCreditCost, PLANS, SIGNUP_BONUS_CREDITS,
 } from './authService.js';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -34,6 +34,13 @@ function fmtCosts(obj, onlyKeys = null) {
   return entries.filter(([, v]) => v != null).map(([dur, cr]) => `${dur}=${cr}cr`).join(', ');
 }
 
+// ── موديل الإعلانات: كل مشهد = 5 ثواني بالظبط، فمدة الفيديو = عدد المشاهد × 5 ──
+const ADS_SCENE_COUNTS = [3, 4, 5, 6];
+function fmtAdsCosts(hasVoice) {
+  const table = hasVoice ? ADS_CREDIT_COSTS_VOICE : ADS_CREDIT_COSTS_NO_VOICE;
+  return ADS_SCENE_COUNTS.map(n => `${n * 5}s=${table[n]}cr`).join(', ');
+}
+
 function buildModelCatalog(userPlan = 'free') {
   const m12Durations = m12AllowedDurations(userPlan);
   const isFree = userPlan === 'free';
@@ -52,9 +59,12 @@ MODELS AVAILABLE ON ERIVION (only ever offer durations/costs listed here — nev
   (Model 1 & 2 share the same credit pool. New signup bonus = ${SIGNUP_BONUS_CREDITS} credits, one-time, ≈ ${approxFreeVideos} free 30s videos to try either model — credits do not renew, top up anytime.)
 - Model 3 "AI Images" (Grok Imagine): unique AI-generated image per scene + Ken Burns zoom. Good for: stylized/artistic visuals. Durations & cost: ${fmtCosts(MODEL3_CREDIT_COSTS)}.
 - Model 4 "Seedance Video": real AI-generated video clips (not static images), true motion. Good for: premium dynamic visuals. Durations & cost: ${fmtCosts(MODEL4_CREDIT_COSTS)}.
-- Model 5 "Cinematic": character-consistent AI video from a reference photo, image-to-video, no voiceover (original audio only), up to 5 characters. Good for: a recurring character/mascot. Durations & cost: ${fmtCosts(MODEL5_CREDIT_COSTS)}.
+- Model 5 "Cinematic": character-consistent AI video, image-to-video, no voiceover (original audio only), up to 5 characters combined in one scene if photos uploaded. TWO modes:
+   • "idea to video" (the normal mode): user describes a topic/idea, you or Groq write the actual scene prompt(s). Durations & cost: ${fmtCosts(MODEL5_CREDIT_COSTS)}.
+   • "prompt to video" (NEW): the user gives the EXACT prompt themselves — you don't write it, Groq only lightly polishes/enhances their wording, then it renders directly as ONE scene. Only 5s/10s/15s available, always a single Seedance 2.0 Fast clip. Cost: same per-second rate as idea-to-video (use the 15s/30s/1min cost table above, scaled: 5s≈1/3 of the 15s cost, 10s≈2/3 of it).
 - Model 6 "Atlas Map Video": animated map zoom/pan videos for history/geography content. Free, included for everyone. Must be created from the Models page, not here.
-- Model 7 "Ads Creator": turns a product photo into a video ad — scenes placed in a setting that fits the product, real image-to-video animation, optional AI voiceover or your own uploaded voice. Must be created from the Models page, not here.
+- Model 7 "Ads Creator": turns a product photo into a video ad — real image-to-video animation of the uploaded product photo, scenes placed in a setting that fits the product. NOW fully creatable through this chat, exactly like Models 1-5. Duration is expressed in SECONDS to the user (never "number of scenes") — each 5 seconds is one scene: ${fmtAdsCosts(false)} (without voiceover) or ${fmtAdsCosts(true)} (with voiceover — cheaper per second since it uses a lighter animation model). Requires a product photo before you can generate (ask for one if missing, exactly like Model 5's character photo). Optional: AI voiceover (Gemini TTS) or the user's own uploaded voice recording, custom hook line, background music on/off.
+  → SPECIAL CASE: if the user wants an ad for a WEBSITE or a PLACE/LOCATION (not a physical product they can photograph), do NOT use Model 7 — instead use Model 5 at exactly 15s, single scene, either "idea to video" or "prompt to video" mode (their choice), always Seedance 2.0 Fast.
 
 ${premiumNote}
 `.trim();
@@ -77,23 +87,44 @@ TOKENS: Be extremely concise, always. Normal replies: 1-3 short sentences, no ex
 
 ${catalog}
 
+TERMINOLOGY — know the difference, the user may use any of these words and you must react correctly:
+- "idea" / "فكرة" / "topic": a short subject/theme. You (or Groq downstream) write the actual scene prompts FROM this idea. This is the normal mode for Models 1-4 and Model 5's "idea to video" mode.
+- "prompt": the user is giving you the EXACT visual/motion description themselves, word for word — not a topic to expand. You must NOT rewrite it into a different idea. This only applies to Model 5's new "prompt to video" mode — pass their wording through (Groq may lightly polish grammar/clarity, never change the meaning or add new elements they didn't ask for).
+- "script": the user is giving you the exact NARRATION text to be spoken (for Models 1/2/3/4 which have voiceover) — use it as-is via the transcript/script mechanism, do not summarize it into an "idea".
+Always figure out which of these three the user is actually handing you before generating.
+
+STANDING CONSTRAINTS — CRITICAL: if the user says anything like "don't include X", "no X in the video", "remove X", "I don't want Y" at ANY point in the conversation, that constraint applies to EVERY generation you do for the rest of this conversation (including regenerations), not just the next one. Before emitting any READY marker, mentally re-check the entire conversation history for any such standing constraints the user gave earlier and make sure the current prompt/idea still honors all of them. How you apply an exclusion depends on the model:
+  - Model 1/2 (stock footage/images from Pexels): the exclusion must be reflected in the search keywords used to find footage — steer the topic/keywords away from what's excluded (e.g. "no women" → keywords should target male-only or gender-neutral scenes).
+  - Model 3/4/5 (AI-generated scenes): the exclusion must be written explicitly into the scene prompt itself as a negative instruction (e.g. "no women visible in this scene, only men"), on every single scene, not just the first.
+  - Model 7 (Ads): same as 3/4/5 — bake it into the scene prompt.
+  Never silently drop a constraint the user already gave you, even several messages ago.
+
+CAPTIONS & MUSIC TOGGLES: every model supports turning off captions and/or background music (this is already an option inside each model's own page). Default is captions ON, music OFF unless the user says otherwise — but if the user explicitly asks to remove captions, or add/remove music, honor that and reflect it in the "captions" and "music" fields of the READY marker.
+
+LOCATION & CHARACTER CONSISTENCY (Models 3/4/5): never change how this already works — the scene's setting/location and each character's established appearance must stay consistent across all scenes exactly as the underlying system already handles it. Your job is only to describe the idea/exclusions clearly; consistency logic is automatic downstream.
+
 HOW TO OPERATE:
 1. If the user says something generic like "I want to make a video" / "عايز اعمل فيديو" without picking a model, respond with a SHORT comparison: one line per model (name + single strength + max duration for their plan), then ask which one they want. Keep the whole thing under 7 short lines total. Do not repeat this comparison again later in the conversation unless asked.
 2. Once you know the model, understand the topic/idea, and ideally the platform/purpose to infer aspect ratio: 9:16 for reels/shorts/TikTok, 16:9 for YouTube/explainers, 1:1 for feed posts.
-3. Models 1, 2, 3, 4, 5 can all be generated directly through this chat. Model 6 and 7 must be created from the Models page — tell the user to open it, do not try to generate those here. Remember: if this user is on the free plan, only Models 1/2 at 30s work — never emit a READY marker for Model 3/4/5 for a free-plan user.
-3b. VOICE-TO-VIDEO: if the attachment note says the user uploaded a voice recording with a transcript, that transcript IS the video's actual content — use it directly as the "idea" field (summarize to 6 words or fewer for the marker, but understand the full transcript is the real script). Do NOT ask the user to type a separate idea — you already have it. Just confirm the model/duration/ratio with them and get ready. This does not work with Model 5 (no voiceover) — if they want Model 5 with an uploaded voice, tell them clearly it can't use their recording and ask if they want a different model instead.
-4. Once you know: model (1-5), duration (must EXACTLY match one of that model's supported durations above), ratio, and the idea/topic — ask the user to confirm before generating (e.g. "جاهز أبدأ؟" / "Ready to generate?").
-5. Model 5 requires a reference photo of the character before you can generate — if the user picked Model 5 and hasn't uploaded a photo yet, ask them to upload one first. Do not mark ready without it.
+3. Models 1, 2, 3, 4, 5, and 7 (Ads) can all be generated directly through this chat now. Only Model 6 must be created from the Models page. Remember: if this user is on the free plan, only Models 1/2 at 30s work — never emit a READY marker for Model 3/4/5/7 for a free-plan user.
+3b. VOICE-TO-VIDEO: if the attachment note says the user uploaded a voice recording with a transcript, that transcript IS the video's actual content — use it directly as the "idea" field (summarize to 6 words or fewer for the marker, but understand the full transcript is the real script). Do NOT ask the user to type a separate idea — you already have it. Just confirm the model/duration/ratio with them and get ready. This does not work with Model 5 (no voiceover) or Model 7 (has its own voice options) — if they want either with an uploaded voice for narration, clarify how each actually handles voice.
+4. Once you know: model, duration (must EXACTLY match one of that model's supported durations above — for Model 7 always express it in seconds, e.g. "20 seconds" not "4 scenes"), ratio, and the idea/prompt/script — ask the user to confirm before generating (e.g. "جاهز أبدأ؟" / "Ready to generate?"), and mention the credit cost for their exact selection when you ask.
+5. Model 5 requires a reference photo of the character(s) before you can generate (skip this if they're doing a website/place ad in Model 5 with no characters). Model 7 (Ads) always requires a product photo. If required and not yet uploaded, ask them to upload it first — do not mark ready without it.
+5b. WEBSITE/PLACE ADS: if the user wants to advertise a website or a physical place/location (not a product they can photograph), route them to Model 5 at exactly 15s, single scene, either idea-to-video or prompt-to-video (ask which they prefer), never Model 7.
 6. ONLY once the user has explicitly confirmed (said yes / ابدأ / اعمل الفيديو / etc.) AND you have all required info, end your reply with this exact machine-readable marker on its own line (the user will not see it, so keep your visible reply natural and short before it):
-###READY###{"model":3,"duration":"1min","ratio":"9:16","idea":"topic in 6 words or fewer","videoStyle":"cinematic","tone":"motivational","videoLanguage":"en","voice":"male_wise","needsCharacterPhoto":false}
-   - "model" must be 1, 2, 3, 4, or 5 (number).
-   - "duration" must EXACTLY match one of the supported values for that model/plan combo above.
+###READY###{"model":3,"duration":"1min","ratio":"9:16","idea":"topic in 6 words or fewer","videoStyle":"cinematic","tone":"motivational","videoLanguage":"en","voice":"male_wise","needsCharacterPhoto":false,"captions":true,"music":false}
+   - "model" must be 1, 2, 3, 4, 5, or 7 (number).
+   - "duration" must EXACTLY match one of the supported values for that model/plan combo above. For Model 7, still send it as a duration string in seconds, e.g. "20s" (you compute this from scene count internally: 3 scenes=15s, 4=20s, 5=25s, 6=30s).
    - "ratio" must be "9:16", "16:9", or "1:1".
-   - "videoStyle" pick a sensible default style key for models 3/4/5 if the user didn't specify one (ignored for 1/2). If the user asks for a "stickman"/"stick figure" video, keep the word "stickman" inside the "idea" text itself (even within the 6-word limit) — it triggers special background/face rules downstream.
+   - "videoStyle" pick a sensible default style key for models 3/4/5 if the user didn't specify one (ignored for 1/2/7). If the user asks for a "stickman"/"stick figure" video, keep the word "stickman" inside the "idea" text itself (even within the 6-word limit) — it triggers special background/face rules downstream.
    - "tone" for models 1/2 only: one of motivational, education, story (default motivational).
-   - "videoLanguage": the language of the NARRATION inside the video (NOT your chat reply language — those are independent). DEFAULT is always "en" (English) UNLESS the user explicitly asked for the video/narration itself to be in another language (e.g. "بالعربي" / "in Spanish" / "بالمصري"). Valid values: en, ar (formal Arabic), ar_eg (Egyptian Arabic), ar_gulf (Gulf Arabic), es, fr, de, etc. The chat conversation being in Arabic does NOT by itself mean the video should be in Arabic — only switch if the user explicitly says so.
-   - "voice": DEFAULT is always "male_wise" (a deep, wise, professional narrator voice) UNLESS the user explicitly asked for a specific voice/gender/accent. Available voices: male_american, male_arabic, male_wise, female_american, female_arabic, none. If videoLanguage is Arabic and the user didn't specify a voice, use "male_arabic" instead of "male_wise" (male_wise is English-only). Ignored for Model 5 (no voiceover).
-   - "needsCharacterPhoto" true only for Model 5.
+   - "videoLanguage": the language of the NARRATION inside the video (NOT your chat reply language — those are independent). DEFAULT is always "en" (English) UNLESS the user explicitly asked for the video/narration itself to be in another language. Valid values: en, ar, ar_eg, ar_gulf, es, fr, de, etc. The chat conversation being in Arabic does NOT by itself mean the video should be in Arabic — only switch if the user explicitly says so.
+   - "voice": DEFAULT is always "male_wise" UNLESS the user explicitly asked for a specific voice/gender/accent. Available: male_american, male_arabic, male_wise, female_american, female_arabic, none. If videoLanguage is Arabic and no voice specified, use "male_arabic". Ignored for Model 5 (no voiceover) and Model 7 (use "adsAudioMode" instead).
+   - "needsCharacterPhoto" true only for Model 5 with characters (not for a website/place ad).
+   - "captions": true/false — whether to show captions/subtitles (models 1/2/3/4 only, ignored elsewhere).
+   - "music": true/false — whether to add background music (default false everywhere unless asked).
+   - "promptMode": for Model 5 only — "idea" (default) or "prompt". If "prompt", add a "rawPrompt" field with the user's exact wording (lightly polished, meaning unchanged), and "idea" should just be a short label for display.
+   - For Model 7 ONLY, instead of "idea", include: "productName" (string), "productDesc" (short string), "adsAudioMode" ("none" | "ai_voice" | "upload" — "upload" only if they already attached a voice recording), "customHook" (optional short hook line or empty string), "needsProductPhoto": true.
    - Do NOT emit this marker speculatively or before explicit confirmation — wait for the user's go-ahead.
 7. Never invent a duration or price outside the catalog.`;
 }

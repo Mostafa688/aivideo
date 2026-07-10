@@ -269,9 +269,11 @@ router.post('/credits/eg-request', authMiddleware, async (req, res) => {
             <tr><td style="color:#888;padding:8px 0">Credits</td><td style="color:#7c6af7;font-weight:700">${creditsNum.toLocaleString()}</td></tr>
             <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amountEgp} EGP</td></tr>
           </table>
-          <div style="margin-top:20px;display:flex;gap:12px">
+          <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap">
             <a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(user.email)}&plan=credits_custom&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
-            <a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(user.email)}&plan=credits_custom&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
+            <a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(user.email)}&plan=credits_custom&reason=incomplete_amount&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;font-size:13px">❌ Reject: Amount</a>
+            <a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(user.email)}&plan=credits_custom&reason=wrong_receipt&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;font-size:13px">❌ Reject: Receipt</a>
+            <a href="${backendUrl}/api/auth/admin/reject?email=${encodeURIComponent(user.email)}&plan=credits_custom&reason=other&secret=${adminSecret}" style="background:#7f1d1d;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;font-size:13px">❌ Reject: Other</a>
           </div>
         </div>`,
         attachments: [{ filename: `credits_payment_${user.email}_${Date.now()}.${ext}`, content: base64Data }],
@@ -411,9 +413,18 @@ router.get('/admin/approve', async (req, res) => {
   }
 });
 
+// ── أسباب الرفض الجاهزة — بتتحط في الإيميل اللي يوصل للعميل ──────────────
+const REJECTION_REASONS = {
+  incomplete_amount: 'The amount transferred does not match the credits/plan requested.',
+  wrong_receipt: 'The payment receipt/screenshot could not be verified — it may be unclear, invalid, or for a different transaction.',
+  duplicate: 'This request appears to be a duplicate of an already-processed request.',
+  other: 'We were unable to verify your payment.',
+};
+
 router.get('/admin/reject', async (req, res) => {
-  const { email, plan, billing, amount, secret } = req.query;
+  const { email, plan, billing, amount, secret, reason } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  const reasonText = REJECTION_REASONS[reason] || REJECTION_REASONS.other;
   if (email) {
     try { await markLatestPaymentRequestRejected(email); } catch (dbErr) { console.error('[Reject] DB error:', dbErr.message); }
   }
@@ -431,14 +442,14 @@ router.get('/admin/reject', async (req, res) => {
           from: 'Erivion <noreply@erivion.net>',
           to: email,
           subject: `Regarding your ${planName} subscription request`,
-          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">⚠️</div><h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Subscription Request Update</h2><p style="color:#9ca3af;font-size:14px;margin:0">We were unable to verify your payment</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:20px"><table style="width:100%;border-collapse:collapse">${planName ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Plan Requested</td><td style="color:#7c6af7;font-weight:700;text-align:right">${planName}${billing ? ' · ' + billingLabel : ''}</td></tr>` : ''}${amountText ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Amount</td><td style="color:#fff;font-weight:600;text-align:right">${amountText}</td></tr>` : ''}<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Status</td><td style="color:#ef4444;font-weight:700;text-align:right">Not Approved</td></tr></table></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">Try Again →</a></div></div>`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">⚠️</div><h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Subscription Request Update</h2><p style="color:#9ca3af;font-size:14px;margin:0">We were unable to approve your request</p></div><div style="background:#1a1a2e;border:1px solid #2d2d4a;border-radius:12px;padding:20px;margin-bottom:20px"><table style="width:100%;border-collapse:collapse">${planName ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Plan Requested</td><td style="color:#7c6af7;font-weight:700;text-align:right">${planName}${billing ? ' · ' + billingLabel : ''}</td></tr>` : ''}${amountText ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Amount</td><td style="color:#fff;font-weight:600;text-align:right">${amountText}</td></tr>` : ''}<tr><td style="color:#6b7280;padding:7px 0;font-size:14px">Status</td><td style="color:#ef4444;font-weight:700;text-align:right">Not Approved</td></tr></table></div><div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:14px 16px;margin-bottom:20px"><p style="color:#fca5a5;font-size:13px;margin:0"><strong>Reason:</strong> ${reasonText}</p></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">Try Again →</a></div></div>`,
         }),
       });
     } catch (mailErr) {
       console.error('[Reject] Email error:', mailErr.message);
     }
   }
-  res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">❌</div><h2 style="color:#ef4444;margin-bottom:8px">Request Rejected</h2><p style="color:#9ca3af">${email || 'Unknown user'}</p></div></body></html>`);
+  res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">❌</div><h2 style="color:#ef4444;margin-bottom:8px">Request Rejected</h2><p style="color:#9ca3af">${email || 'Unknown user'}</p><p style="color:#6b7280;font-size:13px;margin-top:8px">Reason sent: ${reasonText}</p></div></body></html>`);
 });
 
 router.post('/support', async (req, res) => {
@@ -489,9 +500,10 @@ router.post('/intl-payment/request', authMiddleware, async (req, res) => {
             <tr><td style="color:#888;padding:8px 0">Payment</td><td style="color:#86efac">Gumroad (verify on dashboard)</td></tr>
           </table>
           <p style="color:#9ca3af;font-size:13px">Please check your Gumroad dashboard to verify payment, then approve or reject:</p>
-          <div style="margin-top:20px;display:flex;gap:12px">
+          <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap">
             <a href="${backendUrl}/api/auth/intl-approve?email=${encodeURIComponent(user.email)}&plan=${planKey}&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
-            <a href="${backendUrl}/api/auth/intl-reject?email=${encodeURIComponent(user.email)}&plan=${planKey}&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Reject</a>
+            <a href="${backendUrl}/api/auth/intl-reject?email=${encodeURIComponent(user.email)}&plan=${planKey}&reason=incomplete_amount&secret=${adminSecret}" style="background:#ef4444;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;font-size:13px">❌ Reject: Amount</a>
+            <a href="${backendUrl}/api/auth/intl-reject?email=${encodeURIComponent(user.email)}&plan=${planKey}&reason=other&secret=${adminSecret}" style="background:#7f1d1d;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;font-size:13px">❌ Reject: Other</a>
           </div>
         </div>`,
       }),
@@ -588,8 +600,9 @@ router.get('/intl-approve', async (req, res) => {
 });
 
 router.get('/intl-reject', async (req, res) => {
-  const { email, plan, secret } = req.query;
+  const { email, plan, secret, reason } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) return res.status(403).send('Unauthorized');
+  const reasonText = REJECTION_REASONS[reason] || REJECTION_REASONS.other;
   if (email) {
     try { await markLatestPaymentRequestRejected(email); } catch (dbErr) { console.error('[IntlReject] DB error:', dbErr.message); }
   }
@@ -603,12 +616,12 @@ router.get('/intl-reject', async (req, res) => {
           from: 'Erivion <noreply@erivion.net>',
           to: email,
           subject: `Regarding your subscription request`,
-          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">⚠️</div><h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Payment Not Verified</h2><p style="color:#9ca3af;font-size:14px;margin:0">We could not verify your Gumroad payment</p></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">Try Again →</a></div></div>`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:56px;margin-bottom:12px">⚠️</div><h2 style="color:#f59e0b;font-size:22px;margin:0 0 8px">Payment Not Verified</h2><p style="color:#9ca3af;font-size:14px;margin:0">We could not verify your Gumroad payment</p></div><div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:14px 16px;margin-bottom:20px"><p style="color:#fca5a5;font-size:13px;margin:0"><strong>Reason:</strong> ${reasonText}</p></div><div style="text-align:center"><a href="${frontendUrl}/pricing" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px">Try Again →</a></div></div>`,
         }),
       });
     } catch(e) { console.error('[IntlReject]', e.message); }
   }
-  res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">❌</div><h2 style="color:#ef4444">Request Rejected</h2><p style="color:#9ca3af">${email || ''}</p></div></body></html>`);
+  res.send(`<html><body style="font-family:sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:40px"><div style="font-size:64px;margin-bottom:16px">❌</div><h2 style="color:#ef4444">Request Rejected</h2><p style="color:#9ca3af">${email || ''}</p><p style="color:#6b7280;font-size:13px;margin-top:8px">Reason sent: ${reasonText}</p></div></body></html>`);
 });
 
 router.post('/gumroad-ping', async (req, res) => {

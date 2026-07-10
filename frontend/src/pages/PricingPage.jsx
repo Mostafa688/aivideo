@@ -164,7 +164,6 @@ function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
 function IntlPaymentModal({ pkg, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [step, setStep] = useState('info');
 
   const handlePaid = async () => {
     setLoading(true); setError('');
@@ -175,23 +174,15 @@ function IntlPaymentModal({ pkg, onClose, onSuccess }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
-      setStep('pending');
+      onClose();
+      onSuccess();
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ background: '#0a0a18', border: `1px solid ${pkg.color}44`, borderRadius: 24, width: '100%', maxWidth: 460, padding: 28 }}>
-        {step === 'pending' ? (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <div style={{ fontSize: 64, marginBottom: 16 }}>⏳</div>
-            <h3 style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 12 }}>Request Submitted!</h3>
-            <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
-              We'll verify your Gumroad payment and add <strong style={{ color: pkg.color }}>{pkg.credits.toLocaleString()} credits</strong> within <strong style={{ color: '#22c55e' }}>24 hours</strong>.
-            </p>
-            <button onClick={() => { onClose(); onSuccess(); }} style={{ background: pkg.color, color: '#fff', border: 'none', borderRadius: 12, padding: '13px 36px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Got it</button>
-          </div>
-        ) : (
+        {(
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <div>
@@ -231,9 +222,10 @@ function EgPendingScreen({ onNavigate, onSkip }) {
     <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, #1a0f3d 0%, #0a0a0f 50%, #000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
       <div style={{ maxWidth: 480, width: '100%', textAlign: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(124,106,247,0.2)', borderRadius: 24, padding: '48px 36px' }}>
         <div style={{ fontSize: 72, marginBottom: 20 }}>⏳</div>
-        <h2 style={{ fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 12 }}>طلبك قيد المراجعة</h2>
-        <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 28 }}>هنراجع الإيصال ونضيف الكريديت لحسابك خلال 24 ساعة.</p>
-        <button onClick={onSkip} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: 'rgba(124,106,247,0.15)', color: '#a99bff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>الرجوع للموقع</button>
+        <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 12, lineHeight: 1.5 }}>سيقوم فريق Erivion بمراجعة طلب الاشتراك خلال 24 ساعة</h2>
+        <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 28 }}>شكرًا لانتظاركم 🙏</p>
+        <button onClick={onSkip} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: 'rgba(124,106,247,0.15)', color: '#a99bff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>الرجوع للموقع</button>
+        <button onClick={() => onNavigate && onNavigate('support')} style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#9ca3af', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Contact Support</button>
       </div>
     </div>
   );
@@ -435,7 +427,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
           onSuccess={() => { setEgModalOpen(false); setEgPending(true); }} />
       )}
       {intlModalPkg && (
-        <IntlPaymentModal pkg={intlModalPkg} onClose={() => setIntlModalPkg(null)} onSuccess={() => {}} />
+        <IntlPaymentModal pkg={intlModalPkg} onClose={() => setIntlModalPkg(null)} onSuccess={() => { setIntlModalPkg(null); setEgPending(true); }} />
       )}
     </div>
   );

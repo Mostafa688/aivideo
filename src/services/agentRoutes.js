@@ -60,7 +60,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       const jsonPart = rawReply.slice(markerIdx + '###READY###'.length).trim();
       try {
         const parsed = JSON.parse(jsonPart);
-        if ([1, 2, 3, 4, 5].includes(parsed.model)) ready = parsed;
+        if ([1, 2, 3, 4, 5, 7].includes(parsed.model)) ready = parsed;
       } catch (e) { console.warn('[Agent] Could not parse READY marker:', e.message); }
     }
 

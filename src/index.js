@@ -1465,7 +1465,42 @@ app.get('/api/model4/usage', authMiddleware, async (req, res) => {
 
 // ── Model 5 (Cinematic) Routes ────────────────────────────────────────────
 app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
-  const { idea, characters, duration, videoStyle, styleSuffix } = req.body;
+  const { idea, characters, duration, videoStyle, styleSuffix, promptMode, rawPrompt } = req.body;
+
+  // ── وضع "Prompt to Video" الجديد: العميل بيكتب البرومبت بالظبط، مفيش Groq بيكتب
+  // مشاهد من فكرة — بس تحسين بسيط للصياغة (grammar/clarity) من غير ما يتغير المعنى ──
+  if (promptMode === 'prompt') {
+    if (!rawPrompt?.trim()) return res.status(400).json({ error: 'rawPrompt required for prompt-to-video mode' });
+    if (!['5s', '10s', '15s'].includes(duration)) return res.status(400).json({ error: 'duration must be 5s, 10s, or 15s for prompt-to-video' });
+
+    const allChars = characters || [];
+    const charsWithPhotos = allChars.filter(c => c.photo);
+    const styleInstruction = applyStickmanStyleRule(styleSuffix || '', rawPrompt);
+    const audioRule = 'No background music, no music of any kind. Include 1-3 specific, concrete sound effects that genuinely match this exact scene (never a generic phrase like "ambient sound").';
+
+    let finalPrompt = `${rawPrompt.trim()}${styleInstruction ? `, ${styleInstruction}` : ''}. ${audioRule}`;
+    try {
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile', max_tokens: 200, temperature: 0.3,
+          messages: [
+            { role: 'system', content: 'You lightly polish a user-written AI video prompt for grammar and clarity ONLY. Never add new visual elements, characters, or ideas they did not mention. Never remove anything they specified. Keep it in English. Output ONLY the polished prompt text, nothing else.' },
+            { role: 'user', content: finalPrompt },
+          ],
+        }),
+      });
+      const data = await r.json();
+      const polished = data.choices?.[0]?.message?.content?.trim();
+      if (polished) finalPrompt = polished;
+    } catch (e) { console.warn('[Model5 PromptToVideo] Groq polish failed, using raw prompt:', e.message); }
+
+    const scene = { index: 1, prompt: finalPrompt, text: rawPrompt.trim().slice(0, 40) };
+    if (charsWithPhotos.length > 0) scene.characterPhotos = charsWithPhotos.map(c => c.photo).filter(Boolean);
+    return res.json({ scenes: [scene] });
+  }
+
   if (!idea) return res.status(400).json({ error: 'idea required' });
   const sceneCount = duration === '1min' ? 12 : duration === '30s' ? 6 : 1;
 
@@ -1547,7 +1582,7 @@ Output ONLY JSON array (${sceneCount} items):
 });
 
 app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, ratio, duration, characterPhotos } = req.body;
+  const { scenes, ratio, duration, characterPhotos, music } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const m5User = await getUserById(req.user.userId);
   if ((m5User?.plan || 'free') === 'free') {
@@ -1585,7 +1620,7 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m5CreditCost });
   (async () => {
     try {
-      const videoPath = await renderModel5Video({ scenes: scenesWithPhotos, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s' });
+      const videoPath = await renderModel5Video({ scenes: scenesWithPhotos, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s', music: music !== false });
       await chargeCredits(req.user.userId, m5CreditCost).catch(e => console.warn('[Model5] Credit deduct failed:', e.message));
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {

@@ -487,6 +487,7 @@ export async function renderModel5Video({
   ratio = '9:16',
   jobId,
   duration = '30s',
+  music = true,
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
@@ -496,7 +497,7 @@ export async function renderModel5Video({
   const outputFile = 'video_' + id + '.mp4';
   const outputPath = path.join(OUTPUTS_DIR, outputFile);
   const total = scenes.length;
-  const CLIP_SEC = duration === '15s' ? 15 : 5;
+  const CLIP_SEC = { '5s': 5, '10s': 10, '15s': 15 }[duration] || 5;
 
   console.log(`[Model5] START | ${total} scenes | ${ratio} | ${duration} | Seedance 2.0`);
 
@@ -622,7 +623,7 @@ export async function renderModel5Video({
     ? fs.readdirSync(musicDir).filter(f => f.endsWith('.mp3') || f.endsWith('.wav'))
     : [];
 
-  if (musicFiles.length > 0) {
+  if (music && musicFiles.length > 0) {
     const mf = path.join(musicDir, musicFiles[Math.floor(Math.random() * musicFiles.length)]);
     try {
       execSync(

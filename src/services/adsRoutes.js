@@ -131,7 +131,7 @@ router.post('/render',
           // Build relative URL
           const relPath = result.outputPath.replace(join(process.cwd(), 'outputs'), '/outputs');
           await chargeCredits(req.user.userId, adsCost).catch(e => console.warn('[AdsRoutes] Credit deduct failed:', e.message));
-          setAdsJob(jobId, { status: 'done', step: 'done', msg: 'Ad video ready!', videoUrl: relPath });
+          setAdsJob(jobId, { status: 'done', step: 'done', msg: 'Ad video ready!', videoUrl: relPath, cost: adsCost });
           scheduleAdsCleanup(jobId);
         } catch (err) {
           console.error('[AdsRoutes] Job failed:', err.message);

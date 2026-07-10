@@ -160,6 +160,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [limits, setLimits] = useState({ MAX_AUDIO_SEC: 120, MAX_AUDIO_MB: 10, MAX_IMAGE_MB: 5 });
   const [lastUploadedPhoto, setLastUploadedPhoto] = useState(null);
   const [lastUploadedVoiceUrl, setLastUploadedVoiceUrl] = useState(null);
+  const [lastUploadedTranscript, setLastUploadedTranscript] = useState(null);
   const voiceInputRef = useRef();
   const imageInputRef = useRef();
   const scrollRef = useRef();
@@ -234,9 +235,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (!res.ok) throw new Error(data.error || 'Failed');
       setMessages(m => [...m, { role: 'assistant', content: data.reply }]);
       if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
+      if (data.transcript) setLastUploadedTranscript(data.transcript);
 
       if (data.ready) {
-        if (data.ready.model === 5 && !lastUploadedPhoto) {
+        const needsPhoto = (data.ready.model === 5 && data.ready.needsCharacterPhoto) || (data.ready.model === 7 && data.ready.needsProductPhoto);
+        if (needsPhoto && !lastUploadedPhoto) {
           setMessages(m => [...m, { role: 'assistant', content: t.uploadCharacterFirst }]);
         } else {
           startGeneration(data.ready);
@@ -294,6 +297,72 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     const videoLang = ready.videoLanguage || 'en';
     const voiceKey = ready.voice || (videoLang.startsWith('ar') ? 'male_arabic' : 'male_wise');
 
+    // ── موديل 7 (الإعلانات): multipart/form-data + endpoint استطلاع خاص بيه، منفصل تمامًا
+    // عن الـ JSON flow المشترك لباقي الموديلات — بيتعامل هنا لوحده وبيرجع بدري ──────────
+    if (ready.model === 7) {
+      updateJob({ status: 'rendering' });
+      timerRef.current = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
+      try {
+        const form = new FormData();
+        const productBlob = await (await fetch(lastUploadedPhoto)).blob();
+        form.append('productImage', productBlob, 'product.jpg');
+        form.append('productName', ready.productName || 'Product');
+        form.append('productDesc', ready.productDesc || '');
+        form.append('audioMode', ready.adsAudioMode || 'none');
+        form.append('ratio', ready.ratio || '9:16');
+        form.append('language', videoLang);
+        const seconds = parseInt(ready.duration) || 15;
+        const sceneCount = Math.min(Math.max(Math.round(seconds / 5), 3), 6);
+        form.append('sceneCount', String(sceneCount));
+        form.append('customHook', ready.customHook || '');
+        form.append('showTitle', 'true');
+        if (ready.adsAudioMode === 'ai_voice') form.append('aiVoiceKey', voiceKey);
+        if (ready.adsAudioMode === 'upload' && lastUploadedVoiceUrl) {
+          const voiceBlob = await (await fetch(lastUploadedVoiceUrl)).blob();
+          form.append('voiceAudio', voiceBlob, 'voice.mp3');
+        }
+
+        const renderRes = await fetch('/api/ads/render', { method: 'POST', headers: tokenHeader(), body: form });
+        const renderData = await renderRes.json();
+        if (!activeJobRef.current) return;
+
+        if (!renderRes.ok) {
+          clearInterval(timerRef.current);
+          if (renderData.error === 'quota_exceeded') {
+            updateJob({ status: 'failed', creditError: true, error: lang === 'ar' ? `محتاج ${renderData.cost} كريديت ومعاك ${renderData.remaining} بس` : `Needs ${renderData.cost} credits, you have ${renderData.remaining}` });
+          } else if (renderData.error === 'no_access' || renderData.error === 'under_maintenance') {
+            updateJob({ status: 'failed', creditError: true, error: renderData.message || (lang === 'ar' ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video') });
+          } else {
+            updateJob({ status: 'failed', error: renderData.error || 'Failed' });
+          }
+          activeJobRef.current = null;
+          return;
+        }
+
+        const jobId = renderData.jobId;
+        pollRef.current = setInterval(async () => {
+          try {
+            const sr = await fetch(`/api/ads/status/${jobId}`, { headers: tokenHeader() });
+            const sd = await sr.json();
+            if (sd.status === 'done') {
+              clearInterval(pollRef.current); clearInterval(timerRef.current);
+              updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: sd.cost });
+              activeJobRef.current = null;
+            } else if (sd.status === 'error') {
+              clearInterval(pollRef.current); clearInterval(timerRef.current);
+              updateJob({ status: 'failed', error: sd.msg });
+              activeJobRef.current = null;
+            }
+          } catch {}
+        }, 5000);
+      } catch (e) {
+        clearInterval(timerRef.current);
+        if (activeJobRef.current) updateJob({ status: 'failed', error: e.message });
+        activeJobRef.current = null;
+      }
+      return;
+    }
+
     // ── قارئ بسيط لـ Server-Sent Events فوق fetch عادي (موديل 1 و2 بيرجعوا SSE) ──
     async function readSSE(url, body) {
       const res = await fetch(url, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
@@ -328,14 +397,17 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     try {
       let scenes = [];
 
+      // ✅ Voice-to-Video: لو فيه صوت مرفوع، نبعت السكريبت الكامل (مش ملخص 6 كلمات) عشان
+      // المشاهد تتولد مطابقة فعليًا لكلام العميل، مش موضوع عام بعيد عن الصوت الحقيقي
+      const hasUploadedScript = ready.model !== 5 && !!lastUploadedTranscript;
+
       if (isM12) {
         // موديل 1/2: توليد السكريبت أولاً عبر SSE
         // ✅ FIX: كنا بنحوّل "30s" غلط لـ "auto" وده كان بيولّد 8 مشاهد (حجم دقيقة) بدل 4 (حجم 30 ثانية فعليًا)
-        const { scenes: gotScenes } = await readSSE('/api/generate-scenes', {
-          idea: ready.idea, script: null, tone: ready.tone || 'motivational',
-          duration: ready.duration, mode: 'idea',
-          videoLanguage: videoLang,
-        });
+        const { scenes: gotScenes } = await readSSE('/api/generate-scenes', hasUploadedScript
+          ? { idea: null, script: lastUploadedTranscript, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'script', videoLanguage: videoLang }
+          : { idea: ready.idea, script: null, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'idea', videoLanguage: videoLang }
+        );
         if (!activeJobRef.current) return;
         scenes = gotScenes;
         if (!scenes.length) throw new Error('Scene generation failed');
@@ -356,11 +428,17 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         // موديل 3/4/5: JSON عادي
         let scenesBody;
         if (ready.model === 3) {
-          scenesBody = { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
+          scenesBody = hasUploadedScript
+            ? { idea: null, script: lastUploadedTranscript, inputMode: 'script', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' }
+            : { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
         } else if (ready.model === 4) {
-          scenesBody = { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' };
+          scenesBody = hasUploadedScript
+            ? { idea: null, script: lastUploadedTranscript, inputMode: 'script', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' }
+            : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' };
         } else {
-          scenesBody = { idea: ready.idea, characters: lastUploadedPhoto ? [{ prompt: '', photo: lastUploadedPhoto }] : [], duration: ready.duration, videoStyle: style, styleSuffix: '' };
+          scenesBody = ready.promptMode === 'prompt'
+            ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters: lastUploadedPhoto ? [{ prompt: '', photo: lastUploadedPhoto }] : [], duration: ready.duration, styleSuffix: '' }
+            : { idea: ready.idea, characters: lastUploadedPhoto ? [{ prompt: '', photo: lastUploadedPhoto }] : [], duration: ready.duration, videoStyle: style, styleSuffix: '' };
         }
         const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
         const scenesData = await scenesRes.json();
@@ -390,18 +468,20 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       timerRef.current = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
 
       let renderUrl, renderBody;
+      const wantCaptions = ready.captions !== false; // default true
+      const wantMusic = ready.music === true; // default false
       if (isM12) {
         renderUrl = '/api/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: false, captions: true, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: videoLang };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: wantMusic, captions: wantCaptions, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: videoLang };
       } else if (ready.model === 3) {
         renderUrl = '/api/model3/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, transitions: false, music: false, videoLanguage: videoLang, duration: ready.duration, videoStyle: style, styleSuffix: '' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: wantCaptions, transitions: false, music: wantMusic, videoLanguage: videoLang, duration: ready.duration, videoStyle: style, styleSuffix: '' };
       } else if (ready.model === 4) {
         renderUrl = '/api/model4/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: true, music: false, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: wantCaptions, music: wantMusic, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
       } else {
         renderUrl = '/api/model5/render';
-        renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhoto ? [lastUploadedPhoto] : [] };
+        renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhoto ? [lastUploadedPhoto] : [], music: wantMusic };
       }
 
       // ── لو السيرفر مشغول بفيديو عميل تاني، نستنى ونعيد المحاولة تلقائيًا ────
@@ -562,7 +642,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span style={{ fontSize: 19, fontWeight: 900, letterSpacing: '0.01em', fontFamily: "'Georgia', 'Times New Roman', serif", background: 'linear-gradient(135deg,#c4b5fd,#7c6af7 50%,#6d28d9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Erivion</span>
+            <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '0.04em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 0 18px rgba(255,255,255,0.55), 0 0 4px rgba(196,181,253,0.6)' }}>Erivion</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>Agent</span>
           </div>
           <button onClick={onSwitchToModels} style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
