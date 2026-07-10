@@ -85,6 +85,61 @@ function ModelWelcomeModal({ modelKey, userRegion, onContinue }) {
   );
 }
 
+// ── 404 Not Found Page ───────────────────────────────────────────────────────
+function NotFoundPage({ onNavigate }) {
+  const region = localStorage.getItem('erivion_region') || 'eg';
+  const isAr = region !== 'intl';
+  return (
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at top, #1a0f2e 0%, #0a0a0f 55%, #000 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>
+      <div style={{ maxWidth: 480, width: '100%', textAlign: 'center' }}>
+        <div style={{ fontSize: 88, fontWeight: 900, letterSpacing: '0.05em', background: 'linear-gradient(135deg,#a78bfa,#7c6af7 50%,#6d28d9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', marginBottom: 8 }}>404</div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 12 }}>
+          {isAr ? 'الصفحة اللي بتدور عليها مش موجودة' : "This page doesn't exist"}
+        </h1>
+        <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14, lineHeight: 1.8, marginBottom: 32 }}>
+          {isAr ? 'ممكن يكون الرابط اتغيّر أو مكتوب غلط. جرب ترجع للصفحة الرئيسية.' : 'The link might be broken or mistyped. Try heading back home.'}
+        </p>
+        <button onClick={() => { window.history.pushState({}, '', '/'); onNavigate('home'); }}
+          style={{ padding: '13px 32px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: '0 6px 24px rgba(124,106,247,0.35)' }}>
+          {isAr ? 'الرجوع للرئيسية' : 'Back to Home'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Cookie Consent Banner ────────────────────────────────────────────────────
+function CookieConsentBanner() {
+  const [visible, setVisible] = useState(false);
+  const region = localStorage.getItem('erivion_region') || 'eg';
+  const isAr = region !== 'intl';
+
+  useEffect(() => {
+    if (!localStorage.getItem('cookieConsent')) setTimeout(() => setVisible(true), 800);
+  }, []);
+
+  const accept = () => { localStorage.setItem('cookieConsent', 'accepted'); setVisible(false); };
+  if (!visible) return null;
+
+  return (
+    <div style={{ position: 'fixed', bottom: 16, insetInlineStart: 16, insetInlineEnd: 16, maxWidth: 460, margin: '0 auto', zIndex: 9998, background: '#0f0f1a', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 16, padding: '18px 20px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 12, direction: isAr ? 'rtl' : 'ltr' }}>
+      <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.7 }}>
+        {isAr
+          ? '🍪 بنستخدم كوكيز أساسية وتحليلية عشان نحسّن تجربتك ونفهم استخدام الموقع. استمرارك في الاستخدام يعني موافقتك.'
+          : '🍪 We use essential and analytics cookies to improve your experience and understand site usage. By continuing, you agree to this.'}
+      </p>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button onClick={accept} style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+          {isAr ? 'موافق' : 'Accept'}
+        </button>
+        <a href="/privacy" style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)', fontSize: 13, textDecoration: 'none', textAlign: 'center' }}>
+          {isAr ? 'التفاصيل' : 'Learn more'}
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState('agent');
   const [formData, setFormData] = useState(null);
@@ -166,6 +221,10 @@ export default function App() {
     if (window.location.pathname === '/terms') { window.history.replaceState({}, '', '/terms'); setPage('terms'); setAuthChecked(true); return; }
     if (window.location.pathname === '/privacy') { window.history.replaceState({}, '', '/privacy'); setPage('privacy'); setAuthChecked(true); return; }
     if (window.location.pathname === '/refund') { window.history.replaceState({}, '', '/refund'); setPage('refund'); setAuthChecked(true); return; }
+    if (window.location.pathname === '/about') { setPage('about'); setAuthChecked(true); return; }
+    if (window.location.pathname === '/support') { setPage('support'); setAuthChecked(true); return; }
+    if (window.location.pathname === '/faq') { setPage('faq'); setAuthChecked(true); return; }
+    if (window.location.pathname === '/templates') { setPage('templates'); setAuthChecked(true); return; }
     if (window.location.pathname === '/affiliate') { setPage('affiliate'); setAuthChecked(true); return; }
     if (window.location.pathname === '/community') { setPage('community'); setAuthChecked(true); return; }
     if (window.location.pathname === '/pricing') {
@@ -192,6 +251,11 @@ export default function App() {
       setAuthChecked(true); return;
     }
     if (params.get('admin') === '1') { window.history.replaceState({}, '', '/'); setPage('admin'); setAuthChecked(true); return; }
+    // ✅ أي رابط مش معروف خالص (مش من القايمة دي) → صفحة 404 بدل ما يترجع للصفحة الرئيسية بصمت
+    const KNOWN_PATHS = ['/', '/login', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/affiliate', '/community', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
+    if (!KNOWN_PATHS.includes(window.location.pathname) && !googleToken && !authError && params.get('admin') !== '1') {
+      setPage('notfound'); setAuthChecked(true); return;
+    }
     if (googleToken || authError) window.history.replaceState({}, '', '/');
     if (authError) { setShowAuth(true); setAuthChecked(true); return; }
     if (googleToken && googleEmail) {
@@ -488,7 +552,9 @@ export default function App() {
         {page === 'community' && <CommunityPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'support' && <SupportPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
         {page === 'faq' && <FAQPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
+        {page === 'notfound' && <NotFoundPage onNavigate={handleNavigate} />}
       </div>
+      <CookieConsentBanner />
     </>
   );
 }
