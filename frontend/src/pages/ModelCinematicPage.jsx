@@ -40,7 +40,9 @@ function SceneCard({ scene, index, onChange }) {
 
 export default function ModelCinematicPage({ onBack, model5Access, model5Plan, userPlan = 'free', onNavigate }) {
   const [step, setStep] = useState('input');
+  const [genMode, setGenMode] = useState('idea'); // 'idea' | 'prompt'
   const [idea, setIdea] = useState('');
+  const [rawPrompt, setRawPrompt] = useState('');
   // characters: { id, prompt, photo: base64|null, photoPreview: url|null }
   const [characters, setCharacters] = useState([{ id:1, prompt:'', photo:null, photoPreview:null }]);
   const [characterPhotos, setCharacterPhotos] = useState([]); // kept separately to survive scene step
@@ -92,22 +94,29 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
     reader.readAsDataURL(file);
   };
   const selectedStyle = VIDEO_STYLES.find(s=>s.key===videoStyle);
-  const sceneCount = duration==='1min'?12:duration==='30s'?6:1;
+  const sceneCount = genMode === 'prompt' ? 1 : (duration==='1min'?12:duration==='30s'?6:1);
+  const switchMode = (m) => {
+    setGenMode(m);
+    if (m === 'prompt' && !['5s','10s','15s'].includes(duration)) setDuration('15s');
+  };
 
   const handleGenerate = async () => {
     if (userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
-    if (!idea.trim()) { setError('Please describe your video idea'); return; }
+    if (genMode === 'prompt' ? !rawPrompt.trim() : !idea.trim()) { setError(genMode === 'prompt' ? 'Please write your exact video prompt' : 'Please describe your video idea'); return; }
     setLoading(true); setError('');
     try {
       const validChars = characters
         .filter(c => c.prompt.trim() || c.photo)
         .map(c => ({ prompt: c.prompt, photo: c.photo || null }));
+      const body = genMode === 'prompt'
+        ? { promptMode: 'prompt', rawPrompt, characters: validChars, duration, styleSuffix: selectedStyle?.suffix || '' }
+        : { idea, characters: validChars, duration, videoStyle, styleSuffix: selectedStyle?.suffix };
       const res = await fetch('/api/model5/generate-scenes', {
         method:'POST', headers:authHeaders(),
-        body:JSON.stringify({ idea, characters:validChars, duration, videoStyle, styleSuffix:selectedStyle?.suffix })
+        body:JSON.stringify(body)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error||'Failed');
+      if (!res.ok) throw new Error(data.error === 'content_policy_violation' ? data.message : (data.error||'Failed'));
       setScenes(data.scenes||[]); setStep('scenes');
     } catch(e){ setError(e.message); } finally { setLoading(false); }
   };
@@ -119,7 +128,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
       const data = await res.json();
       if (!res.ok) {
         if (data.error === 'quota_exceeded') {
-          const COST = { '15s':15, '30s':30, '1min':60 };
+          const COST = { '5s':60, '10s':120, '15s':180, '30s':360, '1min':720 };
           const need = data.cost || COST[duration] || 15;
           const have = data.remaining ?? 0;
           setError(`🪙 This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
@@ -159,7 +168,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         </div>
         <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
           <a href={videoUrl} download style={{ background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', padding:'13px 28px', borderRadius:12, fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(225,29,72,0.4)' }}>⬇️ Download</a>
-          <button onClick={()=>{ setStep('input'); setScenes([]); setVideoUrl(null); setIdea(''); }} style={{ background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.1)', padding:'13px 28px', borderRadius:12, fontWeight:600, fontSize:14, cursor:'pointer' }}>🔄 New Video</button>
+          <button onClick={()=>{ setStep('input'); setScenes([]); setVideoUrl(null); setIdea(''); setRawPrompt(''); }} style={{ background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.1)', padding:'13px 28px', borderRadius:12, fontWeight:600, fontSize:14, cursor:'pointer' }}>🔄 New Video</button>
         </div>
       </div>
     </div>
@@ -205,7 +214,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         </div>
         <div style={{ marginBottom:20 }}>
           <h2 style={{ fontSize:24, fontWeight:900, color:'#fff', margin:'0 0 6px', letterSpacing:'-0.5px' }}>Review Cinematic Scenes</h2>
-          <p style={{ fontSize:13, color:'rgba(255,255,255,0.35)', margin:0 }}>Each scene = {duration === '15s' ? '15' : '5'} seconds of AI-generated video with character consistency.</p>
+          <p style={{ fontSize:13, color:'rgba(255,255,255,0.35)', margin:0 }}>Each scene = {({'5s':5,'10s':10,'15s':15}[duration]) || 5} seconds of AI-generated video with character consistency.</p>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
           {scenes.map((scene,i) => <SceneCard key={i} scene={scene} index={i} onChange={updated=>setScenes(s=>s.map((sc,idx)=>idx===i?updated:sc))} />)}
@@ -286,14 +295,40 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
           </button>
         </div>
 
-        {/* Idea */}
+        {/* Mode toggle: Idea to Video vs Prompt to Video */}
         <div style={{ marginBottom:22 }}>
-          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>🎬 Video Idea / Story</label>
-          <textarea value={idea} onChange={e=>setIdea(e.target.value)} className="char-input"
-            placeholder="A lone samurai walks through a misty bamboo forest at dawn, searching for his lost honor..." rows={4}
-            style={{ width:'100%', padding:'14px 16px', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:14, resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.7, transition:'all 0.2s' }} />
-          <p style={{ fontSize:11, color:'#374151', marginTop:6 }}>{idea.length} characters</p>
+          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>🧭 Generation Mode</label>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <div onClick={()=>switchMode('idea')} style={{ borderRadius:12, padding:'14px 12px', textAlign:'center', cursor:'pointer', border:`2px solid ${genMode==='idea'?'#e11d48':'rgba(255,255,255,0.07)'}`, background:genMode==='idea'?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)' }}>
+              <div style={{ fontSize:13, fontWeight:800, color:genMode==='idea'?'#fb7185':'#fff', marginBottom:3 }}>💡 Idea to Video</div>
+              <div style={{ fontSize:10.5, color:'#4b5563' }}>Describe a topic — AI writes the scene prompts</div>
+            </div>
+            <div onClick={()=>switchMode('prompt')} style={{ borderRadius:12, padding:'14px 12px', textAlign:'center', cursor:'pointer', border:`2px solid ${genMode==='prompt'?'#e11d48':'rgba(255,255,255,0.07)'}`, background:genMode==='prompt'?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)' }}>
+              <div style={{ fontSize:13, fontWeight:800, color:genMode==='prompt'?'#fb7185':'#fff', marginBottom:3 }}>✍️ Prompt to Video</div>
+              <div style={{ fontSize:10.5, color:'#4b5563' }}>Write the exact prompt yourself — renders as one 5-15s scene</div>
+            </div>
+          </div>
         </div>
+
+        {/* Idea or Prompt */}
+        {genMode === 'idea' ? (
+          <div style={{ marginBottom:22 }}>
+            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>🎬 Video Idea / Story</label>
+            <textarea value={idea} onChange={e=>setIdea(e.target.value)} className="char-input"
+              placeholder="A lone samurai walks through a misty bamboo forest at dawn, searching for his lost honor..." rows={4}
+              style={{ width:'100%', padding:'14px 16px', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:14, resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.7, transition:'all 0.2s' }} />
+            <p style={{ fontSize:11, color:'#374151', marginTop:6 }}>{idea.length} characters</p>
+          </div>
+        ) : (
+          <div style={{ marginBottom:22 }}>
+            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>✍️ Exact Video Prompt</label>
+            <p style={{ fontSize:12, color:'#4b5563', marginBottom:10 }}>Write the precise visual/motion description yourself — we'll only lightly polish grammar, never change your meaning.</p>
+            <textarea value={rawPrompt} onChange={e=>setRawPrompt(e.target.value)} className="char-input"
+              placeholder="[Image1] is the first frame. A red sports car parked on a cliff road at golden hour, camera slowly pulls back revealing the ocean below, cinematic lighting, gentle wind moving through nearby grass..." rows={4}
+              style={{ width:'100%', padding:'14px 16px', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:14, resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.7, transition:'all 0.2s' }} />
+            <p style={{ fontSize:11, color:'#374151', marginTop:6 }}>{rawPrompt.length} characters</p>
+          </div>
+        )}
 
         {/* Characters */}
         <div style={{ marginBottom:22 }}>
@@ -352,15 +387,18 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         {/* Duration */}
         <div style={{ marginBottom:22 }}>
           <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>⏱ Duration</label>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            {[{value:'15s',label:'15 Seconds',scenes:3},{value:'30s',label:'30 Seconds',scenes:6},{value:'1min',label:'1 Minute',scenes:12}].map(d => {
+          <div className="mc-dur-grid" style={{ display:'grid', gridTemplateColumns: genMode==='prompt' ? '1fr 1fr 1fr' : '1fr 1fr', gap:12 }}>
+            {(genMode==='prompt'
+              ? [{value:'5s',label:'5 Seconds',scenes:1},{value:'10s',label:'10 Seconds',scenes:1},{value:'15s',label:'15 Seconds',scenes:1}]
+              : [{value:'15s',label:'15 Seconds',scenes:3},{value:'30s',label:'30 Seconds',scenes:6},{value:'1min',label:'1 Minute',scenes:12}]
+            ).map(d => {
               const allowed = userPlan !== 'free';
               return (
                 <div key={d.value} onClick={()=>allowed ? setDuration(d.value) : (onNavigate && onNavigate('pricing'))}
                   style={{ borderRadius:14, padding:'18px 16px', textAlign:'center', cursor:'pointer', border:`2px solid ${duration===d.value&&allowed?'#e11d48':'rgba(255,255,255,0.07)'}`, background:duration===d.value&&allowed?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', opacity: allowed ? 1 : 0.4, transition:'all 0.15s', position:'relative', boxShadow:duration===d.value&&allowed?'0 0 20px rgba(225,29,72,0.2)':'none' }}>
                   {!allowed && <div style={{ position:'absolute', top:8, right:10, fontSize:12 }}>🔒</div>}
                   <p style={{ margin:'0 0 4px', fontSize:18, fontWeight:900, color:duration===d.value&&allowed?'#fb7185':'#fff' }}>{d.label}</p>
-                  <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{d.scenes} cinematic scenes</p>
+                  <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{genMode==='prompt' ? 'single scene' : `${d.scenes} cinematic scenes`}</p>
                   {!allowed && <p style={{ margin:'4px 0 0', fontSize:9, color:'#ef4444', fontWeight:700 }}>Subscribe to unlock</p>}
                 </div>
               );
@@ -388,8 +426,8 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
           </div>
         )}
 
-        <button onClick={handleGenerate} disabled={userPlan !== 'free' && (loading||!idea.trim())} style={{ width:'100%', background:(userPlan !== 'free' && (loading||!idea.trim()))?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:(userPlan !== 'free' && (loading||!idea.trim()))?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:(userPlan !== 'free' && (loading||!idea.trim()))?'not-allowed':'pointer', boxShadow:idea.trim()?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
-          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : loading?'⏳ Generating Scenes...':`🎬 Generate ${sceneCount} Cinematic Scenes — ${creditCost} Credits →`}
+        <button onClick={handleGenerate} disabled={userPlan !== 'free' && (loading||(genMode==='prompt'?!rawPrompt.trim():!idea.trim()))} style={{ width:'100%', background:(userPlan !== 'free' && (loading||(genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:(userPlan !== 'free' && (loading||(genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:(userPlan !== 'free' && (loading||(genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'not-allowed':'pointer', boxShadow:(genMode==='prompt'?rawPrompt.trim():idea.trim())?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
+          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : loading?'⏳ Generating Scenes...':(genMode==='prompt' ? `🎬 Generate ${duration} Video — ${creditCost} Credits →` : `🎬 Generate ${sceneCount} Cinematic Scenes — ${creditCost} Credits →`)}
         </button>
 
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.15)', marginTop:14 }}>Seedance v1 Pro · Groq AI · Character consistency · No voiceover</p>

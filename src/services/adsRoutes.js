@@ -7,6 +7,7 @@ import { dirname, join } from 'path';
 import { authMiddleware } from './authRoutes.js';
 import { getUserById, getCreditsBalance, chargeCredits, getAdsCreditCost, ADS_CREDIT_COSTS_NO_VOICE, ADS_CREDIT_COSTS_VOICE } from './authService.js';
 import { renderAdVideo } from './adsVideoService.js';
+import { checkContentSafety, MODERATION_REJECTION_MESSAGE } from './scriptService.js';
 
 const router = express.Router();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +66,12 @@ router.post('/render',
 
       const { productName, productDesc, audioMode, aiVoiceKey, ratio, language, sceneCount, customHook, showTitle } = req.body;
       if (!productName?.trim()) return res.status(400).json({ error: 'Product name is required' });
+
+      // ✅ فحص أمان المحتوى قبل أي توليد — رفض المحتوى الإباحي/العنصري/العنيف
+      const modCheckAds = await checkContentSafety(`${productName} ${productDesc || ''} ${customHook || ''}`);
+      if (modCheckAds.unsafe) {
+        return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckAds.category });
+      }
 
       // ── Handle uploaded voice audio ──
       let uploadedAudioPath = null;

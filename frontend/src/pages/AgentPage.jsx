@@ -366,7 +366,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     // ── قارئ بسيط لـ Server-Sent Events فوق fetch عادي (موديل 1 و2 بيرجعوا SSE) ──
     async function readSSE(url, body) {
       const res = await fetch(url, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Request failed'); }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error === 'content_policy_violation' ? d.message : (d.error || 'Request failed')); }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -442,7 +442,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         }
         const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
         const scenesData = await scenesRes.json();
-        if (!scenesRes.ok) throw new Error(scenesData.error || 'Scene generation failed');
+        if (!scenesRes.ok) throw new Error(scenesData.error === 'content_policy_violation' ? scenesData.message : (scenesData.error || 'Scene generation failed'));
         scenes = scenesData.scenes || [];
       }
 

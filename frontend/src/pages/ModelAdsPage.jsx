@@ -201,6 +201,9 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
         if (data.error === 'no_access' || data.error === 'under_maintenance') {
           throw new Error(data.message || (isAr ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video'));
         }
+        if (data.error === 'content_policy_violation') {
+          throw new Error(isAr ? (data.message_ar || data.message) : data.message);
+        }
         throw new Error(data.error || 'Failed to start job');
       }
       setJobId(data.jobId);

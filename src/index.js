@@ -7,7 +7,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import fs from 'fs';
-import { generateScenesStream } from './services/scriptService.js';
+import { generateScenesStream, checkContentSafety, MODERATION_REJECTION_MESSAGE } from './services/scriptService.js';
 import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/mediaService.js';
 import { generateVoiceover, generateVoiceoverPerScene, VOICE_OPTIONS } from './services/voiceService.js';
 import { renderVideo } from './services/renderService.js';
@@ -762,6 +762,11 @@ Sitemap: https://erivion.net/sitemap.xml`);
 app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) => {
   const { idea, script, tone, duration, mode, videoLanguage } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script is required' });
+  // ✅ فحص أمان المحتوى قبل أي توليد — رفض المحتوى الإباحي/العنصري/العنيف
+  const modCheck = await checkContentSafety(idea || script);
+  if (modCheck.unsafe) {
+    return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
+  }
   // ✅ نظام الكريديت الموحد: أي مدة أو لغة متاحة للجميع — الكريديت هو القيد الوحيد، بيتفحص وقت الرندر
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -986,6 +991,10 @@ function applyStickmanStyleRule(styleText, ideaText = '') {
 app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, script, inputMode, imageCount, videoLanguage, styleSuffix } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
+  const modCheck3 = await checkContentSafety(idea || script);
+  if (modCheck3.unsafe) {
+    return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck3.category });
+  }
   const isIdeaMode = inputMode === 'idea';
   const styleHint = applyStickmanStyleRule(styleSuffix || 'cinematic photography, dramatic lighting, photorealistic', idea || script);
   const lang = videoLanguage || 'en';
@@ -1211,6 +1220,10 @@ app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
 app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
   const { idea, script, inputMode, sceneCount, videoLanguage, styleSuffix, videoStyle } = req.body;
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
+  const modCheck4 = await checkContentSafety(idea || script);
+  if (modCheck4.unsafe) {
+    return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck4.category });
+  }
   const lang = videoLanguage || 'en';
   const styleHint = applyStickmanStyleRule(styleSuffix || 'cinematic, photorealistic, dramatic lighting, no text overlays, no watermarks', idea || script);
   const BATCH_SIZE = 5;
@@ -1472,6 +1485,10 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
   if (promptMode === 'prompt') {
     if (!rawPrompt?.trim()) return res.status(400).json({ error: 'rawPrompt required for prompt-to-video mode' });
     if (!['5s', '10s', '15s'].includes(duration)) return res.status(400).json({ error: 'duration must be 5s, 10s, or 15s for prompt-to-video' });
+    const modCheck5p = await checkContentSafety(rawPrompt);
+    if (modCheck5p.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck5p.category });
+    }
 
     const allChars = characters || [];
     const charsWithPhotos = allChars.filter(c => c.photo);
@@ -1502,6 +1519,10 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
   }
 
   if (!idea) return res.status(400).json({ error: 'idea required' });
+  const modCheck5 = await checkContentSafety(idea);
+  if (modCheck5.unsafe) {
+    return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck5.category });
+  }
   const sceneCount = duration === '1min' ? 12 : duration === '30s' ? 6 : 1;
 
   // Separate characters with photos vs prompt-only

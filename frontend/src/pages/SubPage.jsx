@@ -13,20 +13,23 @@ function Section({ title, children }) {
 function TermsContent() {
   return <>
     <Section title="1. Acceptance of Terms">By accessing or using Erivion ("the Service", "the Platform"), you confirm that you are at least 13 years of age and agree to be legally bound by these Terms of Service. If you do not agree to these Terms, you must not use the Service. Continued use of the Service after any changes constitutes your acceptance of the revised Terms.</Section>
-    <Section title="2. Description of Service">Erivion is an AI-powered video creation platform that allows users to generate videos from text ideas or scripts. The Service uses third-party AI and media providers including Groq, Pexels, Stability AI, and Seedance to deliver its functionality.</Section>
+    <Section title="2. Description of Service">Erivion is an AI-powered video creation platform that allows users to generate videos from text ideas, scripts, or product photos (including AI video ads). The Service uses third-party AI and media providers including Groq, Pexels, Stability AI, Seedance, FLUX, and Google Gemini to deliver its functionality.</Section>
     <Section title="3. User Accounts">You must provide accurate and complete information when creating an account. You are responsible for maintaining the confidentiality of your login credentials and for all activity under your account. You must notify us immediately of any unauthorized use at digidelight33@gmail.com.</Section>
-    <Section title="4. Acceptable Use & Prohibited Content">You agree not to use the Service to create, distribute, or promote content that: (a) is sexually explicit, pornographic, or adult in nature; (b) contains graphic violence, gore, or glorifies harm; (c) promotes hatred, discrimination, or violence based on race, religion, gender, nationality, sexual orientation, or disability; (d) facilitates illegal activities including fraud, piracy, or drug use; (e) constitutes misinformation, deepfakes intended to deceive, or impersonation; (f) involves or is directed at minors in an inappropriate or harmful manner; (g) infringes on third-party intellectual property rights. Violations will result in immediate account suspension or termination without refund.</Section>
-    <Section title="5. Payments & Subscriptions">Paid plans are billed on a monthly or annual basis depending on the selected plan. For Egyptian users, subscriptions are activated manually after InstaPay payment verification. For international users, payments are processed via Gumroad which handles payment processing. International memberships renew automatically through Gumroad monthly unless cancelled.</Section>
-    <Section title="6. Cancellation & Refund Policy">Users may request cancellation and a full refund within 4 hours of subscription activation, provided they have not created any videos using the plan. If videos have been created, a partial refund will be issued based on the value of unused credits/videos, deducting the cost of videos already generated. Refund requests must be submitted exclusively through the Support page on the platform. Refunds are processed within 24 hours of approval. After the 4-hour window, no refunds will be issued except in cases of technical failure on our end. Subscriptions are non-transferable and cannot be shared between accounts.
+    <Section title="4. Acceptable Use & Prohibited Content">You agree not to use the Service to create, distribute, or promote content that: (a) is sexually explicit, pornographic, or adult in nature; (b) depicts, glorifies, instructs, or incites graphic violence, murder, killing, or serious physical harm to real people or groups; (c) promotes racism, hatred, or discrimination based on race, ethnicity, religion, gender, nationality, sexual orientation, or disability; (d) facilitates illegal activities including fraud, piracy, or drug use; (e) constitutes misinformation, deepfakes intended to deceive, or impersonation; (f) involves or is directed at minors in an inappropriate or harmful manner; (g) infringes on third-party intellectual property rights. Erivion applies automated AI-based content screening to every generation request, in addition to manual review, to detect and block prohibited content before a video is created. Violations will result in immediate account suspension or termination without refund, and may be reported to relevant authorities where required by law.</Section>
+    <Section title="5. Payments & Subscriptions">Paid plans and credit top-ups are billed on a one-time or recurring basis depending on the option selected. For Egyptian users, credit purchases are activated manually after InstaPay payment verification. For international users, payments are processed via Gumroad which handles payment processing.</Section>
+    <Section title="6. Cancellation & Refund Policy">Egyptian users (InstaPay): you may request cancellation and a refund within 4 hours of your purchase being approved only. Requests submitted after this 4-hour window will not be honored, except in verified cases of technical failure on our end. Refunds are NOT granted for dissatisfaction with AI-generated video quality, style, or output — this is not a valid refund reason. Refund requests must be submitted exclusively through the Support page.
 
-For international users (payments processed via Gumroad): Refunds are not currently available for international subscriptions. This is a temporary limitation while we establish our international payment infrastructure. We are actively working to make refunds available to international users in the future. If you experience a technical failure on our end, please contact support and we will assess your case individually.</Section>
+International users (Gumroad): there is currently no refund system available for international purchases. This is a temporary limitation while we build out our international payment infrastructure, and we are actively working to make refunds available to international users soon. If you experience a verified technical failure on our end, contact support and we will assess your case individually.</Section>
     <Section title="7. Advertising">Erivion does not display third-party advertisements. The platform is entirely ad-free. Your experience will never be interrupted by ads.</Section>
     <Section title="8. Intellectual Property">The Erivion platform, brand, and underlying technology are owned by Erivion and protected by intellectual property laws. Videos generated by users using their own original inputs are owned by the respective users, subject to these Terms and applicable law. Users grant Erivion a non-exclusive license to process submitted content solely for the purpose of delivering the Service.</Section>
-    <Section title="9. Disclaimers & Limitation of Liability">The Service is provided "as is" without warranties of any kind. Erivion is not liable for any indirect, incidental, special, or consequential damages arising from your use of the Service. Our total liability to you shall not exceed the amounts you paid to Erivion in the 12 months preceding the claim.</Section>
-    <Section title="10. Termination">Erivion reserves the right to suspend or terminate your account at any time for violation of these Terms, without prior notice. You may terminate your account by contacting us at digidelight33@gmail.com.</Section>
-    <Section title="11. Governing Law">These Terms are governed by applicable law. Disputes shall be resolved through good-faith negotiation before any legal proceedings.</Section>
-    <Section title="12. Changes to Terms">We may update these Terms at any time. We will notify users of significant changes via email or a prominent notice on the platform. Continued use after changes constitutes acceptance.</Section>
-    <Section title="13. Contact Us">For any questions about these Terms, please contact us at digidelight33@gmail.com or through the Support page on the platform.</Section>
+    <Section title="9. AI-Generated Content Disclaimer">Videos are generated using third-party AI models and may occasionally contain inaccuracies, visual artifacts, or unexpected results. Erivion does not guarantee the factual accuracy, appropriateness for a specific audience, or suitability of AI-generated content for any particular purpose. You are solely responsible for reviewing generated content before publishing, broadcasting, or otherwise distributing it.</Section>
+    <Section title="10. Fair Use & Service Availability">Erivion reserves the right to throttle, queue, rate-limit, or temporarily suspend access during periods of high demand or maintenance, and to suspend or terminate accounts exhibiting abusive, automated (bot), or fraudulent usage patterns inconsistent with normal individual use.</Section>
+    <Section title="11. Data & Video Retention">Generated videos and related job data are retained on our servers for a limited period. We recommend downloading and backing up any videos you wish to keep. Videos and associated data may be deleted after extended account inactivity (12 months or more) without further notice.</Section>
+    <Section title="12. Disclaimers & Limitation of Liability">The Service is provided "as is" without warranties of any kind. Erivion is not liable for any indirect, incidental, special, or consequential damages arising from your use of the Service. Our total liability to you shall not exceed the amounts you paid to Erivion in the 12 months preceding the claim.</Section>
+    <Section title="13. Termination">Erivion reserves the right to suspend or terminate your account at any time for violation of these Terms, without prior notice. You may terminate your account by contacting us at digidelight33@gmail.com.</Section>
+    <Section title="14. Governing Law">These Terms are governed by applicable law. Disputes shall be resolved through good-faith negotiation before any legal proceedings.</Section>
+    <Section title="15. Changes to Terms">We may update these Terms at any time. We will notify users of significant changes via email or a prominent notice on the platform. Continued use after changes constitutes acceptance.</Section>
+    <Section title="16. Contact Us">For any questions about these Terms, please contact us at digidelight33@gmail.com or through the Support page on the platform.</Section>
   </>;
 }
 
@@ -38,7 +41,7 @@ function PrivacyContent() {
     <Section title="4. Ad-Free Platform">Erivion is completely ad-free. We do not use any advertising network, track users for advertising purposes, or share your data with advertising companies.</Section>
     <Section title="5. Gumroad (International Payments)">For international users, payments are processed by Gumroad. We receive only transaction confirmation — no card details are shared with us.</Section>
     <Section title="6. Cookies & Tracking">We use essential cookies for login session management and analytics cookies to understand usage. You can control cookie preferences through your browser settings.</Section>
-    <Section title="7. Third-Party Services">Erivion integrates with: Google OAuth, Groq AI, Pexels, Stability AI, and Gumroad. Each has their own privacy policies.</Section>
+    <Section title="7. Third-Party Services">Erivion integrates with: Google OAuth, Groq AI, Pexels, Stability AI, Replicate (Seedance, FLUX), Google Gemini, and Gumroad. Each has their own privacy policies.</Section>
     <Section title="8. Data Storage & Security">Your data is stored on secure servers with industry-standard encryption and HTTPS connections. We do not sell, rent, or trade your personal information.</Section>
     <Section title="9. Your Rights">You have the right to access, correct, or delete your personal data. Contact us at digidelight33@gmail.com.</Section>
     <Section title="10. Contact Us">digidelight33@gmail.com or through the Support page on the platform.</Section>
@@ -47,11 +50,11 @@ function PrivacyContent() {
 
 function RefundContent() {
   return <>
-    <Section title="Overview">At Erivion, we want you to be satisfied with your subscription. This policy explains the conditions under which refunds are granted.</Section>
-    <Section title="Eligibility for Refund">You are eligible for a full refund if: (a) you request within 4 hours of activation; AND (b) you have not created any videos. If videos were created, a partial refund will be issued deducting the cost of videos generated.</Section>
-    <Section title="How to Request a Refund">All requests must be submitted through the Support page on the platform. Include your account email, plan, and reason for cancellation. We respond within 24 hours.</Section>
-    <Section title="Non-Refundable Situations">No refunds for: requests after 4 hours; accounts terminated for Terms violations; dissatisfaction with AI-generated content quality.</Section>
-    <Section title="International Users (Gumroad)">Same conditions apply. Submit your request through the Support page within 4 hours of activation.</Section>
+    <Section title="Overview">At Erivion, we want you to be satisfied with your purchase. This policy explains the conditions under which refunds are granted.</Section>
+    <Section title="Egyptian Users (InstaPay)">You are eligible for a refund only if you request it within 4 hours of your credit purchase being approved. Requests after this 4-hour window are not eligible, except in verified cases of technical failure on our end.</Section>
+    <Section title="International Users (Gumroad)">There is currently no refund system available for international purchases. This is temporary while we build out our international payment infrastructure — refunds for international users are coming soon. Verified technical failures on our end are assessed individually via Support.</Section>
+    <Section title="How to Request a Refund">All requests must be submitted through the Support page on the platform. Include your account email, the amount/plan purchased, and your reason. We respond within 24 hours.</Section>
+    <Section title="Non-Refundable Situations">Refunds are NOT granted for: requests submitted after the 4-hour window; accounts terminated for Terms violations; or dissatisfaction with the quality, style, or output of AI-generated videos — this is not considered a valid refund reason.</Section>
     <Section title="Contact">Use the Support page on the platform or email digidelight33@gmail.com.</Section>
   </>;
 }
@@ -63,14 +66,15 @@ function HowToUseContent() {
       icon: '🎯',
       title: 'اختر الموديل المناسب',
       color: '#7c6af7',
-      content: 'الموقع عنده 6 موديلات مختلفة، كل واحد ليه مميزاته:',
+      content: 'الموقع عنده 7 موديلات مختلفة، كل واحد ليه مميزاته:',
       items: [
         { name: 'AI Slices (Model 1)', desc: 'صور AI مع Ken Burns zoom - مثالي للمحتوى التعليمي والقصصي' },
         { name: 'Real Footage (Model 2)', desc: 'فيديوهات حقيقية من Pexels - مثالي للمحتوى الوثائقي' },
         { name: 'AI Images (Model 3)', desc: 'صور AI عالية الجودة لكل مشهد - مثالي للقصص الاحترافية' },
         { name: 'Seedance AI (Model 4)', desc: 'كليبات فيديو AI حقيقية - مثالي للمحتوى السينمائي' },
-        { name: 'Cinematic AI (Model 5)', desc: 'شخصيات ثابتة عبر المشاهد - مثالي للقصص ذات الشخصيات' },
+        { name: 'Cinematic AI (Model 5)', desc: 'شخصيات ثابتة عبر المشاهد، مع وضعين: فكرة أو برومبت مباشر - مثالي للقصص ذات الشخصيات' },
         { name: 'Map Video (Model 6)', desc: 'خرائط جغرافية متحركة - مثالي للمحتوى الجغرافي والتاريخي' },
+        { name: 'Ads Creator (Model 7)', desc: 'ارفع صورة منتجك واحصل على إعلان فيديو احترافي كامل مع صوت' },
       ]
     },
     {
@@ -197,9 +201,9 @@ function HowToUseContent() {
 function AboutContent() {
   return <>
     <Section title="Our Mission">To make professional video creation accessible to everyone — no expensive software or editing experience required.</Section>
-    <Section title="What We Do">Erivion is an AI-powered video generation platform. Provide an idea or script, and we handle scenes, footage, voiceovers, captions, music, and effects.</Section>
-    <Section title="Our Technology">State-of-the-art language models for scripting, neural text-to-speech for voiceovers, and a professional rendering pipeline built on FFmpeg. Supporting 8+ languages.</Section>
-    <Section title="Content Standards">We strictly prohibit harmful, explicit, or misleading content with automated and manual review mechanisms.</Section>
+    <Section title="What We Do">Erivion is an AI-powered video generation platform. Provide an idea, a script, or a product photo, and we handle scenes, footage, character-consistent video, voiceovers, captions, music, and effects — including full AI video ads from a single product image.</Section>
+    <Section title="Our Technology">State-of-the-art language models for scripting, image and video generation models for visuals, neural text-to-speech for voiceovers, and a professional rendering pipeline built on FFmpeg. Supporting 8+ languages.</Section>
+    <Section title="Content Standards">We strictly prohibit sexually explicit, racist, or violent/harmful content. Every generation request passes through automated AI-based content screening in addition to manual review before a video is created.</Section>
     <Section title="Contact">digidelight33@gmail.com — we read every message.</Section>
   </>;
 }

@@ -1,6 +1,62 @@
 import fetch from 'node-fetch';
 import { addUserTokens } from './authService.js';
 
+// ══════════════════════════════════════════════════════════════════════════
+//  Content Moderation — نقطة فحص موحّدة قبل أي توليد فيديو
+// ══════════════════════════════════════════════════════════════════════════
+// ✅ بيتفحص فيها أي فكرة/سكريبت/برومبت/اسم منتج قبل ما يوصل لأي موديل توليد،
+// ويرفض المحتوى الإباحي، العنصري، أو اللي بيحرض على العنف/القتل. بيتنادى من
+// كل route بيستقبل نص من العميل (موديل 1-5، الإعلانات، والإيجنت).
+const MODERATION_SYSTEM_PROMPT = `You are a strict content safety classifier for an AI video generation platform. Given a user's video idea/prompt/script/product description, decide if it violates policy.
+
+BLOCK (unsafe=true) if the text requests, describes, or implies any of:
+- Sexually explicit, pornographic, or adult content of any kind
+- Racist content, or content that promotes hatred/discrimination based on race, ethnicity, religion, nationality, gender, sexual orientation, or disability
+- Content that depicts, glorifies, instructs, or incites graphic violence, murder, killing, terrorism, or serious physical harm to real people or groups
+- Sexual content involving minors, or minors in any inappropriate/harmful context
+- Content designed to harass, threaten, or incite violence against a specific real, identifiable person
+
+ALLOW (unsafe=false) everything else, including: historical war/battle depictions in an educational/documentary tone, fictional action/conflict without gratuitous gore, competitive sports, normal drama/tension, dark historical topics presented respectfully (e.g. religious history, war history).
+
+Respond with ONLY raw JSON, nothing else: {"unsafe": true|false, "category": "porn"|"racism"|"violence"|"none", "reason": "one short sentence"}`;
+
+export async function checkContentSafety(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return { unsafe: false, category: 'none', reason: '' };
+  const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  if (!GROQ_API_KEY) return { unsafe: false, category: 'none', reason: '' }; // fail-open only if moderation itself is unavailable
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_API_KEY },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 100, temperature: 0,
+        messages: [
+          { role: 'system', content: MODERATION_SYSTEM_PROMPT },
+          { role: 'user', content: trimmed.slice(0, 1500) },
+        ],
+      }),
+    });
+    if (!res.ok) return { unsafe: false, category: 'none', reason: '' };
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) return { unsafe: false, category: 'none', reason: '' };
+    const parsed = JSON.parse(m[0]);
+    return { unsafe: !!parsed.unsafe, category: parsed.category || 'none', reason: parsed.reason || '' };
+  } catch (e) {
+    console.warn('[Moderation] Check failed, allowing by default:', e.message);
+    return { unsafe: false, category: 'none', reason: '' }; // fail-open on moderation-service errors, never block legitimate users due to an outage
+  }
+}
+
+// رسالة الرفض الموحّدة اللي بترجع للعميل في أي موديل
+export const MODERATION_REJECTION_MESSAGE = {
+  en: 'This request cannot be processed — it appears to involve sexually explicit, racist, or violent/harmful content, which is not allowed on Erivion. Please revise your idea.',
+  ar: 'مينفعش نكمل الطلب ده — يبدو إنه بيتضمن محتوى إباحي أو عنصري أو عنيف/مؤذي، وده غير مسموح به في Erivion. من فضلك عدّل الفكرة.',
+};
+
 const TONE_INSTRUCTIONS = {
   motivational: 'Inspiring, energetic, and uplifting.',
   storytelling: 'Narrative-driven, emotionally engaging.',
