@@ -40,7 +40,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (imageBase64) {
       try {
         validateAgentImage(imageBase64);
-        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + 'User uploaded a photo (likely for Model 7 ads or Model 5 character reference).';
+        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + 'User just uploaded a photo. This fully satisfies the required product/character photo for Model 7 (Ads) or Model 5 (character reference) — treat the photo requirement as met right now, do not ask for it again, and proceed toward confirming and generating if you already have the other required details.';
       } catch (e) {
         return res.status(400).json({ error: e.message });
       }
