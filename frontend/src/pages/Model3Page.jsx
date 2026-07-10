@@ -138,7 +138,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         body: JSON.stringify({ idea: inputMode === 'idea' ? idea : null, script: (inputMode === 'script' || inputMode === 'voice') ? script : null, inputMode: inputMode === 'voice' ? 'script' : inputMode, imageCount: ALL_DURATIONS.find(d => d.value === (inputMode === 'script' ? getSmartDuration() : duration))?.images || imageCount, videoLanguage, ratio, videoStyle, styleSuffix: selectedStyle?.suffix || '' }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!res.ok) throw new Error(data.error === 'content_policy_violation' ? data.message : (data.error || 'Failed'));
       setScenes(data.scenes); setStep('scenes');
     } catch (e) { setError(e.message); } finally { setGenerating(false); }
   };
