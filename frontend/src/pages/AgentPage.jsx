@@ -9,6 +9,18 @@ function tokenHeader() {
 
 const isArabic = (text) => /[\u0600-\u06FF]/.test(text || '');
 
+// ✅ FIX: fetch() على data: URI ممكن يفشل بـ"Failed to fetch" تحت بعض إعدادات
+// الـ CSP — التحويل اليدوي ده موثوق 100% ومش محتاج أي طلب شبكة خالص
+function dataURLtoBlob(dataUrl) {
+  const [header, base64] = dataUrl.split(',');
+  const mimeMatch = header.match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
 const T = {
   ar: {
     heroTitle: 'إيه الفيديو اللي في بالك؟',
@@ -214,7 +226,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     if (!textToSend.trim() && !voiceFile && !imageFile) return;
     if (loading || activeJobRef.current) return; // ✅ FIX: منع إرسال رسالة تانية لحد ما الحالية تخلص، عشان محدش يبعت "ابدأ" مرتين ويعمل تضارب رندر
     setError('');
-    const userMsg = { role: 'user', content: textToSend.trim() || (lang === 'ar' ? '🎙️ رسالة صوتية' : '🎙️ Voice message'), hasVoice: !!voiceFile, imagePreview };
+    const attachmentLabel = voiceFile
+      ? (lang === 'ar' ? '🎙️ رسالة صوتية' : '🎙️ Voice message')
+      : imageFile
+      ? (lang === 'ar' ? '🖼️ صورة مرفوعة' : '🖼️ Uploaded photo')
+      : '';
+    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
     const currentVoice = voiceFile, currentImage = imageFile;
@@ -304,7 +321,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       timerRef.current = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
       try {
         const form = new FormData();
-        const productBlob = await (await fetch(lastUploadedPhoto)).blob();
+        const productBlob = dataURLtoBlob(lastUploadedPhoto);
         form.append('productImage', productBlob, 'product.jpg');
         form.append('productName', ready.productName || 'Product');
         form.append('productDesc', ready.productDesc || '');
