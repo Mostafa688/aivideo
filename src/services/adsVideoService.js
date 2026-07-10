@@ -557,7 +557,9 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
       ], { maxBuffer: 200*1024*1024 });
       console.log('[AdsService] ✅ Crossfade transitions applied (video + audio)');
     } catch (e) {
-      console.warn('[AdsService] Transitions failed, using simple concat fallback:', (e.stderr?.toString() || e.message).slice(0, 200));
+      const xfadeErr = e.stderr?.toString() || e.message;
+      const xfadeErrLines = xfadeErr.split('\n').filter(l => /error|invalid|failed|no such|unable|cannot|could not/i.test(l));
+      console.warn('[AdsService] Transitions failed, using simple concat fallback:', (xfadeErrLines.slice(0,8).join(' | ') || xfadeErr.slice(-400)));
       const listFile = join(TEMP_DIR, `ads_list_${jobId}.txt`);
       fs.writeFileSync(listFile, normPaths.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n'));
       await execFileAsync('ffmpeg', [
