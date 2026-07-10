@@ -116,7 +116,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         body:JSON.stringify(body)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error === 'content_policy_violation' ? data.message : (data.error||'Failed'));
+      if (!res.ok) throw new Error(data.error === 'content_policy_violation' ? (region === 'eg' ? data.message_ar : data.message) : (data.error||'Failed'));
       setScenes(data.scenes||[]); setStep('scenes');
     } catch(e){ setError(e.message); } finally { setLoading(false); }
   };

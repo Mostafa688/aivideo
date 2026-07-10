@@ -196,7 +196,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
         body: JSON.stringify({ idea: mode === 'idea' ? inputText : undefined, script: mode !== 'idea' ? inputText : undefined, inputMode: mode === 'idea' ? 'idea' : 'script', sceneCount: mode === 'script' ? (DURATION_CONFIG[getSmartDuration()]?.scenes || durConfig.scenes) : durConfig.scenes, videoLanguage, videoStyle, styleSuffix: VIDEO_STYLES_M4.find(s=>s.key===videoStyle)?.suffix || '' }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error === 'content_policy_violation' ? data.message : (data.error || 'Failed'));
+      if (!res.ok) throw new Error(data.error === 'content_policy_violation' ? ((localStorage.getItem('erivion_region') || 'eg') === 'eg' ? data.message_ar : data.message) : (data.error || 'Failed'));
       setScenes(data.scenes || []);
       setStep('scenes');
     } catch (e) { setError(e.message); } finally { setLoading(false); }

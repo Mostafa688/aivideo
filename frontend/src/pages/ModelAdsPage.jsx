@@ -202,7 +202,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
           throw new Error(data.message || (isAr ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video'));
         }
         if (data.error === 'content_policy_violation') {
-          throw new Error(isAr ? (data.message_ar || data.message) : data.message);
+          throw new Error((localStorage.getItem('erivion_region') || 'eg') === 'eg' ? (data.message_ar || data.message) : data.message);
         }
         throw new Error(data.error || 'Failed to start job');
       }
@@ -450,13 +450,13 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
 
               <div>
                 <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 10, fontFamily: "'DM Sans', sans-serif" }}>
-                  {isAr ? `عدد المشاهد: ${sceneCount}` : `Scene Count: ${sceneCount}`}
+                  {isAr ? `مدة الفيديو: ${sceneCount * 5} ثانية` : `Video Duration: ${sceneCount * 5} seconds`}
                 </p>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {[3, 4, 5, 6].map(n => (
                     <span key={n} onClick={() => setSceneCount(n)}
                       style={{ padding: '7px 16px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', userSelect: 'none', transition: 'all 0.15s', border: `1px solid ${sceneCount === n ? ACCENT : 'rgba(255,255,255,0.1)'}`, background: sceneCount === n ? ACCENT_BG : 'transparent', color: sceneCount === n ? ACCENT : 'rgba(255,255,255,0.45)' }}>
-                      {n}
+                      {n * 5}{isAr ? 'ث' : 's'}
                     </span>
                   ))}
                 </div>
