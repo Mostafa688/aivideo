@@ -493,9 +493,24 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
   const hasMusic = !!musicFile;
   console.log(`[AdsService] Audio layers → voice: ${hasVoice} | music: ${hasMusic ? musicFile : 'none found'}`);
 
-  // ── كل كليب بيتقص لمدة ثابتة 5 ثواني بالظبط قبل أي حاجة، عشان توقيت الـ xfade يبقى دقيق ──
-  const CLIP_DUR = 5.0;
-  const XFADE_DUR = 0.5; // مدة الانتقال بين كل مشهد ومشهد
+  // ✅ FIX: مانفترضش إن كل كليب من Seedance بالظبط 5.0 ثانية — بيرجع أحيانًا أقصر شوية
+  // (4.7، 4.9...). لو حسبنا الـ xfade offset على أساس 5.0 ثابتة وكليب فعليًا أقصر،
+  // الـ offset بيبقى أكبر من مدة الكليب الحقيقية والـ xfade بيفشل تمامًا (بيطلع
+  // encoder error زي "Invalid argument"). بنقيس المدة الحقيقية الأقصر ونستخدمها كموحّد.
+  let CLIP_DUR = 5.0;
+  try {
+    const durations = await Promise.all(clipPaths.map(async (p) => {
+      try {
+        const { stdout } = await execFileAsync('ffprobe', ['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1', p]);
+        return parseFloat(stdout.trim()) || 5.0;
+      } catch { return 5.0; }
+    }));
+    CLIP_DUR = Math.max(2.0, Math.min(5.0, ...durations) - 0.05); // هامش أمان بسيط تحت أقصر كليب
+    console.log(`[AdsService] Clip durations: [${durations.map(d=>d.toFixed(2)).join(', ')}] → using CLIP_DUR=${CLIP_DUR.toFixed(2)}s`);
+  } catch (e) {
+    console.warn('[AdsService] Clip duration probing failed, using default 5.0s:', e.message);
+  }
+  const XFADE_DUR = Math.min(0.5, CLIP_DUR / 3); // الانتقال محدش يبقى أكبر من تلت الكليب
   const totalDur = numClips > 1 ? (numClips * CLIP_DUR - (numClips - 1) * XFADE_DUR) : CLIP_DUR;
 
   const inputArgs = clipPaths.flatMap(p => ['-i', p]);
@@ -604,7 +619,11 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
   try {
     await execFileAsync('ffmpeg', args, { maxBuffer: 200*1024*1024 });
   } catch (err) {
-    throw new Error('FFmpeg: ' + (err.stderr?.toString().slice(-600) || err.message));
+    const fullErr = err.stderr?.toString() || err.message;
+    // ✅ آخر الرسالة غالبًا ملخص عام ("Invalid argument")، السبب الحقيقي غالبًا قبله —
+    // بنلقّط أول جزء (بداية اللوج) وآخر جزء مع بعض عشان نشوف السبب الفعلي مش بس الملخص
+    const errSnippet = fullErr.length > 1500 ? `${fullErr.slice(0, 700)}\n...\n${fullErr.slice(-800)}` : fullErr;
+    throw new Error('FFmpeg: ' + errSnippet);
   }
 
   setTimeout(() => { clipPaths.forEach(f => { try { fs.unlinkSync(f); } catch {} }); }, 60000);
