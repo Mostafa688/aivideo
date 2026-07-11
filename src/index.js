@@ -1888,20 +1888,6 @@ const BLOG_ARTICLES = [
   { id: 'ai-video-ads-vs-traditional-production-cost-2026', title: 'AI Video Ads vs. Traditional Video Production: The Real Cost Difference', summary: 'A practical comparison of budget, turnaround time, and flexibility between traditional and AI video ad production.' },
 ];
 
-// ── مقالات المدونة — لازم تتزود هنا يدويًا كل ما يتضاف مقال جديد في BlogPostPage.jsx
-// (نفس الـ id بالظبط) عشان تتضاف في الـ sitemap ويوصلها محتوى حقيقي للبوتات ──────────
-const BLOG_ARTICLES = [
-  { id: 'make-money-youtube-ai-videos-2026', title: 'How to Make Money on YouTube with AI Videos in 2026', summary: 'Step-by-step guide to creating faceless AI-generated YouTube channels that generate passive income.' },
-  { id: 'ai-video-creation-complete-beginners-guide', title: 'AI Video Creation: The Complete Beginners Guide', summary: 'Everything you need to know about generating professional videos using artificial intelligence tools.' },
-  { id: 'faceless-youtube-channel-ideas-5k-per-month', title: 'Faceless YouTube Channel Ideas That Make 5K Per Month', summary: 'Discover the most profitable niches for automated AI video channels with real income examples.' },
-  { id: 'repurpose-youtube-videos-facebook-tiktok', title: 'How to Repurpose YouTube Videos for Facebook and TikTok', summary: 'Maximize your content reach by converting your AI videos into multiple formats for different platforms.' },
-  { id: 'best-ai-video-niches-low-competition-2026', title: 'Best AI Video Niches with Low Competition in 2026', summary: 'Find untapped YouTube niches where AI-generated content can quickly rank and gain subscribers.' },
-  { id: 'grow-0-to-10k-subscribers-ai-videos', title: 'How to Grow from 0 to 10K Subscribers Using AI Videos', summary: 'Proven strategies for building a YouTube audience fast using automated video creation tools.' },
-  { id: 'product-photo-to-video-ad-2026', title: 'How to Turn One Product Photo Into a Complete Video Ad (No Camera, No Studio)', summary: 'A step-by-step look at how AI can take a single product image and produce a fully animated, voiced video advertisement in minutes.' },
-  { id: 'ai-agent-chat-video-creation-2026', title: "Erivion's AI Agent: Create a Complete Video Just by Chatting", summary: 'How a conversational AI assistant can replace an entire video production workflow — no forms, no settings menus, just a conversation.' },
-  { id: 'ai-video-ads-vs-traditional-production-cost-2026', title: 'AI Video Ads vs. Traditional Video Production: The Real Cost & Speed Difference in 2026', summary: 'A practical comparison of budget, turnaround time, and flexibility between hiring a video production team and generating ads with AI.' },
-];
-
 const SEO_PAGES = {
   '/': {
     title: 'Erivion — منصة إنشاء فيديوهات بالذكاء الاصطناعي بالعربي',
