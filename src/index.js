@@ -163,41 +163,9 @@ app.use('/outputs/ads_img', express.static(join(process.cwd(), 'outputs', 'ads_i
 app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'templates')));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
-// ── sitemap.xml ───────────────────────────────────────────────────────────────
-app.get('/sitemap.xml', (req, res) => {
-  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://erivion.net/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
-  <url><loc>https://erivion.net/?page=pricing</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://erivion.net/?page=faq</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://erivion.net/?page=templates</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
-</urlset>`);
-});
-
-// ── robots.txt ────────────────────────────────────────────────────────────────
-app.get('/robots.txt', (req, res) => {
-  res.type('text/plain').send(`User-agent: *
-Allow: /
-Disallow: /api/
-Disallow: /outputs/
-
-User-agent: GPTBot
-Allow: /
-
-User-agent: ChatGPT-User
-Allow: /
-
-User-agent: Google-Extended
-Allow: /
-
-User-agent: anthropic-ai
-Allow: /
-
-User-agent: ClaudeBot
-Allow: /
-
-Sitemap: https://erivion.net/sitemap.xml`);
-});
+// ✅ FIX: كانت 3 نسخ مكررة من sitemap.xml و robots.txt في الملف — Express بس بيستخدم
+// أول واحد مسجّل، يعني النسخة الشاملة بتاعتنا (تحت في آخر الملف) كانت أبدًا ما بتشتغل!
+// اتشالت النسخ القديمة المكررة دي، وهنسيب نسخة واحدة كاملة بس في الآخر.
 
 app.use('/api/support', supportRouter);
 
@@ -717,47 +685,6 @@ app.post('/api/transcribe', authMiddleware, upload.single('audio'), async (req, 
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/api/voices', (req, res) => res.json({ voices: VOICE_OPTIONS }));
-
-// ── Sitemap ────────────────────────────────────────────────────────────────
-app.get('/sitemap.xml', (req, res) => {
-  const base = 'https://erivion.net';
-  const now = new Date().toISOString().split('T')[0];
-  const urls = [
-    { loc: `${base}/`,          priority: '1.0', changefreq: 'weekly'  },
-    { loc: `${base}/pricing`,   priority: '0.9', changefreq: 'weekly'  },
-    { loc: `${base}/login`,     priority: '0.8', changefreq: 'monthly' },
-    { loc: `${base}/affiliate`, priority: '0.7', changefreq: 'monthly' },
-    { loc: `${base}/cinematic`,  priority: '0.8', changefreq: 'weekly'  },
-  ];
-  const urlTags = urls.map(u => `
-  <url>
-    <loc>${u.loc}</loc>
-    <lastmod>${now}</lastmod>
-    <changefreq>${u.changefreq}</changefreq>
-    <priority>${u.priority}</priority>
-  </url>`).join('');
-  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urlTags}
-</urlset>`;
-  res.header('Content-Type', 'application/xml');
-  res.send(sitemap);
-});
-
-// ── Robots.txt ─────────────────────────────────────────────────────────────
-app.get('/robots.txt', (req, res) => {
-  res.header('Content-Type', 'text/plain');
-  res.send(`User-agent: *
-Allow: /
-Allow: /pricing
-Allow: /login
-Allow: /affiliate
-Allow: /cinematic
-Disallow: /api/
-Disallow: /outputs/
-Disallow: /admin
-
-Sitemap: https://erivion.net/sitemap.xml`);
-});
 
 app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) => {
   const { idea, script, tone, duration, mode, videoLanguage } = req.body;
@@ -1946,6 +1873,35 @@ const BOT_UA_REGEX = /bot|crawl|spider|slurp|GPTBot|ChatGPT-User|OAI-SearchBot|G
 
 const SITE_URL = process.env.FRONTEND_URL || 'https://erivion.net';
 
+// ✅ نسخة خفيفة من بيانات المقالات (id/title/summary بس) — لازم تتزامن يدويًا مع
+// BLOG_POSTS في frontend/src/pages/BlogPostPage.jsx كل ما تتضاف مقالة جديدة، عشان
+// كل مقال يكون له رابط حقيقي (/blog/{id}) يقدر جوجل والبوتات يفهرسوه لوحده.
+const BLOG_ARTICLES = [
+  { id: 'make-money-youtube-ai-videos-2026', title: 'How to Make Money on YouTube with AI Videos in 2026', summary: 'Step-by-step guide to creating faceless AI-generated YouTube channels that generate passive income.' },
+  { id: 'ai-video-creation-complete-beginners-guide', title: 'AI Video Creation: The Complete Beginners Guide', summary: 'Everything you need to know about generating professional videos using artificial intelligence tools.' },
+  { id: 'faceless-youtube-channel-ideas-5k-per-month', title: 'Faceless YouTube Channel Ideas That Make 5K Per Month', summary: 'Profitable niche ideas for building a faceless AI-generated YouTube channel.' },
+  { id: 'repurpose-youtube-videos-facebook-tiktok', title: 'How to Repurpose YouTube Videos for Facebook and TikTok', summary: 'A multi-platform distribution strategy to get more reach from every video you create.' },
+  { id: 'best-ai-video-niches-low-competition-2026', title: 'Best AI Video Niches with Low Competition in 2026', summary: 'Niches with the best combination of growth potential and low competition for AI-generated content.' },
+  { id: 'grow-0-to-10k-subscribers-ai-videos', title: 'How to Grow from 0 to 10K Subscribers Using AI Videos', summary: 'A month-by-month roadmap to growing a YouTube channel powered by AI video generation.' },
+  { id: 'product-photo-to-video-ad-2026', title: 'How to Turn One Product Photo Into a Complete Video Ad', summary: 'A step-by-step look at how AI can take a single product image and produce a fully animated, voiced video advertisement in minutes.' },
+  { id: 'ai-agent-chat-video-creation-2026', title: "Erivion's AI Agent: Create a Video Just by Chatting", summary: 'How a conversational AI assistant can replace an entire video production workflow.' },
+  { id: 'ai-video-ads-vs-traditional-production-cost-2026', title: 'AI Video Ads vs. Traditional Video Production: The Real Cost Difference', summary: 'A practical comparison of budget, turnaround time, and flexibility between traditional and AI video ad production.' },
+];
+
+// ── مقالات المدونة — لازم تتزود هنا يدويًا كل ما يتضاف مقال جديد في BlogPostPage.jsx
+// (نفس الـ id بالظبط) عشان تتضاف في الـ sitemap ويوصلها محتوى حقيقي للبوتات ──────────
+const BLOG_ARTICLES = [
+  { id: 'make-money-youtube-ai-videos-2026', title: 'How to Make Money on YouTube with AI Videos in 2026', summary: 'Step-by-step guide to creating faceless AI-generated YouTube channels that generate passive income.' },
+  { id: 'ai-video-creation-complete-beginners-guide', title: 'AI Video Creation: The Complete Beginners Guide', summary: 'Everything you need to know about generating professional videos using artificial intelligence tools.' },
+  { id: 'faceless-youtube-channel-ideas-5k-per-month', title: 'Faceless YouTube Channel Ideas That Make 5K Per Month', summary: 'Discover the most profitable niches for automated AI video channels with real income examples.' },
+  { id: 'repurpose-youtube-videos-facebook-tiktok', title: 'How to Repurpose YouTube Videos for Facebook and TikTok', summary: 'Maximize your content reach by converting your AI videos into multiple formats for different platforms.' },
+  { id: 'best-ai-video-niches-low-competition-2026', title: 'Best AI Video Niches with Low Competition in 2026', summary: 'Find untapped YouTube niches where AI-generated content can quickly rank and gain subscribers.' },
+  { id: 'grow-0-to-10k-subscribers-ai-videos', title: 'How to Grow from 0 to 10K Subscribers Using AI Videos', summary: 'Proven strategies for building a YouTube audience fast using automated video creation tools.' },
+  { id: 'product-photo-to-video-ad-2026', title: 'How to Turn One Product Photo Into a Complete Video Ad (No Camera, No Studio)', summary: 'A step-by-step look at how AI can take a single product image and produce a fully animated, voiced video advertisement in minutes.' },
+  { id: 'ai-agent-chat-video-creation-2026', title: "Erivion's AI Agent: Create a Complete Video Just by Chatting", summary: 'How a conversational AI assistant can replace an entire video production workflow — no forms, no settings menus, just a conversation.' },
+  { id: 'ai-video-ads-vs-traditional-production-cost-2026', title: 'AI Video Ads vs. Traditional Video Production: The Real Cost & Speed Difference in 2026', summary: 'A practical comparison of budget, turnaround time, and flexibility between hiring a video production team and generating ads with AI.' },
+];
+
 const SEO_PAGES = {
   '/': {
     title: 'Erivion — منصة إنشاء فيديوهات بالذكاء الاصطناعي بالعربي',
@@ -2011,6 +1967,12 @@ const SEO_PAGES = {
   '/terms': { title: 'شروط الخدمة — Erivion', description: 'شروط استخدام منصة Erivion لإنشاء الفيديوهات بالذكاء الاصطناعي.', h1: 'شروط الخدمة', body: ['راجع شروط الخدمة الكاملة الخاصة باستخدام منصة Erivion.'] },
   '/privacy': { title: 'سياسة الخصوصية — Erivion', description: 'كيف تتعامل Erivion مع بياناتك الشخصية وخصوصيتك.', h1: 'سياسة الخصوصية', body: ['راجع سياسة الخصوصية الكاملة الخاصة بمنصة Erivion.'] },
   '/refund': { title: 'سياسة الاسترداد — Erivion', description: 'شروط استرداد الأموال للمستخدمين المصريين والدوليين على Erivion.', h1: 'سياسة الاسترداد', body: ['المستخدمون المصريون: يمكن طلب الاسترداد خلال 4 ساعات من الشحن فقط. المستخدمون الدوليون: نظام الاسترداد غير متاح حاليًا وسيتم توفيره قريبًا.'] },
+  '/blog': {
+    title: 'مدونة Erivion — مقالات عن الفيديو والذكاء الاصطناعي',
+    description: 'مقالات ودلائل عن إنشاء فيديوهات AI، إعلانات المنتجات، وتنمية المحتوى باستخدام الذكاء الاصطناعي.',
+    h1: 'مدونة Erivion',
+    body: BLOG_ARTICLES.map(a => `${a.title} — ${a.summary}`),
+  },
   '/faq': {
     title: 'الأسئلة الشائعة — Erivion',
     description: 'إجابات على أكتر الأسئلة اللي بتتسأل عن استخدام Erivion، الكريديت، الموديلات المختلفة، الدفع، وبرنامج الشراكة.',
@@ -2087,8 +2049,17 @@ ${bodyHtml}
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) return next();
   const ua = req.headers['user-agent'] || '';
-  if (BOT_UA_REGEX.test(ua) && SEO_PAGES[req.path]) {
+  if (!BOT_UA_REGEX.test(ua)) return next();
+  if (SEO_PAGES[req.path]) {
     return res.type('html').send(renderBotHTML(SEO_PAGES[req.path], req.path));
+  }
+  // ── مقالات المدونة الفردية (/blog/{id}) ──
+  const blogMatch = req.path.match(/^\/blog\/([a-z0-9-]+)$/);
+  if (blogMatch) {
+    const article = BLOG_ARTICLES.find(a => a.id === blogMatch[1]);
+    if (article) {
+      return res.type('html').send(renderBotHTML({ title: `${article.title} — Erivion Blog`, description: article.summary, h1: article.title, body: [article.summary] }, req.path));
+    }
   }
   next();
 });
@@ -2122,9 +2093,11 @@ Allow: /
 Sitemap: ${SITE_URL}/sitemap.xml`);
 });
 
-// sitemap.xml — كل الصفحات الحقيقية عشان جوجل يقدر يفهرسها
+// sitemap.xml — كل الصفحات الحقيقية + كل مقال مدونة لوحده، عشان جوجل يقدر يفهرسهم كلهم
 app.get('/sitemap.xml', (req, res) => {
-  const urls = Object.keys(SEO_PAGES).map(p => `  <url><loc>${SITE_URL}${p === '/' ? '' : p}</loc></url>`).join('\n');
+  const staticUrls = Object.keys(SEO_PAGES).map(p => `  <url><loc>${SITE_URL}${p === '/' ? '' : p}</loc></url>`);
+  const blogUrls = BLOG_ARTICLES.map(a => `  <url><loc>${SITE_URL}/blog/${a.id}</loc></url>`);
+  const urls = [...staticUrls, ...blogUrls].join('\n');
   res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls}
