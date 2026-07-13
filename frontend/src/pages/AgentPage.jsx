@@ -171,6 +171,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [error, setError] = useState('');
   const [voiceFile, setVoiceFile] = useState(null);
   const [imageFile, setImageFile] = useState(null);
+  const [inputFocused, setInputFocused] = useState(false); // ✅ لعرض توهج الحدود لما الكتابة تكون فاعلة
   const [imagePreview, setImagePreview] = useState(null);
   const [limits, setLimits] = useState({ MAX_AUDIO_SEC: 120, MAX_AUDIO_MB: 10, MAX_IMAGE_MB: 5 });
   const [lastUploadedPhoto, setLastUploadedPhoto] = useState(null);
@@ -611,8 +612,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
   if (!started) {
     return (
-      <div style={{ minHeight: 'calc(100vh - 74px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 16px', background: 'radial-gradient(ellipse at top, rgba(124,106,247,0.08) 0%, transparent 55%)' }}>
-        <div style={{ width: '100%', maxWidth: 680 }}>
+      <div style={{ minHeight: 'calc(100vh - 74px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 16px', position: 'relative', overflow: 'hidden' }}>
+        {/* ✅ خلفية طبقتين هادية بدل تدرّج واحد مسطح — عمق أكتر من غير ما تلفت النظر */}
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 60% 45% at 50% -8%, rgba(124,106,247,0.14) 0%, transparent 65%), radial-gradient(ellipse 40% 35% at 85% 90%, rgba(217,167,116,0.05) 0%, transparent 70%)' }} />
+        <div style={{ width: '100%', maxWidth: 680, position: 'relative' }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
             <button onClick={onSwitchToModels} style={{ padding: '9px 16px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               🎬 {t.models} →
@@ -621,19 +624,26 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
           <div style={{ textAlign: 'center', marginBottom: 32 }}>
             <div style={{ marginBottom: 18 }}>
-              <span style={{ fontSize: 36, fontWeight: 900, letterSpacing: '0.03em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 0 28px rgba(255,255,255,0.6), 0 0 8px rgba(196,181,253,0.65), 0 4px 20px rgba(124,106,247,0.35)' }}>Erivion</span>
+              <span style={{ fontSize: 36, fontWeight: 900, letterSpacing: '0.02em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 1px 0 rgba(255,255,255,0.15), 0 0 32px rgba(124,106,247,0.4)' }}>Erivion</span>
             </div>
-            <h1 style={{ fontSize: 30, fontWeight: 800, color: '#fff', margin: '0 0 10px', direction: isArabic(t.heroTitle) ? 'rtl' : 'ltr' }}>{t.heroTitle}</h1>
+            <h1 style={{ fontSize: 30, fontWeight: 800, color: '#fff', margin: '0 0 10px', letterSpacing: '-0.01em', direction: isArabic(t.heroTitle) ? 'rtl' : 'ltr' }}>{t.heroTitle}</h1>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0, maxWidth: 460, marginInline: 'auto', lineHeight: 1.7, direction: isArabic(t.heroSub) ? 'rtl' : 'ltr' }}>{t.heroSub}</p>
           </div>
 
           {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 14 }}>{error}</div>}
 
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 16 }}>
+          <div style={{
+            background: 'rgba(255,255,255,0.035)',
+            border: `1px solid ${inputFocused ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 20, padding: 16,
+            transition: 'border-color 0.2s ease',
+          }}>
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               placeholder={t.placeholder}
               rows={3}
               autoFocus
@@ -648,13 +658,18 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
               <div style={{ display: 'flex', gap: 8 }}><AttachBar /></div>
               <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFile}
-                style={{ width: 40, height: 40, borderRadius: 12, background: (!input.trim() && !voiceFile && !imageFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16 }}>➤</button>
+                onMouseEnter={e => { if (input.trim() || voiceFile || imageFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
+                onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
+                style={{ width: 40, height: 40, borderRadius: 12, background: (!input.trim() && !voiceFile && !imageFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFile) ? 'default' : 'pointer', fontSize: 16, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFile) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}>➤</button>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 18 }}>
             {t.chips.map((c, i) => (
-              <button key={i} onClick={() => { setInput(c.text); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+              <button key={i} onClick={() => { setInput(c.text); }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,106,247,0.1)'; e.currentTarget.style.borderColor = 'rgba(124,106,247,0.35)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.75)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.18s ease' }}>
                 <span>{c.icon}</span>{c.label}
               </button>
             ))}
@@ -671,15 +686,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
         .agent-bubble{animation:fadeUp 0.25s ease}
         .agent-dot{width:6px;height:6px;border-radius:50%;background:#7c6af7;display:inline-block;animation:bounce 1s ease infinite}
+        .agent-models-btn:hover{background:rgba(124,106,247,0.16) !important;border-color:rgba(124,106,247,0.45) !important;}
       `}</style>
       <div style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', flex: 1 }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '0.04em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 0 18px rgba(255,255,255,0.55), 0 0 4px rgba(196,181,253,0.6)' }}>Erivion</span>
+            <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '0.02em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 1px 0 rgba(255,255,255,0.15), 0 0 20px rgba(124,106,247,0.35)' }}>Erivion</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>Agent</span>
           </div>
-          <button onClick={onSwitchToModels} style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <button className="agent-models-btn" onClick={onSwitchToModels} style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s ease, border-color 0.15s ease' }}>
             🎬 {t.models} →
           </button>
         </div>
@@ -694,8 +710,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               <div key={i} className="agent-bubble" style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
                 <div style={{
                   maxWidth: '82%', padding: '12px 16px', borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  background: m.role === 'user' ? 'linear-gradient(135deg,#7c6af7,#6d28d9)' : 'rgba(255,255,255,0.05)',
-                  border: m.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                  background: m.role === 'user' ? 'linear-gradient(135deg,#7c6af7,#6d28d9)' : 'rgba(255,255,255,0.045)',
+                  border: m.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.09)',
+                  boxShadow: m.role === 'user' ? '0 4px 16px rgba(124,106,247,0.25)' : '0 2px 10px rgba(0,0,0,0.15)',
                   color: '#fff', fontSize: 14, lineHeight: 1.7, direction: ar ? 'rtl' : 'ltr', textAlign: ar ? 'right' : 'left',
                 }}>
                   {m.imagePreview && <img src={m.imagePreview} alt="upload" style={{ maxWidth: 140, borderRadius: 10, marginBottom: 8, display: 'block' }} />}
@@ -723,22 +740,34 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: 8 }}>
+        <div style={{
+          display: 'flex', alignItems: 'flex-end', gap: 8,
+          background: 'rgba(255,255,255,0.035)',
+          border: `1px solid ${inputFocused ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.1)'}`,
+          borderRadius: 16, padding: 8,
+          transition: 'border-color 0.2s ease',
+        }}>
           <AttachBar />
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             placeholder={t.placeholder}
             rows={1}
             style={{ flex: 1, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 14, fontFamily: 'inherit', padding: '9px 6px', direction: isArabic(input) ? 'rtl' : 'ltr', maxHeight: 100 }}
           />
           {(loading || activeJobRef.current) ? (
             <button onClick={stopEverything} title={t.stop}
-              style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', fontSize: 14, flexShrink: 0 }}>⏹️</button>
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.24)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+              style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'background 0.15s ease' }}>⏹️</button>
           ) : (
             <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFile}
-              style={{ width: 38, height: 38, borderRadius: 10, background: (!input.trim() && !voiceFile && !imageFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>➤</button>
+              onMouseEnter={e => { if (input.trim() || voiceFile || imageFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
+              onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
+              style={{ width: 38, height: 38, borderRadius: 10, background: (!input.trim() && !voiceFile && !imageFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFile) ? 'default' : 'pointer', fontSize: 15, flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}>➤</button>
           )}
         </div>
         <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
