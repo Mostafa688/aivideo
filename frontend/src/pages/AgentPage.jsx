@@ -318,9 +318,17 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
     const style = ready.videoStyle || MODEL_STYLE_DEFAULTS[ready.model];
     const isM12 = ready.model === 1 || ready.model === 2;
+    // ✅ FIX: كان بيثق في "videoLanguage" اللي الايجنت (LLM) قرره — وده افتراضيًا "en" إلا لو
+    // العميل قال صراحة "الفيديو بالعربي". لكن لو العميل رفع تسجيل صوتي بالمصري (Voice-to-Video)،
+    // الصوت نفسه عربي أكيد، فمفروض الكابشن يتطابق معاه تلقائيًا — مش يفضل يعتمد على تخمين الموديل.
+    // ده كان سبب ظهور الكابشن مربعات بس من خلال الايجنت (الصفحة المباشرة عندها اختيار لغة صريح
+    // بيدّي القيمة الصح دايمًا، فمكانتش بتقع في المشكلة دي).
+    const hasUploadedScriptForLang = ready.model !== 5 && !!lastUploadedTranscript;
+    const transcriptIsArabic = hasUploadedScriptForLang && isArabic(lastUploadedTranscript);
     // ✅ لغة الفيديو وصوته بييجوا من فهم الأجنت لطلب العميل، مش من لغة واجهة الموقع —
-    // افتراضيًا إنجليزي + صوت "wise man" إلا لو العميل حدد غير كده صراحة
-    const videoLang = ready.videoLanguage || 'en';
+    // افتراضيًا إنجليزي + صوت "wise man" إلا لو العميل حدد غير كده صراحة، إلا لو فيه تسجيل
+    // صوتي مرفوع بالعربي — ساعتها اللغة الفعلية للصوت هي الأساس دايمًا
+    const videoLang = transcriptIsArabic ? 'ar' : (ready.videoLanguage || 'en');
     const voiceKey = ready.voice || (videoLang.startsWith('ar') ? 'male_arabic' : 'male_wise');
 
     // ── موديل 7 (الإعلانات): multipart/form-data + endpoint استطلاع خاص بيه، منفصل تمامًا
