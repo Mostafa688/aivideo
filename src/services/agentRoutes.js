@@ -99,28 +99,40 @@ router.post('/chat', authMiddleware, async (req, res) => {
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
     });
 
-    // ── فصل الأمر التقني (###READY###{...}) عن رسالة الشات — الـ JSON بقى بييجي
+    // ── فصل الأمر التقني (###READY### أو ###EDIT_SCENE###) عن رسالة الشات — الـ JSON بقى بييجي
     // الأول في الرد (مش الآخر) عشان لو حصل قطع من حد التوكنز يقطع في الكلام مش في الـ JSON ──
     let reply = rawReply;
     let ready = null;
-    const markerIdx = rawReply.indexOf('###READY###');
+    let editScene = null;
+    const isEditMarker = rawReply.includes('###EDIT_SCENE###');
+    const markerName = isEditMarker ? '###EDIT_SCENE###' : '###READY###';
+    const markerIdx = rawReply.indexOf(markerName);
     if (markerIdx !== -1) {
-      const afterMarker = rawReply.slice(markerIdx + '###READY###'.length).trimStart();
+      const afterMarker = rawReply.slice(markerIdx + markerName.length).trimStart();
       // ✅ نلاقي نهاية الـ JSON الحقيقية بعدّ الأقواس (مش بس أول سطر جديد) عشان لو الرد
       // البشري بعد الـ JSON مالوش سطر فاصل واضح، برضو نقدر نفصلهم صح
       const { jsonText, restText } = extractJsonAndRest(afterMarker);
       reply = restText.trim();
       try {
         const parsed = JSON.parse(jsonText);
-        if ([1, 2, 3, 4, 5, 7].includes(parsed.model)) ready = parsed;
+        if (isEditMarker) {
+          if (Number.isInteger(parsed.sceneIndex) && typeof parsed.description === 'string') editScene = parsed;
+        } else if ([1, 2, 3, 4, 5, 7].includes(parsed.model)) {
+          ready = parsed;
+        }
       } catch (e) {
         // ✅ FIX: كان بيسيب الطلب كله يفشل من غير فيديو ولا رسالة خطأ واضحة لو الموديل
         // قطع الـ JSON في النص (خصوصًا مع reasoning models زي gpt-oss اللي بتاخد جزء من
         // التوكنز في تفكير مش ظاهر). دلوقتي بنحاول نصلّح الـ JSON المقطوع قبل ما نستسلم.
-        console.warn('[Agent] Could not parse READY marker, attempting repair:', e.message);
+        console.warn(`[Agent] Could not parse ${markerName} marker, attempting repair:`, e.message);
         try {
           const repaired = JSON.parse(repairTruncatedJson(jsonText));
-          if ([1, 2, 3, 4, 5, 7].includes(repaired.model)) {
+          if (isEditMarker) {
+            if (Number.isInteger(repaired.sceneIndex) && typeof repaired.description === 'string') {
+              editScene = repaired;
+              console.warn('[Agent] ✅ Repaired truncated EDIT_SCENE JSON successfully');
+            }
+          } else if ([1, 2, 3, 4, 5, 7].includes(repaired.model)) {
             ready = repaired;
             console.warn('[Agent] ✅ Repaired truncated JSON successfully');
           }
@@ -139,11 +151,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     // ✅ لو نجحنا نطلع "ready" بس النص البشري اللي المفروض ييجي بعد الـ JSON اتقطع بالكامل
     // (نادر، بس ممكن لو حد التوكنز وقف بالظبط عند آخر قوس)، منسيبش فقاعة فاضية للعميل
-    if (ready && !reply) {
-      reply = 'جاهز، هبدأ التوليد دلوقتي 🎬';
+    if ((ready || editScene) && !reply) {
+      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو 🎬' : 'جاهز، هبدأ التوليد دلوقتي 🎬';
     }
 
-    res.json({ reply, transcript, ready, uploadedVoiceUrl });
+    res.json({ reply, transcript, ready, editScene, uploadedVoiceUrl });
   } catch (e) {
     console.error('[Agent Chat]', e.message);
     res.status(500).json({ error: e.message });

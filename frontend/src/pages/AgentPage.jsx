@@ -177,6 +177,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [lastUploadedPhoto, setLastUploadedPhoto] = useState(null);
   const [lastUploadedVoiceUrl, setLastUploadedVoiceUrl] = useState(null);
   const [lastUploadedTranscript, setLastUploadedTranscript] = useState(null);
+  const [lastM12Video, setLastM12Video] = useState(null); // ✅ NEW: آخر فيديو موديل 1/2 كامل — لازم نحفظه عشان نقدر نعدّل مشهد فيه لاحقًا من غير إعادة توليد كامل
   const voiceInputRef = useRef();
   const imageInputRef = useRef();
   const scrollRef = useRef();
@@ -269,6 +270,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           setMessages(m => [...m, { role: 'assistant', content: t.uploadCharacterFirst }]);
         } else {
           startGeneration(data.ready);
+        }
+      } else if (data.editScene) {
+        // ✅ NEW: تعديل مشهد واحد بس — لو مفيش فيديو موديل 1/2 سابق محفوظ، منقدرش ننفذها فعليًا
+        if (lastM12Video) {
+          startSceneEdit(data.editScene);
+        } else {
+          setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'معنديش فيديو موديل 1/2 سابق في المحادثة دي أقدر أعدّل فيه — لازم نعمل فيديو الأول.' : "I don't have a previous Model 1/2 video in this chat to edit — let's make one first." }]);
         }
       }
     } catch (e) {
@@ -571,6 +579,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           if (sd.status === 'done') {
             clearInterval(pollRef.current); clearInterval(timerRef.current);
             updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: renderData.creditCost || renderData.cost });
+            // ✅ NEW: لو ده فيديو موديل 1/2، نحفظ كل بياناته عشان نقدر نعدّل مشهد فيه بعد كده
+            // من غير ما نعيد توليد الفيديو بالكامل
+            if (isM12) {
+              setLastM12Video({ ...renderBody, videoUrl: sd.videoUrl });
+            }
             activeJobRef.current = null;
           } else if (sd.status === 'failed') {
             clearInterval(pollRef.current); clearInterval(timerRef.current);
@@ -580,6 +593,67 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         } catch {}
       }, 5000);
     } catch (e) {
+      if (activeJobRef.current) updateJob({ status: 'failed', error: e.message });
+      activeJobRef.current = null;
+    }
+  };
+
+  // ✅ NEW: تعديل مشهد واحد بس من آخر فيديو موديل 1/2 — بيحافظ على نفس الصوت وباقي
+  // المشاهد والمدة، ويغيّر مشهد واحد بس، بدل ما يعيد توليد الفيديو بالكامل من الصفر
+  const startSceneEdit = async (editScene) => {
+    if (!lastM12Video || activeJobRef.current) return;
+    const jobUid = `edit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const job = { uid: jobUid, status: 'rendering', ratio: lastM12Video.ratio || '9:16', elapsed: 0 };
+    setMessages(m => [...m, { role: 'assistant', type: 'render', job }]);
+    const updateJob = (patch) => {
+      setMessages(m => {
+        const copy = [...m];
+        const idx = copy.findIndex(x => x.type === 'render' && x.job?.uid === jobUid);
+        if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
+        return copy;
+      });
+      Object.assign(job, patch);
+    };
+    activeJobRef.current = job;
+    timerRef.current = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
+
+    try {
+      const res = await fetch('/api/edit-scene', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ ...lastM12Video, sceneIndex: editScene.sceneIndex, newDescription: editScene.description }),
+      });
+      const data = await res.json();
+      if (!activeJobRef.current) return;
+      if (!res.ok) {
+        clearInterval(timerRef.current);
+        if (data.error === 'quota_exceeded') {
+          updateJob({ status: 'failed', creditError: true, error: lang === 'ar' ? `محتاج ${data.cost} كريديت ومعاك ${data.remaining} بس` : `Needs ${data.cost} credits, you have ${data.remaining}` });
+        } else {
+          updateJob({ status: 'failed', error: data.error === 'content_policy_violation' ? (region === 'eg' ? data.message_ar : data.message) : (data.error || 'Failed') });
+        }
+        activeJobRef.current = null;
+        return;
+      }
+      const jobId = data.jobId;
+      pollRef.current = setInterval(async () => {
+        try {
+          const sr = await fetch(`/api/render-status/${jobId}`, { headers: tokenHeader() });
+          const sd = await sr.json();
+          if (sd.status === 'done') {
+            clearInterval(pollRef.current); clearInterval(timerRef.current);
+            updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: data.creditCost });
+            // ✅ الفيديو المعدّل بقى هو "آخر فيديو" — لو عايز يعدّل مشهد تاني بعده يبني على ده
+            setLastM12Video(v => v ? { ...v, videoUrl: sd.videoUrl } : v);
+            activeJobRef.current = null;
+          } else if (sd.status === 'failed') {
+            clearInterval(pollRef.current); clearInterval(timerRef.current);
+            updateJob({ status: 'failed', error: sd.error });
+            activeJobRef.current = null;
+          }
+        } catch {}
+      }, 5000);
+    } catch (e) {
+      clearInterval(timerRef.current);
       if (activeJobRef.current) updateJob({ status: 'failed', error: e.message });
       activeJobRef.current = null;
     }

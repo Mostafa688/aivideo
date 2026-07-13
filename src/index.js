@@ -800,6 +800,83 @@ app.get('/api/credit-cost', authMiddleware, (req, res) => {
   res.json({ creditCost: cost, duration });
 });
 
+// ✅ NEW: تعديل مشهد واحد بس من فيديو موجود (موديل 1/2 حاليًا) — بيحافظ على نفس الصوت،
+// نفس باقي المشاهد، ونفس المدة، وبيغيّر مشهد واحد بس ثم يعيد الدمج النهائي فقط، بدل ما
+// يعيد توليد الفيديو بالكامل من الصفر زي ما كان بيحصل قبل كده (وهو أغلى وأبطأ وبيغيّر
+// حتى المشاهد اللي العميل مطلبش تغييرها).
+const EDIT_SCENE_CREDIT_COST = 2; // أرخص بكتير من فيديو كامل لأنه بيعيد جلب مشهد واحد بس
+
+app.post('/api/edit-scene', authMiddleware, renderLimiter, async (req, res) => {
+  const { scenes, sceneIndex, newDescription, audioUrl, ratio, duration, music, captions, videoType, videoLanguage, sceneDurations, jobId } = req.body;
+  const renderJobId = String(jobId || Date.now());
+  if (!Array.isArray(scenes) || !scenes.length) return res.status(400).json({ error: 'scenes required' });
+  const idx = parseInt(sceneIndex, 10);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= scenes.length) return res.status(400).json({ error: 'Invalid sceneIndex' });
+  if (!newDescription?.trim()) return res.status(400).json({ error: 'newDescription required' });
+  if (!audioUrl) return res.status(400).json({ error: 'audioUrl required — editing only supported for videos with existing audio/timing' });
+
+  try {
+    const user = await getUserById(req.user.userId);
+    const balance = await getCreditsBalance(req.user.userId);
+    if (balance < EDIT_SCENE_CREDIT_COST) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${EDIT_SCENE_CREDIT_COST} credits, you have ${balance}.`, cost: EDIT_SCENE_CREDIT_COST, remaining: balance });
+    }
+    if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+      return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+    }
+
+    // ✅ فحص أمان المحتوى على الوصف الجديد بس (باقي المشاهد اتفحصت أصلاً وقت التوليد الأول)
+    const modCheckEdit = await checkContentSafety(newDescription);
+    if (modCheckEdit.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckEdit.category });
+    }
+
+    activeRenderCount++;
+    setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+    res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: EDIT_SCENE_CREDIT_COST });
+
+    (async () => {
+      try {
+        // ── نجيب ميديا جديدة للمشهد المطلوب تغييره بس — الوصف الجديد نفسه هو أهم إشارة بحث ──
+        const editJobId = 'edit_' + renderJobId;
+        resetUsedVideos(editJobId);
+        const newMedia = await fetchMediaForScene(
+          newDescription.trim().split(/\s+/).slice(0, 4), // كلمات مفتاحية بسيطة من الوصف الجديد
+          ratio || '16:9',
+          editJobId,
+          newDescription.trim()
+        );
+        clearJobSet(editJobId);
+
+        // ── نبني نسخة معدّلة من نفس مصفوفة المشاهد، بتغيير المشهد المطلوب بس ──
+        const updatedScenes = scenes.map((scene, i) =>
+          i === idx ? { ...scene, text: newDescription.trim(), media: newMedia } : scene
+        );
+
+        // ── نفس الصوت، نفس باقي المشاهد، نفس التوقيتات — التغيير الوحيد هو مشهد واحد ──
+        const videoPath = await renderVideo({
+          scenes: updatedScenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId,
+          duration: duration || '30s', music: !!music, captions: captions !== false, transitions: true,
+          videoType: videoType || 'pexels_clips', videoLanguage: videoLanguage || 'en',
+          sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null,
+        });
+
+        await chargeCredits(req.user.userId, EDIT_SCENE_CREDIT_COST).catch(e => console.warn('[EditScene] Credit deduct failed:', e.message));
+        setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: EDIT_SCENE_CREDIT_COST });
+      } catch (jobErr) {
+        console.error('[EditScene] Failed:', jobErr.message);
+        setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Scene edit failed.', completedAt: Date.now() });
+      } finally {
+        activeRenderCount--;
+        scheduleRenderJobCleanup(renderJobId);
+      }
+    })();
+  } catch (err) {
+    console.error('[EditScene] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Scene edit failed.' });
+  }
+});
+
 app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, audioUrl, ratio, jobId, duration, music, captions, transitions, soundEffects, videoType, captionStyle, musicVolume, sfxVolume, videoEffect, sceneDurations } = req.body;
   const renderJobId = String(jobId || Date.now());
