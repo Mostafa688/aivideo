@@ -134,8 +134,15 @@ const sceneLimiter = rateLimit({
 
 app.use(generalLimiter);
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// ✅ FIX: كانت 10mb، وده كان بيرفض أي طلب فيه أكتر من صورة شخصية واحدة (موديل 5 بيسمح
+// لحد 5 صور) لأن كل صورة base64 لوحدها ممكن تاخد 2-4 ميجا، فمجموعهم بسهولة بيعدي 10mb
+// ويرجع "request entity too large" قبل ما يوصل لأي كود بتاعنا خالص.
+// ✅ FIX: الحد كان 10mb بس، وده كافي لصورة واحدة (لحد 5MB زي MAX_IMAGE_MB) لكن لو العميل رفع
+// أكتر من صورة شخصية مع بعض لموديل 5 (لحد 5 صور × 5MB = 25MB خام ≈ 33MB+ بعد base64)،
+// حجم الـ JSON بيتخطى الحد القديم ويترفض الطلب بالكامل بـ "request entity too large" قبل
+// ما يوصل لأي كود بتاعنا خالص. 50mb بيدّي هامش أمان كافي حتى لأقصى حالة (5 صور).
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/api', (req, res, next) => {
   const isAdminRoute =
