@@ -397,6 +397,87 @@ function AffiliatesTab({ s }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  RATINGS TAB COMPONENT
+// ══════════════════════════════════════════════════════════════════════════
+function RatingsTab({ s }) {
+  const [ratings, setRatings] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filterStars, setFilterStars] = useState(0); // 0 = all
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/admin/ratings', { headers });
+      const d = await r.json();
+      setRatings(d.ratings || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = filterStars ? ratings.filter(r => r.rating === filterStars) : ratings;
+  const avg = ratings.length ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(2) : '—';
+  const counts = [5, 4, 3, 2, 1].map(n => ratings.filter(r => r.rating === n).length);
+
+  return (
+    <div>
+      <div style={s.topbar}>
+        <div style={s.title}>⭐ التقييمات — Ratings</div>
+        <button style={s.btn()} onClick={load}>🔄 Refresh</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <StatCard label="متوسط التقييم" value={avg} color="#fbbf24" />
+        <StatCard label="إجمالي التقييمات" value={ratings.length} color="#7c6af7" />
+        <StatCard label="5 نجوم" value={counts[0]} color="#22c55e" />
+        <StatCard label="نجمة واحدة" value={counts[4]} color="#ef4444" />
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button style={s.btn(filterStars === 0 ? '#7c6af7' : '#2d2d4a')} onClick={() => setFilterStars(0)}>الكل ({ratings.length})</button>
+        {[5, 4, 3, 2, 1].map((n, i) => (
+          <button key={n} style={s.btn(filterStars === n ? '#7c6af7' : '#2d2d4a')} onClick={() => setFilterStars(n)}>
+            {'⭐'.repeat(n)} ({counts[i]})
+          </button>
+        ))}
+      </div>
+
+      <div style={s.card}>
+        {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
+        <table style={s.table}>
+          <thead>
+            <tr>
+              <th style={s.th}>العميل</th>
+              <th style={s.th}>التقييم</th>
+              <th style={s.th}>التعليق</th>
+              <th style={s.th}>الموديل</th>
+              <th style={s.th}>التاريخ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(r => (
+              <tr key={r.id}>
+                <td style={s.td}>{r.user_email}</td>
+                <td style={{ ...s.td, color: r.rating >= 4 ? '#22c55e' : r.rating === 3 ? '#f59e0b' : '#ef4444', fontWeight: 700 }}>
+                  {'⭐'.repeat(r.rating)}
+                </td>
+                <td style={{ ...s.td, maxWidth: 320, whiteSpace: 'pre-wrap' }}>{r.comment || <span style={{ color: '#4b5563' }}>—</span>}</td>
+                <td style={{ ...s.td, fontSize: 12, color: '#9ca3af' }}>{r.model_used || '—'}</td>
+                <td style={{ ...s.td, fontSize: 12, color: '#6b7280' }}>{new Date(r.created_at).toLocaleString('ar-EG')}</td>
+              </tr>
+            ))}
+            {!loading && filtered.length === 0 && (
+              <tr><td colSpan={5} style={{ ...s.td, textAlign: 'center', color: '#6b7280', padding: 30 }}>مفيش تقييمات لسه</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  STUDIO TAB — Admin Personal Batch Video Generator
 // ══════════════════════════════════════════════════════════════════════════
 function StudioTab({ s }) {
@@ -1003,6 +1084,7 @@ export default function AdminPage() {
     { key: 'videos',     label: '🎬 Videos'      },
     { key: 'support',    label: `💬 Support${totalUnread > 0 ? ` 🔴${totalUnread}` : supportChats.length > 0 ? ` (${supportChats.length})` : ''}` },
     { key: 'affiliates', label: '🤝 Affiliates'  },
+    { key: 'ratings',    label: '⭐ Ratings'      },
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'answers',    label: '📋 Answers'     },
     { key: 'community',  label: '🌍 Community'   },
@@ -1273,6 +1355,7 @@ export default function AdminPage() {
 
         {/* ── AFFILIATES ── */}
         {tab === 'affiliates' && <AffiliatesTab s={s} />}
+        {tab === 'ratings' && <RatingsTab s={s} />}
 
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}

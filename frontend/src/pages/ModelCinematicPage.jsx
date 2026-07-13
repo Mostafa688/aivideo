@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import RatingPrompt from './RatingPrompt.jsx';
 
 const VIDEO_STYLES = [
   { key:'cinematic',  label:'Cinematic',  emoji:'🎬', desc:'Dramatic · Film-like',   suffix:'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading' },
@@ -40,6 +41,7 @@ function SceneCard({ scene, index, onChange }) {
 
 export default function ModelCinematicPage({ onBack, model5Access, model5Plan, userPlan = 'free', onNavigate }) {
   const [step, setStep] = useState('input');
+  const [showRating, setShowRating] = useState(true);
   const [genMode, setGenMode] = useState('idea'); // 'idea' | 'prompt'
   const [idea, setIdea] = useState('');
   const [rawPrompt, setRawPrompt] = useState('');
@@ -116,7 +118,11 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         body:JSON.stringify(body)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error === 'content_policy_violation' ? (region === 'eg' ? data.message_ar : data.message) : (data.error||'Failed'));
+      if (!res.ok) throw new Error(
+        data.error === 'content_policy_violation' ? (region === 'eg' ? data.message_ar : data.message) :
+        data.error === 'under_maintenance' ? (data.message || 'This model is currently under maintenance and will be back soon.') :
+        (data.error||'Failed')
+      );
       setScenes(data.scenes||[]); setStep('scenes');
     } catch(e){ setError(e.message); } finally { setLoading(false); }
   };
@@ -155,6 +161,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
 
   if (step==='done'&&videoUrl) return (
     <div style={{ minHeight:'100vh', background:'radial-gradient(ellipse at top, rgba(225,29,72,0.08) 0%, #060208 55%)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      {showRating && <RatingPrompt modelUsed="Model 5 - Cinematic" onClose={()=>setShowRating(false)} />}
       <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}} @keyframes pop{0%{transform:scale(0.8);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
       <div style={{ maxWidth:600, width:'100%', textAlign:'center', animation:'fadeUp 0.5s ease' }}>
         <div style={{ fontSize:60, marginBottom:14, animation:'pop 0.5s ease' }}>🎬</div>

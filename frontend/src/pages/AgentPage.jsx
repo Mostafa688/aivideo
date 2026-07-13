@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import RatingPrompt from './RatingPrompt.jsx';
 
 function authHeaders() {
   return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') };
@@ -101,10 +102,12 @@ const VIDEO_TYPE_BY_MODEL = { 1: 'ai_slices', 2: 'pexels_clips' };
 function RenderCard({ job, lang, onNavigate }) {
   const box = RATIO_BOX[job.ratio] || RATIO_BOX['9:16'];
   const t = T[lang];
+  const [showRating, setShowRating] = useState(true);
 
   if (job.status === 'done') {
     return (
       <div style={{ width: box.w + 20 }}>
+        {showRating && <RatingPrompt modelUsed={`Agent - Model ${job.model || ''}`} onClose={() => setShowRating(false)} lang={lang} />}
         <video src={job.videoUrl} controls autoPlay muted style={{ width: box.w, height: box.h, borderRadius: 14, objectFit: 'cover', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 700 }}>✅ {t.done} {job.cost || ''} {t.credits}</span>
@@ -460,7 +463,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         }
         const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
         const scenesData = await scenesRes.json();
-        if (!scenesRes.ok) throw new Error(scenesData.error === 'content_policy_violation' ? (region === 'eg' ? scenesData.message_ar : scenesData.message) : (scenesData.error || 'Scene generation failed'));
+        if (!scenesRes.ok) throw new Error(
+          scenesData.error === 'content_policy_violation' ? (region === 'eg' ? scenesData.message_ar : scenesData.message) :
+          scenesData.error === 'under_maintenance' ? (scenesData.message || (lang === 'ar' ? '🚧 الموديل ده تحت الصيانة حاليًا، هيرجع قريب' : '🚧 This model is under maintenance and will be back soon')) :
+          (scenesData.error || 'Scene generation failed')
+        );
         scenes = scenesData.scenes || [];
       }
 
@@ -533,6 +540,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         }
         if (renderData.show_upgrade || renderData.error === 'no_access' || renderData.error === 'subscribe_required') {
           updateJob({ status: 'failed', creditError: true, error: renderData.message ? `🔒 ${renderData.message}` : (lang === 'ar' ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video') });
+          return;
+        }
+        if (renderData.error === 'under_maintenance') {
+          updateJob({ status: 'failed', creditError: true, error: renderData.message || (lang === 'ar' ? '🚧 الموديل ده تحت الصيانة حاليًا، هيرجع قريب' : '🚧 This model is under maintenance and will be back soon') });
           return;
         }
         throw new Error(renderData.error || renderData.message || 'Render failed');

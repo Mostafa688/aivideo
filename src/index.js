@@ -15,7 +15,7 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, ADS_CREDIT_COST } from './services/authService.js';
+import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import supportRouter from './services/supportRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
@@ -480,6 +480,34 @@ app.post('/api/community/posts/:id/ask-support', async (req, res) => {
   } catch (e) {
     console.error('[Community] Ask support error:', e.message);
     res.status(500).json({ error: 'Failed' });
+  }
+});
+
+// ── POST /api/feedback/rate — تقييم داخلي بعد أي فيديو (من أي عميل، مشترك أو لأ) ──
+app.post('/api/feedback/rate', authMiddleware, async (req, res) => {
+  try {
+    const { rating, comment, modelUsed } = req.body;
+    const r = parseInt(rating);
+    if (!r || r < 1 || r > 5) return res.status(400).json({ error: 'rating must be 1-5' });
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    const result = await submitFeedbackRating(req.user.userId, user.email, r, (comment || '').trim().slice(0, 1000), modelUsed || '');
+    res.json({ success: true, showTrustpilotCTA: result.showTrustpilotCTA, trustpilotUrl: 'https://www.trustpilot.com/review/erivion.net' });
+  } catch (err) {
+    console.error('[Feedback Rate]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/ratings — كل التقييمات الداخلية (أدمن بس)
+app.get('/api/admin/ratings', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    const ratings = await getAllFeedbackRatings();
+    res.json({ ratings });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1405,6 +1433,14 @@ app.get('/api/model4/usage', authMiddleware, async (req, res) => {
 
 // ── Model 5 (Cinematic) Routes ────────────────────────────────────────────
 app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
+  // 🚧 موديل 5 تحت الصيانة مؤقتًا — مقفول للجميع ماعدا إيميل الأدمن
+  const model5User = await getUserById(req.user.userId);
+  if (!model5User) return res.status(401).json({ error: 'User not found' });
+  const MODEL5_ADMIN_ONLY_EMAIL = process.env.ADMIN_EMAIL || 'digidelight33@gmail.com';
+  if (model5User.email !== MODEL5_ADMIN_ONLY_EMAIL) {
+    return res.status(403).json({ error: 'under_maintenance', message: 'Model 5 (Cinematic) is currently under maintenance and will be available again soon.' });
+  }
+
   const { idea, characters, duration, videoStyle, styleSuffix, promptMode, rawPrompt } = req.body;
 
   // ── وضع "Prompt to Video" الجديد: العميل بيكتب البرومبت بالظبط، مفيش Groq بيكتب
@@ -1533,6 +1569,12 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   const { scenes, ratio, duration, characterPhotos, music } = req.body;
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const m5User = await getUserById(req.user.userId);
+  if (!m5User) return res.status(401).json({ error: 'User not found' });
+  // 🚧 موديل 5 تحت الصيانة مؤقتًا — مقفول للجميع ماعدا إيميل الأدمن
+  const MODEL5_ADMIN_ONLY_EMAIL_R = process.env.ADMIN_EMAIL || 'digidelight33@gmail.com';
+  if (m5User.email !== MODEL5_ADMIN_ONLY_EMAIL_R) {
+    return res.status(403).json({ error: 'under_maintenance', message: 'Model 5 (Cinematic) is currently under maintenance and will be available again soon.' });
+  }
   if ((m5User?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 5.', show_upgrade: true });
   }

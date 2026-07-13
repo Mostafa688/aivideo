@@ -120,6 +120,16 @@ async function initDB() {
     ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS paid_out_at TEXT DEFAULT NULL;
     ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS credits_purchased INTEGER DEFAULT NULL;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_balance INTEGER DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trustpilot_prompted INTEGER DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS feedback_ratings (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      user_email TEXT NOT NULL,
+      rating INTEGER NOT NULL,
+      comment TEXT,
+      model_used TEXT,
+      created_at TEXT DEFAULT NOW()
+    );
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS model3_usage (
@@ -385,6 +395,35 @@ export async function createPaymentRequest(userId, userEmail, plan, billing, amo
 export async function getLatestPaymentRequestForUser(userId) {
   const { rows } = await pool.query('SELECT id, plan, billing, amount, status, created_at FROM payment_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1', [userId]);
   return rows[0] || null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Feedback Ratings — تقييم داخلي بعد كل فيديو + دعوة Trustpilot لمرة واحدة بس
+// ══════════════════════════════════════════════════════════════════════════
+// ✅ التقييم الداخلي (نجوم + تعليق) بيتحفظ في كل مرة ويوصل للأدمن — حتى لو
+// العميل مش مشترك (free plan). لكن دعوة "قيّمنا على Trustpilot" لازم تظهر
+// مرة واحدة بس طول عمر الحساب، عشان العميل مايتسألش يقيّم مرتين.
+export async function submitFeedbackRating(userId, userEmail, rating, comment, modelUsed) {
+  await pool.query(
+    'INSERT INTO feedback_ratings (user_id, user_email, rating, comment, model_used) VALUES ($1, $2, $3, $4, $5)',
+    [userId, userEmail, rating, comment || null, modelUsed || null]
+  );
+  const { rows } = await pool.query('SELECT trustpilot_prompted FROM users WHERE id = $1', [userId]);
+  const alreadyPrompted = !!rows[0]?.trustpilot_prompted;
+  // ✅ دعوة Trustpilot بس لو: تقييم عالي (4-5 نجوم) ولسه ما اتعرضتش عليه قبل كده
+  const showTrustpilotCTA = rating >= 4 && !alreadyPrompted;
+  if (showTrustpilotCTA) {
+    await pool.query('UPDATE users SET trustpilot_prompted = 1 WHERE id = $1', [userId]);
+  }
+  return { showTrustpilotCTA };
+}
+
+export async function getAllFeedbackRatings(limit = 200) {
+  const { rows } = await pool.query(
+    'SELECT id, user_id, user_email, rating, comment, model_used, created_at FROM feedback_ratings ORDER BY created_at DESC LIMIT $1',
+    [limit]
+  );
+  return rows;
 }
 
 export async function markLatestPaymentRequestRejected(email) {

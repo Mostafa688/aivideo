@@ -1,5 +1,6 @@
 // ── ModelAdsPage.jsx ─────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect } from 'react';
+import RatingPrompt from './RatingPrompt.jsx';
 
 const ACCENT = '#f97316'; // orange — ads theme
 const ACCENT_BG = 'rgba(249,115,22,0.10)';
@@ -101,6 +102,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
   const [jobStep, setJobStep] = useState('');
   const [jobMsg, setJobMsg] = useState('');
   const [videoUrl, setVideoUrl] = useState(null);
+  const [showRating, setShowRating] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -269,6 +271,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
         {/* ── RESULT ─────────────────────────────────────────────────────── */}
         {videoUrl && (
           <Section style={{ border: `1px solid ${ACCENT}44`, background: `${ACCENT_BG}` }}>
+            {showRating && <RatingPrompt modelUsed="Model 7 - Ads Creator" onClose={() => setShowRating(false)} lang={isAr ? 'ar' : 'en'} />}
             <SectionLabel>{isAr ? 'إعلانك جاهز! 🎉' : 'Your Ad is Ready! 🎉'}</SectionLabel>
             <video src={videoUrl} controls style={{ width: '100%', borderRadius: 12, maxHeight: 400, background: '#000' }} />
             <a href={videoUrl} download style={{ display: 'block', marginTop: 14, padding: '12px', borderRadius: 12, background: ACCENT, color: '#fff', fontWeight: 700, fontSize: 14, textAlign: 'center', textDecoration: 'none', fontFamily: "'DM Sans', sans-serif", boxShadow: `0 4px 20px ${ACCENT_GLOW}` }}>

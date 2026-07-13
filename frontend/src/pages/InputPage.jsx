@@ -459,7 +459,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       color:'#e11d48', glow:'rgba(225,29,72,0.25)',
       desc:'Upload photos of your characters. AI keeps them consistent across every scene using FLUX Kontext.',
       tags:['Photo reference','5 characters','Seedance 2.0','Cinematic'],
-      badge:'NEW', free:false, cat:'premium', needsAccess: !model5Access,
+      badge:'SOON', free:false, cat:'premium', needsAccess: !model5Access, comingSoon: true, adminOnly: true,
     },
     {
       key:'model6', tag:'ATLAS', name:'Map Video', icon:'🗺️',
