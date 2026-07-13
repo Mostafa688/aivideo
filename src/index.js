@@ -747,7 +747,11 @@ app.post('/api/fetch-media', authMiddleware, async (req, res) => {
   try {
     const enriched = [];
     for (const scene of scenes) {
-      const media = await fetchMediaForScene(scene.keywords, ratio || '16:9', currentJobId);
+      // ✅ FIX: كنا بنبعت الكلمات المفتاحية بس من غير النص الفعلي للمشهد — الكلمات دي
+      // غالبًا عامة/قصيرة (زي "business", "meeting") وممكن تجيب فيديو بعيد تمامًا عن
+      // معنى الجملة المنطوقة في المشهد. دلوقتي بنبعت نص المشهد نفسه كـ query أساسي أولى،
+      // عشان البحث يبقى مبني على المعنى الفعلي مش بس تصنيف عام.
+      const media = await fetchMediaForScene(scene.keywords, ratio || '16:9', currentJobId, scene.text || scene.visual || null);
       enriched.push({ ...scene, media });
     }
     setTimeout(() => clearJobSet(currentJobId), 5 * 60 * 1000);

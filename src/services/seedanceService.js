@@ -91,7 +91,7 @@ async function downloadVideo(url, outputPath) {
 
 // ── FLUX Kontext Dev: generate reference image from character photo ──────────
 // Cheapest Replicate model for character reference (~$0.01-0.02/image)
-async function generateReferenceImage(photoBase64, scenePrompt) {
+async function generateReferenceImage(photoBase64, scenePrompt, ratio = '9:16') {
   if (!REPLICATE_API_TOKEN) return null;
   try {
     // Accept both raw base64 and data URL
@@ -109,7 +109,7 @@ async function generateReferenceImage(photoBase64, scenePrompt) {
         input: {
           input_image: imageDataUrl,
           prompt: `${scenePrompt}, keep every person visible in the reference image exactly as they are — same faces, same identities, same facial features, same number of people, none added or removed, none replaced`,
-          aspect_ratio: '9:16',
+          aspect_ratio: ratio, // ✅ FIX: كان ثابت '9:16' دايمًا حتى لو الفيديو المطلوب 16:9 أو 1:1 — ده كان بيعمل صورة مرجعية بنسبة أبعاد مختلفة عن الفيديو، فـ Seedance كان بيرفضها فعليًا كـ "أول فريم" ويرجع يولّد من الصفر بدل ما يحركها
           output_format: 'webp',
           guidance: 3.5,
           num_inference_steps: 28,
@@ -246,7 +246,7 @@ function slowDownClip(inputPath, outputPath, targetDuration) {
 }
 
 function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar', secPerScene = 7) {
-  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
+  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(String(videoLanguage || 'en').split('_')[0].toLowerCase()); // ✅ FIX: يدعم ar_eg/ar_gulf
   let FONT_PATH;
   if (process.platform === 'win32') {
     FONT_PATH = 'C\\:/Windows/Fonts/arial.ttf';
@@ -531,7 +531,7 @@ export async function renderModel5Video({
         // ── Single character: compose them into the scene's location via FLUX Kontext first,
         // then that ONE composed image is animated as a true locked first frame ──
         console.log(`[Model5] Generating single-character reference image for clip ${i + 1}...`);
-        const refUrl = await generateReferenceImage(rawPhotos[0], seed2Prompt);
+        const refUrl = await generateReferenceImage(rawPhotos[0], seed2Prompt, ratio);
         if (!refUrl) {
           throw new Error('Failed to process the uploaded character photo (reference image generation failed). Please try again or use a different photo.');
         }

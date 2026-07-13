@@ -10,10 +10,18 @@ const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const FONT_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arial.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
 const FONT_BOLD_PATH = process.platform === 'win32' ? 'C\\:/Windows/Fonts/arialbd.ttf' : '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 
+// ✅ FIX: الايجنت (وأماكن تانية) بيبعت قيم زي "ar_eg" أو "ar_gulf" مش "ar" بس — الماتشينج
+// القديم كان بيدور على القيمة بالظبط، فـ "ar_eg" كان مش بيلاقي حاجة ويرجع الفونت الافتراضي
+// (DejaVu، مفيهوش حروف عربي) → الكابشن بيطلع مربعات. دلوقتي بناخد أول جزء بس قبل الـ "_".
+function normalizeLangBase(videoLanguage) {
+  return String(videoLanguage || 'en').split('_')[0].toLowerCase();
+}
+
 function getFontPath(videoLanguage) {
   if (process.platform === 'win32') return FONT_PATH;
   const dejaVu = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
-  const langCode = { ar:'ar', ja:'ja', zh:'zh', ko:'ko', ru:'ru', de:'de', fr:'fr', es:'es', pt:'pt' }[videoLanguage];
+  const base = normalizeLangBase(videoLanguage);
+  const langCode = { ar:'ar', ja:'ja', zh:'zh', ko:'ko', ru:'ru', de:'de', fr:'fr', es:'es', pt:'pt' }[base];
   if (!langCode) return dejaVu;
   try {
     const result = execSync(
@@ -310,7 +318,7 @@ function addCaptionsWithTiming(videoFile, scenes, output, sceneDurations, videoT
   const styleName = captionStyle || DEFAULT_CAPTION_STYLE[videoType] || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
   const fontfile = style.fontfile || getFontPath(videoLanguage);
-  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
+  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(normalizeLangBase(videoLanguage)); // ✅ FIX: يدعم ar_eg/ar_gulf مش 'ar' بس
 
   // بنبني الـ chunks مع timestamps
   const chunks = [];
@@ -637,7 +645,7 @@ async function transcribeWithWhisper(audioPath) {
 
 // ── توليد ملف ASS للـ subtitles ────────────────────────────────────────────
 function buildAssFile(chunks, style, ratio, videoLanguage, fontName) {
-  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
+  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(normalizeLangBase(videoLanguage)); // ✅ FIX: يدعم ar_eg/ar_gulf مش 'ar' بس
   const fs_size = Math.round((style.fontsize || 34) * 1.2); // أكبر شوية في ASS
   const color = style.fontcolor === 'white' ? '&H00FFFFFF' :
                 style.fontcolor === 'yellow' ? '&H0000FFFF' :
@@ -688,7 +696,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 async function addRealCaptions(videoFile, audioPath, output, captionStyle, ratio, videoLanguage, applyWm = false) {
   const styleName = captionStyle || 'classic';
   const style = CAPTION_STYLES[styleName] || CAPTION_STYLES.classic;
-  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(videoLanguage);
+  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(normalizeLangBase(videoLanguage)); // ✅ FIX: يدعم ar_eg/ar_gulf مش 'ar' بس
   const fontfile = getFontPath(videoLanguage);
 
   // Try Whisper first

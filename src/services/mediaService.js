@@ -37,6 +37,17 @@ export function resetUsedVideos(jobId) {
   }
 }
 
+// ✅ FIX: بحث Pexels نصي حرفي، مش semantic — جملة طويلة كاملة كـ query بتشتت النتائج.
+// بناخد أهم كام كلمة بس (بعد شيل كلمات الوصل الشائعة) عشان الاستعلام يفضل قريب من المعنى
+// من غير ما يطول أوي ويرجع نتائج عشوائية.
+const STOPWORDS = new Set(['a','an','the','is','are','was','were','in','on','at','to','of','and','or','with','for','this','that','it','its','his','her','their','as','by','from','into','over','under','while','then','so','but']);
+function toSearchPhrase(text, maxWords = 6) {
+  if (!text) return null;
+  const words = String(text).replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean)
+    .filter(w => !STOPWORDS.has(w.toLowerCase()));
+  return words.slice(0, maxWords).join(' ') || null;
+}
+
 // ✅ FALLBACK KEYWORDS: لو الكلمة ما لاقتش نتائج كافية نجرب كلمات بديلة
 const FALLBACK_KEYWORDS = [
   'business', 'technology', 'nature', 'city', 'people',
@@ -128,9 +139,11 @@ export async function fetchMediaForScene(keywords, ratio = '16:9', jobId = null,
   }
 
   const kwList = (keywords || []).filter(Boolean);
-  // ✅ Use visual description as primary query if available
+  // ✅ Use the scene's actual narration/visual text (trimmed to a short relevant phrase) as the
+  // primary query — this is what actually reflects what the scene is ABOUT, not just a generic tag
+  const visualPhrase = toSearchPhrase(visual);
   const queriesToTry = [
-    visual,                                 // exact scene visual description (highest priority)
+    visualPhrase,                           // trimmed scene text — most meaningful signal
     kwList[0],                              // visual description (most specific)
     kwList.slice(0, 2).join(' '),          // combine first two
     kwList[1],                              // second keyword
@@ -141,20 +154,22 @@ export async function fetchMediaForScene(keywords, ratio = '16:9', jobId = null,
   // ✅ نجرب فيديو أول مع كل query
   for (const query of queriesToTry) {
     try {
-      // ✅ نجرب صفحتين مختلفتين عشوائيين لنتائج أكتر تنوعاً
-      const page1 = Math.floor(Math.random() * 3) + 1;
-      const page2 = page1 === 1 ? 2 : 1;
-
-      let videos = await fetchPexelsVideos(query, orientation, usedSet, page1);
+      // ✅ FIX: كانت بتختار صفحة أساسية عشوائية بين 1-3 — صفحة 2/3 أقل ارتباطًا بالاستعلام
+      // من صفحة 1 حسب ترتيب Pexels نفسه، فده كان بيقلل الصلة بالموضوع لصالح "تنويع" مش مضمون.
+      // دلوقتي صفحة 1 (الأعلى ارتباطًا) هي الأساس دايمًا، وصفحة 2 بس تكملة لو النتائج قليلة.
+      let videos = await fetchPexelsVideos(query, orientation, usedSet, 1);
       if (videos.length < 3) {
         // لو نتائج قليلة، نضيف من صفحة تانية
-        const extra = await fetchPexelsVideos(query, orientation, usedSet, page2);
+        const extra = await fetchPexelsVideos(query, orientation, usedSet, 2);
         videos = [...videos, ...extra];
       }
 
       if (videos.length > 0) {
-        // ✅ نختار عشوائي من كل النتائج مش بس أول 5
-        const video = videos[Math.floor(Math.random() * videos.length)];
+        // ✅ FIX: كان بيختار عشوائي من كل الـ pool (لحد 60 فيديو من صفحتين) — ده كان بيدي
+        // نفس الوزن لفيديو رقم 60 (بعيد جدًا عن الاستعلام) زي فيديو رقم 1 (الأنسب حسب ترتيب
+        // Pexels نفسه). دلوقتي بنفضل التنويع بس جوه أعلى النتائج ارتباطًا بالموضوع.
+        const TOP_N = Math.min(5, videos.length);
+        const video = videos[Math.floor(Math.random() * TOP_N)];
 
         // ✅ نختار أفضل file مناسب للـ ratio والـ orientation الفعلي
         const file = pickBestFile(video.video_files, orientation);

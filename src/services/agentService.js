@@ -11,7 +11,7 @@ import {
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 // نفس الموديل المستخدم في scriptService.js (توليد سكريبتات موديل 1/2) — الموديل الأساسي في الموقع كله
 const AGENT_MODEL = 'openai/gpt-oss-120b';
-const MAX_HISTORY_MESSAGES = 6; // آخر 3 رسائل من المستخدم + 3 ردود فقط تتبعت للموديل
+const MAX_HISTORY_MESSAGES = 16; // ✅ FIX: كانت 6 (3 تبادلات بس) — بتخلي الايجنت ينسى تفاصيل زي الموديل/المدة/إن صورة اترفعت في أي محادثة أطول من كده. 16 بتغطي محادثة طبيعية من الفكرة لحد التأكيد.
 const MAX_REPLY_TOKENS = 450;   // مساحة كافية عشان الـ JSON بتاع ###READY### ميتقطعش نص الكلام أبدًا
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const OUTPUTS_DIR = 'outputs';
@@ -64,6 +64,7 @@ MODELS AVAILABLE ON ERIVION (only ever offer durations/costs listed here — nev
 - Model 7 "Ads Creator": turns a product photo into a video ad — real image-to-video animation of the uploaded product photo, scenes placed in a setting that fits the product. NOW fully creatable through this chat, exactly like Models 1-4. Duration is expressed in SECONDS to the user (never "number of scenes") — each 5 seconds is one scene: ${fmtAdsCosts(false)} (without voiceover) or ${fmtAdsCosts(true)} (with voiceover — cheaper per second since it uses a lighter animation model). Requires a product photo before you can generate (ask for one if missing). Optional: AI voiceover (Gemini TTS) or the user's own uploaded voice recording, custom hook line, background music on/off.
   → WEARABLE PRODUCTS (clothing, shoes, accessories, jewelry): the system automatically detects this from the product name/description and shows it worn by a person by default. If the user has a preference (no person/model shown at all, or specifically a man vs a woman), make sure that preference is clearly written into the "productDesc" field you send — the system reads it from there (e.g. "men's t-shirt, no model shown" or "women's dress"). If unclear and the product is obviously clothing, briefly ask the user whether they want it shown worn by someone, and by whom, before generating.
   → Optional extras you can offer: captions (burns the voiceover script as on-screen text — only works with AI voiceover, not with no-voice or uploaded-voice modes), and a product link (a URL/store link shown as an elegant banner in the last 3 seconds of the video). Ask if the user wants either, include them in the READY marker as "captions" (bool) and "productLink" (string, empty if none).
+  → Scenes are automatically joined with smooth cinematic crossfade transitions (fade in video + audio) — this already happens for every ad, you never need to ask about it or offer it as an option.
   → SPECIAL CASE: if the user wants an ad for a WEBSITE or a PLACE/LOCATION (not a physical product they can photograph), this normally uses Model 5 — but since Model 5 is under maintenance, tell them this specific use case is temporarily unavailable too and will be back soon.
 
 ${premiumNote}
@@ -92,6 +93,17 @@ LANGUAGE: If the user writes Arabic (including Egyptian colloquial), reply in ca
 TOKENS: Be extremely concise, always. Normal replies: 1-3 short sentences, no exceptions. The ONE allowed exception is the model-comparison case below, capped at exactly one short line per model + a one-line question — nothing more.
 
 ${catalog}
+
+PLATFORM POLICIES (answer directly from this — this is the real content of the Terms/Privacy/Refund pages, use it instead of just redirecting the user elsewhere):
+- Refund policy: Egyptian users (InstaPay) can request a refund/cancellation ONLY within 4 hours of the purchase being approved — after that window, no refund except a verified technical failure on Erivion's side. Dissatisfaction with AI video quality/style is NEVER a valid refund reason. International users (Gumroad) currently have NO refund system at all (temporary limitation while international payment infra is built) — only verified technical failures are assessed case-by-case. All refund/cancellation requests must go through the Support page.
+- Content policy (prohibited content): sexually explicit/pornographic content, graphic violence or content glorifying serious harm to real people, racism/hatred/discrimination, illegal activity, deceptive deepfakes/impersonation, inappropriate content involving minors, IP infringement. Every generation is automatically screened by AI plus manual review.
+- Payments: Egyptian credit purchases are activated manually after InstaPay verification (usually reviewed by the team). International payments go through Gumroad.
+- Ads: Erivion has NO third-party ads anywhere on the platform — completely ad-free, always.
+- Data retention: generated videos/job data are kept for a limited period; users should download videos they want to keep; inactive accounts (12+ months) may have data deleted.
+- Privacy: Erivion collects account info (email/name/password), Google OAuth profile data, usage data (videos/credits), and technical data (IP/browser). No card numbers are stored (Gumroad handles that). No data is sold or used for ad targeting.
+- Age requirement: must be at least 13 years old to use Erivion.
+- Contact: digidelight33@gmail.com or the Support page, for anything not covered above.
+If asked something about policy NOT covered by the summary above (e.g. a very specific edge case), say so honestly and point to the Terms/Privacy/Support pages rather than guessing.
 
 TERMINOLOGY — know the difference, the user may use any of these words and you must react correctly:
 - "idea" / "فكرة" / "topic": a short subject/theme. You (or Groq downstream) write the actual scene prompts FROM this idea. This is the normal mode for Models 1-4 and Model 5's "idea to video" mode.
@@ -143,20 +155,28 @@ function authHeaders() {
 }
 
 // ── الشات نفسه ──────────────────────────────────────────────────────────
-export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free' }) {
+// ✅ FIX: hasPhoto/hasVoice بيوصلوا من الراوت كـ "حالة دائمة" مش بس ملاحظة لحظية —
+// لو العميل رفع صورة/صوت قبل كده في المحادثة (حتى لو خرجت بره نافذة الـ history)،
+// بنفضل نذكّر الموديل بيها في كل رسالة جاية عشان ميطلبش رفعها تاني أبدًا.
+export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', hasPhoto = false, hasVoice = false }) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
   const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES).map(m => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
-    content: String(m.content || '').slice(0, 500), // حماية من رسايل طويلة تضرب التوكنز
+    content: String(m.content || '').slice(0, 900), // ✅ FIX: كانت 500 — كانت بتقطع أفكار/سكريبتات طويلة
   }));
 
-  const userContent = attachmentNote ? `${message}\n\n[${attachmentNote}]` : message;
+  let persistentNote = '';
+  if (hasPhoto) persistentNote += ' A required character/product photo was already uploaded earlier in this conversation and is still available — never ask for it again, treat that requirement as fully satisfied.';
+  if (hasVoice) persistentNote += ' A voice recording was already uploaded earlier in this conversation and its transcript was already used as the video idea/script — never ask the user to upload it again or to type a separate idea.';
+
+  const userContent = [message, attachmentNote ? `[${attachmentNote}]` : '', persistentNote ? `[${persistentNote.trim()}]` : '']
+    .filter(Boolean).join('\n\n');
 
   const messages = [
     { role: 'system', content: buildSystemPrompt(userPlan) },
     ...trimmedHistory,
-    { role: 'user', content: String(userContent || '').slice(0, 800) },
+    { role: 'user', content: String(userContent || '').slice(0, 1200) }, // ✅ FIX: كانت 800
   ];
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {

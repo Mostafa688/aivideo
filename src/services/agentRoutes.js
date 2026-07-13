@@ -19,7 +19,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64 } = req.body;
+    const { message, history, voiceBase64, imageBase64, photoAlreadyUploaded, voiceAlreadyUploaded } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
     let attachmentNote = null;
@@ -49,7 +49,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const user = await getUserById(userId).catch(() => null);
     const userPlan = user?.plan || 'free';
 
-    const rawReply = await agentChat({ message, history, attachmentNote, userPlan });
+    const rawReply = await agentChat({
+      message, history, attachmentNote, userPlan,
+      hasPhoto: !!imageBase64 || !!photoAlreadyUploaded,
+      hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
+    });
 
     // ── فصل رسالة الشات عن الأمر التقني (###READY###{...}) اللي بيبدأ التوليد الفعلي ──
     let reply = rawReply;

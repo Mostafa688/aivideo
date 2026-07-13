@@ -882,6 +882,28 @@ export default function AdminPage() {
       if (d.payment) setPayments(ps => ps.map(p => p.id === id ? { ...p, ...d.payment } : p));
     } catch (e) { console.error(e); }
   }, []);
+  // ✅ NEW: اعتماد/رفض طلب الاشتراك مباشرة من الصفحة (تحديث فوري للحالة محليًا بدل انتظار رفرش)
+  const approvePayment = useCallback(async (id) => {
+    if (!window.confirm('اعتماد طلب الاشتراك ده وإضافة الكريديت للعميل؟')) return;
+    try {
+      const r = await fetch(`/api/admin/payments/${id}/approve`, { method: 'POST', headers });
+      const d = await r.json();
+      if (!r.ok) { showToast('❌ ' + (d.error || 'فشل الاعتماد')); return; }
+      setPayments(ps => ps.map(p => p.id === id ? { ...p, status: 'approved' } : p));
+      showToast('✅ اتعمد وضيفت الكريديت للعميل');
+    } catch (e) { showToast('❌ ' + e.message); }
+  }, []);
+  const rejectPayment = useCallback(async (id) => {
+    const reason = window.prompt('سبب الرفض (اختياري):', 'wrong_receipt') || 'other';
+    try {
+      const r = await fetch(`/api/admin/payments/${id}/reject`, { method: 'POST', headers, body: JSON.stringify({ reason }) });
+      const d = await r.json();
+      if (!r.ok) { showToast('❌ ' + (d.error || 'فشل الرفض')); return; }
+      setPayments(ps => ps.map(p => p.id === id ? { ...p, status: 'rejected' } : p));
+      showToast('❌ اترفض الطلب');
+    } catch (e) { showToast('❌ ' + e.message); }
+  }, []);
+  const [receiptPreview, setReceiptPreview] = useState(null); // lightbox لصورة الإيصال
   const loadVideos   = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/videos', { headers }); const d = await r.json(); setVideos(d.videos || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadAnswers  = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/onboarding-answers', { headers }); const d = await r.json(); setAnswers(d.answers || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadCommunity = useCallback(async () => {
@@ -1300,7 +1322,7 @@ export default function AdminPage() {
             </div>
             <div style={s.card}>
               <table style={s.table}>
-                <thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Billing</th><th style={s.th}>Amount</th><th style={s.th}>Est. Cost</th><th style={s.th}>Est. Profit</th><th style={s.th}>Status</th><th style={s.th}>Date</th><th style={s.th}>Cost Paid?</th></tr></thead>
+                <thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Billing</th><th style={s.th}>Amount</th><th style={s.th}>Est. Cost</th><th style={s.th}>Est. Profit</th><th style={s.th}>Receipt</th><th style={s.th}>Status</th><th style={s.th}>Date</th><th style={s.th}>Action</th><th style={s.th}>Cost Paid?</th></tr></thead>
                 <tbody>
                   {payments.map(p => (
                     <tr key={p.id}>
@@ -1310,8 +1332,26 @@ export default function AdminPage() {
                       <td style={{ ...s.td, color: '#22c55e', fontWeight: 700 }}>{p.amount} EGP</td>
                       <td style={{ ...s.td, color: '#ef4444' }}>{p.costEstimate} EGP</td>
                       <td style={{ ...s.td, color: '#7c6af7', fontWeight: 700 }}>{p.profitEstimate} EGP</td>
+                      <td style={s.td}>
+                        {p.screenshot_data ? (
+                          <img
+                            src={p.screenshot_data}
+                            alt="receipt"
+                            onClick={() => setReceiptPreview(p.screenshot_data)}
+                            style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.15)' }}
+                          />
+                        ) : <span style={{ color: '#4b5563', fontSize: 11 }}>—</span>}
+                      </td>
                       <td style={s.td}><span style={{ color: p.status === 'approved' ? '#22c55e' : p.status === 'rejected' ? '#ef4444' : '#f59e0b', fontWeight: 600, fontSize: 12 }}>{p.status === 'approved' ? '✅ Approved' : p.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}</span></td>
                       <td style={s.td}>{new Date(p.created_at).toLocaleDateString()}</td>
+                      <td style={s.td}>
+                        {p.status === 'pending' ? (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => approvePayment(p.id)} style={{ padding: '5px 10px', borderRadius: 8, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.4)', color: '#22c55e', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>✅ اعتماد</button>
+                            <button onClick={() => rejectPayment(p.id)} style={{ padding: '5px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>❌ رفض</button>
+                          </div>
+                        ) : <span style={{ color: '#4b5563', fontSize: 11 }}>—</span>}
+                      </td>
                       <td style={s.td}>
                         {p.status !== 'approved' ? (
                           <span style={{ color: '#4b5563', fontSize: 11 }}>—</span>
@@ -1326,6 +1366,12 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            {/* ✅ NEW: لايتبوكس لعرض صورة الإيصال بحجم كامل */}
+            {receiptPreview && (
+              <div onClick={() => setReceiptPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, cursor: 'zoom-out' }}>
+                <img src={receiptPreview} alt="receipt full" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 10 }} />
+              </div>
+            )}
           </>
         )}
 

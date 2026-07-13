@@ -244,7 +244,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     try {
       const body = {
         message: textToSend.trim() || (lang === 'ar' ? 'من الصوت/الصورة المرفوعة' : 'from the attached voice/image'),
-        history: nextMessages.slice(0, -1).slice(-6).map(m => ({ role: m.role, content: m.content })),
+        // ✅ FIX: كانت -6 (3 تبادلات بس) وده كان بيخلي الايجنت ينسى تفاصيل قديمة في المحادثة — رفعناها لـ 16 لتغطي محادثة كاملة
+        history: nextMessages.slice(0, -1).slice(-16).map(m => ({ role: m.role, content: m.content })),
+        // ✅ FIX: نفضل نفكّر الباك إند إن صورة/صوت اترفعوا قبل كده في الجلسة دي حتى لو خرجوا بره الـ history،
+        // عشان الايجنت مايطلبش رفعهم تاني بعد كام رسالة
+        photoAlreadyUploaded: !!lastUploadedPhoto,
+        voiceAlreadyUploaded: !!lastUploadedVoiceUrl,
       };
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
       if (currentImage) body.imageBase64 = currentImage;

@@ -3,7 +3,7 @@ import pkg from 'pg';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut } from './authService.js';
+import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments } from './authService.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -108,6 +108,33 @@ router.post('/payments/:id/unmark-paid', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ✅ NEW: اعتماد/رفض طلب دفع مباشرة من صفحة الأدمن (بدل ما يكون بس عن طريق لينك الإيميل)
+router.post('/payments/:id/approve', adminAuth, async (req, res) => {
+  try {
+    const result = await approveCreditsPaymentById(req.params.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/payments/:id/reject', adminAuth, async (req, res) => {
+  try {
+    const payment = await rejectPaymentRequestById(req.params.id, req.body?.reason || 'other');
+    res.json({ success: true, payment });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ✅ NEW: مسح تلقائي لطلبات الدفع المعلّقة (pending) بعد 48 ساعة من غير رد —
+// عشان ميحصلش تراكم في جدول payment_requests يكلف مساحة/فلوس على Railway.
+// بيشتغل مرة أول ما السيرفر يشتغل وبعدين كل ساعة.
+deleteExpiredPendingPayments(48).catch(e => console.warn('[Payments Cleanup]', e.message));
+setInterval(() => {
+  deleteExpiredPendingPayments(48).catch(e => console.warn('[Payments Cleanup]', e.message));
+}, 60 * 60 * 1000);
 
 router.get('/users', adminAuth, async (req, res) => {
   try {

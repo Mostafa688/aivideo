@@ -387,6 +387,43 @@ export async function approveCreditsPayment(email, plan) {
 }
 
 
+// ── ✅ NEW: اعتماد/رفض طلب دفع محدد بالـ ID (بيستخدمها زر الأدمن في الصفحة مباشرة،
+// بدل ما تكون مقصورة على لينكات الإيميل بس) ──────────────────────────────
+export async function approveCreditsPaymentById(requestId) {
+  const reqRow = await pool.query(
+    "SELECT id, user_id, user_email, credits_purchased, status FROM payment_requests WHERE id = $1",
+    [requestId]
+  );
+  if (reqRow.rows.length === 0) throw new Error('Payment request not found');
+  const { user_id: userId, credits_purchased: creditsToAdd, status } = reqRow.rows[0];
+  if (status !== 'pending') throw new Error(`Request already ${status}`);
+  if (!creditsToAdd || creditsToAdd <= 0) throw new Error('Invalid credits amount on this request');
+
+  const newBalance = await addCreditsBalance(userId, creditsToAdd);
+  await pool.query("UPDATE users SET plan = 'paid' WHERE id = $1 AND plan = 'free'", [userId]);
+  await pool.query("UPDATE payment_requests SET status = 'approved' WHERE id = $1", [requestId]);
+  return { userId, creditsAdded: creditsToAdd, newBalance };
+}
+
+export async function rejectPaymentRequestById(requestId, reason = 'other') {
+  const { rows } = await pool.query(
+    "UPDATE payment_requests SET status = 'rejected' WHERE id = $1 AND status = 'pending' RETURNING *",
+    [requestId]
+  );
+  if (rows.length === 0) throw new Error('Payment request not found or already processed');
+  return rows[0];
+}
+
+// ── ✅ NEW: مسح طلبات pending اللي عدى عليها أكتر من 48 ساعة من غير رد —
+// عشان الجدول ميتراكمش ويكلف مساحة على Railway. الـ approved/rejected بيفضلوا (تاريخ/سجل) ──
+export async function deleteExpiredPendingPayments(hours = 48) {
+  const { rowCount } = await pool.query(
+    `DELETE FROM payment_requests WHERE status = 'pending' AND created_at::timestamp < NOW() - INTERVAL '${hours} hours'`
+  );
+  if (rowCount > 0) console.log(`[Payments] Auto-deleted ${rowCount} expired pending request(s) (>${hours}h old)`);
+  return rowCount;
+}
+
 export async function createPaymentRequest(userId, userEmail, plan, billing, amount, screenshotData, creditsPurchased = null) {
   const { rows } = await pool.query('INSERT INTO payment_requests (user_id, user_email, plan, billing, amount, screenshot_data, status, credits_purchased) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id', [userId, userEmail, plan, billing, amount, screenshotData || null, 'pending', creditsPurchased]);
   return rows[0].id;
