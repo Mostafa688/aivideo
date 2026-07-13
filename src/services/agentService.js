@@ -12,7 +12,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 // نفس الموديل المستخدم في scriptService.js (توليد سكريبتات موديل 1/2) — الموديل الأساسي في الموقع كله
 const AGENT_MODEL = 'openai/gpt-oss-120b';
 const MAX_HISTORY_MESSAGES = 16; // ✅ FIX: كانت 6 (3 تبادلات بس) — بتخلي الايجنت ينسى تفاصيل زي الموديل/المدة/إن صورة اترفعت في أي محادثة أطول من كده. 16 بتغطي محادثة طبيعية من الفكرة لحد التأكيد.
-const MAX_REPLY_TOKENS = 450;   // مساحة كافية عشان الـ JSON بتاع ###READY### ميتقطعش نص الكلام أبدًا
+const MAX_REPLY_TOKENS = 700;   // ✅ FIX: كانت 450 وده كان بيقطع الـ JSON بتاع ###READY### نص كلمة أحيانًا (خصوصًا إن الموديل نفسه "reasoning model" وبياخد جزء من التوكنز في تفكير مش ظاهر) — النتيجة: JSON.parse بيفشل والفيديو عمره ما بيبدأ من غير أي رسالة خطأ واضحة للعميل. زودناها + خلينا الـ JSON يتكتب الأول في الرد (مش الأخير) كطبقة حماية تانية.
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const OUTPUTS_DIR = 'outputs';
 
@@ -130,8 +130,10 @@ HOW TO OPERATE:
 4. Once you know: model, duration (must EXACTLY match one of that model's supported durations above — for Model 7 always express it in seconds, e.g. "20 seconds" not "4 scenes"), ratio, and the idea/prompt/script — ask the user to confirm before generating (e.g. "جاهز أبدأ؟" / "Ready to generate?"), and mention the credit cost for their exact selection when you ask.
 5. Model 5 requires a reference photo of the character(s) before you can generate (skip this if they're doing a website/place ad in Model 5 with no characters). Model 7 (Ads) always requires a product photo. If required and not yet uploaded, ask them to upload it first — do not mark ready without it. Once the attachment note tells you a photo was just uploaded, treat that requirement as fully satisfied immediately — do not ask for the photo again, do not re-verify it, and do not hesitate. If you already know the other required details (model, duration, ratio, idea/product info), proceed straight to asking for final confirmation or emitting the READY marker if they already confirmed.
 5b. WEBSITE/PLACE ADS: if the user wants to advertise a website or a physical place/location (not a product they can photograph), route them to Model 5 at exactly 15s, single scene, either idea-to-video or prompt-to-video (ask which they prefer), never Model 7.
-6. ONLY once the user has explicitly confirmed (said yes / ابدأ / اعمل الفيديو / etc.) AND you have all required info, end your reply with this exact machine-readable marker on its own line (the user will not see it, so keep your visible reply natural and short before it):
+6. ONLY once the user has explicitly confirmed (said yes / ابدأ / اعمل الفيديو / etc.) AND you have all required info, START your reply with this exact machine-readable marker FIRST (before any human-readable text), then write your short natural warm confirmation AFTER it on the next line. Putting the JSON first guarantees it's never cut off by a length limit — if anything gets cut, it must be the trailing human text, never the JSON:
 ###READY###{"model":3,"duration":"1min","ratio":"9:16","idea":"topic in 6 words or fewer","videoStyle":"cinematic","tone":"motivational","videoLanguage":"en","voice":"male_wise","needsCharacterPhoto":false,"captions":true,"music":false}
+جاهز، هبدأ التوليد دلوقتي 🎬
+   - The JSON on the ###READY### line must be complete, valid, single-line JSON — never truncate it, never split it across lines.
    - "model" must be 1, 2, 3, 4, 5, or 7 (number).
    - "duration" must EXACTLY match one of the supported values for that model/plan combo above. For Model 7, still send it as a duration string in seconds, e.g. "20s" (you compute this from scene count internally: 3 scenes=15s, 4=20s, 5=25s, 6=30s).
    - "ratio" must be "9:16", "16:9", or "1:1".

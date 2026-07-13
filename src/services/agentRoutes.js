@@ -5,6 +5,50 @@ import { getUserById } from './authService.js';
 
 const router = express.Router();
 
+// ✅ NEW: بيلاقي نهاية أول JSON object حقيقي جوه نص (بعدّ الأقواس/الاقتباسات) بدل ما
+// يفترض إن الـ JSON هيكون في سطر لوحده — بيرجع الجزء الخاص بالـ JSON والباقي (رد الشات) منفصلين
+function extractJsonAndRest(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return { jsonText: text.trim(), restText: '' };
+  let depth = 0, inString = false, escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return { jsonText: text.slice(start, i + 1), restText: text.slice(i + 1) };
+    }
+  }
+  // ✅ ماوصلناش لقفلة كاملة — يبقى الـ JSON اتقطع فعلاً، نرجع كل اللي لحد دلوقتي عشان نحاول نصلحه
+  return { jsonText: text.slice(start), restText: '' };
+}
+
+// ✅ NEW: تصليح بسيط لـ JSON مقطوع (نص متسرب أو منقوص) — بيقفل أي string مفتوح وأي قوس مفتوح
+// بالترتيب الصح. مش هيصلح كل حالة، بس بيحول جزء كبير من حالات القطع الشائعة لفيديو ناجح
+// بدل ما يفشل الطلب كله من غير أي فيديو.
+function repairTruncatedJson(text) {
+  let inString = false, escape = false;
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}') { if (stack[stack.length - 1] === '{') stack.pop(); }
+    else if (ch === ']') { if (stack[stack.length - 1] === '[') stack.pop(); }
+  }
+  let repaired = text;
+  if (inString) repaired += '"';
+  for (let i = stack.length - 1; i >= 0; i--) repaired += stack[i] === '{' ? '}' : ']';
+  return repaired;
+}
+
 // بسيط جدًا — حماية إضافية ضد إساءة الاستخدام (spam) بدون تعقيد
 const lastRequestAt = new Map(); // userId -> timestamp
 const MIN_INTERVAL_MS = 1500;
@@ -55,23 +99,48 @@ router.post('/chat', authMiddleware, async (req, res) => {
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
     });
 
-    // ── فصل رسالة الشات عن الأمر التقني (###READY###{...}) اللي بيبدأ التوليد الفعلي ──
+    // ── فصل الأمر التقني (###READY###{...}) عن رسالة الشات — الـ JSON بقى بييجي
+    // الأول في الرد (مش الآخر) عشان لو حصل قطع من حد التوكنز يقطع في الكلام مش في الـ JSON ──
     let reply = rawReply;
     let ready = null;
     const markerIdx = rawReply.indexOf('###READY###');
     if (markerIdx !== -1) {
-      reply = rawReply.slice(0, markerIdx).trim();
-      const jsonPart = rawReply.slice(markerIdx + '###READY###'.length).trim();
+      const afterMarker = rawReply.slice(markerIdx + '###READY###'.length).trimStart();
+      // ✅ نلاقي نهاية الـ JSON الحقيقية بعدّ الأقواس (مش بس أول سطر جديد) عشان لو الرد
+      // البشري بعد الـ JSON مالوش سطر فاصل واضح، برضو نقدر نفصلهم صح
+      const { jsonText, restText } = extractJsonAndRest(afterMarker);
+      reply = restText.trim();
       try {
-        const parsed = JSON.parse(jsonPart);
+        const parsed = JSON.parse(jsonText);
         if ([1, 2, 3, 4, 5, 7].includes(parsed.model)) ready = parsed;
-      } catch (e) { console.warn('[Agent] Could not parse READY marker:', e.message); }
+      } catch (e) {
+        // ✅ FIX: كان بيسيب الطلب كله يفشل من غير فيديو ولا رسالة خطأ واضحة لو الموديل
+        // قطع الـ JSON في النص (خصوصًا مع reasoning models زي gpt-oss اللي بتاخد جزء من
+        // التوكنز في تفكير مش ظاهر). دلوقتي بنحاول نصلّح الـ JSON المقطوع قبل ما نستسلم.
+        console.warn('[Agent] Could not parse READY marker, attempting repair:', e.message);
+        try {
+          const repaired = JSON.parse(repairTruncatedJson(jsonText));
+          if ([1, 2, 3, 4, 5, 7].includes(repaired.model)) {
+            ready = repaired;
+            console.warn('[Agent] ✅ Repaired truncated JSON successfully');
+          }
+        } catch (e2) {
+          console.warn('[Agent] Repair also failed, no video will start this turn:', e2.message);
+          if (!reply) reply = 'تمام، بس حصلت مشكلة بسيطة وأنا بجهز التفاصيل — ممكن تقول "ابدأ" تاني؟';
+        }
+      }
     }
 
     // ✅ لو المستخدم رفع صوت في نفس الرسالة اللي وصلنا فيها READY، نرفق رابط الصوت الحقيقي
     // عشان الفرونت إند يستخدمه كـ narration فعلي بدل ما يولّد صوت صناعي جديد
     if (ready && uploadedVoiceUrl) {
       ready.uploadedVoiceUrl = uploadedVoiceUrl;
+    }
+
+    // ✅ لو نجحنا نطلع "ready" بس النص البشري اللي المفروض ييجي بعد الـ JSON اتقطع بالكامل
+    // (نادر، بس ممكن لو حد التوكنز وقف بالظبط عند آخر قوس)، منسيبش فقاعة فاضية للعميل
+    if (ready && !reply) {
+      reply = 'جاهز، هبدأ التوليد دلوقتي 🎬';
     }
 
     res.json({ reply, transcript, ready, uploadedVoiceUrl });
