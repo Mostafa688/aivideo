@@ -63,8 +63,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64, photoAlreadyUploaded, voiceAlreadyUploaded } = req.body;
+    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+    // ✅ FIX: بيقبل دلوقتي مصفوفة صور (لحد 2) في نفس الرسالة، مش صورة واحدة بس —
+    // imageBase64 (مفرد) لسه متاح للتوافق مع أي كود قديم، بس imagesBase64 (جمع) هو الأساس دلوقتي
+    const images = Array.isArray(imagesBase64) && imagesBase64.length
+      ? imagesBase64.slice(0, 2)
+      : (imageBase64 ? [imageBase64] : []);
 
     let attachmentNote = null;
     let transcript = null;
@@ -81,10 +87,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
 
-    if (imageBase64) {
+    if (images.length) {
       try {
-        validateAgentImage(imageBase64);
-        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + 'User just uploaded a photo. This fully satisfies the required product/character photo for Model 7 (Ads) or Model 5 (character reference) — treat the photo requirement as met right now, do not ask for it again, and proceed toward confirming and generating if you already have the other required details.';
+        for (const img of images) validateAgentImage(img);
+        const note = images.length > 1
+          ? 'User just uploaded 2 photos (two characters) for Model 5. This fully satisfies the character reference requirement for BOTH people — treat it as met right now, do not ask for more photos, and proceed toward confirming and generating if you already have the other required details. Mention the cost is a bit higher than a single photo.'
+          : 'User just uploaded a photo. This fully satisfies the required product/character photo for Model 7 (Ads) or Model 5 (character reference) — treat the photo requirement as met right now, do not ask for it again, and proceed toward confirming and generating if you already have the other required details.';
+        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + note;
       } catch (e) {
         return res.status(400).json({ error: e.message });
       }
@@ -95,7 +104,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     const rawReply = await agentChat({
       message, history, attachmentNote, userPlan,
-      hasPhoto: !!imageBase64 || !!photoAlreadyUploaded,
+      hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
     });
 

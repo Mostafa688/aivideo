@@ -170,9 +170,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [voiceFile, setVoiceFile] = useState(null);
-  const [imageFile, setImageFile] = useState(null);
+  const [imageFiles, setImageFiles] = useState([]); // ✅ FIX: كانت صورة واحدة بس (imageFile) — دلوقتي مصفوفة بتقبل لحد صورتين في نفس الرسالة
   const [inputFocused, setInputFocused] = useState(false); // ✅ لعرض توهج الحدود لما الكتابة تكون فاعلة
-  const [imagePreview, setImagePreview] = useState(null);
   const [limits, setLimits] = useState({ MAX_AUDIO_SEC: 120, MAX_AUDIO_MB: 10, MAX_IMAGE_MB: 5 });
   const [lastUploadedPhotos, setLastUploadedPhotos] = useState([]); // ✅ FIX: كانت صورة واحدة بس — دلوقتي مصفوفة بتتراكم لحد صورتين عبر رسائل متتالية (موديل 5)
   const [lastUploadedVoiceUrl, setLastUploadedVoiceUrl] = useState(null);
@@ -210,24 +209,28 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   };
 
   const handleImageFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []).slice(0, 2 - imageFiles.length); // ✅ مايتخطاش صورتين في نفس الرسالة
+    if (!files.length) {
+      if (e.target.files?.length) setError(t.maxTwoPhotos || 'This chat accepts up to 2 photos per message.');
+      return;
+    }
     setError('');
-    if (file.size > limits.MAX_IMAGE_MB * 1024 * 1024) { setError(t.imageTooBig(limits.MAX_IMAGE_MB)); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImageFile(ev.target.result);
-      setImagePreview(ev.target.result);
-      // ✅ FIX: بتتراكم (مش تستبدل) لحد صورتين — الشات بيقبل شخصية واحدة أو اتنين لموديل 5
-      setLastUploadedPhotos(prev => {
-        if (prev.length >= 2) {
-          setError(t.maxTwoPhotos || 'This chat accepts up to 2 character photos — use the Models page directly for more.');
-          return prev;
-        }
-        return [...prev, ev.target.result];
-      });
-    };
-    reader.readAsDataURL(file);
+    for (const file of files) {
+      if (file.size > limits.MAX_IMAGE_MB * 1024 * 1024) { setError(t.imageTooBig(limits.MAX_IMAGE_MB)); continue; }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setImageFiles(prev => prev.length >= 2 ? prev : [...prev, ev.target.result]);
+        // ✅ FIX: بتتراكم (مش تستبدل) لحد صورتين — الشات بيقبل شخصية واحدة أو اتنين لموديل 5
+        setLastUploadedPhotos(prev => {
+          if (prev.length >= 2) {
+            setError(t.maxTwoPhotos || 'This chat accepts up to 2 character photos — use the Models page directly for more.');
+            return prev;
+          }
+          return [...prev, ev.target.result];
+        });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -239,19 +242,19 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
   const sendMessage = async (overrideText) => {
     const textToSend = overrideText !== undefined ? overrideText : input;
-    if (!textToSend.trim() && !voiceFile && !imageFile) return;
+    if (!textToSend.trim() && !voiceFile && !imageFiles.length) return;
     if (loading || activeJobRef.current) return; // ✅ FIX: منع إرسال رسالة تانية لحد ما الحالية تخلص، عشان محدش يبعت "ابدأ" مرتين ويعمل تضارب رندر
     setError('');
     const attachmentLabel = voiceFile
       ? (lang === 'ar' ? '🎙️ رسالة صوتية' : '🎙️ Voice message')
-      : imageFile
-      ? (lang === 'ar' ? '🖼️ صورة مرفوعة' : '🖼️ Uploaded photo')
+      : imageFiles.length
+      ? (lang === 'ar' ? (imageFiles.length > 1 ? '🖼️ صور مرفوعة' : '🖼️ صورة مرفوعة') : (imageFiles.length > 1 ? '🖼️ Uploaded photos' : '🖼️ Uploaded photo'))
       : '';
-    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview };
+    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
-    const currentVoice = voiceFile, currentImage = imageFile;
-    setInput(''); setVoiceFile(null); setImageFile(null); setImagePreview(null);
+    const currentVoice = voiceFile, currentImages = imageFiles;
+    setInput(''); setVoiceFile(null); setImageFiles([]);
     setLoading(true);
 
     try {
@@ -265,7 +268,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         voiceAlreadyUploaded: !!lastUploadedVoiceUrl,
       };
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
-      if (currentImage) body.imageBase64 = currentImage;
+      // ✅ FIX: بتبعت مصفوفة صور دلوقتي (لحد 2) بدل صورة واحدة بس — كمان بيبعت imageBase64
+      // (أول صورة) للتوافق مع أي كود قديم لسه بيتوقع حقل مفرد
+      if (currentImages.length) { body.imagesBase64 = currentImages; body.imageBase64 = currentImages[0]; }
 
       abortRef.current = new AbortController();
       const res = await fetch('/api/agent/chat', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body), signal: abortRef.current.signal });
@@ -679,7 +684,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const AttachBar = () => (
     <div style={{ position: 'relative' }}>
       <input ref={voiceInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
-      <input ref={imageInputRef} type="file" accept="image/*" onChange={(e) => { handleImageFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
+      <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
       <button onClick={() => setAttachMenuOpen(v => !v)} title={t.attachTitle}
         style={{ width: 38, height: 38, borderRadius: 10, background: attachMenuOpen ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${attachMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: attachMenuOpen ? '#a99bff' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
 
@@ -742,18 +747,20 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               autoFocus
               style={{ width: '100%', resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 15, fontFamily: 'inherit', direction: isArabic(input) ? 'rtl' : 'ltr' }}
             />
-            {(voiceFile || imagePreview) && (
+            {(voiceFile || imageFiles.length > 0) && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                 {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎙️ {t.voiceAttached} <button onClick={() => setVoiceFile(null)} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>}
-                {imagePreview && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached} <button onClick={() => { setImageFile(null); setImagePreview(null); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>}
+                {imageFiles.map((_, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>
+                ))}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
               <div style={{ display: 'flex', gap: 8 }}><AttachBar /></div>
-              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFile}
-                onMouseEnter={e => { if (input.trim() || voiceFile || imageFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
+              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length}
+                onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length) e.currentTarget.style.filter = 'brightness(1.12)'; }}
                 onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-                style={{ width: 40, height: 40, borderRadius: 12, background: (!input.trim() && !voiceFile && !imageFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFile) ? 'default' : 'pointer', fontSize: 16, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFile) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}>➤</button>
+                style={{ width: 40, height: 40, borderRadius: 12, background: (!input.trim() && !voiceFile && !imageFiles.length) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length) ? 'default' : 'pointer', fontSize: 16, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}>➤</button>
             </div>
           </div>
 
@@ -808,7 +815,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
                   boxShadow: m.role === 'user' ? '0 4px 16px rgba(124,106,247,0.25)' : '0 2px 10px rgba(0,0,0,0.15)',
                   color: '#fff', fontSize: 14, lineHeight: 1.7, direction: ar ? 'rtl' : 'ltr', textAlign: ar ? 'right' : 'left',
                 }}>
-                  {m.imagePreview && <img src={m.imagePreview} alt="upload" style={{ maxWidth: 140, borderRadius: 10, marginBottom: 8, display: 'block' }} />}
+                  {m.imagePreviews?.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                      {m.imagePreviews.map((src, idx) => <img key={idx} src={src} alt="upload" style={{ maxWidth: 140, borderRadius: 10, display: 'block' }} />)}
+                    </div>
+                  )}
                   {m.hasVoice && <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>🎙️ {t.voiceAttached}</div>}
                   {m.content}
                 </div>
@@ -826,10 +837,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
         {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
-        {(voiceFile || imageFile) && (
+        {(voiceFile || imageFiles.length > 0) && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎙️ {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>}
-            {imagePreview && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached} <button onClick={() => { setImageFile(null); setImagePreview(null); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>}
+            {imageFiles.map((_, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>
+            ))}
           </div>
         )}
 
@@ -857,10 +870,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
               style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'background 0.15s ease' }}>⏹️</button>
           ) : (
-            <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFile}
-              onMouseEnter={e => { if (input.trim() || voiceFile || imageFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
+            <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length}
+              onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length) e.currentTarget.style.filter = 'brightness(1.12)'; }}
               onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-              style={{ width: 38, height: 38, borderRadius: 10, background: (!input.trim() && !voiceFile && !imageFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFile) ? 'default' : 'pointer', fontSize: 15, flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}>➤</button>
+              style={{ width: 38, height: 38, borderRadius: 10, background: (!input.trim() && !voiceFile && !imageFiles.length) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length) ? 'default' : 'pointer', fontSize: 15, flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}>➤</button>
           )}
         </div>
         <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
