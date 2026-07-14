@@ -124,14 +124,85 @@ async function uploadImageToReplicate(photoBase64) {
   return url;
 }
 
+// ✅ NEW: دمج صورتين شخصيتين في صورة واحدة موحدة (نفس المكان/الوضعية) باستخدام موديل FLUX
+// المخصص لده على Replicate. ده بيقبل صورتين بس (قيد رسمي من Replicate نفسها)، فبنبنيه
+// كخطوة أساسية وبعدين نكرره في شجرة ثنائية عشان يغطي أي عدد شخصيات (لحد 5).
+async function combineTwoImages(urlA, urlB, mergePrompt) {
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+  const inputPayload = {
+    input_image_1: urlA,
+    input_image_2: urlB,
+    prompt: mergePrompt || 'Combine these two people into one single cohesive photo, standing together naturally side by side, keep each person\'s exact face, identity, hairstyle, and outfit completely unchanged from their own original photo, plain clean white background, consistent lighting across both, full body visible, front-facing, no other objects',
+    aspect_ratio: 'match_input_image',
+  };
+  const res = await fetch('https://api.replicate.com/v1/models/flux-kontext-apps/multi-image-kontext-max/predictions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'wait',
+    },
+    body: JSON.stringify({ input: inputPayload }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`FLUX multi-image merge failed ${res.status}: ${err.slice(0, 200)}`);
+  }
+  let data = await res.json();
+  if (data.error) throw new Error(`FLUX multi-image merge error: ${data.error}`);
+  if (data.status !== 'succeeded') {
+    const predictionId = data.id;
+    const headers = { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` };
+    const maxWait = 120_000, pollInterval = 3_000, startTime = Date.now();
+    while (Date.now() - startTime < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
+      if (!statusRes.ok) continue;
+      data = await statusRes.json();
+      if (data.status === 'succeeded') break;
+      if (data.status === 'failed' || data.status === 'canceled') throw new Error(`FLUX multi-image merge ${data.status}: ${data.error || 'unknown'}`);
+    }
+  }
+  const out = Array.isArray(data.output) ? data.output[0] : data.output;
+  if (!out) throw new Error('FLUX multi-image merge returned no output');
+  return out;
+}
+
+// ✅ NEW: شجرة دمج ثنائية — بتدمج كل صورتين مع بعض على التوازي، وبعدين نتايج الدمج دي مع
+// بعض، وهكذا لحد ما يفضل صورة واحدة بس تجمع كل الشخصيات بالتساوي تقريبًا (بدل ما شخصية
+// واحدة "تتخفف" أكتر من غيرها في دمج تسلسلي طويل). لو عدد الصور فردي، آخر واحدة بتتنقل
+// للمستوى الجاي من غير دمج لحد ما تلاقي زوج ليها.
+async function mergeCharacterPhotosTree(urls, mergePrompt) {
+  let current = [...urls];
+  while (current.length > 1) {
+    console.log(`[Model5] Merging ${current.length} images into ${Math.ceil(current.length / 2)}...`);
+    const next = [];
+    for (let i = 0; i < current.length; i += 2) {
+      if (i + 1 < current.length) {
+        next.push(await combineTwoImages(current[i], current[i + 1], mergePrompt));
+      } else {
+        next.push(current[i]); // فردي — تتنقل من غير دمج
+      }
+    }
+    current = next;
+  }
+  return current[0];
+}
+
 // ── FLUX Kontext Dev: generate reference image from character photo ──────────
 // Cheapest Replicate model for character reference (~$0.01-0.02/image)
-async function generateReferenceImage(photoBase64, scenePrompt, ratio = '9:16') {
+async function generateReferenceImage(photoBase64OrUrl, scenePrompt, ratio = '9:16') {
   if (!REPLICATE_API_TOKEN) return null;
   try {
-    // Accept both raw base64 and data URL
-    const b64 = photoBase64.replace(/^data:image\/\w+;base64,/, '');
-    const imageDataUrl = `data:image/jpeg;base64,${b64}`;
+    // ✅ FIX: بتقبل دلوقتي رابط https مباشر (لصورة المجموعة المدمجة) بجانب base64 العادي
+    const isUrl = /^https?:\/\//i.test(photoBase64OrUrl);
+    let imageDataUrl;
+    if (isUrl) {
+      imageDataUrl = photoBase64OrUrl;
+    } else {
+      const b64 = photoBase64OrUrl.replace(/^data:image\/\w+;base64,/, '');
+      imageDataUrl = `data:image/jpeg;base64,${b64}`;
+    }
 
     const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
       method: 'POST',
@@ -548,6 +619,26 @@ export async function renderModel5Video({
 
   console.log(`[Model5] START | ${total} scenes | ${ratio} | ${duration} | Seedance 2.0`);
 
+  // ✅ NEW: لو أكتر من شخصية واتفقنا على دمجهم بشجرة ثنائية (FLUX) في صورة واحدة موحدة —
+  // ده بيتعمل مرة واحدة بس هنا (مش لكل مشهد لوحده) لأن نفس الصور بتتكرر في كل المشاهد،
+  // فتوفير حقيقي في التكلفة والوقت. الصورة الموحدة الناتجة بعد كده بتتعامل بالظبط زي حالة
+  // "صورة شخصية واحدة" (بتتركّب في كل مشهد لوحده عن طريق generateReferenceImage، وبعدين
+  // بتتحرك بحقل "image" المفرد الصارم بدل "images" الجمع الحر).
+  let mergedGroupPhotoUrl = null;
+  const firstScenePhotos = Array.isArray(scenes[0]?.characterPhotos) ? scenes[0].characterPhotos.filter(Boolean) : [];
+  if (firstScenePhotos.length > 1) {
+    console.log(`[Model5] Merging ${firstScenePhotos.length} character photos into one group photo (one-time, reused for all scenes)...`);
+    try {
+      const uploadedUrls = await Promise.all(firstScenePhotos.map(p => uploadImageToReplicate(p)));
+      mergedGroupPhotoUrl = await mergeCharacterPhotosTree(uploadedUrls);
+      console.log(`[Model5] ✅ Group photo merge succeeded`);
+    } catch (e) {
+      console.error(`[Model5] ⚠️ Group photo merge failed, falling back to loose multi-image reference:`, e.message);
+      // Fallback: لو الدمج فشل لأي سبب (مشكلة شبكة، حد استخدام)، منوقفش الفيديو بالكامل —
+      // نرجع للطريقة القديمة (images الجمع) بدل ما نفشل تمامًا
+    }
+  }
+
   // Step 1: Generate clips بـ Seedance 2.0 مع الصوت الأصلي
   const rawPaths = [];
   for (let i = 0; i < scenes.length; i++) {
@@ -574,6 +665,16 @@ export async function renderModel5Video({
       if (scene.referenceImageUrl) {
         // Pre-generated single reference (legacy path from generate-scenes)
         refImageUrls = [scene.referenceImageUrl];
+      } else if (mergedGroupPhotoUrl) {
+        // ✅ NEW: عندنا صورة موحدة لكل الشخصيات مع بعض (اتعملت مرة واحدة قبل اللوب) —
+        // نتعامل معاها بالظبط زي صورة شخصية واحدة: تتركّب في مكان المشهد ده عن طريق FLUX،
+        // وبعدين تتحرك بحقل "image" المفرد الصارم — نفس المسار المضمون اللي شغال فعليًا.
+        console.log(`[Model5] Compositing merged group photo into scene ${i + 1}...`);
+        const refUrl = await generateReferenceImage(mergedGroupPhotoUrl, seed2Prompt, ratio);
+        if (!refUrl) {
+          throw new Error('Failed to process the merged group photo (reference image generation failed). Please try again.');
+        }
+        refImageUrls = [refUrl];
       } else if (rawPhotos.length === 1) {
         // ── Single character: compose them into the scene's location via FLUX Kontext first,
         // then that ONE composed image is animated as a true locked first frame ──
@@ -584,11 +685,9 @@ export async function renderModel5Video({
         }
         refImageUrls = [refUrl];
       } else if (rawPhotos.length > 1) {
-        // ── Multiple characters (2-5): upload each raw photo to get a real hosted URL first
-        // (was sending giant inline base64 blobs before, which Replicate silently dropped),
-        // then feed all URLs into Seedance's multimodal reference mode so it composes them
-        // TOGETHER in one scene while animating — no separate merge step needed.
-        console.log(`[Model5] Uploading ${rawPhotos.length} character photos for clip ${i + 1}...`);
+        // ── Fallback ONLY if the one-time group-photo merge above failed for some reason:
+        // upload raw photos and use Seedance's looser multimodal "images" reference mode ──
+        console.log(`[Model5] (fallback) Uploading ${rawPhotos.length} character photos for clip ${i + 1}...`);
         refImageUrls = await Promise.all(rawPhotos.map(p => uploadImageToReplicate(p)));
       }
 
