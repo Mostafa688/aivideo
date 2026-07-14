@@ -114,6 +114,17 @@ router.post('/chat', authMiddleware, async (req, res) => {
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
     });
 
+    // ✅ NEW: لو الموديل رجع رد فاضي تمامًا (مثلاً استهلك كل التوكنز في تفكير مخفي غير ظاهر
+    // ولم يترك أي نص فعلي) — منسيبش فقاعة فاضية تظهر للعميل وكأن الأجنت "مش بيرد"، نرجع
+    // رسالة واضحة تطلب إعادة المحاولة بدل ما نرسل reply فاضي للفرونت إند
+    if (!rawReply || !rawReply.trim()) {
+      console.warn('[Agent Chat] ⚠️ Empty reply from model — likely reasoning tokens exhausted max_tokens before any visible content');
+      return res.json({
+        reply: 'معلش، حصل تأخير بسيط في التفكير — ممكن تبعت رسالتك تاني؟',
+        transcript, ready: null, editScene: null, uploadedVoiceUrl,
+      });
+    }
+
     // ── فصل الأمر التقني (###READY### أو ###EDIT_SCENE###) عن رسالة الشات — الـ JSON بقى بييجي
     // الأول في الرد (مش الآخر) عشان لو حصل قطع من حد التوكنز يقطع في الكلام مش في الـ JSON ──
     let reply = rawReply;
