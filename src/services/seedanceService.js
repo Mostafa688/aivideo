@@ -89,6 +89,41 @@ async function downloadVideo(url, outputPath) {
   fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
 }
 
+// ✅ NEW FIX: كان بيبعت الصور الخام (base64) مباشرة جوه الـ JSON body لـ Seedance في حالة
+// أكتر من صورة (multi-character) — الحمولة الضخمة دي كانت بترفض/تتجاهل بصمت من غير أي رسالة
+// خطأ، فمصفوفة "images" كانت بتوصل فاضية فعليًا. الحل: نرفع كل صورة كملف حقيقي على
+// Replicate's Files API الأول ونستخدم الرابط القصير الناتج (بنفس منطق حالة الصورة الواحدة
+// اللي بترفع عن طريق FLUX وبترجع رابط https://replicate.delivery/... قصير وشغال).
+async function uploadImageToReplicate(photoBase64) {
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+  const b64 = photoBase64.replace(/^data:image\/\w+;base64,/, '');
+  const buffer = Buffer.from(b64, 'base64');
+  // ✅ نبني multipart/form-data يدويًا بدل الاعتماد على FormData/Blob العالميين، عشان نضمن
+  // التوافق مع node-fetch (v2) المستخدمة في المشروع من غير أي مفاجآت
+  const boundary = `----aivideoBoundary${Date.now().toString(16)}`;
+  const head = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="content"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`
+  );
+  const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+  const body = Buffer.concat([head, buffer, tail]);
+  const res = await fetch('https://api.replicate.com/v1/files', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    },
+    body,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Replicate file upload failed ${res.status}: ${err}`);
+  }
+  const data = await res.json();
+  const url = data?.urls?.get || data?.url;
+  if (!url) throw new Error('Replicate file upload returned no URL');
+  return url;
+}
+
 // ── FLUX Kontext Dev: generate reference image from character photo ──────────
 // Cheapest Replicate model for character reference (~$0.01-0.02/image)
 async function generateReferenceImage(photoBase64, scenePrompt, ratio = '9:16') {
@@ -549,14 +584,12 @@ export async function renderModel5Video({
         }
         refImageUrls = [refUrl];
       } else if (rawPhotos.length > 1) {
-        // ── Multiple characters (2-5): feed all raw photos directly into Seedance's
-        // multimodal reference mode so it composes them TOGETHER in one scene while animating —
-        // no separate merge step needed, Seedance itself supports up to 9 reference images.
-        console.log(`[Model5] Using ${rawPhotos.length} character photos together for clip ${i + 1}...`);
-        refImageUrls = rawPhotos.map(p => {
-          const b64 = p.replace(/^data:image\/\w+;base64,/, '');
-          return `data:image/jpeg;base64,${b64}`;
-        });
+        // ── Multiple characters (2-5): upload each raw photo to get a real hosted URL first
+        // (was sending giant inline base64 blobs before, which Replicate silently dropped),
+        // then feed all URLs into Seedance's multimodal reference mode so it composes them
+        // TOGETHER in one scene while animating — no separate merge step needed.
+        console.log(`[Model5] Uploading ${rawPhotos.length} character photos for clip ${i + 1}...`);
+        refImageUrls = await Promise.all(rawPhotos.map(p => uploadImageToReplicate(p)));
       }
 
       const url = await generateSeedance2Clip(seed2Prompt, ratio, CLIP_SEC, refImageUrls);
