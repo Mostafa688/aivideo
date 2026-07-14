@@ -53,7 +53,7 @@ const T = {
     download: 'تحميل',
     failed: 'حصلت مشكلة أثناء إنشاء الفيديو',
     goToPricing: 'اذهب لصفحة الأسعار →',
-    uploadCharacterFirst: 'ارفع صورة الشخصية الأول من زر 🖼️ تحت',
+    uploadCharacterFirst: 'ارفع صورة الشخصية من زر 🖼️ تحت، أو اكتب وصف شكلها في رسالتك',
     stop: 'إيقاف',
     stopped: '⏹️ تم الإيقاف — الفيديو مستمر في الخلفية وسيتم خصم الكريديت',
   },
@@ -87,7 +87,7 @@ const T = {
     download: 'Download',
     failed: 'Something went wrong generating the video',
     goToPricing: 'Go to Pricing →',
-    uploadCharacterFirst: 'Upload the character photo first with the 🖼️ button below',
+    uploadCharacterFirst: 'Upload the character photo with the 🖼️ button below, or describe what they look like in your message',
     stop: 'Stop',
     stopped: '⏹️ Stopped watching — the video keeps rendering in the background and credits will still be deducted',
   },
@@ -281,8 +281,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (data.transcript) setLastUploadedTranscript(data.transcript);
 
       if (data.ready) {
-        const needsPhoto = (data.ready.model === 5 && data.ready.needsCharacterPhoto) || (data.ready.model === 7 && data.ready.needsProductPhoto);
-        if (needsPhoto && !lastUploadedPhotos.length) {
+        // ✅ FIX: موديل 5 كان بيرفض يكمل من غير صورة حتى لو العميل وصف الشخصية بالنص —
+        // دلوقتي وصف نصي (characterDescriptions) بديل كامل للصورة، مش بس الصورة اللي بتشيل الشرط
+        const hasCharacterInfo = lastUploadedPhotos.length > 0 || (data.ready.characterDescriptions && data.ready.characterDescriptions.length > 0);
+        const needsPhoto = (data.ready.model === 5 && data.ready.needsCharacterPhoto && !hasCharacterInfo) || (data.ready.model === 7 && data.ready.needsProductPhoto && !lastUploadedPhotos.length);
+        if (needsPhoto) {
           setMessages(m => [...m, { role: 'assistant', content: t.uploadCharacterFirst }]);
         } else {
           startGeneration(data.ready);
@@ -495,9 +498,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             ? { idea: null, script: lastUploadedTranscript, inputMode: 'script', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' }
             : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' };
         } else {
+          // ✅ FIX: لو مفيش صور مرفوعة بس الأجنت جابله وصف نصي للشخصية، نستخدم الوصف بدل ما نمنع
+          // التوليد — الباك إند أصلاً بيدعم وصف الشخصية بالنص (characterDescs) من غير أي صورة خالص
+          const characters = lastUploadedPhotos.length
+            ? lastUploadedPhotos.map(p => ({ prompt: '', photo: p }))
+            : (ready.characterDescriptions || []).map(desc => ({ prompt: desc, photo: null }));
           scenesBody = ready.promptMode === 'prompt'
-            ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters: lastUploadedPhotos.map(p => ({ prompt: '', photo: p })), duration: ready.duration, styleSuffix: '' }
-            : { idea: ready.idea, characters: lastUploadedPhotos.map(p => ({ prompt: '', photo: p })), duration: ready.duration, videoStyle: style, styleSuffix: '' };
+            ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters, duration: ready.duration, styleSuffix: '' }
+            : { idea: ready.idea, characters, duration: ready.duration, videoStyle: style, styleSuffix: '' };
         }
         const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
         const scenesData = await scenesRes.json();
