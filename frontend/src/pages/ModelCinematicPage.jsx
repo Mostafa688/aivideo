@@ -65,8 +65,10 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
   useEffect(() => { fetchUsage(); }, []);
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
   useEffect(() => {
-    const hasPhoto = characters.some(c => c.photo);
-    fetch(`/api/model5/credit-cost?duration=${duration}&hasPhoto=${hasPhoto}`, { headers: authHeaders() })
+    // ✅ FIX: كان بيبعت hasPhoto (true/false) بس، فمهما زودت صور، السعر كان بيفضل ثابت
+    // على سعر "صورة واحدة". دلوقتي بيبعت العدد الفعلي عشان السعر يتزايد صح مع كل صورة.
+    const photoCount = characters.filter(c => c.photo).length;
+    fetch(`/api/model5/credit-cost?duration=${duration}&photoCount=${photoCount}`, { headers: authHeaders() })
       .then(r => r.json()).then(d => setCreditCost(d.creditCost || 180)).catch(() => {});
   }, [duration, characters]);
 
