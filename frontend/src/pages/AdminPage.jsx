@@ -869,6 +869,11 @@ export default function AdminPage() {
   const [adminReply, setAdminReply] = useState('');
   const [supportPoll, setSupportPoll] = useState(null);
   const totalUnread = supportChats.reduce((sum, c) => sum + (parseInt(c.unread_count)||0), 0);
+  // ✅ NEW: مودال "ابعت رسالة" لعميل من تبويب Users حتى لو ماعملش Start Chat أصلاً
+  const [messageUser, setMessageUser] = useState(null); // { email, name }
+  const [messageText, setMessageText] = useState('');
+  const [messageLang, setMessageLang] = useState('ar');
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -1027,6 +1032,28 @@ export default function AdminPage() {
       if (activeChat?.id === chatId) { setActiveChat(null); setChatMessages([]); }
       showToast('✅ Chat deleted');
     } catch (e) { showToast('❌ ' + e.message); }
+  };
+
+  // ✅ NEW: يبعت رسالة استباقية لعميل من تبويب Users — بينشئ/يستخدم تشات دعم ليه ويبعتله إيميل فيه زرار يفتح الشات مباشرة
+  const sendUserMessage = async () => {
+    if (!messageUser?.email || !messageText.trim()) return;
+    setSendingMessage(true);
+    try {
+      const r = await fetch('/api/support/admin-start-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: messageUser.email, name: messageUser.name, text: messageText.trim(), language: messageLang, secret: ADMIN_SECRET }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        showToast('✅ Message sent — email delivered');
+        setMessageUser(null); setMessageText('');
+        if (tab === 'support') loadSupport();
+      } else {
+        showToast('❌ ' + (d.error || 'Failed to send'));
+      }
+    } catch (e) { showToast('❌ ' + e.message); }
+    setSendingMessage(false);
   };
 
   const loadUsers = useCallback(async () => { setLoading(true); try { const params = new URLSearchParams(); if (planFilter) params.set('plan', planFilter); if (search) params.set('search', search); const r = await fetch('/api/admin/users?' + params, { headers }); const d = await r.json(); setUsers(d.users || []); } catch (e) { console.error(e); } setLoading(false); }, [planFilter, search]);
@@ -1265,6 +1292,7 @@ export default function AdminPage() {
                         <td style={s.td}>{new Date(u.created_at).toLocaleDateString()}</td>
                         <td style={{ ...s.td, display:'flex', gap:4, flexWrap:'wrap' }}>
                           <button style={s.btn('#374151')} title="Edit" onClick={() => { setEditUser(u); setEditPlan(u.plan); }}>✏️</button>
+                          <button style={s.btn('#312e81')} title="Send message" onClick={() => { setMessageUser({ email: u.email, name: u.name }); setMessageText(''); setMessageLang(u.region==='intl'?'en':'ar'); }}>✉️</button>
                           <button style={s.btn('#1e3a2f')} disabled={resetingCredits===u.email} title="Reset M1&2 credits" onClick={() => handleResetCredits(u.email)}>
                             {resetingCredits===u.email ? '...' : '🔄'}
                           </button>
@@ -1305,6 +1333,46 @@ export default function AdminPage() {
                   <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
                     <button style={s.btn()} onClick={savePlan} disabled={saving}>{saving ? 'Saving...' : 'Save Plan'}</button>
                     <button style={s.btn('#374151')} onClick={() => setEditUser(null)}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ✅ NEW: مودال إرسال رسالة استباقية للعميل — بيوصله إيميل فيه الرسالة + زرار يفتح الشات مباشرة */}
+            {messageUser && (
+              <div style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
+                <div style={{ background: '#0f0f1a', border: '1px solid #2d2d4a', borderRadius: 16, padding: '32px', width: 420 }}>
+                  <h3 style={{ margin: '0 0 6px', color: '#fff' }}>✉️ Send Message</h3>
+                  <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 20 }}>{messageUser.email}</div>
+
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Language</div>
+                    <select style={{ ...s.input, width: '100%' }} value={messageLang} onChange={e => setMessageLang(e.target.value)}>
+                      <option value="ar">🇸🇦 Arabic</option>
+                      <option value="en">🇺🇸 English</option>
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Message</div>
+                    <textarea
+                      value={messageText}
+                      onChange={e => setMessageText(e.target.value)}
+                      placeholder={messageLang === 'ar' ? 'اكتب رسالتك للعميل هنا...' : 'Type your message to the customer...'}
+                      rows={5}
+                      dir={messageLang === 'ar' ? 'rtl' : 'ltr'}
+                      style={{ ...s.input, width: '100%', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <p style={{ fontSize: 11, color: '#4b5563', margin: '0 0 16px' }}>
+                    📧 هيوصله إيميل فيه الرسالة دي + زرار "افتح المحادثة" يوديه على شات الدعم مباشرة (من غير ما يحتاج يعمل Start Chat بنفسه).
+                  </p>
+
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={s.btn('#7c6af7')} onClick={sendUserMessage} disabled={sendingMessage || !messageText.trim()}>
+                      {sendingMessage ? 'Sending...' : 'Send →'}
+                    </button>
+                    <button style={s.btn('#374151')} onClick={() => { setMessageUser(null); setMessageText(''); }}>Cancel</button>
                   </div>
                 </div>
               </div>

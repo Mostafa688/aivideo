@@ -159,6 +159,72 @@ router.post('/admin-reply', async (req, res) => {
   }
 });
 
+// ── Admin starts (or continues) a chat with a customer who never opened support ──
+// ✅ NEW: بيسمح للأدمن إنه يبعت رسالة لعميل من صفحة الأدمن حتى لو العميل ميعملش "Start Chat"
+// أصلاً — بيدور على تشات مفتوح للإيميل ده ويستخدمه، أو يعمل واحد جديد لو مفيش. بعدها بيبعت
+// إيميل للعميل فيه الرسالة + زرار "افتح المحادثة" برابط بيوديه على نفس الشات مباشرة.
+router.post('/admin-start-chat', async (req, res) => {
+  const secret = req.headers['x-admin-secret'] || req.body.secret;
+  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+  const { email, name, text, language } = req.body;
+  if (!email || !text || !text.trim()) return res.status(400).json({ error: 'email and text required' });
+  const lang = language === 'en' ? 'en' : 'ar';
+  const cleanEmail = email.trim();
+  try {
+    // لو فيه تشات مفتوح (لسه ماخلصتش صلاحيته) لنفس الإيميل، استخدمه بدل ما نعمل واحد جديد كل مرة
+    const { rows: existing } = await pool.query(
+      `SELECT id FROM support_chats WHERE email = $1 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1`,
+      [cleanEmail]
+    );
+    let chatId;
+    if (existing.length) {
+      chatId = existing[0].id;
+      // نمدد الصلاحية 24 ساعة كمان لأن دلوقتي فيه نشاط جديد على التشات ده
+      await pool.query(`UPDATE support_chats SET expires_at = NOW() + INTERVAL '24 hours' WHERE id = $1`, [chatId]);
+    } else {
+      chatId = `chat_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+      await pool.query(
+        `INSERT INTO support_chats (id, name, email, language) VALUES ($1, $2, $3, $4)`,
+        [chatId, (name || cleanEmail.split('@')[0]).trim(), cleanEmail, lang]
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO support_messages (chat_id, role, text) VALUES ($1, 'admin', $2)`,
+      [chatId, text.trim()]
+    );
+
+    // إبعت إيميل للعميل فيه رسالة الأدمن + زرار يفتحله الشات مباشرة (بدون فورم اسم/إيميل)
+    try {
+      if (process.env.RESEND_API_KEY) {
+        const appUrl = process.env.APP_URL || 'https://erivion.net';
+        const chatUrl = `${appUrl}/support?openSupportChat=${chatId}`; // ✅ /support ليها route جاهز في App.jsx وبيسيب الـ query string زي ما هي
+        const isAr = lang === 'ar';
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Erivion Support <support@erivion.net>',
+            to: [cleanEmail],
+            subject: isAr ? '💬 عندك رسالة جديدة من فريق دعم Erivion' : '💬 New message from Erivion Support',
+            html: `<div dir="${isAr ? 'rtl' : 'ltr'}" style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
+              <h2 style="color:#a78bfa;margin:0 0 16px">💬 ${isAr ? 'عندك رسالة جديدة من فريق الدعم' : 'You have a new message from our support team'}</h2>
+              <p style="color:#9ca3af;font-size:13px;margin:0 0 16px">${isAr ? 'محتاجين نتأكد إن كل حاجة تمام معاك، رسالتنا:' : 'We wanted to check in with you. Our message:'}</p>
+              <div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:16px;margin:0 0 20px;color:#e5e7eb;line-height:1.7;white-space:pre-line">${text.trim()}</div>
+              <a href="${chatUrl}" style="display:inline-block;padding:14px 28px;border-radius:10px;background:linear-gradient(135deg,#7c6af7,#a855f7);color:#fff;text-decoration:none;font-weight:700;font-size:14px">${isAr ? 'افتح المحادثة ←' : 'Open Chat →'}</a>
+              <p style="color:#6b7280;font-size:11px;margin-top:24px">${isAr ? 'أو انسخ الرابط ده في المتصفح:' : 'Or paste this link in your browser:'}<br><span style="color:#7c6af7">${chatUrl}</span></p>
+            </div>`,
+          }),
+        });
+      }
+    } catch (e) { console.warn('[Support] Admin-start-chat email failed:', e.message); }
+
+    res.json({ success: true, chatId });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Close / delete a chat ─────────────────────────────────────────────────────
 router.delete('/chat/:chatId', async (req, res) => {
   const secret = req.headers['x-admin-secret'];

@@ -47,6 +47,24 @@ export default function SupportPage({ onBack, onNavigate }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // ✅ NEW: لو الرابط جاي من إيميل الأدمن (؟openSupportChat=chatId)، ادخل على الشات
+  // مباشرة من غير ما تطلب من العميل يملأ فورم الاسم/الإيميل تاني — الرسالة هتكون موجودة جاهزة
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const openChat = params.get('openSupportChat');
+    if (!openChat) return;
+    setChatId(openChat);
+    setChatStarted(true);
+    setView('chat');
+    (async () => {
+      try {
+        const r = await fetch(`/api/support/messages/${openChat}`);
+        const d = await r.json();
+        if (d.messages) setMessages(d.messages);
+      } catch {}
+    })();
+  }, []);
+
   // Poll for admin replies
   useEffect(() => {
     if (!chatId) return;
