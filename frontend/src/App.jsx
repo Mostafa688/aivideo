@@ -391,6 +391,10 @@ export default function App() {
     }} />;
     if (blogPostId) return <BlogPostPage postId={blogPostId} onBack={() => setBlogPostId(null)} />;
     if (page === 'community') return <CommunityPage onBack={() => setPage('input')} user={null} onNavigate={(k) => { if(k==='auth') setShowAuth(true); else if(k==='community') {} else setShowAuth(true); }} />;
+    // ✅ FIX: صفحة الدعم أصلاً بتشتغل من غير تسجيل دخول (فورم اسم+إيميل بسيطة)، فلازم تبقى
+    // استثناء زي الكوميونيتي بالظبط — قبل الفيكس ده، أي زائر مش مسجل دخول (زي عميل بيدوس على
+    // رابط الشات من الإيميل من متصفح تاني) كان بيترجعله اللاندنج بيدج بدل الشات مباشرة
+    if (page === 'support') return <SupportPage onBack={() => setPage('input')} onNavigate={(k) => { if(k==='community') setPage(k); else setShowAuth(true); }} />;
     return <LandingPage onGetStarted={() => setShowAuth(true)} onOpenBlog={(id) => setBlogPostId(id)} onNavigate={(k) => { if(k==='support'||k==='community') setPage(k); else setShowAuth(true); }} />;
   }
 
