@@ -15,7 +15,7 @@ import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
 import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings } from './services/authService.js';
+import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
 import supportRouter from './services/supportRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
@@ -1005,9 +1005,11 @@ app.get('/api/model4/credit-cost', authMiddleware, (req, res) => {
   res.json({ creditCost: MODEL4_CREDIT_COSTS[duration] || 10, duration });
 });
 app.get('/api/model5/credit-cost', authMiddleware, (req, res) => {
-  const { duration, hasPhoto } = req.query;
-  const table = hasPhoto === 'true' ? MODEL5_CREDIT_COSTS_WITH_PHOTO : MODEL5_CREDIT_COSTS;
-  res.json({ creditCost: table[duration] || 180, duration });
+  const { duration, hasPhoto, photoCount } = req.query;
+  // ✅ FIX: بيقبل دلوقتي عدد الصور الفعلي (photoCount) مش بس علم hasPhoto ثنائي —
+  // عشان يعرض السعر الصحيح المتزايد مع كل صورة إضافية قبل ما العميل يأكد التوليد
+  const count = photoCount ? parseInt(photoCount, 10) || 0 : (hasPhoto === 'true' ? 1 : 0);
+  res.json({ creditCost: getModel5CreditCost(duration, count), duration, photoCount: count });
 });
 
 // ── Model 3 Routes ─────────────────────────────────────────────────────────
@@ -1521,13 +1523,10 @@ app.get('/api/model4/usage', authMiddleware, async (req, res) => {
 
 // ── Model 5 (Cinematic) Routes ────────────────────────────────────────────
 app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
-  // 🚧 موديل 5 تحت الصيانة مؤقتًا — مقفول للجميع ماعدا إيميل الأدمن
+  // ✅ موديل 5 بقى متاح لكل المستخدمين (اتشال قفل الصيانة/admin-only بعد ما اتصلحت مشاكل
+  // الصورة المرجعية والدمج المتعدد)
   const model5User = await getUserById(req.user.userId);
   if (!model5User) return res.status(401).json({ error: 'User not found' });
-  const MODEL5_ADMIN_ONLY_EMAIL = process.env.ADMIN_EMAIL || 'digidelight33@gmail.com';
-  if (model5User.email !== MODEL5_ADMIN_ONLY_EMAIL) {
-    return res.status(403).json({ error: 'under_maintenance', message: 'Model 5 (Cinematic) is currently under maintenance and will be available again soon.' });
-  }
 
   const { idea, characters, duration, videoStyle, styleSuffix, promptMode, rawPrompt } = req.body;
 
@@ -1658,11 +1657,7 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const m5User = await getUserById(req.user.userId);
   if (!m5User) return res.status(401).json({ error: 'User not found' });
-  // 🚧 موديل 5 تحت الصيانة مؤقتًا — مقفول للجميع ماعدا إيميل الأدمن
-  const MODEL5_ADMIN_ONLY_EMAIL_R = process.env.ADMIN_EMAIL || 'digidelight33@gmail.com';
-  if (m5User.email !== MODEL5_ADMIN_ONLY_EMAIL_R) {
-    return res.status(403).json({ error: 'under_maintenance', message: 'Model 5 (Cinematic) is currently under maintenance and will be available again soon.' });
-  }
+  // ✅ موديل 5 بقى متاح لكل المستخدمين (اتشال قفل الصيانة/admin-only)
   if ((m5User?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 5.', show_upgrade: true });
   }
@@ -1681,9 +1676,9 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     console.log(`[Model5] All ${photos.length} character photo(s) linked together in ${scenesWithPhotos.length} scenes`);
   }
 
-  // ✅ نظام الكريديت الموحد: تكلفة أعلى شوية لو فيه صورة شخصية (رفرنس لكل مشهد)
-  const costTable = photos.length > 0 ? MODEL5_CREDIT_COSTS_WITH_PHOTO : MODEL5_CREDIT_COSTS;
-  const m5CreditCost = costTable[duration] || 65;
+  // ✅ FIX: التكلفة دلوقتي بتزيد مع كل صورة إضافية (25 كريديت لكل صورة زيادة بعد الأولى) —
+  // مطابق للتكلفة الحقيقية الإضافية على Replicate لكل صورة تتضاف للدمج
+  const m5CreditCost = getModel5CreditCost(duration, photos.length);
   const m5Balance = await getCreditsBalance(req.user.userId);
   if (m5Balance < m5CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m5CreditCost} credits, you have ${m5Balance}.`, cost: m5CreditCost, remaining: m5Balance });
@@ -1743,7 +1738,7 @@ app.get('/api/model5/usage', authMiddleware, async (req, res) => {
   try {
     // ✅ نظام الكريديت الموحد: الكل عنده access، القيد الوحيد هو رصيد الكريديت
     const balance = await getCreditsBalance(req.user.userId);
-    res.json({ access: true, credits_balance: balance, costs: MODEL5_CREDIT_COSTS, costs_with_photo: MODEL5_CREDIT_COSTS_WITH_PHOTO });
+    res.json({ access: true, credits_balance: balance, costs: MODEL5_CREDIT_COSTS, costs_with_photo: MODEL5_CREDIT_COSTS_WITH_PHOTO, extra_credits_per_photo: 25 });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

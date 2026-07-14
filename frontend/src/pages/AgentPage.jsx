@@ -174,7 +174,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [inputFocused, setInputFocused] = useState(false); // ✅ لعرض توهج الحدود لما الكتابة تكون فاعلة
   const [imagePreview, setImagePreview] = useState(null);
   const [limits, setLimits] = useState({ MAX_AUDIO_SEC: 120, MAX_AUDIO_MB: 10, MAX_IMAGE_MB: 5 });
-  const [lastUploadedPhoto, setLastUploadedPhoto] = useState(null);
+  const [lastUploadedPhotos, setLastUploadedPhotos] = useState([]); // ✅ FIX: كانت صورة واحدة بس — دلوقتي مصفوفة بتتراكم لحد صورتين عبر رسائل متتالية (موديل 5)
   const [lastUploadedVoiceUrl, setLastUploadedVoiceUrl] = useState(null);
   const [lastUploadedTranscript, setLastUploadedTranscript] = useState(null);
   const [lastM12Video, setLastM12Video] = useState(null); // ✅ NEW: آخر فيديو موديل 1/2 كامل — لازم نحفظه عشان نقدر نعدّل مشهد فيه لاحقًا من غير إعادة توليد كامل
@@ -215,7 +215,18 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     setError('');
     if (file.size > limits.MAX_IMAGE_MB * 1024 * 1024) { setError(t.imageTooBig(limits.MAX_IMAGE_MB)); return; }
     const reader = new FileReader();
-    reader.onload = (ev) => { setImageFile(ev.target.result); setImagePreview(ev.target.result); setLastUploadedPhoto(ev.target.result); };
+    reader.onload = (ev) => {
+      setImageFile(ev.target.result);
+      setImagePreview(ev.target.result);
+      // ✅ FIX: بتتراكم (مش تستبدل) لحد صورتين — الشات بيقبل شخصية واحدة أو اتنين لموديل 5
+      setLastUploadedPhotos(prev => {
+        if (prev.length >= 2) {
+          setError(t.maxTwoPhotos || 'This chat accepts up to 2 character photos — use the Models page directly for more.');
+          return prev;
+        }
+        return [...prev, ev.target.result];
+      });
+    };
     reader.readAsDataURL(file);
   };
 
@@ -250,7 +261,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         history: nextMessages.slice(0, -1).slice(-16).map(m => ({ role: m.role, content: m.content })),
         // ✅ FIX: نفضل نفكّر الباك إند إن صورة/صوت اترفعوا قبل كده في الجلسة دي حتى لو خرجوا بره الـ history،
         // عشان الايجنت مايطلبش رفعهم تاني بعد كام رسالة
-        photoAlreadyUploaded: !!lastUploadedPhoto,
+        photoAlreadyUploaded: !!lastUploadedPhotos.length,
         voiceAlreadyUploaded: !!lastUploadedVoiceUrl,
       };
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
@@ -266,7 +277,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
       if (data.ready) {
         const needsPhoto = (data.ready.model === 5 && data.ready.needsCharacterPhoto) || (data.ready.model === 7 && data.ready.needsProductPhoto);
-        if (needsPhoto && !lastUploadedPhoto) {
+        if (needsPhoto && !lastUploadedPhotos.length) {
           setMessages(m => [...m, { role: 'assistant', content: t.uploadCharacterFirst }]);
         } else {
           startGeneration(data.ready);
@@ -346,7 +357,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       timerRef.current = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
       try {
         const form = new FormData();
-        const productBlob = dataURLtoBlob(lastUploadedPhoto);
+        const productBlob = dataURLtoBlob(lastUploadedPhotos[0]);
         form.append('productImage', productBlob, 'product.jpg');
         form.append('productName', ready.productName || 'Product');
         form.append('productDesc', ready.productDesc || '');
@@ -480,8 +491,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' };
         } else {
           scenesBody = ready.promptMode === 'prompt'
-            ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters: lastUploadedPhoto ? [{ prompt: '', photo: lastUploadedPhoto }] : [], duration: ready.duration, styleSuffix: '' }
-            : { idea: ready.idea, characters: lastUploadedPhoto ? [{ prompt: '', photo: lastUploadedPhoto }] : [], duration: ready.duration, videoStyle: style, styleSuffix: '' };
+            ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters: lastUploadedPhotos.map(p => ({ prompt: '', photo: p })), duration: ready.duration, styleSuffix: '' }
+            : { idea: ready.idea, characters: lastUploadedPhotos.map(p => ({ prompt: '', photo: p })), duration: ready.duration, videoStyle: style, styleSuffix: '' };
         }
         const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
         const scenesData = await scenesRes.json();
@@ -528,7 +539,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: wantCaptions, music: wantMusic, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
       } else {
         renderUrl = '/api/model5/render';
-        renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhoto ? [lastUploadedPhoto] : [], music: wantMusic };
+        renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhotos, music: wantMusic };
       }
 
       // ── لو السيرفر مشغول بفيديو عميل تاني، نستنى ونعيد المحاولة تلقائيًا ────

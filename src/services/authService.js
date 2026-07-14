@@ -22,6 +22,15 @@ export const MODEL4_CREDIT_COSTS = { '30s': 100, '1min': 200, '2min': 400, '3min
 // موديل 5: أرخص لو من النص، أعلى شوية لو فيه صورة شخصية (رفرنس صورة لكل مشهد)
 export const MODEL5_CREDIT_COSTS = { '5s': 60, '10s': 120, '15s': 180, '30s': 360, '1min': 720 };
 export const MODEL5_CREDIT_COSTS_WITH_PHOTO = { '5s': 65, '10s': 125, '15s': 185, '30s': 390, '1min': 780 };
+// ✅ NEW: كل صورة إضافية بتزود تكلفة حقيقية على Replicate (دمج FLUX لكل صورة زيادة) —
+// +25 كريديت لكل صورة إضافية بعد الأولى، بنفس القيمة في كل مدة (5s/10s/15s/30s/1min) —
+// مطابق تمامًا لجدول التكلفة اللي اتفقنا عليه: 1 صورة=الأساس، 2=+25، 3=+50، 4=+75، 5=+100
+export const MODEL5_EXTRA_CREDITS_PER_PHOTO = 25;
+export function getModel5CreditCost(duration, photoCount = 0) {
+  const base = photoCount > 0 ? (MODEL5_CREDIT_COSTS_WITH_PHOTO[duration] || 185) : (MODEL5_CREDIT_COSTS[duration] || 180);
+  const extra = photoCount > 1 ? MODEL5_EXTRA_CREDITS_PER_PHOTO * (photoCount - 1) : 0;
+  return base + extra;
+}
 
 export const PLANS = {
   free: {
