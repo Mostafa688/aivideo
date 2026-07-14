@@ -54,6 +54,12 @@ const lastRequestAt = new Map(); // userId -> timestamp
 const MIN_INTERVAL_MS = 1500;
 
 router.post('/chat', authMiddleware, async (req, res) => {
+  // ✅ NEW: لوج فوري أول ما الطلب يوصل — قبل أي معالجة خالص — عشان نتأكد فورًا هل الطلب
+  // بتاع الصورتين بيوصل للسيرفر أصلاً ولا بيتوقف قبل كده (مشكلة حجم/بروكسي مثلاً)
+  try {
+    const bodySize = JSON.stringify(req.body || {}).length;
+    console.log(`[Agent Chat] 📥 Request received — body size: ${(bodySize / 1024 / 1024).toFixed(2)}MB, hasImages: ${Array.isArray(req.body?.imagesBase64) ? req.body.imagesBase64.length : (req.body?.imageBase64 ? 1 : 0)}, hasVoice: ${!!req.body?.voiceBase64}`);
+  } catch (e) { console.warn('[Agent Chat] Could not log request size:', e.message); }
   try {
     const userId = req.user.userId;
     const now = Date.now();
