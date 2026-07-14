@@ -176,9 +176,17 @@ async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, i
   const urls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : (imageUrls ? [imageUrls] : []);
   let prompt = basePrompt;
 
+  // ✅ REAL FIX #2 (confirmed via actual Replicate JSON payload comparison against the working
+  // Ads flow): Seedance 2.0 Fast's schema has TWO SEPARATE fields — a singular "image" (true
+  // first-frame lock, animated forward exactly like Ads' seedance-1-pro-fast "image" field) and
+  // a plural "images" array (loose multi-character/style reference, NOT a first-frame lock —
+  // the model is free to compose a brand new scene around the identity). We were putting the
+  // single-photo case into "images" (the loose array) instead of "image" (the strict lock),
+  // which is exactly why one uploaded photo wasn't being animated — the model correctly treated
+  // it as a loose reference, not a frame to continue from.
   if (urls.length === 1) {
-    prompt = `[Image1] is the exact first frame of this video — its composition, framing, subject and background must stay completely unchanged in the opening instant, then animate forward from it. ${basePrompt}`;
-    console.log(`[Model5] Seedance I2V — single reference image locked as first frame`);
+    prompt = `The exact photo provided is the first frame of this video — its composition, framing, subject and background must stay completely unchanged in the opening instant, then animate forward from it. ${basePrompt}`;
+    console.log(`[Model5] Seedance I2V — single reference image locked as first frame (using singular "image" field)`);
   } else if (urls.length > 1) {
     const tags = urls.map((_, i) => `[Image${i + 1}]`).join(', ');
     prompt = `${tags} are reference photos of the different characters in this story. All of them must appear together in this single unified scene, interacting with each other, each one keeping their exact face and identity from their own reference photo. ${basePrompt}`;
@@ -186,7 +194,11 @@ async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, i
   }
 
   const input = { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24 };
-  if (urls.length > 0) input.images = urls;
+  if (urls.length === 1) {
+    input.image = urls[0]; // ✅ singular field = strict first-frame lock (matches Ads' working approach)
+  } else if (urls.length > 1) {
+    input.images = urls; // plural field = multi-character loose reference (correct use for this case)
+  }
 
   const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
     method: 'POST',
