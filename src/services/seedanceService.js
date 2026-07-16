@@ -662,7 +662,14 @@ export async function renderModel5Video({
         : (scene.characterPhoto ? [scene.characterPhoto] : []);
 
       let refImageUrls = [];
-      if (scene.referenceImageUrl) {
+      if (scene.directAnimate && rawPhotos.length === 1) {
+        // ✅ NEW: وضع "Image to Video" — الصورة كلها (مش شخصية بس) لازم تتحرك زي ما هي بالظبط،
+        // من غير أي تركيب/إعادة توليد عن طريق FLUX Kontext. نرفعها لـ Replicate كملف واخدين
+        // رابطها المباشر، وبعدين generateSeedance2Clip بيستخدمها كـ "image" مفرد = قفل الفريم الأول.
+        console.log(`[Model5] Direct image-to-video for clip ${i + 1} — skipping FLUX Kontext composition`);
+        const directUrl = await uploadImageToReplicate(rawPhotos[0]);
+        refImageUrls = [directUrl];
+      } else if (scene.referenceImageUrl) {
         // Pre-generated single reference (legacy path from generate-scenes)
         refImageUrls = [scene.referenceImageUrl];
       } else if (mergedGroupPhotoUrl) {

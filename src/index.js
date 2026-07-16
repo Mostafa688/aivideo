@@ -1562,6 +1562,7 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
         : 'The subject and scene shown in the photo come naturally to life — subtle, realistic motion only (breathing, small natural movement, wind, shifting light), smooth gentle cinematic camera movement, nothing added or changed that is not already in the photo. No text overlays, no watermarks. Include 1-2 specific, concrete sound effects that genuinely match this exact scene.',
       text: 'Image to video',
       characterPhotos: [photo],
+      directAnimate: true, // ✅ NEW: يقول لـ renderModel5Video ميعملش FLUX Kontext تركيب — يحرك الصورة الأصلية زي ما هي
     };
     return res.json({ scenes: [scene] });
   }
