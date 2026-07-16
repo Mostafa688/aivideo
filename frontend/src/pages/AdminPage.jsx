@@ -867,6 +867,9 @@ export default function AdminPage() {
   const [activeChat, setActiveChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [adminReply, setAdminReply] = useState('');
+  const [adminAttachment, setAdminAttachment] = useState(null); // { base64, preview, type }
+  const [adminReplyTo, setAdminReplyTo] = useState(null); // { id, text, role }
+  const adminFileInputRef = React.useRef(null);
   const [supportPoll, setSupportPoll] = useState(null);
   const totalUnread = supportChats.reduce((sum, c) => sum + (parseInt(c.unread_count)||0), 0);
   // ✅ NEW: مودال "ابعت رسالة" لعميل من تبويب Users حتى لو ماعملش Start Chat أصلاً
@@ -1011,17 +1014,30 @@ export default function AdminPage() {
   };
 
   const sendAdminReply = async () => {
-    if (!adminReply.trim() || !activeChat) return;
+    if (!adminReply.trim() && !adminAttachment) return;
+    if (!activeChat) return;
     try {
       await fetch('/api/support/admin-reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: activeChat.id, text: adminReply.trim(), secret: ADMIN_SECRET }),
+        body: JSON.stringify({ chatId: activeChat.id, text: adminReply.trim(), secret: ADMIN_SECRET, mediaBase64: adminAttachment?.base64 || null, mediaType: adminAttachment?.type || null, replyToId: adminReplyTo?.id || null }),
       });
-      setAdminReply('');
+      setAdminReply(''); setAdminAttachment(null); setAdminReplyTo(null);
       await loadChatMessages(activeChat.id);
       await markChatRead(activeChat.id);
     } catch (e) { showToast('❌ ' + e.message); }
+  };
+
+  const handleAdminAttachmentPick = (file) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    if (file.size > (isVideo ? 40 : 8) * 1024 * 1024) {
+      showToast(`❌ File too large (max ${isVideo ? 40 : 8}MB)`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => setAdminAttachment({ base64: ev.target.result, preview: ev.target.result, type: isVideo ? 'video' : 'image' });
+    reader.readAsDataURL(file);
   };
 
   const deleteChat = async (chatId) => {
@@ -1858,9 +1874,17 @@ export default function AdminPage() {
                           ) : (
                             <>
                               <div style={{ fontSize:10, color:'#4b5563', marginBottom:3 }}>{m.role==='user'?activeChat.name:'You (Admin)'}</div>
-                              <div style={{ maxWidth:'75%', padding:'10px 14px', borderRadius:14, fontSize:13, lineHeight:1.7, whiteSpace:'pre-line',
+                              {(m.reply_to_id || m.reply_to_text) && (
+                                <div style={{ fontSize:10.5, color:'#6b7280', background:'rgba(255,255,255,0.04)', borderLeft:'2px solid #7c6af7', borderRadius:6, padding:'3px 8px', marginBottom:3, maxWidth:'75%' }}>
+                                  {(m.reply_to_role==='user'?activeChat.name:'Admin')}: {(m.reply_to_text||'').slice(0,70)}
+                                </div>
+                              )}
+                              <div onClick={() => setAdminReplyTo({ id: m.id, text: m.text || (m.media_type==='video'?'🎥':'🖼️'), role: m.role })}
+                                style={{ maxWidth:'75%', padding:'10px 14px', borderRadius:14, fontSize:13, lineHeight:1.7, whiteSpace:'pre-line', cursor:'pointer',
                                 background:m.role==='user'?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#7c6af7,#a855f7)',
                                 color:'#e5e7eb', border:m.role==='user'?'1px solid #1a1a2e':'none' }}>
+                                {m.media_url && m.media_type === 'image' && <img src={m.media_url} alt="" style={{ maxWidth:'100%', maxHeight:220, borderRadius:8, display:'block', marginBottom: m.text ? 6 : 0 }} />}
+                                {m.media_url && m.media_type === 'video' && <video src={m.media_url} controls style={{ maxWidth:'100%', maxHeight:220, borderRadius:8, display:'block', marginBottom: m.text ? 6 : 0 }} />}
                                 {m.text}
                               </div>
                               <div style={{ fontSize:10, color:'#374151', marginTop:2 }}>{new Date(m.time).toLocaleTimeString()}</div>
@@ -1871,15 +1895,34 @@ export default function AdminPage() {
                       })}
                     </div>
 
+                    {/* Reply / Attachment preview bar */}
+                    {(adminReplyTo || adminAttachment) && (
+                      <div style={{ padding:'6px 16px', borderTop:'1px solid #1a1a2e', display:'flex', alignItems:'center', gap:10 }}>
+                        {adminReplyTo && (
+                          <div style={{ flex:1, fontSize:11, color:'#6b7280', borderLeft:'2px solid #7c6af7', paddingLeft:8 }}>
+                            Replying to: {adminReplyTo.text?.slice(0,60)}
+                          </div>
+                        )}
+                        {adminAttachment && (
+                          adminAttachment.type === 'video'
+                            ? <video src={adminAttachment.preview} style={{ height:36, borderRadius:6 }} />
+                            : <img src={adminAttachment.preview} alt="" style={{ height:36, borderRadius:6 }} />
+                        )}
+                        <button onClick={() => { setAdminReplyTo(null); setAdminAttachment(null); }} style={{ background:'none', border:'none', color:'#6b7280', cursor:'pointer', fontSize:14 }}>✕</button>
+                      </div>
+                    )}
+
                     {/* Reply Input */}
                     <div style={{ padding:'12px 16px', borderTop:'1px solid #1a1a2e', display:'flex', gap:8 }}>
+                      <input ref={adminFileInputRef} type="file" accept="image/*,video/*" style={{ display:'none' }} onChange={e => { handleAdminAttachmentPick(e.target.files[0]); e.target.value=''; }} />
+                      <button onClick={() => adminFileInputRef.current?.click()} style={{ ...s.btn('#374151'), padding:'0 14px' }}>📎</button>
                       <textarea value={adminReply} onChange={e=>setAdminReply(e.target.value)}
                         onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAdminReply();} }}
                         placeholder={activeChat.language==='ar'?'اكتب ردك هنا...':'Type your reply...'}
                         rows={2}
                         style={{ flex:1, ...s.input, resize:'none', fontFamily:'inherit', fontSize:13, direction:activeChat.language==='ar'?'rtl':'ltr' }} />
-                      <button onClick={sendAdminReply} disabled={!adminReply.trim()}
-                        style={{ ...s.btn(), padding:'0 18px', opacity:adminReply.trim()?1:0.4 }}>
+                      <button onClick={sendAdminReply} disabled={!adminReply.trim() && !adminAttachment}
+                        style={{ ...s.btn(), padding:'0 18px', opacity:(adminReply.trim()||adminAttachment)?1:0.4 }}>
                         Send →
                       </button>
                     </div>

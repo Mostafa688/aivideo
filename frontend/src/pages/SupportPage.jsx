@@ -8,7 +8,7 @@ const FAQ_AR = [
   { q: 'ما الفرق بين الموديلات؟', a: 'Model 2: فيديو من مقاطع حقيقية Pexels — مجاني • Model 3: صور AI بتأثير Ken Burns — مدفوع • Model 4: فيديو AI حقيقي Seedance — مدفوع • Model 5: فيديو سينمائي بشخصيات ثابتة — مدفوع' },
   { q: 'متى يُجدَّد الكريديت؟', a: 'يتجدد الكريديت تلقائياً كل أسبوع. إذا احتجت تجديداً فورياً تواصل مع الدعم.' },
   { q: 'كيف أدفع؟', a: 'للمصريين: عبر InstaPay وارسل لقطة للدعم. للدولي: عبر Gumroad ببطاقتك مباشرة.' },
-  { q: 'هل Max تفتح كل الموديلات؟', a: 'لا، Max تمنحك أعلى كريديت أسبوعي لـ Model 1 & 2 فقط. Models 3 و4 و5 لها اشتراكات منفصلة.' },
+  { q: 'هل اشتراك واحد بيفتح كل الموديلات؟', a: 'أيوه، رصيد كريديت واحد بيفتحلك كل الموديلات (1، 2، 3، 4، 5، 7) والأجنت مع بعض — مش محتاج تدفع لكل موديل لوحده.' },
   { q: 'الفيديو توقف وظهرت رسالة خطأ', a: 'تحقق أولاً من "My Videos". إذا لم تجد الفيديو انتظر 10 دقائق. في حالة الفشل الكامل تواصل معنا وسنعيد الكريديت.' },
 ];
 
@@ -19,7 +19,7 @@ const FAQ_EN = [
   { q: 'What\'s the difference between models?', a: 'Model 2: Real Pexels footage — free • Model 3: AI images with Ken Burns — paid • Model 4: Real Seedance AI video — paid • Model 5: Cinematic with consistent characters — paid' },
   { q: 'When do credits renew?', a: 'Credits renew automatically every week. For immediate top-up, contact support.' },
   { q: 'How do I pay?', a: 'Egyptians: via InstaPay, then send a screenshot. International: via Gumroad with your card directly.' },
-  { q: 'Does Max unlock all models?', a: 'No, Max gives the highest weekly credits for Model 1 & 2 only. Models 3, 4 & 5 have separate subscriptions.' },
+  { q: 'Does one subscription unlock all models?', a: 'Yes, one credit balance unlocks every model (1, 2, 3, 4, 5, 7) and the Agent together — no need to pay separately per model.' },
   { q: 'My video stopped with an error', a: 'First check "My Videos". If not found, wait 10 minutes. If completely failed, contact us and we\'ll restore your credits.' },
 ];
 
@@ -40,8 +40,11 @@ export default function SupportPage({ onBack, onNavigate }) {
   const [sent, setSent] = useState(false);
   const [chatId, setChatId] = useState(null);
   const [faqOpen, setFaqOpen] = useState(null);
+  const [attachment, setAttachment] = useState(null); // { base64, type: 'image'|'video', preview }
+  const [replyTo, setReplyTo] = useState(null); // { id, text, role }
   const messagesEndRef = useRef(null);
   const pollRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -109,19 +112,40 @@ export default function SupportPage({ onBack, onNavigate }) {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || !chatId) return;
-    const msg = { role: 'user', text: input.trim(), time: new Date().toISOString() };
+    if ((!input.trim() && !attachment) || !chatId) return;
+    const msg = {
+      role: 'user', text: input.trim(), time: new Date().toISOString(),
+      media_url: attachment?.preview || null, media_type: attachment?.type || null,
+      reply_to_id: replyTo?.id || null, reply_to_text: replyTo?.text || null, reply_to_role: replyTo?.role || null,
+    };
     setMessages(prev => [...prev, msg]);
-    setInput('');
+    setInput(''); const att = attachment; const rt = replyTo;
+    setAttachment(null); setReplyTo(null);
     setSending(true);
     try {
       await fetch('/api/support/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, text: msg.text, role: 'user' }),
+        body: JSON.stringify({ chatId, text: msg.text, role: 'user', mediaBase64: att?.base64 || null, mediaType: att?.type || null, replyToId: rt?.id || null }),
       });
+      // refresh right away so the real media URL / id come back from the server
+      const r = await fetch(`/api/support/messages/${chatId}`);
+      const d = await r.json();
+      if (d.messages) setMessages(d.messages);
     } catch {}
     setSending(false);
+  };
+
+  const handleAttachmentPick = (file) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    if (file.size > (isVideo ? 40 : 8) * 1024 * 1024) {
+      alert(isAr ? `الملف كبير جدًا (الحد الأقصى ${isVideo ? 40 : 8}MB)` : `File too large (max ${isVideo ? 40 : 8}MB)`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => setAttachment({ base64: ev.target.result, preview: ev.target.result, type: isVideo ? 'video' : 'image' });
+    reader.readAsDataURL(file);
   };
 
   const sendFaqAsMessage = async (faq) => {
@@ -325,7 +349,7 @@ export default function SupportPage({ onBack, onNavigate }) {
               const timeStyle = isAr ? { fontSize:10, color:'rgba(255,255,255,0.2)', marginTop:3, marginRight:8 } : { fontSize:10, color:'rgba(255,255,255,0.2)', marginTop:3, marginLeft:8 };
               const labelStyle = isAr ? { fontSize:10, color:'rgba(255,255,255,0.25)', marginBottom:4, marginRight:8 } : { fontSize:10, color:'rgba(255,255,255,0.25)', marginBottom:4, marginLeft:8 };
               return (
-              <div key={i} style={{ display:'flex', flexDirection:'column', alignItems: align }}>
+              <div key={i} style={{ display:'flex', flexDirection:'column', alignItems: align, maxWidth:'100%' }}>
                 {m.role === 'system' ? (
                   <div style={{ padding:'8px 16px', borderRadius:20, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', fontSize:12, color:'rgba(255,255,255,0.4)', textAlign:'center', maxWidth:320 }}>{m.text}</div>
                 ) : (
@@ -333,13 +357,25 @@ export default function SupportPage({ onBack, onNavigate }) {
                     <div style={labelStyle}>
                       {m.role==='user'?T.youLabel:T.supportLbl}
                     </div>
-                    <div style={{ maxWidth:'75%', padding:'12px 16px', borderRadius:16, fontSize:13.5, lineHeight:1.7, whiteSpace:'pre-line',
-                      background: m.role==='user' ? 'linear-gradient(135deg,#7c6af7,#a855f7)' : 'rgba(255,255,255,0.07)',
-                      color: m.role==='user' ? '#fff' : 'rgba(255,255,255,0.85)',
-                      border: m.role==='admin' ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                      borderBottomRightRadius: m.role==='user'&&!isAr ? 4 : 16,
-                      borderBottomLeftRadius: m.role==='user'&&isAr ? 4 : m.role==='admin'&&!isAr ? 4 : 16,
-                    }}>{m.text}</div>
+                    <div style={{ maxWidth:'75%', position:'relative' }}>
+                      {(m.reply_to_id || m.reply_to_text) && (
+                        <div style={{ fontSize:11.5, color:'rgba(255,255,255,0.45)', background:'rgba(255,255,255,0.05)', borderInlineStart:'2px solid #7c6af7', borderRadius:6, padding:'4px 8px', marginBottom:4 }}>
+                          {(m.reply_to_role==='user'?T.youLabel:T.supportLbl)}: {(m.reply_to_text||'').slice(0,80)}
+                        </div>
+                      )}
+                      <div onClick={() => setReplyTo({ id: m.id, text: m.text || (m.media_type==='video'?'🎥':'🖼️'), role: m.role })}
+                        style={{ padding:'12px 16px', borderRadius:16, fontSize:13.5, lineHeight:1.7, whiteSpace:'pre-line', cursor:'pointer',
+                        background: m.role==='user' ? 'linear-gradient(135deg,#7c6af7,#a855f7)' : 'rgba(255,255,255,0.07)',
+                        color: m.role==='user' ? '#fff' : 'rgba(255,255,255,0.85)',
+                        border: m.role==='admin' ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                        borderBottomRightRadius: m.role==='user'&&!isAr ? 4 : 16,
+                        borderBottomLeftRadius: m.role==='user'&&isAr ? 4 : m.role==='admin'&&!isAr ? 4 : 16,
+                      }}>
+                        {m.media_url && m.media_type === 'image' && <img src={m.media_url} alt="" style={{ maxWidth:'100%', maxHeight:260, borderRadius:10, display:'block', marginBottom: m.text ? 8 : 0 }} />}
+                        {m.media_url && m.media_type === 'video' && <video src={m.media_url} controls style={{ maxWidth:'100%', maxHeight:260, borderRadius:10, display:'block', marginBottom: m.text ? 8 : 0 }} />}
+                        {m.text}
+                      </div>
+                    </div>
                     <div style={timeStyle}>
                       {new Date(m.time).toLocaleTimeString(isAr?'ar':'en', {hour:'2-digit',minute:'2-digit'})}
                     </div>
@@ -351,14 +387,33 @@ export default function SupportPage({ onBack, onNavigate }) {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Reply / Attachment preview bar */}
+          {(replyTo || attachment) && (
+            <div style={{ padding:'8px 16px', background:'rgba(255,255,255,0.03)', borderTop:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:10 }}>
+              {replyTo && (
+                <div style={{ flex:1, fontSize:12, color:'rgba(255,255,255,0.5)', borderInlineStart:'2px solid #7c6af7', paddingInlineStart:8 }}>
+                  {isAr?'رد على':'Replying to'}: {replyTo.text?.slice(0,60)}
+                </div>
+              )}
+              {attachment && (
+                attachment.type === 'video'
+                  ? <video src={attachment.preview} style={{ height:44, borderRadius:8 }} />
+                  : <img src={attachment.preview} alt="" style={{ height:44, borderRadius:8 }} />
+              )}
+              <button onClick={() => { setReplyTo(null); setAttachment(null); }} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:16 }}>✕</button>
+            </div>
+          )}
+
           {/* Input Bar */}
-          <div style={{ borderTop:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', background:'rgba(5,5,8,0.95)', backdropFilter:'blur(20px)', display:'flex', gap:10, alignItems:'flex-end' }}>
+          <div style={{ borderTop: (replyTo||attachment) ? 'none' : '1px solid rgba(255,255,255,0.07)', padding:'12px 16px', background:'rgba(5,5,8,0.95)', backdropFilter:'blur(20px)', display:'flex', gap:10, alignItems:'flex-end' }}>
+            <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display:'none' }} onChange={e => { handleAttachmentPick(e.target.files[0]); e.target.value=''; }} />
+            <button onClick={() => fileInputRef.current?.click()} style={{ flexShrink:0, width:44, height:44, borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.6)', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>📎</button>
             <textarea value={input} onChange={e=>setInput(e.target.value)}
               onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }}
               placeholder={T.typeMsg} rows={1}
               style={{ flex:1, padding:'11px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'#fff', fontSize:14, outline:'none', resize:'none', fontFamily:'inherit', direction:dir, lineHeight:1.5, maxHeight:120, overflowY:'auto' }} />
-            <button onClick={sendMessage} disabled={!input.trim()||sending}
-              style={{ flexShrink:0, width:44, height:44, borderRadius:12, border:'none', background:input.trim()?'linear-gradient(135deg,#7c6af7,#a855f7)':'rgba(255,255,255,0.06)', color:input.trim()?'#fff':'#374151', fontSize:18, cursor:input.trim()?'pointer':'not-allowed', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}>
+            <button onClick={sendMessage} disabled={(!input.trim()&&!attachment)||sending}
+              style={{ flexShrink:0, width:44, height:44, borderRadius:12, border:'none', background:(input.trim()||attachment)?'linear-gradient(135deg,#7c6af7,#a855f7)':'rgba(255,255,255,0.06)', color:(input.trim()||attachment)?'#fff':'#374151', fontSize:18, cursor:(input.trim()||attachment)?'pointer':'not-allowed', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }}>
               {sending?'⏳':'→'}
             </button>
           </div>

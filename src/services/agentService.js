@@ -12,7 +12,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 // نفس الموديل المستخدم في scriptService.js (توليد سكريبتات موديل 1/2) — الموديل الأساسي في الموقع كله
 const AGENT_MODEL = 'openai/gpt-oss-120b';
 const MAX_HISTORY_MESSAGES = 16; // ✅ FIX: كانت 6 (3 تبادلات بس) — بتخلي الايجنت ينسى تفاصيل زي الموديل/المدة/إن صورة اترفعت في أي محادثة أطول من كده. 16 بتغطي محادثة طبيعية من الفكرة لحد التأكيد.
-const MAX_REPLY_TOKENS = 700;   // ✅ FIX: كانت 450 وده كان بيقطع الـ JSON بتاع ###READY### نص كلمة أحيانًا (خصوصًا إن الموديل نفسه "reasoning model" وبياخد جزء من التوكنز في تفكير مش ظاهر) — النتيجة: JSON.parse بيفشل والفيديو عمره ما بيبدأ من غير أي رسالة خطأ واضحة للعميل. زودناها + خلينا الـ JSON يتكتب الأول في الرد (مش الأخير) كطبقة حماية تانية.
+const MAX_REPLY_TOKENS = 1600;  // ✅ FIX: كانت 700 (وقبلها 450) — لسه كانت بتخلص بالكامل في التفكير المخفي بتاع الـ reasoning model (gpt-oss) من غير أي رد ظاهر خالص (content فاضي 100%) في الحالات الأعقد — أشهرها رفع صورتين لموديل 5 (تعليمات أكتر = تفكير أطول قبل ما يوصل لأي نص ظاهر). النتيجة كانت فقاعة رد فاضية تمامًا في الشات وكأن الأجنت "مش بيرد". زودناها كفاية عشان تغطي التفكير + الرد الكامل + JSON من غير قطع.
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const OUTPUTS_DIR = 'outputs';
 
@@ -59,7 +59,7 @@ MODELS AVAILABLE ON ERIVION (only ever offer durations/costs listed here — nev
   (Model 1 & 2 share the same credit pool. New signup bonus = ${SIGNUP_BONUS_CREDITS} credits, one-time, ≈ ${approxFreeVideos} free 30s videos to try either model — credits do not renew, top up anytime.)
 - Model 3 "AI Images" (Grok Imagine): unique AI-generated image per scene + Ken Burns zoom. Good for: stylized/artistic visuals. Fully supports the user's own uploaded voice recording as narration. Durations & cost: ${fmtCosts(MODEL3_CREDIT_COSTS)}.
 - Model 4 "Seedance Video": real AI-generated video clips (not static images), true motion. Good for: premium dynamic visuals. Fully supports the user's own uploaded voice recording as narration. Durations & cost: ${fmtCosts(MODEL4_CREDIT_COSTS)}.
-- Model 5 "Cinematic": character-consistent AI video powered by Seedance 2.0. Two modes: "idea to video" (you write the scene prompts from a topic) and "prompt to video" (user gives the exact shot description themselves). Supports uploading character reference photo(s) — through this chat, up to 2 photos max (the direct Models page supports more, but keep it to 2 here to manage cost/complexity). One photo = that exact photo is locked as the video's true first frame and animated forward (very reliable). Two photos = the two people are merged into one combined reference photo first, then that combined photo is animated the same reliable way — noticeably more expensive and slower than one photo, so mention this plainly if they ask for two people. This is the ONLY model with no voiceover support at all, uploaded or otherwise — captions/text can still be added but there is no narration audio. Durations: 5s/10s/15s, cost scales with duration AND with photo count (each additional photo adds real cost — always check /api/model5/credit-cost style pricing context given to you rather than guessing a flat number).
+- Model 5 "Cinematic": character-consistent AI video powered by Seedance 2.0. THREE modes: (1) "idea to video" (you write the scene prompts from a topic), (2) "prompt to video" (user gives the exact shot description themselves), (3) "image to video" (user just uploads ONE photo with NO prompt/idea/description at all — the photo is locked as the video's first frame and animated forward directly on Seedance 2.0 Fast with natural, subtle motion; nothing to write, nothing to confirm except duration and that's it). Supports uploading character reference photo(s) — through this chat, up to 2 photos max (the direct Models page supports more, but keep it to 2 here to manage cost/complexity). One photo = that exact photo is locked as the video's true first frame and animated forward (very reliable). Two photos = the two people are merged into one combined reference photo first, then that combined photo is animated the same reliable way — noticeably more expensive and slower than one photo, so mention this plainly if they ask for two people. This is the ONLY model with no voiceover support at all, uploaded or otherwise — captions/text can still be added but there is no narration audio. Durations: 5s/10s/15s, cost scales with duration AND with photo count (each additional photo adds real cost — always check /api/model5/credit-cost style pricing context given to you rather than guessing a flat number). Image-to-video mode costs exactly the same as prompt-to-video mode at the same duration (one photo = one photo, same pricing formula).
 - Model 6 "Atlas Map Video": animated map zoom/pan videos for history/geography content. Free, included for everyone. Must be created from the Models page, not here.
 - Model 7 "Ads Creator": turns a product photo into a video ad — real image-to-video animation of the uploaded product photo, scenes placed in a setting that fits the product. NOW fully creatable through this chat, exactly like Models 1-4. Duration is expressed in SECONDS to the user (never "number of scenes") — each 5 seconds is one scene: ${fmtAdsCosts(false)} (without voiceover) or ${fmtAdsCosts(true)} (with voiceover — cheaper per second since it uses a lighter animation model). Requires a product photo before you can generate (ask for one if missing). Optional: AI voiceover (Gemini TTS) or the user's own uploaded voice recording, custom hook line, background music on/off.
   → WEARABLE PRODUCTS (clothing, shoes, accessories, jewelry): the system automatically detects this from the product name/description and shows it worn by a person by default. If the user has a preference (no person/model shown at all, or specifically a man vs a woman), make sure that preference is clearly written into the "productDesc" field you send — the system reads it from there (e.g. "men's t-shirt, no model shown" or "women's dress"). If unclear and the product is obviously clothing, briefly ask the user whether they want it shown worn by someone, and by whom, before generating.
@@ -106,7 +106,8 @@ If asked something about policy NOT covered by the summary above (e.g. a very sp
 
 TERMINOLOGY — know the difference, the user may use any of these words and you must react correctly:
 - "idea" / "فكرة" / "topic": a short subject/theme. You (or Groq downstream) write the actual scene prompts FROM this idea. This is the normal mode for Models 1-4 and Model 5's "idea to video" mode.
-- "prompt": the user is giving you the EXACT visual/motion description themselves, word for word — not a topic to expand. You must NOT rewrite it into a different idea. This only applies to Model 5's new "prompt to video" mode — pass their wording through (Groq may lightly polish grammar/clarity, never change the meaning or add new elements they didn't ask for).
+- "prompt": the user is giving you the EXACT visual/motion description themselves, word for word — not a topic to expand. You must NOT rewrite it into a different idea. This only applies to Model 5's "prompt to video" mode — pass their wording through (Groq may lightly polish grammar/clarity, never change the meaning or add new elements they didn't ask for).
+- "image" (Model 5 only): the user just wants to upload ONE photo and have it come to life directly — no idea, no prompt, no description needed or wanted from them at all. If someone uploads a photo for Model 5 and says something like "حرك الصورة دي" / "animate this photo" / "خليها فيديو" / "make this a video" without describing any scene or action, this is what they mean — do NOT ask them to describe the scene, just confirm duration (5s/10s/15s) and go.
 - "script": the user is giving you the exact NARRATION text to be spoken (for Models 1/2/3/4 which have voiceover) — use it as-is via the transcript/script mechanism, do not summarize it into an "idea".
 Always figure out which of these three the user is actually handing you before generating.
 
@@ -151,7 +152,8 @@ HOW TO OPERATE:
    - "characterDescriptions": for Model 5 with characters and NO photo uploaded — an array of 1-2 short text appearance descriptions (one per character, in the user's own words/your light polish, e.g. "young man, curly black hair, red hoodie"). Omit or leave empty if photo(s) were uploaded instead — never send both a photo-based generation and characterDescriptions for the same character.
    - "captions": true/false — whether to show captions/subtitles (models 1/2/3/4 only, ignored elsewhere).
    - "music": true/false — whether to add background music (default false everywhere unless asked).
-   - "promptMode": for Model 5 only — "idea" (default) or "prompt". If "prompt", add a "rawPrompt" field with the user's exact wording (lightly polished, meaning unchanged), and "idea" should just be a short label for display.
+   - "promptMode": for Model 5 only — "idea" (default), "prompt", or "image". Use "image" when the user just uploaded a photo and wants it animated directly with no scene description (see rule above) — in this case do NOT include "idea" or "rawPrompt" at all, just confirm duration. Use "prompt" when you have a rawPrompt (either the user typed it, or you built it from analyzing their uploaded photo per the SCENE-RECREATION rule below) — add a "rawPrompt" field with the exact wording, and "idea" should just be a short label for display.
+   - SCENE-RECREATION FROM A PHOTO: if the user uploads a photo of a scene/moment (not a character reference) and asks you to recreate or make a similar video of it (e.g. "اعملي نفس المشهد ده" / "make the same scene as this photo" / "make a video like this"), you must treat the attached image-analysis description (given to you in the attachment note when this applies) as a full rawPrompt and use Model 5 promptMode "prompt" — describe the exact people/objects/setting/mood from the photo in the rawPrompt, then add natural motion appropriate to the scene. Ask the user how many seconds (5/10/15) ONLY if they haven't already told you — if they already stated a duration anywhere in the conversation, do not ask again, just proceed straight to confirmation/READY.
    - For Model 7 ONLY, instead of "idea", include: "productName" (string), "productDesc" (short string), "adsAudioMode" ("none" | "ai_voice" | "upload" — "upload" only if they already attached a voice recording), "customHook" (optional short hook line or empty string), "needsProductPhoto": true.
    - Do NOT emit this marker speculatively or before explicit confirmation — wait for the user's go-ahead.
 7. Never invent a duration or price outside the catalog.`;
@@ -197,6 +199,7 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
       messages,
       max_tokens: MAX_REPLY_TOKENS,
       temperature: 0.4,
+      reasoning_effort: 'low', // ✅ NEW: gpt-oss بيدعم ده — بيقلل التفكير المخفي اللي بياكل التوكنز من غير ما يظهر في الرد، فبيسيب مساحة أكتر للرد الفعلي بدل ما نعتمد بس على زيادة max_tokens.
     }),
   });
 
@@ -274,6 +277,42 @@ export function validateAgentImage(imageBase64) {
   const sizeMb = (b64.length * 0.75) / (1024 * 1024); // تقريب حجم base64 → بايت
   if (sizeMb > MAX_IMAGE_MB) throw new Error(`Image too large — max ${MAX_IMAGE_MB}MB`);
   return true;
+}
+
+// ── NEW: تحليل صورة مشهد بالـ vision model وبناء برومبت Seedance تفصيلي منها ──
+// بيتستخدم لما العميل يرفع صورة مشهد (مش صورة شخصية عادية) ويقول "اعملي نفس المشهد ده" —
+// بنحلل الصورة (الأشخاص، المكان، الإضاءة، الجو العام) ونطلع منها rawPrompt جاهز نستخدمه
+// في وضع "prompt to video" بتاع موديل 5 بدل ما نطلب من العميل يوصف بنفسه.
+export async function analyzeSceneImage(photoBase64) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+  const dataUrl = photoBase64.startsWith('data:') ? photoBase64 : `data:image/jpeg;base64,${photoBase64}`;
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct', // Groq vision-capable model
+      max_tokens: 300,
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this exact photo as a single detailed AI video-generation prompt in English (45-70 words) so the same scene can be recreated as a short AI video: describe the people (age, gender, hair, outfit, pose, expression), the exact setting/location, lighting/mood, and camera framing — then add one natural, subtle motion/action that would bring this still photo to life (e.g. a gesture, walking, wind, camera slowly moving). Output ONLY the prompt text, nothing else — no preamble, no quotes.' },
+            { type: 'image_url', image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Groq vision error ${res.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const description = data.choices?.[0]?.message?.content?.trim() || '';
+  if (!description) throw new Error('Vision model returned an empty scene description');
+  return description;
 }
 
 export const AGENT_LIMITS = { MAX_AUDIO_SEC, MAX_AUDIO_MB, MAX_IMAGE_MB };

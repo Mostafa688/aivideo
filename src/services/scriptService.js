@@ -303,6 +303,7 @@ async function callGroq(prompt) {
       messages: [{ role: 'user', content: prompt }],
       max_tokens: MAX_TOKENS_PER_CHUNK,
       temperature: 0.7,
+      reasoning_effort: 'low',
       stream: false,
     }),
   });

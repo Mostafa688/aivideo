@@ -503,7 +503,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           const characters = lastUploadedPhotos.length
             ? lastUploadedPhotos.map(p => ({ prompt: '', photo: p }))
             : (ready.characterDescriptions || []).map(desc => ({ prompt: desc, photo: null }));
-          scenesBody = ready.promptMode === 'prompt'
+          scenesBody = ready.promptMode === 'image'
+            ? { promptMode: 'image', characters: lastUploadedPhotos.length ? [{ prompt: '', photo: lastUploadedPhotos[0] }] : characters, duration: ready.duration }
+            : ready.promptMode === 'prompt'
             ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters, duration: ready.duration, styleSuffix: '' }
             : { idea: ready.idea, characters, duration: ready.duration, videoStyle: style, styleSuffix: '' };
         }

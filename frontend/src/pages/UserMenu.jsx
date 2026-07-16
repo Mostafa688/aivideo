@@ -50,10 +50,10 @@ export function HowToModal({ onClose }) {
     {
       icon: '💰', title: 'Credits System',
       steps: [
-        { step: '✦', title: 'What are credits?', desc: 'Credits control how many videos you can make per week. Each plan gets a weekly credit allowance.' },
-        { step: '✦', title: 'Credit costs', desc: 'Short videos use fewer credits. Longer videos (5-10min) use more. Credits reset every week automatically.' },
-        { step: '✦', title: 'Free plan', desc: '1,600 credits/week — enough for ~3 short videos of up to 30 seconds.' },
-        { step: '✦', title: 'Max plan', desc: '100,000 credits/week — effectively unlimited videos up to 10 minutes each.' },
+        { step: '✦', title: 'What are credits?', desc: 'One credit balance works across every model (1, 2, 3, 4, 5, 7) — no separate plan per model.' },
+        { step: '✦', title: 'Pay once, no expiry', desc: 'Top up your credit balance once — it never expires or resets. Use it whenever you want, top up again anytime you need more.' },
+        { step: '✦', title: 'Free plan', desc: 'Limited free credits to try Model 2 (Real Footage). Other models need a paid credit balance.' },
+        { step: '✦', title: 'Credit costs', desc: 'Shorter/simpler videos use fewer credits; longer or more complex ones (more scenes, extra reference photos) use more.' },
       ],
     },
   ];
@@ -162,7 +162,7 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
           <div>
             <div style={{ fontSize:11, fontWeight:700, color:'#22c55e', letterSpacing:'0.1em', marginBottom:6 }}>AFFILIATE PROGRAM</div>
             <div style={{ fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.5px' }}>Earn with Erivion</div>
-            <div style={{ fontSize:13, color:'#4b5563', marginTop:4 }}>50% of every subscription you refer</div>
+            <div style={{ fontSize:13, color:'#4b5563', marginTop:4 }}>20% of every credit pack your referrals buy</div>
           </div>
           <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#6b7280', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
         </div>
@@ -170,7 +170,7 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
         {step === 'form' && (
           <>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:24 }}>
-              {[['Pro','45 EGP'],['Plus','91 EGP'],['Max','230 EGP'],['M3 Max','175 EGP']].map(([plan,earn]) => (
+              {[['Starter','84 EGP'],['Creator','196 EGP'],['Studio','420 EGP'],['Gumroad (Intl)','20% of price']].map(([plan,earn]) => (
                 <div key={plan} style={{ background:'rgba(34,197,94,0.05)', border:'1px solid rgba(34,197,94,0.12)', borderRadius:10, padding:'10px 12px' }}>
                   <div style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>{plan}</div>
                   <div style={{ fontSize:16, fontWeight:800, color:'#22c55e' }}>{earn}</div>
@@ -246,7 +246,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
     {
       items: [
         { icon: '📖', label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
-        { icon: '💰', label: 'Earn with Erivion', sub: 'Affiliate — 50% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
+        { icon: '💰', label: 'Earn with Erivion', sub: 'Affiliate — 20% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
         ...(model3Access ? [{ icon: '🖼️', label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
       ]
     },
@@ -256,6 +256,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         { icon: 'ℹ️', label: 'About Us', key: 'about' },
         { icon: '📄', label: 'Terms of Service', key: 'terms' },
         { icon: '🔒', label: 'Privacy Policy', key: 'privacy' },
+        { icon: '💸', label: 'Refund Policy', key: 'refund' },
       ]
     },
   ];

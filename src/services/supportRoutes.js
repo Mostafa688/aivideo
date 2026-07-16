@@ -1,10 +1,30 @@
 import express from 'express';
 import pkg from 'pg';
+import fs from 'fs';
+import path from 'path';
 const { Pool } = pkg;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
 const router = express.Router();
+
+// ✅ NEW: حفظ ميديا (صورة/فيديو) مرفوعة في شات الدعم على الديسك وإرجاع رابطها
+const SUPPORT_MEDIA_DIR = path.join(process.cwd(), 'outputs', 'support_media');
+const MAX_IMAGE_MB = 8;
+const MAX_VIDEO_MB = 40;
+function saveSupportMedia(base64, mediaType) {
+  if (!base64) return null;
+  const isVideo = mediaType === 'video';
+  const b64 = base64.replace(/^data:[\w/]+;base64,/, '');
+  const sizeMb = (b64.length * 0.75) / (1024 * 1024);
+  const limit = isVideo ? MAX_VIDEO_MB : MAX_IMAGE_MB;
+  if (sizeMb > limit) throw new Error(`${isVideo ? 'Video' : 'Image'} too large — max ${limit}MB`);
+  if (!fs.existsSync(SUPPORT_MEDIA_DIR)) fs.mkdirSync(SUPPORT_MEDIA_DIR, { recursive: true });
+  const ext = isVideo ? 'mp4' : 'jpg';
+  const filename = `support_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  fs.writeFileSync(path.join(SUPPORT_MEDIA_DIR, filename), Buffer.from(b64, 'base64'));
+  return `/outputs/support_media/${filename}`;
+}
 
 // ── Init support_chats table ──────────────────────────────────────────────────
 (async () => {
@@ -29,6 +49,10 @@ const router = express.Router();
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+    // ✅ NEW: أعمدة الميديا (صورة/فيديو) والرد على رسالة محددة
+    await pool.query(`ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS media_url TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS media_type TEXT`).catch(()=>{});
+    await pool.query(`ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER REFERENCES support_messages(id) ON DELETE SET NULL`).catch(()=>{});
     // Auto-delete expired chats job (runs on startup)
     await pool.query(`DELETE FROM support_chats WHERE expires_at < NOW()`);
     console.log('[Support] Tables ready');
@@ -70,12 +94,18 @@ router.post('/start', async (req, res) => {
 
 // ── Send a message ────────────────────────────────────────────────────────────
 router.post('/message', async (req, res) => {
-  const { chatId, text, role, autoAnswer } = req.body;
-  if (!chatId || !text || !role) return res.status(400).json({ error: 'chatId, text, role required' });
+  const { chatId, text, role, autoAnswer, mediaBase64, mediaType, replyToId } = req.body;
+  if (!chatId || !role) return res.status(400).json({ error: 'chatId and role required' });
+  if (!text?.trim() && !mediaBase64) return res.status(400).json({ error: 'text or media required' });
   try {
-    await pool.query(
-      `INSERT INTO support_messages (chat_id, role, text) VALUES ($1, $2, $3)`,
-      [chatId, role, text.trim()]
+    let mediaUrl = null;
+    if (mediaBase64) {
+      try { mediaUrl = saveSupportMedia(mediaBase64, mediaType); }
+      catch (e) { return res.status(400).json({ error: e.message }); }
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO support_messages (chat_id, role, text, media_url, media_type, reply_to_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [chatId, role, (text || '').trim(), mediaUrl, mediaUrl ? (mediaType === 'video' ? 'video' : 'image') : null, replyToId || null]
     );
     // If there's an auto-answer (from FAQ), insert it as admin reply
     if (autoAnswer) {
@@ -84,7 +114,7 @@ router.post('/message', async (req, res) => {
         [chatId, autoAnswer]
       );
     }
-    res.json({ success: true });
+    res.json({ success: true, id: rows[0]?.id, mediaUrl });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -94,8 +124,14 @@ router.post('/message', async (req, res) => {
 router.get('/messages/:chatId', async (req, res) => {
   const { chatId } = req.params;
   try {
+    // ✅ NEW: بنرجع كمان الميديا وبيانات الرسالة اللي بيترد عليها (لو موجودة) عشان الواجهة
+    // تعرض quote preview فوق الرسالة الرادة
     const { rows } = await pool.query(
-      `SELECT role, text, created_at as time FROM support_messages WHERE chat_id = $1 ORDER BY created_at ASC`,
+      `SELECT m.id, m.role, m.text, m.created_at as time, m.media_url, m.media_type, m.reply_to_id,
+              r.text as reply_to_text, r.role as reply_to_role
+       FROM support_messages m
+       LEFT JOIN support_messages r ON r.id = m.reply_to_id
+       WHERE m.chat_id = $1 ORDER BY m.created_at ASC`,
       [chatId]
     );
     res.json({ messages: rows });
@@ -146,14 +182,20 @@ router.post('/mark-read', async (req, res) => {
 router.post('/admin-reply', async (req, res) => {
   const secret = req.headers['x-admin-secret'] || req.body.secret;
   if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
-  const { chatId, text } = req.body;
-  if (!chatId || !text) return res.status(400).json({ error: 'chatId and text required' });
+  const { chatId, text, mediaBase64, mediaType, replyToId } = req.body;
+  if (!chatId) return res.status(400).json({ error: 'chatId required' });
+  if (!text?.trim() && !mediaBase64) return res.status(400).json({ error: 'text or media required' });
   try {
-    await pool.query(
-      `INSERT INTO support_messages (chat_id, role, text) VALUES ($1, 'admin', $2)`,
-      [chatId, text.trim()]
+    let mediaUrl = null;
+    if (mediaBase64) {
+      try { mediaUrl = saveSupportMedia(mediaBase64, mediaType); }
+      catch (e) { return res.status(400).json({ error: e.message }); }
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO support_messages (chat_id, role, text, media_url, media_type, reply_to_id) VALUES ($1, 'admin', $2, $3, $4, $5) RETURNING id`,
+      [chatId, (text || '').trim(), mediaUrl, mediaUrl ? (mediaType === 'video' ? 'video' : 'image') : null, replyToId || null]
     );
-    res.json({ success: true });
+    res.json({ success: true, id: rows[0]?.id, mediaUrl });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

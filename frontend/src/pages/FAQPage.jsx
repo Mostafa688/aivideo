@@ -13,14 +13,22 @@ const faqs_ar = [
     ],
   },
   {
-    category: '💳 الكريديت والباقات',
+    category: '💳 الكريديت والدفع',
     questions: [
-      { q: 'ما هو الكريديت وكيف يُحسب؟', a: 'الكريديت هو وحدة قياس استخدام المنصة. كل مشهد في فيديوك يستهلك عدداً معيناً من الكريديت حسب الباقة والنموذج المستخدم.' },
-      { q: 'متى يُجدَّد الكريديت؟', a: 'يتجدد الكريديت تلقائياً كل أسبوع. إذا احتجت تجديداً فورياً يمكنك التواصل مع الدعم.' },
-      { q: 'ما الفرق بين الباقات؟', a: '• Pro (100 جنيه): كريديت أسبوعي أساسي، مناسب للاستخدام الخفيف\n• Plus (220 جنيه): كريديت أعلى، مناسب للمحتوى المنتظم\n• Max (550 جنيه): أعلى كريديت، مناسب للاستخدام المكثف والمحترفين' },
-      { q: 'كيف أدفع؟', a: 'يمكنك الدفع عبر:\n• InstaPay (للمصريين): أرسل المبلغ ثم أرسل لقطة شاشة للدعم للموافقة اليدوية\n• Gumroad: للدفع الدولي بالبطاقة' },
-      { q: 'هل هناك نسخة مجانية؟', a: 'نعم، الباقة المجانية تتيح لك تجربة المنصة بعدد محدود من الكريديت أسبوعياً (1,600 كريديت).' },
-      { q: 'هل باقة Max تفتح كل النماذج؟', a: 'لا، باقة Max تمنحك أعلى كريديت أسبوعي وتفتح Model 1 و Model 2 فقط. النماذج الأخرى (3، 4، 5) لها اشتراكات منفصلة لأن تكلفة توليدها مختلفة.' },
+      { q: 'إزاي الكريديت شغال؟', a: 'رصيد كريديت واحد بيشتغل مع كل الموديلات (1، 2، 3، 4، 5، 7) — مفيش اشتراكات منفصلة لكل موديل. تشحن مرة واحدة والكريديت بيفضل في حسابك من غير ما ينتهي أو يتصفّر.' },
+      { q: 'اشتراك واحد بيفتح كل الموديلات؟', a: 'أيوه! رصيد الكريديت الواحد بيفتحلك كل الموديلات وميزات الأجنت مع بعض. مش محتاج تدفع لكل موديل لوحده زي زمان.' },
+      { q: 'الكريديت بيخلص إمتى أو بيتجدد؟', a: 'الكريديت مبيخلصش لوحده ولا بيتجدد أسبوعيًا — إنت بتشحنه مرة واحدة وبيفضل معاك لحد ما تستخدمه، ساعة ما تحتاج تزود ترجع تشحن تاني.' },
+      { q: 'إزاي أدفع؟', a: 'للمصريين: عن طريق InstaPay بسعر 0.7 جنيه للكريديت، وترسل إيصال الدفع للمراجعة. للدفع الدولي: عبر Gumroad بالكارت مباشرة، والتفعيل بيتم تلقائي بعد الدفع.' },
+      { q: 'هل فيه باقة مجانية؟', a: 'أيوه، الخطة المجانية بتديك كريديت محدود تقدر تجرب بيه Model 2 (Real Footage) بس. باقي الموديلات محتاجة رصيد كريديت مدفوع.' },
+    ],
+  },
+  {
+    category: '🤖 الأجنت الذكي',
+    questions: [
+      { q: 'إيه هو الأجنت؟', a: 'مساعد ذكاء اصطناعي جوه الموقع بتكلمه زي أي شات عادي — تقوله فكرتك أو تطلب منه فيديو معين، وهو بيسألك التفاصيل الناقصة ويجهزلك الفيديو من غير ما تتنقل بين صفحات الموديلات المختلفة.' },
+      { q: 'الأجنت بيعمل موديل واحد بس؟', a: 'لأ، بيقدر يعمل الموديلات 1، 2، 3، 4، 5، و7 (Ads) كلهم من نفس الشات. بس موديل 6 (Atlas Map) لسه محتاج تعمله من صفحته المباشرة.' },
+      { q: 'أقدر أطلب من الأجنت فيديو Stickman؟', a: 'أيوه، تقدر تطلب فيديو ستيك مان بأي فكرة أو مكان (غابة، صحراء، حتى في حرب لو حابب)، والأجنت هيوجهك للموديل المناسب (3، 4، أو 5) ويهتم بتفاصيل الوش والحركة والقصة المتصلة تلقائيًا.' },
+      { q: 'أقدر أرفع صورة وأخلي الأجنت يحركها من غير ما أوصف حاجة؟', a: 'أيوه، موديل 5 فيه وضع "Image to Video" — بترفع صورة بس والأجنت (أو صفحة الموديل مباشرة) بيحوّلها فيديو متحرك على طول، من غير ما تكتب أي وصف. تقدر كمان ترفع صورة مشهد وتقوله "اعملي نفس المشهد ده" وهو هيحلل الصورة ويعمل الفيديو منها.' },
     ],
   },
   {
@@ -43,7 +51,7 @@ const faqs_ar = [
   {
     category: '🤝 الشراكة والعمولة',
     questions: [
-      { q: 'ما هو برنامج الشراكة؟', a: 'يمكنك كسب عمولة 50% متكررة على كل اشتراك يأتي عبر رابط الإحالة الخاص بك. العمولة تُدفع شهرياً طالما المستخدم مشترك.' },
+      { q: 'ما هو برنامج الشراكة؟', a: 'تقدر تكسب عمولة 20% على كل شحنة كريديت تتم عن طريق رابط الإحالة الخاص بك — سواء باقة ثابتة أو شحن InstaPay، بتترحل مباشرة لـ InstaPay بتاعك.' },
       { q: 'كيف أحصل على رابط الإحالة؟', a: 'اذهب إلى "Earn with Erivion" من القائمة الجانبية. رابطك الخاص موجود هناك ويمكنك نسخه ومشاركته مباشرةً.' },
     ],
   },
@@ -62,14 +70,22 @@ const faqs_en = [
     ],
   },
   {
-    category: '💳 Credits & Plans',
+    category: '💳 Credits & Payment',
     questions: [
-      { q: 'What are credits and how are they calculated?', a: 'Credits are the usage unit for the platform. Each scene in your video consumes a certain number of credits depending on your plan and the model used.' },
-      { q: 'When do credits renew?', a: 'Credits renew automatically every week. If you need an immediate top-up, contact support.' },
-      { q: 'What\'s the difference between plans?', a: '• Pro ($5/mo): Basic weekly credits, great for light use\n• Plus ($11/mo): More credits, ideal for regular content creators\n• Max ($18/mo): Highest credits, built for heavy users and professionals' },
-      { q: 'How do I pay?', a: 'You can pay via Gumroad using any credit or debit card. After payment, click "I\'ve Paid" and we\'ll activate your plan within 24 hours.' },
-      { q: 'Is there a free plan?', a: 'Yes, the free plan lets you try the platform with a limited number of credits per week (1,600 credits).' },
-      { q: 'Does the Max plan unlock all models?', a: 'No, the Max plan gives you the highest weekly credits for Model 1 & 2 only. Models 3, 4, and 5 have separate subscriptions because their generation costs are different.' },
+      { q: 'How do credits work?', a: 'One credit balance works across every model (1, 2, 3, 4, 5, 7) — no separate subscription per model. You top up once and the balance stays in your account until you use it, no expiry, no reset.' },
+      { q: 'Does one subscription unlock all models?', a: 'Yes! A single credit balance unlocks every model and all Agent features together. You no longer need to pay separately for each model.' },
+      { q: 'When do credits expire or renew?', a: "Credits don't expire and don't renew weekly — you top up once and the balance stays until you use it. Top up again anytime you need more." },
+      { q: 'How do I pay?', a: 'Egyptians: via InstaPay at 0.7 EGP per credit, then send your receipt for approval. International: via Gumroad with your card — activation is automatic after payment.' },
+      { q: 'Is there a free plan?', a: 'Yes, the free plan gives you limited credits to try Model 2 (Real Footage) only. Other models require a paid credit balance.' },
+    ],
+  },
+  {
+    category: '🤖 AI Agent',
+    questions: [
+      { q: 'What is the Agent?', a: 'An AI assistant built into the site that you chat with like any normal conversation — tell it your idea or request a specific video, and it asks for any missing details and builds the video for you without navigating between different model pages.' },
+      { q: 'Can the Agent only make one model?', a: 'No, it can create Models 1, 2, 3, 4, 5, and 7 (Ads) all from the same chat. Model 6 (Atlas Map) still needs to be made from its own page directly.' },
+      { q: 'Can I ask the Agent for a Stickman video?', a: 'Yes — you can request a stickman video with any idea or setting (a forest, a desert, even a war scene if you want), and the Agent will route you to the right model (3, 4, or 5), handling facial detail, motion, and a continuous storyline automatically.' },
+      { q: 'Can I upload a photo and have the Agent animate it without describing anything?', a: 'Yes — Model 5 has an "Image to Video" mode: upload one photo and it comes to life directly (via the Agent or the model page), no description needed. You can also upload a photo of a scene and say "make the same scene" and it\'ll analyze the photo and build the video from it.' },
     ],
   },
   {
@@ -92,7 +108,7 @@ const faqs_en = [
   {
     category: '🤝 Affiliate Program',
     questions: [
-      { q: 'What is the affiliate program?', a: 'You can earn a recurring 50% commission on every subscription that comes through your referral link. Commission is paid monthly as long as the user stays subscribed.' },
+      { q: 'What is the affiliate program?', a: 'You earn a 20% commission on every credit pack purchase that comes through your referral link — whether a fixed pack or an InstaPay top-up — paid straight to your InstaPay.' },
       { q: 'How do I get my referral link?', a: 'Go to "Earn with Erivion" from the side menu. Your personal link is there and you can copy and share it directly.' },
     ],
   },

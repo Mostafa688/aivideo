@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from './authRoutes.js';
-import { agentChat, transcribeVoiceForAgent, validateAgentImage, AGENT_LIMITS } from './agentService.js';
+import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, AGENT_LIMITS } from './agentService.js';
 import { getUserById } from './authService.js';
 
 const router = express.Router();
@@ -96,10 +96,23 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (images.length) {
       try {
         for (const img of images) validateAgentImage(img);
-        const note = images.length > 1
-          ? 'User just uploaded 2 photos (two characters) for Model 5. This fully satisfies the character reference requirement for BOTH people — treat it as met right now, do not ask for more photos, and proceed toward confirming and generating if you already have the other required details. Mention the cost is a bit higher than a single photo.'
-          : 'User just uploaded a photo. This fully satisfies the required product/character photo for Model 7 (Ads) or Model 5 (character reference) — treat the photo requirement as met right now, do not ask for it again, and proceed toward confirming and generating if you already have the other required details.';
-        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + note;
+        // ✅ NEW: لو العميل رفع صورة مشهد وقال "اعملي نفس المشهد ده" أو أي صيغة مشابهة،
+        // نحلل الصورة بالـ vision model ونطلع منها rawPrompt جاهز بدل ما نطلب منه يوصف بنفسه
+        const sameSceneIntent = images.length === 1 && /same\s*scene|recreate this|make (a|the) same|make this (a|into a) video|animate this photo|نفس\s*المشهد|زي\s*(الصورة|المشهد)\s*ده|كأنه\s*المشهد|حرك\s*(الصورة|المشهد)\s*دي?/i.test(message || '');
+        if (sameSceneIntent) {
+          try {
+            const sceneDescription = await analyzeSceneImage(images[0]);
+            attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The user uploaded a photo of a scene and wants a new AI video that recreates it (Model 5). Here is a detailed analysis of the photo, ready to use directly as the rawPrompt: "${sceneDescription}". Use this AS THE rawPrompt in Model 5's "prompt to video" mode (promptMode:"prompt") — light grammar polish only, never change its meaning, and do NOT ask the user to describe the scene themselves, you already have it. Only ask them for duration (5s/10s/15s) if they have not already told you anywhere in the conversation — if they already gave a duration, skip straight to confirming and generating.`;
+          } catch (e) {
+            console.warn('[Agent] Scene image analysis failed:', e.message);
+            attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + 'User uploaded a photo and wants the same scene recreated as a video, but automatic analysis of the photo failed — ask them to briefly describe in a sentence what is happening in the photo themselves so you can use Model 5 prompt-to-video mode instead.';
+          }
+        } else {
+          const note = images.length > 1
+            ? 'User just uploaded 2 photos (two characters) for Model 5. This fully satisfies the character reference requirement for BOTH people — treat it as met right now, do not ask for more photos, and proceed toward confirming and generating if you already have the other required details. Mention the cost is a bit higher than a single photo.'
+            : 'User just uploaded a photo. This satisfies the required product/character photo for Model 7 (Ads) or Model 5 (character reference) — OR, if they just want the photo animated directly with no scene description at all, this is Model 5\'s "image to video" mode (promptMode:"image", no idea/rawPrompt needed, just confirm duration). Treat the photo requirement as met right now, do not ask for it again, and proceed toward confirming and generating if you already have the other required details.';
+          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + note;
+        }
       } catch (e) {
         return res.status(400).json({ error: e.message });
       }

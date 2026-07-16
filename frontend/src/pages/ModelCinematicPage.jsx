@@ -42,7 +42,7 @@ function SceneCard({ scene, index, onChange }) {
 export default function ModelCinematicPage({ onBack, model5Access, model5Plan, userPlan = 'free', onNavigate }) {
   const [step, setStep] = useState('input');
   const [showRating, setShowRating] = useState(true);
-  const [genMode, setGenMode] = useState('idea'); // 'idea' | 'prompt'
+  const [genMode, setGenMode] = useState('idea'); // 'idea' | 'prompt' | 'image'
   const [idea, setIdea] = useState('');
   const [rawPrompt, setRawPrompt] = useState('');
   // characters: { id, prompt, photo: base64|null, photoPreview: url|null }
@@ -101,18 +101,24 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
   const sceneCount = genMode === 'prompt' ? 1 : (duration==='1min'?12:duration==='30s'?6:1);
   const switchMode = (m) => {
     setGenMode(m);
-    if (m === 'prompt' && !['5s','10s','15s'].includes(duration)) setDuration('15s');
+    if ((m === 'prompt' || m === 'image') && !['5s','10s','15s'].includes(duration)) setDuration('15s');
   };
 
   const handleGenerate = async () => {
     if (userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
-    if (genMode === 'prompt' ? !rawPrompt.trim() : !idea.trim()) { setError(genMode === 'prompt' ? 'Please write your exact video prompt' : 'Please describe your video idea'); return; }
+    if (genMode === 'image') {
+      if (!characters[0]?.photo) { setError('Please upload a photo to animate'); return; }
+    } else if (genMode === 'prompt' ? !rawPrompt.trim() : !idea.trim()) {
+      setError(genMode === 'prompt' ? 'Please write your exact video prompt' : 'Please describe your video idea'); return;
+    }
     setLoading(true); setError('');
     try {
       const validChars = characters
         .filter(c => c.prompt.trim() || c.photo)
         .map(c => ({ prompt: c.prompt, photo: c.photo || null }));
-      const body = genMode === 'prompt'
+      const body = genMode === 'image'
+        ? { promptMode: 'image', characters: [{ prompt: '', photo: characters[0].photo }], duration }
+        : genMode === 'prompt'
         ? { promptMode: 'prompt', rawPrompt, characters: validChars, duration, styleSuffix: selectedStyle?.suffix || '' }
         : { idea, characters: validChars, duration, videoStyle, styleSuffix: selectedStyle?.suffix };
       const res = await fetch('/api/model5/generate-scenes', {
@@ -307,7 +313,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         {/* Mode toggle: Idea to Video vs Prompt to Video */}
         <div style={{ marginBottom:22 }}>
           <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>🧭 Generation Mode</label>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
             <div onClick={()=>switchMode('idea')} style={{ borderRadius:12, padding:'14px 12px', textAlign:'center', cursor:'pointer', border:`2px solid ${genMode==='idea'?'#e11d48':'rgba(255,255,255,0.07)'}`, background:genMode==='idea'?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)' }}>
               <div style={{ fontSize:13, fontWeight:800, color:genMode==='idea'?'#fb7185':'#fff', marginBottom:3 }}>💡 Idea to Video</div>
               <div style={{ fontSize:10.5, color:'#4b5563' }}>Describe a topic — AI writes the scene prompts</div>
@@ -316,11 +322,33 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
               <div style={{ fontSize:13, fontWeight:800, color:genMode==='prompt'?'#fb7185':'#fff', marginBottom:3 }}>✍️ Prompt to Video</div>
               <div style={{ fontSize:10.5, color:'#4b5563' }}>Write the exact prompt yourself — renders as one 5-15s scene</div>
             </div>
+            <div onClick={()=>switchMode('image')} style={{ borderRadius:12, padding:'14px 12px', textAlign:'center', cursor:'pointer', border:`2px solid ${genMode==='image'?'#e11d48':'rgba(255,255,255,0.07)'}`, background:genMode==='image'?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)' }}>
+              <div style={{ fontSize:13, fontWeight:800, color:genMode==='image'?'#fb7185':'#fff', marginBottom:3 }}>🖼️ Image to Video</div>
+              <div style={{ fontSize:10.5, color:'#4b5563' }}>Upload a photo — it comes to life directly, no prompt needed</div>
+            </div>
           </div>
         </div>
 
+        {/* Image to Video: single photo upload, no idea/prompt needed */}
+        {genMode === 'image' && (
+          <div style={{ marginBottom:22 }}>
+            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>🖼️ Photo to Animate</label>
+            <p style={{ fontSize:12, color:'#4b5563', marginBottom:12 }}>Upload any photo — it'll be locked as the video's first frame and animated forward with natural, subtle motion. No prompt or description needed.</p>
+            <label style={{ cursor:'pointer', display:'block' }}>
+              <div style={{ width:'100%', minHeight:180, borderRadius:16, border:`2px dashed ${characters[0]?.photo ? '#22c55e' : 'rgba(225,29,72,0.3)'}`, background: characters[0]?.photo ? 'none' : 'rgba(225,29,72,0.04)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
+                {characters[0]?.photoPreview
+                  ? <img src={characters[0].photoPreview} alt="to animate" style={{ width:'100%', maxHeight:320, objectFit:'contain', borderRadius:14 }} />
+                  : <div style={{ textAlign:'center' }}><div style={{ fontSize:32 }}>📷</div><div style={{ fontSize:12, color:'#6b7280', marginTop:8 }}>Tap to upload photo</div></div>
+                }
+              </div>
+              <input type="file" accept="image/*" onChange={e=>updateCharacterPhoto(characters[0].id, e.target.files[0])} style={{ display:'none' }} />
+            </label>
+            {characters[0]?.photo && <div style={{ marginTop:8, fontSize:12, color:'#22c55e', fontWeight:600 }}>✓ Photo ready — will be animated as-is</div>}
+          </div>
+        )}
+
         {/* Idea or Prompt */}
-        {genMode === 'idea' ? (
+        {genMode === 'image' ? null : genMode === 'idea' ? (
           <div style={{ marginBottom:22 }}>
             <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>🎬 Video Idea / Story</label>
             <textarea value={idea} onChange={e=>setIdea(e.target.value)} className="char-input"
@@ -340,6 +368,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         )}
 
         {/* Characters */}
+        {genMode !== 'image' && (
         <div style={{ marginBottom:22 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
             <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em' }}>🎭 Characters <span style={{ color:'#374151', fontWeight:400, textTransform:'none', letterSpacing:0 }}>(Optional · Max 5)</span></label>
@@ -377,8 +406,10 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
             ))}
           </div>
         </div>
+        )}
 
         {/* Video Style */}
+        {genMode !== 'image' && (
         <div style={{ marginBottom:22 }}>
           <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>🎨 Video Style</label>
           <div className="mc-style-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
@@ -392,12 +423,13 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
             ))}
           </div>
         </div>
+        )}
 
         {/* Duration */}
         <div style={{ marginBottom:22 }}>
           <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>⏱ Duration</label>
-          <div className="mc-dur-grid" style={{ display:'grid', gridTemplateColumns: genMode==='prompt' ? '1fr 1fr 1fr' : '1fr 1fr', gap:12 }}>
-            {(genMode==='prompt'
+          <div className="mc-dur-grid" style={{ display:'grid', gridTemplateColumns: (genMode==='prompt'||genMode==='image') ? '1fr 1fr 1fr' : '1fr 1fr', gap:12 }}>
+            {((genMode==='prompt'||genMode==='image')
               ? [{value:'5s',label:'5 Seconds',scenes:1},{value:'10s',label:'10 Seconds',scenes:1},{value:'15s',label:'15 Seconds',scenes:1}]
               : [{value:'15s',label:'15 Seconds',scenes:3},{value:'30s',label:'30 Seconds',scenes:6},{value:'1min',label:'1 Minute',scenes:12}]
             ).map(d => {
@@ -407,7 +439,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
                   style={{ borderRadius:14, padding:'18px 16px', textAlign:'center', cursor:'pointer', border:`2px solid ${duration===d.value&&allowed?'#e11d48':'rgba(255,255,255,0.07)'}`, background:duration===d.value&&allowed?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', opacity: allowed ? 1 : 0.4, transition:'all 0.15s', position:'relative', boxShadow:duration===d.value&&allowed?'0 0 20px rgba(225,29,72,0.2)':'none' }}>
                   {!allowed && <div style={{ position:'absolute', top:8, right:10, fontSize:12 }}>🔒</div>}
                   <p style={{ margin:'0 0 4px', fontSize:18, fontWeight:900, color:duration===d.value&&allowed?'#fb7185':'#fff' }}>{d.label}</p>
-                  <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{genMode==='prompt' ? 'single scene' : `${d.scenes} cinematic scenes`}</p>
+                  <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{(genMode==='prompt'||genMode==='image') ? 'single scene' : `${d.scenes} cinematic scenes`}</p>
                   {!allowed && <p style={{ margin:'4px 0 0', fontSize:9, color:'#ef4444', fontWeight:700 }}>Subscribe to unlock</p>}
                 </div>
               );
@@ -435,8 +467,8 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
           </div>
         )}
 
-        <button onClick={handleGenerate} disabled={userPlan !== 'free' && (loading||(genMode==='prompt'?!rawPrompt.trim():!idea.trim()))} style={{ width:'100%', background:(userPlan !== 'free' && (loading||(genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:(userPlan !== 'free' && (loading||(genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:(userPlan !== 'free' && (loading||(genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'not-allowed':'pointer', boxShadow:(genMode==='prompt'?rawPrompt.trim():idea.trim())?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
-          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : loading?'⏳ Generating Scenes...':(genMode==='prompt' ? `🎬 Generate ${duration} Video — ${creditCost} Credits →` : `🎬 Generate ${sceneCount} Cinematic Scenes — ${creditCost} Credits →`)}
+        <button onClick={handleGenerate} disabled={userPlan !== 'free' && (loading||(genMode==='image'?!characters[0]?.photo:genMode==='prompt'?!rawPrompt.trim():!idea.trim()))} style={{ width:'100%', background:(userPlan !== 'free' && (loading||(genMode==='image'?!characters[0]?.photo:genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:(userPlan !== 'free' && (loading||(genMode==='image'?!characters[0]?.photo:genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:(userPlan !== 'free' && (loading||(genMode==='image'?!characters[0]?.photo:genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'not-allowed':'pointer', boxShadow:(genMode==='image'?characters[0]?.photo:genMode==='prompt'?rawPrompt.trim():idea.trim())?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
+          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : loading?'⏳ Generating...':(genMode==='image' ? `🖼️ Animate Photo (${duration}) — ${creditCost} Credits →` : genMode==='prompt' ? `🎬 Generate ${duration} Video — ${creditCost} Credits →` : `🎬 Generate ${sceneCount} Cinematic Scenes — ${creditCost} Credits →`)}
         </button>
 
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.15)', marginTop:14 }}>Seedance v1 Pro · Groq AI · Character consistency · No voiceover</p>

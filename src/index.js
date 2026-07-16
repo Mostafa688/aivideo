@@ -978,7 +978,7 @@ app.post('/api/ai-edit', authMiddleware, async (req, res) => {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', max_tokens: 6000, temperature: 0.7, messages: [{ role: 'user', content: editPrompt }] }),
+      body: JSON.stringify({ model: 'openai/gpt-oss-120b', max_tokens: 6000, temperature: 0.7, reasoning_effort: 'low', messages: [{ role: 'user', content: editPrompt }] }),
     });
     const groqData = await groqRes.json();
     const textContent = groqData.choices?.[0]?.message?.content || '';
@@ -1024,13 +1024,21 @@ async function checkModel3Access(req, res, next) {
 }
 
 // ── Stickman style rule — لو الستايل أو فكرة الفيديو نفسها بتطلب "stick man/stick figure"،
-// لازم خلفية بيضاء/رمادية فاتحة بسيطة، والشخصية تبقى ليها وش واضح (عيون وفم) مش دايرة فاضية.
+// الشخصية لازم يبقى ليها وش معبّر بتفاصيل واضحة (حواجب، عيون بحدقة، أنف، وفم بيعبّر عن الموقف)
+// مش دايرة فاضية أو وش بسيط جدًا. والمشاهد لازم تكمل بعض كقصة واحدة متصلة مش لقطات منفصلة.
+// الخلفية بقت مرنة: لو العميل مطلبش مكان معين، افتراضي بسيط (أبيض/رمادي فاتح) عشان التركيز
+// يفضل على الحركة. لو العميل حدد مكان (غابة، صحراء، حرب، ...)، نحترم طلبه وناخد المكان ده
+// لكن برضو نخلي التفاصيل بسيطة/مسطحة عشان يفضل متماشي مع أسلوب الرسم البسيط.
 // بيتطبق في كل مكان بيتحدد فيه styleHint/styleInstruction (موديل 3، 4، 5)، وبيفحص نص الفكرة
 // نفسها كمان لأن غالبًا العميل بيكتب "stickman" جوه فكرة الفيديو مش في خانة الستايل بس.
 function applyStickmanStyleRule(styleText, ideaText = '') {
   const combined = `${styleText || ''} ${ideaText || ''}`;
   if (!/stick\s*-?\s*man|stick\s*-?\s*figure/i.test(combined)) return styleText;
-  return `${styleText || 'simple line-drawing animation style'}, plain minimal off-white/dusty-grey-pink background (no clutter, no scenery), the stick figure character MUST have a clearly visible simple face on the head (eyes and mouth, basic expression) in every single scene — never a blank/empty head`;
+  const hasCustomSetting = /forest|jungle|desert|beach|ocean|underwater|city|street|room|kitchen|bedroom|bathroom|war|battlefield|desert war|mountain|snow|space|school|classroom|office|park|cave|rooftop|garden|market|stadium|غابة|جنينة|صحراء|شارع|بيت|أوضة|حرب|معركة|جبل|ثلج|فضاء|مدرسة|مكتب|بحر|كهف|سطح|سوق|ملعب/i.test(combined);
+  const backgroundInstruction = hasCustomSetting
+    ? 'use the specific location/setting the user described, but keep it drawn in the same flat, simple, uncluttered line-art style (minimal background detail, flat colors, no photorealistic texture) so it still reads as the same cartoon world'
+    : 'plain minimal off-white/dusty-grey-pink background (no clutter, no scenery) unless the user asked for a specific place';
+  return `${styleText || 'simple line-drawing animation style'}, ${backgroundInstruction}. The stick figure character MUST have a clearly detailed, expressive face in every single scene: visible eyebrows showing emotion, eyes with pupils (not blank circles), a simple defined nose, and a mouth shape that matches the moment (shock, anger, fear, laughter, etc.) — think of the expressive style used by animators like @ricoanimations, never a blank/featureless head. Keep the exact same face design, proportions, and outfit for each character across every single scene of the video. CONTINUOUS STORY RULE: each scene must pick up directly from where the previous scene's action/emotion left off — the scenes are NOT independent moments, they are consecutive beats of ONE unfolding story or gag, like a comic strip; never reset the pose, location, or emotional state between scenes unless the story logically moves the character somewhere new.`;
 }
 
 app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
@@ -1057,7 +1065,7 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile', max_tokens: 300, temperature: 0.3,
+          model: 'openai/gpt-oss-120b', max_tokens: 300, temperature: 0.3, reasoning_effort: 'low',
           messages: [
             { role: 'system', content: 'Extract visual consistency info. Output ONLY JSON: {"characters":"...","outfit":"...","location":"..."}. English only. Be concise.' },
             { role: 'user', content: `Video idea: "${idea}"\n\nExtract:\n- characters: PERMANENT physical identity of main characters ONLY - face, body build, age, hair, skin tone, distinguishing features. Do NOT include clothing here. Max 20 words.\n- outfit: their DEFAULT starting outfit or clothing, max 15 words. This is a baseline only; the outfit MAY change later in the story if the narrative logically requires it (different day, event, role, or scene context), but the physical identity above must NEVER change.\n- location: main setting/environment max 15 words\nIf generic topic with no specific character/place, use ""\n\nJSON only:` }
@@ -1075,7 +1083,7 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.7,
+        model: 'openai/gpt-oss-120b', max_tokens: 3000, temperature: 0.7, reasoning_effort: 'low',
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]
       }),
     });
@@ -1286,7 +1294,7 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile', max_tokens: 300, temperature: 0.3,
+          model: 'openai/gpt-oss-120b', max_tokens: 300, temperature: 0.3, reasoning_effort: 'low',
           messages: [
             { role: 'system', content: 'Extract visual consistency info. Output ONLY JSON: {"characters":"...","outfit":"...","location":"..."}. English only. Be concise.' },
             { role: 'user', content: `Video idea: "${idea}"\n\nExtract:\n- characters: PERMANENT physical identity of main characters ONLY - face, body build, age, hair, skin tone, distinguishing features. Do NOT include clothing here. Max 20 words.\n- outfit: their DEFAULT starting outfit or clothing, max 15 words. This is a baseline only; the outfit MAY change later in the story if the narrative logically requires it (different day, event, role, or scene context), but the physical identity above must NEVER change.\n- location: main setting/environment max 15 words\nIf generic topic with no specific character/place, use ""\n\nJSON only:` }
@@ -1304,7 +1312,7 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.7,
+        model: 'openai/gpt-oss-120b', max_tokens: 3000, temperature: 0.7, reasoning_effort: 'low',
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]
       }),
     });
@@ -1530,6 +1538,23 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
 
   const { idea, characters, duration, videoStyle, styleSuffix, promptMode, rawPrompt } = req.body;
 
+  // ── وضع "Image to Video" الجديد: العميل بيرفع صورة بس (بدون برومبت خالص)، والصورة
+  // بتتقفل كـ first frame وتتحرك مباشرة على Seedance 2.0 Fast — نفس تكلفة prompt-to-video
+  // بالظبط لأن التكلفة أصلاً بتتحسب من duration + عدد الصور (getModel5CreditCost) مش من الوضع ──
+  if (promptMode === 'image') {
+    const allChars = characters || [];
+    const photo = allChars.find(c => c.photo)?.photo;
+    if (!photo) return res.status(400).json({ error: 'photo required for image-to-video mode' });
+    if (!['5s', '10s', '15s'].includes(duration)) return res.status(400).json({ error: 'duration must be 5s, 10s, or 15s for image-to-video' });
+    const scene = {
+      index: 1,
+      prompt: 'The subject and scene shown in the photo come naturally to life — subtle, realistic motion only (breathing, small natural movement, wind, shifting light), smooth gentle cinematic camera movement, nothing added or changed that is not already in the photo. No text overlays, no watermarks. Include 1-2 specific, concrete sound effects that genuinely match this exact scene.',
+      text: 'Image to video',
+      characterPhotos: [photo],
+    };
+    return res.json({ scenes: [scene] });
+  }
+
   // ── وضع "Prompt to Video" الجديد: العميل بيكتب البرومبت بالظبط، مفيش Groq بيكتب
   // مشاهد من فكرة — بس تحسين بسيط للصياغة (grammar/clarity) من غير ما يتغير المعنى ──
   if (promptMode === 'prompt') {
@@ -1551,7 +1576,7 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile', max_tokens: 200, temperature: 0.3,
+          model: 'openai/gpt-oss-120b', max_tokens: 200, temperature: 0.3, reasoning_effort: 'low',
           messages: [
             { role: 'system', content: 'You lightly polish a user-written AI video prompt for grammar and clarity ONLY. Never add new visual elements, characters, or ideas they did not mention. Never remove anything they specified. Keep it in English. Output ONLY the polished prompt text, nothing else.' },
             { role: 'user', content: finalPrompt },
@@ -1592,7 +1617,7 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', max_tokens: 3000, temperature: 0.7,
+        model: 'openai/gpt-oss-120b', max_tokens: 3000, temperature: 0.7, reasoning_effort: 'low',
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]
       }),
     });
