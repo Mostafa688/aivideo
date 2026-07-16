@@ -435,6 +435,57 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar',
 }
 
 // ── Pipeline Model 4 ───────────────────────────────────────────────────────
+// ── NEW: توليد صورة مرجعية لشخصية Stickman باستخدام Recraft V3 (ستايل خطوط واضح ووش معبّر) ──
+// بتتستخدم في وضع "Idea to Video" لموديل 5 لما العميل يطلب "stickman" من غير ما يرفع صورة —
+// بترجع رابط الصورة المولّدة عشان تتحط في characterPhotos وتتعامل بالظبط زي صورة شخصية عادية
+// (تتركّب في كل مشهد عن طريق FLUX Kontext زي أي شخصية تانية، فالقصة تفضل متصلة عبر المشاهد)
+export async function generateStickmanCharacterImage(characterDescription = '') {
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+  const basePrompt = 'A simple stick figure character standing in a plain off-white studio background, full body visible, centered, minimalist line-drawing animation style, thin black outlines, flat 2D cartoon style, no shading, no scenery, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression';
+  const prompt = characterDescription?.trim()
+    ? `${basePrompt}. Character details: ${characterDescription.trim()}`
+    : basePrompt;
+
+  const res = await fetch('https://api.replicate.com/v1/models/recraft-ai/recraft-v3/predictions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'wait',
+    },
+    body: JSON.stringify({
+      input: {
+        prompt,
+        style: 'digital_illustration/hand_drawn_outline',
+        size: '1024x1365',
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Recraft V3 error ${res.status}: ${err.slice(0, 200)}`);
+  }
+  let data = await res.json();
+  if (data.status !== 'succeeded') {
+    if (!data.id) throw new Error('Recraft V3: no prediction ID returned');
+    const maxWait = 60_000, pollInterval = 3_000;
+    const start = Date.now();
+    while (Date.now() - start < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${data.id}`, {
+        headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` },
+      });
+      data = await pollRes.json();
+      if (data.status === 'succeeded') break;
+      if (data.status === 'failed' || data.status === 'canceled') throw new Error(`Recraft V3 failed: ${data.error || 'unknown'}`);
+    }
+  }
+  const output = Array.isArray(data.output) ? data.output[0] : data.output;
+  if (!output) throw new Error('Recraft V3 returned no image');
+  return output; // Replicate delivery URL
+}
+
 export async function renderModel4Video({
   scenes,
   audioUrl,

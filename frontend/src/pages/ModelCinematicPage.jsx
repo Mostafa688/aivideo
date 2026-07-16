@@ -68,9 +68,11 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
     // ✅ FIX: كان بيبعت hasPhoto (true/false) بس، فمهما زودت صور، السعر كان بيفضل ثابت
     // على سعر "صورة واحدة". دلوقتي بيبعت العدد الفعلي عشان السعر يتزايد صح مع كل صورة.
     const photoCount = characters.filter(c => c.photo).length;
-    fetch(`/api/model5/credit-cost?duration=${duration}&photoCount=${photoCount}`, { headers: authHeaders() })
+    // ✅ NEW: لو وضع idea ومفيش صور ومذكور "stickman"، نعاين السعر شامل سرشارج توليد صورة Recraft
+    const isStickmanIdea = genMode === 'idea' && photoCount === 0 && /stick\s*-?\s*man|stick\s*-?\s*figure/i.test(idea || '');
+    fetch(`/api/model5/credit-cost?duration=${duration}&photoCount=${photoCount}&stickman=${isStickmanIdea}`, { headers: authHeaders() })
       .then(r => r.json()).then(d => setCreditCost(d.creditCost || 180)).catch(() => {});
-  }, [duration, characters]);
+  }, [duration, characters, genMode, idea]);
 
   const fetchUsage = async () => {
     try {

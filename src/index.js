@@ -13,7 +13,7 @@ import { generateVoiceover, generateVoiceoverPerScene, VOICE_OPTIONS } from './s
 import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
-import { renderModel4Video, renderModel5Video } from './services/seedanceService.js';
+import { renderModel4Video, renderModel5Video, generateStickmanCharacterImage } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
@@ -1005,11 +1005,14 @@ app.get('/api/model4/credit-cost', authMiddleware, (req, res) => {
   res.json({ creditCost: MODEL4_CREDIT_COSTS[duration] || 10, duration });
 });
 app.get('/api/model5/credit-cost', authMiddleware, (req, res) => {
-  const { duration, hasPhoto, photoCount } = req.query;
+  const { duration, hasPhoto, photoCount, stickman } = req.query;
   // ✅ FIX: بيقبل دلوقتي عدد الصور الفعلي (photoCount) مش بس علم hasPhoto ثنائي —
   // عشان يعرض السعر الصحيح المتزايد مع كل صورة إضافية قبل ما العميل يأكد التوليد
   const count = photoCount ? parseInt(photoCount, 10) || 0 : (hasPhoto === 'true' ? 1 : 0);
-  res.json({ creditCost: getModel5CreditCost(duration, count), duration, photoCount: count });
+  // ✅ NEW: لو مفيش صور مرفوعة وطالب stickman، نعاين السعر وكأن فيه صورة واحدة (Recraft) + سرشارج 10
+  const effectiveCount = count > 0 ? count : (stickman === 'true' ? 1 : 0);
+  const stickmanSurcharge = (count === 0 && stickman === 'true') ? 10 : 0;
+  res.json({ creditCost: getModel5CreditCost(duration, effectiveCount) + stickmanSurcharge, duration, photoCount: count });
 });
 
 // ── Model 3 Routes ─────────────────────────────────────────────────────────
@@ -1049,7 +1052,7 @@ app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck3.category });
   }
   const isIdeaMode = inputMode === 'idea';
-  const styleHint = applyStickmanStyleRule(styleSuffix || 'cinematic photography, dramatic lighting, photorealistic', idea || script);
+  const styleHint = styleSuffix || 'cinematic photography, dramatic lighting, photorealistic'; // ✅ ستيك مان بقى حصري لموديل 5 بس، شيلنا التطبيق هنا
   const lang = videoLanguage || 'en';
   const BATCH_SIZE = 5;
   const allScenes = [];
@@ -1278,7 +1281,7 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck4.category });
   }
   const lang = videoLanguage || 'en';
-  const styleHint = applyStickmanStyleRule(styleSuffix || 'cinematic, photorealistic, dramatic lighting, no text overlays, no watermarks', idea || script);
+  const styleHint = styleSuffix || 'cinematic, photorealistic, dramatic lighting, no text overlays, no watermarks'; // ✅ ستيك مان بقى حصري لموديل 5 بس، شيلنا التطبيق هنا
   const BATCH_SIZE = 5;
   const allScenes = [];
   const totalBatches = Math.ceil(sceneCount / BATCH_SIZE);
@@ -1677,13 +1680,28 @@ Output ONLY JSON array (${sceneCount} items):
     // ── Attach ALL character photos to EVERY scene — reference images generated in seedanceService ──
     // ✅ FIX: كانت بتتحط صورة واحدة بس بالتناوب لكل مشهد (شخصية مختلفة في كل مشهد)، وده غلط —
     // المطلوب إن كل الشخصيات المرفوعة (لحد 5) تظهر مع بعض مربوطين في نفس المشهد الواحد.
+    let stickmanGenerated = false;
     if (charsWithPhotos.length > 0) {
       const allPhotos = charsWithPhotos.map(c => c.photo).filter(Boolean);
       scenes = scenes.map((scene) => ({ ...scene, characterPhotos: allPhotos }));
       console.log(`[Model5] Attached all ${allPhotos.length} character photo(s) together to ${scenes.length} scenes`);
+    } else if (/stick\s*-?\s*man|stick\s*-?\s*figure/i.test(`${idea} ${styleSuffix || ''}`)) {
+      // ✅ NEW: "Idea to Video" فقط + مفيش صورة مرفوعة + المطلوب stickman → نولّد صورة مرجعية
+      // للشخصية بـ Recraft V3 (ستايل خطوط واضح) بدل ما نسيب Seedance يفسّر "stickman" بنفسه
+      // (كان بيطلع وش شبه واقعي 3D بدل ستيك مان حقيقي مسطح). الصورة دي بعدين بتتركّب في كل
+      // مشهد بنفس آلية "صورة الشخصية" العادية (FLUX Kontext) عشان القصة تفضل متصلة بصريًا.
+      try {
+        console.log('[Model5] Generating stickman reference character via Recraft V3...');
+        const stickmanImg = await generateStickmanCharacterImage(characterBlock);
+        scenes = scenes.map((scene) => ({ ...scene, characterPhotos: [stickmanImg], stickmanGenerated: true }));
+        stickmanGenerated = true;
+        console.log('[Model5] ✅ Stickman reference character generated successfully');
+      } catch (e) {
+        console.warn('[Model5] Stickman reference generation failed, falling back to text-only Seedance interpretation:', e.message);
+      }
     }
 
-    res.json({ scenes });
+    res.json({ scenes, stickmanGenerated });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1715,7 +1733,13 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
 
   // ✅ FIX: التكلفة دلوقتي بتزيد مع كل صورة إضافية (25 كريديت لكل صورة زيادة بعد الأولى) —
   // مطابق للتكلفة الحقيقية الإضافية على Replicate لكل صورة تتضاف للدمج
-  const m5CreditCost = getModel5CreditCost(duration, photos.length);
+  // ✅ NEW: صورة الستيك مان المولّدة بـ Recraft V3 بتعمل نفس خطوة FLUX Kontext compositing لكل
+  // مشهد زي أي صورة شخصية حقيقية بالظبط — فلازم نحسبها كـ "صورة واحدة" في التسعير حتى لو
+  // العميل مرفعش صورة فعليًا، + نضيف 10 كريديت سرشارج فوق كده لخطوة توليد الصورة نفسها بـ Recraft
+  const hasStickmanImage = scenes.some(s => s.stickmanGenerated);
+  const effectivePhotoCount = photos.length > 0 ? photos.length : (hasStickmanImage ? 1 : 0);
+  const stickmanSurcharge = hasStickmanImage ? 10 : 0;
+  const m5CreditCost = getModel5CreditCost(duration, effectivePhotoCount) + stickmanSurcharge;
   const m5Balance = await getCreditsBalance(req.user.userId);
   if (m5Balance < m5CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m5CreditCost} credits, you have ${m5Balance}.`, cost: m5CreditCost, remaining: m5Balance });
