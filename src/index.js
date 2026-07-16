@@ -1546,9 +1546,20 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
     const photo = allChars.find(c => c.photo)?.photo;
     if (!photo) return res.status(400).json({ error: 'photo required for image-to-video mode' });
     if (!['5s', '10s', '15s'].includes(duration)) return res.status(400).json({ error: 'duration must be 5s, 10s, or 15s for image-to-video' });
+    // ✅ NEW: motionPrompt اختياري — لو العميل كتب وصف للحركة اللي عايزها نستخدمه، ولو سابه
+    // فاضي نرجع للوصف الافتراضي (حركة طبيعية بسيطة)
+    const motionPrompt = (rawPrompt || '').trim();
+    if (motionPrompt) {
+      const modCheckImg = await checkContentSafety(motionPrompt);
+      if (modCheckImg.unsafe) {
+        return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckImg.category });
+      }
+    }
     const scene = {
       index: 1,
-      prompt: 'The subject and scene shown in the photo come naturally to life — subtle, realistic motion only (breathing, small natural movement, wind, shifting light), smooth gentle cinematic camera movement, nothing added or changed that is not already in the photo. No text overlays, no watermarks. Include 1-2 specific, concrete sound effects that genuinely match this exact scene.',
+      prompt: motionPrompt
+        ? `The exact photo provided is the first frame — its composition, subject, and background stay unchanged in the opening instant, then this happens: ${motionPrompt}. No text overlays, no watermarks. Include 1-2 specific, concrete sound effects that genuinely match this exact scene.`
+        : 'The subject and scene shown in the photo come naturally to life — subtle, realistic motion only (breathing, small natural movement, wind, shifting light), smooth gentle cinematic camera movement, nothing added or changed that is not already in the photo. No text overlays, no watermarks. Include 1-2 specific, concrete sound effects that genuinely match this exact scene.',
       text: 'Image to video',
       characterPhotos: [photo],
     };

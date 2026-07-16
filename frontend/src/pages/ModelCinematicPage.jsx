@@ -117,7 +117,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         .filter(c => c.prompt.trim() || c.photo)
         .map(c => ({ prompt: c.prompt, photo: c.photo || null }));
       const body = genMode === 'image'
-        ? { promptMode: 'image', characters: [{ prompt: '', photo: characters[0].photo }], duration }
+        ? { promptMode: 'image', characters: [{ prompt: '', photo: characters[0].photo }], duration, rawPrompt: rawPrompt.trim() || undefined }
         : genMode === 'prompt'
         ? { promptMode: 'prompt', rawPrompt, characters: validChars, duration, styleSuffix: selectedStyle?.suffix || '' }
         : { idea, characters: validChars, duration, videoStyle, styleSuffix: selectedStyle?.suffix };
@@ -344,6 +344,14 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
               <input type="file" accept="image/*" onChange={e=>updateCharacterPhoto(characters[0].id, e.target.files[0])} style={{ display:'none' }} />
             </label>
             {characters[0]?.photo && <div style={{ marginTop:8, fontSize:12, color:'#22c55e', fontWeight:600 }}>✓ Photo ready — will be animated as-is</div>}
+
+            <div style={{ marginTop:18 }}>
+              <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8, display:'block' }}>✍️ Motion Description <span style={{ color:'#374151', fontWeight:400, textTransform:'none', letterSpacing:0 }}>(Optional)</span></label>
+              <p style={{ fontSize:11.5, color:'#4b5563', marginBottom:8 }}>Leave empty for natural, subtle motion — or describe exactly what should happen (e.g. "the character waves and smiles").</p>
+              <textarea value={rawPrompt} onChange={e=>setRawPrompt(e.target.value)} className="char-input"
+                placeholder="e.g. the character turns their head and waves at the camera..." rows={2}
+                style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:13, resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.6 }} />
+            </div>
           </div>
         )}
 
