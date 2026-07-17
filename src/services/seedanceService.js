@@ -15,6 +15,26 @@ const RATIOS = {
   '1:1':  { w: 720,  h: 720  },
 };
 
+// ── إعادة محاولة تلقائية لما Replicate يرد بـ 429 (throttled) — بيحصل خصوصًا لو رصيد
+// الحساب أقل من $5 (حد صارم عندهم: burst=1 request، فلو طلبين راحوا ورا بعض بسرعة زي
+// FLUX schnell يتبعه FLUX Kontext فورًا، بيضرب الحد ده حتى لو الإجمالي في الدقيقة قليل).
+// بتستنى المدة اللي Replicate نفسه بيحددها في "retry_after" (أو 10 ثواني افتراضي) وتعيد المحاولة.
+async function fetchReplicateWithRetry(url, options, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.status !== 429) return res;
+    if (attempt === maxRetries) return res; // خلصت المحاولات، رجّع الرد الأخير (فاشل) زي ما هو
+    let retryAfterSec = 10;
+    try {
+      const bodyText = await res.clone().text();
+      const parsed = JSON.parse(bodyText);
+      if (parsed.retry_after) retryAfterSec = Number(parsed.retry_after) || 10;
+    } catch {}
+    console.warn(`[Replicate] 429 throttled — retrying in ${retryAfterSec}s (attempt ${attempt + 1}/${maxRetries})...`);
+    await new Promise(r => setTimeout(r, (retryAfterSec + 1) * 1000));
+  }
+}
+
 // ── توزيع نسبي لمدة كل مشهد حسب طول الكلام فيه (بدل تثبيت مدة واحدة لكل الكليبات) ──
 // ده بيمنع إن الصوت يسبق المشهد أو المشهد يسبق الصوت، وبيمنع تكرار/قطع الفيديو كله عشان يطابق الصوت
 function computeProportionalDurations(scenes, totalDuration, minSec = 3.5, maxSec = 14) {
@@ -204,7 +224,7 @@ async function generateReferenceImage(photoBase64OrUrl, scenePrompt, ratio = '9:
       imageDataUrl = `data:image/jpeg;base64,${b64}`;
     }
 
-    const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
+    const res = await fetchReplicateWithRetry('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
@@ -306,7 +326,7 @@ async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, i
     input.images = urls; // plural field = multi-character loose reference (correct use for this case)
   }
 
-  const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
+  const submitRes = await fetchReplicateWithRetry('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
     method: 'POST',
     headers,
     body: JSON.stringify({ input }),
@@ -452,7 +472,7 @@ export async function generateStickmanCharacterImage(characterDescription = '', 
     ? `${basePrompt}. Character details: ${characterDescription.trim()}`
     : basePrompt;
 
-  const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
+  const res = await fetchReplicateWithRetry('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
