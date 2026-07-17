@@ -441,19 +441,18 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar',
 // (تتركّب في كل مشهد عن طريق FLUX Kontext زي أي شخصية تانية، فالقصة تفضل متصلة عبر المشاهد)
 export async function generateStickmanCharacterImage(characterDescription = '', style = 'bw') {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
-  // ✅ FIX: ستايل "digital_illustration/hand_drawn_outline" بيرسم بالألوان دايمًا حتى لو
-  // البرومبت قال "no color" صراحة — الستايل نفسه بيغلب تعليمات النص. عشان نضمن أبيض وأسود
-  // حقيقي (خطوط بس، من غير أي تلوين)، بنستخدم ستايل "vector_illustration/line_art" المخصص
-  // لخطوط نظيفة بدون تلوين. الستايل الملون (2D) لسه بيستخدم digital_illustration العادي.
-  const recraftStyle = style === '2d' ? 'digital_illustration/hand_drawn_outline' : 'vector_illustration/line_art';
+  // ✅ FIX: استبدلنا Recraft V3 بـ FLUX Schnell — أرخص بكتير ($0.003 بدل $0.04 للصورة) وبيلتزم
+  // بتعليمات النص (زي "no color"/"thin black lines") بدقة أعلى من ستايلات Recraft الجاهزة اللي
+  // كانت بتحط لمسة لون حتى مع تعليمات صريحة. البرومبت الأساسي ده اتجرب فعليًا وطلع بالظبط
+  // الشكل المطلوب (خطوط سودة نضيفة، وش معبّر، خلفية بسيطة).
   const basePrompt = style === '2d'
-    ? 'A simple stick figure character standing in a plain softly colored studio background, full body visible, centered, flat full-color 2D cartoon animation style, clean bold outlines, bright cheerful colors, no shading gradients, no scenery clutter, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression'
-    : 'A simple stick figure character standing in a plain off-white cream background, full body visible, centered, minimalist black line-drawing animation style, thin clean black outlines ONLY, pure black and white, absolutely no color, no fill, no shading, no grey tones, no scenery, clearly detailed expressive face with visible eyebrows, round eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression';
+    ? 'A simple stick figure character standing in a plain softly colored background, minimal flat 2D cartoon animation style, clean bold black outlines, bright cheerful colors, no shading gradients, no scenery, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression, centered composition'
+    : 'A simple stick figure character standing in a plain off-white background, minimal line-drawing animation style, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression, thin black lines, flat 2D cartoon style, no shading, no color, no scenery, centered composition';
   const prompt = characterDescription?.trim()
     ? `${basePrompt}. Character details: ${characterDescription.trim()}`
     : basePrompt;
 
-  const res = await fetch('https://api.replicate.com/v1/models/recraft-ai/recraft-v3/predictions', {
+  const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
@@ -463,19 +462,20 @@ export async function generateStickmanCharacterImage(characterDescription = '', 
     body: JSON.stringify({
       input: {
         prompt,
-        style: recraftStyle,
-        size: '1024x1365',
+        aspect_ratio: '3:4',
+        output_format: 'jpg',
+        num_outputs: 1,
       },
     }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Recraft V3 error ${res.status}: ${err.slice(0, 200)}`);
+    throw new Error(`FLUX Schnell error ${res.status}: ${err.slice(0, 200)}`);
   }
   let data = await res.json();
   if (data.status !== 'succeeded') {
-    if (!data.id) throw new Error('Recraft V3: no prediction ID returned');
+    if (!data.id) throw new Error('FLUX Schnell: no prediction ID returned');
     const maxWait = 60_000, pollInterval = 3_000;
     const start = Date.now();
     while (Date.now() - start < maxWait) {
@@ -485,11 +485,11 @@ export async function generateStickmanCharacterImage(characterDescription = '', 
       });
       data = await pollRes.json();
       if (data.status === 'succeeded') break;
-      if (data.status === 'failed' || data.status === 'canceled') throw new Error(`Recraft V3 failed: ${data.error || 'unknown'}`);
+      if (data.status === 'failed' || data.status === 'canceled') throw new Error(`FLUX Schnell failed: ${data.error || 'unknown'}`);
     }
   }
   const output = Array.isArray(data.output) ? data.output[0] : data.output;
-  if (!output) throw new Error('Recraft V3 returned no image');
+  if (!output) throw new Error('FLUX Schnell returned no image');
   return output; // Replicate delivery URL
 }
 
