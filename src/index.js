@@ -838,6 +838,12 @@ app.post('/api/edit-scene', authMiddleware, renderLimiter, async (req, res) => {
       return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckEdit.category });
     }
 
+    // ✅ NEW: الخصم فور بدء التعديل مش بعد الانتهاء
+    const editCharge = await chargeCredits(req.user.userId, EDIT_SCENE_CREDIT_COST);
+    if (!editCharge.success) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${EDIT_SCENE_CREDIT_COST} credits, you have ${editCharge.remaining}.`, cost: EDIT_SCENE_CREDIT_COST, remaining: editCharge.remaining });
+    }
+
     activeRenderCount++;
     setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
     res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: EDIT_SCENE_CREDIT_COST });
@@ -868,7 +874,6 @@ app.post('/api/edit-scene', authMiddleware, renderLimiter, async (req, res) => {
           sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null,
         });
 
-        await chargeCredits(req.user.userId, EDIT_SCENE_CREDIT_COST).catch(e => console.warn('[EditScene] Credit deduct failed:', e.message));
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: EDIT_SCENE_CREDIT_COST });
       } catch (jobErr) {
         console.error('[EditScene] Failed:', jobErr.message);
@@ -912,14 +917,20 @@ app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
       return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
     }
 
+    // ✅ NEW: الخصم بقى بيحصل فور بدء التوليد (قبل ما يتبعت أي طلب لـ Replicate/Groq) —
+    // مش بعد الانتهاء. التكلفة الحقيقية عندنا بتتحمّل فور الإرسال بغض النظر عن النتيجة، فمنطقي
+    // إن الخصم يحصل في نفس اللحظة، سواء العميل استنى أو دوس Stop أو الفيديو فشل بعد كده.
+    const chargeResult = await chargeCredits(req.user.userId, creditCost);
+    if (!chargeResult.success) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${creditCost} credits, you have ${chargeResult.remaining}.`, cost: creditCost, remaining: chargeResult.remaining });
+    }
+
     activeRenderCount++;
     setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
     res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost });
     (async () => {
       try {
         const videoPath = await renderVideo({ scenes, audioUrl, ratio, jobId: renderJobId, duration, music, captions, transitions, soundEffects, videoType: videoType || 'education', captionStyle: captionStyle || null, musicVolume: typeof musicVolume === 'number' ? musicVolume : 0.07, sfxVolume: typeof sfxVolume === 'number' ? sfxVolume : 0.4, videoEffect: videoEffect || 'none', applyWatermark, videoLanguage: req.body.videoLanguage || 'en', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null });
-        // ── خصم الكريديت من الرصيد الموحد بعد نجاح الفيديو ──
-        try { await chargeCredits(req.user.userId, creditCost); } catch(e) { console.warn('[Render] Credit deduct failed:', e.message); }
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost });
       } catch (jobErr) {
         setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
@@ -1233,6 +1244,11 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
+  // ✅ NEW: الخصم فور بدء التوليد مش بعد الانتهاء
+  const m3Charge = await chargeCredits(req.user.userId, m3CreditCost);
+  if (!m3Charge.success) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m3CreditCost} credits, you have ${m3Charge.remaining}.`, cost: m3CreditCost, remaining: m3Charge.remaining });
+  }
   const renderJobId = String(Date.now());
   activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
@@ -1240,7 +1256,6 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
   (async () => {
     try {
       const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null });
-      await chargeCredits(req.user.userId, m3CreditCost).catch(e => console.warn('[Model3] Credit deduct failed:', e.message));
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
@@ -1461,6 +1476,11 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
+  // ✅ NEW: الخصم فور بدء التوليد مش بعد الانتهاء
+  const m4Charge = await chargeCredits(req.user.userId, m4CreditCost);
+  if (!m4Charge.success) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m4CreditCost} credits, you have ${m4Charge.remaining}.`, cost: m4CreditCost, remaining: m4Charge.remaining });
+  }
   const renderJobId = String(Date.now());
   activeRenderCount++;
   setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
@@ -1488,7 +1508,6 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
         }
       }
       const videoPath = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: finalSceneDurations });
-      await chargeCredits(req.user.userId, m4CreditCost).catch(e => console.warn('[Model4] Credit deduct failed:', e.message));
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       console.error('[Model4 Render] Failed:', jobErr.message);
@@ -1749,6 +1768,11 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
     return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
   }
+  // ✅ NEW: الخصم فور بدء التوليد مش بعد الانتهاء
+  const m5Charge = await chargeCredits(req.user.userId, m5CreditCost);
+  if (!m5Charge.success) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m5CreditCost} credits, you have ${m5Charge.remaining}.`, cost: m5CreditCost, remaining: m5Charge.remaining });
+  }
 
   const renderJobId = String(Date.now());
   activeRenderCount++;
@@ -1757,7 +1781,6 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   (async () => {
     try {
       const videoPath = await renderModel5Video({ scenes: scenesWithPhotos, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s', music: music !== false });
-      await chargeCredits(req.user.userId, m5CreditCost).catch(e => console.warn('[Model5] Credit deduct failed:', e.message));
       setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
