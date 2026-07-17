@@ -441,10 +441,14 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar',
 // (تتركّب في كل مشهد عن طريق FLUX Kontext زي أي شخصية تانية، فالقصة تفضل متصلة عبر المشاهد)
 export async function generateStickmanCharacterImage(characterDescription = '', style = 'bw') {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
-  // ✅ NEW: ستايلين — "bw" (كلاسيك خطوط سودة وخلفية بيضاء بسيطة) أو "2d" (كارتون ملون مسطح)
+  // ✅ FIX: ستايل "digital_illustration/hand_drawn_outline" بيرسم بالألوان دايمًا حتى لو
+  // البرومبت قال "no color" صراحة — الستايل نفسه بيغلب تعليمات النص. عشان نضمن أبيض وأسود
+  // حقيقي (خطوط بس، من غير أي تلوين)، بنستخدم ستايل "vector_illustration/line_art" المخصص
+  // لخطوط نظيفة بدون تلوين. الستايل الملون (2D) لسه بيستخدم digital_illustration العادي.
+  const recraftStyle = style === '2d' ? 'digital_illustration/hand_drawn_outline' : 'vector_illustration/line_art';
   const basePrompt = style === '2d'
     ? 'A simple stick figure character standing in a plain softly colored studio background, full body visible, centered, flat full-color 2D cartoon animation style, clean bold outlines, bright cheerful colors, no shading gradients, no scenery clutter, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression'
-    : 'A simple stick figure character standing in a plain off-white studio background, full body visible, centered, minimalist line-drawing animation style, thin black outlines, flat 2D cartoon style, no shading, no color, no scenery, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression';
+    : 'A simple stick figure character standing in a plain off-white cream background, full body visible, centered, minimalist black line-drawing animation style, thin clean black outlines ONLY, pure black and white, absolutely no color, no fill, no shading, no grey tones, no scenery, clearly detailed expressive face with visible eyebrows, round eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression';
   const prompt = characterDescription?.trim()
     ? `${basePrompt}. Character details: ${characterDescription.trim()}`
     : basePrompt;
@@ -459,7 +463,7 @@ export async function generateStickmanCharacterImage(characterDescription = '', 
     body: JSON.stringify({
       input: {
         prompt,
-        style: 'digital_illustration/hand_drawn_outline',
+        style: recraftStyle,
         size: '1024x1365',
       },
     }),
@@ -768,13 +772,19 @@ export async function renderModel5Video({
 
   // Step 2: Concat with crossfade transitions
   const mergedPath = path.join(TEMP_DIR, `m5_merged_${id}.mp4`);
+  // ✅ CRITICAL FIX: كانت listFile متعرّفة بـ const جوه الـ else بس — يعني لما rawPaths.length===1
+  // (فيديو بمشهد واحد: image-to-video، prompt-to-video، أو idea-mode بمشهد واحد)، المتغير مكانش
+  // موجود خالص، وبعد 60 ثانية لما setTimeout التنظيف يحاول يستخدمه كان بيرمي ReferenceError غير
+  // ملقوط جوه Timeout callback — وده كان بيكرش عملية Node كلها ويرجّع السيرفر يعمل restart (بيفسّر
+  // لوجز "[DB] tables ready" اللي بتتكرر من غير سبب واضح). دلوقتي listFile متعرّفة برّه من الأول
+  // بـ null، وبتتحدد بس لو فيه أكتر من مشهد، والتنظيف بيفلتر أي قيمة null قبل ما يحاول يمسحها.
+  let listFile = null;
 
   if (rawPaths.length === 1) {
     fs.copyFileSync(rawPaths[0], mergedPath);
   } else {
     // Build xfade (video) + acrossfade (audio) filter chain — FIX: preserve audio from Seedance
-    // listFile declared here (outer scope) so setTimeout cleanup can reference it
-    const listFile = path.join(TEMP_DIR, `m5_list_${id}.txt`);
+    listFile = path.join(TEMP_DIR, `m5_list_${id}.txt`);
     try {
       const FADE_DUR = 0.5;
       const CLIP_DURATION = CLIP_SEC - FADE_DUR;
@@ -852,7 +862,7 @@ export async function renderModel5Video({
   }
 
   setTimeout(() => {
-    [...rawPaths, mergedPath, listFile].forEach(f => {
+    [...rawPaths, mergedPath, listFile].filter(Boolean).forEach(f => {
       try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
     });
   }, 60000);
