@@ -507,7 +507,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             ? { promptMode: 'image', characters: lastUploadedPhotos.length ? [{ prompt: '', photo: lastUploadedPhotos[0] }] : characters, duration: ready.duration, rawPrompt: ready.rawPrompt || undefined }
             : ready.promptMode === 'prompt'
             ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters, duration: ready.duration, styleSuffix: '' }
-            : { idea: ready.idea, characters, duration: ready.duration, videoStyle: style, styleSuffix: '' };
+            : { idea: ready.idea, characters, duration: ready.duration, videoStyle: style, styleSuffix: '', stickmanStyle: ready.stickmanStyle || undefined };
         }
         const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
         const scenesData = await scenesRes.json();

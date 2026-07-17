@@ -1009,10 +1009,9 @@ app.get('/api/model5/credit-cost', authMiddleware, (req, res) => {
   // ✅ FIX: بيقبل دلوقتي عدد الصور الفعلي (photoCount) مش بس علم hasPhoto ثنائي —
   // عشان يعرض السعر الصحيح المتزايد مع كل صورة إضافية قبل ما العميل يأكد التوليد
   const count = photoCount ? parseInt(photoCount, 10) || 0 : (hasPhoto === 'true' ? 1 : 0);
-  // ✅ NEW: لو مفيش صور مرفوعة وطالب stickman، نعاين السعر وكأن فيه صورة واحدة (Recraft) + سرشارج 10
-  const effectiveCount = count > 0 ? count : (stickman === 'true' ? 1 : 0);
-  const stickmanSurcharge = (count === 0 && stickman === 'true') ? 10 : 0;
-  res.json({ creditCost: getModel5CreditCost(duration, effectiveCount) + stickmanSurcharge, duration, photoCount: count });
+  // ✅ NEW: السعر الطبيعي (بدون صور) + سرشارج الستيك مان حسب المدة لو مفيش صور ومطلوب stickman
+  const stickmanSurcharge = (count === 0 && stickman === 'true') ? (STICKMAN_SURCHARGE[duration] || 0) : 0;
+  res.json({ creditCost: getModel5CreditCost(duration, count) + stickmanSurcharge, duration, photoCount: count });
 });
 
 // ── Model 3 Routes ─────────────────────────────────────────────────────────
@@ -1034,6 +1033,11 @@ async function checkModel3Access(req, res, next) {
 // لكن برضو نخلي التفاصيل بسيطة/مسطحة عشان يفضل متماشي مع أسلوب الرسم البسيط.
 // بيتطبق في كل مكان بيتحدد فيه styleHint/styleInstruction (موديل 3، 4، 5)، وبيفحص نص الفكرة
 // نفسها كمان لأن غالبًا العميل بيكتب "stickman" جوه فكرة الفيديو مش في خانة الستايل بس.
+// ── سرشارج الستيك مان: كريديت إضافي فوق سعر موديل 5 idea-to-video العادي (بدون صور) بالظبط —
+// مش بيستبدل السعر الطبيعي، بيتضاف عليه. القيمة بتزيد مع المدة لأن عدد المشاهد (وبالتالي عدد
+// مرات تركيب الشخصية بـ FLUX Kontext لكل مشهد) بيزيد هو كمان.
+const STICKMAN_SURCHARGE = { '5s': 20, '10s': 30, '15s': 40, '30s': 80, '1min': 180 };
+
 function applyStickmanStyleRule(styleText, ideaText = '') {
   const combined = `${styleText || ''} ${ideaText || ''}`;
   if (!/stick\s*-?\s*man|stick\s*-?\s*figure/i.test(combined)) return styleText;
@@ -1539,7 +1543,7 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
   const model5User = await getUserById(req.user.userId);
   if (!model5User) return res.status(401).json({ error: 'User not found' });
 
-  const { idea, characters, duration, videoStyle, styleSuffix, promptMode, rawPrompt } = req.body;
+  const { idea, characters, duration, videoStyle, styleSuffix, promptMode, rawPrompt, stickmanStyle } = req.body;
 
   // ── وضع "Image to Video" الجديد: العميل بيرفع صورة بس (بدون برومبت خالص)، والصورة
   // بتتقفل كـ first frame وتتحرك مباشرة على Seedance 2.0 Fast — نفس تكلفة prompt-to-video
@@ -1692,7 +1696,7 @@ Output ONLY JSON array (${sceneCount} items):
       // مشهد بنفس آلية "صورة الشخصية" العادية (FLUX Kontext) عشان القصة تفضل متصلة بصريًا.
       try {
         console.log('[Model5] Generating stickman reference character via Recraft V3...');
-        const stickmanImg = await generateStickmanCharacterImage(characterBlock);
+        const stickmanImg = await generateStickmanCharacterImage(characterBlock, stickmanStyle === '2d' ? '2d' : 'bw');
         scenes = scenes.map((scene) => ({ ...scene, characterPhotos: [stickmanImg], stickmanGenerated: true }));
         stickmanGenerated = true;
         console.log('[Model5] ✅ Stickman reference character generated successfully');
@@ -1733,13 +1737,11 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
 
   // ✅ FIX: التكلفة دلوقتي بتزيد مع كل صورة إضافية (25 كريديت لكل صورة زيادة بعد الأولى) —
   // مطابق للتكلفة الحقيقية الإضافية على Replicate لكل صورة تتضاف للدمج
-  // ✅ NEW: صورة الستيك مان المولّدة بـ Recraft V3 بتعمل نفس خطوة FLUX Kontext compositing لكل
-  // مشهد زي أي صورة شخصية حقيقية بالظبط — فلازم نحسبها كـ "صورة واحدة" في التسعير حتى لو
-  // العميل مرفعش صورة فعليًا، + نضيف 10 كريديت سرشارج فوق كده لخطوة توليد الصورة نفسها بـ Recraft
+  // ✅ NEW: سرشارج الستيك مان بيتضاف فوق السعر الطبيعي (بدون صور) مباشرة — مش بيغيّر شريحة
+  // التسعير الأساسية، بس بيضيف كريديت إضافي حسب المدة (شوف STICKMAN_SURCHARGE فوق)
   const hasStickmanImage = scenes.some(s => s.stickmanGenerated);
-  const effectivePhotoCount = photos.length > 0 ? photos.length : (hasStickmanImage ? 1 : 0);
-  const stickmanSurcharge = hasStickmanImage ? 10 : 0;
-  const m5CreditCost = getModel5CreditCost(duration, effectivePhotoCount) + stickmanSurcharge;
+  const stickmanSurcharge = hasStickmanImage ? (STICKMAN_SURCHARGE[duration] || 0) : 0;
+  const m5CreditCost = getModel5CreditCost(duration, photos.length) + stickmanSurcharge;
   const m5Balance = await getCreditsBalance(req.user.userId);
   if (m5Balance < m5CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m5CreditCost} credits, you have ${m5Balance}.`, cost: m5CreditCost, remaining: m5Balance });

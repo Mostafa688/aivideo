@@ -58,6 +58,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
   const [elapsed, setElapsed] = useState(0);
   const [usage, setUsage] = useState(null);
   const [creditCost, setCreditCost] = useState(180);
+  const [stickmanStyle, setStickmanStyle] = useState('bw'); // 'bw' | '2d'
   const pollRef = useRef(null);
   const timerRef = useRef(null);
   const region = localStorage.getItem('erivion_region') || 'eg';
@@ -100,6 +101,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
     reader.readAsDataURL(file);
   };
   const selectedStyle = VIDEO_STYLES.find(s=>s.key===videoStyle);
+  const isStickmanRequest = genMode === 'idea' && characters.filter(c=>c.photo).length === 0 && /stick\s*-?\s*man|stick\s*-?\s*figure/i.test(idea || '');
   const sceneCount = genMode === 'prompt' ? 1 : (duration==='1min'?12:duration==='30s'?6:1);
   const switchMode = (m) => {
     setGenMode(m);
@@ -122,7 +124,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         ? { promptMode: 'image', characters: [{ prompt: '', photo: characters[0].photo }], duration, rawPrompt: rawPrompt.trim() || undefined }
         : genMode === 'prompt'
         ? { promptMode: 'prompt', rawPrompt, characters: validChars, duration, styleSuffix: selectedStyle?.suffix || '' }
-        : { idea, characters: validChars, duration, videoStyle, styleSuffix: selectedStyle?.suffix };
+        : { idea, characters: validChars, duration, videoStyle, styleSuffix: selectedStyle?.suffix, stickmanStyle: isStickmanRequest ? stickmanStyle : undefined };
       const res = await fetch('/api/model5/generate-scenes', {
         method:'POST', headers:authHeaders(),
         body:JSON.stringify(body)
@@ -365,6 +367,21 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
               placeholder="A lone samurai walks through a misty bamboo forest at dawn, searching for his lost honor..." rows={4}
               style={{ width:'100%', padding:'14px 16px', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:14, resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.7, transition:'all 0.2s' }} />
             <p style={{ fontSize:11, color:'#374151', marginTop:6 }}>{idea.length} characters</p>
+            {isStickmanRequest && (
+              <div style={{ marginTop:14, padding:14, borderRadius:12, background:'rgba(225,29,72,0.05)', border:'1px solid rgba(225,29,72,0.15)' }}>
+                <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, display:'block' }}>🖍️ Stickman Style</label>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  <div onClick={()=>setStickmanStyle('bw')} style={{ padding:'10px', borderRadius:10, textAlign:'center', cursor:'pointer', border:`2px solid ${stickmanStyle==='bw'?'#e11d48':'rgba(255,255,255,0.08)'}`, background:stickmanStyle==='bw'?'rgba(225,29,72,0.1)':'transparent' }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:stickmanStyle==='bw'?'#fb7185':'#fff' }}>⚫⚪ Classic B&W</div>
+                    <div style={{ fontSize:10, color:'#4b5563', marginTop:2 }}>Black lines, plain background</div>
+                  </div>
+                  <div onClick={()=>setStickmanStyle('2d')} style={{ padding:'10px', borderRadius:10, textAlign:'center', cursor:'pointer', border:`2px solid ${stickmanStyle==='2d'?'#e11d48':'rgba(255,255,255,0.08)'}`, background:stickmanStyle==='2d'?'rgba(225,29,72,0.1)':'transparent' }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:stickmanStyle==='2d'?'#fb7185':'#fff' }}>🎨 Full-Color 2D</div>
+                    <div style={{ fontSize:10, color:'#4b5563', marginTop:2 }}>Colored flat cartoon style</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ marginBottom:22 }}>

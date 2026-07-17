@@ -439,9 +439,12 @@ function addCaptions(videoPath, scenes, outputPath, ratio, videoLanguage = 'ar',
 // بتتستخدم في وضع "Idea to Video" لموديل 5 لما العميل يطلب "stickman" من غير ما يرفع صورة —
 // بترجع رابط الصورة المولّدة عشان تتحط في characterPhotos وتتعامل بالظبط زي صورة شخصية عادية
 // (تتركّب في كل مشهد عن طريق FLUX Kontext زي أي شخصية تانية، فالقصة تفضل متصلة عبر المشاهد)
-export async function generateStickmanCharacterImage(characterDescription = '') {
+export async function generateStickmanCharacterImage(characterDescription = '', style = 'bw') {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
-  const basePrompt = 'A simple stick figure character standing in a plain off-white studio background, full body visible, centered, minimalist line-drawing animation style, thin black outlines, flat 2D cartoon style, no shading, no scenery, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression';
+  // ✅ NEW: ستايلين — "bw" (كلاسيك خطوط سودة وخلفية بيضاء بسيطة) أو "2d" (كارتون ملون مسطح)
+  const basePrompt = style === '2d'
+    ? 'A simple stick figure character standing in a plain softly colored studio background, full body visible, centered, flat full-color 2D cartoon animation style, clean bold outlines, bright cheerful colors, no shading gradients, no scenery clutter, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression'
+    : 'A simple stick figure character standing in a plain off-white studio background, full body visible, centered, minimalist line-drawing animation style, thin black outlines, flat 2D cartoon style, no shading, no color, no scenery, clearly detailed expressive face with visible eyebrows, eyes with pupils, a simple defined nose, and a neutral-friendly mouth expression';
   const prompt = characterDescription?.trim()
     ? `${basePrompt}. Character details: ${characterDescription.trim()}`
     : basePrompt;
