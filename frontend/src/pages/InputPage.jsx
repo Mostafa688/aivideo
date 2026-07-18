@@ -427,7 +427,7 @@ function MapVideoForm({ onSubmit, onBack }) {
 }
 
 // ── Model Selector ──────────────────────────────────────────────────────────
-function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access, model7Access, isAdmin }) {
+function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access, model7Access, isAdmin, userPlan }) {
   const [hovered, setHovered] = useState(null);
   const [showModel3Modal, setShowModel3Modal] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
@@ -445,21 +445,21 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       color:'#f59e0b', glow:'rgba(245,158,11,0.25)',
       desc:'Unique AI-generated image per scene. Six visual styles — cinematic, anime, historical, 3D cartoon, and more.',
       tags:['Stable Diffusion','6 styles','Ken Burns zoom','Premium'],
-      badge:'POPULAR', free:false, cat:'premium', needsAccess: !model3Access,
+      badge:'POPULAR', free:false, cat:'premium', needsAccess: userPlan === 'free',
     },
     {
       key:'model4', tag:'MODEL 4', name:'Seedance Video', icon:'🎞️',
       color:'#a855f7', glow:'rgba(168,85,247,0.25)',
       desc:'Real AI-generated video clips — not images. Cinematic motion powered by Seedance v1 Pro.',
       tags:['True AI video','8 styles','Idea/Script/Voice','Captions'],
-      badge:'AI VIDEO', free:false, cat:'premium', needsAccess: !model4Access,
+      badge:'AI VIDEO', free:false, cat:'premium', needsAccess: userPlan === 'free',
     },
     {
       key:'model5', tag:'CINEMATIC', name:'Character AI', icon:'🎭',
       color:'#e11d48', glow:'rgba(225,29,72,0.25)',
       desc:'Upload photos of your characters. AI keeps them consistent across every scene using FLUX Kontext.',
       tags:['Photo reference','5 characters','Seedance 2.0','Cinematic'],
-      badge:'SOON', free:false, cat:'premium', needsAccess: !model5Access, comingSoon: true, adminOnly: true,
+      badge:null, free:false, cat:'premium', needsAccess: userPlan === 'free', comingSoon: false, adminOnly: false,
     },
     {
       key:'model6', tag:'ATLAS', name:'Map Video', icon:'🗺️',
@@ -473,7 +473,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       color:'#f97316', glow:'rgba(249,115,22,0.25)',
       desc:'Upload your product photo and get a cinematic AI video ad — scenes, voiceover, and transitions included.',
       tags:['FLUX Reference','Seedance Video','AI Voiceover','150-360 Credits/ad'],
-      badge:'NEW', free:false, cat:'premium', needsAccess: !model7Access, comingSoon: false, adminOnly: false,
+      badge:'NEW', free:false, cat:'premium', needsAccess: userPlan === 'free', comingSoon: false, adminOnly: false,
     },
     {
       key:'ai', tag:'MODEL 1', name:'AI Slices', icon:'🎨',
@@ -710,6 +710,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
       model6Access={model6Access}
       model7Access={model7Access}
       isAdmin={userEmail === 'digidelight33@gmail.com'}
+      userPlan={userPlan}
     />
   );
 
