@@ -722,10 +722,15 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/api/voices', (req, res) => res.json({ voices: VOICE_OPTIONS }));
 
 app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) => {
-  const { idea, script, tone, duration, mode, videoLanguage } = req.body;
-  if (!idea && !script) return res.status(400).json({ error: 'idea or script is required' });
+  const { idea, script, tone, duration, mode, videoLanguage, structuredScenes } = req.body;
+  // ✅ NEW: وضع الـ structured — العميل بيبعت مشاهد متقسمة جاهزة (Scene 1/2/3...) بدل idea/script عادي
+  const hasStructured = Array.isArray(structuredScenes) && structuredScenes.length > 0;
+  if (!idea && !script && !hasStructured) return res.status(400).json({ error: 'idea or script is required' });
   // ✅ فحص أمان المحتوى قبل أي توليد — رفض المحتوى الإباحي/العنصري/العنيف
-  const modCheck = await checkContentSafety(idea || script);
+  const moderationText = hasStructured
+    ? structuredScenes.map(s => s?.text || '').join(' ').slice(0, 1500)
+    : (idea || script);
+  const modCheck = await checkContentSafety(moderationText);
   if (modCheck.unsafe) {
     return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
   }
@@ -737,7 +742,7 @@ app.post('/api/generate-scenes', authMiddleware, sceneLimiter, async (req, res) 
   const send = (event, data) => { res.write('event: ' + event + '\n'); res.write('data: ' + JSON.stringify(data) + '\n\n'); };
   try {
     send('status', { message: 'Generating your script...' });
-    await generateScenesStream({ idea, script, tone, duration, mode, userId: req.user.userId, videoLanguage }, send);
+    await generateScenesStream({ idea, script, tone, duration, mode, userId: req.user.userId, videoLanguage, structuredScenes }, send);
     send('done', { message: 'Scene generation complete' });
   } catch (err) {
     send('error', { message: err.message });

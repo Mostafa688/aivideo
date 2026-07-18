@@ -412,7 +412,39 @@ Start:`;
   }
 }
 
-export async function generateScenesStream({ idea, script, tone, duration, mode, userId, videoLanguage }, send) {
+export async function generateScenesStream({ idea, script, tone, duration, mode, userId, videoLanguage, structuredScenes }, send) {
+  // ══════════════════════════════════════════════════════════════════════
+  //  ✅ NEW: STRUCTURED MODE — العميل بيديك سكريبت متقسم بمشاهد جاهزة بالفعل
+  //  (زي "Scene 1 / Visual Prompt / Narration" أو جدول توقيتات مشابه). في
+  //  الحالة دي مفيش داعي لأي Groq call بيولّد كلام جديد أو يستنتج keywords —
+  //  التقسيم والنص والوصف البصري كلهم جايين حرفيًا من العميل نفسه، فبنبعتهم
+  //  زي ما هم بالظبط. ده بيحل مشكلتين مرة واحدة: (1) مفيش إعادة صياغة تخرب
+  //  السكريبت الأصلي، (2) الـ visual المستخدم لبحث Pexels/AI بقى دقيق ومحدد
+  //  زي ما العميل كتبه، مش تخمين عام من نص السرد.
+  // ══════════════════════════════════════════════════════════════════════
+  if (mode === 'structured' && Array.isArray(structuredScenes) && structuredScenes.length) {
+    const total = structuredScenes.length;
+    console.log(`[Script] Structured mode: ${total} pre-divided scenes provided by the user — using as-is, no rewriting`);
+    structuredScenes.forEach((item, i) => {
+      const index = i + 1;
+      const type = index === 1 ? 'hook' : index === total ? 'ending' : 'body';
+      const text = String(item.text || '').trim();
+      // ✅ الـ visual هو المصدر الأساسي للبحث البصري (Pexels/AI image) — لو العميل مديه Visual
+      // Prompt واضح بنستخدمه زي ما هو (ده أدق بكتير من أي استنتاج آلي)، ولو مش موجود بنرجع للنص
+      const visualRaw = String(item.visual || item.prompt || text).trim();
+      // ✅ Keywords بسيطة مشتقة من نفس الـ visual المحدد (مش من النص السردي العام) — كـ fallback
+      // إضافي لو الـ visual نفسه طويل أو معقد لـ Pexels
+      const keywords = visualRaw
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 2)
+        .slice(0, 6);
+      send('scene', { index, type, text, keywords, visual: visualRaw.slice(0, 150), prompt: visualRaw });
+    });
+    console.log(`[Script] Structured mode done: ${total}/${total} scenes emitted as-is`);
+    return;
+  }
+
   const sceneCount  = DURATION_SCENES[duration] || 8;
   const toneGuide   = TONE_INSTRUCTIONS[tone]  || TONE_INSTRUCTIONS.motivational;
   const langGuide   = LANGUAGE_INSTRUCTIONS[videoLanguage] || LANGUAGE_INSTRUCTIONS.en;

@@ -350,7 +350,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     // الأصلي كله — فالفويس أوفر يطلع بيقول كلام مختلف تمامًا عن اللي العميل كتبه. دلوقتي بنستخدم
     // نفس آلية السكريبت الحقيقية سواء جت من صوت مرفوع (transcript) أو من نص العميل نفسه (ready.script).
     const typedScript = (ready.script || '').trim();
-    const scriptText = lastUploadedTranscript || typedScript || null;
+    const hasStructuredScenes = Array.isArray(ready.structuredScenes) && ready.structuredScenes.length > 0;
+    const structuredNarration = hasStructuredScenes ? ready.structuredScenes.map(s => String(s?.text || '')).join(' ') : '';
+    const scriptText = lastUploadedTranscript || typedScript || structuredNarration || null;
     // ✅ FIX: كان بيثق في "videoLanguage" اللي الايجنت (LLM) قرره — وده افتراضيًا "en" إلا لو
     // العميل قال صراحة "الفيديو بالعربي". لكن لو العميل رفع تسجيل صوتي بالمصري (Voice-to-Video)
     // أو لصق سكريبت عربي كنص، الصوت نفسه عربي أكيد، فمفروض الكابشن يتطابق معاه تلقائيًا — مش
@@ -465,14 +467,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     try {
       let scenes = [];
 
-      // ✅ Voice-to-Video / Typed Script: لو فيه صوت مرفوع أو سكريبت مكتوب، نبعت النص الكامل
-      // (مش ملخص 6 كلمات) عشان المشاهد تتولد مطابقة فعليًا لكلام العميل، مش موضوع عام بعيد عنه
+      // ✅ Voice-to-Video / Typed Script / Structured Scenes: لو فيه صوت مرفوع، سكريبت مكتوب،
+      // أو تقسيم مشاهد جاهز من العميل، نستخدمهم زي ما هم بدل ما نولّد محتوى جديد بعيد عنهم
       const hasUploadedScript = ready.model !== 5 && !!scriptText;
 
       if (isM12) {
         // موديل 1/2: توليد السكريبت أولاً عبر SSE
         // ✅ FIX: كنا بنحوّل "30s" غلط لـ "auto" وده كان بيولّد 8 مشاهد (حجم دقيقة) بدل 4 (حجم 30 ثانية فعليًا)
-        const { scenes: gotScenes } = await readSSE('/api/generate-scenes', hasUploadedScript
+        const { scenes: gotScenes } = await readSSE('/api/generate-scenes', hasStructuredScenes
+          ? { idea: null, script: null, structuredScenes: ready.structuredScenes, duration: ready.duration, mode: 'structured', videoLanguage: videoLang }
+          : hasUploadedScript
           ? { idea: null, script: scriptText, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'script', videoLanguage: videoLang }
           : { idea: ready.idea, script: null, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'idea', videoLanguage: videoLang }
         );
