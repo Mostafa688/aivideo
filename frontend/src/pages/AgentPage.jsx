@@ -345,13 +345,19 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
     const style = ready.videoStyle || MODEL_STYLE_DEFAULTS[ready.model];
     const isM12 = ready.model === 1 || ready.model === 2;
+    // ✅ FIX: كان بيعتمد بس على lastUploadedTranscript (صوت مرفوع)، فلو العميل لصق سكريبت كامل
+    // كنص في الشات (من غير ما يرفع صوت)، الايجنت كان بيلخّصه في 6 كلمات جوه "idea" وبيضيع النص
+    // الأصلي كله — فالفويس أوفر يطلع بيقول كلام مختلف تمامًا عن اللي العميل كتبه. دلوقتي بنستخدم
+    // نفس آلية السكريبت الحقيقية سواء جت من صوت مرفوع (transcript) أو من نص العميل نفسه (ready.script).
+    const typedScript = (ready.script || '').trim();
+    const scriptText = lastUploadedTranscript || typedScript || null;
     // ✅ FIX: كان بيثق في "videoLanguage" اللي الايجنت (LLM) قرره — وده افتراضيًا "en" إلا لو
-    // العميل قال صراحة "الفيديو بالعربي". لكن لو العميل رفع تسجيل صوتي بالمصري (Voice-to-Video)،
-    // الصوت نفسه عربي أكيد، فمفروض الكابشن يتطابق معاه تلقائيًا — مش يفضل يعتمد على تخمين الموديل.
-    // ده كان سبب ظهور الكابشن مربعات بس من خلال الايجنت (الصفحة المباشرة عندها اختيار لغة صريح
-    // بيدّي القيمة الصح دايمًا، فمكانتش بتقع في المشكلة دي).
-    const hasUploadedScriptForLang = ready.model !== 5 && !!lastUploadedTranscript;
-    const transcriptIsArabic = hasUploadedScriptForLang && isArabic(lastUploadedTranscript);
+    // العميل قال صراحة "الفيديو بالعربي". لكن لو العميل رفع تسجيل صوتي بالمصري (Voice-to-Video)
+    // أو لصق سكريبت عربي كنص، الصوت نفسه عربي أكيد، فمفروض الكابشن يتطابق معاه تلقائيًا — مش
+    // يفضل يعتمد على تخمين الموديل. ده كان سبب ظهور الكابشن مربعات بس من خلال الايجنت (الصفحة
+    // المباشرة عندها اختيار لغة صريح بيدّي القيمة الصح دايمًا، فمكانتش بتقع في المشكلة دي).
+    const hasUploadedScriptForLang = ready.model !== 5 && !!scriptText;
+    const transcriptIsArabic = hasUploadedScriptForLang && isArabic(scriptText);
     // ✅ لغة الفيديو وصوته بييجوا من فهم الأجنت لطلب العميل، مش من لغة واجهة الموقع —
     // افتراضيًا إنجليزي + صوت "wise man" إلا لو العميل حدد غير كده صراحة، إلا لو فيه تسجيل
     // صوتي مرفوع بالعربي — ساعتها اللغة الفعلية للصوت هي الأساس دايمًا
@@ -459,15 +465,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     try {
       let scenes = [];
 
-      // ✅ Voice-to-Video: لو فيه صوت مرفوع، نبعت السكريبت الكامل (مش ملخص 6 كلمات) عشان
-      // المشاهد تتولد مطابقة فعليًا لكلام العميل، مش موضوع عام بعيد عن الصوت الحقيقي
-      const hasUploadedScript = ready.model !== 5 && !!lastUploadedTranscript;
+      // ✅ Voice-to-Video / Typed Script: لو فيه صوت مرفوع أو سكريبت مكتوب، نبعت النص الكامل
+      // (مش ملخص 6 كلمات) عشان المشاهد تتولد مطابقة فعليًا لكلام العميل، مش موضوع عام بعيد عنه
+      const hasUploadedScript = ready.model !== 5 && !!scriptText;
 
       if (isM12) {
         // موديل 1/2: توليد السكريبت أولاً عبر SSE
         // ✅ FIX: كنا بنحوّل "30s" غلط لـ "auto" وده كان بيولّد 8 مشاهد (حجم دقيقة) بدل 4 (حجم 30 ثانية فعليًا)
         const { scenes: gotScenes } = await readSSE('/api/generate-scenes', hasUploadedScript
-          ? { idea: null, script: lastUploadedTranscript, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'script', videoLanguage: videoLang }
+          ? { idea: null, script: scriptText, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'script', videoLanguage: videoLang }
           : { idea: ready.idea, script: null, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'idea', videoLanguage: videoLang }
         );
         if (!activeJobRef.current) return;
@@ -491,11 +497,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         let scenesBody;
         if (ready.model === 3) {
           scenesBody = hasUploadedScript
-            ? { idea: null, script: lastUploadedTranscript, inputMode: 'script', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' }
+            ? { idea: null, script: scriptText, inputMode: 'script', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' }
             : { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
         } else if (ready.model === 4) {
           scenesBody = hasUploadedScript
-            ? { idea: null, script: lastUploadedTranscript, inputMode: 'script', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' }
+            ? { idea: null, script: scriptText, inputMode: 'script', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' }
             : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' };
         } else {
           // ✅ FIX: لو مفيش صور مرفوعة بس الأجنت جابله وصف نصي للشخصية، نستخدم الوصف بدل ما نمنع
