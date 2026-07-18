@@ -176,6 +176,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [lastUploadedPhotos, setLastUploadedPhotos] = useState([]); // ✅ FIX: كانت صورة واحدة بس — دلوقتي مصفوفة بتتراكم لحد صورتين عبر رسائل متتالية (موديل 5)
   const [lastUploadedVoiceUrl, setLastUploadedVoiceUrl] = useState(null);
   const [lastUploadedTranscript, setLastUploadedTranscript] = useState(null);
+  // ✅ NEW: المشاهد المستخرجة بكود عادي (regex) من سكريبت متقسم بمشاهد جاهزة — مش من رد الايجنت
+  // نفسه، عشان نضمن دقة 100% وميحصلش تلخيص/إسقاط مشاهد زي ما كان بيحصل لما كنا بنعتمد على الـ LLM
+  const [lastParsedStructuredScenes, setLastParsedStructuredScenes] = useState(null);
   const [lastM12Video, setLastM12Video] = useState(null); // ✅ NEW: آخر فيديو موديل 1/2 كامل — لازم نحفظه عشان نقدر نعدّل مشهد فيه لاحقًا من غير إعادة توليد كامل
   const voiceInputRef = useRef();
   const imageInputRef = useRef();
@@ -266,6 +269,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         // عشان الايجنت مايطلبش رفعهم تاني بعد كام رسالة
         photoAlreadyUploaded: !!lastUploadedPhotos.length,
         voiceAlreadyUploaded: !!lastUploadedVoiceUrl,
+        hasStructuredScript: !!lastParsedStructuredScenes,
       };
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
       // ✅ FIX: بتبعت مصفوفة صور دلوقتي (لحد 2) بدل صورة واحدة بس — كمان بيبعت imageBase64
@@ -279,6 +283,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       setMessages(m => [...m, { role: 'assistant', content: data.reply }]);
       if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
       if (data.transcript) setLastUploadedTranscript(data.transcript);
+      if (Array.isArray(data.structuredScenes) && data.structuredScenes.length) setLastParsedStructuredScenes(data.structuredScenes);
 
       if (data.ready) {
         // ✅ FIX: موديل 5 كان بيرفض يكمل من غير صورة حتى لو العميل وصف الشخصية بالنص —
@@ -350,8 +355,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     // الأصلي كله — فالفويس أوفر يطلع بيقول كلام مختلف تمامًا عن اللي العميل كتبه. دلوقتي بنستخدم
     // نفس آلية السكريبت الحقيقية سواء جت من صوت مرفوع (transcript) أو من نص العميل نفسه (ready.script).
     const typedScript = (ready.script || '').trim();
-    const hasStructuredScenes = Array.isArray(ready.structuredScenes) && ready.structuredScenes.length > 0;
-    const structuredNarration = hasStructuredScenes ? ready.structuredScenes.map(s => String(s?.text || '')).join(' ') : '';
+    const hasStructuredScenes = Array.isArray(lastParsedStructuredScenes) && lastParsedStructuredScenes.length > 0;
+    const structuredNarration = hasStructuredScenes ? lastParsedStructuredScenes.map(s => String(s?.text || '')).join(' ') : '';
     const scriptText = lastUploadedTranscript || typedScript || structuredNarration || null;
     // ✅ FIX: كان بيثق في "videoLanguage" اللي الايجنت (LLM) قرره — وده افتراضيًا "en" إلا لو
     // العميل قال صراحة "الفيديو بالعربي". لكن لو العميل رفع تسجيل صوتي بالمصري (Voice-to-Video)
@@ -475,7 +480,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         // موديل 1/2: توليد السكريبت أولاً عبر SSE
         // ✅ FIX: كنا بنحوّل "30s" غلط لـ "auto" وده كان بيولّد 8 مشاهد (حجم دقيقة) بدل 4 (حجم 30 ثانية فعليًا)
         const { scenes: gotScenes } = await readSSE('/api/generate-scenes', hasStructuredScenes
-          ? { idea: null, script: null, structuredScenes: ready.structuredScenes, duration: ready.duration, mode: 'structured', videoLanguage: videoLang }
+          ? { idea: null, script: null, structuredScenes: lastParsedStructuredScenes, duration: ready.duration, mode: 'structured', videoLanguage: videoLang }
           : hasUploadedScript
           ? { idea: null, script: scriptText, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'script', videoLanguage: videoLang }
           : { idea: ready.idea, script: null, tone: ready.tone || 'motivational', duration: ready.duration, mode: 'idea', videoLanguage: videoLang }

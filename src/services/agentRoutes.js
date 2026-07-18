@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from './authRoutes.js';
-import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, AGENT_LIMITS } from './agentService.js';
+import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, AGENT_LIMITS } from './agentService.js';
 import { getUserById } from './authService.js';
 
 const router = express.Router();
@@ -69,8 +69,21 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded } = req.body;
+    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, hasStructuredScript: clientHasStructuredScript } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+    // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual
+    // Prompt/Narration...)؟ لو أيوه، بنستخرج المشاهد هنا بالـ regex ونديها للإيجنت كـ "حقيقة
+    // جاهزة" بدل ما نطلب منه ينسخها بنفسه (اللي اتضح إنه بيلخّصها ويسقط مشاهد أحيانًا).
+    const parsedScript = parseStructuredScript(message);
+    let structuredScenesResult = null;
+    let structuredNote = null;
+    if (parsedScript) {
+      structuredScenesResult = parsedScript.scenes;
+      const durLabel = parsedScript.durationSec ? `${parsedScript.durationSec}s` : 'unspecified';
+      structuredNote = `The user pasted a pre-divided scene breakdown with EXACTLY ${parsedScript.scenes.length} scenes, already parsed and captured exactly as written by the system (not by you) — you must NOT reproduce, retype, or summarize the scene text yourself, and must NOT include a "structuredScenes" field in your READY marker at all (the system already has the real content). Stated/implied total duration ≈ ${durLabel}. Voice style hint from the user: "${parsedScript.voiceHint || 'none given'}". Music requested: ${parsedScript.hasMusic ? 'yes' : 'no'}. Your job now: pick model 1 or 2 (ask if unclear), pick ratio (ask if unclear), pick the closest supported duration bucket to ${durLabel} for pricing (the real scene count stays ${parsedScript.scenes.length} regardless), map the voice hint to the closest "voice" option, set "music" accordingly, mention once that any "On-screen Text" lines won't render as a separate overlay (captions come from narration audio only), then confirm and emit a normal READY marker with "idea" as just a short label.`;
+    }
+    const hasStructuredScript = !!parsedScript || !!clientHasStructuredScript;
 
     // ✅ FIX: بيقبل دلوقتي مصفوفة صور (لحد 2) في نفس الرسالة، مش صورة واحدة بس —
     // imageBase64 (مفرد) لسه متاح للتوافق مع أي كود قديم، بس imagesBase64 (جمع) هو الأساس دلوقتي
@@ -78,7 +91,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       ? imagesBase64.slice(0, 2)
       : (imageBase64 ? [imageBase64] : []);
 
-    let attachmentNote = null;
+    let attachmentNote = structuredNote;
     let transcript = null;
     let uploadedVoiceUrl = null;
 
@@ -125,6 +138,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       message, history, attachmentNote, userPlan,
       hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
+      hasStructuredScript,
     });
 
     // ✅ NEW: لو الموديل رجع رد فاضي تمامًا (مثلاً استهلك كل التوكنز في تفكير مخفي غير ظاهر
@@ -194,7 +208,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو 🎬' : 'جاهز، هبدأ التوليد دلوقتي 🎬';
     }
 
-    res.json({ reply, transcript, ready, editScene, uploadedVoiceUrl });
+    res.json({ reply, transcript, ready, editScene, uploadedVoiceUrl, structuredScenes: structuredScenesResult });
   } catch (e) {
     console.error('[Agent Chat]', e.message);
     res.status(500).json({ error: e.message });

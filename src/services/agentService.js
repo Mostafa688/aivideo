@@ -145,17 +145,7 @@ HOW TO OPERATE:
    - "duration" must EXACTLY match one of the supported values for that model/plan combo above. For Model 7, still send it as a duration string in seconds, e.g. "20s" (you compute this from scene count internally: 3 scenes=15s, 4=20s, 5=25s, 6=30s).
    - "ratio" must be "9:16", "16:9", or "1:1".
    - "idea" vs "script" — CRITICAL, THIS IS A COMMON MISTAKE, READ CAREFULLY: "idea" is ALWAYS capped at 6 words or fewer — it is a short LABEL only, never the actual content. If the user gave you a TOPIC to expand creatively (e.g. "فيديو عن تاريخ مصر القديمة" / "a video about productivity tips"), that's idea mode — put the short label in "idea" and OMIT "script" entirely (or leave it empty string). But if the user typed or pasted their OWN exact narration text — full sentences meant to be spoken word-for-word in the video (this is what "script" means per the TERMINOLOGY section above, and it is EXTREMELY common for users to paste a full paragraph script directly in chat, not just via voice upload) — you MUST copy that text COMPLETELY AND VERBATIM into a "script" field: no summarizing, no shortening, no paraphrasing, no fixing wording, not even one word changed or dropped. In this case "idea" is still required but is ONLY a short 3-6 word label for display (e.g. "sperm whale documentary") — the REAL content lives in "script", not "idea". NEVER silently compress a full script the user gave you down into just the "idea" field and drop the rest — that produces a video with narration completely different from what the user wrote, which is a serious failure. When in doubt (the user's message is more than ~2 short sentences of narration-sounding text), prefer script mode and include the full "script" field.
-   - "structuredScenes" (Models 1/2/3/4 ONLY, never 5 or 7) — SMART SCENE-BREAKDOWN DETECTION, CRITICAL: some users paste a video that is ALREADY divided into scenes by them or by another tool — recognizable by patterns like "Scene 1", "Scene 2 (0:05-0:12)", explicit timestamp ranges, or labeled sub-fields per scene such as "Visual Prompt:" / "Narration:" / "On-screen Text:" / "Visual:" repeated for each scene. When you recognize this pattern, do NOT collapse it into "idea" or "script" — instead extract it directly into a "structuredScenes" array field, one object per scene IN THE SAME ORDER, and OMIT "idea"/"script" text content (keep "idea" as just a short 3-6 word label for display):
-     {"structuredScenes":[{"text":"exact Narration line(s) for scene 1, verbatim, original language","visual":"the scene's Visual Prompt translated to clear English if needed, verbatim in meaning — never invented or altered"}, {"text":"...","visual":"..."}, ...]}
-     Rules for this field:
-     - Extract EVERY scene the user listed — never skip, merge, split, or reorder any of them. The number of items in "structuredScenes" must exactly match the number of scenes the user gave you.
-     - "text" = ONLY the spoken Narration for that scene, copied exactly as written (do not include the scene label, timestamp, or "On-screen Text" line in it).
-     - "visual" = the scene's own Visual Prompt / visual description, not a generic guess — if the user wrote it in English already, keep it as-is; if they wrote a scene's visual description in Arabic or another language, translate it to English (Pexels/AI image search needs English) without adding or inventing details they didn't specify.
-     - If a scene has no explicit Visual Prompt but does have Narration, set "visual" to a short English description you infer strictly from that scene's own narration line — never from other scenes.
-     - "duration": pick the closest platform-supported duration bucket to what's stated (an explicit "Duration: X seconds/minutes" line, or the end timestamp of the last scene) — this is used only for pricing/credit-cost estimate. The ACTUAL video will always contain exactly the scenes the user listed regardless of how closely that matches a duration bucket — never add or remove scenes to force a match.
-     - "On-screen Text" / big bold hook overlays: Erivion currently does NOT support a separate on-screen-text overlay distinct from narration captions — if the user's breakdown includes this, do not claim you added it; captions (if enabled) are auto-generated from the narration audio itself, not from separate on-screen-text lines. Briefly and honestly mention this limitation once if the user's format clearly relies on it, then proceed with the rest normally.
-     - "Voice Style" hints (e.g. "male deep documentary voice") → map to the closest "voice" option (male_wise, male_american, male_arabic, female_american, female_arabic). "Music" hints (e.g. "epic cinematic, deep percussion") → set "music": true.
-     - This whole mechanism does not apply to Model 5 (uses characters/rawPrompt) or Model 7 (uses productDesc) — for those, fall back to the normal idea/prompt fields even if the user pasted a scene breakdown; just treat their per-scene visuals as extra useful context inside "idea"/"rawPrompt" instead.
+   - "structuredScenes" (Models 1/2 ONLY, never 3/4/5/7) — SMART SCENE-BREAKDOWN DETECTION: some users paste a video that is already divided into scenes (recognizable by patterns like "Scene 1", "Scene 2 (0:05-0:12)", labeled sub-fields per scene such as "Visual Prompt:" / "Narration:" / "On-screen Text:"). When this happens, the system AUTOMATICALLY parses it with code (not you) and tells you via an attachment note: "The user pasted a pre-divided scene breakdown with EXACTLY N scenes, already parsed and captured exactly as written...". CRITICAL: when you see that note, you must NEVER attempt to reproduce, copy, retype, or summarize the scene text yourself, and you must NEVER include a "structuredScenes" field in your own READY marker (omit it entirely — the system already has the real content, adding your own version would just create a second, worse copy prone to dropping scenes). Your ONLY job in this case is: (1) pick model 1 or 2 (ask if unclear — this breakdown format currently only works with these two), (2) pick ratio (ask if unclear), (3) pick the closest supported duration bucket to the note's stated duration (for pricing only — the real scene count is whatever N was, never invented or reduced), (4) map any voice-style hint to the closest "voice" option, (5) set "music" true/false per the note, (6) briefly mention that "On-screen Text" lines are not rendered as a separate overlay if the format relied on them (captions are auto-generated from narration audio only), (7) confirm with the user and emit a NORMAL READY marker (with "idea" as just a short 3-6 word label, and no "script"/"structuredScenes" fields at all).
 
    - "videoStyle" pick a sensible default style key for models 3/4/5 if the user didn't specify one (ignored for 1/2/7). STICKMAN RULE: if the user asks for a "stickman"/"stick figure" video (in Arabic or English, any wording), this is Model 5 ONLY, and ONLY in "idea to video" mode (promptMode:"idea" / omit promptMode) — never route a stickman request to Model 3, Model 4, prompt-mode, or image-mode, those don't have the special stickman pipeline. Keep the word "stickman" inside the "idea" text itself (even within the 6-word limit) — it triggers the dedicated stickman reference-image generation downstream. If the user already uploaded a real character photo, that photo is used as-is (normal Model 5 photo flow, no special stickman pipeline needed).
    STICKMAN STYLE QUESTION (optional, ask ONCE, only for stickman requests): before confirming, ask the user ONE quick optional question about the look — something like "تحب يبقى أبيض وأسود كلاسيكي (خطوط بس)، ولا رسمة 2D ملونة؟" / "Classic black-and-white line drawing, or full-color 2D cartoon style?" — if they don't care or don't answer clearly, default to classic black-and-white ("bw"). Set the "stickmanStyle" field to "bw" (default/classic black outline, plain background) or "2d" (full-color flat cartoon style). The background/setting itself (plain studio vs a specific place like a forest or desert) is controlled separately by whatever the user describes in the idea text — this style question is ONLY about black-and-white-line vs full-color-2D, not about location.
@@ -186,7 +176,7 @@ function authHeaders() {
 // ✅ FIX: hasPhoto/hasVoice بيوصلوا من الراوت كـ "حالة دائمة" مش بس ملاحظة لحظية —
 // لو العميل رفع صورة/صوت قبل كده في المحادثة (حتى لو خرجت بره نافذة الـ history)،
 // بنفضل نذكّر الموديل بيها في كل رسالة جاية عشان ميطلبش رفعها تاني أبدًا.
-export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', hasPhoto = false, hasVoice = false }) {
+export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', hasPhoto = false, hasVoice = false, hasStructuredScript = false }) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
   const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES).map(m => ({
@@ -197,6 +187,7 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
   let persistentNote = '';
   if (hasPhoto) persistentNote += ' A required character/product photo was already uploaded earlier in this conversation and is still available — never ask for it again, treat that requirement as fully satisfied.';
   if (hasVoice) persistentNote += ' A voice recording was already uploaded earlier in this conversation and its transcript was already used as the video idea/script — never ask the user to upload it again or to type a separate idea.';
+  if (hasStructuredScript) persistentNote += ' A scene-by-scene script breakdown was already parsed automatically earlier in this conversation and is fully captured by the system — never ask the user to repeat/resend it, and never include a "structuredScenes" field yourself (the system already has the real content).';
 
   const userContent = [message, attachmentNote ? `[${attachmentNote}]` : '', persistentNote ? `[${persistentNote.trim()}]` : '']
     .filter(Boolean).join('\n\n');
@@ -332,3 +323,60 @@ export async function analyzeSceneImage(photoBase64) {
 }
 
 export const AGENT_LIMITS = { MAX_AUDIO_SEC, MAX_AUDIO_MB, MAX_IMAGE_MB };
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: PURE PARSER — كشف واستخراج سكريبت متقسم بمشاهد جاهزة (Scene 1 /
+//  Visual Prompt / Narration / On-screen Text...) بكود عادي 100% (regex فقط).
+//  ═══════════════════════════════════════════════════════════════════════
+//  ليه بالكود مش بالـ AI؟ لأن أول نسخة من الميزة دي كانت بتطلب من الـ LLM نفسه
+//  إنه "ينسخ" كل المشاهد حرفيًا جوه رده — واتضح عمليًا إنه مش موثوق: مع سكريبت
+//  7 مشاهد رجّع بس 3 وسكت (تلخيص صامت من غير أي error)، خصوصًا إن فيه تعليمة
+//  عامة "كن مختصر جدًا دايمًا" في الـ system prompt بتاعه بتتعارض مع مطلب "انسخ
+//  كل حاجة حرفيًا". الاستخراج بكود عادي هنا مضمون 100% — مفيش نموذج لغوي حتى
+//  يقرب من النص، فمفيش أي احتمال تلخيص أو حذف أو هلوسة مهما كان عدد المشاهد.
+// ══════════════════════════════════════════════════════════════════════════
+export function parseStructuredScript(rawText) {
+  const text = String(rawText || '');
+  const sceneHeaderRe = /Scene\s+(\d+)\s*(?:\(([^)]*)\))?/gi;
+  const headers = [...text.matchAll(sceneHeaderRe)];
+  if (headers.length < 2) return null; // لازم على الأقل مشهدين متقسمين صراحة عشان نعتبره تقسيم حقيقي
+
+  const scenes = [];
+  for (let i = 0; i < headers.length; i++) {
+    const start = headers[i].index;
+    const end = i + 1 < headers.length ? headers[i + 1].index : text.length;
+    const block = text.slice(start, end);
+
+    const visualMatch = block.match(/Visual\s*Prompt\s*:?\s*([\s\S]*?)(?=Narration\s*:?|On-?screen\s*Text\s*:?|$)/i);
+    const narrationMatch = block.match(/Narration\s*:?\s*([\s\S]*?)(?=On-?screen\s*Text\s*:?|Visual\s*Prompt\s*:?|$)/i);
+
+    const visual = (visualMatch ? visualMatch[1] : '').replace(/\s+/g, ' ').trim();
+    const narration = (narrationMatch ? narrationMatch[1] : '').replace(/\s+/g, ' ').trim();
+
+    if (narration || visual) scenes.push({ text: narration, visual: visual || narration });
+  }
+  if (scenes.length < 2) return null;
+
+  // ── المدة الإجمالية: نص صريح "Duration: X seconds/minutes" أو آخر توقيت في آخر مشهد ──
+  let durationSec = null;
+  const durMatch = text.match(/Duration\s*:?\s*(\d+)\s*(second|sec|s\b|minute|min|m\b)/i);
+  if (durMatch) {
+    durationSec = /min/i.test(durMatch[2]) ? parseInt(durMatch[1]) * 60 : parseInt(durMatch[1]);
+  } else {
+    const timestamps = [...text.matchAll(/\(\s*\d+:\d+\s*-\s*(\d+):(\d+)\s*\)/g)];
+    if (timestamps.length) {
+      const last = timestamps[timestamps.length - 1];
+      durationSec = parseInt(last[1]) * 60 + parseInt(last[2]);
+    }
+  }
+
+  const voiceMatch = text.match(/Voice\s*Style\s*:?\s*([\s\S]*?)(?=\bMusic\s*:?|$)/i);
+  const musicMatch = text.match(/\bMusic\s*:?\s*([\s\S]*?)$/i);
+
+  return {
+    scenes,
+    durationSec,
+    voiceHint: voiceMatch ? voiceMatch[1].replace(/\s+/g, ' ').trim().slice(0, 200) : null,
+    hasMusic: !!(musicMatch && musicMatch[1].replace(/\s+/g, ' ').trim().length > 3),
+  };
+}
