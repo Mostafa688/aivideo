@@ -240,7 +240,7 @@ Output ${chunkCount} lines starting at index ${fromIndex}:`;
 // ============================================================
 // fetchChunk للـ SCRIPT mode (بيحافظ على نص الاسكريبت الأصلي)
 // ============================================================
-async function fetchChunkScript({ fromIndex, toIndex, scriptSegments, toneGuide, langGuide, totalScenes }) {
+async function fetchChunkScript({ fromIndex, toIndex, scriptSegments, toneGuide, langGuide, totalScenes, fullScript }) {
   const chunkCount = toIndex - fromIndex + 1;
 
   // نأخذ الـ segments الخاصة بالـ chunk ده
@@ -256,9 +256,21 @@ async function fetchChunkScript({ fromIndex, toIndex, scriptSegments, toneGuide,
     })
     .join('\n');
 
-  const prompt = `You are a video keyword extractor. For each scene below, output a JSON line with keywords ONLY in English.
-Do NOT change or paraphrase the text. Use the EXACT text provided.
+  // ✅ FIX: كان بيبعت لكل chunk جزء الاسكريبت الخاص بيه بس — فلو الجملة في المشهد ده بتتكلم
+  // عن "الكائن ده" أو بتستخدم ضمير (كان الاسم الحقيقي اتقال مرة واحدة بس في مشهد سابق)،
+  // الـ AI كان يستخرج keywords حرفية من نفس الجملة ("creature big brain") من غير ما يعرف
+  // إن الكلام أصلاً عن حوت العنبر مثلاً. دلوقتي بنبعت الاسكريبت الكامل كـ context عشان
+  // الـ AI يفهم الموضوع الحقيقي ويحل أي ضمير/إشارة عامة لاسمها الصريح قبل ما يبني الـ keywords.
+  const fullScriptContext = fullScript ? `
+FULL SCRIPT (context only — read this FIRST to understand the real subject(s) of the whole video. Do NOT use this text as narration, it is only so you can resolve pronouns/vague references in the scenes below):
+"""
+${fullScript.slice(0, 3000)}
+"""
+` : '';
 
+  const prompt = `You are a video keyword extractor. For each scene below, output a JSON line with keywords ONLY in English.
+Do NOT change or paraphrase the "text" field. Use the EXACT text provided for "text".
+${fullScriptContext}
 STRICTLY follow these types:
 ${segmentsForChunk.map((_, i) => {
   const sceneIndex = fromIndex + i;
@@ -269,14 +281,16 @@ ${segmentsForChunk.map((_, i) => {
 Format: {"index":N,"type":"hook|body|ending","text":"EXACT scene text","keywords":["w1","w2"],"visual":"specific visual description for this exact scene","prompt":"cinematic image generation prompt: [specific subject] [specific action] [specific setting] [lighting] [camera angle]. Sequential continuation matching the scene text exactly."}
 
 CRITICAL - keywords and prompt rules:
-- keywords MUST be a literal Pexels search query for what is VISUALLY HAPPENING in that exact scene
-- Think: what would you type in Pexels to find this exact footage?
-- If text says "snake attacking lion" → keywords: ["snake attacking lion"]
-- If text says "man searching in darkness" → keywords: ["man searching darkness"]
-- If text says "children playing in field" → keywords: ["children playing field"]
+- FIRST, read the FULL SCRIPT above and identify the real, specific subject(s) of the video (e.g. a particular animal species, a historical figure, a place, an object, an event) — even if that subject's name is only mentioned ONCE early in the script and later scenes only refer to it with pronouns ("it", "he") or vague/generic words ("this creature", "the giant", "that thing", "the structure").
+- When THIS scene's text uses a pronoun or a generic/descriptive reference instead of the real name, your keywords and visual MUST use the REAL, SPECIFIC subject resolved from the full script — NOT the generic wording of this isolated scene's text.
+  - Example: script is about a sperm whale; this scene's text is "a creature with a brain bigger than a bus" → keywords: ["sperm whale head"], NOT ["creature big brain"].
+  - Example: script is about the Giza pyramids; this scene's text is "no one truly knows how they built it" → keywords: ["Giza pyramid construction"], NOT ["mystery unknown building"].
+  - Example: text says "snake attacking lion" (subject already explicit) → keywords: ["snake attacking lion"].
+- keywords MUST still be a literal Pexels search query for what is VISUALLY HAPPENING in that exact scene, but grounded in the real, specific subject — think: what would you type in Pexels to find this exact footage of the ACTUAL subject?
 - NEVER use abstract single words like "motivation", "success", "hope" alone
-- ALWAYS include: specific subject + specific action (+ setting if relevant)
-- prompt MUST be detailed AI image generation prompt with subject + action + setting + lighting
+- NEVER use vague placeholder subjects like "creature", "thing", "structure", "it" in keywords when the full script already reveals the specific real name/type — always substitute the real name/type instead
+- ALWAYS include: specific real subject + specific action (+ setting if relevant)
+- prompt MUST be detailed AI image generation prompt with the real subject + action + setting + lighting
 - Example: "Young woman crying alone in hospital corridor, fluorescent lighting, shallow depth of field, cinematic"
 - Each scene prompt MUST show SEQUENTIAL story progression - reference what happened before
 
@@ -435,6 +449,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
           scriptSegments,
           toneGuide, langGuide,
           totalScenes: sceneCount,
+          fullScript: script,
         }));
 
         // ✅ لو AI عدّل النص، نرجعه للنص الأصلي
