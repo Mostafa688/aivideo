@@ -901,7 +901,7 @@ export async function renderModel5Video({
 //  بشكل ثابت في كل مرة — عشان الجودة تفضل ثابتة ومتسقة، مش معتمدة على إن الإيجنت (LLM)
 //  يفتكر كل قواعد الستايل دي في كل مرة. الإيجنت مسؤوليته الوحيدة إنه يوصف "الموضوع/السيناريو"
 //  بالإنجليزي بس (ready.mapVideoTopic) — الباقي كله بيتضاف هنا تلقائيًا.
-export async function renderModel5MapVideo({ topic, ratio = '16:9', jobId }) {
+export async function renderModel5MapVideo({ topic, ratio = '16:9', jobId, openingCaption = null, closingCaption = null, narrationScript = null }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
   await mkdir(TEMP_DIR, { recursive: true });
 
@@ -913,8 +913,25 @@ export async function renderModel5MapVideo({ topic, ratio = '16:9', jobId }) {
 
   console.log(`[Model5-Map] START | topic: "${cleanTopic.slice(0, 100)}" | ${ratio} | Seedance 2.0 Fast | 15s`);
 
+  // ✅ FIX: كابشن مستمر طول الفيديو كان بيخلي Seedance "يهلوس" في الحروف بعد أول كام كلمة
+  // (مشكلة معروفة في نماذج توليد الفيديو — كل ما زاد طول/عدد النص المطلوب رسمه، زادت فرصة
+  // تشويه الحروف). دلوقتي كابشن قصير مرتين بس — جملة في أول ثانيتين وجملة في آخر ثانيتين،
+  // ومفيش نص خالص في النص — ده بيقلل عدد "محاولات الرسم" اللي ممكن تتشوّه بشكل كبير.
+  const openCap = String(openingCaption || '').trim().slice(0, 40);
+  const closeCap = String(closingCaption || '').trim().slice(0, 40);
+  const captionInstruction = (openCap || closeCap)
+    ? `On-screen caption text appears ONLY at two moments in this video, never continuously: ${openCap ? `during the first 2 seconds, a short bold caption reads exactly "${openCap}"` : 'no caption in the opening'}${openCap && closeCap ? ', then no caption text for the entire middle of the video, then ' : (closeCap ? ', then ' : '')}${closeCap ? `during the final 2 seconds, a short bold caption reads exactly "${closeCap}"` : ''}. Clean bold sans-serif typography, high contrast, subtle dark background box behind the text for readability. Do NOT add any other on-screen text, labels, or captions at any other point in the video — keep all other moments completely free of text.`
+    : `No on-screen caption text anywhere in this video — keep the entire video completely free of any text overlays.`;
+
+  // ✅ NEW: العميل ممكن يحدد كلام السكريبت بالظبط اللي يتقال، أو يسيب Seedance يأدي رواية
+  // حرة تناسب الموضوع تلقائيًا — الاختيار ده بيتحدد من الإيجنت حسب رغبة العميل
+  const cleanScript = String(narrationScript || '').trim();
+  const narrationInstruction = cleanScript
+    ? `The narrator must speak these exact words, in this exact order, as the full spoken narration — do not add, remove, or change any words: "${cleanScript.slice(0, 500)}"`
+    : `A confident, clear, professional male documentary narrator voice-over in English narrates the story throughout, freely composing natural documentary narration that fits the topic, matching the pacing and energy of the visuals and cuts.`;
+
   // ── البرومبت الهندسي الثابت — بيتضاف حوالين موضوع العميل في كل مرة ────────
-  const fullPrompt = `A hyper-realistic Google-Earth-style satellite map documentary short, in the visual style of professional history/geopolitics map-explainer channels. The world map is real, accurate, and physically correct — realistic ocean texture, terrain, and geography, viewed from a satellite/orbital angle — never a flat, cartoon, or stylized map. Topic and story of this exact video: ${cleanTopic}. Represent every country or territory mentioned at its precise, correct real-world geographic borders — accuracy of location and shape matters more than anything else. Color each country's territory with its real national flag pattern, rendered as a flat overlay fitted exactly to its true borders, clearly visible against the satellite terrain beneath it. If a mentioned country, empire, or territory is ancient or historical and has no real national flag from that era, fill its correct territory instead with one single solid distinct color — never invent a fictional flag, and never distort or move its real historical borders. Cinematic documentary camera work throughout: smooth dynamic zooms, orbital pans, and a fast-paced montage editing style with clean, purposeful cuts between angles and moments as the story progresses — this must NOT be one static locked shot, it must feel like a fast, punchy, professional map-documentary edit. Fast-paced, bold, modern on-screen caption text appears throughout, tightly synced to the narration, in short punchy phrases, clean bold sans-serif typography with strong contrast and a subtle background box for readability, timed to a fast-cut documentary pace. A confident, clear, professional male documentary narrator voice-over in English narrates the story throughout, matching the pacing and energy of the visuals and cuts. No on-screen watermarks, no channel names, no subscribe buttons, no logos. High production value, in the style of a viral National-Geographic-quality historical or geopolitical map documentary short.`;
+  const fullPrompt = `A hyper-realistic Google-Earth-style satellite map documentary short, in the visual style of professional history/geopolitics map-explainer channels. The world map is real, accurate, and physically correct — realistic ocean texture, terrain, and geography, viewed from a satellite/orbital angle — never a flat, cartoon, or stylized map. Topic and story of this exact video: ${cleanTopic}. Represent every country or territory mentioned at its precise, correct real-world geographic borders — accuracy of location and shape matters more than anything else. Color each country's territory with its real national flag pattern, rendered as a flat overlay fitted exactly to its true borders, clearly visible against the satellite terrain beneath it. If a mentioned country, empire, or territory is ancient or historical and has no real national flag from that era, fill its correct territory instead with one single solid distinct color — never invent a fictional flag, and never distort or move its real historical borders. Cinematic documentary camera work throughout: smooth dynamic zooms, orbital pans, and a fast-paced montage editing style with clean, purposeful cuts between angles and moments as the story progresses — this must NOT be one static locked shot, it must feel like a fast, punchy, professional map-documentary edit. ${captionInstruction} ${narrationInstruction} No on-screen watermarks, no channel names, no subscribe buttons, no logos. High production value, in the style of a viral National-Geographic-quality historical or geopolitical map documentary short.`;
 
   let videoUrl;
   try {

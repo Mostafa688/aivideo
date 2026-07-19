@@ -1800,7 +1800,7 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
 // بـ Seedance 2.0 Fast، كل حاجة (الخريطة، المونتاج، الكابشن، الفويس أوفر) بتتعمل جوه
 // الموديل نفسه من برومبت هندسي واحد — مفيش scenes، مفيش صور شخصيات، مفيش معالجة إضافية.
 app.post('/api/model5/map-video', authMiddleware, renderLimiter, async (req, res) => {
-  const { topic, ratio } = req.body;
+  const { topic, ratio, openingCaption, closingCaption, narrationScript } = req.body;
   if (!topic || !String(topic).trim()) return res.status(400).json({ error: 'topic is required' });
 
   const mapUser = await getUserById(req.user.userId);
@@ -1810,7 +1810,7 @@ app.post('/api/model5/map-video', authMiddleware, renderLimiter, async (req, res
   }
 
   // ✅ فحص أمان المحتوى — نفس الفحص المستخدم في كل مكان تاني بيستقبل نص من العميل
-  const modCheck = await checkContentSafety(String(topic).slice(0, 1500));
+  const modCheck = await checkContentSafety(String(topic).slice(0, 1500) + ' ' + String(narrationScript || '').slice(0, 500));
   if (modCheck.unsafe) {
     return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
   }
@@ -1835,7 +1835,7 @@ app.post('/api/model5/map-video', authMiddleware, renderLimiter, async (req, res
   res.status(202).json({ jobId: mapJobId, status: 'processing', creditCost: mapCreditCost });
   (async () => {
     try {
-      const videoPath = await renderModel5MapVideo({ topic, ratio: ratio || '16:9', jobId: mapJobId });
+      const videoPath = await renderModel5MapVideo({ topic, ratio: ratio || '16:9', jobId: mapJobId, openingCaption, closingCaption, narrationScript });
       setRenderJob(mapJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
     } catch (jobErr) {
       setRenderJob(mapJobId, { status: 'failed', error: jobErr.message || 'Map video render failed.', completedAt: Date.now() });

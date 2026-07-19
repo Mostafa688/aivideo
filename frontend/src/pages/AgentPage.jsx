@@ -565,7 +565,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       const wantMusic = ready.music === true; // default false
       if (isMapVideo) {
         renderUrl = '/api/model5/map-video';
-        renderBody = { topic: ready.mapVideoTopic || ready.idea, ratio: ready.ratio || '16:9' };
+        renderBody = {
+          topic: ready.mapVideoTopic || ready.idea,
+          ratio: ready.ratio || '16:9',
+          openingCaption: ready.mapVideoOpeningCaption || '',
+          closingCaption: ready.mapVideoClosingCaption || '',
+          narrationScript: ready.mapVideoScript || '',
+        };
       } else if (isM12) {
         renderUrl = '/api/render';
         renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: wantMusic, captions: wantCaptions, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: videoLang };
