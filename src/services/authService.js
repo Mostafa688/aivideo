@@ -130,6 +130,7 @@ async function initDB() {
     ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS credits_purchased INTEGER DEFAULT NULL;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_balance INTEGER DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trustpilot_prompted INTEGER DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_week_reset TEXT DEFAULT NULL;
     CREATE TABLE IF NOT EXISTS feedback_ratings (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id),
@@ -237,6 +238,37 @@ export async function logLoginEvent(userId, email, method = 'password') {
   try {
     await pool.query('INSERT INTO login_events (user_id, email, method) VALUES ($1, $2, $3)', [userId, email, method]);
   } catch (e) { console.warn('[LoginEvent] failed:', e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: تجديد أسبوعي لـ 15 كريديت المستخدم "الفري" بس — النظام العادي (credits_balance)
+//  رصيد واحد بيتخصم منه ولا يترجّع إلا لو المستخدم اشترى/اشترك، وده يفضل زي ما هو تمامًا
+//  لأي حد مشترك (plan !== 'free'). البند ده بيضيف استثناء واحد بس: أي مستخدم لسه على باقة
+//  "free" (يعني معملش أي اشتراك خالص)، رصيده بيترجّع لـ 15 كريديت (SIGNUP_BONUS_CREDITS)
+//  في أول مرة يستخدم فيها الموقع بعد بداية أسبوع جديد — مش تراكم فوق اللي معاه، إعادة ضبط.
+//  بمجرد ما يشترك (plan يبقى غير 'free')، الدالة دي مش بتلمس رصيده تاني خالص.
+export async function maybeRenewFreeWeeklyCredits(userId) {
+  try {
+    const weekStart = getWeekStart();
+    const { rows } = await pool.query('SELECT plan, credits_balance, free_credits_week_reset FROM users WHERE id = $1', [userId]);
+    const user = rows[0];
+    if (!user || user.plan !== 'free') return; // مشترك أو مستخدم غير موجود — منلمسش رصيده خالص
+    if (user.free_credits_week_reset === weekStart) return; // اتجدد الأسبوع ده خلاص، مفيش داعي نكرر
+    // ✅ نرفع الرصيد لـ 15 بس لو أقل منها — منقللوش أبدًا. ده بيحمي أي رصيد متبقي (مثلاً
+    // مستخدم كان مشترك واشترى كريديت زيادة وبعدين اشتراكه خلص ورجع "free" — رصيده المشترى
+    // يفضل زي ما هو، مش بيتصفر لـ 15. الحماية دي بس لصالح المستخدم، مش تجديد فعلي لباقي المشتركين.
+    const currentBalance = user.credits_balance || 0;
+    const newBalance = Math.max(currentBalance, SIGNUP_BONUS_CREDITS);
+    await pool.query(
+      'UPDATE users SET credits_balance = $1, free_credits_week_reset = $2 WHERE id = $3',
+      [newBalance, weekStart, userId]
+    );
+    if (newBalance > currentBalance) {
+      console.log(`[FreeCredits] Weekly renewal: user ${userId} topped up ${currentBalance} → ${newBalance} credits (week ${weekStart})`);
+    }
+  } catch (e) {
+    console.warn('[FreeCredits] Weekly renewal check failed:', e.message);
+  }
 }
 
 export async function getUserById(userId) {
@@ -357,6 +389,7 @@ export const CREDITS_PACKAGES = {
 };
 
 export async function getCreditsBalance(userId) {
+  await maybeRenewFreeWeeklyCredits(userId);
   const { rows } = await pool.query('SELECT COALESCE(credits_balance, 0) as balance FROM users WHERE id = $1', [userId]);
   return rows[0]?.balance || 0;
 }
@@ -498,6 +531,7 @@ export async function verifyCode(email, code) {
   const { rows: users } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
   const user = users[0];
   await checkAndResetUsage(user.id);
+  await maybeRenewFreeWeeklyCredits(user.id);
   const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '30d' });
   return { token, email, plan: user.plan || 'free', isNewUser: true, userId: user.id };
 }
@@ -510,6 +544,7 @@ export async function login(email, password) {
   const match = await bcrypt.compare(password, user.password);
   if (!match) throw new Error('Invalid email or password');
   await checkAndResetUsage(user.id);
+  await maybeRenewFreeWeeklyCredits(user.id);
   const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, { expiresIn: '30d' });
   const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
   const userName = user.name || email.split('@')[0];
@@ -542,6 +577,7 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
     user = newRows[0];
   }
   await checkAndResetUsage(user.id);
+  await maybeRenewFreeWeeklyCredits(user.id);
   const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
   logLoginEvent(user.id, user.email, 'google').catch(() => {});
   return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: false };
