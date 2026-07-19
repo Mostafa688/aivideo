@@ -471,11 +471,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
     try {
       let scenes = [];
+      // ✅ NEW: Model 5 Map Video — مفيش scenes، مفيش صوت، مفيش صور شخصيات خالص. Seedance بيعمل
+      // كل حاجة من برومبت واحد على السيرفر. بنتخطى توليد المشاهد والصوت بالكامل ونروح على طول للرندر
+      const isMapVideo = ready.model === 5 && ready.isMapVideo === true;
 
       // ✅ Voice-to-Video / Typed Script / Structured Scenes: لو فيه صوت مرفوع، سكريبت مكتوب،
       // أو تقسيم مشاهد جاهز من العميل، نستخدمهم زي ما هم بدل ما نولّد محتوى جديد بعيد عنهم
       const hasUploadedScript = ready.model !== 5 && !!scriptText;
 
+      if (!isMapVideo) {
       if (isM12) {
         // موديل 1/2: توليد السكريبت أولاً عبر SSE
         // ✅ FIX: كنا بنحوّل "30s" غلط لـ "auto" وده كان بيولّد 8 مشاهد (حجم دقيقة) بدل 4 (حجم 30 ثانية فعليًا)
@@ -533,6 +537,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         );
         scenes = scenesData.scenes || [];
       }
+      } // end !isMapVideo
 
       if (!activeJobRef.current) return;
 
@@ -558,7 +563,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       let renderUrl, renderBody;
       const wantCaptions = ready.captions !== false; // default true
       const wantMusic = ready.music === true; // default false
-      if (isM12) {
+      if (isMapVideo) {
+        renderUrl = '/api/model5/map-video';
+        renderBody = { topic: ready.mapVideoTopic || ready.idea, ratio: ready.ratio || '16:9' };
+      } else if (isM12) {
         renderUrl = '/api/render';
         renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: wantMusic, captions: wantCaptions, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: videoLang };
       } else if (ready.model === 3) {

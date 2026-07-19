@@ -291,7 +291,7 @@ async function generateReferenceImage(photoBase64OrUrl, scenePrompt, ratio = '9:
 // vs "a character reference" is decided ENTIRELY by how the prompt talks about [Image1]/[Image2]/etc,
 // not by a separate parameter. Sending first_frame_image (an unknown field) was being silently
 // ignored by Replicate, so the model fell back to pure text-to-video — which matches the bug reported.
-async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, imageUrls = null) {
+async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, imageUrls = null, resolution = '480p') {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const headers = {
     'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
@@ -319,7 +319,7 @@ async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, i
     console.log(`[Model5] Seedance multi-character reference — ${urls.length} characters combined into one scene`);
   }
 
-  const input = { prompt, aspect_ratio: ratio, resolution: '480p', duration, fps: 24 };
+  const input = { prompt, aspect_ratio: ratio, resolution, duration, fps: 24 };
   if (urls.length === 1) {
     input.image = urls[0]; // ✅ singular field = strict first-frame lock (matches Ads' working approach)
   } else if (urls.length > 1) {
@@ -888,5 +888,57 @@ export async function renderModel5Video({
   }, 60000);
 
   console.log(`[Model5] DONE → ${outputPath}`);
+  return outputFile;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: Model 5 — MAP VIDEO (تاريخي/جيوسياسي/اقتصادي) — Seedance 2.0 Fast
+// ══════════════════════════════════════════════════════════════════════════
+//  فرق جوهري عن renderModel5Video العادي فوق: هنا مفيش scenes متعددة، مفيش صور شخصيات،
+//  مفيش FLUX Kontext، ومفيش أي معالجة بعد كده (لا كابشن بالـ ffmpeg ولا صوت منفصل). كليب
+//  واحد بس بمدة 15 ثانية ثابتة، وكل حاجة (شكل الخريطة الحقيقي، حركة الكاميرا/المونتاج،
+//  الكابشن السريع، الفويس أوفر بالإنجليزي) متضمنة جوه برومبت هندسي واحد شامل بنبنيه هنا
+//  بشكل ثابت في كل مرة — عشان الجودة تفضل ثابتة ومتسقة، مش معتمدة على إن الإيجنت (LLM)
+//  يفتكر كل قواعد الستايل دي في كل مرة. الإيجنت مسؤوليته الوحيدة إنه يوصف "الموضوع/السيناريو"
+//  بالإنجليزي بس (ready.mapVideoTopic) — الباقي كله بيتضاف هنا تلقائيًا.
+export async function renderModel5MapVideo({ topic, ratio = '16:9', jobId }) {
+  await mkdir(OUTPUTS_DIR, { recursive: true });
+  await mkdir(TEMP_DIR, { recursive: true });
+
+  const id = jobId || Date.now();
+  const outputFile = 'video_' + id + '.mp4';
+  const outputPath = path.join(OUTPUTS_DIR, outputFile);
+  const cleanTopic = String(topic || '').trim();
+  if (!cleanTopic) throw new Error('Map video topic is required');
+
+  console.log(`[Model5-Map] START | topic: "${cleanTopic.slice(0, 100)}" | ${ratio} | Seedance 2.0 Fast | 15s`);
+
+  // ── البرومبت الهندسي الثابت — بيتضاف حوالين موضوع العميل في كل مرة ────────
+  const fullPrompt = `A hyper-realistic Google-Earth-style satellite map documentary short, in the visual style of professional history/geopolitics map-explainer channels. The world map is real, accurate, and physically correct — realistic ocean texture, terrain, and geography, viewed from a satellite/orbital angle — never a flat, cartoon, or stylized map. Topic and story of this exact video: ${cleanTopic}. Represent every country or territory mentioned at its precise, correct real-world geographic borders — accuracy of location and shape matters more than anything else. Color each country's territory with its real national flag pattern, rendered as a flat overlay fitted exactly to its true borders, clearly visible against the satellite terrain beneath it. If a mentioned country, empire, or territory is ancient or historical and has no real national flag from that era, fill its correct territory instead with one single solid distinct color — never invent a fictional flag, and never distort or move its real historical borders. Cinematic documentary camera work throughout: smooth dynamic zooms, orbital pans, and a fast-paced montage editing style with clean, purposeful cuts between angles and moments as the story progresses — this must NOT be one static locked shot, it must feel like a fast, punchy, professional map-documentary edit. Fast-paced, bold, modern on-screen caption text appears throughout, tightly synced to the narration, in short punchy phrases, clean bold sans-serif typography with strong contrast and a subtle background box for readability, timed to a fast-cut documentary pace. A confident, clear, professional male documentary narrator voice-over in English narrates the story throughout, matching the pacing and energy of the visuals and cuts. No on-screen watermarks, no channel names, no subscribe buttons, no logos. High production value, in the style of a viral National-Geographic-quality historical or geopolitical map documentary short.`;
+
+  let videoUrl;
+  try {
+    // ✅ resolution 720p (أعلى من الـ 480p الافتراضي بتاع Model 5 العادي) — لازم وضوح أعلى
+    // هنا عشان تفاصيل حدود الدول والكابشن يبانوا واضحين، مش زي فيديو شخصية عادي مفيهوش نص
+    videoUrl = await generateSeedance2Clip(fullPrompt, ratio, 15, [], '720p');
+  } catch (e) {
+    console.error('[Model5-Map] Seedance generation failed:', e.message);
+    throw new Error('Map video generation failed: ' + e.message);
+  }
+
+  const rawPath = path.join(TEMP_DIR, `m5map_raw_${id}.mp4`);
+  await downloadVideo(videoUrl, rawPath);
+
+  try {
+    execSync(`ffmpeg -i "${rawPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' });
+  } catch {
+    fs.copyFileSync(rawPath, outputPath);
+  }
+
+  setTimeout(() => {
+    try { if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath); } catch {}
+  }, 60000);
+
+  console.log(`[Model5-Map] DONE → ${outputPath}`);
   return outputFile;
 }

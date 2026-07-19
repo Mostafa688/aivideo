@@ -13,7 +13,7 @@ import { generateVoiceover, generateVoiceoverPerScene, VOICE_OPTIONS } from './s
 import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
 import { renderModel3Video } from './services/stabilityService.js';
-import { renderModel4Video, renderModel5Video, generateStickmanCharacterImage } from './services/seedanceService.js';
+import { renderModel4Video, renderModel5Video, renderModel5MapVideo, generateStickmanCharacterImage } from './services/seedanceService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings } from './services/authService.js';
 import adminRouter from './services/adminRoutes.js';
@@ -1792,6 +1792,56 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     } finally {
       activeRenderCount--;
       scheduleRenderJobCleanup(renderJobId);
+    }
+  })();
+});
+
+// ✅ NEW: Model 5 — MAP VIDEO (فيديو خريطة تاريخي/جيوسياسي/اقتصادي) — كليب واحد 15 ثانية
+// بـ Seedance 2.0 Fast، كل حاجة (الخريطة، المونتاج، الكابشن، الفويس أوفر) بتتعمل جوه
+// الموديل نفسه من برومبت هندسي واحد — مفيش scenes، مفيش صور شخصيات، مفيش معالجة إضافية.
+app.post('/api/model5/map-video', authMiddleware, renderLimiter, async (req, res) => {
+  const { topic, ratio } = req.body;
+  if (!topic || !String(topic).trim()) return res.status(400).json({ error: 'topic is required' });
+
+  const mapUser = await getUserById(req.user.userId);
+  if (!mapUser) return res.status(401).json({ error: 'User not found' });
+  if ((mapUser?.plan || 'free') === 'free') {
+    return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 5.', show_upgrade: true });
+  }
+
+  // ✅ فحص أمان المحتوى — نفس الفحص المستخدم في كل مكان تاني بيستقبل نص من العميل
+  const modCheck = await checkContentSafety(String(topic).slice(0, 1500));
+  if (modCheck.unsafe) {
+    return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
+  }
+
+  // ✅ نفس معادلة تسعير موديل 5 العادي عند 15 ثانية وبدون صور (0 photos) — نفس التكلفة الحقيقية بالظبط
+  const mapCreditCost = getModel5CreditCost('15s', 0);
+  const mapBalance = await getCreditsBalance(req.user.userId);
+  if (mapBalance < mapCreditCost) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${mapCreditCost} credits, you have ${mapBalance}.`, cost: mapCreditCost, remaining: mapBalance });
+  }
+  if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+    return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+  }
+  const mapCharge = await chargeCredits(req.user.userId, mapCreditCost);
+  if (!mapCharge.success) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${mapCreditCost} credits, you have ${mapCharge.remaining}.`, cost: mapCreditCost, remaining: mapCharge.remaining });
+  }
+
+  const mapJobId = String(Date.now());
+  activeRenderCount++;
+  setRenderJob(mapJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+  res.status(202).json({ jobId: mapJobId, status: 'processing', creditCost: mapCreditCost });
+  (async () => {
+    try {
+      const videoPath = await renderModel5MapVideo({ topic, ratio: ratio || '16:9', jobId: mapJobId });
+      setRenderJob(mapJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
+    } catch (jobErr) {
+      setRenderJob(mapJobId, { status: 'failed', error: jobErr.message || 'Map video render failed.', completedAt: Date.now() });
+    } finally {
+      activeRenderCount--;
+      scheduleRenderJobCleanup(mapJobId);
     }
   })();
 });
