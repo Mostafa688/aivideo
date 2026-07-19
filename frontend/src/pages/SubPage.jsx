@@ -200,6 +200,7 @@ function HowToUseContent() {
 
 function AboutContent() {
   return <>
+    <Section title="Who We Are">Erivion is proudly Egyptian-founded — and built from day one for a global audience. We're not a local-only product; creators and businesses use Erivion worldwide, in 8+ languages.</Section>
     <Section title="Our Mission">To make professional video creation accessible to everyone — no expensive software or editing experience required.</Section>
     <Section title="What We Do">Erivion is an AI-powered video generation platform. Provide an idea, a script, or a product photo, and we handle scenes, footage, character-consistent video, voiceovers, captions, music, and effects — including full AI video ads from a single product image.</Section>
     <Section title="Our Technology">State-of-the-art language models for scripting, image and video generation models for visuals, neural text-to-speech for voiceovers, and a professional rendering pipeline built on FFmpeg. Supporting 8+ languages.</Section>
