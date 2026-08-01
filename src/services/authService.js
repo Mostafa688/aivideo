@@ -403,7 +403,11 @@ export async function getCreditsBalance(userId) {
 //  EGP_PER_CREDIT الحقيقيين — لو الأسعار اتغيرت هناك، الإيميل هيعرض الجديد تلقائيًا.
 // ══════════════════════════════════════════════════════════════════════════
 async function sendWelcomeUpgradeEmail(email, name) {
-  const siteUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';
+  // ✅ FIX: كان بيفضّل SITE_URL الأول — ده غالبًا دومين الباك إند/الـ API مش دومين الموقع
+  // نفسه اللي المستخدم مسجل دخول فيه، فالرابط كان بيوديه لأوريجن مختلف مفيهوش الـ token
+  // المحفوظ في localStorage، فيطلب تسجيل دخول تاني. دلوقتي FRONTEND_URL الأول زي كل روابط
+  // اللوجين التانية في الكود، عشان يفضل نفس الدومين اللي فيه الجلسة بالظبط.
+  const siteUrl = process.env.FRONTEND_URL || process.env.SITE_URL || 'https://erivion.net';
   const pricingUrl = `${siteUrl}/pricing`;
   const firstName = (name || '').split(' ')[0] || email.split('@')[0];
 
@@ -426,8 +430,8 @@ async function sendWelcomeUpgradeEmail(email, name) {
     `<tr>
       <td style="padding:10px 0;border-bottom:1px solid #24243a;color:#fff;font-weight:600">${p.name}</td>
       <td style="padding:10px 0;border-bottom:1px solid #24243a;color:#9ca3af;font-size:13px">${p.credits} ${'كريديت / credits'}</td>
-      <td style="padding:10px 0;border-bottom:1px solid #24243a;color:#7c6af7;font-weight:700;text-align:center">${Math.round(p.credits * EGP_PER_CREDIT)} ${'ج.م'}</td>
-      <td style="padding:10px 0;border-bottom:1px solid #24243a;color:#7c6af7;font-weight:700;text-align:center">$${p.usd}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #24243a;color:#7c6af7;font-weight:700;text-align:center">${Math.round(p.credits * EGP_PER_CREDIT)} ${'ج.م'}</td>
+      <td style="padding:10px 0 10px 12px;border-bottom:1px solid #24243a;border-left:1px solid #33334d;color:#7c6af7;font-weight:700;text-align:center">$${p.usd}</td>
     </tr>`
   ).join('');
 
@@ -446,7 +450,6 @@ async function sendWelcomeUpgradeEmail(email, name) {
         <li>تنتج محتوى ديني/تعليمي/ترفيهي بانتظام من غير ما تستنى تجديد أسبوعي</li>
         <li>توفر فلوس برامج المونتاج والموشن جرافيكس تمامًا</li>
       </ul>
-      <p style="font-size:13.5px;line-height:1.8;color:#9ca3af;margin:0 0 8px">وأسعارنا من الأرخص في السوق أصلًا مقارنة بمنصات الفيديو بالذكاء الاصطناعي التانية.</p>
       ${ratingLine_ar}
     </div>
 
@@ -459,7 +462,6 @@ async function sendWelcomeUpgradeEmail(email, name) {
         <li>Produce content regularly without waiting on a weekly reset</li>
         <li>Skip expensive editing software and motion design entirely</li>
       </ul>
-      <p style="font-size:13.5px;line-height:1.8;color:#9ca3af;margin:0 0 8px">And we're already priced well below other AI video platforms out there.</p>
       ${ratingLine_en}
     </div>
 
@@ -471,8 +473,8 @@ async function sendWelcomeUpgradeEmail(email, name) {
         <tr>
           <td style="color:#6b7280;font-size:11px;padding-bottom:6px">الباقة / Plan</td>
           <td style="color:#6b7280;font-size:11px;padding-bottom:6px">الكمية / Amount</td>
-          <td style="color:#6b7280;font-size:11px;padding-bottom:6px;text-align:center">EGP</td>
-          <td style="color:#6b7280;font-size:11px;padding-bottom:6px;text-align:center">USD</td>
+          <td style="color:#6b7280;font-size:11px;padding-bottom:6px;text-align:center">🇪🇬 EGP</td>
+          <td style="color:#6b7280;font-size:11px;padding-bottom:6px;text-align:center;border-left:1px solid #33334d;padding-left:12px">🌍 USD</td>
         </tr>
         ${rows}
       </table>
