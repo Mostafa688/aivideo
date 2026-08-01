@@ -131,6 +131,7 @@ async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_balance INTEGER DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trustpilot_prompted INTEGER DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_week_reset TEXT DEFAULT NULL;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS upgrade_email_week TEXT DEFAULT NULL;
     CREATE TABLE IF NOT EXISTS feedback_ratings (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id),
@@ -394,6 +395,120 @@ export async function getCreditsBalance(userId) {
   return rows[0]?.balance || 0;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: إيميل تحفيزي للاشتراك — رسالة واحدة بس، بلغتين (عربي + إنجليزي مع بعض) وبكل
+//  الأسعار (جنيه ودولار مع بعض)، بتتبعت بس عند تسجيل الدخول (مش أي حدث تاني)، وبس لمستخدمين
+//  "free" (المشترك مالوش داعي حد يحفزه يشترك تاني)، ومرة واحدة بالأسبوع بالكتير لكل مستخدم
+//  (عشان مايبقاش spam ويستهلك كوتة Resend). الأسعار بتتاخد مباشرة من CREDITS_PACKAGES/
+//  EGP_PER_CREDIT الحقيقيين — لو الأسعار اتغيرت هناك، الإيميل هيعرض الجديد تلقائيًا.
+// ══════════════════════════════════════════════════════════════════════════
+async function sendWelcomeUpgradeEmail(email, name) {
+  const siteUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';
+  const pricingUrl = `${siteUrl}/pricing`;
+  const firstName = (name || '').split(' ')[0] || email.split('@')[0];
+
+  // ✅ NEW: بدل مقارنة أسماء منافسين، إثبات ثقة حقيقي من تقييمات عملائنا الفعليين (نفس
+  // الأرقام الظاهرة في صفحة الأدمن Ratings) — بيتحسب لايف من نفس الجدول، مش رقم ثابت
+  let ratingLine_ar = '', ratingLine_en = '';
+  try {
+    const { rows } = await pool.query('SELECT ROUND(AVG(rating)::numeric, 1) as avg, COUNT(*) as total FROM feedback_ratings');
+    const avg = rows[0]?.avg;
+    const total = parseInt(rows[0]?.total || 0);
+    if (avg && total >= 10) { // ✅ مانعرضش الإحصائية إلا لو فيه عدد تقييمات محترم (مصداقية)
+      ratingLine_ar = `<p style="font-size:13.5px;line-height:1.8;color:#9ca3af;margin:0">⭐ تقييم ${avg} من 5، من ${total} تقييم حقيقي من عملائنا.</p>`;
+      ratingLine_en = `<p style="font-size:13.5px;line-height:1.8;color:#9ca3af;margin:0">⭐ Rated ${avg}/5 by ${total} real customers.</p>`;
+    }
+  } catch (e) { console.warn('[UpgradeEmail] rating stats query failed:', e.message); }
+
+  // ✅ أرخص 3 باقات بس عشان الإيميل يفضل مختصر ومقنع، مش قايمة أسعار كاملة مملة
+  const topPackages = Object.values(CREDITS_PACKAGES).slice(0, 3);
+  const rows = topPackages.map(p =>
+    `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #24243a;color:#fff;font-weight:600">${p.name}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #24243a;color:#9ca3af;font-size:13px">${p.credits} ${'كريديت / credits'}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #24243a;color:#7c6af7;font-weight:700;text-align:center">${Math.round(p.credits * EGP_PER_CREDIT)} ${'ج.م'}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #24243a;color:#7c6af7;font-weight:700;text-align:center">$${p.usd}</td>
+    </tr>`
+  ).join('');
+
+  const subject = `🎬 ${firstName}، الـ 15 كريديت مش هتكفي شغلك الجاد / Your free credits won't cut it for real work`;
+  const html = `<div style="font-family:'Segoe UI',Tahoma,-apple-system,sans-serif;max-width:520px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px">
+    <h2 style="color:#7c6af7;margin:0 0 4px">Erivion 🎬</h2>
+    <p style="color:#9ca3af;font-size:13px;margin:0 0 24px">منصة فيديو بالذكاء الاصطناعي، مصرية وعالمية &nbsp;|&nbsp; Egyptian-founded, built for the world</p>
+
+    <div dir="rtl" style="margin-bottom:22px">
+      <p style="font-size:16px;line-height:1.8;margin:0 0 10px">أهلًا ${firstName}! 👋</p>
+      <p style="font-size:14.5px;line-height:1.9;color:#d1d5db;margin:0 0 12px">الـ 15 كريديت المجانية بتخلص بسرعة — كفاية بس تجرب، مش كفاية إنك تبني محتوى بجد أو تسوّق لمشروعك بشكل مستمر. وكل أسبوع بتقعد تستنى التجديد بدل ما تكمل شغلك على طول.</p>
+      <p style="font-size:14.5px;line-height:1.9;color:#d1d5db;margin:0 0 12px"><b style="color:#fff">مع باقة مدفوعة هتقدر:</b></p>
+      <ul style="margin:0 0 12px;padding-right:20px;padding-left:0;color:#d1d5db;font-size:14px;line-height:2">
+        <li>تعمل فيديوهات إعلانية احترافية لمشروعك من صورة منتج واحدة بس</li>
+        <li>تحافظ على نفس الشخصية بثبات عبر كل مشاهد الفيديو</li>
+        <li>تنتج محتوى ديني/تعليمي/ترفيهي بانتظام من غير ما تستنى تجديد أسبوعي</li>
+        <li>توفر فلوس برامج المونتاج والموشن جرافيكس تمامًا</li>
+      </ul>
+      <p style="font-size:13.5px;line-height:1.8;color:#9ca3af;margin:0 0 8px">وأسعارنا من الأرخص في السوق أصلًا مقارنة بمنصات الفيديو بالذكاء الاصطناعي التانية.</p>
+      ${ratingLine_ar}
+    </div>
+
+    <div style="margin-bottom:20px;border-top:1px solid #24243a;padding-top:20px">
+      <p style="font-size:14.5px;line-height:1.9;color:#d1d5db;margin:0 0 12px">Your free 15 credits are great for a first try — but not enough for real, consistent work. Every week you wait on the renewal instead of just creating.</p>
+      <p style="font-size:14.5px;line-height:1.9;color:#d1d5db;margin:0 0 12px"><b style="color:#fff">With a paid package you can:</b></p>
+      <ul style="margin:0 0 12px;padding-left:20px;color:#d1d5db;font-size:14px;line-height:2">
+        <li>Generate full AI ad videos from a single product photo</li>
+        <li>Keep the same character consistent across every scene</li>
+        <li>Produce content regularly without waiting on a weekly reset</li>
+        <li>Skip expensive editing software and motion design entirely</li>
+      </ul>
+      <p style="font-size:13.5px;line-height:1.8;color:#9ca3af;margin:0 0 8px">And we're already priced well below other AI video platforms out there.</p>
+      ${ratingLine_en}
+    </div>
+
+    <div style="background:#1a1a2e;border-radius:12px;padding:16px;margin:24px 0">
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+        <tr>
+          <td colspan="4" style="padding-bottom:10px;color:#7c6af7;font-weight:700;font-size:13px">أشهر الباقات &nbsp;|&nbsp; Popular Packages 🔥</td>
+        </tr>
+        <tr>
+          <td style="color:#6b7280;font-size:11px;padding-bottom:6px">الباقة / Plan</td>
+          <td style="color:#6b7280;font-size:11px;padding-bottom:6px">الكمية / Amount</td>
+          <td style="color:#6b7280;font-size:11px;padding-bottom:6px;text-align:center">EGP</td>
+          <td style="color:#6b7280;font-size:11px;padding-bottom:6px;text-align:center">USD</td>
+        </tr>
+        ${rows}
+      </table>
+    </div>
+
+    <div style="text-align:center;margin:28px 0">
+      <a href="${pricingUrl}" style="display:inline-block;background:linear-gradient(135deg,#7c6af7,#9333ea);color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 36px;border-radius:10px;box-shadow:0 4px 14px rgba(124,106,247,.4)">🚀 اشترك دلوقتي / Subscribe Now</a>
+      <p style="color:#6b7280;font-size:11px;margin-top:10px">بدون التزام طويل — كريديت بيتصرف زي ما تحتاج / No long commitment — spend credits as you go</p>
+    </div>
+  </div>`;
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: 'Erivion <noreply@erivion.net>', to: email, subject, html }),
+  });
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error('Upgrade email failed: ' + (err.message || JSON.stringify(err))); }
+}
+
+// ✅ Throttle: بس مستخدم "free"، وبس مرة كل أسبوع (نفس منطق getWeekStart المستخدم في تجديد
+// الكريديت). الدالة دي هي اللي المفروض تتنادى من مسار تسجيل الدخول بس — مش أي حدث تاني.
+export async function maybeSendUpgradeEmail(userId, email, name) {
+  try {
+    const weekStart = getWeekStart();
+    const { rows } = await pool.query('SELECT plan, upgrade_email_week FROM users WHERE id = $1', [userId]);
+    const user = rows[0];
+    if (!user || user.plan !== 'free') return; // مشترك — منبعتلوش الإيميل ده خالص
+    if (user.upgrade_email_week === weekStart) return; // اتبعتله الأسبوع ده خلاص
+    await pool.query('UPDATE users SET upgrade_email_week = $1 WHERE id = $2', [weekStart, userId]);
+    await sendWelcomeUpgradeEmail(email, name);
+    console.log(`[UpgradeEmail] Sent to ${email} (week ${weekStart})`);
+  } catch (e) {
+    console.warn('[UpgradeEmail] Failed to send:', e.message);
+  }
+}
+
 export async function addCreditsBalance(userId, amount) {
   const { rows } = await pool.query('UPDATE users SET credits_balance = COALESCE(credits_balance, 0) + $1 WHERE id = $2 RETURNING credits_balance', [amount, userId]);
   return rows[0]?.credits_balance || 0;
@@ -550,18 +665,23 @@ export async function login(email, password) {
   const userName = user.name || email.split('@')[0];
   const currentPlan = user.plan || 'free';
   const isOnFree = currentPlan === 'free';
-  fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'Erivion <noreply@erivion.net>',
-      to: email,
-      subject: isOnFree ? `🚀 ${userName}, your next video is ONE click away` : `Welcome back, ${userName} — keep creating! 🎬`,
-      html: isOnFree
-        ? `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:32px"><div style="font-size:52px;margin-bottom:12px">🚀</div><h2 style="color:#7c6af7;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Start Creating →</a></div></div>`
-        : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:52px;margin-bottom:12px">🎬</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a></div></div>`,
-    }),
-  }).catch(e => console.warn('[Login] Marketing email failed:', e.message));
+  // ✅ FIX: كان بيبعت رسالة عامة بسيطة لكل مستخدم فري في كل لوجين — دلوقتي رسالة واحدة
+  // تحفيزية حقيقية بلغتين (عربي+إنجليزي) وبكل الأسعار (جنيه ودولار)، بس مرة كل أسبوع
+  // بالكتير (maybeSendUpgradeEmail بيتولى الـ throttle ده لوحده)
+  if (isOnFree) {
+    maybeSendUpgradeEmail(user.id, email, userName).catch(() => {});
+  } else {
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: email,
+        subject: `Welcome back, ${userName} — keep creating! 🎬`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:40px 36px;background:#0f0f1a;color:#fff;border-radius:18px"><div style="text-align:center;margin-bottom:28px"><div style="font-size:52px;margin-bottom:12px">🎬</div><h2 style="color:#22c55e;font-size:22px;margin:0 0 8px">Welcome back, ${userName}!</h2></div><div style="text-align:center"><a href="${frontendUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Go to Dashboard →</a></div></div>`,
+      }),
+    }).catch(e => console.warn('[Login] Marketing email failed:', e.message));
+  }
   logLoginEvent(user.id, email, 'password').catch(() => {});
   return { token, email, plan: user.plan || 'free', isNewUser: false };
 }
@@ -579,6 +699,9 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
   await checkAndResetUsage(user.id);
   await maybeRenewFreeWeeklyCredits(user.id);
   const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+  if ((user.plan || 'free') === 'free') {
+    maybeSendUpgradeEmail(user.id, user.email, user.name).catch(() => {});
+  }
   logLoginEvent(user.id, user.email, 'google').catch(() => {});
   return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: false };
 }
