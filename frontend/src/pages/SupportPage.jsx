@@ -42,6 +42,7 @@ export default function SupportPage({ onBack, onNavigate }) {
   const [faqOpen, setFaqOpen] = useState(null);
   const [attachment, setAttachment] = useState(null); // { base64, type: 'image'|'video', preview }
   const [replyTo, setReplyTo] = useState(null); // { id, text, role }
+  const [previousChats, setPreviousChats] = useState([]); // ✅ NEW: شاتات سابقة نشطة لنفس الإيميل
   const messagesEndRef = useRef(null);
   const pollRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -59,6 +60,7 @@ export default function SupportPage({ onBack, onNavigate }) {
     setChatId(openChat);
     setChatStarted(true);
     setView('chat');
+    localStorage.setItem('erivion_support_chat_id', openChat); // ✅ يتحفظ عشان يرجع له تلقائي المرة الجاية
     (async () => {
       try {
         const r = await fetch(`/api/support/messages/${openChat}`);
@@ -67,6 +69,61 @@ export default function SupportPage({ onBack, onNavigate }) {
       } catch {}
     })();
   }, []);
+
+  // ✅ NEW: لو مفيش رابط مباشر، بندوّر على شات سابق نشط للعميل (محفوظ محليًا في المتصفح
+  // أو بالإيميل لو العميل كتبه قبل كده) عشان يقدر يرجعله بدل ما يضطر يبدأ شات جديد كل مرة
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('openSupportChat')) return; // اتعامل معاه في الـ effect اللي فوق
+
+    const savedChatId = localStorage.getItem('erivion_support_chat_id');
+    const savedEmail = localStorage.getItem('erivion_support_email');
+
+    if (savedChatId) {
+      // في شات محفوظ في المتصفح ده بالذات — نتأكد لسه شغال (مش منتهي) قبل ما نرجعله
+      (async () => {
+        try {
+          const r = await fetch(`/api/support/messages/${savedChatId}`);
+          const d = await r.json();
+          if (r.ok && d.messages) {
+            setChatId(savedChatId);
+            setChatStarted(true);
+            setView('chat');
+            setMessages(d.messages);
+            return;
+          }
+        } catch {}
+        // لو الشات المحفوظ خلصت صلاحيته، نمسحه ونكمل نبحث بالإيميل
+        localStorage.removeItem('erivion_support_chat_id');
+        if (savedEmail) checkPreviousChats(savedEmail);
+      })();
+    } else if (savedEmail) {
+      setEmail(savedEmail);
+      checkPreviousChats(savedEmail);
+    }
+  }, []);
+
+  const checkPreviousChats = async (emailToCheck) => {
+    try {
+      const r = await fetch(`/api/support/my-chats?email=${encodeURIComponent(emailToCheck)}`);
+      const d = await r.json();
+      if (d.chats?.length) setPreviousChats(d.chats);
+    } catch {}
+  };
+
+  const resumeChat = async (id) => {
+    try {
+      const r = await fetch(`/api/support/messages/${id}`);
+      const d = await r.json();
+      if (d.messages) {
+        setChatId(id);
+        setChatStarted(true);
+        setView('chat');
+        setMessages(d.messages);
+        localStorage.setItem('erivion_support_chat_id', id);
+      }
+    } catch {}
+  };
 
   // Poll for admin replies
   useEffect(() => {
@@ -94,6 +151,8 @@ export default function SupportPage({ onBack, onNavigate }) {
       if (d.chatId) {
         setChatId(d.chatId);
         setChatStarted(true);
+        localStorage.setItem('erivion_support_chat_id', d.chatId);
+        localStorage.setItem('erivion_support_email', email.trim());
         setMessages([{
           role: 'system',
           text: isAr
@@ -322,6 +381,29 @@ export default function SupportPage({ onBack, onNavigate }) {
 
             <div style={{ height:1, background:'rgba(255,255,255,0.06)', marginBottom:24 }} />
 
+            {/* ✅ NEW: لو فيه شات سابق نشط لنفس الإيميل، نعرضه هنا عشان العميل يقدر يرجعله
+                بدل ما يبدأ شات جديد من غير ما يعرف إن ردنا عليه قبل كده */}
+            {previousChats.length > 0 && (
+              <div style={{ marginBottom:24, padding:'14px 16px', borderRadius:12, border:'1px solid rgba(124,106,247,0.3)', background:'rgba(124,106,247,0.08)' }}>
+                <p style={{ fontSize:12, fontWeight:700, color:'#a99bff', marginBottom:10 }}>
+                  {isAr ? '💬 لسه عندك محادثة مفتوحة' : '💬 You have an open conversation'}
+                </p>
+                {previousChats.map(c => (
+                  <div key={c.id} onClick={() => resumeChat(c.id)}
+                    style={{ padding:'10px 12px', borderRadius:10, background:'rgba(255,255,255,0.04)', cursor:'pointer', marginBottom:6, transition:'background 0.15s' }}
+                    onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'}
+                    onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.04)'}>
+                    <div style={{ fontSize:12.5, color:'rgba(255,255,255,0.7)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {c.last_message || (isAr ? 'محادثة بدون رسائل بعد' : 'No messages yet')}
+                    </div>
+                    <div style={{ fontSize:10.5, color:'#7c6af7', marginTop:4, fontWeight:600 }}>
+                      {isAr ? 'استكمل المحادثة ←' : 'Continue conversation ←'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
               <div>
                 <label style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.4)', display:'block', marginBottom:6 }}>{T.nameLabel}</label>
@@ -330,7 +412,7 @@ export default function SupportPage({ onBack, onNavigate }) {
               </div>
               <div>
                 <label style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.4)', display:'block', marginBottom:6 }}>{T.emailLabel}</label>
-                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="email@example.com"
+                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onBlur={e => { if (e.target.value.trim() && !previousChats.length) checkPreviousChats(e.target.value.trim()); }} placeholder="email@example.com"
                   style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'#fff', fontSize:14, outline:'none', boxSizing:'border-box', direction:'ltr' }} />
               </div>
               <button onClick={startChat} disabled={!name.trim()||!email.trim()||sending}

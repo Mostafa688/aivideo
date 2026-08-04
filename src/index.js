@@ -12,10 +12,28 @@ import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/med
 import { generateVoiceover, generateVoiceoverPerScene, VOICE_OPTIONS } from './services/voiceService.js';
 import { renderVideo } from './services/renderService.js';
 import { generateAllAIScenes } from './services/aiVideoService.js';
-import { renderModel3Video } from './services/stabilityService.js';
-import { renderModel4Video, renderModel5Video, renderModel5MapVideo, generateStickmanCharacterImage } from './services/seedanceService.js';
+import { renderModel3Video, generateReferenceEdit } from './services/stabilityService.js';
+import { renderModel4Video, renderModel5Video, renderModel5MapVideo, generateStickmanCharacterImage, videoToVideoEdit, renderUserVideoEdit, downloadVideo } from './services/seedanceService.js';
+import mcpRouter from './services/mcpRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings } from './services/authService.js';
+// ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
+// عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
+const MODEL3_STANDARD_SCENE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
+const MODEL4_STANDARD_SCENE_COUNT = { '30s': 4, '1min': 8, '3min': 24 };
+const MODEL5_STANDARD_SCENE_COUNT = { '30s': 6, '1min': 12 }; // 5s/10s/15s single-clip modes مالهمش جدول، مش بيتفرض عليهم سرشارج
+const MODEL3_EXTRA_SCENE_COST = 20;
+const MODEL4_EXTRA_SCENE_COST = 35;
+const MODEL5_EXTRA_SCENE_COST = 70;
+// ✅ NEW: تعديل video-to-video حقيقي (Lucy Edit 2) — أغلى بكتير من التعديل النصي العادي
+// لأنه بيحافظ فعليًا على الحركة/التوقيت الأصلي بدل ما يولّد المشهد من الصفر
+const VIDEO_EDIT_SCENE_COST_MODEL4 = 130; // لكل مشهد
+const VIDEO_EDIT_SCENE_COST_MODEL5 = 180; // لكل مشهد
+// فيديو العميل الخاص (مش متولّد من المنصة) — سعر لكل ثانية، أقصى مدة 15 ثانية
+const VIDEO_EDIT_CREDIT_PER_SECOND = 25;
+const VIDEO_EDIT_MAX_SECONDS = 15;
+// ✅ NEW: تعديل صورة بمرجع (FLUX-2-Max) — موديل 3 بس، 30 كريديت لكل صورة
+const REFERENCE_EDIT_COST_MODEL3 = 30;
 import adminRouter from './services/adminRoutes.js';
 import supportRouter from './services/supportRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
@@ -41,6 +59,12 @@ const MAX_CONCURRENT_RENDERS = 1;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+// ✅ NEW: رفع فيديو العميل بتاعه هو لتعديل video-to-video — حجم أكبر (فيديو أثقل من الصور)
+const videoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 },
 });
 
 const RENDER_JOBS_DIR = join(process.cwd(), 'outputs', 'render_jobs');
@@ -182,6 +206,7 @@ app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
 app.use('/api/agent', agentRouter);
+app.use('/mcp', mcpRouter);
 
 // ── Community API ──────────────────────────────────────────────────────────────
 const cPool = new _TPool({
@@ -817,6 +842,11 @@ app.get('/api/credit-cost', authMiddleware, (req, res) => {
 // يعيد توليد الفيديو بالكامل من الصفر زي ما كان بيحصل قبل كده (وهو أغلى وأبطأ وبيغيّر
 // حتى المشاهد اللي العميل مطلبش تغييرها).
 const EDIT_SCENE_CREDIT_COST = 2; // أرخص بكتير من فيديو كامل لأنه بيعيد جلب مشهد واحد بس
+// ✅ NEW: تكلفة تعديل مشهد بالنص لموديل 3/4/5 — كل موديل له سعره حسب تكلفة توليد المشهد
+// الحقيقية (Model 3: صورة واحدة، Model 4: كليب Seedance، Model 5: كليب Seedance مع مرجع شخصية)
+const EDIT_SCENE_MODEL3_COST = 10;
+const EDIT_SCENE_MODEL4_COST = 30;
+const EDIT_SCENE_MODEL5_COST = 70;
 
 app.post('/api/edit-scene', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, sceneIndex, newDescription, audioUrl, ratio, duration, music, captions, videoType, videoLanguage, sceneDurations, jobId } = req.body;
@@ -891,6 +921,334 @@ app.post('/api/edit-scene', authMiddleware, renderLimiter, async (req, res) => {
   } catch (err) {
     console.error('[EditScene] Error:', err.message);
     res.status(500).json({ error: err.message || 'Scene edit failed.' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: تعديل مشهد محدد بالنص — موديل 3، موديل 4، موديل 5 (مش map-video ومش ads،
+//  زي ما اتفقنا). نفس مبدأ /api/edit-scene بتاع موديل 1/2 بالظبط: بنبني نسخة من نفس
+//  مصفوفة المشاهد، المشهد المطلوب تغييره بوصف جديد (يتولّد من جديد)، وكل باقي المشاهد
+//  بتاخد رابط الصورة/الكليب الجاهز من الرندر الأصلي (existingImageUrl/existingClipUrl)
+//  عشان تتعاد زي ما هي بالظبط من غير أي توليد أو تكلفة إضافية.
+// ══════════════════════════════════════════════════════════════════════════
+
+app.post('/api/model3/edit-scene', authMiddleware, renderLimiter, async (req, res) => {
+  const { scenes, sceneImageUrls, sceneIndex, newDescription, audioUrl, ratio, duration, music, captions, videoLanguage, sceneDurations, jobId, mode, referenceImageBase64 } = req.body;
+  const renderJobId = String(jobId || Date.now());
+  const isReferenceMode = mode === 'reference'; // ✅ NEW: تعديل بتوجيه من صورة مرجعية (FLUX-2-Max)
+  const editCost = isReferenceMode ? REFERENCE_EDIT_COST_MODEL3 : EDIT_SCENE_MODEL3_COST;
+  if (!Array.isArray(scenes) || !scenes.length) return res.status(400).json({ error: 'scenes required' });
+  const idx = parseInt(sceneIndex, 10);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= scenes.length) return res.status(400).json({ error: 'Invalid sceneIndex' });
+  if (!newDescription?.trim()) return res.status(400).json({ error: 'newDescription required' });
+  if (isReferenceMode && !referenceImageBase64) return res.status(400).json({ error: 'referenceImageBase64 is required for reference-mode edits' });
+  if (isReferenceMode && !sceneImageUrls?.[idx]) return res.status(400).json({ error: 'No existing image found for this scene — reference edit needs the original render\'s scene image.' });
+  try {
+    const balance = await getCreditsBalance(req.user.userId);
+    if (balance < editCost) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${editCost} credits, you have ${balance}.`, cost: editCost, remaining: balance });
+    }
+    if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+      return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+    }
+    const modCheckEdit = await checkContentSafety(newDescription);
+    if (modCheckEdit.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckEdit.category });
+    }
+    const editCharge = await chargeCredits(req.user.userId, editCost);
+    if (!editCharge.success) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${editCost} credits, you have ${editCharge.remaining}.`, cost: editCost, remaining: editCharge.remaining });
+    }
+    activeRenderCount++;
+    setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+    res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: editCost });
+    (async () => {
+      try {
+        let updatedScenes;
+        if (isReferenceMode) {
+          // ✅ الصورة الأصلية بتتحول لـ base64 data URI (بدل ما نعتمد على رابط عام)، وبتتبعت
+          // مع صورة المرجع مع بعض لـ FLUX-2-Max — الصورة الناتجة بتاخد مكان صورة المشهد زي ما هي
+          const baseImagePath = sceneImageUrls[idx].startsWith('http')
+            ? null
+            : join(process.cwd(), sceneImageUrls[idx].replace(/^\//, ''));
+          let baseImageDataUri;
+          if (baseImagePath && fs.existsSync(baseImagePath)) {
+            const b64 = fs.readFileSync(baseImagePath).toString('base64');
+            baseImageDataUri = `data:image/jpeg;base64,${b64}`;
+          } else {
+            baseImageDataUri = sceneImageUrls[idx]; // already an absolute URL
+          }
+          const editedBuffer = await generateReferenceEdit(baseImageDataUri, referenceImageBase64, newDescription.trim(), ratio || '16:9');
+          const editedFilename = `${renderJobId}_${idx}_refedit.jpg`;
+          const editedLocalPath = join(process.cwd(), 'outputs', 'scene_cache', editedFilename);
+          fs.mkdirSync(join(process.cwd(), 'outputs', 'scene_cache'), { recursive: true });
+          fs.writeFileSync(editedLocalPath, editedBuffer);
+          updatedScenes = scenes.map((scene, i) => i === idx
+            ? { ...scene, existingImageUrl: `/outputs/scene_cache/${editedFilename}` }
+            : { ...scene, existingImageUrl: sceneImageUrls?.[i] || scene.existingImageUrl });
+        } else {
+          updatedScenes = scenes.map((scene, i) => i === idx
+            ? { ...scene, text: newDescription.trim(), prompt: newDescription.trim(), visual: newDescription.trim(), existingImageUrl: undefined }
+            : { ...scene, existingImageUrl: sceneImageUrls?.[i] || scene.existingImageUrl });
+        }
+        const { outputFile: videoPath, sceneImageUrls: newSceneImageUrls } = await renderModel3Video({
+          scenes: updatedScenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId,
+          duration: duration || '1min', music: !!music, captions: captions !== false, transitions: false,
+          videoLanguage: videoLanguage || 'en', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null,
+        });
+        setRenderJob(renderJobId, {
+          status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: editCost,
+          editContext: { scenes: updatedScenes, sceneImageUrls: newSceneImageUrls, audioUrl, ratio: ratio || '16:9', duration: duration || '1min', captions: captions !== false, music: !!music, videoLanguage: videoLanguage || 'en', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null },
+        });
+      } catch (jobErr) {
+        console.error('[Model3 EditScene] Failed:', jobErr.message);
+        setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Scene edit failed.', completedAt: Date.now() });
+      } finally {
+        activeRenderCount--;
+        scheduleRenderJobCleanup(renderJobId);
+      }
+    })();
+  } catch (err) {
+    console.error('[Model3 EditScene] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Scene edit failed.' });
+  }
+});
+
+app.post('/api/model4/edit-scene', authMiddleware, renderLimiter, async (req, res) => {
+  const { scenes, sceneClipUrls, sceneIndex, newDescription, audioUrl, ratio, music, captions, videoLanguage, videoStyle, styleSuffix, sceneDurations, jobId, mode } = req.body;
+  const renderJobId = String(jobId || Date.now());
+  const isVideoMode = mode === 'video'; // ✅ NEW: تعديل video-to-video حقيقي (Lucy Edit 2) بدل إعادة التوليد من الصفر
+  const editCost = isVideoMode ? VIDEO_EDIT_SCENE_COST_MODEL4 : EDIT_SCENE_MODEL4_COST;
+  if (!Array.isArray(scenes) || !scenes.length) return res.status(400).json({ error: 'scenes required' });
+  const idx = parseInt(sceneIndex, 10);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= scenes.length) return res.status(400).json({ error: 'Invalid sceneIndex' });
+  if (!newDescription?.trim()) return res.status(400).json({ error: 'newDescription required' });
+  if (isVideoMode && !sceneClipUrls?.[idx]) return res.status(400).json({ error: 'No existing clip found for this scene — video-to-video edit needs the original render\'s scene clip.' });
+  try {
+    const balance = await getCreditsBalance(req.user.userId);
+    if (balance < editCost) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${editCost} credits, you have ${balance}.`, cost: editCost, remaining: balance });
+    }
+    if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+      return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+    }
+    const modCheckEdit = await checkContentSafety(newDescription);
+    if (modCheckEdit.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckEdit.category });
+    }
+    const editCharge = await chargeCredits(req.user.userId, editCost);
+    if (!editCharge.success) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${editCost} credits, you have ${editCharge.remaining}.`, cost: editCost, remaining: editCharge.remaining });
+    }
+    activeRenderCount++;
+    setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+    res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: editCost });
+    (async () => {
+      try {
+        let updatedScenes;
+        if (isVideoMode) {
+          const sourceClipUrl = sceneClipUrls[idx];
+          const absoluteSourceUrl = sourceClipUrl.startsWith('http') ? sourceClipUrl : `${process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net'}${sourceClipUrl}`;
+          const editedClipUrl = await videoToVideoEdit(absoluteSourceUrl, newDescription.trim());
+          const editedLocalPath = join(process.cwd(), 'outputs', 'scene_cache', `${renderJobId}_${idx}_videoedit.mp4`);
+          await downloadVideo(editedClipUrl, editedLocalPath);
+          updatedScenes = scenes.map((scene, i) => i === idx
+            ? { ...scene, existingClipUrl: `/outputs/scene_cache/${renderJobId}_${idx}_videoedit.mp4` }
+            : { ...scene, existingClipUrl: sceneClipUrls?.[i] || scene.existingClipUrl });
+        } else {
+          updatedScenes = scenes.map((scene, i) => i === idx
+            ? { ...scene, text: newDescription.trim(), prompt: newDescription.trim(), visual: newDescription.trim(), existingClipUrl: undefined }
+            : { ...scene, existingClipUrl: sceneClipUrls?.[i] || scene.existingClipUrl });
+        }
+        const { outputFile: videoPath, sceneClipUrls: newSceneClipUrls } = await renderModel4Video({
+          scenes: updatedScenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId,
+          captions: captions !== false, music: !!music, videoLanguage: videoLanguage || 'en',
+          videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '',
+          sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null,
+        });
+        setRenderJob(renderJobId, {
+          status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: editCost,
+          editContext: { scenes: updatedScenes, sceneClipUrls: newSceneClipUrls, audioUrl, ratio: ratio || '16:9', captions: captions !== false, music: !!music, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null },
+        });
+      } catch (jobErr) {
+        console.error('[Model4 EditScene] Failed:', jobErr.message);
+        setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Scene edit failed.', completedAt: Date.now() });
+      } finally {
+        activeRenderCount--;
+        scheduleRenderJobCleanup(renderJobId);
+      }
+    })();
+  } catch (err) {
+    console.error('[Model4 EditScene] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Scene edit failed.' });
+  }
+});
+
+// ✅ موديل 5 — بس النمط العادي (idea/prompt/image بالشخصيات)، مش map-video (15 ثانية) ومش ads
+app.post('/api/model5/edit-scene', authMiddleware, renderLimiter, async (req, res) => {
+  const { scenes, sceneClipUrls, sceneIndex, newDescription, ratio, duration, music, jobId, mode } = req.body;
+  const renderJobId = String(jobId || Date.now());
+  const isVideoMode = mode === 'video';
+  const editCost = isVideoMode ? VIDEO_EDIT_SCENE_COST_MODEL5 : EDIT_SCENE_MODEL5_COST;
+  if (!Array.isArray(scenes) || !scenes.length) return res.status(400).json({ error: 'scenes required' });
+  const idx = parseInt(sceneIndex, 10);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= scenes.length) return res.status(400).json({ error: 'Invalid sceneIndex' });
+  if (!newDescription?.trim()) return res.status(400).json({ error: 'newDescription required' });
+  if (isVideoMode && !sceneClipUrls?.[idx]) return res.status(400).json({ error: 'No existing clip found for this scene — video-to-video edit needs the original render\'s scene clip.' });
+  try {
+    const balance = await getCreditsBalance(req.user.userId);
+    if (balance < editCost) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${editCost} credits, you have ${balance}.`, cost: editCost, remaining: balance });
+    }
+    if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+      return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+    }
+    const modCheckEdit = await checkContentSafety(newDescription);
+    if (modCheckEdit.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckEdit.category });
+    }
+    const editCharge = await chargeCredits(req.user.userId, editCost);
+    if (!editCharge.success) {
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${editCost} credits, you have ${editCharge.remaining}.`, cost: editCost, remaining: editCharge.remaining });
+    }
+    activeRenderCount++;
+    setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+    res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: editCost });
+    (async () => {
+      try {
+        // ✅ ملحوظة: في الوضع النصي (mode !== 'video')، المشهد المعاد توليده بيفقد أي مرجع شخصية
+        // كان عليه (characterPhotos) لأنه بقى وصف جديد بالكامل. في وضع الـ video-to-video، الشخصية
+        // بتفضل زي ما هي تلقائيًا لأننا مش بنعيد التوليد أصلًا، بس بنعدّل الكليب الموجود.
+        let updatedScenes;
+        if (isVideoMode) {
+          const sourceClipUrl = sceneClipUrls[idx];
+          const absoluteSourceUrl = sourceClipUrl.startsWith('http') ? sourceClipUrl : `${process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net'}${sourceClipUrl}`;
+          const editedClipUrl = await videoToVideoEdit(absoluteSourceUrl, newDescription.trim());
+          const editedLocalPath = join(process.cwd(), 'outputs', 'scene_cache', `${renderJobId}_${idx}_videoedit.mp4`);
+          await downloadVideo(editedClipUrl, editedLocalPath);
+          updatedScenes = scenes.map((scene, i) => i === idx
+            ? { ...scene, existingClipUrl: `/outputs/scene_cache/${renderJobId}_${idx}_videoedit.mp4` }
+            : { ...scene, existingClipUrl: sceneClipUrls?.[i] || scene.existingClipUrl });
+        } else {
+          updatedScenes = scenes.map((scene, i) => i === idx
+            ? { ...scene, text: newDescription.trim(), prompt: newDescription.trim(), visual: newDescription.trim(), existingClipUrl: undefined }
+            : { ...scene, existingClipUrl: sceneClipUrls?.[i] || scene.existingClipUrl });
+        }
+        const { outputFile: videoPath, sceneClipUrls: newSceneClipUrls } = await renderModel5Video({
+          scenes: updatedScenes, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s', music: music !== false,
+        });
+        setRenderJob(renderJobId, {
+          status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: editCost,
+          editContext: { scenes: updatedScenes, sceneClipUrls: newSceneClipUrls, ratio: ratio || '9:16', duration: duration || '15s', music: music !== false },
+        });
+      } catch (jobErr) {
+        console.error('[Model5 EditScene] Failed:', jobErr.message);
+        setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Scene edit failed.', completedAt: Date.now() });
+      } finally {
+        activeRenderCount--;
+        scheduleRenderJobCleanup(renderJobId);
+      }
+    })();
+  } catch (err) {
+    console.error('[Model5 EditScene] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Scene edit failed.' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: العميل بيرفع فيديو بتاعه هو (مش متولّد من المنصة) ويطلب مونتاج/تعديل
+//  عليه بالـ AI (decart/lucy-edit-2 على Replicate) — أقصى مدة 15 ثانية، بيتحسب
+//  السعر لكل ثانية فعلية من الفيديو المرفوع.
+// ══════════════════════════════════════════════════════════════════════════
+app.post('/api/video-edit', authMiddleware, renderLimiter, videoUpload.single('video'), async (req, res) => {
+  try {
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    if ((user.plan || 'free') === 'free') {
+      return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock video editing.', show_upgrade: true });
+    }
+    const videoFile = req.file;
+    if (!videoFile) return res.status(400).json({ error: 'video file is required' });
+    const { editPrompt, addVoiceover, voiceoverText, voiceKey, addCaptions, videoLanguage, ratio } = req.body;
+    if (!editPrompt?.trim()) return res.status(400).json({ error: 'editPrompt is required' });
+
+    const modCheckVE = await checkContentSafety(`${editPrompt} ${voiceoverText || ''}`);
+    if (modCheckVE.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckVE.category });
+    }
+
+    // ── نحفظ الفيديو المرفوع مؤقتًا عشان نقيس مدته الحقيقية (ffprobe) قبل ما نحسب السعر ──
+    const tmpUploadDir = join(process.cwd(), 'outputs', 'video_edit_tmp');
+    fs.mkdirSync(tmpUploadDir, { recursive: true });
+    const tmpUploadPath = join(tmpUploadDir, `upload_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
+    fs.writeFileSync(tmpUploadPath, videoFile.buffer);
+
+    let durationSec;
+    try {
+      durationSec = parseFloat(execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmpUploadPath}"`,
+        { encoding: 'utf8' }
+      ).trim());
+    } catch (e) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: 'Could not read video file — please upload a valid MP4.' });
+    }
+    if (!durationSec || durationSec <= 0) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: 'Could not determine video duration.' });
+    }
+    if (durationSec > VIDEO_EDIT_MAX_SECONDS + 0.5) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: `Video is ${durationSec.toFixed(1)}s — max allowed is ${VIDEO_EDIT_MAX_SECONDS} seconds.` });
+    }
+
+    const veCreditCost = Math.ceil(durationSec) * VIDEO_EDIT_CREDIT_PER_SECOND;
+    const veBalance = await getCreditsBalance(req.user.userId);
+    if (veBalance < veCreditCost) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${veCreditCost} credits, you have ${veBalance}.`, cost: veCreditCost, remaining: veBalance });
+    }
+    if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+    }
+    const veCharge = await chargeCredits(req.user.userId, veCreditCost);
+    if (!veCharge.success) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${veCreditCost} credits, you have ${veCharge.remaining}.`, cost: veCreditCost, remaining: veCharge.remaining });
+    }
+
+    const renderJobId = String(Date.now());
+    activeRenderCount++;
+    setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+    res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: veCreditCost, durationSec: Math.round(durationSec) });
+
+    (async () => {
+      try {
+        const videoPath = await renderUserVideoEdit({
+          uploadedVideoPath: tmpUploadPath,
+          editPrompt: editPrompt.trim(),
+          addVoiceover: addVoiceover === 'true' || addVoiceover === true,
+          voiceoverText: voiceoverText || '',
+          voiceKey: voiceKey || 'male_wise',
+          addCaptions: addCaptions === 'true' || addCaptions === true,
+          videoLanguage: videoLanguage || 'en',
+          ratio: ratio || '9:16',
+          jobId: renderJobId,
+        });
+        setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: veCreditCost });
+      } catch (jobErr) {
+        console.error('[VideoEdit] Failed:', jobErr.message);
+        setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Video edit failed.', completedAt: Date.now() });
+      } finally {
+        activeRenderCount--;
+        scheduleRenderJobCleanup(renderJobId);
+        try { if (fs.existsSync(tmpUploadPath)) fs.unlinkSync(tmpUploadPath); } catch {}
+      }
+    })();
+  } catch (err) {
+    console.error('[VideoEdit] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Video edit failed.' });
   }
 });
 
@@ -1065,7 +1423,22 @@ function applyStickmanStyleRule(styleText, ideaText = '') {
 }
 
 app.post('/api/model3/generate-scenes', authMiddleware, async (req, res) => {
-  const { idea, script, inputMode, imageCount, videoLanguage, styleSuffix } = req.body;
+  const { idea, script, inputMode, imageCount, videoLanguage, styleSuffix, structuredScenes } = req.body;
+  // ✅ NEW: خطة عميل جاهزة (Scene N / Visual Prompt / Narration) — بنستخدمها زي ما هي، مفيش
+  // أي توليد بـ Groq خالص، وعدد المشاهد هو عدد بنود الخطة بالظبط مش imageCount الافتراضي
+  if (Array.isArray(structuredScenes) && structuredScenes.length) {
+    const total = structuredScenes.length;
+    const scenes = structuredScenes.map((item, i) => {
+      const index = i + 1;
+      const type = index === 1 ? 'hook' : index === total ? 'ending' : 'body';
+      const text = String(item.text || '').trim();
+      const visualRaw = String(item.visual || item.prompt || text).trim();
+      const keywords = visualRaw.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2).slice(0, 6);
+      return { index, type, text, keywords, visual: visualRaw.slice(0, 150), prompt: visualRaw };
+    });
+    return res.json({ scenes });
+  }
+
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
   const modCheck3 = await checkContentSafety(idea || script);
   if (modCheck3.unsafe) {
@@ -1241,7 +1614,8 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
   if ((m3User?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 3.', show_upgrade: true });
   }
-  const m3CreditCost = MODEL3_CREDIT_COSTS[duration] || 20;
+  const m3CreditCost = (MODEL3_CREDIT_COSTS[duration] || 20)
+    + Math.max(0, scenes.length - (MODEL3_STANDARD_SCENE_COUNT[duration] || scenes.length)) * MODEL3_EXTRA_SCENE_COST;
   const m3Balance = await getCreditsBalance(req.user.userId);
   if (m3Balance < m3CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m3CreditCost} credits, you have ${m3Balance}.`, cost: m3CreditCost, remaining: m3Balance });
@@ -1260,8 +1634,11 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
   res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m3CreditCost });
   (async () => {
     try {
-      const videoPath = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null });
-      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
+      const { outputFile: videoPath, sceneImageUrls } = await renderModel3Video({ scenes, audioUrl, ratio: ratio || '16:9', jobId: renderJobId, duration: duration || '1min', captions: captions || false, transitions: false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null });
+      setRenderJob(renderJobId, {
+        status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(),
+        editContext: { scenes, sceneImageUrls, audioUrl, ratio: ratio || '16:9', duration: duration || '1min', captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', sceneDurations: Array.isArray(sceneDurations) ? sceneDurations : null },
+      });
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
     } finally {
@@ -1298,7 +1675,21 @@ app.post('/api/model3/payment-request', authMiddleware, async (req, res) => {
 
 // ── Model 4 Routes ─────────────────────────────────────────────────────────
 app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
-  const { idea, script, inputMode, sceneCount, videoLanguage, styleSuffix, videoStyle } = req.body;
+  const { idea, script, inputMode, sceneCount, videoLanguage, styleSuffix, videoStyle, structuredScenes } = req.body;
+  // ✅ NEW: خطة عميل جاهزة — نفس المنطق المستخدم في موديل 3
+  if (Array.isArray(structuredScenes) && structuredScenes.length) {
+    const total = structuredScenes.length;
+    const scenes = structuredScenes.map((item, i) => {
+      const index = i + 1;
+      const type = index === 1 ? 'hook' : index === total ? 'ending' : 'body';
+      const text = String(item.text || '').trim();
+      const visualRaw = String(item.visual || item.prompt || text).trim();
+      const keywords = visualRaw.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2).slice(0, 6);
+      return { index, type, text, keywords, visual: visualRaw.slice(0, 150), prompt: visualRaw };
+    });
+    return res.json({ scenes });
+  }
+
   if (!idea && !script) return res.status(400).json({ error: 'idea or script required' });
   const modCheck4 = await checkContentSafety(idea || script);
   if (modCheck4.unsafe) {
@@ -1473,7 +1864,8 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
   if ((m4User?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 4.', show_upgrade: true });
   }
-  const m4CreditCost = MODEL4_CREDIT_COSTS[duration] || 100;
+  const m4CreditCost = (MODEL4_CREDIT_COSTS[duration] || 100)
+    + Math.max(0, scenes.length - (MODEL4_STANDARD_SCENE_COUNT[duration] || scenes.length)) * MODEL4_EXTRA_SCENE_COST;
   const m4Balance = await getCreditsBalance(req.user.userId);
   if (m4Balance < m4CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m4CreditCost} credits, you have ${m4Balance}.`, cost: m4CreditCost, remaining: m4Balance });
@@ -1512,8 +1904,13 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
           console.warn('[Model4] Voiceover failed, continuing without audio:', voiceErr.message);
         }
       }
-      const videoPath = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: finalSceneDurations });
-      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
+      const { outputFile: videoPath, sceneClipUrls } = await renderModel4Video({ scenes, audioUrl: finalAudioUrl, ratio: ratio || '16:9', jobId: renderJobId, captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: finalSceneDurations });
+      // ✅ NEW: بنحفظ كل حاجة محتاجينها لو العميل طلب بعدين تعديل مشهد واحد بس — بدل
+      // ما يضطر يعيد توليد الفيديو كله من الصفر
+      setRenderJob(renderJobId, {
+        status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(),
+        editContext: { scenes, sceneClipUrls, audioUrl: finalAudioUrl, ratio: ratio || '16:9', captions: captions || false, music: music || false, videoLanguage: videoLanguage || 'en', videoStyle: videoStyle || 'cinematic', styleSuffix: styleSuffix || '', sceneDurations: finalSceneDurations },
+      });
     } catch (jobErr) {
       console.error('[Model4 Render] Failed:', jobErr.message);
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
@@ -1567,7 +1964,24 @@ app.post('/api/model5/generate-scenes', authMiddleware, async (req, res) => {
   const model5User = await getUserById(req.user.userId);
   if (!model5User) return res.status(401).json({ error: 'User not found' });
 
-  const { idea, characters, duration, videoStyle, styleSuffix, promptMode, rawPrompt, stickmanStyle } = req.body;
+  const { idea, characters, duration, videoStyle, styleSuffix, promptMode, rawPrompt, stickmanStyle, structuredScenes } = req.body;
+
+  // ✅ NEW: خطة عميل جاهزة (Scene N / Visual Prompt / Narration) — بتشتغل مع أوضاع موديل 5
+  // العادية بس (مش map-video)، وعدد المشاهد هو عدد بنود الخطة بالظبط
+  if (Array.isArray(structuredScenes) && structuredScenes.length) {
+    const total = structuredScenes.length;
+    const allChars5 = characters || [];
+    const charsWithPhotos5 = allChars5.filter(c => c.photo).map(c => c.photo).filter(Boolean);
+    const scenes = structuredScenes.map((item, i) => {
+      const index = i + 1;
+      const text = String(item.text || '').trim() || `Scene ${index}`;
+      const visualRaw = String(item.visual || item.prompt || text).trim();
+      const scene = { index, prompt: visualRaw, text: text.slice(0, 60) };
+      if (charsWithPhotos5.length > 0) scene.characterPhotos = charsWithPhotos5;
+      return scene;
+    });
+    return res.json({ scenes });
+  }
 
   // ── وضع "Image to Video" الجديد: العميل بيرفع صورة بس (بدون برومبت خالص)، والصورة
   // بتتقفل كـ first frame وتتحرك مباشرة على Seedance 2.0 Fast — نفس تكلفة prompt-to-video
@@ -1765,7 +2179,8 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   // التسعير الأساسية، بس بيضيف كريديت إضافي حسب المدة (شوف STICKMAN_SURCHARGE فوق)
   const hasStickmanImage = scenes.some(s => s.stickmanGenerated);
   const stickmanSurcharge = hasStickmanImage ? (STICKMAN_SURCHARGE[duration] || 0) : 0;
-  const m5CreditCost = getModel5CreditCost(duration, photos.length) + stickmanSurcharge;
+  const m5CreditCost = getModel5CreditCost(duration, photos.length) + stickmanSurcharge
+    + Math.max(0, scenes.length - (MODEL5_STANDARD_SCENE_COUNT[duration] || scenes.length)) * MODEL5_EXTRA_SCENE_COST;
   const m5Balance = await getCreditsBalance(req.user.userId);
   if (m5Balance < m5CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m5CreditCost} credits, you have ${m5Balance}.`, cost: m5CreditCost, remaining: m5Balance });
@@ -1785,8 +2200,11 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: m5CreditCost });
   (async () => {
     try {
-      const videoPath = await renderModel5Video({ scenes: scenesWithPhotos, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s', music: music !== false });
-      setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now() });
+      const { outputFile: videoPath, sceneClipUrls } = await renderModel5Video({ scenes: scenesWithPhotos, ratio: ratio || '9:16', jobId: renderJobId, duration: duration || '15s', music: music !== false });
+      setRenderJob(renderJobId, {
+        status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(),
+        editContext: { scenes: scenesWithPhotos, sceneClipUrls, ratio: ratio || '9:16', duration: duration || '15s', music: music !== false },
+      });
     } catch (jobErr) {
       setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Render failed.', completedAt: Date.now() });
     } finally {

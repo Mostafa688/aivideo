@@ -399,6 +399,78 @@ function AffiliatesTab({ s }) {
 // ══════════════════════════════════════════════════════════════════════════
 //  RATINGS TAB COMPONENT
 // ══════════════════════════════════════════════════════════════════════════
+function NotificationsTab({ s }) {
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/admin/notifications', { headers });
+      const d = await r.json();
+      setNotifications(d.notifications || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const send = async () => {
+    if (!title.trim() || !message.trim()) return;
+    setSending(true);
+    try {
+      await fetch('/api/admin/notifications', { method: 'POST', headers, body: JSON.stringify({ title: title.trim(), message: message.trim() }) });
+      setTitle(''); setMessage('');
+      await load();
+    } catch (e) { console.error(e); }
+    setSending(false);
+  };
+
+  const remove = async (id) => {
+    try {
+      await fetch(`/api/admin/notifications/${id}`, { method: 'DELETE', headers });
+      await load();
+    } catch (e) { console.error(e); }
+  };
+
+  return (
+    <div>
+      <div style={s.topbar}>
+        <div style={s.title}>🔔 الإشعارات — Notifications</div>
+        <button style={s.btn()} onClick={load}>🔄 Refresh</button>
+      </div>
+
+      <div style={s.card}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>بعت إشعار جديد لكل المستخدمين</div>
+        <input style={{ ...s.input, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} placeholder="العنوان — Title" value={title} onChange={e => setTitle(e.target.value)} />
+        <textarea style={{ ...s.input, width: '100%', minHeight: 70, marginBottom: 8, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} placeholder="نص الرسالة — Message" value={message} onChange={e => setMessage(e.target.value)} />
+        <button style={s.btn()} disabled={sending || !title.trim() || !message.trim()} onClick={send}>
+          {sending ? '⏳ جاري الإرسال...' : '📤 إرسال'}
+        </button>
+        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>الإشعار بيبان لكل المستخدمين تلقائيًا ويختفي بعد 24 ساعة.</div>
+      </div>
+
+      <div style={s.card}>
+        {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
+        {notifications.length === 0 && !loading && <div style={{ color: '#6b7280' }}>مفيش إشعارات لسه</div>}
+        {notifications.map(n => (
+          <div key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid #1a1a2e' }}>
+            <div>
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: 13.5 }}>{n.title}</div>
+              <div style={{ color: '#9ca3af', fontSize: 12.5, marginTop: 3 }}>{n.message}</div>
+              <div style={{ color: '#6b7280', fontSize: 11, marginTop: 4 }}>{new Date(n.created_at).toLocaleString()}</div>
+            </div>
+            <button style={s.btn('#ef4444')} onClick={() => remove(n.id)}>🗑️</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RatingsTab({ s }) {
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1150,6 +1222,7 @@ export default function AdminPage() {
     { key: 'support',    label: `💬 Support${totalUnread > 0 ? ` 🔴${totalUnread}` : supportChats.length > 0 ? ` (${supportChats.length})` : ''}` },
     { key: 'affiliates', label: '🤝 Affiliates'  },
     { key: 'ratings',    label: '⭐ Ratings'      },
+    { key: 'notifications', label: '🔔 Notifications' },
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'answers',    label: '📋 Answers'     },
     { key: 'community',  label: '🌍 Community'   },
@@ -1486,6 +1559,7 @@ export default function AdminPage() {
         {/* ── AFFILIATES ── */}
         {tab === 'affiliates' && <AffiliatesTab s={s} />}
         {tab === 'ratings' && <RatingsTab s={s} />}
+        {tab === 'notifications' && <NotificationsTab s={s} />}
 
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}

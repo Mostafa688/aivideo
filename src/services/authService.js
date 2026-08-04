@@ -132,6 +132,15 @@ async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trustpilot_prompted INTEGER DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_week_reset TEXT DEFAULT NULL;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS upgrade_email_week TEXT DEFAULT NULL;
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      key_hash TEXT NOT NULL UNIQUE,
+      key_prefix TEXT NOT NULL,
+      name TEXT DEFAULT 'Default Key',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      last_used_at TIMESTAMPTZ
+    );
     CREATE TABLE IF NOT EXISTS feedback_ratings (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id),
@@ -233,6 +242,55 @@ async function checkAndResetUsage(userId) {
     return { credits_used: 0, videos_this_week: 0 };
   }
   return { credits_used: row.credits_used || 0, videos_this_week: row.videos_this_week || 0 };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: نظام API Keys — للمستخدمين اللي عايزين يستخدموا Erivion من خارج الموقع
+//  (زي MCP server في Claude). المفتاح نفسه بيتخزن مجزأ (hash) زي الباسورد بالظبط —
+//  بيبان كامل مرة واحدة بس وقت الإنشاء، بعدها مفيش أي طريقة نرجعه تاني.
+// ══════════════════════════════════════════════════════════════════════════
+function hashApiKey(raw) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+export async function generateApiKey(userId, name = 'Default Key') {
+  const raw = 'eriv_' + crypto.randomBytes(24).toString('hex');
+  const hash = hashApiKey(raw);
+  const prefix = raw.slice(0, 13) + '…';
+  await pool.query(
+    'INSERT INTO api_keys (user_id, key_hash, key_prefix, name) VALUES ($1, $2, $3, $4)',
+    [userId, hash, prefix, (name || 'Default Key').trim().slice(0, 60)]
+  );
+  return raw; // ⚠️ آخر مرة يتشاف المفتاح كامل — الـ caller لازم يعرضه للمستخدم فورًا ويحذّره إنه مش هيتكرر
+}
+
+export async function listApiKeys(userId) {
+  const { rows } = await pool.query(
+    'SELECT id, key_prefix, name, created_at, last_used_at FROM api_keys WHERE user_id = $1 ORDER BY id DESC',
+    [userId]
+  );
+  return rows;
+}
+
+export async function revokeApiKey(userId, keyId) {
+  await pool.query('DELETE FROM api_keys WHERE id = $1 AND user_id = $2', [keyId, userId]);
+}
+
+// ✅ بيتنادى من mcpRoutes.js في كل طلب — بيرجع userId لو المفتاح صحيح ومفعّل، وإلا null
+export async function verifyApiKey(raw) {
+  if (!raw || !raw.startsWith('eriv_')) return null;
+  const hash = hashApiKey(raw);
+  const { rows } = await pool.query('SELECT id, user_id FROM api_keys WHERE key_hash = $1', [hash]);
+  if (!rows.length) return null;
+  pool.query('UPDATE api_keys SET last_used_at = NOW() WHERE id = $1', [rows[0].id]).catch(() => {});
+  return rows[0].user_id;
+}
+
+// ✅ بيتنادى من mcpRoutes.js عشان يبني JWT قصير العمر (10 دقايق) للمستخدم اللي معاه API key
+// صحيح، عشان يقدر يستخدم نفس الـ REST endpoints الداخلية الموجودة أصلاً (authMiddleware
+// بيتعامل مع الـ JWT ده زي أي JWT عادي) — من غير ما نكرر منطق الكريديت/الفحص من الصفر
+export function mintInternalToken(userId, email) {
+  return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '10m' });
 }
 
 export async function logLoginEvent(userId, email, method = 'password') {

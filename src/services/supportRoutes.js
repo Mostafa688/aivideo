@@ -59,6 +59,33 @@ function saveSupportMedia(base64, mediaType) {
   } catch (e) { console.warn('[Support] Init error:', e.message); }
 })();
 
+// ✅ NEW: دالة مشتركة لإرسال إيميل "عندك رد جديد" للعميل — بتتستخدم من admin-reply
+// (رد عادي على شات فتحه العميل بنفسه) ومن admin-start-chat (الأدمن هو اللي بدأ)
+async function sendCustomerNotifyEmail({ email, name, language, text, chatId }) {
+  if (!process.env.RESEND_API_KEY || !email) return;
+  try {
+    const appUrl = process.env.APP_URL || 'https://erivion.net';
+    const chatUrl = `${appUrl}/support?openSupportChat=${chatId}`;
+    const isAr = language !== 'en';
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion Support <support@erivion.net>',
+        to: [email],
+        subject: isAr ? '💬 تم الرد على رسالتك — فريق دعم Erivion' : '💬 You got a reply — Erivion Support',
+        html: `<div dir="${isAr ? 'rtl' : 'ltr'}" style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px">
+          <h2 style="color:#a78bfa;margin:0 0 16px">💬 ${isAr ? `تم الرد على رسالتك يا ${name || ''}` : `You got a reply, ${name || ''}`}</h2>
+          <p style="color:#9ca3af;font-size:13px;margin:0 0 16px">${isAr ? 'رد فريق الدعم:' : "Our support team's reply:"}</p>
+          <div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:16px;margin:0 0 20px;color:#e5e7eb;line-height:1.7;white-space:pre-line">${(text || '').trim() || (isAr ? '(مرفق ملف)' : '(attachment)')}</div>
+          <a href="${chatUrl}" style="display:inline-block;padding:14px 28px;border-radius:10px;background:linear-gradient(135deg,#7c6af7,#a855f7);color:#fff;text-decoration:none;font-weight:700;font-size:14px">${isAr ? 'افتح المحادثة ←' : 'Open Chat →'}</a>
+          <p style="color:#6b7280;font-size:11px;margin-top:24px">${isAr ? 'أو انسخ الرابط ده في المتصفح:' : 'Or paste this link in your browser:'}<br><span style="color:#7c6af7">${chatUrl}</span></p>
+        </div>`,
+      }),
+    });
+  } catch (e) { console.warn('[Support] Customer notify email failed:', e.message); }
+}
+
 // ── Start a new chat ──────────────────────────────────────────────────────────
 router.post('/start', async (req, res) => {
   const { name, email, language } = req.body;
@@ -140,6 +167,28 @@ router.get('/messages/:chatId', async (req, res) => {
   }
 });
 
+// ── Get customer's own active chat(s) by email — عشان العميل يقدر يرجع لشاته ──
+// ✅ NEW: بدل ما شات العميل يتمسح من عنده لو خرج وسابه، بنسمحله يدوّر على شاته
+// المفتوحة بالإيميل ويرجعله مباشرة، بدل ما يضطر يفتح شات جديد في كل مرة
+router.get('/my-chats', async (req, res) => {
+  const email = (req.query.email || '').trim();
+  if (!email) return res.status(400).json({ error: 'email required' });
+  try {
+    const { rows } = await pool.query(`
+      SELECT sc.id, sc.name, sc.created_at, sc.expires_at,
+        (SELECT text FROM support_messages WHERE chat_id = sc.id ORDER BY created_at DESC LIMIT 1) as last_message,
+        (SELECT created_at FROM support_messages WHERE chat_id = sc.id ORDER BY created_at DESC LIMIT 1) as last_message_at
+      FROM support_chats sc
+      WHERE sc.email = $1 AND sc.expires_at > NOW()
+      ORDER BY sc.created_at DESC
+      LIMIT 10
+    `, [email]);
+    res.json({ chats: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Get all open chats (admin) ────────────────────────────────────────────────
 router.get('/chats', async (req, res) => {
   const secret = req.headers['x-admin-secret'] || req.query.secret;
@@ -195,6 +244,13 @@ router.post('/admin-reply', async (req, res) => {
       `INSERT INTO support_messages (chat_id, role, text, media_url, media_type, reply_to_id) VALUES ($1, 'admin', $2, $3, $4, $5) RETURNING id`,
       [chatId, (text || '').trim(), mediaUrl, mediaUrl ? (mediaType === 'video' ? 'video' : 'image') : null, replyToId || null]
     );
+    // ✅ FIX: كان مفيش أي إشعار للعميل خالص لما الأدمن يرد على شات هو بدأه بنفسه — العميل
+    // كان لازم يفضل فاتح الصفحة عشان يشوف الرد. دلوقتي بنبعتله إيميل فيه رد الأدمن وزرار
+    // يفتحله نفس المحادثة مباشرة، بالظبط زي admin-start-chat بس هنا للرد العادي.
+    const { rows: chatRows } = await pool.query(`SELECT name, email, language FROM support_chats WHERE id = $1`, [chatId]);
+    if (chatRows[0]?.email) {
+      sendCustomerNotifyEmail({ email: chatRows[0].email, name: chatRows[0].name, language: chatRows[0].language, text, chatId }).catch(() => {});
+    }
     res.json({ success: true, id: rows[0]?.id, mediaUrl });
   } catch (e) {
     res.status(500).json({ error: e.message });

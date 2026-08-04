@@ -6,11 +6,16 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { authMiddleware } from './authRoutes.js';
 import { getUserById, getCreditsBalance, chargeCredits, getAdsCreditCost, ADS_CREDIT_COSTS_NO_VOICE, ADS_CREDIT_COSTS_VOICE } from './authService.js';
-import { renderAdVideo } from './adsVideoService.js';
+import { renderAdVideo, renderAdVideoFromPlan } from './adsVideoService.js';
 import { checkContentSafety, MODERATION_REJECTION_MESSAGE } from './scriptService.js';
 
 const router = express.Router();
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ✅ NEW: لما العميل يبعت خطة إعلان جاهزة بعدد مشاهد حر (مش الـ 3-6 المعتادة)، كل مشهد بيتحسب
+// بسعر ثابت لكل مشهد بدل جدول التكلفة العادي (اللي مبني على شرائح 3-6 مشهد بس)
+const ADS_PLAN_PER_SCENE_COST_VOICE = 40;
+const ADS_PLAN_PER_SCENE_COST_NO_VOICE = 70;
 
 // ── multer for product image + optional voice audio ───────────────────────────
 const upload = multer({
@@ -64,11 +69,20 @@ router.post('/render',
       const productImage = req.files?.productImage?.[0];
       if (!productImage) return res.status(400).json({ error: 'Product image is required' });
 
-      const { productName, productDesc, audioMode, aiVoiceKey, ratio, language, sceneCount, customHook, captions, productLink } = req.body;
+      const { productName, productDesc, audioMode, aiVoiceKey, ratio, language, sceneCount, customHook, captions, productLink, style, scenePlan: scenePlanRaw } = req.body;
       if (!productName?.trim()) return res.status(400).json({ error: 'Product name is required' });
 
+      // ✅ NEW: خطة إعلان جاهزة من العميل (Time/Visual/Voiceover) — لو موجودة، بتاخد الأولوية
+      // على sceneCount العادي، وعدد المشاهد بيبقى حسب الخطة نفسها مش مقصور على 3-6
+      let scenePlan = null;
+      if (scenePlanRaw) {
+        try { scenePlan = typeof scenePlanRaw === 'string' ? JSON.parse(scenePlanRaw) : scenePlanRaw; }
+        catch { return res.status(400).json({ error: 'Invalid scenePlan format' }); }
+        if (!scenePlan?.scenes?.length) return res.status(400).json({ error: 'scenePlan.scenes is required' });
+      }
+
       // ✅ فحص أمان المحتوى قبل أي توليد — رفض المحتوى الإباحي/العنصري/العنيف
-      const modCheckAds = await checkContentSafety(`${productName} ${productDesc || ''} ${customHook || ''}`);
+      const modCheckAds = await checkContentSafety(`${productName} ${productDesc || ''} ${customHook || ''} ${scenePlan ? scenePlan.scenes.map(s => s.text || '').join(' ') : ''}`);
       if (modCheckAds.unsafe) {
         return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckAds.category });
       }
@@ -83,10 +97,12 @@ router.post('/render',
         fs.writeFileSync(uploadedAudioPath, voiceAudioFile.buffer);
       }
 
-      // ── تكلفة الكريديت حسب عدد المشاهد ووجود صوت من عدمه ──
-      const finalSceneCount = Math.min(Math.max(parseInt(sceneCount) || 5, 3), 6);
       const hasVoiceMode = audioMode === 'ai_voice' || (audioMode === 'upload' && !!uploadedAudioPath);
-      const adsCost = getAdsCreditCost(finalSceneCount, hasVoiceMode);
+      // ── تكلفة الكريديت: خطة مخصصة = سعر ثابت لكل مشهد × عدد مشاهد الخطة، غير كده الجدول العادي ──
+      const finalSceneCount = scenePlan ? scenePlan.scenes.length : Math.min(Math.max(parseInt(sceneCount) || 5, 3), 6);
+      const adsCost = scenePlan
+        ? finalSceneCount * (hasVoiceMode ? ADS_PLAN_PER_SCENE_COST_VOICE : ADS_PLAN_PER_SCENE_COST_NO_VOICE)
+        : getAdsCreditCost(finalSceneCount, hasVoiceMode);
 
       // ── نظام الكريديت الموحد ──
       const balance = await getCreditsBalance(req.user.userId);
@@ -118,7 +134,24 @@ router.post('/render',
       // ── Run async ──
       (async () => {
         try {
-          const result = await renderAdVideo({
+          const result = scenePlan
+            ? await renderAdVideoFromPlan({
+                productImageBase64: productImage.buffer.toString('base64'),
+                productName: productName.trim(),
+                productDesc: (productDesc || '').trim(),
+                scenePlan,
+                audioMode: audioMode || 'none',
+                uploadedAudioPath,
+                aiVoiceKey: aiVoiceKey || 'male_arabic',
+                ratio: ratio || '16:9',
+                language: language || 'ar',
+                captions: captions === 'true' || captions === true,
+                productLink: (productLink || '').trim(),
+                outputDir,
+                jobId,
+                onProgress: ({ step, msg }) => setAdsJob(jobId, { step, msg }),
+              })
+            : await renderAdVideo({
             productImageBase64: productImage.buffer.toString('base64'),
             productName: productName.trim(),
             productDesc: (productDesc || '').trim(),
@@ -131,6 +164,7 @@ router.post('/render',
             customHook: customHook || '',
             captions: captions === 'true' || captions === true,
             productLink: (productLink || '').trim(),
+            style: style || null,
             outputDir,
             jobId,
             onProgress: ({ step, msg }) => setAdsJob(jobId, { step, msg }),

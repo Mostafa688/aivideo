@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from './authRoutes.js';
-import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, AGENT_LIMITS } from './agentService.js';
+import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById } from './authService.js';
 
 const router = express.Router();
@@ -69,7 +69,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, hasStructuredScript: clientHasStructuredScript } = req.body;
+    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
     // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual
@@ -81,9 +81,23 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (parsedScript) {
       structuredScenesResult = parsedScript.scenes;
       const durLabel = parsedScript.durationSec ? `${parsedScript.durationSec}s` : 'unspecified';
-      structuredNote = `The user pasted a pre-divided scene breakdown with EXACTLY ${parsedScript.scenes.length} scenes, already parsed and captured exactly as written by the system (not by you) — you must NOT reproduce, retype, or summarize the scene text yourself, and must NOT include a "structuredScenes" field in your READY marker at all (the system already has the real content). Stated/implied total duration ≈ ${durLabel}. Voice style hint from the user: "${parsedScript.voiceHint || 'none given'}". Music requested: ${parsedScript.hasMusic ? 'yes' : 'no'}. Your job now: pick model 1 or 2 (ask if unclear), pick ratio (ask if unclear), pick the closest supported duration bucket to ${durLabel} for pricing (the real scene count stays ${parsedScript.scenes.length} regardless), map the voice hint to the closest "voice" option, set "music" accordingly, mention once that any "On-screen Text" lines won't render as a separate overlay (captions come from narration audio only), then confirm and emit a normal READY marker with "idea" as just a short label.`;
+      structuredNote = `The user pasted a pre-divided scene breakdown with EXACTLY ${parsedScript.scenes.length} scenes, already parsed and captured exactly as written by the system (not by you) — you must NOT reproduce, retype, or summarize the scene text yourself, and must NOT include a "structuredScenes" field in your READY marker at all (the system already has the real content). Stated/implied total duration ≈ ${durLabel}. Voice style hint from the user: "${parsedScript.voiceHint || 'none given'}". Music requested: ${parsedScript.hasMusic ? 'yes' : 'no'}. Your job now: pick which model — 1, 2, 3, 4, or 5's normal modes (never map-video) (ask if unclear), pick ratio (ask if unclear), pick the closest supported duration bucket to ${durLabel} for pricing (the real scene count stays ${parsedScript.scenes.length} regardless — if that's more scenes than the bucket's standard count, remember the per-extra-scene surcharge: Model 3 = 20cr, Model 4 = 35cr, Model 5 = 70cr), map the voice hint to the closest "voice" option, set "music" accordingly, mention once that any "On-screen Text" lines won't render as a separate overlay (captions come from narration audio only), then confirm and emit a normal READY marker with "idea" as just a short label.`;
     }
     const hasStructuredScript = !!parsedScript || !!clientHasStructuredScript;
+
+    // ✅ NEW: نفس الفكرة، لخطة إعلان بصيغة جدول (Time | Visual | Voiceover) — لو مفيش
+    // تقسيم "Scene N" اتلقط فوق، نجرب صيغة الجدول دي كمان بنفس الأسلوب (كود عادي، مفيش AI)
+    let adsScenePlanResult = null;
+    let adsScenePlanNote = null;
+    if (!parsedScript) {
+      const parsedAdsPlan = parseAdsScenePlan(message);
+      if (parsedAdsPlan) {
+        adsScenePlanResult = parsedAdsPlan;
+        const styleLabel = parsedAdsPlan.style || (parsedAdsPlan.styleRaw ? `"${parsedAdsPlan.styleRaw}" (map to closest of action/cinematic/calm)` : 'unspecified');
+        adsScenePlanNote = `The user pasted a ready-made AD PLAN with a Time/Visual/Voiceover table — EXACTLY ${parsedAdsPlan.scenes.length} scenes, already parsed and captured exactly as written by the system (not by you), each with its own real duration and its own exact voiceover line — you must NOT reproduce, retype, or summarize any scene content yourself, and must NOT include an "adsScenePlan" field in your READY marker at all (the system already has it). Total planned duration ≈ ${parsedAdsPlan.totalDurationSec}s. Style from the plan: ${styleLabel}. Music hint: "${parsedAdsPlan.musicHint || 'none given'}"（informational only — the platform can't generate custom music from a text description, it uses one of its own background tracks; mention this once if relevant). ${parsedAdsPlan.hasOnScreenText ? 'The plan includes "On-Screen Text" — mention once that this platform doesn\'t render separate on-screen text overlays distinct from spoken captions.' : ''} Your job now: this MUST be Model 7 (Ads) — confirm a product photo is uploaded (ask if not), pick ratio (ask if unclear), set "style" from the mapping above, mention the credit cost for ${parsedAdsPlan.scenes.length} planned scenes, then confirm and emit a normal READY marker for model 7 with "idea" as just a short label — do NOT put the script/scenes in "idea".`;
+      }
+    }
+    const hasAdsScenePlan = !!adsScenePlanResult || !!clientHasAdsScenePlan;
 
     // ✅ FIX: بيقبل دلوقتي مصفوفة صور (لحد 2) في نفس الرسالة، مش صورة واحدة بس —
     // imageBase64 (مفرد) لسه متاح للتوافق مع أي كود قديم، بس imagesBase64 (جمع) هو الأساس دلوقتي
@@ -91,7 +105,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
       ? imagesBase64.slice(0, 2)
       : (imageBase64 ? [imageBase64] : []);
 
-    let attachmentNote = structuredNote;
+    const styleHintNote = styleHint
+      ? (styleHint === 'map_video'
+          ? `The user selected "Map Video" from the style picker — this means they specifically want Model 5's Map Video mode (historical/geopolitical map documentary, 15s, isMapVideo:true) for this next video, unless the topic they describe clearly can't work as a map video, in which case briefly clarify with them.`
+          : `The user selected the "${styleHint.replace('_', ' ')}" visual style from the style picker before describing their idea — reflect this style genuinely in whichever model you end up using (e.g. in "videoStyle"/"styleSuffix" for Models 1-4, in the idea/prompt wording for Model 5, or in the "style" field for Model 7/Ads if it maps to action/cinematic/calm). This is optional context they chose to make their intent clearer, not a separate request — don't mention the picker itself, just naturally apply the style.`)
+      : null;
+    let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote].filter(Boolean).join(' ') || null;
     let transcript = null;
     let uploadedVoiceUrl = null;
 
@@ -138,7 +157,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
       message, history, attachmentNote, userPlan,
       hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
+      hasVideo: !!videoAlreadyUploaded,
+      videoDurationSec: videoDurationSec || null,
       hasStructuredScript,
+      hasAdsScenePlan,
     });
 
     // ✅ NEW: لو الموديل رجع رد فاضي تمامًا (مثلاً استهلك كل التوكنز في تفكير مخفي غير ظاهر
@@ -148,17 +170,20 @@ router.post('/chat', authMiddleware, async (req, res) => {
       console.warn('[Agent Chat] ⚠️ Empty reply from model — likely reasoning tokens exhausted max_tokens before any visible content');
       return res.json({
         reply: 'معلش، حصل تأخير بسيط في التفكير — ممكن تبعت رسالتك تاني؟',
-        transcript, ready: null, editScene: null, uploadedVoiceUrl,
+        transcript, ready: null, editScene: null, videoEdit: null, uploadedVoiceUrl,
       });
     }
 
-    // ── فصل الأمر التقني (###READY### أو ###EDIT_SCENE###) عن رسالة الشات — الـ JSON بقى بييجي
-    // الأول في الرد (مش الآخر) عشان لو حصل قطع من حد التوكنز يقطع في الكلام مش في الـ JSON ──
+    // ── فصل الأمر التقني (###READY### أو ###EDIT_SCENE### أو ###VIDEO_EDIT###) عن رسالة
+    // الشات — الـ JSON بقى بييجي الأول في الرد (مش الآخر) عشان لو حصل قطع من حد التوكنز
+    // يقطع في الكلام مش في الـ JSON ──
     let reply = rawReply;
     let ready = null;
     let editScene = null;
+    let videoEdit = null;
     const isEditMarker = rawReply.includes('###EDIT_SCENE###');
-    const markerName = isEditMarker ? '###EDIT_SCENE###' : '###READY###';
+    const isVideoEditMarker = !isEditMarker && rawReply.includes('###VIDEO_EDIT###');
+    const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : '###READY###';
     const markerIdx = rawReply.indexOf(markerName);
     if (markerIdx !== -1) {
       const afterMarker = rawReply.slice(markerIdx + markerName.length).trimStart();
@@ -170,6 +195,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
         const parsed = JSON.parse(jsonText);
         if (isEditMarker) {
           if (Number.isInteger(parsed.sceneIndex) && typeof parsed.description === 'string') editScene = parsed;
+        } else if (isVideoEditMarker) {
+          if (typeof parsed.editPrompt === 'string' && parsed.editPrompt.trim()) videoEdit = parsed;
         } else if ([1, 2, 3, 4, 5, 7].includes(parsed.model)) {
           ready = parsed;
         }
@@ -184,6 +211,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
             if (Number.isInteger(repaired.sceneIndex) && typeof repaired.description === 'string') {
               editScene = repaired;
               console.warn('[Agent] ✅ Repaired truncated EDIT_SCENE JSON successfully');
+            }
+          } else if (isVideoEditMarker) {
+            if (typeof repaired.editPrompt === 'string' && repaired.editPrompt.trim()) {
+              videoEdit = repaired;
+              console.warn('[Agent] ✅ Repaired truncated VIDEO_EDIT JSON successfully');
             }
           } else if ([1, 2, 3, 4, 5, 7].includes(repaired.model)) {
             ready = repaired;
@@ -202,13 +234,15 @@ router.post('/chat', authMiddleware, async (req, res) => {
       ready.uploadedVoiceUrl = uploadedVoiceUrl;
     }
 
-    // ✅ لو نجحنا نطلع "ready" بس النص البشري اللي المفروض ييجي بعد الـ JSON اتقطع بالكامل
-    // (نادر، بس ممكن لو حد التوكنز وقف بالظبط عند آخر قوس)، منسيبش فقاعة فاضية للعميل
-    if ((ready || editScene) && !reply) {
-      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو 🎬' : 'جاهز، هبدأ التوليد دلوقتي 🎬';
+    // ✅ لو نجحنا نطلع "ready"/"editScene"/"videoEdit" بس النص البشري اللي المفروض ييجي بعد
+    // الـ JSON اتقطع بالكامل (نادر، بس ممكن لو حد التوكنز وقف بالظبط عند آخر قوس)، منسيبش
+    // فقاعة فاضية للعميل
+    if ((ready || editScene || videoEdit) && !reply) {
+      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو 🎬' : videoEdit ? 'تمام، هبدأ أعدّل الفيديو دلوقتي 🎬' : 'جاهز، هبدأ التوليد دلوقتي 🎬';
     }
 
-    res.json({ reply, transcript, ready, editScene, uploadedVoiceUrl, structuredScenes: structuredScenesResult });
+
+    res.json({ reply, transcript, ready, editScene, videoEdit, uploadedVoiceUrl, structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult });
   } catch (e) {
     console.error('[Agent Chat]', e.message);
     res.status(500).json({ error: e.message });

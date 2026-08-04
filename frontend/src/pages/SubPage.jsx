@@ -1,14 +1,91 @@
 import React, { useState } from 'react';
 import { AppFooter } from './LandingPage.jsx';
 
+// ✅ NEW: كل Section بقى كارت واضح بحدود خفيفة، ورقم دائري لو العنوان مبدوء بـ "N. " —
+// بيتقرا تلقائي من نص العنوان نفسه (زي "1. Acceptance of Terms") من غير ما نلمس أي مكان
+// بينادي Section، فكل الصفحات (Terms/Privacy/Refund/About) بتستفيد من الشكل الجديد أوتوماتيك
 function Section({ title, children }) {
+  const match = String(title).match(/^(\d+)\.\s*(.+)$/);
+  const num = match ? match[1] : null;
+  const heading = match ? match[2] : title;
+  const anchorId = 'sec-' + (num || String(heading).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
   return (
-    <div style={{ marginBottom: 28 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent2)', marginBottom: 8 }}>{title}</h3>
-      <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.8 }}>{children}</p>
+    <div id={anchorId} style={{
+      marginBottom: 14,
+      padding: '20px 22px',
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 14,
+      scrollMarginTop: 96,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        {num && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            minWidth: 26, height: 26, borderRadius: '50%',
+            background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 800,
+            flexShrink: 0,
+          }}>{num}</span>
+        )}
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{heading}</h3>
+      </div>
+      <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.85, margin: 0, whiteSpace: 'pre-line' }}>{children}</p>
     </div>
   );
 }
+
+// ✅ NEW: قائمة "على هذه الصفحة" — شبكة أزرار صغيرة بتنط لأي قسم لما تدوس عليه، بدل ما
+// العميل يعمل scroll يدوي في صفحة طويلة. بتظهر بس للصفحات الطويلة (Terms/Privacy)
+function TableOfContents({ items }) {
+  const scrollTo = (id) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  return (
+    <div style={{
+      marginBottom: 28, padding: '16px 18px',
+      background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+      borderRadius: 14,
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        On this page
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {items.map((label, i) => {
+          const n = i + 1;
+          return (
+            <button key={n} onClick={() => scrollTo('sec-' + n)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 999,
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+              color: 'var(--text2)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                minWidth: 16, height: 16, borderRadius: '50%',
+                background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 800,
+              }}>{n}</span>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const TERMS_TOC = [
+  'Acceptance of Terms', 'Description of Service', 'User Accounts', 'Acceptable Use & Prohibited Content',
+  'Payments & Subscriptions', 'Cancellation & Refund Policy', 'Advertising', 'Intellectual Property',
+  'AI-Generated Content Disclaimer', 'Fair Use & Service Availability', 'Data & Video Retention',
+  'Disclaimers & Limitation of Liability', 'Termination', 'Governing Law', 'Changes to Terms', 'Contact Us',
+];
+
+const PRIVACY_TOC = [
+  'Introduction', 'Information We Collect', 'How We Use Your Information', 'Ad-Free Platform',
+  'Gumroad (International Payments)', 'Cookies & Tracking', 'Third-Party Services',
+  'Data Storage & Security', 'Your Rights', 'Contact Us',
+];
 
 function TermsContent() {
   return <>
@@ -266,8 +343,8 @@ function SupportContent() {
 }
 
 const PAGE_CONFIG = {
-  terms:      { title: 'Terms of Service',        icon: '📄' },
-  privacy:    { title: 'Privacy Policy',           icon: '🔒' },
+  terms:      { title: 'Terms of Service',        icon: '📄', lastUpdated: 'August 2026' },
+  privacy:    { title: 'Privacy Policy',           icon: '🔒', lastUpdated: 'August 2026' },
   refund:     { title: 'Refund & Cancellation',    icon: '💰' },
   about:      { title: 'About Erivion',            icon: 'ℹ️' },
   support:    { title: 'Support',                  icon: '🛟' },
@@ -276,6 +353,7 @@ const PAGE_CONFIG = {
 
 export default function SubPage({ page, onBack }) {
   const config = PAGE_CONFIG[page] || { title: page, icon: '📄' };
+  const toc = page === 'terms' ? TERMS_TOC : page === 'privacy' ? PRIVACY_TOC : null;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px 80px' }}>
@@ -283,9 +361,22 @@ export default function SubPage({ page, onBack }) {
         <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14, marginBottom: 32, padding: 0 }}>
           ← Back
         </button>
-        <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 36, letterSpacing: '-0.5px', color: 'var(--text)' }}>
-          {config.icon} {config.title}
-        </h1>
+        <div style={{ marginBottom: config.lastUpdated ? 12 : 36 }}>
+          <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 0, letterSpacing: '-0.5px', color: 'var(--text)' }}>
+            {config.icon} {config.title}
+          </h1>
+        </div>
+        {config.lastUpdated && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 28,
+            padding: '5px 12px', borderRadius: 999,
+            background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)',
+            color: 'var(--accent2)', fontSize: 12, fontWeight: 600,
+          }}>
+            🕒 Last updated: {config.lastUpdated}
+          </div>
+        )}
+        {toc && <TableOfContents items={toc} />}
         {page === 'terms'   && <TermsContent />}
         {page === 'privacy' && <PrivacyContent />}
         {page === 'refund'  && <RefundContent />}

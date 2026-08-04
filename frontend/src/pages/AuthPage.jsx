@@ -2,6 +2,77 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const LOGO = 'https://i.ibb.co/xK4Sq6fP/Chat-GPT-Image-19-2026-09-08-47-Photoroom.png';
 
+// ✅ NEW: كاروسيل فيديوهات صفحة اللوجين — بيتبادل بين فيديوهين، وبينهم أنيميشن تحميل باللوجو.
+// شغال بس على الديسكتوب لأنه جوه .auth-branding اللي أصلاً بيتخفي على الموبايل (مفيش مكان له هناك).
+const SHOWCASE_VIDEOS = [
+  { url: 'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/202608042037.mp4', prompt: 'A hooded warrior battles a colossal shadow beast, cinematic Hollywood action, photorealistic, 8K.' },
+  { url: 'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/video_1778958974987.mp4', prompt: 'An explorer was born in his tomb and discovered a huge treasure' },
+];
+
+function LoginVideoCarousel() {
+  const [index, setIndex] = useState(0);
+  const [phase, setPhase] = useState('loading'); // 'loading' | 'playing'
+
+  useEffect(() => {
+    if (phase !== 'loading') return;
+    const t = setTimeout(() => setPhase('playing'), 1500);
+    return () => clearTimeout(t);
+  }, [phase, index]);
+
+  const handleEnded = () => {
+    setPhase('loading');
+    setIndex(i => (i + 1) % SHOWCASE_VIDEOS.length);
+  };
+
+  const current = SHOWCASE_VIDEOS[index];
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      <div style={{
+        position: 'relative', width: '100%', maxWidth: 260, aspectRatio: '9/16', margin: '0 auto',
+        borderRadius: 18, overflow: 'hidden', background: '#0a0a14',
+        border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
+      }}>
+        {phase === 'loading' ? (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+            <div className="login-carousel-logo" style={{
+              width: 52, height: 52, borderRadius: 15,
+              background: 'linear-gradient(135deg,#7c6af7,#a08ff8)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 24px rgba(124,106,247,0.5)',
+            }}>
+              <img src={LOGO} alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} />
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              Generating with Erivion...
+            </div>
+          </div>
+        ) : (
+          <video
+            key={current.url}
+            src={current.url}
+            autoPlay
+            muted
+            playsInline
+            onEnded={handleEnded}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
+      </div>
+      <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 1.6, fontStyle: 'italic', textAlign: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+        "{current.prompt}"
+      </div>
+      <style>{`
+        @keyframes loginCarouselLogoPulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.08); opacity: 0.85; }
+        }
+        .login-carousel-logo { animation: loginCarouselLogoPulse 1.4s ease-in-out infinite; }
+      `}</style>
+    </div>
+  );
+}
+
 // ─── Section helper ───────────────────────────────────────────────────────────
 function Section({ title, children }) {
   return (
@@ -731,21 +802,8 @@ export default function AuthPage({ onAuth, googlePendingData }) {
               AI-powered video creation. Generate professional videos from any idea or script in minutes.
             </p>
 
-            {/* Features */}
-            {[
-              { icon: '⚡', title: 'Instant Generation',  desc: 'Create HD videos in under 2 minutes', color: '#fbbf24' },
-              { icon: '🎙️', title: 'Natural Voiceovers',  desc: '8+ languages, multiple voice styles',  color: '#34d399' },
-              { icon: '🎬', title: 'Professional Quality',desc: 'Captions, music, transitions & effects', color: '#a78bfa' },
-            ].map((f, i) => (
-              <div key={i} className="feat-item" data-delay={i * 80}
-                style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20, padding: '14px 16px', borderRadius: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', transition: 'all 0.3s' }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: `${f.color}18`, border: `1px solid ${f.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{f.icon}</div>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: '#fff', marginBottom: 3, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{f.title}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{f.desc}</div>
-                </div>
-              </div>
-            ))}
+            {/* Video showcase carousel */}
+            <LoginVideoCarousel />
 
             {/* Social proof */}
             <div style={{ marginTop: 36, padding: '14px 20px', borderRadius: 12, background: 'rgba(124,106,247,0.08)', border: '1px solid rgba(124,106,247,0.2)', display: 'flex', alignItems: 'center', gap: 12 }}>

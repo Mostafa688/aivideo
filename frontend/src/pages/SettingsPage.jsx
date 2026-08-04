@@ -45,6 +45,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
     { key: 'profile',       icon: '👤', label: 'Profile' },
     { key: 'notifications', icon: '🔔', label: 'Notifications' },
     { key: 'security',      icon: '🔒', label: 'Security' },
+    { key: 'developer',     icon: '🔌', label: 'API & MCP' },
     { key: 'danger',        icon: '⚠️',  label: 'Danger Zone' },
   ];
 
@@ -71,11 +72,59 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
   const [deleteStep, setDeleteStep]       = useState('idle'); // 'idle' | 'confirm' | 'loading' | 'done'
   const [deleteInput, setDeleteInput]     = useState('');
 
+  // ✅ NEW: API Keys (لـ MCP/استخدام خارجي)
+  const [apiKeys, setApiKeys]             = useState([]);
+  const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const [newKeyName, setNewKeyName]       = useState('');
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [freshKey, setFreshKey]           = useState(null); // المفتاح الكامل — بيبان مرة واحدة بس
+  const [copiedKey, setCopiedKey]         = useState(false);
+  const [copiedUrl, setCopiedUrl]         = useState(false);
+
   // persist notifications & region
   useEffect(() => { localStorage.setItem('erivion_notif_email', emailNotif); }, [emailNotif]);
   useEffect(() => { localStorage.setItem('erivion_notif_video', videoReady); }, [videoReady]);
   useEffect(() => { localStorage.setItem('erivion_notif_news',  newsletter);  }, [newsletter]);
   useEffect(() => { localStorage.setItem('erivion_region', region); }, [region]);
+
+  // ✅ NEW: نحمّل مفاتيح الـ API لما التاب يتفتح
+  useEffect(() => { if (active === 'developer') loadApiKeys(); }, [active]);
+
+  const loadApiKeys = async () => {
+    setApiKeysLoading(true);
+    try {
+      const res = await fetch('/api/auth/api-key', { headers: authHeaders() });
+      const data = await res.json();
+      setApiKeys(data.keys || []);
+    } catch {}
+    setApiKeysLoading(false);
+  };
+
+  const handleGenerateKey = async () => {
+    setGeneratingKey(true);
+    setFreshKey(null);
+    try {
+      const res = await fetch('/api/auth/api-key/generate', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ name: newKeyName.trim() || 'Default Key' }),
+      });
+      const data = await res.json();
+      if (data.apiKey) { setFreshKey(data.apiKey); setNewKeyName(''); await loadApiKeys(); }
+    } catch {}
+    setGeneratingKey(false);
+  };
+
+  const handleRevokeKey = async (id) => {
+    try {
+      await fetch(`/api/auth/api-key/${id}`, { method: 'DELETE', headers: authHeaders() });
+      await loadApiKeys();
+    } catch {}
+  };
+
+  const MCP_URL = `${window.location.origin}/mcp`;
+  const copyToClipboard = (text, setFlag) => {
+    navigator.clipboard.writeText(text).then(() => { setFlag(true); setTimeout(() => setFlag(false), 2000); });
+  };
 
   // ── Save name ──
   const handleSaveName = async () => {
@@ -337,6 +386,75 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                   style={{ width: '100%', padding: '11px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
                   🚪 Sign Out
                 </button>
+              </Section>
+            </div>
+          )}
+
+          {active === 'developer' && (
+            <div>
+              <Section title="Connect via MCP (Claude, etc.)" icon="🔌">
+                <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
+                  Add Erivion as an MCP connector in Claude.ai, Claude Desktop, or Claude Code to generate videos directly from your conversations. Paste this URL when adding a custom connector, and use one of your API keys below for authentication.
+                </p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input readOnly value={MCP_URL}
+                    style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 13, fontFamily: 'monospace', outline: 'none' }} />
+                  <button onClick={() => copyToClipboard(MCP_URL, setCopiedUrl)}
+                    style={{ padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', cursor: 'pointer', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
+                    {copiedUrl ? '✅ Copied' : '📋 Copy'}
+                  </button>
+                </div>
+              </Section>
+
+              <Section title="API Keys" icon="🔑">
+                <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
+                  API keys let external tools (like the MCP connector above) act on your Erivion account — generating videos and spending your credits. Treat them like passwords.
+                </p>
+
+                {freshKey && (
+                  <div style={{ padding: '14px 16px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, marginBottom: 16 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#22c55e', marginBottom: 8 }}>
+                      ✅ Key created — copy it now, you won't see it again
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input readOnly value={freshKey}
+                        style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 12.5, fontFamily: 'monospace', outline: 'none' }} />
+                      <button onClick={() => copyToClipboard(freshKey, setCopiedKey)}
+                        style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        {copiedKey ? '✅ Copied' : '📋 Copy'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <input placeholder="Key name (e.g. Claude Desktop)" value={newKeyName} onChange={e => setNewKeyName(e.target.value)}
+                    style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
+                  <button onClick={handleGenerateKey} disabled={generatingKey} style={{ ...btnStyle(), whiteSpace: 'nowrap' }}>
+                    {generatingKey ? '⏳ Generating...' : '+ Generate Key'}
+                  </button>
+                </div>
+
+                {apiKeysLoading && <p style={{ fontSize: 13, color: 'var(--text3)' }}>Loading...</p>}
+                {!apiKeysLoading && apiKeys.length === 0 && (
+                  <p style={{ fontSize: 13, color: 'var(--text3)' }}>No API keys yet.</p>
+                )}
+                {apiKeys.map(k => (
+                  <div key={k.id} style={{ padding: '12px 16px', background: 'var(--bg3)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{k.name}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 2, fontFamily: 'monospace' }}>{k.key_prefix}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                        Created {new Date(k.created_at).toLocaleDateString()}
+                        {k.last_used_at ? ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}` : ' · Never used'}
+                      </div>
+                    </div>
+                    <button onClick={() => handleRevokeKey(k.id)}
+                      style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#f87171', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
+                      Revoke
+                    </button>
+                  </div>
+                ))}
               </Section>
             </div>
           )}

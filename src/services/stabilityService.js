@@ -91,6 +91,59 @@ async function generateImage(prompt, ratio = '16:9') {
   throw lastErr;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: تعديل صورة موجودة بتوجيه من صورة مرجعية يرفعها العميل — black-forest-labs/flux-2-max
+//  (اتأكد من الـ schema من تاب الـ API نفسه): input_images (array، لحد 8 صور) + prompt.
+//  بنبعت صورة المشهد الأصلية + صورة المرجع مع بعض، والبرومبت بيوضح إن الصورة الأولى هي
+//  الأساس والتانية مرجع للتغيير المطلوب بس.
+// ══════════════════════════════════════════════════════════════════════════
+export async function generateReferenceEdit(baseImageUrl, referenceImageUrl, editPrompt, ratio = '16:9') {
+  const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set in environment');
+  const headers = { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json' };
+
+  const fullPrompt = `The first image is the original scene — keep its composition, setting, and everything else in it exactly unchanged. The second image is a reference showing what to change. Apply this specific change from the reference: ${editPrompt}. Do not alter anything in the first image beyond what the reference and instruction specify.`;
+
+  const submitRes = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-2-max/predictions', {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      input: {
+        prompt: fullPrompt,
+        input_images: [baseImageUrl, referenceImageUrl],
+        aspect_ratio: 'match_input_image',
+        output_format: 'jpg',
+      },
+    }),
+  });
+  if (!submitRes.ok) throw new Error(`FLUX-2-Max error ${submitRes.status}: ${await submitRes.text()}`);
+  let prediction = await submitRes.json();
+  if (prediction.status === 'succeeded' && prediction.output) {
+    const url = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+    return await downloadImageBuffer(url);
+  }
+  const predictionId = prediction.id;
+  if (!predictionId) throw new Error(`No prediction ID: ${JSON.stringify(prediction)}`);
+  const maxWait = 120_000, pollInterval = 3_000, startTime = Date.now();
+  while (Date.now() - startTime < maxWait) {
+    await new Promise(r => setTimeout(r, pollInterval));
+    const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
+    if (!statusRes.ok) continue;
+    const data = await statusRes.json();
+    if (data.status === 'succeeded') {
+      const url = Array.isArray(data.output) ? data.output[0] : data.output;
+      return await downloadImageBuffer(url);
+    }
+    if (data.status === 'failed' || data.status === 'canceled') throw new Error(`FLUX-2-Max failed: ${data.error || 'unknown'}`);
+  }
+  throw new Error('FLUX-2-Max timed out');
+}
+
+async function downloadImageBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Image download failed: ' + res.status);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 // ── Ken Burns zoom effect على صورة واحدة ──────────────────────────────────
 function applyKenBurns(imagePath, outputPath, duration, w, h, index) {
   const fps = 30;
@@ -309,20 +362,39 @@ export async function renderModel3Video({
 
   // ── Step 1: توليد الصور ───────────────────────────────────────────────
   const imagePaths = [];
+  const sceneImageUrls = []; // ✅ NEW: رابط دائم لكل صورة مشهد — عشان تعديل مستقبلي لمشهد واحد بس يعيد استخدام الباقي
+  const imageCacheDir = path.join(OUTPUTS_DIR, 'scene_cache');
+  fs.mkdirSync(imageCacheDir, { recursive: true });
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
     const imagePath = path.join(TEMP_DIR, `m3_img_${id}_${i}.jpg`);
 
     try {
       if (onProgress) onProgress({ step: 'generating', current: i + 1, total: totalImages });
-      console.log(`[Model3] Generating image ${i + 1}/${totalImages}: ${scene.prompt?.slice(0, 60)}...`);
 
-      // بنبني prompt محسن: scene.prompt أولاً، لو مفيش نبنيه من visual + text
-      const imagePrompt = scene.prompt 
-        || (scene.visual ? `${scene.visual}, cinematic lighting, photorealistic, high detail, 8K` : null)
-        || `${scene.text}, cinematic, photorealistic, high quality`;
-      const imageBuffer = await generateImage(imagePrompt, ratio);
-      fs.writeFileSync(imagePath, imageBuffer);
+      // ✅ NEW: لو المشهد ده معاه صورة جاهزة من رندر سابق (يعني مش المشهد المطلوب تعديله)،
+      // نستخدمها زي ما هي بدل ما نولّد صورة جديدة تمامًا (كانت بتولّد كل الصور من الصفر
+      // في كل مرة حتى لو مشهد واحد بس هو اللي اتغيّر)
+      if (scene.existingImageUrl) {
+        console.log(`[Model3] Reusing existing image ${i + 1}/${totalImages} (scene not changed)`);
+        const srcPath = scene.existingImageUrl.startsWith('http')
+          ? null
+          : path.join(process.cwd(), scene.existingImageUrl.replace(/^\//, ''));
+        if (srcPath && fs.existsSync(srcPath)) {
+          fs.copyFileSync(srcPath, imagePath);
+        } else {
+          const r = await fetch(scene.existingImageUrl);
+          fs.writeFileSync(imagePath, Buffer.from(await r.arrayBuffer()));
+        }
+      } else {
+        console.log(`[Model3] Generating image ${i + 1}/${totalImages}: ${scene.prompt?.slice(0, 60)}...`);
+        // بنبني prompt محسن: scene.prompt أولاً، لو مفيش نبنيه من visual + text
+        const imagePrompt = scene.prompt 
+          || (scene.visual ? `${scene.visual}, cinematic lighting, photorealistic, high detail, 8K` : null)
+          || `${scene.text}, cinematic, photorealistic, high quality`;
+        const imageBuffer = await generateImage(imagePrompt, ratio);
+        fs.writeFileSync(imagePath, imageBuffer);
+      }
       imagePaths.push(imagePath);
     } catch (e) {
       console.error(`[Model3] Image ${i + 1} failed:`, e.message);
@@ -333,6 +405,10 @@ export async function renderModel3Video({
       );
       imagePaths.push(imagePath);
     }
+    // ✅ نحفظ نسخة دائمة من الصورة في outputs/scene_cache — دي المتاحة لتعديل مستقبلي
+    const cachePath = path.join(imageCacheDir, `${id}_${i}.jpg`);
+    try { fs.copyFileSync(imagePath, cachePath); sceneImageUrls.push('/outputs/scene_cache/' + `${id}_${i}.jpg`); }
+    catch { sceneImageUrls.push(null); }
   }
 
   // ── Step 1.5: احسب مدة الـ audio الأول عشان نحدد SEC_PER_IMAGE ──────────
@@ -530,5 +606,5 @@ export async function renderModel3Video({
   }, 60000);
 
   console.log(`[Model3] DONE → ${outputPath}`);
-  return outputFile;
+  return { outputFile, sceneImageUrls };
 }

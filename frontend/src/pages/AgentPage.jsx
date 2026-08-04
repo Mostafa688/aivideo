@@ -174,14 +174,19 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [inputFocused, setInputFocused] = useState(false); // ✅ لعرض توهج الحدود لما الكتابة تكون فاعلة
   const [limits, setLimits] = useState({ MAX_AUDIO_SEC: 120, MAX_AUDIO_MB: 10, MAX_IMAGE_MB: 5 });
   const [lastUploadedPhotos, setLastUploadedPhotos] = useState([]); // ✅ FIX: كانت صورة واحدة بس — دلوقتي مصفوفة بتتراكم لحد صورتين عبر رسائل متتالية (موديل 5)
+  const [uploadedVideoFile, setUploadedVideoFile] = useState(null); // ✅ NEW: فيديو العميل بتاعه هو، لتعديل video-to-video (أقصى 15 ثانية)
+  const [uploadedVideoDurationSec, setUploadedVideoDurationSec] = useState(null);
   const [lastUploadedVoiceUrl, setLastUploadedVoiceUrl] = useState(null);
   const [lastUploadedTranscript, setLastUploadedTranscript] = useState(null);
   // ✅ NEW: المشاهد المستخرجة بكود عادي (regex) من سكريبت متقسم بمشاهد جاهزة — مش من رد الايجنت
   // نفسه، عشان نضمن دقة 100% وميحصلش تلخيص/إسقاط مشاهد زي ما كان بيحصل لما كنا بنعتمد على الـ LLM
   const [lastParsedStructuredScenes, setLastParsedStructuredScenes] = useState(null);
+  const [lastParsedAdsScenePlan, setLastParsedAdsScenePlan] = useState(null); // ✅ NEW: خطة إعلان جاهزة (Time/Visual/Voiceover) مستخرجة بالكود
   const [lastM12Video, setLastM12Video] = useState(null); // ✅ NEW: آخر فيديو موديل 1/2 كامل — لازم نحفظه عشان نقدر نعدّل مشهد فيه لاحقًا من غير إعادة توليد كامل
+  const [lastM345Video, setLastM345Video] = useState(null); // ✅ NEW: نفس الفكرة لموديل 3/4/5 (مش map-video) — { model, ...editContext, videoUrl }
   const voiceInputRef = useRef();
   const imageInputRef = useRef();
+  const videoInputRef = useRef();
   const scrollRef = useRef();
   const pollRef = useRef(null);
   const timerRef = useRef(null);
@@ -236,6 +241,29 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     }
   };
 
+  // ✅ NEW: رفع فيديو العميل الخاص لتعديل video-to-video — لازم يتحقق من المدة (أقصى 15
+  // ثانية) وحجم الملف قبل ما يتقبل، بنفس أسلوب فحص الصوت (metadata check)
+  const MAX_VIDEO_UPLOAD_MB = 50;
+  const MAX_VIDEO_UPLOAD_SEC = 15;
+  const handleVideoFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setError('');
+    if (file.size > MAX_VIDEO_UPLOAD_MB * 1024 * 1024) { setError(lang === 'ar' ? `الفيديو أكبر من ${MAX_VIDEO_UPLOAD_MB}MB` : `Video is larger than ${MAX_VIDEO_UPLOAD_MB}MB`); return; }
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src);
+      if (video.duration > MAX_VIDEO_UPLOAD_SEC + 0.5) {
+        setError(lang === 'ar' ? `الفيديو ${video.duration.toFixed(1)} ثانية — أقصى مدة مسموحة ${MAX_VIDEO_UPLOAD_SEC} ثانية` : `Video is ${video.duration.toFixed(1)}s — max allowed is ${MAX_VIDEO_UPLOAD_SEC}s`);
+        return;
+      }
+      setUploadedVideoFile(file);
+      setUploadedVideoDurationSec(Math.round(video.duration));
+    };
+    video.src = URL.createObjectURL(file);
+  };
+
   const fileToBase64 = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -269,7 +297,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         // عشان الايجنت مايطلبش رفعهم تاني بعد كام رسالة
         photoAlreadyUploaded: !!lastUploadedPhotos.length,
         voiceAlreadyUploaded: !!lastUploadedVoiceUrl,
+        videoAlreadyUploaded: !!uploadedVideoFile,
+        videoDurationSec: uploadedVideoDurationSec || undefined,
         hasStructuredScript: !!lastParsedStructuredScenes,
+        hasAdsScenePlan: !!lastParsedAdsScenePlan,
+        styleHint: selectedStyle || undefined,
       };
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
       // ✅ FIX: بتبعت مصفوفة صور دلوقتي (لحد 2) بدل صورة واحدة بس — كمان بيبعت imageBase64
@@ -284,6 +316,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
       if (data.transcript) setLastUploadedTranscript(data.transcript);
       if (Array.isArray(data.structuredScenes) && data.structuredScenes.length) setLastParsedStructuredScenes(data.structuredScenes);
+      if (data.adsScenePlan?.scenes?.length) setLastParsedAdsScenePlan(data.adsScenePlan);
 
       if (data.ready) {
         // ✅ FIX: موديل 5 كان بيرفض يكمل من غير صورة حتى لو العميل وصف الشخصية بالنص —
@@ -296,11 +329,20 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           startGeneration(data.ready);
         }
       } else if (data.editScene) {
-        // ✅ NEW: تعديل مشهد واحد بس — لو مفيش فيديو موديل 1/2 سابق محفوظ، منقدرش ننفذها فعليًا
-        if (lastM12Video) {
+        // ✅ NEW: تعديل مشهد واحد بس — بقى مدعوم لموديل 1/2/3/4/5 (مش map-video ومش ads)
+        const em = data.editScene.model;
+        const hasSource = (em === 1 || em === 2) ? !!lastM12Video : (lastM345Video && lastM345Video.model === em);
+        if (hasSource) {
           startSceneEdit(data.editScene);
         } else {
-          setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'معنديش فيديو موديل 1/2 سابق في المحادثة دي أقدر أعدّل فيه — لازم نعمل فيديو الأول.' : "I don't have a previous Model 1/2 video in this chat to edit — let's make one first." }]);
+          setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'معنديش فيديو سابق في المحادثة دي أقدر أعدّل فيه — لازم نعمل فيديو الأول.' : "I don't have a previous video in this chat to edit — let's make one first." }]);
+        }
+      } else if (data.videoEdit) {
+        // ✅ NEW: تعديل video-to-video لفيديو العميل الخاص اللي رفعه هو بنفسه
+        if (uploadedVideoFile) {
+          startVideoEdit(data.videoEdit);
+        } else {
+          setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'معنديش فيديو مرفوع في المحادثة دي أقدر أعدّله — ارفع الفيديو الأول.' : "I don't have an uploaded video in this chat to edit — please upload one first." }]);
         }
       }
     } catch (e) {
@@ -391,6 +433,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         form.append('customHook', ready.customHook || '');
         form.append('captions', String(!!ready.captions && ready.adsAudioMode === 'ai_voice'));
         form.append('productLink', ready.productLink || '');
+        form.append('style', ready.style || '');
+        if (lastParsedAdsScenePlan) form.append('scenePlan', JSON.stringify(lastParsedAdsScenePlan));
         if (ready.adsAudioMode === 'ai_voice') form.append('aiVoiceKey', voiceKey);
         if (ready.adsAudioMode === 'upload' && lastUploadedVoiceUrl) {
           const voiceBlob = await (await fetch(lastUploadedVoiceUrl)).blob();
@@ -509,14 +553,25 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         // موديل 3/4/5: JSON عادي
         let scenesBody;
         if (ready.model === 3) {
-          scenesBody = hasUploadedScript
+          scenesBody = hasStructuredScenes
+            ? { structuredScenes: lastParsedStructuredScenes, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' }
+            : hasUploadedScript
             ? { idea: null, script: scriptText, inputMode: 'script', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' }
             : { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
         } else if (ready.model === 4) {
-          scenesBody = hasUploadedScript
+          scenesBody = hasStructuredScenes
+            ? { structuredScenes: lastParsedStructuredScenes, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' }
+            : hasUploadedScript
             ? { idea: null, script: scriptText, inputMode: 'script', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' }
             : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' };
         } else {
+          // ✅ NEW: خطة عميل جاهزة لموديل 5 (مش map-video) — بتاخد الأولوية على أي وضع تاني
+          if (hasStructuredScenes) {
+            const allChars5 = lastUploadedPhotos.length
+              ? lastUploadedPhotos.map(p => ({ prompt: '', photo: p }))
+              : (ready.characterDescriptions || []).map(desc => ({ prompt: desc, photo: null }));
+            scenesBody = { structuredScenes: lastParsedStructuredScenes, characters: allChars5, duration: ready.duration };
+          } else {
           // ✅ FIX: لو مفيش صور مرفوعة بس الأجنت جابله وصف نصي للشخصية، نستخدم الوصف بدل ما نمنع
           // التوليد — الباك إند أصلاً بيدعم وصف الشخصية بالنص (characterDescs) من غير أي صورة خالص
           const characters = lastUploadedPhotos.length
@@ -527,6 +582,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             : ready.promptMode === 'prompt'
             ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters, duration: ready.duration, styleSuffix: '' }
             : { idea: ready.idea, characters, duration: ready.duration, videoStyle: style, styleSuffix: '', stickmanStyle: ready.stickmanStyle || undefined };
+          }
         }
         const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
         const scenesData = await scenesRes.json();
@@ -638,6 +694,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             // من غير ما نعيد توليد الفيديو بالكامل
             if (isM12) {
               setLastM12Video({ ...renderBody, videoUrl: sd.videoUrl });
+            } else if ([3, 4, 5].includes(ready.model) && !isMapVideo && sd.editContext) {
+              // ✅ NEW: نفس الفكرة لموديل 3/4/5 (مش map-video) — الـ editContext راجع من
+              // السيرفر نفسه (فيه sceneImageUrls/sceneClipUrls الجاهزة لإعادة الاستخدام)
+              setLastM345Video({ model: ready.model, ...sd.editContext, videoUrl: sd.videoUrl });
             }
             activeJobRef.current = null;
           } else if (sd.status === 'failed') {
@@ -656,9 +716,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   // ✅ NEW: تعديل مشهد واحد بس من آخر فيديو موديل 1/2 — بيحافظ على نفس الصوت وباقي
   // المشاهد والمدة، ويغيّر مشهد واحد بس، بدل ما يعيد توليد الفيديو بالكامل من الصفر
   const startSceneEdit = async (editScene) => {
-    if (!lastM12Video || activeJobRef.current) return;
+    const em = editScene.model;
+    const isOldM12 = em === 1 || em === 2;
+    // ✅ NEW: نحدد مصدر الفيديو المحفوظ والـ endpoint الصح حسب الموديل اللي بيتعدّل
+    const sourceVideo = isOldM12 ? lastM12Video : (lastM345Video && lastM345Video.model === em ? lastM345Video : null);
+    if (!sourceVideo || activeJobRef.current) return;
+    const endpoint = isOldM12 ? '/api/edit-scene' : `/api/model${em}/edit-scene`;
+
     const jobUid = `edit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const job = { uid: jobUid, status: 'rendering', ratio: lastM12Video.ratio || '9:16', elapsed: 0 };
+    const job = { uid: jobUid, status: 'rendering', ratio: sourceVideo.ratio || '9:16', elapsed: 0 };
     setMessages(m => [...m, { role: 'assistant', type: 'render', job }]);
     const updateJob = (patch) => {
       setMessages(m => {
@@ -673,9 +739,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     timerRef.current = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
 
     try {
-      const res = await fetch('/api/edit-scene', {
+      const res = await fetch(endpoint, {
         method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ ...lastM12Video, sceneIndex: editScene.sceneIndex, newDescription: editScene.description }),
+        body: JSON.stringify({ ...sourceVideo, sceneIndex: editScene.sceneIndex, newDescription: editScene.description, mode: editScene.editMode || 'text', referenceImageBase64: editScene.editMode === 'reference' ? lastUploadedPhotos[lastUploadedPhotos.length - 1] : undefined }),
       });
       const data = await res.json();
       if (!activeJobRef.current) return;
@@ -697,8 +763,78 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           if (sd.status === 'done') {
             clearInterval(pollRef.current); clearInterval(timerRef.current);
             updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: data.creditCost });
-            // ✅ الفيديو المعدّل بقى هو "آخر فيديو" — لو عايز يعدّل مشهد تاني بعده يبني على ده
-            setLastM12Video(v => v ? { ...v, videoUrl: sd.videoUrl } : v);
+            // ✅ الفيديو المعدّل بقى هو "آخر فيديو" — لو عايز يعدّل مشهد تاني بعده يبني على ده.
+            // لموديل 3/4/5 بنحدّث الـ editContext كامل (روابط الصور/الكليبات الجديدة) عشان
+            // تعديلات متتالية تفضل شغالة صح من غير ما تفقد المشاهد اللي اتعدّلت قبل كده
+            if (isOldM12) {
+              setLastM12Video(v => v ? { ...v, videoUrl: sd.videoUrl } : v);
+            } else {
+              setLastM345Video(v => v ? { ...v, ...sd.editContext, videoUrl: sd.videoUrl } : v);
+            }
+            activeJobRef.current = null;
+          } else if (sd.status === 'failed') {
+            clearInterval(pollRef.current); clearInterval(timerRef.current);
+            updateJob({ status: 'failed', error: sd.error });
+            activeJobRef.current = null;
+          }
+        } catch {}
+      }, 5000);
+    } catch (e) {
+      clearInterval(timerRef.current);
+      if (activeJobRef.current) updateJob({ status: 'failed', error: e.message });
+      activeJobRef.current = null;
+    }
+  };
+
+  // ✅ NEW: تعديل video-to-video لفيديو العميل الخاص اللي رفعه هو بنفسه (مش متولّد من المنصة)
+  const startVideoEdit = async (videoEdit) => {
+    if (!uploadedVideoFile || activeJobRef.current) return;
+    const jobUid = `videoedit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const job = { uid: jobUid, status: 'rendering', ratio: '9:16', elapsed: 0 };
+    setMessages(m => [...m, { role: 'assistant', type: 'render', job }]);
+    const updateJob = (patch) => {
+      setMessages(m => {
+        const copy = [...m];
+        const idx = copy.findIndex(x => x.type === 'render' && x.job?.uid === jobUid);
+        if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
+        return copy;
+      });
+      Object.assign(job, patch);
+    };
+    activeJobRef.current = job;
+    timerRef.current = setInterval(() => updateJob({ elapsed: (job.elapsed || 0) + 1 }), 1000);
+
+    try {
+      const form = new FormData();
+      form.append('video', uploadedVideoFile, uploadedVideoFile.name || 'video.mp4');
+      form.append('editPrompt', videoEdit.editPrompt || '');
+      form.append('addVoiceover', String(!!videoEdit.addVoiceover));
+      form.append('voiceoverText', videoEdit.voiceoverText || '');
+      form.append('addCaptions', String(!!videoEdit.addCaptions));
+      form.append('videoLanguage', videoLang);
+      form.append('ratio', '9:16');
+
+      const res = await fetch('/api/video-edit', { method: 'POST', headers: tokenHeader(), body: form });
+      const data = await res.json();
+      if (!activeJobRef.current) return;
+      if (!res.ok) {
+        clearInterval(timerRef.current);
+        if (data.error === 'quota_exceeded') {
+          updateJob({ status: 'failed', creditError: true, error: lang === 'ar' ? `محتاج ${data.cost} كريديت ومعاك ${data.remaining} بس` : `Needs ${data.cost} credits, you have ${data.remaining}` });
+        } else {
+          updateJob({ status: 'failed', error: data.error === 'content_policy_violation' ? (region === 'eg' ? data.message_ar : data.message) : (data.error || 'Failed') });
+        }
+        activeJobRef.current = null;
+        return;
+      }
+      const jobId = data.jobId;
+      pollRef.current = setInterval(async () => {
+        try {
+          const sr = await fetch(`/api/render-status/${jobId}`, { headers: tokenHeader() });
+          const sd = await sr.json();
+          if (sd.status === 'done') {
+            clearInterval(pollRef.current); clearInterval(timerRef.current);
+            updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: data.creditCost });
             activeJobRef.current = null;
           } else if (sd.status === 'failed') {
             clearInterval(pollRef.current); clearInterval(timerRef.current);
@@ -719,11 +855,64 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   };
 
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  // ✅ NEW: زرار اختيار ستايل اختياري جنب زرار الإرفاق — بيدّي الإيجنت تلميح عن الستايل
+  // البصري المطلوب (anime/3D cartoon/action/realistic/cinematic/map video) قبل ما يكتب البرومبت،
+  // اختياري بالكامل ومش شرط، وبيفضل مختار (persistent) لحد ما تغيّره أو تلغيه بنفسك
+  const [selectedStyle, setSelectedStyle] = useState(null);
+  const [styleMenuOpen, setStyleMenuOpen] = useState(false);
+  const STYLE_OPTIONS = [
+    { key: 'anime',      icon: '🎌', label: lang === 'ar' ? 'أنمي' : 'Anime' },
+    { key: '3d_cartoon', icon: '🧸', label: lang === 'ar' ? 'كرتون 3D' : '3D Cartoon' },
+    { key: 'action',     icon: '🥊', label: lang === 'ar' ? 'أكشن' : 'Action' },
+    { key: 'realistic',  icon: '📷', label: lang === 'ar' ? 'واقعي' : 'Realistic' },
+    { key: 'cinematic',  icon: '🎬', label: lang === 'ar' ? 'سينمائي' : 'Cinematic' },
+    { key: 'map_video',  icon: '🗺️', label: lang === 'ar' ? 'فيديو خريطة' : 'Map Video' },
+  ];
+
+  const StylePickerButton = () => (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setStyleMenuOpen(v => !v)}
+        title={lang === 'ar' ? 'اختر ستايل بصري (اختياري)' : 'Pick a visual style (optional)'}
+        style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: selectedStyle ? 'rgba(124,106,247,0.18)' : (styleMenuOpen ? 'rgba(124,106,247,0.1)' : 'rgba(255,255,255,0.05)'),
+          border: `1px solid ${selectedStyle || styleMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`,
+          color: selectedStyle ? '#a99bff' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 15, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>
+        {selectedStyle ? STYLE_OPTIONS.find(s => s.key === selectedStyle)?.icon : '▾'}
+      </button>
+      {styleMenuOpen && (
+        <>
+          <div onClick={() => setStyleMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', bottom: 46, left: 0, background: '#141420', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {STYLE_OPTIONS.map(opt => (
+              <button key={opt.key}
+                onClick={() => { setSelectedStyle(v => v === opt.key ? null : opt.key); setStyleMenuOpen(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8,
+                  background: selectedStyle === opt.key ? 'rgba(124,106,247,0.15)' : 'none', border: 'none',
+                  color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.currentTarget.style.background = selectedStyle === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
+                <span style={{ fontSize: 16 }}>{opt.icon}</span>{opt.label}
+                {selectedStyle === opt.key && <span style={{ marginLeft: 'auto', color: '#a99bff', fontWeight: 800 }}>✓</span>}
+              </button>
+            ))}
+            {selectedStyle && (
+              <button onClick={() => { setSelectedStyle(null); setStyleMenuOpen(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2, paddingTop: 10, color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
+                onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
+                ✕ {lang === 'ar' ? 'إلغاء الاختيار' : 'Clear selection'}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 
   const AttachBar = () => (
     <div style={{ position: 'relative' }}>
       <input ref={voiceInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
       <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
+      <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => { handleVideoFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
       <button onClick={() => setAttachMenuOpen(v => !v)} title={t.attachTitle}
         style={{ width: 38, height: 38, borderRadius: 10, background: attachMenuOpen ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${attachMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: attachMenuOpen ? '#a99bff' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
 
@@ -740,6 +929,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <span style={{ fontSize: 16 }}>🖼️</span>{t.attachPhoto}
+            </button>
+            <button onClick={() => { videoInputRef.current?.click(); }} title={lang === 'ar' ? `ارفع فيديو للتعديل (أقصى ${MAX_VIDEO_UPLOAD_SEC} ثانية)` : `Upload a video to edit (max ${MAX_VIDEO_UPLOAD_SEC}s)`}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span style={{ fontSize: 16 }}>🎞️</span>{lang === 'ar' ? 'ارفع فيديو للتعديل' : 'Upload video to edit'}
             </button>
           </div>
         </>
@@ -795,7 +989,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-              <div style={{ display: 'flex', gap: 8 }}><AttachBar /></div>
+              <div style={{ display: 'flex', gap: 8 }}><AttachBar /><StylePickerButton /></div>
               <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length}
                 onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length) e.currentTarget.style.filter = 'brightness(1.12)'; }}
                 onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
@@ -893,6 +1087,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           transition: 'border-color 0.2s ease',
         }}>
           <AttachBar />
+          <StylePickerButton />
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}

@@ -20,6 +20,33 @@ const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
+// ✅ NEW: الإعلان كان بياخد نفس الشكل والنبرة دايمًا مهما كان طلب العميل (اكشن، سينمائي،
+// هادي...) — دلوقتي كل ستايل عنده تعديلات حقيقية على: حركة الكاميرا/المشهد، الإضاءة، نبرة
+// السكريبت، ونبرة الصوت. لو مفيش ستايل محدد، بيفضل الوضع الافتراضي القديم زي ما هو (cinematic-neutral)
+const STYLE_MODIFIERS = {
+  action: {
+    motion: 'fast-paced energetic motion, quick dynamic camera movement, high energy, sharp punchy movement, adrenaline-driven pacing',
+    visual: 'high contrast dramatic lighting, bold saturated colors, dynamic angles, strong sense of urgency and momentum',
+    scriptTone: 'urgent, punchy, high-energy — short sharp sentences, exclamation-worthy excitement, fast pacing, like an action-movie trailer',
+    voiceTone: 'energetic, urgent, driving pace with real intensity — like a high-energy action trailer voiceover, not a calm read',
+  },
+  cinematic: {
+    motion: 'slow deliberate cinematic camera movement, dramatic sweeping motion, film-quality pacing, epic sense of scale',
+    visual: 'rich cinematic color grading, dramatic depth of field, golden-hour or moody lighting, premium film-quality composition',
+    scriptTone: 'dramatic, aspirational, sweeping and emotive — like a premium brand film narration that builds anticipation',
+    voiceTone: 'deep, dramatic, cinematic gravitas with slow deliberate pacing — like a movie trailer narrator, not rushed',
+  },
+  calm: {
+    motion: 'gentle slow smooth camera movement, soft graceful motion, unhurried relaxed pacing',
+    visual: 'soft natural lighting, warm calming tones, gentle shallow depth of field, serene uncluttered composition',
+    scriptTone: 'warm, gentle, reassuring and soothing — soft measured sentences, calm confident trust-building tone, never rushed or shouty',
+    voiceTone: 'warm, soft, gentle and soothing pace — like a calm trusted friend recommending something they genuinely love',
+  },
+};
+function getStyleModifiers(style) {
+  return STYLE_MODIFIERS[style] || null;
+}
+
 // ── تحديد مكان/بيئة ثابتة ومتسقة للإعلان بناءً على المنتج ووصفه ──────────────
 // عشان مثلاً علبة لبن تظهر في مزرعة أبقار، وساعة فاخرة تظهر في محل مجوهرات، إلخ
 // المكان ده بيتثبت ويتكرر في كل المشاهد عشان الإعلان يبقى متسق ومتتابع منطقيًا
@@ -164,11 +191,13 @@ const SCENE_CONFIGS = [
 
 // ── سكريبت الإعلان — بيتولّد بـ Groq بميزانية كلمات محسوبة على حسب مدة الفيديو
 // الفعلية، عشان الصوت ميعديش وقت الفيديو أبدًا. هووك قوي جدًا + أسلوب إقناعي حقيقي ──
-async function generateAdScript(productName, productDesc, customHook, videoDurationSec, lang) {
-  // ✅ هامش أمان حقيقي: الكلام الصوتي يستهدف ~70% من مدة الفيديو فقط (مثلاً 10-11
-  // ثانية لفيديو 15 ثانية)، عشان الانتقالات بين المشاهد بتاخد وقت من الفيديو الفعلي،
-  // ولو TTS اتكلم أبطأ من المتوقع لسه في أمان وميعديش مدة الفيديو أبدًا
-  const narrationTarget = Math.max(6, Math.round(videoDurationSec * 0.7));
+async function generateAdScript(productName, productDesc, customHook, videoDurationSec, lang, style = null) {
+  // ✅ FIX: كانت 0.7 (70% من مدة الفيديو) — ده كان قصير جدًا فعليًا (11 ثانية بس لفيديو 15
+  // ثانية، و21 ثانية بس لفيديو 30 ثانية) فكان بيسيب صمت طويل في آخر الفيديو ("الصوت مش بيكمل
+  // المدة"). دلوقتي هامش الأمان بس 1.5-2 ثانية (مش نسبة مئوية تكبر مع الفيديو الطويل)، عشان
+  // الصوت يغطي الفيديو كامل تقريبًا (13.5s/15s = 90%, 28.2s/30s = 94%) بدل ما يوقف بدري.
+  const safetyBuffer = Math.max(1.5, Math.min(2, videoDurationSec * 0.06));
+  const narrationTarget = Math.max(6, Math.round((videoDurationSec - safetyBuffer) * 10) / 10);
   const maxWords = Math.round(narrationTarget * (lang === 'ar' ? 2.0 : 2.3)); // معدل كلام متحفظ (TTS بيتكلم أبطأ من الكلام العادي)
   const isAr = lang === 'ar';
   const fallback = isAr
@@ -177,6 +206,10 @@ async function generateAdScript(productName, productDesc, customHook, videoDurat
 
   if (!GROQ_API_KEY) return { script: fallback, targetSeconds: narrationTarget };
   try {
+    const styleModifiers = getStyleModifiers(style);
+    const toneInstruction = styleModifiers
+      ? `\n6. TONE FOR THIS AD: ${styleModifiers.scriptTone}. The wording, rhythm, and energy of every sentence must clearly reflect this tone — this is not optional styling, it should be obvious to anyone reading the script which vibe it's going for.`
+      : '';
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
@@ -187,19 +220,25 @@ async function generateAdScript(productName, productDesc, customHook, videoDurat
 1. Opens with a VERY strong, scroll-stopping hook in the first sentence — create curiosity, desire, or urgency immediately (not a generic greeting).
 2. Builds genuine desire for the product using the description given — make the viewer WANT it, don't just list facts.
 3. Ends with a short, punchy call-to-action naturally mentioning the product name.
-4. STRICT HARD LIMIT: maximum ${maxWords} words total (this is critical — the audio must fit inside a ${narrationTarget}-second video, going over will break the video). Count your words before answering.
-5. Write in ${isAr ? 'Egyptian-friendly Modern Standard Arabic' : 'English'}, natural spoken tone, no stage directions, no emojis, no quotation marks.
+4. TARGET LENGTH: aim for ${maxWords} words total, spread across complete sentences (this is critical — the audio must fit inside a ${narrationTarget}-second video). It is better to write slightly UNDER the limit with complete thoughts than to hit the limit exactly and leave a sentence unfinished. Count your words before answering.
+5. Write in ${isAr ? 'Egyptian-friendly Modern Standard Arabic' : 'English'}, natural spoken tone, no stage directions, no emojis, no quotation marks.${toneInstruction}
 Output ONLY the script text, nothing else.` },
-          { role: 'user', content: `Product: "${productName}". Description: "${productDesc}".${customHook ? ` Preferred hook idea: "${customHook}".` : ''} Max ${maxWords} words.` },
+          { role: 'user', content: `Product: "${productName}". Description: "${productDesc}".${customHook ? ` Preferred hook idea: "${customHook}".` : ''} Target ${maxWords} words.` },
         ],
       }),
     });
     if (!res.ok) return { script: fallback, targetSeconds: narrationTarget };
     const data = await res.json();
     let script = (data.choices?.[0]?.message?.content || '').trim().replace(/^["']|["']$/g, '');
-    // ✅ شبكة أمان إضافية: لو Groq تجاوز حد الكلمات رغم التعليمات، نقصه يدويًا
+    // ✅ FIX: كان بيقص الكلام بالظبط عند حد الكلمات (words.slice) — لو الجملة كانت لسه
+    // مكملتش، بيطلع نص مقطوع في نص جملة يخلي الصوت يبان "غريب"/غير مفهوم عند آخر كلمة.
+    // دلوقتي بيدور على آخر علامة ترقيم (. ! ؟) قبل حد الكلمات ويقص عندها بدل نص جملة ناقصة.
     const words = script.split(/\s+/).filter(Boolean);
-    if (words.length > maxWords + 5) script = words.slice(0, maxWords).join(' ') + '.';
+    if (words.length > maxWords + 5) {
+      const truncated = words.slice(0, maxWords + 3).join(' ');
+      const lastSentenceEnd = Math.max(truncated.lastIndexOf('.'), truncated.lastIndexOf('!'), truncated.lastIndexOf('؟'), truncated.lastIndexOf('?'));
+      script = lastSentenceEnd > truncated.length * 0.5 ? truncated.slice(0, lastSentenceEnd + 1) : truncated + '.';
+    }
     return { script: script || fallback, targetSeconds: narrationTarget };
   } catch (e) {
     console.warn('[AdsService] Script generation failed, using fallback:', e.message);
@@ -264,11 +303,14 @@ async function enforceAudioDuration(audioPath, maxSeconds) {
   }
 }
 
-async function generateAdsVoiceover(script, aiVoiceKey, language, targetSeconds = null) {
+async function generateAdsVoiceover(script, aiVoiceKey, language, targetSeconds = null, style = null) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const voice = GEMINI_VOICE_MAP[aiVoiceKey] || (String(aiVoiceKey||'').startsWith('female') ? 'Sulafat' : 'Charon');
   const langCode = language?.startsWith('ar') ? 'ar-EG' : 'en-US';
-  const stylePrompt = 'A confident, warm advertisement narrator recording a commercial voiceover. Clear, persuasive, upbeat energy, natural pacing with brief pauses at commas and periods so the delivery breathes naturally — never rushed or robotic.';
+  const styleModifiers = getStyleModifiers(style);
+  const stylePrompt = styleModifiers
+    ? `A professional advertisement narrator recording a commercial voiceover. ${styleModifiers.voiceTone}. Natural pacing with brief pauses at commas and periods so the delivery breathes naturally.`
+    : 'A confident, warm advertisement narrator recording a commercial voiceover. Clear, persuasive, upbeat energy, natural pacing with brief pauses at commas and periods so the delivery breathes naturally — never rushed or robotic.';
 
   const res = await fetch('https://api.replicate.com/v1/models/google/gemini-3.1-flash-tts/predictions', {
     method: 'POST',
@@ -371,9 +413,11 @@ async function pollPrediction(predictionId, timeoutMs, label) {
 }
 
 // ── Step 1: FLUX kontext-dev ──────────────────────────────────────────────────
-async function generateAdSceneImage(productImageBase64, productName, productDesc, sceneConfig, ratio, location, wearableInstruction = '') {
+async function generateAdSceneImage(productImageBase64, productName, productDesc, sceneConfig, ratio, location, wearableInstruction = '', style = null) {
+  const styleModifiers = getStyleModifiers(style);
+  const stylePromptSuffix = styleModifiers ? ` ${styleModifiers.visual}.` : '';
   const b64 = productImageBase64.replace(/^data:image\/\w+;base64,/, '');
-  const prompt = sceneConfig.buildPrompt(productName, productDesc, location) + wearableInstruction;
+  const prompt = sceneConfig.buildPrompt(productName, productDesc, location) + wearableInstruction + stylePromptSuffix;
 
   const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
     method: 'POST',
@@ -400,28 +444,27 @@ async function generateAdSceneImage(productImageBase64, productName, productDesc
 }
 
 // ── Step 2a: Seedance 2.0 Fast I2V — طريقة "من غير صوت متكلم" ─────────────────
-// ✅ REAL FIX (تم التأكد من الـ schema الرسمي بتاع Replicate): الموديل ده مالوش حقل اسمه
-// first_frame_image خالص — هو موديل موحّد (multimodal) والمدخل الوحيد بتاع الصور هو array
-// اسمه "images" (لحد 9 صور)، وتحديد إن الصورة دي "الإطار الأول" بيتحدد من صياغة البرومبت
-// نفسه ([Image1] + جملة توضح إنها الفريم الأول)، مش من parameter منفصل زي ما كنا فاكرين.
-// كان بيتبعت first_frame_image وهو حقل مش موجود، فـ Replicate كانت بتتجاهله بصمت وترجع
-// تعمل الفيديو من الصفر بناءً على البرومبت بس — وده بالظبط اللي كان بيحصل.
-async function animateWithSeedance2(imageUrl, motionPrompt, ratio, soundEffects) {
+// ✅ REAL FIX (اتأكد منه من الـ schema الرسمي على Replicate نفسه، تاب الـ API): الحقل الصح
+// لقفل "الإطار الأول" هو "image" (مفرد، string) — ده حقل منفصل تمامًا عن "reference_images"
+// (الوضع الحر لثبات الشخصية/الستايل، بيدّي الموديل حرية يعيد تفسير الصورة). كنا بنبعت
+// "images" (جمع) وده حقل مش موجود في الـ schema خالص، فـ Replicate كان بيتجاهله بصمت
+// ويعمل فيديو من الصفر بناءً على البرومبت بس — وده بالظبط سبب "الصورة مش بتتحرك".
+async function animateWithSeedance2(imageUrl, motionPrompt, ratio, soundEffects, targetSec = 5) {
   const sfx = soundEffects || 'soft ambient room tone, subtle air movement';
   const anchoredPrompt =
-    `[Image1] is the exact first frame of this video — its composition, framing, product and background must stay completely unchanged in the opening instant, then animate forward from it. ${motionPrompt}. ` +
+    `The input image is the exact first frame of this video — its composition, framing, product and background must stay completely unchanged in the opening instant, then animate forward from it. ${motionPrompt}. ` +
     `No background music, no music of any kind. Sound design for this exact scene: ${sfx}.`;
 
   const input = {
     prompt: anchoredPrompt,
-    images: [imageUrl],   // ← المدخل الصح الوحيد للصور على الـ schema الموحّد ده
+    image: imageUrl,   // ✅ FIX: كانت images: [imageUrl] — الحقل ده مش موجود في الـ schema خالص
     aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
     resolution: '480p',
-    duration: 5,
+    duration: Math.min(15, Math.max(3, Math.round(targetSec))), // ✅ NEW: مدة المشهد بتتحدد حسب خطة العميل بدل 5 ثانية ثابتة دايمًا
     generate_audio: true,
   };
 
-  console.log(`[AdsService] Seedance 2.0 Fast I2V (images[] + [Image1] anchor) → ${imageUrl?.slice(0,80)}`);
+  console.log(`[AdsService] Seedance 2.0 Fast I2V (image field — true first-frame lock) → ${imageUrl?.slice(0,80)}`);
   console.log(`[AdsService] Motion prompt: ${motionPrompt.slice(0,100)}`);
 
   const res = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-2.0-fast/predictions', {
@@ -445,13 +488,13 @@ async function animateWithSeedance2(imageUrl, motionPrompt, ratio, soundEffects)
 // الجديد هنا بس إننا بنضيف حقل "image" (مفرد) عشان يشتغل Image-to-Video بدل Text-to-Video —
 // اتأكد من اسم الحقل ده من أكتر من مصدر بيعكس نفس schema الـ Replicate الرسمي لنفس العيلة.
 // أرخص من seedance-2.0-fast زي ما طلبت، والصوت بيتعمله mute بعدين في الـ FFmpeg.
-async function animateWithSeedance1ProFast(imageUrl, motionPrompt, ratio) {
+async function animateWithSeedance1ProFast(imageUrl, motionPrompt, ratio, targetSec = 5) {
   const input = {
     prompt: `${motionPrompt}. Keep the exact product and setting from the reference image unchanged, only add motion.`,
     image: imageUrl,   // ← بارامتر مفرد لتحريك الصورة
     aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
     resolution: '480p',
-    duration: 5,
+    duration: Math.min(10, Math.max(3, Math.round(targetSec))), // ✅ NEW: مدة المشهد حسب خطة العميل
     camera_fixed: false,
   };
 
@@ -475,7 +518,7 @@ async function animateWithSeedance1ProFast(imageUrl, motionPrompt, ratio) {
 // ✅ بنفس الطريقة المضمونة الشغالة في موديل 5 بالظبط: 3 مراحل منفصلة بدل filter_complex
 // واحد ضخم — (1) تطبيع كل كليب لوحده، (2) دمج بانتقالات xfade+acrossfade حقيقية (مع
 // fallback لـ concat بسيط لو الانتقالات فشلت لأي سبب)، (3) تمريرة نهائية للصوت/الكابشن/اللينك.
-async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, jobId, captions, scriptText, productLink }) {
+async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, jobId, captions, scriptText, productLink, sceneDurations: targetDurations }) {
   const [W, H] = ratio === '9:16' ? [1080, 1920] : [1920, 1080];
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 
@@ -493,29 +536,41 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
   const hasMusic = !!musicFile;
   console.log(`[AdsService] Audio layers → voice: ${hasVoice} | music: ${hasMusic ? musicFile : 'none found'}`);
 
-  // ✅ مانفترضش إن كل كليب بالظبط 5.0 ثانية — بنقيس الحقيقي ونستخدم أقصر واحد كموحّد
-  let CLIP_SEC = 5.0;
+  // ✅ FIX: كان بيفرض مدة واحدة موحدة (CLIP_SEC) على كل الكليبات — ده كان بيبوّظ أي خطة عميل
+  // فيها مشاهد بمدد مختلفة عن بعض (5s/5s/7s/3s مثلاً)، لأن كل كليب كان بيتقص لنفس المدة
+  // القصيرة. دلوقتي كل كليب بياخد مدته الحقيقية المطلوبة له لوحده — لو مفيش خطة عميل بمدد
+  // محددة (targetDurations)، بيرجع لنفس السلوك القديم (أقصر مدة حقيقية موحدة للكل) بالظبط.
+  let clipDurations;
   try {
-    const durations = await Promise.all(rawPaths.map(async (p) => {
+    const measured = await Promise.all(rawPaths.map(async (p) => {
       try {
         const { stdout } = await execFileAsync('ffprobe', ['-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1', p]);
         return parseFloat(stdout.trim()) || 5.0;
       } catch { return 5.0; }
     }));
-    CLIP_SEC = Math.max(2.0, Math.min(5.0, ...durations) - 0.05);
-    console.log(`[AdsService] Clip durations: [${durations.map(d=>d.toFixed(2)).join(', ')}] → using CLIP_SEC=${CLIP_SEC.toFixed(2)}s`);
+    if (Array.isArray(targetDurations) && targetDurations.length === numClips) {
+      // لكل كليب: أقصى مدة نقدر ناخدها هي أقل قيمة بين (المدة المطلوبة من الخطة، المدة
+      // الحقيقية اللي Seedance/FLUX ولّدها فعلًا) — منقدرش نطول كليب أطول من طوله الحقيقي
+      clipDurations = measured.map((d, i) => Math.max(1.5, Math.min(targetDurations[i] || d, d) - 0.05));
+      console.log(`[AdsService] Variable per-scene durations from plan: [${clipDurations.map(d=>d.toFixed(2)).join(', ')}]`);
+    } else {
+      const uniform = Math.max(2.0, Math.min(5.0, ...measured) - 0.05);
+      clipDurations = measured.map(() => uniform);
+      console.log(`[AdsService] Clip durations: [${measured.map(d=>d.toFixed(2)).join(', ')}] → using uniform CLIP_SEC=${uniform.toFixed(2)}s`);
+    }
   } catch (e) {
     console.warn('[AdsService] Clip duration probing failed, using default 5.0s:', e.message);
+    clipDurations = rawPaths.map(() => 5.0);
   }
 
-  // ── Stage 1: تطبيع كل كليب لوحده (نفس الأبعاد، نفس المدة، نفس fps) ──────────
+  // ── Stage 1: تطبيع كل كليب لوحده (نفس الأبعاد، مدته الخاصة بيه، نفس fps) ──────
   const normPaths = [];
   for (let i = 0; i < numClips; i++) {
     const np = join(TEMP_DIR, `ads_norm_${jobId}_${i}.mp4`);
     await execFileAsync('ffmpeg', [
       '-i', rawPaths[i],
       '-vf', `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24`,
-      '-t', String(CLIP_SEC),
+      '-t', String(clipDurations[i]),
       '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
       '-movflags', '+faststart', '-y', np,
@@ -524,10 +579,21 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
   }
   console.log('[AdsService] ✓ All clips normalized');
 
-  // ── Stage 2: دمج بانتقالات xfade (فيديو) + acrossfade (صوت) — نفس طريقة موديل 5 ──
+  // ── Stage 2: دمج بانتقالات xfade (فيديو) + acrossfade (صوت) — أوفست تراكمي حقيقي
+  // بيستخدم مدة كل كليب لوحده، مش مدة ثابتة مضروبة في رقم المشهد ──
   const mergedPath = join(TEMP_DIR, `ads_merged_${jobId}.mp4`);
   const FADE_DUR = 0.5;
-  const CLIP_DURATION = CLIP_SEC - FADE_DUR;
+  // sceneStartTimes[i] = اللحظة اللي مشهد i يبدأ يظهر فيها في الفيديو النهائي (بعد كل الانتقالات قبله)
+  const sceneStartTimes = [0];
+  const cumulativeOffsets = []; // offset الـ xfade بين الكليب i-1 والكليب i
+  {
+    let acc = clipDurations[0] - FADE_DUR;
+    for (let i = 1; i < numClips; i++) {
+      cumulativeOffsets.push(acc);
+      sceneStartTimes.push(acc);
+      acc = acc + (clipDurations[i] - FADE_DUR);
+    }
+  }
 
   if (numClips === 1) {
     fs.copyFileSync(normPaths[0], mergedPath);
@@ -536,11 +602,11 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
       const inputArgsN = normPaths.flatMap(p => ['-i', p]);
       let filterComplex = '';
       if (numClips === 2) {
-        filterComplex = `[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${CLIP_DURATION.toFixed(2)}[vout];[0:a][1:a]acrossfade=d=${FADE_DUR}[aout]`;
+        filterComplex = `[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${cumulativeOffsets[0].toFixed(2)}[vout];[0:a][1:a]acrossfade=d=${FADE_DUR}[aout]`;
       } else {
         let lastV = '[0:v]', lastA = '[0:a]';
         for (let i = 1; i < numClips; i++) {
-          const offset = (CLIP_DURATION * i).toFixed(2);
+          const offset = cumulativeOffsets[i - 1].toFixed(2);
           const isLast = i === numClips - 1;
           const vNext = isLast ? '[vout]' : `[v${i}]`;
           const aNext = isLast ? '[aout]' : `[a${i}]`;
@@ -568,10 +634,18 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
         '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-y', mergedPath,
       ], { maxBuffer: 200*1024*1024 });
       try { fs.unlinkSync(listFile); } catch {}
+      // ✅ لو الترانزيشن فشل ورجعنا لـ concat بسيط، الفيديو بقى مجرد تسلسل مباشر (مفيش
+      // تداخل fade)، فـ sceneStartTimes التراكمية القديمة (المبنية على افتراض xfade) بقت
+      // غلط — نعيد حسابها كتسلسل مباشر بسيط عشان الكابشن يفضل متزامن صح
+      sceneStartTimes.length = 0; sceneStartTimes.push(0);
+      let acc2 = clipDurations[0];
+      for (let i = 1; i < numClips; i++) { sceneStartTimes.push(acc2); acc2 += clipDurations[i]; }
     }
   }
   // مدة الفيديو النهائية الفعلية بعد الانتقالات (كل انتقال بياكل FADE_DUR من الإجمالي)
-  const totalDur = numClips > 1 ? (CLIP_SEC + (numClips - 1) * CLIP_DURATION) : CLIP_SEC;
+  const totalDur = numClips > 1
+    ? clipDurations.reduce((a, b) => a + b, 0) - (numClips - 1) * FADE_DUR
+    : clipDurations[0];
 
   // ── Stage 3: الصوت النهائي (تعليق صوتي/مؤثرات + موسيقى) + كابشن + لينك + fade ──
   const inputArgs = ['-i', mergedPath];
@@ -620,8 +694,8 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
     const capFs = ratio === '9:16' ? 40 : 34;
     const capY = ratio === '9:16' ? H - 260 : H - 140;
     for (let i = 0; i < Math.min(chunks.length, numClips); i++) {
-      const t0 = i === 0 ? 0 : CLIP_SEC + (i - 1) * CLIP_DURATION;
-      const t1 = t0 + CLIP_SEC;
+      const t0 = sceneStartTimes[i];
+      const t1 = t0 + clipDurations[i];
       const safe = chunks[i].replace(/\\/g,'\\\\').replace(/'/g,'\u2019').replace(/:/g,'\\:').replace(/\[/g,'\\[').replace(/\]/g,'\\]');
       if (!safe) continue;
       vFilterParts.push(`drawtext=fontfile=${fontFile}:text='${safe}':fontcolor=black@0.6:fontsize=${capFs}:x=(w-text_w)/2+2:y=${capY}+2:box=1:boxcolor=black@0.35:boxborderw=14:enable='between(t,${t0.toFixed(2)},${t1.toFixed(2)})'`);
@@ -665,12 +739,140 @@ async function composeAdVideo({ animatedScenes, audioPath, ratio, outputDir, job
   return outputPath;
 }
 
+// ✅ NEW: نفس نداء FLUX بالظبط، بس بياخد prompt جاهز مباشرة بدل sceneConfig object —
+// مستخدمة لما يكون عندنا خطة عميل بوصف بصري مكتوب لكل مشهد بدل قوالب SCENE_CONFIGS الثابتة
+async function generateAdSceneImageRaw(productImageBase64, prompt, ratio) {
+  const b64 = productImageBase64.replace(/^data:image\/\w+;base64,/, '');
+  const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-dev/predictions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' },
+    body: JSON.stringify({
+      input: {
+        input_image: `data:image/jpeg;base64,${b64}`,
+        prompt,
+        aspect_ratio: ratio === '9:16' ? '9:16' : '16:9',
+        output_format: 'webp',
+        output_quality: 90,
+        guidance: 3.5,
+        num_inference_steps: 28,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`FLUX ${res.status}: ${(await res.text()).slice(0,200)}`);
+  const data = await res.json();
+  if (data.error) throw new Error(`FLUX: ${data.error}`);
+  if (data.status === 'succeeded' && data.output) return Array.isArray(data.output) ? data.output[0] : data.output;
+  if (!data.id) throw new Error('No prediction ID from FLUX');
+  return await pollPrediction(data.id, 180000, 'FLUX (plan scene)');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: توليد إعلان من خطة عميل حرفية (جدول Time/Visual/Voiceover بيبعته العميل) —
+//  بدل قوالب SCENE_CONFIGS الثابتة (6 بس)، هنا عدد المشاهد ومحتواها وتوقيتها بالظبط
+//  زي ما العميل كتبها، وسكريبت الصوت هو كلام العميل نفسه حرفي مش نص Groq جديد.
+// ══════════════════════════════════════════════════════════════════════════
+export async function renderAdVideoFromPlan({
+  productImageBase64, productName, productDesc,
+  scenePlan, // { scenes: [{visual, text, durationSec}], style, totalDurationSec }
+  audioMode, uploadedAudioPath, aiVoiceKey, ratio, language,
+  captions, productLink,
+  outputDir, jobId, onProgress,
+}) {
+  const progress = (step, msg) => { console.log(`[AdsService-Plan][${jobId}] ${step}: ${msg}`); onProgress?.({ step, msg }); };
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+  if (!scenePlan?.scenes?.length) throw new Error('scenePlan.scenes is required');
+
+  const scenes = scenePlan.scenes;
+  const style = scenePlan.style || null;
+  const count = scenes.length;
+  console.log(`[AdsService-Plan] ${count} scenes from customer plan, style: ${style || 'default'}`);
+
+  progress('scenes', 'Determining the best setting for this product...');
+  const adLocation = await determineAdLocation(productName, productDesc || '');
+  const adSoundEffects = await determineAdSoundEffects(productName, productDesc || '', adLocation);
+  const productTypeInfo = await analyzeProductType(productName, productDesc || '', '');
+  let wearableInstruction = '';
+  if (productTypeInfo.isWearable && productTypeInfo.showPerson) {
+    const genderText = productTypeInfo.genderPref === 'male' ? 'a man' : productTypeInfo.genderPref === 'female' ? 'a woman' : 'a person';
+    wearableInstruction = ` The product must be shown worn by ${genderText} with a natural, attractive appearance — not displayed as a flat, empty garment or on a mannequin.`;
+  }
+
+  const styleModifiers = getStyleModifiers(style);
+  const styleVisualSuffix = styleModifiers ? ` ${styleModifiers.visual}.` : '';
+  const styleMotionSuffix = styleModifiers ? `, ${styleModifiers.motion}` : '';
+
+  // ── 1. FLUX: صورة لكل مشهد، الوصف البصري جاي حرفي من خطة العميل ────────────
+  progress('scenes', `Generating ${count} scenes from your plan with FLUX...`);
+  const sceneImages = [];
+  for (let i = 0; i < count; i++) {
+    const sc = scenes[i];
+    try {
+      console.log(`[AdsService-Plan] [${i+1}/${count}] FLUX: ${sc.visual?.slice(0,60)}...`);
+      const imgPrompt = `Professional product advertisement. The exact ${productName} from the reference image — keep every single visual detail (shape, color, label, material) perfectly unchanged. ${sc.visual}. Setting consistent with: ${adLocation}. Perfect studio-quality lighting, photorealistic 8K commercial photography.${styleVisualSuffix}${wearableInstruction}`;
+      const imageUrl = await withRetry429(() => generateAdSceneImageRaw(productImageBase64, imgPrompt, ratio));
+      sceneImages.push({ ...sc, imageUrl });
+      progress('scenes', `Scene ${i+1}/${count} ✓`);
+      if (i < count - 1) await new Promise(r => setTimeout(r, 11000));
+    } catch (err) {
+      console.error(`[AdsService-Plan] ✗ FLUX scene ${i+1}: ${err.message}`);
+    }
+  }
+  if (sceneImages.length === 0) throw new Error('All FLUX scene generation failed');
+
+  // ── 2. Voiceover: نص العميل الحرفي، مش سكريبت Groq جديد ─────────────────────
+  let audioPath = null;
+  const fullScript = sceneImages.map(s => (s.text || '').trim()).filter(Boolean).join(' ');
+  if (audioMode === 'ai_voice' && fullScript) {
+    progress('voice', 'Generating AI voiceover from your exact script (Gemini 3.1 Flash TTS)...');
+    try {
+      audioPath = await withRetry429(() => generateAdsVoiceover(fullScript, aiVoiceKey || 'male_arabic', language || 'en', scenePlan.totalDurationSec, style));
+      await enforceAudioDuration(audioPath, Math.max(5, (scenePlan.totalDurationSec || count * 5) - 1));
+    } catch (err) { console.warn('[AdsService-Plan] Voiceover failed:', err.message); }
+  } else if (audioMode === 'upload' && uploadedAudioPath) {
+    audioPath = uploadedAudioPath;
+  }
+  const hasVoice = !!audioPath;
+
+  // ── 3. Animate: كل مشهد بمدته الخاصة بيه من الخطة، مش 5 ثواني ثابتة للكل ────
+  const animateLabel = hasVoice ? 'Seedance 1 Pro Fast' : 'Seedance 2.0';
+  progress('animate', `Animating ${sceneImages.length} scenes at their planned durations...`);
+  const animatedScenes = [];
+  for (let i = 0; i < sceneImages.length; i++) {
+    const scene = sceneImages[i];
+    const targetSec = Math.round(scene.durationSec || 5);
+    try {
+      const motionPrompt = `The exact ${productName} from the reference image. ${scene.visual}${styleMotionSuffix}.${wearableInstruction}`;
+      console.log(`[AdsService-Plan] [${i+1}/${sceneImages.length}] ${animateLabel} (${targetSec}s target)`);
+      const videoUrl = hasVoice
+        ? await withRetry429(() => animateWithSeedance1ProFast(scene.imageUrl, motionPrompt, ratio, targetSec))
+        : await withRetry429(() => animateWithSeedance2(scene.imageUrl, motionPrompt, ratio, adSoundEffects, targetSec));
+      animatedScenes.push({ ...scene, videoUrl, targetSec });
+      progress('animate', `Animated ${i+1}/${sceneImages.length} ✓`);
+    } catch (err) {
+      console.error(`[AdsService-Plan] ✗ Animate scene ${i+1}: ${err.message}`);
+    }
+    if (i < sceneImages.length - 1) await new Promise(r => setTimeout(r, 16000));
+  }
+  if (animatedScenes.length === 0) throw new Error('All animation attempts failed');
+
+  // ── 4. FFmpeg compose — بمدد المشاهد الحقيقية من الخطة ──────────────────────
+  progress('compose', `Composing ${animatedScenes.length} clips...`);
+  const outputPath = await composeAdVideo({
+    animatedScenes, audioPath, ratio, outputDir, jobId,
+    captions: !!captions, scriptText: fullScript, productLink,
+    sceneDurations: animatedScenes.map(s => s.targetSec),
+  });
+
+  progress('done', 'Ad video ready!');
+  return { outputPath, sceneCount: animatedScenes.length };
+}
+
 // ── Main pipeline ─────────────────────────────────────────────────────────────
 export async function renderAdVideo({
   productImageBase64, productName, productDesc,
   audioMode, uploadedAudioPath, aiVoiceKey,
   ratio, language, sceneCount, customHook,
-  captions, productLink,
+  captions, productLink, style,
   outputDir, jobId, onProgress,
 }) {
   const progress = (step, msg) => { console.log(`[AdsService][${jobId}] ${step}: ${msg}`); onProgress?.({ step, msg }); };
@@ -709,7 +911,7 @@ export async function renderAdVideo({
     const sc = selectedScenes[i];
     try {
       console.log(`[AdsService] [${i+1}/${count}] FLUX: ${sc.label}`);
-      const imageUrl = await withRetry429(() => generateAdSceneImage(productImageBase64, productName, productDesc.trim(), sc, ratio, adLocation, wearableInstruction));
+      const imageUrl = await withRetry429(() => generateAdSceneImage(productImageBase64, productName, productDesc.trim(), sc, ratio, adLocation, wearableInstruction, style));
       console.log(`[AdsService] ✓ FLUX ${i+1}: ${imageUrl}`);
       sceneImages.push({ ...sc, imageUrl });
       progress('scenes', `Scene ${i+1}/${count}: ${sc.label} ✓`);
@@ -728,11 +930,11 @@ export async function renderAdVideo({
     progress('voice', 'Writing ad script (Groq)...');
     try {
       const lang = language?.startsWith('ar') ? 'ar' : 'en';
-      const { script, targetSeconds } = await generateAdScript(productName, productDesc.trim(), customHook||'', videoDurationSec, lang);
+      const { script, targetSeconds } = await generateAdScript(productName, productDesc.trim(), customHook||'', videoDurationSec, lang, style);
       console.log(`[AdsService] Ad script (target ${targetSeconds}s): ${script}`);
       adScriptText = script;
       progress('voice', 'Generating AI voiceover (Gemini 3.1 Flash TTS)...');
-      audioPath = await withRetry429(() => generateAdsVoiceover(script, aiVoiceKey||'male_arabic', language||'ar', targetSeconds));
+      audioPath = await withRetry429(() => generateAdsVoiceover(script, aiVoiceKey||'male_arabic', language||'ar', targetSeconds, style));
       // ✅ ضمان صارم: الصوت أبدًا مش هيتجاوز مدة الفيديو الفعلية (بهامش أمان ثانية واحدة)
       await enforceAudioDuration(audioPath, Math.max(5, videoDurationSec - 1));
     } catch (err) { console.warn('[AdsService] Voiceover failed:', err.message); }
@@ -751,7 +953,8 @@ export async function renderAdVideo({
   for (let i = 0; i < sceneImages.length; i++) {
     const scene = sceneImages[i];
     try {
-      const motionPrompt = scene.motion(productName) + wearableInstruction;
+      const styleMotionSuffix = getStyleModifiers(style)?.motion ? `, ${getStyleModifiers(style).motion}` : '';
+      const motionPrompt = scene.motion(productName) + wearableInstruction + styleMotionSuffix;
       console.log(`[AdsService] [${i+1}/${sceneImages.length}] ${animateLabel}: ${scene.label}`);
       const videoUrl = hasVoice
         ? await withRetry429(() => animateWithSeedance1ProFast(scene.imageUrl, motionPrompt, ratio))

@@ -15,6 +15,7 @@ import {
   getModel5Usage, MODEL5_PLANS, getModel5Credits, addModel5Credits,
   resetModel3Usage, resetModel4Usage, resetModel5Usage,
   EGP_PER_CREDIT, CREDITS_PACKAGES, getCreditsBalance, approveCreditsPayment,
+  generateApiKey, listApiKeys, revokeApiKey,
 } from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
@@ -985,6 +986,38 @@ router.delete('/delete-account', authMiddleware, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: API Keys — للاستخدام الخارجي (زي MCP server في Claude). المفتاح الكامل
+//  بيبان مرة واحدة بس وقت الإنشاء، بعد كده بس أول 13 حرف بيبانوا (key_prefix).
+// ══════════════════════════════════════════════════════════════════════════
+router.post('/api-key/generate', authMiddleware, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const apiKey = await generateApiKey(req.user.userId, name);
+    res.json({ apiKey }); // ⚠️ آخر مرة يترجع فيها المفتاح كامل
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/api-key', authMiddleware, async (req, res) => {
+  try {
+    const keys = await listApiKeys(req.user.userId);
+    res.json({ keys });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete('/api-key/:id', authMiddleware, async (req, res) => {
+  try {
+    await revokeApiKey(req.user.userId, req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

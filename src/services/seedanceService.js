@@ -1,4 +1,5 @@
 import { addRealCaptionsForModel, addCaptionsWithTimingForModel } from './renderService.js';
+import { generateVoiceover } from './voiceService.js';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
@@ -103,7 +104,7 @@ async function generateSeedanceClip(prompt, ratio = '16:9') {
   throw new Error('Replicate timed out after 3 minutes');
 }
 
-async function downloadVideo(url, outputPath) {
+export async function downloadVideo(url, outputPath) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   fs.writeFileSync(outputPath, Buffer.from(await res.arrayBuffer()));
@@ -362,6 +363,122 @@ async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, i
   throw new Error('Seedance2 timed out');
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: تعديل video-to-video حقيقي — decart/lucy-edit-2 على Replicate. اتأكد
+//  من الـ schema من تاب الـ API نفسه (مش بروكسي): video (uri, لازم) + prompt
+//  (string) + reference_image (اختياري). بيحافظ على الحركة والتوقيت الأصلي،
+//  بيغيّر بس اللي البرومبت طلبه — ده الفرق عن التعديل النصي العادي اللي بيولّد
+//  المشهد من الصفر تمامًا.
+// ══════════════════════════════════════════════════════════════════════════
+export async function videoToVideoEdit(videoUrl, prompt, referenceImageUrl = null) {
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+  const headers = { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' };
+
+  const input = { video: videoUrl, prompt };
+  if (referenceImageUrl) input.reference_image = referenceImageUrl;
+
+  console.log(`[VideoEdit] Lucy Edit 2 → "${prompt.slice(0, 80)}..."`);
+
+  const submitRes = await fetchReplicateWithRetry('https://api.replicate.com/v1/models/decart/lucy-edit-2/predictions', {
+    method: 'POST', headers, body: JSON.stringify({ input }),
+  });
+  if (!submitRes.ok) throw new Error(`Lucy Edit error ${submitRes.status}: ${await submitRes.text()}`);
+  const prediction = await submitRes.json();
+  if (prediction.status === 'succeeded' && prediction.output) {
+    return Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  }
+  const predictionId = prediction.id;
+  if (!predictionId) throw new Error('No prediction ID from Lucy Edit');
+  const maxWait = 300_000, pollInterval = 5_000, startTime = Date.now();
+  while (Date.now() - startTime < maxWait) {
+    await new Promise(r => setTimeout(r, pollInterval));
+    const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
+    if (!statusRes.ok) continue;
+    const statusData = await statusRes.json();
+    console.log(`[VideoEdit] Status: ${statusData.status} (${Math.round((Date.now() - startTime) / 1000)}s)`);
+    if (statusData.status === 'succeeded') {
+      const url = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
+      if (!url) throw new Error('No video URL from Lucy Edit');
+      return url;
+    }
+    if (statusData.status === 'failed' || statusData.status === 'canceled') {
+      throw new Error(`Lucy Edit failed: ${statusData.error || 'unknown'}`);
+    }
+  }
+  throw new Error('Lucy Edit timed out');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: العميل بيرفع فيديو بتاعه هو (مش متولّد من المنصة) ويطلب مونتاج/تعديل
+//  عليه بالـ AI — نفس موديل lucy-edit-2 فوق، بس هنا المصدر فيديو خارجي، وممكن
+//  نضيف فويس أوفر وكابشن جدد فوق النتيجة لو العميل طلب.
+// ══════════════════════════════════════════════════════════════════════════
+export async function renderUserVideoEdit({
+  uploadedVideoPath, editPrompt,
+  addVoiceover = false, voiceoverText = '', voiceKey = 'male_wise',
+  addCaptions = false, videoLanguage = 'en', ratio = '9:16',
+  outputDir, jobId,
+}) {
+  await mkdir(OUTPUTS_DIR, { recursive: true });
+  await mkdir(TEMP_DIR, { recursive: true });
+  const id = jobId || Date.now();
+  const outputFile = 'video_' + id + '.mp4';
+  const outputPath = path.join(OUTPUTS_DIR, outputFile);
+
+  // ── Replicate محتاج رابط عام يقدر يوصله، مش ملف محلي — بننسخه لمجلد outputs
+  // (متاح أصلاً عن طريق express.static('outputs')) ونبني رابطه العام ──
+  const siteUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';
+  const publicUploadDir = path.join(OUTPUTS_DIR, 'user_uploads');
+  fs.mkdirSync(publicUploadDir, { recursive: true });
+  const publicFilename = `upload_${id}.mp4`;
+  const publicPath = path.join(publicUploadDir, publicFilename);
+  fs.copyFileSync(uploadedVideoPath, publicPath);
+  const publicVideoUrl = `${siteUrl}/outputs/user_uploads/${publicFilename}`;
+  console.log(`[VideoEdit] User upload available at: ${publicVideoUrl}`);
+
+  // ── التعديل الفعلي بـ Lucy Edit 2 ────────────────────────────────────────
+  const editedUrl = await videoToVideoEdit(publicVideoUrl, editPrompt);
+  const editedRawPath = path.join(TEMP_DIR, `useredit_raw_${id}.mp4`);
+  await downloadVideo(editedUrl, editedRawPath);
+  let currentPath = editedRawPath;
+
+  // ── فويس أوفر جديد اختياري (لو العميل عايز يستبدل/يضيف صوت) ─────────────
+  let audioPath = null;
+  if (addVoiceover && voiceoverText?.trim()) {
+    try {
+      const voiceFilename = await generateVoiceover(voiceoverText.trim(), voiceKey, 'motivational', 0, videoLanguage);
+      if (voiceFilename) {
+        audioPath = path.join(OUTPUTS_DIR, voiceFilename);
+        const withAudioPath = path.join(TEMP_DIR, `useredit_audio_${id}.mp4`);
+        execSync(`ffmpeg -i "${currentPath}" -i "${audioPath}" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`, { stdio: 'pipe' });
+        currentPath = withAudioPath;
+      }
+    } catch (e) { console.warn('[VideoEdit] Voiceover step failed (continuing without it):', e.message); }
+  }
+
+  // ── كابشن اختياري — بيحتاج صوت حقيقي يتفرغ منه (Whisper) ─────────────────
+  if (addCaptions && audioPath) {
+    try {
+      const withCaptionsPath = path.join(TEMP_DIR, `useredit_captions_${id}.mp4`);
+      await addRealCaptionsForModel(currentPath, audioPath, withCaptionsPath, 'classic', ratio, videoLanguage);
+      currentPath = withCaptionsPath;
+    } catch (e) { console.warn('[VideoEdit] Captions step failed (continuing without it):', e.message); }
+  }
+
+  try {
+    execSync(`ffmpeg -i "${currentPath}" -c copy -movflags +faststart -y "${outputPath}"`, { stdio: 'pipe' });
+  } catch {
+    fs.copyFileSync(currentPath, outputPath);
+  }
+
+  setTimeout(() => {
+    [editedRawPath, publicPath].forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
+  }, 60000);
+
+  console.log(`[VideoEdit] DONE → ${outputPath}`);
+  return outputFile;
+}
+
 function slowDownClip(inputPath, outputPath, targetDuration) {
   let originalDur = 5;
   try {
@@ -559,20 +676,38 @@ export async function renderModel4Video({
   console.log(`[Model4] Total target: ${targetTotalDuration.toFixed(1)}s | per-scene durations (${realSceneDurations ? 'REAL measured' : 'proportional estimate'}): ${sceneDurations.map(d => d.toFixed(1)).join(', ')}`);
 
   const rawPaths = [];
+  const sceneClipUrls = []; // ✅ NEW: رابط دائم لكل كليب مشهد لوحده — بيتحفظ عشان لو العميل طلب تعديل مشهد واحد بعدين، نقدر نعيد استخدام باقي المشاهد زي ما هي من غير ما نولّدهم تاني من الصفر
+  const sceneCacheDir = path.join(OUTPUTS_DIR, 'scene_cache');
+  fs.mkdirSync(sceneCacheDir, { recursive: true });
   for (let i = 0; i < scenes.length; i++) {
     const rawPath = path.join(TEMP_DIR, `m4_raw_${id}_${i}.mp4`);
     try {
       if (onProgress) onProgress({ step: 'generating', current: i + 1, total });
-      console.log(`[Model4] Generating clip ${i + 1}/${total}`);
-      // Build prompt: scene prompt + style suffix appended
-      const basePrompt = scenes[i].prompt
-        || (scenes[i].visual ? `${scenes[i].visual}, cinematic motion, professional video` : null)
-        || scenes[i].text;
-      const seedPrompt = styleSuffix
-        ? `${basePrompt}, ${styleSuffix}`
-        : basePrompt;
-      const url = await generateSeedanceClip(seedPrompt, ratio);
-      await downloadVideo(url, rawPath);
+      // ✅ NEW: لو المشهد ده معاه رابط كليب جاهز (من رندر سابق، مالمسناهوش في التعديل ده)،
+      // نزّله واستخدمه زي ما هو بدل ما نولّد مشهد جديد من الصفر — ده اللي بيخلي "تعديل مشهد
+      // واحد بس" ممكن فعليًا، مش إعادة توليد الفيديو كله بشكل مقنّع
+      if (scenes[i].existingClipUrl) {
+        console.log(`[Model4] Reusing existing clip ${i + 1}/${total} (scene not changed)`);
+        const srcPath = scenes[i].existingClipUrl.startsWith('http')
+          ? null
+          : path.join(process.cwd(), scenes[i].existingClipUrl.replace(/^\//, ''));
+        if (srcPath && fs.existsSync(srcPath)) {
+          fs.copyFileSync(srcPath, rawPath);
+        } else {
+          await downloadVideo(scenes[i].existingClipUrl, rawPath);
+        }
+      } else {
+        console.log(`[Model4] Generating clip ${i + 1}/${total}`);
+        // Build prompt: scene prompt + style suffix appended
+        const basePrompt = scenes[i].prompt
+          || (scenes[i].visual ? `${scenes[i].visual}, cinematic motion, professional video` : null)
+          || scenes[i].text;
+        const seedPrompt = styleSuffix
+          ? `${basePrompt}, ${styleSuffix}`
+          : basePrompt;
+        const url = await generateSeedanceClip(seedPrompt, ratio);
+        await downloadVideo(url, rawPath);
+      }
     } catch (e) {
       console.error(`[Model4] Clip ${i + 1} failed:`, e.message);
       execSync(
@@ -583,6 +718,11 @@ export async function renderModel4Video({
       );
     }
     rawPaths.push(rawPath);
+    // ✅ نحفظ نسخة دائمة من الكليب الخام (قبل التبطيء/الصوت) في outputs/scene_cache —
+    // ده اللي هيتاح لتعديل مستقبلي، عكس ملفات TEMP_DIR اللي بتتمسح بعد دقيقة
+    const cachePath = path.join(sceneCacheDir, `${id}_${i}.mp4`);
+    try { fs.copyFileSync(rawPath, cachePath); sceneClipUrls.push('/outputs/scene_cache/' + `${id}_${i}.mp4`); }
+    catch { sceneClipUrls.push(null); }
   }
 
   const slowPaths = [];
@@ -673,7 +813,7 @@ export async function renderModel4Video({
   }, 60000);
 
   console.log(`[Model4] DONE → ${outputPath}`);
-  return outputFile;
+  return { outputFile, sceneClipUrls };
 }
 
 // ── Pipeline Model 5 (Cinematic) — Seedance 2.0 Fast, with audio ──────────
@@ -719,10 +859,31 @@ export async function renderModel5Video({
 
   // Step 1: Generate clips بـ Seedance 2.0 مع الصوت الأصلي
   const rawPaths = [];
+  const sceneClipUrls = []; // ✅ NEW: نفس فكرة موديل 4 — رابط دائم لكل مشهد عشان تعديل مستقبلي يعيد استخدام الباقي
+  const sceneCacheDir = path.join(OUTPUTS_DIR, 'scene_cache');
+  fs.mkdirSync(sceneCacheDir, { recursive: true });
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
     const rawPath = path.join(TEMP_DIR, `m5_raw_${id}_${i}.mp4`);
     try {
+      // ✅ NEW: لو المشهد ده معاه كليب جاهز من رندر سابق (يعني مش المشهد اللي طلب تعديله)،
+      // نستخدمه زي ما هو من غير ما نعيد كل منطق الشخصيات/FLUX Kontext من الأول
+      if (scene.existingClipUrl) {
+        console.log(`[Model5] Reusing existing clip ${i + 1}/${total} (scene not changed)`);
+        const srcPath = scene.existingClipUrl.startsWith('http')
+          ? null
+          : path.join(process.cwd(), scene.existingClipUrl.replace(/^\//, ''));
+        if (srcPath && fs.existsSync(srcPath)) {
+          fs.copyFileSync(srcPath, rawPath);
+        } else {
+          await downloadVideo(scene.existingClipUrl, rawPath);
+        }
+        rawPaths.push(rawPath);
+        const cachePath0 = path.join(sceneCacheDir, `${id}_${i}.mp4`);
+        try { fs.copyFileSync(rawPath, cachePath0); sceneClipUrls.push('/outputs/scene_cache/' + `${id}_${i}.mp4`); }
+        catch { sceneClipUrls.push(null); }
+        continue;
+      }
       console.log(`[Model5] Clip ${i + 1}/${total}: ${(scene.prompt || '').slice(0, 60)}...`);
       const basePrompt = scene.prompt
         || (scene.visual ? `${scene.visual}, cinematic motion, professional video` : null)
@@ -788,6 +949,9 @@ export async function renderModel5Video({
       );
     }
     rawPaths.push(rawPath);
+    const cachePath = path.join(sceneCacheDir, `${id}_${i}.mp4`);
+    try { fs.copyFileSync(rawPath, cachePath); sceneClipUrls.push('/outputs/scene_cache/' + `${id}_${i}.mp4`); }
+    catch { sceneClipUrls.push(null); }
   }
 
   // Step 2: Concat with crossfade transitions
@@ -888,7 +1052,7 @@ export async function renderModel5Video({
   }, 60000);
 
   console.log(`[Model5] DONE → ${outputPath}`);
-  return outputFile;
+  return { outputFile, sceneClipUrls };
 }
 
 // ══════════════════════════════════════════════════════════════════════════

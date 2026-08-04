@@ -7,6 +7,7 @@ import AuthPage from './pages/AuthPage.jsx';
 import VideosPage from './pages/VideosPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
 import UserMenu, { HowToModal, AffiliateModal } from './pages/UserMenu.jsx';
+import NotificationBell from './pages/NotificationBell.jsx';
 import LandingPage from './pages/LandingPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import SubPage from './pages/SubPage.jsx';
@@ -482,6 +483,8 @@ export default function App() {
             <span style={{ fontSize:10, color:'var(--text3)' }}>credits</span>
           </button>
         )}
+
+        {user?.token && <NotificationBell token={user.token} />}
 
         <UserMenu user={user} plan={userPlan} onLogout={handleLogout} onNavigate={handleNavigate}
           model3Access={model3Access} model4Access={model4Access} model5Access={model5Access} model6Access={model6Access}
