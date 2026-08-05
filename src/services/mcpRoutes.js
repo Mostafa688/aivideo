@@ -168,8 +168,8 @@ function buildMcpServer(userId, email) {
 
         if (data.status === 'done') {
           return {
-            content: [{ type: 'text', text: `✅ Video ready: ${INTERNAL_BASE}${data.videoUrl}` }],
-            structuredContent: { status: 'done', videoUrl: `${INTERNAL_BASE}${data.videoUrl}` },
+            content: [{ type: 'text', text: `✅ Video ready: ${SITE_URL}${data.videoUrl}` }],
+            structuredContent: { status: 'done', videoUrl: `${SITE_URL}${data.videoUrl}` },
           };
         }
         if (data.status === 'failed') {
