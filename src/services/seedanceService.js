@@ -370,7 +370,7 @@ async function generateSeedance2Clip(basePrompt, ratio = '9:16', duration = 5, i
 //  بيغيّر بس اللي البرومبت طلبه — ده الفرق عن التعديل النصي العادي اللي بيولّد
 //  المشهد من الصفر تمامًا.
 // ══════════════════════════════════════════════════════════════════════════
-export async function videoToVideoEdit(videoUrl, prompt, referenceImageUrl = null) {
+async function videoToVideoEditOnce(videoUrl, prompt, referenceImageUrl = null) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const headers = { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' };
 
@@ -406,6 +406,28 @@ export async function videoToVideoEdit(videoUrl, prompt, referenceImageUrl = nul
     }
   }
   throw new Error('Lucy Edit timed out');
+}
+
+// ✅ NEW: ريبليكيت بيرجع أحيانًا خطأ مؤقت من عندهم (E004 "Service is temporarily
+// unavailable") مش له علاقة بالبرومبت أو الفيديو نفسه — بيحصل ويعدي لو حاولنا تاني. بدل
+// ما نفشل العملية كاملة من أول مرة (وده كان بيكلّف العميل كريديت بدون نتيجة)، بنعيد
+// المحاولة لحد 3 مرات مع فاصل زمني متزايد قبل ما نستسلم فعليًا.
+const TRANSIENT_ERROR_PATTERNS = /temporarily unavailable|E004|E005|service unavailable|internal server error|ECONNRESET|ETIMEDOUT/i;
+export async function videoToVideoEdit(videoUrl, prompt, referenceImageUrl = null) {
+  const MAX_ATTEMPTS = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await videoToVideoEditOnce(videoUrl, prompt, referenceImageUrl);
+    } catch (e) {
+      lastErr = e;
+      const isTransient = TRANSIENT_ERROR_PATTERNS.test(e.message);
+      console.warn(`[VideoEdit] Attempt ${attempt}/${MAX_ATTEMPTS} failed (${isTransient ? 'transient, will retry' : 'non-transient'}): ${e.message}`);
+      if (!isTransient || attempt === MAX_ATTEMPTS) throw e;
+      await new Promise(r => setTimeout(r, 8000 * attempt)); // 8s, 16s
+    }
+  }
+  throw lastErr;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
