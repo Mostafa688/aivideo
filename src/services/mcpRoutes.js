@@ -13,9 +13,10 @@ import express from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance } from './authService.js';
+import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance, verifyOAuthToken } from './authService.js';
 
 const router = express.Router();
+const SITE_URL = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';
 // ✅ نداء داخلي على نفس السيرفر (loopback) — مش نداء خارجي عبر الإنترنت
 const INTERNAL_BASE = process.env.INTERNAL_API_URL || `http://127.0.0.1:${process.env.PORT || 3000}`;
 
@@ -189,16 +190,32 @@ function buildMcpServer(userId, email) {
 
 // ── POST /mcp — stateless: نعمل server + transport جديدين لكل طلب، عشان الـ
 // authentication (API key) يتفحص من الأول في كل نداء، ومفيش أي حالة (session) محفوظة ──
+// ✅ NEW: التوكن ممكن يبقى API key عادي (eriv_...) أو JWT صادر من الـ OAuth server —
+// بنفرّق بينهم بالشكل ونتحقق بالطريقة المناسبة لكل واحد
+async function resolveUserFromToken(token) {
+  if (!token) return null;
+  if (token.startsWith('eriv_')) {
+    const userId = await verifyApiKey(token);
+    return userId || null;
+  }
+  const decoded = verifyOAuthToken(token);
+  return decoded?.userId || null;
+}
+
 router.post('/', express.json(), async (req, res) => {
   try {
     const authHeader = req.headers['authorization'] || '';
-    const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-    if (!apiKey) {
-      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Missing API key — add an "Authorization: Bearer <your-erivion-api-key>" header. Generate a key from Erivion Settings.' }, id: null });
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    if (!token) {
+      // ✅ لازم WWW-Authenticate هنا بالظبط — ده اللي بيخلي Claude.ai يكتشف سيرفر
+      // الـ OAuth بتاعنا ويبدأ فلو التسجيل/التفويض تلقائيًا بدل ما يفشل بصمت
+      res.set('WWW-Authenticate', `Bearer resource_metadata="${SITE_URL}/.well-known/oauth-protected-resource"`);
+      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Authentication required.' }, id: null });
     }
-    const userId = await verifyApiKey(apiKey);
+    const userId = await resolveUserFromToken(token);
     if (!userId) {
-      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Invalid or revoked Erivion API key.' }, id: null });
+      res.set('WWW-Authenticate', `Bearer resource_metadata="${SITE_URL}/.well-known/oauth-protected-resource"`);
+      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Invalid, expired, or revoked token.' }, id: null });
     }
     const user = await getUserById(userId);
     if (!user) {

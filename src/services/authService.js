@@ -141,6 +141,13 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       last_used_at TIMESTAMPTZ
     );
+    CREATE TABLE IF NOT EXISTS oauth_clients (
+      id SERIAL PRIMARY KEY,
+      client_id TEXT NOT NULL UNIQUE,
+      redirect_uris JSONB NOT NULL DEFAULT '[]',
+      client_name TEXT DEFAULT 'MCP Client',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
     CREATE TABLE IF NOT EXISTS feedback_ratings (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id),
@@ -291,6 +298,55 @@ export async function verifyApiKey(raw) {
 // بيتعامل مع الـ JWT ده زي أي JWT عادي) — من غير ما نكرر منطق الكريديت/الفحص من الصفر
 export function mintInternalToken(userId, email) {
   return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '10m' });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: OAuth 2.1 server كامل عشان الـ MCP connector يشتغل زي أي connector تاني
+//  في Claude.ai (Dynamic Client Registration + Authorization Code + PKCE) — بدل
+//  ما نعتمد بس على ميزة الـ "Request headers" اللي لسه في beta ومش وصلة لكل حساب.
+// ══════════════════════════════════════════════════════════════════════════
+
+// تحقق من الإيميل/الباسورد من غير أي side-effects (إيميلات، تسجيل دخول، إلخ) — للاستخدام
+// في صفحة موافقة الـ OAuth بس
+export async function verifyUserCredentials(email, password) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  if (rows.length === 0) throw new Error('Invalid email or password');
+  const user = rows[0];
+  if (!user.verified) throw new Error('Please verify your email first');
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) throw new Error('Invalid email or password');
+  return { userId: user.id, email: user.email, name: user.name || email.split('@')[0] };
+}
+
+// تسجيل عميل OAuth جديد (Dynamic Client Registration، RFC 7591) — Claude.ai بيعمل
+// النداء ده تلقائيًا أول مرة يحاول يضيف الـ connector
+export async function registerOAuthClient(redirectUris, clientName) {
+  const clientId = 'client_' + crypto.randomBytes(16).toString('hex');
+  await pool.query(
+    'INSERT INTO oauth_clients (client_id, redirect_uris, client_name) VALUES ($1, $2, $3)',
+    [clientId, JSON.stringify(redirectUris || []), clientName || 'MCP Client']
+  );
+  return clientId;
+}
+
+export async function getOAuthClient(clientId) {
+  const { rows } = await pool.query('SELECT * FROM oauth_clients WHERE client_id = $1', [clientId]);
+  return rows[0] || null;
+}
+
+// توكن دخول طويل العمر (90 يوم) للـ MCP — منفصل عن mintInternalToken قصير العمر،
+// عشان الـ MCP client (Claude) بيحتفظ بيه ويستخدمه لفترة طويلة، مش نداء واحد بس
+export function mintOAuthAccessToken(userId, email) {
+  return jwt.sign({ userId, email, scope: 'mcp' }, JWT_SECRET, { expiresIn: '90d' });
+}
+
+// ✅ للتحقق من توكن الـ OAuth في mcpRoutes.js من غير ما نصدّر الـ JWT_SECRET نفسه للخارج
+export function verifyOAuthToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch {
+    return null;
+  }
 }
 
 export async function logLoginEvent(userId, email, method = 'password') {
