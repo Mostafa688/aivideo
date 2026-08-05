@@ -247,6 +247,12 @@ cPool.query(`
     user_email TEXT,
     PRIMARY KEY (post_id, ip)
   );
+  CREATE TABLE IF NOT EXISTS admin_notifications (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
 `).catch(e => console.error('[Community] DB init error:', e.message));
 
 // Migration: add moderation columns if they don't exist yet
@@ -532,6 +538,61 @@ app.post('/api/feedback/rate', authMiddleware, async (req, res) => {
 });
 
 // GET /api/admin/ratings — كل التقييمات الداخلية (أدمن بس)
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ إشعار عام بيبعته الأدمن، بيبان لكل المستخدمين، وبيختفي تلقائيًا بعد 24 ساعة
+//  (ملحوظة: الراوتس دي كانت موجودة قبل كده واتمسحت بالغلط في تعديل لاحق — رجّعناها)
+// ══════════════════════════════════════════════════════════════════════════
+
+app.get('/api/notifications', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await cPool.query(
+      `SELECT id, title, message, created_at FROM admin_notifications
+       WHERE created_at > NOW() - INTERVAL '24 hours' ORDER BY id DESC`
+    );
+    res.json({ notifications: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/notifications', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    const { rows } = await cPool.query(`SELECT id, title, message, created_at FROM admin_notifications ORDER BY id DESC LIMIT 100`);
+    res.json({ notifications: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/notifications', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.body.secret;
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    const { title, message } = req.body;
+    if (!title?.trim() || !message?.trim()) return res.status(400).json({ error: 'title and message are required' });
+    const { rows } = await cPool.query(
+      `INSERT INTO admin_notifications (title, message) VALUES ($1, $2) RETURNING id, title, message, created_at`,
+      [title.trim(), message.trim()]
+    );
+    res.json({ notification: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/notifications/:id', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    await cPool.query(`DELETE FROM admin_notifications WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/admin/ratings', async (req, res) => {
   try {
     const secret = req.headers['x-admin-secret'] || req.query.secret;

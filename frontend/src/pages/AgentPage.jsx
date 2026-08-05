@@ -273,13 +273,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
   const sendMessage = async (overrideText) => {
     const textToSend = overrideText !== undefined ? overrideText : input;
-    if (!textToSend.trim() && !voiceFile && !imageFiles.length) return;
+    if (!textToSend.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) return;
     if (loading || activeJobRef.current) return; // ✅ FIX: منع إرسال رسالة تانية لحد ما الحالية تخلص، عشان محدش يبعت "ابدأ" مرتين ويعمل تضارب رندر
     setError('');
     const attachmentLabel = voiceFile
       ? (lang === 'ar' ? '🎙️ رسالة صوتية' : '🎙️ Voice message')
       : imageFiles.length
       ? (lang === 'ar' ? (imageFiles.length > 1 ? '🖼️ صور مرفوعة' : '🖼️ صورة مرفوعة') : (imageFiles.length > 1 ? '🖼️ Uploaded photos' : '🖼️ Uploaded photo'))
+      : uploadedVideoFile
+      ? (lang === 'ar' ? '🎞️ فيديو مرفوع للتعديل' : '🎞️ Uploaded video to edit')
       : '';
     const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles };
     const nextMessages = [...messages, userMsg];
@@ -980,20 +982,21 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               autoFocus
               style={{ width: '100%', resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 15, fontFamily: 'inherit', direction: isArabic(input) ? 'rtl' : 'ltr' }}
             />
-            {(voiceFile || imageFiles.length > 0) && (
+            {(voiceFile || imageFiles.length > 0 || uploadedVideoFile) && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                 {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎙️ {t.voiceAttached} <button onClick={() => setVoiceFile(null)} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>}
                 {imageFiles.map((_, idx) => (
                   <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>
                 ))}
+                {uploadedVideoFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎞️ {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec}s) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
               <div style={{ display: 'flex', gap: 8 }}><AttachBar /><StylePickerButton /></div>
-              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length}
-                onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length) e.currentTarget.style.filter = 'brightness(1.12)'; }}
+              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
+                onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
                 onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-                style={{ width: 40, height: 40, borderRadius: 12, background: (!input.trim() && !voiceFile && !imageFiles.length) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length) ? 'default' : 'pointer', fontSize: 16, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}>➤</button>
+                style={{ width: 40, height: 40, borderRadius: 12, background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', fontSize: 16, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}>➤</button>
             </div>
           </div>
 
@@ -1070,12 +1073,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
         {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
-        {(voiceFile || imageFiles.length > 0) && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        {(voiceFile || imageFiles.length > 0 || uploadedVideoFile) && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
             {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎙️ {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>}
             {imageFiles.map((_, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>
             ))}
+            {uploadedVideoFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎞️ {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec}s) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>}
           </div>
         )}
 
@@ -1104,10 +1108,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
               style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'background 0.15s ease' }}>⏹️</button>
           ) : (
-            <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length}
-              onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length) e.currentTarget.style.filter = 'brightness(1.12)'; }}
+            <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
+              onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
               onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-              style={{ width: 38, height: 38, borderRadius: 10, background: (!input.trim() && !voiceFile && !imageFiles.length) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length) ? 'default' : 'pointer', fontSize: 15, flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}>➤</button>
+              style={{ width: 38, height: 38, borderRadius: 10, background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', fontSize: 15, flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}>➤</button>
           )}
         </div>
         <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>

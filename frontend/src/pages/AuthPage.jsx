@@ -29,7 +29,7 @@ function LoginVideoCarousel() {
   return (
     <div style={{ marginBottom: 40 }}>
       <div style={{
-        position: 'relative', width: '100%', maxWidth: 260, aspectRatio: '9/16', margin: '0 auto',
+        position: 'relative', width: '100%', maxWidth: 380, aspectRatio: '16/9', margin: '0 auto',
         borderRadius: 18, overflow: 'hidden', background: '#0a0a14',
         border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
       }}>
