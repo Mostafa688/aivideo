@@ -1329,6 +1329,174 @@ app.post('/api/video-edit', authMiddleware, renderLimiter, videoUpload.single('v
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: رفع فيديو والحصول على رابط عام بس (من غير تعديل) — عشان العميل يقدر ياخد
+//  اللينك ده ويستخدمه في أي مكان، وبالأخص لـ MCP (Claude مش بيقدر يرفع ملفات فيديو
+//  مباشرة، بس يقدر ياخد رابط ويبعته للأداة).
+// ══════════════════════════════════════════════════════════════════════════
+app.post('/api/upload-video-link', authMiddleware, renderLimiter, videoUpload.single('video'), async (req, res) => {
+  try {
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    if ((user.plan || 'free') === 'free') {
+      return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock this feature.', show_upgrade: true });
+    }
+    const videoFile = req.file;
+    if (!videoFile) return res.status(400).json({ error: 'video file is required' });
+
+    const tmpUploadDir = join(process.cwd(), 'outputs', 'video_edit_tmp');
+    fs.mkdirSync(tmpUploadDir, { recursive: true });
+    const tmpUploadPath = join(tmpUploadDir, `linkcheck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
+    fs.writeFileSync(tmpUploadPath, videoFile.buffer);
+    const writtenSize = fs.statSync(tmpUploadPath).size;
+    if (!writtenSize || writtenSize < 1000) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: `Upload failed — received only ${writtenSize} bytes. Please try uploading the video again.` });
+    }
+
+    let durationSec;
+    try {
+      const probeOut = execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmpUploadPath}"`,
+        { encoding: 'utf8' }
+      ).trim();
+      durationSec = parseFloat(probeOut);
+    } catch (e) {
+      const realError = e.stderr?.toString().trim() || e.message;
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: `Could not read video file (${realError.slice(0, 150)}) — please make sure it's a valid MP4 and try again.` });
+    }
+    if (!durationSec || durationSec <= 0) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: 'Could not determine video duration.' });
+    }
+    if (durationSec > VIDEO_EDIT_MAX_SECONDS + 0.5) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: `Video is ${durationSec.toFixed(1)}s — max allowed for video-to-video editing is ${VIDEO_EDIT_MAX_SECONDS} seconds.` });
+    }
+
+    // نحفظ نسخة دائمة (مش مؤقتة) في مكان عام — ده اللي هيبقى اللينك النهائي
+    const publicDir = join(process.cwd(), 'outputs', 'user_uploads');
+    fs.mkdirSync(publicDir, { recursive: true });
+    const publicFilename = `link_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`;
+    fs.copyFileSync(tmpUploadPath, join(publicDir, publicFilename));
+    fs.unlinkSync(tmpUploadPath);
+
+    const siteUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';
+    res.json({ videoUrl: `${siteUrl}/outputs/user_uploads/${publicFilename}`, durationSec: Math.round(durationSec) });
+  } catch (err) {
+    console.error('[UploadVideoLink] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Upload failed.' });
+  }
+});
+
+// ✅ NEW: نفس تعديل الفيديو (Lucy Edit 2)، بس بيستقبل رابط فيديو جاهز بدل ملف مرفوع
+// مباشرة — ده اللي MCP (Claude) بيستخدمه، لأن الأدوات مش بتقدر ترفع ملفات فيديو فعلية
+app.post('/api/video-edit-by-url', authMiddleware, renderLimiter, async (req, res) => {
+  try {
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    if ((user.plan || 'free') === 'free') {
+      return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock video editing.', show_upgrade: true });
+    }
+    const { videoUrl, editPrompt, addVoiceover, voiceoverText, voiceKey, addCaptions, videoLanguage, ratio } = req.body;
+    if (!videoUrl?.trim()) return res.status(400).json({ error: 'videoUrl is required' });
+    if (!editPrompt?.trim()) return res.status(400).json({ error: 'editPrompt is required' });
+
+    const modCheckVE = await checkContentSafety(`${editPrompt} ${voiceoverText || ''}`);
+    if (modCheckVE.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheckVE.category });
+    }
+
+    // ── نزّل الفيديو من اللينك المرسل ──
+    const tmpUploadDir = join(process.cwd(), 'outputs', 'video_edit_tmp');
+    fs.mkdirSync(tmpUploadDir, { recursive: true });
+    const tmpUploadPath = join(tmpUploadDir, `urledit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
+    try {
+      const dlRes = await fetch(videoUrl);
+      if (!dlRes.ok) throw new Error(`HTTP ${dlRes.status}`);
+      const buf = Buffer.from(await dlRes.arrayBuffer());
+      fs.writeFileSync(tmpUploadPath, buf);
+    } catch (e) {
+      return res.status(400).json({ error: `Could not download video from the given URL (${e.message}). Make sure it's a direct, publicly accessible link.` });
+    }
+    const writtenSize = fs.statSync(tmpUploadPath).size;
+    if (!writtenSize || writtenSize < 1000) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: `Downloaded file is too small (${writtenSize} bytes) — the URL may not point directly to a video file.` });
+    }
+
+    let durationSec;
+    try {
+      const probeOut = execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmpUploadPath}"`,
+        { encoding: 'utf8' }
+      ).trim();
+      durationSec = parseFloat(probeOut);
+    } catch (e) {
+      const realError = e.stderr?.toString().trim() || e.message;
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: `Could not read video file (${realError.slice(0, 150)}) — please make sure the URL points to a valid MP4.` });
+    }
+    if (!durationSec || durationSec <= 0) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: 'Could not determine video duration.' });
+    }
+    if (durationSec > VIDEO_EDIT_MAX_SECONDS + 0.5) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: `Video is ${durationSec.toFixed(1)}s — max allowed is ${VIDEO_EDIT_MAX_SECONDS} seconds.` });
+    }
+
+    const veCreditCost = Math.ceil(durationSec) * VIDEO_EDIT_CREDIT_PER_SECOND;
+    const veBalance = await getCreditsBalance(req.user.userId);
+    if (veBalance < veCreditCost) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${veCreditCost} credits, you have ${veBalance}.`, cost: veCreditCost, remaining: veBalance });
+    }
+    if (activeRenderCount >= MAX_CONCURRENT_RENDERS) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(429).json({ error: 'server_busy', message: 'Server is busy rendering another video. Please wait a moment and try again.' });
+    }
+    const veCharge = await chargeCredits(req.user.userId, veCreditCost);
+    if (!veCharge.success) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(403).json({ error: 'quota_exceeded', message: `This edit needs ${veCreditCost} credits, you have ${veCharge.remaining}.`, cost: veCreditCost, remaining: veCharge.remaining });
+    }
+
+    const renderJobId = String(Date.now());
+    activeRenderCount++;
+    setRenderJob(renderJobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now(), error: null, videoUrl: null });
+    res.status(202).json({ jobId: renderJobId, status: 'processing', creditCost: veCreditCost, durationSec: Math.round(durationSec) });
+
+    (async () => {
+      try {
+        const videoPath = await renderUserVideoEdit({
+          uploadedVideoPath: tmpUploadPath,
+          editPrompt: editPrompt.trim(),
+          addVoiceover: addVoiceover === 'true' || addVoiceover === true,
+          voiceoverText: voiceoverText || '',
+          voiceKey: voiceKey || 'male_wise',
+          addCaptions: addCaptions === 'true' || addCaptions === true,
+          videoLanguage: videoLanguage || 'en',
+          ratio: ratio || '9:16',
+          jobId: renderJobId,
+        });
+        setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: veCreditCost });
+      } catch (jobErr) {
+        console.error('[VideoEditByUrl] Failed:', jobErr.message);
+        setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Video edit failed.', completedAt: Date.now() });
+      } finally {
+        activeRenderCount--;
+        scheduleRenderJobCleanup(renderJobId);
+        try { if (fs.existsSync(tmpUploadPath)) fs.unlinkSync(tmpUploadPath); } catch {}
+      }
+    })();
+  } catch (err) {
+    console.error('[VideoEditByUrl] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Video edit failed.' });
+  }
+});
+
 app.post('/api/render', authMiddleware, renderLimiter, async (req, res) => {
   const { scenes, audioUrl, ratio, jobId, duration, music, captions, transitions, soundEffects, videoType, captionStyle, musicVolume, sfxVolume, videoEffect, sceneDurations } = req.body;
   const renderJobId = String(jobId || Date.now());

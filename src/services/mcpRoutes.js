@@ -105,7 +105,7 @@ function buildMcpServer(userId, email) {
           'Model 5 (Character Video): character-consistent AI video — supports uploaded reference photos, stickman-style animation, and historical map documentary videos.',
           'Model 7 (Ads): turns a single product photo into a full video ad with AI voiceover.',
           '',
-          'Use generate_video with model "1" or "2" to start a video from this MCP server (the simplest, fastest path). For other models, use the full Erivion chat agent directly.',
+          'Use generate_video with model "1" through "5" to start a video from this MCP server. Model 7 (Ads) needs an uploaded product photo, so it\'s not available here — use the full Erivion chat agent for that.',
         ].join('\n'),
       }],
     })
@@ -126,19 +126,20 @@ function buildMcpServer(userId, email) {
   );
 
   // ── generate_video ───────────────────────────────────────────────────────
-  // ✅ FIX: كانت بترجع jobId فورًا وتسيب العميل يطلب "چيك" يدوي كل مرة — عشان الـ
-  // widget يبان فورًا ويتحدّث لوحده لحد ما الفيديو يخلص (زي أي MCP App تاني)، الأداة
-  // دلوقتي بتستنى وتراقب التقدّم بنفسها جوه نفس النداء، بدل ما ترجع فورًا
+  // ✅ NEW: بقى بيدعم موديل 1، 2، 3، 4، 5 (وضع الفكرة النصية بس — موديل 5 من غير صورة
+  // شخصية، وموديل 7/الإعلانات مش مدعوم هنا لأنه محتاج صورة منتج مرفوعة أصلًا)
+  const MODEL3_IMAGE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
+  const MODEL4_SCENE_COUNT = { '30s': 4, '1min': 8, '3min': 24 };
   registerAppTool(
     server,
     'generate_video',
     {
       title: 'Generate a video',
-      description: 'Generate an Erivion video from a topic/idea and wait for it to finish (usually 1-3 minutes) — shows live progress and the final video automatically. Supports Model 1 (AI images) or Model 2 (real stock footage).',
+      description: 'Generate an Erivion video from a topic/idea and wait for it to finish (usually 1-3 minutes) — shows live progress and the final video automatically. Supports Model 1 (AI images), Model 2 (real stock footage), Model 3 (higher-quality AI images, longer videos up to 5min), Model 4 (AI-generated video clips, more cinematic), Model 5 (character-consistent AI video, no reference photo in this tool). For Model 7/Ads (product photo → ad video), use the Erivion chat agent directly since it needs an uploaded photo.',
       inputSchema: {
-        model: z.enum(['1', '2']).describe('"1" = AI-generated images (Ken Burns style), "2" = real stock video footage. Use "2" unless the user specifically wants AI-generated images.'),
+        model: z.enum(['1', '2', '3', '4', '5']).describe('1=AI images, 2=real stock footage (best default), 3=higher-quality AI images/longer videos, 4=AI video clips/cinematic, 5=character-consistent AI video.'),
         idea: z.string().min(3).describe('The video topic or idea, described in a sentence or two.'),
-        duration: z.enum(['30s', '1min', '3min', '5min']).default('30s').describe('Video length.'),
+        duration: z.string().default('30s').describe('Video length. Models 1/2/4: "30s", "1min", "3min", or "5min". Model 3: also supports "5min". Model 5: "5s", "10s", "15s", "30s", or "1min" only.'),
         ratio: z.enum(['9:16', '16:9', '1:1']).default('9:16').describe('Aspect ratio — 9:16 for Reels/TikTok/Shorts, 16:9 for YouTube, 1:1 for feed posts.'),
         language: z.string().default('en').describe('Narration language code, e.g. "en" or "ar".'),
       },
@@ -147,67 +148,121 @@ function buildMcpServer(userId, email) {
     async ({ model, idea, duration, ratio, language }) => {
       try {
         const headers = authHeaders();
+        let renderData, jobId;
 
-        // 1) توليد المشاهد (SSE)
-        const scenesRes = await fetch(`${INTERNAL_BASE}/api/generate-scenes`, {
-          method: 'POST', headers,
-          body: JSON.stringify({ idea, duration, mode: 'idea', tone: 'motivational', videoLanguage: language || 'en' }),
-        });
-        const scenesEvents = parseSSE(await scenesRes.text());
-        const errorEvent = scenesEvents.find(e => e.event === 'error');
-        if (errorEvent) throw new Error(errorEvent.data.message || 'Scene generation failed');
-        const scenes = scenesEvents.filter(e => e.event === 'scene').map(e => e.data);
-        if (!scenes.length) throw new Error('Scene generation failed — no scenes returned');
-
-        // 2) صور AI (موديل 1) أو فيديوهات ستوك حقيقية (موديل 2)
-        let finalScenes = scenes;
-        if (model === '1') {
-          const aiRes = await fetch(`${INTERNAL_BASE}/api/generate-ai-video`, { method: 'POST', headers, body: JSON.stringify({ scenes, ratio }) });
-          const aiEvents = parseSSE(await aiRes.text());
-          const doneEvent = aiEvents.find(e => e.event === 'done');
-          if (doneEvent?.data?.scenes) finalScenes = doneEvent.data.scenes;
-        } else {
-          const mediaRes = await fetch(`${INTERNAL_BASE}/api/fetch-media`, {
-            method: 'POST', headers, body: JSON.stringify({ scenes, ratio, jobId: 'mcp_' + Date.now() }),
+        if (model === '1' || model === '2') {
+          // ── موديل 1/2: نفس المنطق الأصلي (صور AI أو فيديوهات ستوك حقيقية) ──
+          const scenesRes = await fetch(`${INTERNAL_BASE}/api/generate-scenes`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ idea, duration, mode: 'idea', tone: 'motivational', videoLanguage: language || 'en' }),
           });
-          const mediaData = await mediaRes.json();
-          if (!mediaRes.ok) throw new Error(mediaData.error || 'Media fetch failed');
-          finalScenes = mediaData.scenes || scenes;
-        }
+          const scenesEvents = parseSSE(await scenesRes.text());
+          const errorEvent = scenesEvents.find(e => e.event === 'error');
+          if (errorEvent) throw new Error(errorEvent.data.message || 'Scene generation failed');
+          const scenes = scenesEvents.filter(e => e.event === 'scene').map(e => e.data);
+          if (!scenes.length) throw new Error('Scene generation failed — no scenes returned');
 
-        // 3) صوت — بنفس الطريقة اللي صفحة الموديل العادية بتستخدمها بالظبط
-        let audioUrl = null;
-        try {
-          const fullText = finalScenes.map(s => s.text).filter(Boolean).join(' ');
-          if (fullText.trim()) {
-            const voiceRes = await fetch(`${INTERNAL_BASE}/api/generate-voice`, {
-              method: 'POST', headers, body: JSON.stringify({ text: fullText, voice: 'male_wise', videoLanguage: language || 'en' }),
+          let finalScenes = scenes;
+          if (model === '1') {
+            const aiRes = await fetch(`${INTERNAL_BASE}/api/generate-ai-video`, { method: 'POST', headers, body: JSON.stringify({ scenes, ratio }) });
+            const aiEvents = parseSSE(await aiRes.text());
+            const doneEvent = aiEvents.find(e => e.event === 'done');
+            if (doneEvent?.data?.scenes) finalScenes = doneEvent.data.scenes;
+          } else {
+            const mediaRes = await fetch(`${INTERNAL_BASE}/api/fetch-media`, {
+              method: 'POST', headers, body: JSON.stringify({ scenes, ratio, jobId: 'mcp_' + Date.now() }),
             });
-            const voiceData = await voiceRes.json();
-            if (voiceRes.ok) audioUrl = voiceData.audioUrl;
+            const mediaData = await mediaRes.json();
+            if (!mediaRes.ok) throw new Error(mediaData.error || 'Media fetch failed');
+            finalScenes = mediaData.scenes || scenes;
           }
-        } catch (e) { console.warn('[MCP] Voiceover generation failed, continuing without audio:', e.message); }
 
-        // 4) الرندر الفعلي
-        const renderRes = await fetch(`${INTERNAL_BASE}/api/render`, {
-          method: 'POST', headers,
-          body: JSON.stringify({
-            scenes: finalScenes, audioUrl, ratio, duration,
-            videoType: model === '1' ? 'ai_images' : 'pexels_clips',
-            videoLanguage: language || 'en', captions: true, transitions: true,
-          }),
-        });
-        const renderData = await renderRes.json();
-        if (!renderRes.ok) {
-          const msg = renderData.error === 'quota_exceeded'
-            ? `Not enough credits — this video needs ${renderData.cost} credits, you have ${renderData.remaining}.`
-            : (renderData.message || renderData.error || 'Render failed to start');
-          throw new Error(msg);
+          let audioUrl = null;
+          try {
+            const fullText = finalScenes.map(s => s.text).filter(Boolean).join(' ');
+            if (fullText.trim()) {
+              const voiceRes = await fetch(`${INTERNAL_BASE}/api/generate-voice`, {
+                method: 'POST', headers, body: JSON.stringify({ text: fullText, voice: 'male_wise', videoLanguage: language || 'en' }),
+              });
+              const voiceData = await voiceRes.json();
+              if (voiceRes.ok) audioUrl = voiceData.audioUrl;
+            }
+          } catch (e) { console.warn('[MCP] Voiceover generation failed, continuing without audio:', e.message); }
+
+          const renderRes = await fetch(`${INTERNAL_BASE}/api/render`, {
+            method: 'POST', headers,
+            body: JSON.stringify({
+              scenes: finalScenes, audioUrl, ratio, duration,
+              videoType: model === '1' ? 'ai_images' : 'pexels_clips',
+              videoLanguage: language || 'en', captions: true, transitions: true,
+            }),
+          });
+          renderData = await renderRes.json();
+          if (!renderRes.ok) {
+            const msg = renderData.error === 'quota_exceeded'
+              ? `Not enough credits — this video needs ${renderData.cost} credits, you have ${renderData.remaining}.`
+              : (renderData.message || renderData.error || 'Render failed to start');
+            throw new Error(msg);
+          }
+          jobId = renderData.jobId;
+        } else if (model === '3') {
+          // ── موديل 3: صور AI عالية الجودة، فيديوهات أطول ──
+          const scenesRes = await fetch(`${INTERNAL_BASE}/api/model3/generate-scenes`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[duration] || 6, videoLanguage: language || 'en', ratio }),
+          });
+          const scenesData = await scenesRes.json();
+          if (!scenesRes.ok || !scenesData.scenes?.length) throw new Error(scenesData.error || 'Scene generation failed');
+          const renderRes = await fetch(`${INTERNAL_BASE}/api/model3/render`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ scenes: scenesData.scenes, ratio, duration, music: false, captions: true, videoLanguage: language || 'en' }),
+          });
+          renderData = await renderRes.json();
+          if (!renderRes.ok) {
+            const msg = renderData.error === 'quota_exceeded' ? `Not enough credits — this video needs ${renderData.cost} credits, you have ${renderData.remaining}.` : (renderData.message || renderData.error || 'Render failed to start');
+            throw new Error(msg);
+          }
+          jobId = renderData.jobId;
+        } else if (model === '4') {
+          // ── موديل 4: كليبات فيديو مولّدة بالـ AI، أكتر سينمائية ──
+          const scenesRes = await fetch(`${INTERNAL_BASE}/api/model4/generate-scenes`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[duration] || 8, videoLanguage: language || 'en', videoStyle: 'cinematic' }),
+          });
+          const scenesData = await scenesRes.json();
+          if (!scenesRes.ok || !scenesData.scenes?.length) throw new Error(scenesData.error || 'Scene generation failed');
+          const renderRes = await fetch(`${INTERNAL_BASE}/api/model4/render`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ scenes: scenesData.scenes, ratio, captions: true, music: false, videoLanguage: language || 'en', videoStyle: 'cinematic' }),
+          });
+          renderData = await renderRes.json();
+          if (!renderRes.ok) {
+            const msg = renderData.error === 'quota_exceeded' ? `Not enough credits — this video needs ${renderData.cost} credits, you have ${renderData.remaining}.` : (renderData.message || renderData.error || 'Render failed to start');
+            throw new Error(msg);
+          }
+          jobId = renderData.jobId;
+        } else {
+          // ── موديل 5: فيديو بشخصية ثابتة، من غير صورة مرجعية هنا (idea بس) ──
+          const scenesRes = await fetch(`${INTERNAL_BASE}/api/model5/generate-scenes`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ idea, characters: [], duration: duration || '30s' }),
+          });
+          const scenesData = await scenesRes.json();
+          if (!scenesRes.ok || !scenesData.scenes?.length) throw new Error(scenesData.error || 'Scene generation failed');
+          const renderRes = await fetch(`${INTERNAL_BASE}/api/model5/render`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ scenes: scenesData.scenes, ratio, duration: duration || '30s', music: false }),
+          });
+          renderData = await renderRes.json();
+          if (!renderRes.ok) {
+            const msg = renderData.error === 'quota_exceeded' ? `Not enough credits — this video needs ${renderData.cost} credits, you have ${renderData.remaining}.` : (renderData.message || renderData.error || 'Render failed to start');
+            throw new Error(msg);
+          }
+          jobId = renderData.jobId;
         }
 
         // 5) ✅ NEW: بنراقب التقدّم جوه نفس النداء (بدل ما نرجع فورًا) — لحد 90 ثانية،
         // عشان الـ widget يتحدّث لوحده للفيديو النهائي من غير ما العميل يطلب "چيك" يدوي
-        const jobId = renderData.jobId;
         const maxWaitMs = 90_000, pollIntervalMs = 5_000, startedAt = Date.now();
         while (Date.now() - startedAt < maxWaitMs) {
           await new Promise(r => setTimeout(r, pollIntervalMs));
@@ -272,6 +327,69 @@ function buildMcpServer(userId, email) {
         };
       } catch (e) {
         return { content: [{ type: 'text', text: `Error checking status: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── edit_video ────────────────────────────────────────────────────────────
+  // ✅ NEW: تعديل video-to-video (Lucy Edit 2) لفيديو خارجي — MCP مفيهوش قناة رفع
+  // ملفات حقيقية لسه، فبناخد رابط عام للفيديو بدل الملف نفسه. العميل يقدر ياخد اللينك
+  // ده من صفحة Erivion → Settings → API & MCP → "Upload video, get link"
+  registerAppTool(
+    server,
+    'edit_video',
+    {
+      title: 'Edit a video (video-to-video)',
+      description: "Apply a precise AI edit to an existing video (max 15 seconds) while preserving its original motion and timing — e.g. \"change the car's color to red\" or \"make the background snowy\". Requires a direct public video URL (MCP can't accept an uploaded file directly) — get one from Erivion → Settings → API & MCP → \"Upload video, get link\". Cost is 25 credits per second of the video's real length.",
+      inputSchema: {
+        videoUrl: z.string().url().describe('A direct, publicly accessible URL to the video file (max 15 seconds).'),
+        editPrompt: z.string().min(3).describe('Precise instruction of exactly what to change — everything else stays identical.'),
+        addVoiceover: z.boolean().default(false).describe('Whether to add a new AI voiceover on top of the edited video.'),
+        voiceoverText: z.string().default('').describe('The narration text, if addVoiceover is true.'),
+        addCaptions: z.boolean().default(false).describe('Whether to burn in captions (requires addVoiceover to be true).'),
+        language: z.string().default('en').describe('Language code for voiceover/captions, e.g. "en" or "ar".'),
+      },
+      _meta: { ui: { resourceUri: videoPlayerResourceUri } },
+    },
+    async ({ videoUrl, editPrompt, addVoiceover, voiceoverText, addCaptions, language }) => {
+      try {
+        const headers = authHeaders();
+        const editRes = await fetch(`${INTERNAL_BASE}/api/video-edit-by-url`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ videoUrl, editPrompt, addVoiceover, voiceoverText, addCaptions, videoLanguage: language || 'en', ratio: '9:16' }),
+        });
+        const editData = await editRes.json();
+        if (!editRes.ok) {
+          const msg = editData.error === 'quota_exceeded'
+            ? `Not enough credits — this edit needs ${editData.cost} credits, you have ${editData.remaining}.`
+            : (editData.message || editData.error || 'Video edit failed to start');
+          throw new Error(msg);
+        }
+        const jobId = editData.jobId;
+
+        // نراقب التقدّم جوه نفس النداء — لحد 90 ثانية، زي generate_video بالظبط
+        const maxWaitMs = 90_000, pollIntervalMs = 5_000, startedAt = Date.now();
+        while (Date.now() - startedAt < maxWaitMs) {
+          await new Promise(r => setTimeout(r, pollIntervalMs));
+          try {
+            const statusRes = await fetch(`${INTERNAL_BASE}/api/render-status/${encodeURIComponent(jobId)}`, { headers: authHeaders() });
+            const statusData = await statusRes.json();
+            if (statusData.status === 'done') {
+              const finalUrl = `${SITE_URL}${statusData.videoUrl}`;
+              return {
+                content: [{ type: 'text', text: `✅ Edited video ready: ${finalUrl}\nCredits charged: ${editData.creditCost}` }],
+                structuredContent: { status: 'done', videoUrl: finalUrl, jobId },
+              };
+            }
+            if (statusData.status === 'failed') throw new Error(statusData.error || 'Edit failed');
+          } catch (pollErr) { /* شبكة متقطعة أثناء المراقبة — نكمل نحاول لحد ما الوقت يخلص */ }
+        }
+        return {
+          content: [{ type: 'text', text: `⏳ Still processing after 90 seconds. Job ID: ${jobId}\nCredits charged: ${editData.creditCost}\n\nUse check_render_status with this jobId in a bit to get the final video.` }],
+          structuredContent: { status: 'processing', jobId },
+        };
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Failed to edit video: ${e.message}` }], isError: true };
       }
     }
   );

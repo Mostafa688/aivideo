@@ -80,6 +80,12 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
   const [freshKey, setFreshKey]           = useState(null); // المفتاح الكامل — بيبان مرة واحدة بس
   const [copiedKey, setCopiedKey]         = useState(false);
   const [copiedUrl, setCopiedUrl]         = useState(false);
+  // ✅ NEW: رفع فيديو والحصول على رابط عام — عشان يستخدم في MCP (Claude مش بيقدر يرفع
+  // ملفات فيديو مباشرة، بس يقدر ياخد رابط)
+  const [videoLinkUploading, setVideoLinkUploading] = useState(false);
+  const [videoLinkResult, setVideoLinkResult]       = useState(null); // { videoUrl, durationSec }
+  const [videoLinkError, setVideoLinkError]         = useState('');
+  const [copiedVideoLink, setCopiedVideoLink]       = useState(false);
 
   // persist notifications & region
   useEffect(() => { localStorage.setItem('erivion_notif_email', emailNotif); }, [emailNotif]);
@@ -124,6 +130,25 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
   const MCP_URL = `${window.location.origin}/mcp`;
   const copyToClipboard = (text, setFlag) => {
     navigator.clipboard.writeText(text).then(() => { setFlag(true); setTimeout(() => setFlag(false), 2000); });
+  };
+
+  // ✅ NEW: رفع فيديو → رابط عام (أقصى 15 ثانية) — للاستخدام في MCP
+  const handleVideoLinkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setVideoLinkError(''); setVideoLinkResult(null); setVideoLinkUploading(true);
+    try {
+      const form = new FormData();
+      form.append('video', file, file.name || 'video.mp4');
+      const res = await fetch('/api/upload-video-link', { method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }, body: form });
+      const data = await res.json();
+      if (!res.ok) { setVideoLinkError(data.error || 'Upload failed'); }
+      else { setVideoLinkResult(data); }
+    } catch (err) {
+      setVideoLinkError(err.message || 'Upload failed');
+    }
+    setVideoLinkUploading(false);
+    e.target.value = ''; // يسمح برفع نفس الملف تاني لو حبيت
   };
 
   // ── Save name ──
@@ -404,6 +429,38 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                     {copiedUrl ? '✅ Copied' : '📋 Copy'}
                   </button>
                 </div>
+              </Section>
+
+              <Section title="Upload video, get link" icon="🎞️">
+                <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
+                  MCP tools (like in Claude) can't accept an uploaded file directly — they can only work with a public link. Upload your video here (max 15 seconds) to get a direct link, then paste that link when asking Claude to edit your video.
+                </p>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                  {videoLinkUploading ? '⏳ Uploading...' : '🎞️ Choose video file'}
+                  <input type="file" accept="video/*" onChange={handleVideoLinkUpload} disabled={videoLinkUploading} style={{ display: 'none' }} />
+                </label>
+
+                {videoLinkError && (
+                  <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, color: '#f87171', fontSize: 12.5 }}>
+                    ⚠️ {videoLinkError}
+                  </div>
+                )}
+
+                {videoLinkResult && (
+                  <div style={{ marginTop: 14, padding: '14px 16px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#22c55e', marginBottom: 8 }}>
+                      ✅ Uploaded ({videoLinkResult.durationSec}s) — copy this link
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input readOnly value={videoLinkResult.videoUrl}
+                        style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 12, fontFamily: 'monospace', outline: 'none' }} />
+                      <button onClick={() => copyToClipboard(videoLinkResult.videoUrl, setCopiedVideoLink)}
+                        style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        {copiedVideoLink ? '✅ Copied' : '📋 Copy'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </Section>
 
               <Section title="API Keys" icon="🔑">
