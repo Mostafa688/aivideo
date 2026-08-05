@@ -303,7 +303,7 @@ async function enforceAudioDuration(audioPath, maxSeconds) {
   }
 }
 
-async function generateAdsVoiceover(script, aiVoiceKey, language, targetSeconds = null, style = null) {
+export async function generateAdsVoiceover(script, aiVoiceKey, language, targetSeconds = null, style = null) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const voice = GEMINI_VOICE_MAP[aiVoiceKey] || (String(aiVoiceKey||'').startsWith('female') ? 'Sulafat' : 'Charon');
   const langCode = language?.startsWith('ar') ? 'ar-EG' : 'en-US';

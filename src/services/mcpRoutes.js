@@ -105,7 +105,9 @@ function buildMcpServer(userId, email) {
           'Model 5 (Character Video): character-consistent AI video — supports uploaded reference photos, stickman-style animation, and historical map documentary videos.',
           'Model 7 (Ads): turns a single product photo into a full video ad with AI voiceover.',
           '',
-          'Use generate_video with model "1" through "5" to start a video from this MCP server. Model 7 (Ads) needs an uploaded product photo, so it\'s not available here — use the full Erivion chat agent for that.',
+          'Model 8 (Budget Cinematic): same as Model 4 but a much cheaper engine — 4 credits/sec, flexible per-scene duration (5s or 10s), total length up to 10 minutes, optional native cinematic audio.',
+          '',
+          'Use generate_video with model "1" through "5" or "8" to start a video from this MCP server. Model 7 (Ads) needs an uploaded product photo, so it\'s not available here — use the full Erivion chat agent for that.',
         ].join('\n'),
       }],
     })
@@ -135,17 +137,20 @@ function buildMcpServer(userId, email) {
     'generate_video',
     {
       title: 'Generate a video',
-      description: 'Generate an Erivion video from a topic/idea and wait for it to finish (usually 1-3 minutes) — shows live progress and the final video automatically. Supports Model 1 (AI images), Model 2 (real stock footage), Model 3 (higher-quality AI images, longer videos up to 5min), Model 4 (AI-generated video clips, more cinematic), Model 5 (character-consistent AI video, no reference photo in this tool). For Model 7/Ads (product photo → ad video), use the Erivion chat agent directly since it needs an uploaded photo.',
+      description: 'Generate an Erivion video from a topic/idea and wait for it to finish (usually 1-3 minutes) — shows live progress and the final video automatically. Supports Model 1 (AI images), Model 2 (real stock footage), Model 3 (higher-quality AI images, longer videos up to 5min), Model 4 (AI-generated video clips, cinematic, Seedance engine), Model 5 (character-consistent AI video, no reference photo in this tool), Model 8 (same idea as Model 4 but a much cheaper engine — 4 credits/sec instead of Model 4\'s pricing, flexible per-scene duration, up to 10 minutes total, optional native cinematic audio). For Model 7/Ads (product photo → ad video), use the Erivion chat agent directly since it needs an uploaded photo.',
       inputSchema: {
-        model: z.enum(['1', '2', '3', '4', '5']).describe('1=AI images, 2=real stock footage (best default), 3=higher-quality AI images/longer videos, 4=AI video clips/cinematic, 5=character-consistent AI video.'),
+        model: z.enum(['1', '2', '3', '4', '5', '8']).describe('1=AI images, 2=real stock footage (best default), 3=higher-quality AI images/longer videos, 4=AI video clips/cinematic (Seedance), 5=character-consistent AI video, 8=same as Model 4 but much cheaper (4 credits/sec) with flexible scene/total duration.'),
         idea: z.string().min(3).describe('The video topic or idea, described in a sentence or two.'),
-        duration: z.string().default('30s').describe('Video length. Models 1/2/4: "30s", "1min", "3min", or "5min". Model 3: also supports "5min". Model 5: "5s", "10s", "15s", "30s", or "1min" only.'),
+        duration: z.string().default('30s').describe('Video length. Models 1/2/4: "30s", "1min", "3min", or "5min". Model 3: also supports "5min". Model 5: "5s", "10s", "15s", "30s", or "1min" only. Model 8: ignored — use totalDurationSec instead.'),
         ratio: z.enum(['9:16', '16:9', '1:1']).default('9:16').describe('Aspect ratio — 9:16 for Reels/TikTok/Shorts, 16:9 for YouTube, 1:1 for feed posts.'),
         language: z.string().default('en').describe('Narration language code, e.g. "en" or "ar".'),
+        sceneDurationSec: z.enum(['5', '10', '15', '20']).default('5').describe('Model 8 only: length of each individual scene in seconds.'),
+        totalDurationSec: z.number().default(30).describe('Model 8 only: total video length in seconds, up to 600 (10 minutes).'),
+        audioMode: z.enum(['none', 'voiceover', 'cinematic']).default('none').describe('Model 8 only: per-second rate that scales with video length — "none" = 4 credits/sec (silent), "voiceover" = 5 credits/sec (Gemini TTS narration), "cinematic" = 6 credits/sec (native synchronized scene audio from the video model itself).'),
       },
       _meta: { ui: { resourceUri: videoPlayerResourceUri } }, // ✅ NEW: نفس الـ widget بتاع check_render_status
     },
-    async ({ model, idea, duration, ratio, language }) => {
+    async ({ model, idea, duration, ratio, language, sceneDurationSec, totalDurationSec, audioMode }) => {
       try {
         const headers = authHeaders();
         let renderData, jobId;
@@ -234,6 +239,27 @@ function buildMcpServer(userId, email) {
           const renderRes = await fetch(`${INTERNAL_BASE}/api/model4/render`, {
             method: 'POST', headers,
             body: JSON.stringify({ scenes: scenesData.scenes, ratio, captions: true, music: false, videoLanguage: language || 'en', videoStyle: 'cinematic' }),
+          });
+          renderData = await renderRes.json();
+          if (!renderRes.ok) {
+            const msg = renderData.error === 'quota_exceeded' ? `Not enough credits — this video needs ${renderData.cost} credits, you have ${renderData.remaining}.` : (renderData.message || renderData.error || 'Render failed to start');
+            throw new Error(msg);
+          }
+          jobId = renderData.jobId;
+        } else if (model === '8') {
+          // ── موديل 8: نفس محرك كتابة السيناريو بتاع موديل 4، رندر أرخص بكتير ──
+          const m8SceneDur = parseInt(sceneDurationSec, 10) || 5;
+          const m8TotalDur = Math.min(600, Math.max(m8SceneDur, totalDurationSec || 30));
+          const m8SceneCount = Math.max(1, Math.round(m8TotalDur / m8SceneDur));
+          const scenesRes = await fetch(`${INTERNAL_BASE}/api/model4/generate-scenes`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ idea, script: undefined, inputMode: 'idea', sceneCount: m8SceneCount, videoLanguage: language || 'en', videoStyle: 'cinematic' }),
+          });
+          const scenesData = await scenesRes.json();
+          if (!scenesRes.ok || !scenesData.scenes?.length) throw new Error(scenesData.error || 'Scene generation failed');
+          const renderRes = await fetch(`${INTERNAL_BASE}/api/model8/render`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ scenes: scenesData.scenes, ratio, sceneDurationSec: m8SceneDur, audioMode: audioMode || 'none', videoLanguage: language || 'en', captions: true }),
           });
           renderData = await renderRes.json();
           if (!renderRes.ok) {

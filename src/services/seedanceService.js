@@ -212,7 +212,7 @@ async function mergeCharacterPhotosTree(urls, mergePrompt) {
 
 // ── FLUX Kontext Dev: generate reference image from character photo ──────────
 // Cheapest Replicate model for character reference (~$0.01-0.02/image)
-async function generateReferenceImage(photoBase64OrUrl, scenePrompt, ratio = '9:16') {
+export async function generateReferenceImage(photoBase64OrUrl, scenePrompt, ratio = '9:16') {
   if (!REPLICATE_API_TOKEN) return null;
   try {
     // ✅ FIX: بتقبل دلوقتي رابط https مباشر (لصورة المجموعة المدمجة) بجانب base64 العادي

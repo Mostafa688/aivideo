@@ -94,7 +94,24 @@ const T = {
 };
 
 const RATIO_BOX = { '9:16': { w: 152, h: 270 }, '16:9': { w: 270, h: 152 }, '1:1': { w: 200, h: 200 } };
-const MODEL_STYLE_DEFAULTS = { 3: 'cinematic', 4: 'cinematic', 5: 'cinematic' };
+const MODEL_STYLE_DEFAULTS = { 3: 'cinematic', 4: 'cinematic', 5: 'cinematic', 8: 'cinematic' };
+// ✅ FIX: كانت styleSuffix بتتبعت فاضية للباك إند في كل مكان في الملف ده — يعني الستايل
+// اللي الإيجنت أو العميل بيختاره (videoStyle) كان بيوصل كـ اسم بس من غير أي وصف فعلي، فالسيرفر
+// كان دايمًا بيرجع للـ default العام بتاعه بدل الستايل الحقيقي. الجدول ده بيحوّل كل مفتاح
+// ستايل لنص الوصف الحقيقي (نفس النصوص المستخدمة في Model4Page.jsx/Model8Page.jsx بالظبط)
+const STYLE_SUFFIXES = {
+  cinematic:   'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading',
+  realistic:   'photorealistic, natural lighting, high detail, documentary style, authentic',
+  historical:  'historical epic, ancient world, dramatic atmosphere, oil painting style, cinematic, period-accurate',
+  anime:       'anime style, vibrant colors, detailed illustration, studio ghibli inspired, cel shading',
+  cartoon:     'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired',
+  '3d_cartoon': '3D rendered cartoon style, smooth colorful surfaces, pixar style 3D animation',
+  action:      'action scene, dynamic motion blur, explosive energy, dramatic angles, high contrast',
+  documentary: 'documentary style, natural lighting, photorealistic, journalistic photography, authentic atmosphere',
+};
+function styleSuffixFor(styleKey) {
+  return STYLE_SUFFIXES[styleKey] || '';
+}
 const MODEL3_IMAGE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
 const MODEL4_SCENE_COUNT = { '30s': 4, '1min': 8, '3min': 24 };
 const VIDEO_TYPE_BY_MODEL = { 1: 'ai_slices', 2: 'pexels_clips' };
@@ -566,16 +583,29 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         let scenesBody;
         if (ready.model === 3) {
           scenesBody = hasStructuredScenes
-            ? { structuredScenes: lastParsedStructuredScenes, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' }
+            ? { structuredScenes: lastParsedStructuredScenes, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: styleSuffixFor(style) }
             : hasUploadedScript
-            ? { idea: null, script: scriptText, inputMode: 'script', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' }
-            : { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: '' };
+            ? { idea: null, script: scriptText, inputMode: 'script', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: styleSuffixFor(style) }
+            : { idea: ready.idea, script: null, inputMode: 'idea', imageCount: MODEL3_IMAGE_COUNT[ready.duration] || 6, videoLanguage: videoLang, ratio: ready.ratio, videoStyle: style, styleSuffix: styleSuffixFor(style) };
         } else if (ready.model === 4) {
           scenesBody = hasStructuredScenes
-            ? { structuredScenes: lastParsedStructuredScenes, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' }
+            ? { structuredScenes: lastParsedStructuredScenes, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) }
             : hasUploadedScript
-            ? { idea: null, script: scriptText, inputMode: 'script', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' }
-            : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: '' };
+            ? { idea: null, script: scriptText, inputMode: 'script', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) }
+            : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: MODEL4_SCENE_COUNT[ready.duration] || 8, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) };
+        } else if (ready.model === 8) {
+          // ✅ موديل 8 — نفس محرك كتابة السيناريو بتاع موديل 4 بالظبط، وبيدعم خطة عميل جاهزة
+          // كمان (كل مشهد بمدته الخاصة بيه لو محددة، حتى لو مش من ضمن أزرار 5/10/15/20 الجاهزة)
+          if (hasStructuredScenes) {
+            scenesBody = { structuredScenes: lastParsedStructuredScenes, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) };
+          } else {
+          const m8SceneDur = ready.sceneDurationSec || 5;
+          const m8TotalDur = ready.totalDurationSec || 30;
+          const m8SceneCount = Math.max(1, Math.round(m8TotalDur / m8SceneDur));
+          scenesBody = hasUploadedScript
+            ? { idea: null, script: scriptText, inputMode: 'script', sceneCount: m8SceneCount, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) }
+            : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: m8SceneCount, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) };
+          }
         } else {
           // ✅ NEW: خطة عميل جاهزة لموديل 5 (مش map-video) — بتاخد الأولوية على أي وضع تاني
           if (hasStructuredScenes) {
@@ -592,11 +622,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           scenesBody = ready.promptMode === 'image'
             ? { promptMode: 'image', characters: lastUploadedPhotos.length ? [{ prompt: '', photo: lastUploadedPhotos[0] }] : characters, duration: ready.duration, rawPrompt: ready.rawPrompt || undefined }
             : ready.promptMode === 'prompt'
-            ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters, duration: ready.duration, styleSuffix: '' }
-            : { idea: ready.idea, characters, duration: ready.duration, videoStyle: style, styleSuffix: '', stickmanStyle: ready.stickmanStyle || undefined };
+            ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters, duration: ready.duration, styleSuffix: styleSuffixFor(style) }
+            : { idea: ready.idea, characters, duration: ready.duration, videoStyle: style, styleSuffix: styleSuffixFor(style), stickmanStyle: ready.stickmanStyle || undefined };
           }
         }
-        const scenesRes = await fetch(`/api/model${ready.model}/generate-scenes`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
+        const scenesEndpoint = ready.model === 8 ? '/api/model4/generate-scenes' : `/api/model${ready.model}/generate-scenes`;
+        const scenesRes = await fetch(scenesEndpoint, { method: 'POST', headers: authHeaders(), body: JSON.stringify(scenesBody) });
         const scenesData = await scenesRes.json();
         if (!scenesRes.ok) throw new Error(
           scenesData.error === 'content_policy_violation' ? (region === 'eg' ? scenesData.message_ar : scenesData.message) :
@@ -612,9 +643,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       // ✅ Voice-to-Video حقيقي: لو العميل رفع تسجيل صوتي، نستخدمه هو نفسه كـ narration في الفيديو
       // من غير ما نولّد صوت صناعي جديد — بالظبط زي ما بيحصل في صفحة الموديل العادية
       let audioUrl = null;
-      if (ready.model !== 5 && lastUploadedVoiceUrl) {
+      if (![5, 8].includes(ready.model) && lastUploadedVoiceUrl) {
         audioUrl = lastUploadedVoiceUrl;
-      } else if (ready.model !== 5 && scenes.length) {
+      } else if (![5, 8].includes(ready.model) && scenes.length) {
         // مفيش صوت مرفوع — نولّد صوت صناعي بنفس الطريقة اللي صفحة الموديل نفسها بتستخدمها بالظبط
         try {
           const fullText = scenes.map(s => s.text).join(' ');
@@ -645,10 +676,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         renderBody = { scenes, audioUrl, ratio: ready.ratio, duration: ready.duration, music: wantMusic, captions: wantCaptions, transitions: true, videoType: VIDEO_TYPE_BY_MODEL[ready.model], videoLanguage: videoLang };
       } else if (ready.model === 3) {
         renderUrl = '/api/model3/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: wantCaptions, transitions: false, music: wantMusic, videoLanguage: videoLang, duration: ready.duration, videoStyle: style, styleSuffix: '' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: wantCaptions, transitions: false, music: wantMusic, videoLanguage: videoLang, duration: ready.duration, videoStyle: style, styleSuffix: styleSuffixFor(style) };
       } else if (ready.model === 4) {
         renderUrl = '/api/model4/render';
-        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: wantCaptions, music: wantMusic, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: '' };
+        renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: wantCaptions, music: wantMusic, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: styleSuffixFor(style) };
+      } else if (ready.model === 8) {
+        renderUrl = '/api/model8/render';
+        renderBody = { scenes, ratio: ready.ratio, sceneDurationSec: ready.sceneDurationSec || 5, audioMode: ready.audioMode || 'none', voiceKey: ready.voiceKey || 'male_wise', videoLanguage: videoLang, captions: wantCaptions, characterPhoto: lastUploadedPhotos[0] || undefined };
       } else {
         renderUrl = '/api/model5/render';
         renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhotos, music: wantMusic };
@@ -706,7 +740,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             // من غير ما نعيد توليد الفيديو بالكامل
             if (isM12) {
               setLastM12Video({ ...renderBody, videoUrl: sd.videoUrl });
-            } else if ([3, 4, 5].includes(ready.model) && !isMapVideo && sd.editContext) {
+            } else if ([3, 4, 5, 8].includes(ready.model) && !isMapVideo && sd.editContext) {
               // ✅ NEW: نفس الفكرة لموديل 3/4/5 (مش map-video) — الـ editContext راجع من
               // السيرفر نفسه (فيه sceneImageUrls/sceneClipUrls الجاهزة لإعادة الاستخدام)
               setLastM345Video({ model: ready.model, ...sd.editContext, videoUrl: sd.videoUrl });

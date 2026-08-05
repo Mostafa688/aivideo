@@ -14,6 +14,7 @@ import SubPage from './pages/SubPage.jsx';
 import BlogPostPage from './pages/BlogPostPage.jsx';
 import Model3Page from './pages/Model3Page.jsx';
 import Model4Page from './pages/Model4Page.jsx';
+import Model8Page from './pages/Model8Page.jsx';
 import AdminPage from './pages/AdminPage.jsx';
 import AffiliatePage from './pages/AffiliatePage.jsx';
 import ModelCinematicPage from './pages/ModelCinematicPage.jsx';
@@ -249,6 +250,7 @@ export default function App() {
         setPlanSelected(true);
         if (targetModel === 'model3') setPage('model3');
         else if (targetModel === 'model4') setPage('model4');
+        else if (targetModel === 'model8') setPage('model8');
         else if (targetModel === 'model5' || targetModel === 'cinematic') setPage('model5');
         else setPage('input');
       } else { setShowAuth(true); }
@@ -351,6 +353,7 @@ export default function App() {
       case 'affiliate':  setPage('affiliate'); break;
       case 'model3':     setPage('model3'); break;
       case 'model4':     setPage('model4'); break;
+      case 'model8':     setPage('model8'); break;
       case 'model5':     setPage('model5'); break;
       case 'pricing':    setShowPricing(true); break;
       case 'settings':   setPage('settings'); break;
@@ -540,6 +543,7 @@ export default function App() {
           onSubmit={(data) => {
             if (data.videoType === 'model3') { setPage('model3'); return; }
             if (data.videoType === 'model4') { setPage('model4'); return; }
+            if (data.videoType === 'model8') { setPage('model8'); return; }
             if (data.videoType === 'model5') { setPage('model5'); return; }
             if (data.videoType === 'model6') { setFormData(data); setPage('model6'); return; }
             if (data.videoType === 'model7') { setPage('model7'); return; }
@@ -552,6 +556,7 @@ export default function App() {
         />}
         {page === 'model3' && <Model3Page onBack={() => setPage('input')} model3Plan={model3Plan} model3Access={model3Access} userPlan={userPlan} onNavigate={handleNavigate} />}
         {page === 'model4' && <Model4Page onBack={() => { setPage('input'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} userPlan={userPlan} onNavigate={handleNavigate} />}
+        {page === 'model8' && <Model8Page onBack={() => { setPage('input'); fetchCredits(); }} userPlan={userPlan} onNavigate={handleNavigate} />}
         {page === 'model5' && <ModelCinematicPage onBack={() => { setPage('input'); fetchCredits(); }} model5Plan={model5Plan} model5Access={model5Access} userPlan={userPlan} onNavigate={handleNavigate} />}
         {page === 'model6' && <MapVideoPage formData={formData} onBack={() => setPage('input')} />}
         {page === 'model7' && <ModelErivionPage onBack={() => { setPage('input'); fetchCredits(); }} erivionPlan={erivionPlan} erivionAccess={erivionAccess} onNavigate={handleNavigate} />}

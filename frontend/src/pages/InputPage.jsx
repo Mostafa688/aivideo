@@ -427,7 +427,7 @@ function MapVideoForm({ onSubmit, onBack }) {
 }
 
 // ── Model Selector ──────────────────────────────────────────────────────────
-function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access, model7Access, isAdmin, userPlan }) {
+function ModelSelector({ onSelect, model3Access, model4Access, model5Access, model6Access, model7Access, model8Access, isAdmin, userPlan }) {
   const [hovered, setHovered] = useState(null);
   const [showModel3Modal, setShowModel3Modal] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
@@ -474,6 +474,13 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       desc:'Upload your product photo and get a cinematic AI video ad — scenes, voiceover, and transitions included.',
       tags:['FLUX Reference','Seedance Video','AI Voiceover','150-360 Credits/ad'],
       badge:'NEW', free:false, cat:'premium', needsAccess: userPlan === 'free', comingSoon: false, adminOnly: false,
+    },
+    {
+      key:'model8', tag:'MODEL 8', name:'Budget Cinematic', icon:'💸',
+      color:'#22c55e', glow:'rgba(34,197,94,0.25)',
+      desc:'AI video clips like Model 4, at a fraction of the cost. Choose 5s or 10s scenes, up to 10 minutes total, with 3 audio options.',
+      tags:['4 Credits/sec','Up to 10 min','Flexible scenes','Cinematic audio'],
+      badge:'CHEAPEST', free:false, cat:'premium', needsAccess: userPlan === 'free',
     },
     {
       key:'ai', tag:'MODEL 1', name:'AI Slices', icon:'🎨',
@@ -649,7 +656,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
 
 
 // ── Main Form ───────────────────────────────────────────────────────────────
-export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, model7Access = false, userPlan = 'free', credits = null, userEmail = '', onNavigate }) {
+export default function InputPage({ onSubmit, model3Access = false, model4Access = false, model5Access = false, model6Access = false, model7Access = false, model8Access = false, userPlan = 'free', credits = null, userEmail = '', onNavigate }) {
   const [selectedModel, setSelectedModel] = useState(null);
   const [mode, setMode] = useState('idea');
   const [idea, setIdea] = useState('');
@@ -699,6 +706,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
       onSelect={(model) => {
         if (model === 'model3') { onSubmit({ videoType: 'model3' }); return; }
         if (model === 'model4') { onSubmit({ videoType: 'model4' }); return; }
+        if (model === 'model8') { onSubmit({ videoType: 'model8' }); return; }
         if (model === 'model5') { onSubmit({ videoType: 'model5' }); return; }
         if (model === 'model6') { setSelectedModel('model6'); return; }
         if (model === 'model7') { setSelectedModel('model7'); return; }
@@ -706,6 +714,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
       }}
       model3Access={model3Access}
       model4Access={model4Access}
+      model8Access={model8Access}
       model5Access={model5Access}
       model6Access={model6Access}
       model7Access={model7Access}
