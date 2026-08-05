@@ -813,7 +813,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       form.append('addVoiceover', String(!!videoEdit.addVoiceover));
       form.append('voiceoverText', videoEdit.voiceoverText || '');
       form.append('addCaptions', String(!!videoEdit.addCaptions));
-      form.append('videoLanguage', videoLang);
+      form.append('videoLanguage', lang);
       form.append('ratio', '9:16');
 
       const res = await fetch('/api/video-edit', { method: 'POST', headers: tokenHeader(), body: form });
