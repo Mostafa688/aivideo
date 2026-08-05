@@ -1245,16 +1245,29 @@ app.post('/api/video-edit', authMiddleware, renderLimiter, videoUpload.single('v
     fs.mkdirSync(tmpUploadDir, { recursive: true });
     const tmpUploadPath = join(tmpUploadDir, `upload_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
     fs.writeFileSync(tmpUploadPath, videoFile.buffer);
+    // ✅ NEW: تشخيص حقيقي — لو الملف وصل فاضي أو صغير جدًا، المشكلة في الرفع نفسه مش في ffprobe
+    const writtenSize = fs.statSync(tmpUploadPath).size;
+    console.log(`[VideoEdit] Uploaded file: ${videoFile.originalname}, mimetype: ${videoFile.mimetype}, buffer: ${videoFile.buffer.length} bytes, written: ${writtenSize} bytes`);
+    if (!writtenSize || writtenSize < 1000) {
+      fs.unlinkSync(tmpUploadPath);
+      return res.status(400).json({ error: `Upload failed — received only ${writtenSize} bytes. Please try uploading the video again.` });
+    }
 
     let durationSec;
     try {
-      durationSec = parseFloat(execSync(
+      const probeOut = execSync(
         `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmpUploadPath}"`,
         { encoding: 'utf8' }
-      ).trim());
+      ).trim();
+      durationSec = parseFloat(probeOut);
+      if (!durationSec) console.error(`[VideoEdit] ffprobe returned empty/unparseable output: "${probeOut}"`);
     } catch (e) {
+      // ✅ NEW: نسجّل الخطأ الحقيقي (stderr من ffprobe) بدل ما نبلعه في رسالة عامة —
+      // ده اللي هيوريّنا فعليًا سبب الفشل الحقيقي في اللوجز في المرة الجاية
+      const realError = e.stderr?.toString().trim() || e.message;
+      console.error(`[VideoEdit] ffprobe failed on "${tmpUploadPath}" (${writtenSize} bytes, mimetype ${videoFile.mimetype}):`, realError);
       fs.unlinkSync(tmpUploadPath);
-      return res.status(400).json({ error: 'Could not read video file — please upload a valid MP4.' });
+      return res.status(400).json({ error: `Could not read video file (${realError.slice(0, 150)}) — please make sure it's a valid MP4 and try again.` });
     }
     if (!durationSec || durationSec <= 0) {
       fs.unlinkSync(tmpUploadPath);
