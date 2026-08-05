@@ -159,6 +159,17 @@ async function initDB() {
     );
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_conversations (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      user_email TEXT,
+      plan TEXT,
+      user_message TEXT,
+      agent_reply TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS model3_usage (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
@@ -196,6 +207,46 @@ async function initDB() {
 }
 
 initDB().catch(err => console.error('[DB] Init error:', err.message));
+
+// ── Agent chat logging (admin monitoring) ───────────────────────────────────
+// كل تبادل (رسالة عميل + رد الايجنت) بيتسجل هنا عشان الأدمن يقدر يراجع مشاكل العملاء
+// من غير ما يستنى حد يشتكي. بيتمسح تلقائيًا بعد 24 ساعة (privacy + مساحة).
+export async function logAgentConversation(userId, userEmail, plan, userMessage, agentReply) {
+  try {
+    await pool.query(
+      `INSERT INTO agent_conversations (user_id, user_email, plan, user_message, agent_reply) VALUES ($1, $2, $3, $4, $5)`,
+      [userId || null, userEmail || null, plan || null, (userMessage || '').slice(0, 6000), (agentReply || '').slice(0, 6000)]
+    );
+  } catch (e) {
+    console.warn('[Agent Log] insert failed:', e.message);
+  }
+}
+
+export async function getRecentAgentConversations(hours = 24) {
+  const { rows } = await pool.query(
+    `SELECT id, user_id, user_email, plan, user_message, agent_reply, created_at
+     FROM agent_conversations
+     WHERE created_at >= NOW() - ($1 || ' hours')::interval
+     ORDER BY created_at DESC
+     LIMIT 500`,
+    [String(hours)]
+  );
+  return rows;
+}
+
+export async function cleanupExpiredAgentConversations() {
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM agent_conversations WHERE created_at < NOW() - INTERVAL '24 hours'`
+    );
+    if (rowCount) console.log(`[Agent Log] 🧹 auto-deleted ${rowCount} conversation row(s) older than 24h`);
+  } catch (e) {
+    console.warn('[Agent Log] cleanup failed:', e.message);
+  }
+}
+
+// بتتنضف كل ساعة عشان الجدول ميفضلش يكبر، وبرضو بنفلتر بـ 24 ساعة وقت القراءة كحماية إضافية
+setInterval(() => { cleanupExpiredAgentConversations(); }, 60 * 60 * 1000);
 
 // ✅ Secure random code using crypto
 function generateCode() {
@@ -897,23 +948,19 @@ export async function resetModel3Usage(userId) {
 
 export async function canUserMakeModel3Video(userId, duration) {
   const user = await getUserById(userId);
-  if (user?.model3_access) {
-    const plan = user?.model3_plan || 'm3_starter';
-    const totalCredits = MODEL3_PLAN_CREDITS[plan] || 125;
-    const cost = MODEL3_CREDIT_COSTS[duration] || 5;
-    const credits = await getModel3Credits(userId);
-    const remaining = (credits.credits_total || 0) - (credits.credits_used || 0);
-    if (remaining < cost) return { allowed: false, reason: 'quota_exceeded', remaining, cost };
-    return { allowed: true, remaining, cost };
-  }
-  if (duration === '30s' && !user?.model3_trial_used) {
-    return { allowed: true, is_trial: true };
-  }
-  return { allowed: false, reason: 'no_access' };
+  // ❌ Free trial cancelled: مفيش 30s مجاني قبل الاشتراك بعد كده — لازم model3_access دايمًا زي Model 4
+  if (!user || !user.model3_access) return { allowed: false, reason: 'no_access' };
+  const plan = user?.model3_plan || 'm3_starter';
+  const totalCredits = MODEL3_PLAN_CREDITS[plan] || 125;
+  const cost = MODEL3_CREDIT_COSTS[duration] || 5;
+  const credits = await getModel3Credits(userId);
+  const remaining = (credits.credits_total || 0) - (credits.credits_used || 0);
+  if (remaining < cost) return { allowed: false, reason: 'quota_exceeded', remaining, cost };
+  return { allowed: true, remaining, cost };
 }
 
 export async function markModel3TrialUsed(userId) {
-  await pool.query('UPDATE users SET model3_trial_used = 1 WHERE id = $1', [userId]);
+  // kept for compatibility, trial disabled
 }
 
 export async function getAllPaymentRequests(status = null) {

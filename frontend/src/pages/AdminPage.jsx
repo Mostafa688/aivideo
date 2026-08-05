@@ -912,6 +912,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [videos, setVideos] = useState([]);
+  const [agentChats, setAgentChats] = useState([]);
   const [answers, setAnswers] = useState([]);
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityQuestions, setCommunityQuestions] = useState([]);
@@ -985,6 +986,9 @@ export default function AdminPage() {
   }, []);
   const [receiptPreview, setReceiptPreview] = useState(null); // lightbox لصورة الإيصال
   const loadVideos   = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/videos', { headers }); const d = await r.json(); setVideos(d.videos || []); } catch (e) { console.error(e); } setLoading(false); }, []);
+  // ✅ NEW: شات الايجينت مع العملاء (مشتركين أو لأ) — بيتمسح تلقائيًا بعد 24 ساعة من السيرفر،
+  // فده بيعرض آخر يوم بس عشان اكتشاف مشاكل العملاء بدري
+  const loadAgentChats = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/agent-chats', { headers }); const d = await r.json(); setAgentChats(d.chats || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadAnswers  = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/onboarding-answers', { headers }); const d = await r.json(); setAnswers(d.answers || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const loadCommunity = useCallback(async () => {
     setLoading(true);
@@ -1151,10 +1155,10 @@ export default function AdminPage() {
     if (tab === 'overview') loadStats();
     else if (tab === 'users') loadUsers();
     else if (tab === 'payments') loadPayments();
-    else if (tab === 'videos') loadVideos();
+    else if (tab === 'videos') loadAgentChats();
     else if (tab === 'support') { loadSupport(); }
     else if (tab === 'community') { loadCommunity(); }
-  }, [authed, tab, loadStats, loadUsers, loadPayments, loadVideos, loadSupport, loadCommunity]);
+  }, [authed, tab, loadStats, loadUsers, loadPayments, loadAgentChats, loadSupport, loadCommunity]);
 
   // Poll support messages when chat is open
   useEffect(() => {
@@ -1218,7 +1222,7 @@ export default function AdminPage() {
     { key: 'overview',   label: '📊 Overview'   },
     { key: 'users',      label: '👥 Users'       },
     { key: 'payments',   label: '💰 Payments'    },
-    { key: 'videos',     label: '🎬 Videos'      },
+    { key: 'videos',     label: '🤖 Agent Chats' },
     { key: 'support',    label: `💬 Support${totalUnread > 0 ? ` 🔴${totalUnread}` : supportChats.length > 0 ? ` (${supportChats.length})` : ''}` },
     { key: 'affiliates', label: '🤝 Affiliates'  },
     { key: 'ratings',    label: '⭐ Ratings'      },
@@ -1535,23 +1539,23 @@ export default function AdminPage() {
         {/* ── VIDEOS ── */}
         {tab === 'videos' && (
           <>
-            <div style={s.topbar}><div style={s.title}>Recent Videos</div><button style={s.btn()} onClick={loadVideos}>🔄 Refresh</button></div>
+            <div style={s.topbar}>
+              <div style={s.title}>🤖 Agent Chats <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 400 }}>(آخر 24 ساعة بس — بتتمسح تلقائي بعد كده)</span></div>
+              <button style={s.btn()} onClick={loadAgentChats}>🔄 Refresh</button>
+            </div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
-            <div style={s.card}>
-              <table style={s.table}>
-                <thead><tr><th style={s.th}>User</th><th style={s.th}>Plan</th><th style={s.th}>Title</th><th style={s.th}>Filename</th><th style={s.th}>Date</th></tr></thead>
-                <tbody>
-                  {videos.map(v => (
-                    <tr key={v.id}>
-                      <td style={s.td}>{v.email}</td>
-                      <td style={s.td}><span style={planStyle(v.plan)}>{v.plan}</span></td>
-                      <td style={s.td}>{v.title || '–'}</td>
-                      <td style={{ ...s.td, fontSize: 11, color: '#4b5563' }}>{v.filename}</td>
-                      <td style={s.td}>{new Date(v.created_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {!loading && agentChats.length === 0 && <div style={{ color: '#6b7280' }}>مفيش محادثات في آخر 24 ساعة.</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {agentChats.map(c => (
+                <div key={c.id} style={s.card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12, color: '#6b7280' }}>
+                    <span>{c.user_email || '(guest)'} {c.plan && <span style={planStyle(c.plan)}>{c.plan}</span>}</span>
+                    <span>{new Date(c.created_at).toLocaleString()}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 6 }}><b style={{ color: '#d1d5db' }}>Customer:</b> {c.user_message}</div>
+                  <div style={{ fontSize: 13, color: '#9ca3af' }}><b style={{ color: '#7c6af7' }}>Agent:</b> {c.agent_reply}</div>
+                </div>
+              ))}
             </div>
           </>
         )}

@@ -1,7 +1,7 @@
 import express from 'express';
 import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
-import { getUserById } from './authService.js';
+import { getUserById, logAgentConversation } from './authService.js';
 
 const router = express.Router();
 
@@ -245,6 +245,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
 
     res.json({ reply, transcript, ready, editScene, videoEdit, uploadedVoiceUrl, structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult });
+
+    // ✅ NEW: تسجيل تبادل الشات (رسالة العميل + رد الايجنت) عشان يظهر للأدمن — مش بيوقف
+    // الرد للعميل (بعد res.json بالفعل)، ومش بيفشل الطلب لو التسجيل فشل
+    logAgentConversation(userId, user?.email || null, userPlan, message, reply).catch(() => {});
   } catch (e) {
     console.error('[Agent Chat]', e.message);
     res.status(500).json({ error: e.message });
