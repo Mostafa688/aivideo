@@ -251,17 +251,24 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     if (!file) return;
     setError('');
     if (file.size > MAX_VIDEO_UPLOAD_MB * 1024 * 1024) { setError(lang === 'ar' ? `الفيديو أكبر من ${MAX_VIDEO_UPLOAD_MB}MB` : `Video is larger than ${MAX_VIDEO_UPLOAD_MB}MB`); return; }
+    // ✅ FIX: كنا بنستنى فحص المدة (async، بياخد جزء من الثانية) قبل ما نحفظ الفيديو في
+    // الـ state — لو المستخدم كتب نص وبعت بسرعة قبل ما الفحص يخلص، الفيديو مكنش موجود
+    // في الرسالة خالص. دلوقتي الفيديو بيتقبل فورًا (sync)، والفحص بيحصل في الخلفية —
+    // لو طلع أطول من المسموح، بنشيله ونعرض الخطأ وقتها بس
+    setUploadedVideoFile(file);
+    setUploadedVideoDurationSec(null); // هيتحدث لما الفحص يخلص
+    setVideoSentOnce(false);
     const video = document.createElement('video');
     video.preload = 'metadata';
     video.onloadedmetadata = () => {
       URL.revokeObjectURL(video.src);
       if (video.duration > MAX_VIDEO_UPLOAD_SEC + 0.5) {
         setError(lang === 'ar' ? `الفيديو ${video.duration.toFixed(1)} ثانية — أقصى مدة مسموحة ${MAX_VIDEO_UPLOAD_SEC} ثانية` : `Video is ${video.duration.toFixed(1)}s — max allowed is ${MAX_VIDEO_UPLOAD_SEC}s`);
+        setUploadedVideoFile(null);
+        setUploadedVideoDurationSec(null);
         return;
       }
-      setUploadedVideoFile(file);
       setUploadedVideoDurationSec(Math.round(video.duration));
-      setVideoSentOnce(false);
     };
     video.src = URL.createObjectURL(file);
   };
@@ -991,7 +998,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
                 {imageFiles.map((_, idx) => (
                   <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>
                 ))}
-                {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎞️ {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec}s) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>}
+                {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎞️ {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
@@ -1082,7 +1089,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             {imageFiles.map((_, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>
             ))}
-            {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎞️ {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec}s) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>}
+            {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎞️ {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>}
           </div>
         )}
 
