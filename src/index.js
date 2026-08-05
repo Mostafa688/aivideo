@@ -1931,13 +1931,59 @@ app.post('/api/model4/generate-scenes', authMiddleware, async (req, res) => {
   // ✅ NEW: خطة عميل جاهزة — نفس المنطق المستخدم في موديل 3
   if (Array.isArray(structuredScenes) && structuredScenes.length) {
     const total = structuredScenes.length;
+
+    // ✅ FIX: كل مشهد بيتبعت لـ Replicate في كول مستقل تمامًا (مفيش ذاكرة بين المشاهد ومفيش
+    // صورة مرجعية إلا لو العميل رفع characterPhoto فعليًا). السكريبت المرفوع أحيانًا بيوصف
+    // الشخصية كاملة في مشهد 1 بس، وبعدين بيستخدم إشارات غامضة زي "the same girl" / "still him"
+    // في باقي المشاهد — الموديل مفيش عنده أي فكرة "نفس مين"، فبتطلع شخصية مختلفة كل مرة.
+    // هنا بنستخرج وصف الشخصية/المكان مرة واحدة من كل نص السكريبت المرفوع، وبنلحقه في آخر
+    // البرومبت الأصلي لكل مشهد — من غير ما نلمس أو نغيّر كلمة واحدة من نص العميل نفسه.
+    let structuredCharacterLock = '';
+    let structuredOutfitLock = '';
+    let structuredLocationLock = '';
+    try {
+      const combinedText = structuredScenes
+        .map((item, i) => `Scene ${i + 1}: ${String(item.visual || item.prompt || item.text || '').trim()}`)
+        .join('\n')
+        .slice(0, 4000);
+      const extractRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.GROQ_API_KEY },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-120b', max_tokens: 300, temperature: 0.3, reasoning_effort: 'low',
+          messages: [
+            { role: 'system', content: 'You read a scene-by-scene AI video script/plan. Some scenes describe the character/place fully; others refer to them vaguely (e.g. "the same girl", "still him", "same place as before") instead of repeating the description. Output ONLY JSON: {"characters":"...","outfit":"...","location":"..."}. English only. Be concise. Resolve vague references using the fullest description given anywhere in the script for that character/place.' },
+            { role: 'user', content: `Script scenes:\n${combinedText}\n\nExtract:\n- characters: PERMANENT physical identity of the main character(s) - face, body build, age, hair, skin tone, distinguishing features. Max 20 words. Use "" if no specific recurring character is described anywhere.\n- outfit: their default/starting outfit, max 15 words. Use "" if it clearly varies a lot with no single default, or none is described.\n- location: main recurring setting/environment, max 15 words. Use "" if it changes per scene with no fixed default, or none is described.\n\nJSON only:` }
+          ]
+        }),
+      });
+      const extractData = await extractRes.json();
+      const extractRaw = (extractData.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+      const ex = JSON.parse(extractRaw);
+      structuredCharacterLock = ex.characters || '';
+      structuredOutfitLock = ex.outfit || '';
+      structuredLocationLock = ex.location || '';
+    } catch (e) {
+      console.warn('[Model4/8] Structured-scenes consistency extraction failed, proceeding without it:', e.message);
+    }
+
+    const consistencySuffix = [
+      structuredCharacterLock ? `Character identity (keep exactly consistent, never changes): ${structuredCharacterLock}.` : '',
+      structuredOutfitLock ? `Default outfit: ${structuredOutfitLock}.` : '',
+      structuredLocationLock ? `Location/setting (keep exactly consistent unless the scene itself clearly says otherwise): ${structuredLocationLock}.` : '',
+    ].filter(Boolean).join(' ');
+
     const scenes = structuredScenes.map((item, i) => {
       const index = i + 1;
       const type = index === 1 ? 'hook' : index === total ? 'ending' : 'body';
       const text = String(item.text || '').trim();
       const visualRaw = String(item.visual || item.prompt || text).trim();
       const keywords = visualRaw.replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2).slice(0, 6);
-      return { index, type, text, keywords, visual: visualRaw.slice(0, 150), prompt: visualRaw, sceneDurationSec: item.sceneDurationSec || null };
+      // ✅ FIX: بنلحق وصف الاتساق بآخر البرومبت الأصلي بدل ما نسيبه زي ما هو — نص العميل
+      // نفسه (visual/keywords المعروضين للعميل) فاضل زي ما هو تمامًا، الإضافة في "prompt" بس
+      // (اللي فعليًا بيتبعت لموديل الفيديو).
+      const finalPrompt = consistencySuffix ? `${visualRaw}. ${consistencySuffix}` : visualRaw;
+      return { index, type, text, keywords, visual: visualRaw.slice(0, 150), prompt: finalPrompt, sceneDurationSec: item.sceneDurationSec || null };
     });
     return res.json({ scenes });
   }

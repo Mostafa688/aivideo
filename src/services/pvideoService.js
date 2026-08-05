@@ -211,7 +211,12 @@ export async function renderModel8Video({
     } catch (e) {
       console.warn('[Model8] Transitions failed, using simple concat fallback:', (e.stderr?.toString() || e.message).slice(-400));
       const listFile = path.join(TEMP_DIR, `m8_list_${id}.txt`);
-      fs.writeFileSync(listFile, normPaths.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n'));
+      // ✅ FIX: ffmpeg's concat demuxer resolves relative paths inside the list file relative
+      // to the list file's OWN directory (not process cwd). Since listFile already lives inside
+      // TEMP_DIR and normPaths were also TEMP_DIR-prefixed, ffmpeg was doubling it into
+      // "temp/temp/m8_norm_..._0.mp4" and failing with "Impossible to open". Using absolute
+      // paths here makes resolution unambiguous regardless of where the list file sits.
+      fs.writeFileSync(listFile, normPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
       execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p ${wantsCinematicAudio ? '-c:a aac -b:a 192k' : '-an'} -movflags +faststart -y "${mergedPath}"`, { stdio: 'pipe' });
       try { fs.unlinkSync(listFile); } catch {}
     }
