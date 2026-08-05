@@ -476,8 +476,9 @@ export default function App() {
       {/* Right side */}
       <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, marginLeft:'auto' }}>
 
-        {/* رصيد الكريديت الموحد — عداد واحد بس */}
-        {credits && (
+        {/* رصيد الكريديت الموحد — عداد واحد بس. مبيظهرش للمستخدمين "free" خالص (اتلغى الفري
+            تريال) — بيظهر بس للمشتركين (plan !== 'free') عشان يشوفوا رصيدهم. */}
+        {credits && userPlan !== 'free' && (
           <button onClick={fetchCredits} title="Click to refresh" className="header-credits header-credits-full"
             style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(124,106,247,0.08)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:8, padding:'5px 12px', cursor:'pointer', transition:'all 0.15s' }}
             onMouseEnter={e=>e.currentTarget.style.background='rgba(124,106,247,0.14)'}

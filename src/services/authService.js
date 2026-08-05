@@ -356,34 +356,14 @@ export async function logLoginEvent(userId, email, method = 'password') {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  ✅ NEW: تجديد أسبوعي لـ 15 كريديت المستخدم "الفري" بس — النظام العادي (credits_balance)
-//  رصيد واحد بيتخصم منه ولا يترجّع إلا لو المستخدم اشترى/اشترك، وده يفضل زي ما هو تمامًا
-//  لأي حد مشترك (plan !== 'free'). البند ده بيضيف استثناء واحد بس: أي مستخدم لسه على باقة
-//  "free" (يعني معملش أي اشتراك خالص)، رصيده بيترجّع لـ 15 كريديت (SIGNUP_BONUS_CREDITS)
-//  في أول مرة يستخدم فيها الموقع بعد بداية أسبوع جديد — مش تراكم فوق اللي معاه، إعادة ضبط.
-//  بمجرد ما يشترك (plan يبقى غير 'free')، الدالة دي مش بتلمس رصيده تاني خالص.
+//  ❌ CANCELLED: الفري تريال والـ 15 كريديت الأسبوعية للمستخدم "الفري" اتلغوا بالكامل
+//  بقرار إداري. الدالة دي كانت بترفع رصيد أي مستخدم على باقة "free" لـ 15 كريديت
+//  (SIGNUP_BONUS_CREDITS) أول ما يدخل الموقع بعد بداية أسبوع جديد — دلوقتي no-op تمامًا:
+//  مفيش أي رصيد مجاني بيترجّع أو بيتجدد لمستخدمين الـ free. الدالة اتسابت (بدل ما تتشال
+//  خالص) لأن verifyCode / login / loginOrCreateGoogleUser لسه بينادوها — عشان منلمسش
+//  الدوال دي. لو حبينا نرجّع الميزة يومًا ما، اللوجيك القديم موجود في الـ git history.
 export async function maybeRenewFreeWeeklyCredits(userId) {
-  try {
-    const weekStart = getWeekStart();
-    const { rows } = await pool.query('SELECT plan, credits_balance, free_credits_week_reset FROM users WHERE id = $1', [userId]);
-    const user = rows[0];
-    if (!user || user.plan !== 'free') return; // مشترك أو مستخدم غير موجود — منلمسش رصيده خالص
-    if (user.free_credits_week_reset === weekStart) return; // اتجدد الأسبوع ده خلاص، مفيش داعي نكرر
-    // ✅ نرفع الرصيد لـ 15 بس لو أقل منها — منقللوش أبدًا. ده بيحمي أي رصيد متبقي (مثلاً
-    // مستخدم كان مشترك واشترى كريديت زيادة وبعدين اشتراكه خلص ورجع "free" — رصيده المشترى
-    // يفضل زي ما هو، مش بيتصفر لـ 15. الحماية دي بس لصالح المستخدم، مش تجديد فعلي لباقي المشتركين.
-    const currentBalance = user.credits_balance || 0;
-    const newBalance = Math.max(currentBalance, SIGNUP_BONUS_CREDITS);
-    await pool.query(
-      'UPDATE users SET credits_balance = $1, free_credits_week_reset = $2 WHERE id = $3',
-      [newBalance, weekStart, userId]
-    );
-    if (newBalance > currentBalance) {
-      console.log(`[FreeCredits] Weekly renewal: user ${userId} topped up ${currentBalance} → ${newBalance} credits (week ${weekStart})`);
-    }
-  } catch (e) {
-    console.warn('[FreeCredits] Weekly renewal check failed:', e.message);
-  }
+  return; // Free trial cancelled — no weekly credit renewal for free-plan users.
 }
 
 export async function getUserById(userId) {
@@ -746,7 +726,8 @@ export async function signUp(email, password) {
   const hashed = await bcrypt.hash(password, 10);
   const code = generateCode();
   const expires = Date.now() + 10 * 60 * 1000;
-  await pool.query('INSERT INTO users (email, password, plan, credits_balance) VALUES ($1, $2, $3, $4)', [email, hashed, 'free', SIGNUP_BONUS_CREDITS]);
+  // ❌ Free trial cancelled: مفيش 15 كريديت مجانية عند التسجيل بعد كده — يبدأ برصيد 0
+  await pool.query('INSERT INTO users (email, password, plan, credits_balance) VALUES ($1, $2, $3, $4)', [email, hashed, 'free', 0]);
   await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]);
   await pool.query('INSERT INTO verification_codes (email, code, expires_at) VALUES ($1, $2, $3)', [email, code, expires]);
   await sendVerificationEmail(email, code);
@@ -808,7 +789,8 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
   if (user) {
     if (!user.google_id) await pool.query('UPDATE users SET google_id = $1, avatar = $2, verified = 1 WHERE id = $3', [googleId, avatar, user.id]);
   } else {
-    await pool.query('INSERT INTO users (email, password, name, google_id, avatar, verified, plan, credits_balance) VALUES ($1, $2, $3, $4, $5, 1, $6, $7)', [email, 'GOOGLE_AUTH_NO_PASSWORD', name || email.split('@')[0], googleId, avatar || null, 'free', SIGNUP_BONUS_CREDITS]);
+    // ❌ Free trial cancelled: مفيش 15 كريديت مجانية لتسجيل جوجل الجديد كمان — رصيد 0
+    await pool.query('INSERT INTO users (email, password, name, google_id, avatar, verified, plan, credits_balance) VALUES ($1, $2, $3, $4, $5, 1, $6, $7)', [email, 'GOOGLE_AUTH_NO_PASSWORD', name || email.split('@')[0], googleId, avatar || null, 'free', 0]);
     const { rows: newRows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     user = newRows[0];
   }

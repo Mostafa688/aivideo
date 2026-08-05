@@ -476,11 +476,15 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       badge:'NEW', free:false, cat:'premium', needsAccess: userPlan === 'free', comingSoon: false, adminOnly: false,
     },
     {
+      // ⚠️ تحت الصيانة — مقفول لكل المستخدمين إلا الأدمن (digidelight33@gmail.com).
+      // بيستخدم نفس نمط comingSoon/adminOnly المستخدم لموديل 5 و7، مع maintenance:true
+      // عشان الـ UI يعرض "Under Maintenance" بدل "Coming Soon".
       key:'model8', tag:'MODEL 8', name:'Budget Cinematic', icon:'💸',
       color:'#22c55e', glow:'rgba(34,197,94,0.25)',
       desc:'AI video clips like Model 4, at a fraction of the cost. Choose 5s or 10s scenes, up to 10 minutes total, with 3 audio options.',
       tags:['4 Credits/sec','Up to 10 min','Flexible scenes','Cinematic audio'],
       badge:'CHEAPEST', free:false, cat:'premium', needsAccess: userPlan === 'free',
+      maintenance: true, adminOnly: true,
     },
     {
       key:'ai', tag:'MODEL 1', name:'AI Slices', icon:'🎨',
@@ -572,7 +576,7 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => {
                   if (m.deprecated) return;
-                  if (m.comingSoon && !(m.adminOnly && userIsAdmin)) return;
+                  if ((m.comingSoon || m.maintenance) && !(m.adminOnly && userIsAdmin)) return;
                   onSelect(m.key);
                 }}
                 style={{
@@ -584,8 +588,8 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                   padding:'28px 24px',
                   boxShadow: isHov ? `0 24px 56px ${m.color}18` : 'none',
                   animation: `fadeUp 0.4s ease ${i*0.06}s both`,
-                  opacity: m.deprecated ? 0.55 : (m.comingSoon && !(m.adminOnly && userIsAdmin)) ? 0.7 : 1,
-                  cursor: (m.deprecated || (m.comingSoon && !(m.adminOnly && userIsAdmin))) ? 'default' : 'pointer',
+                  opacity: m.deprecated ? 0.55 : ((m.comingSoon || m.maintenance) && !(m.adminOnly && userIsAdmin)) ? 0.7 : 1,
+                  cursor: (m.deprecated || ((m.comingSoon || m.maintenance) && !(m.adminOnly && userIsAdmin))) ? 'default' : 'pointer',
                 }}>
 
                 {/* Top row */}
@@ -617,6 +621,17 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
                 {m.deprecated ? (
                   <div style={{ padding:'10px 14px', borderRadius:12, background:'rgba(248,113,113,0.06)', border:'1px solid rgba(248,113,113,0.15)', display:'flex', alignItems:'center', gap:8 }}>
                     <span style={{ fontSize:11, color:'#f87171', fontFamily:"'DM Sans', sans-serif" }}>⚠️ Being replaced — use Model 2 instead</span>
+                  </div>
+                ) : (m.maintenance && !(m.adminOnly && userIsAdmin)) ? (
+                  <div style={{ padding:'10px 14px', borderRadius:12, background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.18)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontSize:16 }}>🔧</span>
+                      <div>
+                        <div style={{ fontSize:12, fontWeight:700, color:'#fbbf24', fontFamily:"'DM Sans', sans-serif" }}>Under Maintenance</div>
+                        <div style={{ fontSize:9, color:'rgba(251,191,36,0.55)', fontFamily:"'DM Sans', sans-serif", marginTop:2 }}>تحت الصيانة — هيرجع قريبًا</div>
+                      </div>
+                    </div>
+                    <div style={{ padding:'3px 10px', borderRadius:999, background:'rgba(245,158,11,0.15)', border:'1px solid rgba(245,158,11,0.3)', fontSize:9, fontWeight:700, color:'#fbbf24', fontFamily:"'DM Sans', sans-serif", letterSpacing:'0.08em' }}>SOON</div>
                   </div>
                 ) : (m.comingSoon && !(m.adminOnly && userIsAdmin)) ? (
                   <div style={{ padding:'10px 14px', borderRadius:12, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>

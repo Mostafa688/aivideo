@@ -152,9 +152,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     const user = await getUserById(userId).catch(() => null);
     const userPlan = user?.plan || 'free';
+    // ⚠️ Model 8 تحت الصيانة — بس الأدمن يقدر يستخدمه من خلال الايجنت كمان
+    const isAdminUser = (user?.email || '').toLowerCase() === (process.env.ADMIN_EMAIL || 'digidelight33@gmail.com').toLowerCase();
 
     const rawReply = await agentChat({
-      message, history, attachmentNote, userPlan,
+      message, history, attachmentNote, userPlan, isAdminUser,
       hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
       hasVideo: !!videoAlreadyUploaded,
@@ -197,7 +199,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           if (Number.isInteger(parsed.sceneIndex) && typeof parsed.description === 'string') editScene = parsed;
         } else if (isVideoEditMarker) {
           if (typeof parsed.editPrompt === 'string' && parsed.editPrompt.trim()) videoEdit = parsed;
-        } else if ([1, 2, 3, 4, 5, 7].includes(parsed.model)) {
+        } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
           ready = parsed;
         }
       } catch (e) {
@@ -217,7 +219,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
               videoEdit = repaired;
               console.warn('[Agent] ✅ Repaired truncated VIDEO_EDIT JSON successfully');
             }
-          } else if ([1, 2, 3, 4, 5, 7].includes(repaired.model)) {
+          } else if ([1, 2, 3, 4, 5, 7, 8].includes(repaired.model)) {
             ready = repaired;
             console.warn('[Agent] ✅ Repaired truncated JSON successfully');
           }

@@ -85,6 +85,37 @@ export default function Model8Page({ onBack, userPlan = 'free', onNavigate }) {
 
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
 
+  // ⚠️ Model 8 تحت الصيانة — مقفول لكل حد إلا إيميل الأدمن. الحماية الأساسية في الباك إند
+  // (index.js — /api/model8/render و /api/model8/edit-scene)، والقفل ده هنا دفاع إضافي
+  // (defense-in-depth) لو حد وصل للصفحة مباشرة من غير ما يمر على قفل InputPage.jsx.
+  const ADMIN_EMAIL_M8 = 'digidelight33@gmail.com';
+  const isAdminM8 = (() => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return false;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.email === ADMIN_EMAIL_M8;
+    } catch { return false; }
+  })();
+
+  if (!isAdminM8) {
+    return (
+      <div style={{ minHeight:'100vh', background:'radial-gradient(ellipse at top, rgba(245,158,11,0.07) 0%, #080810 55%)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+        <div style={{ maxWidth:440, width:'100%', textAlign:'center' }}>
+          <div style={{ fontSize:52, marginBottom:16 }}>🔧</div>
+          <h2 style={{ fontSize:24, fontWeight:800, color:'#fff', marginBottom:10, letterSpacing:'-0.5px' }}>Model 8 is under maintenance</h2>
+          <p style={{ color:'rgba(255,255,255,0.4)', fontSize:14, lineHeight:1.7, marginBottom:8 }}>
+            This model is temporarily unavailable while we work on it. Please check back soon.
+          </p>
+          <p style={{ color:'rgba(255,255,255,0.25)', fontSize:12, lineHeight:1.7, marginBottom:28 }}>
+            الموديل ده تحت الصيانة مؤقتًا — هيرجع قريبًا.
+          </p>
+          <button onClick={onBack} style={{ background:'rgba(255,255,255,0.06)', color:'#fff', border:'1px solid rgba(255,255,255,0.12)', padding:'12px 26px', borderRadius:12, fontWeight:700, fontSize:14, cursor:'pointer' }}>← Back to Models</button>
+        </div>
+      </div>
+    );
+  }
+
   // ✅ FIX: كان ممكن توصل لـ totalDurationSec == sceneDurationSec (طرف الـ slider) فيطلع
   // sceneCount = 1 من غير قصد — طلب واحد بس لـ Replicate، فيديو لقطة واحدة مستمرة بدل فيديو
   // مقسّم مشاهد. دلوقتي بنضمن مشهدين على الأقل دايمًا: لو المستخدم غيّر "SCENE LENGTH" وخلى
@@ -103,7 +134,8 @@ export default function Model8Page({ onBack, userPlan = 'free', onNavigate }) {
   const MAX_SCRIPT_CHARS = 6000; // فيديو أطول بكتير من موديل 4 (لحد 10 دقايق)
   const scriptCharCount = script.length;
   const scriptOverLimit = mode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
-  const canGenerate = userPlan !== 'free' && !loading && !scriptOverLimit && (mode === 'idea' ? idea.trim().length > 5 : script.trim().length > 20);
+  // ✅ الأدمن معفي من قيد "لازم مشترك" — عنده access كامل للموديل دايمًا طول ما هو تحت الصيانة
+  const canGenerate = (isAdminM8 || userPlan !== 'free') && !loading && !scriptOverLimit && (mode === 'idea' ? idea.trim().length > 5 : script.trim().length > 20);
 
   const handlePhotoUpload = (file) => {
     if (!file) return;
@@ -114,7 +146,7 @@ export default function Model8Page({ onBack, userPlan = 'free', onNavigate }) {
   };
 
   const handleGenerateScenes = async () => {
-    if (userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
+    if (!isAdminM8 && userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
     const inputText = mode === 'idea' ? idea : script;
     if (!inputText?.trim()) { setError('Please enter your idea or script first'); return; }
     setLoading(true); setError('');
