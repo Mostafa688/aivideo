@@ -12,6 +12,7 @@
 import express from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance, verifyOAuthToken } from './authService.js';
 
@@ -37,6 +38,53 @@ function parseSSE(rawText) {
 function buildMcpServer(userId, email) {
   const server = new McpServer({ name: 'erivion', version: '1.0.0' });
   const authHeaders = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(userId, email) });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  ✅ NEW: MCP Apps (SEP-1865) — widget فيديو حقيقي بيبان جوه الشات نفسه بدل
+  //  ما يبقى لينك نص عادي. لو الـ host (Claude) بيدعم الإضافة دي، هيرندر الـ HTML
+  //  ده جوه iframe محمي ويغذّيه بنتيجة الأداة تلقائيًا. لو مش بيدعمها، بيرجع
+  //  تلقائيًا للنص العادي (fallback مضمون، مفيش خطر كسر أي حاجة).
+  // ══════════════════════════════════════════════════════════════════════════
+  const videoPlayerResourceUri = 'ui://erivion/video-player.html';
+  registerAppResource(server, videoPlayerResourceUri, videoPlayerResourceUri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
+    contents: [{
+      uri: videoPlayerResourceUri,
+      mimeType: RESOURCE_MIME_TYPE,
+      text: `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body { margin:0; padding:0; background:transparent; font-family:sans-serif; display:flex; align-items:center; justify-content:center; min-height:100px; }
+  video { max-width:100%; max-height:480px; border-radius:12px; display:block; }
+  #msg { color:#888; font-size:13px; padding:20px; text-align:center; }
+</style></head>
+<body>
+  <div id="root"><div id="msg">Loading video…</div></div>
+  <script>
+    // ✅ Bridge بسيط (JSON-RPC عن طريق postMessage) — بيسمع لإشعار نتيجة الأداة
+    // ويحط الفيديو لما يوصل، بالظبط زي النمط الموثق في مواصفات MCP Apps
+    function render(structuredContent) {
+      const root = document.getElementById('root');
+      if (structuredContent && structuredContent.status === 'done' && structuredContent.videoUrl) {
+        root.innerHTML = '<video src="' + structuredContent.videoUrl + '" controls autoplay muted playsinline></video>';
+      } else if (structuredContent && structuredContent.status === 'failed') {
+        root.innerHTML = '<div id="msg">❌ Render failed</div>';
+      } else {
+        root.innerHTML = '<div id="msg">⏳ Still processing…</div>';
+      }
+    }
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg || msg.jsonrpc !== '2.0') return;
+      if (msg.method === 'ui/notifications/tool-result') {
+        render(msg.params?.structuredContent);
+      }
+    });
+    // نبلّغ الـ host إن الواجهة جاهزة تستقبل بيانات
+    try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/ready', params: {} }, '*'); } catch (e) {}
+  </script>
+</body></html>`,
+    }],
+  }));
 
   // ── list_models ──────────────────────────────────────────────────────────
   server.registerTool(
@@ -122,11 +170,25 @@ function buildMcpServer(userId, email) {
           finalScenes = mediaData.scenes || scenes;
         }
 
-        // 3) الرندر الفعلي — بيرجع jobId فورًا (async job)
+        // 3) ✅ FIX: كانت ناقصة تمامًا — الفيديو كان بيتبعت للرندر من غير صوت خالص. بنولّد
+        // تعليق صوتي بنفس الطريقة اللي صفحة الموديل العادية بتستخدمها بالظبط
+        let audioUrl = null;
+        try {
+          const fullText = finalScenes.map(s => s.text).filter(Boolean).join(' ');
+          if (fullText.trim()) {
+            const voiceRes = await fetch(`${INTERNAL_BASE}/api/generate-voice`, {
+              method: 'POST', headers, body: JSON.stringify({ text: fullText, voice: 'male_wise', videoLanguage: language || 'en' }),
+            });
+            const voiceData = await voiceRes.json();
+            if (voiceRes.ok) audioUrl = voiceData.audioUrl;
+          }
+        } catch (e) { console.warn('[MCP] Voiceover generation failed, continuing without audio:', e.message); }
+
+        // 4) الرندر الفعلي — بيرجع jobId فورًا (async job)
         const renderRes = await fetch(`${INTERNAL_BASE}/api/render`, {
           method: 'POST', headers,
           body: JSON.stringify({
-            scenes: finalScenes, ratio, duration,
+            scenes: finalScenes, audioUrl, ratio, duration,
             videoType: model === '1' ? 'ai_images' : 'pexels_clips',
             videoLanguage: language || 'en', captions: true, transitions: true,
           }),
@@ -153,12 +215,14 @@ function buildMcpServer(userId, email) {
   );
 
   // ── check_render_status ──────────────────────────────────────────────────
-  server.registerTool(
+  registerAppTool(
+    server,
     'check_render_status',
     {
       title: 'Check video render status',
       description: 'Check the status of a video generation job previously started with generate_video.',
       inputSchema: { jobId: z.string().describe('The jobId returned by generate_video.') },
+      _meta: { ui: { resourceUri: videoPlayerResourceUri } }, // ✅ NEW: بيربط الأداة بالـ widget، لو الـ host بيدعم MCP Apps
     },
     async ({ jobId }) => {
       try {
