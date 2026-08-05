@@ -126,11 +126,15 @@ function buildMcpServer(userId, email) {
   );
 
   // ── generate_video ───────────────────────────────────────────────────────
-  server.registerTool(
+  // ✅ FIX: كانت بترجع jobId فورًا وتسيب العميل يطلب "چيك" يدوي كل مرة — عشان الـ
+  // widget يبان فورًا ويتحدّث لوحده لحد ما الفيديو يخلص (زي أي MCP App تاني)، الأداة
+  // دلوقتي بتستنى وتراقب التقدّم بنفسها جوه نفس النداء، بدل ما ترجع فورًا
+  registerAppTool(
+    server,
     'generate_video',
     {
       title: 'Generate a video',
-      description: 'Start generating an Erivion video from a topic/idea. Supports Model 1 (AI images) or Model 2 (real stock footage). Returns a jobId — use check_render_status to track progress and get the final video URL once ready (usually takes 1-3 minutes).',
+      description: 'Generate an Erivion video from a topic/idea and wait for it to finish (usually 1-3 minutes) — shows live progress and the final video automatically. Supports Model 1 (AI images) or Model 2 (real stock footage).',
       inputSchema: {
         model: z.enum(['1', '2']).describe('"1" = AI-generated images (Ken Burns style), "2" = real stock video footage. Use "2" unless the user specifically wants AI-generated images.'),
         idea: z.string().min(3).describe('The video topic or idea, described in a sentence or two.'),
@@ -138,6 +142,7 @@ function buildMcpServer(userId, email) {
         ratio: z.enum(['9:16', '16:9', '1:1']).default('9:16').describe('Aspect ratio — 9:16 for Reels/TikTok/Shorts, 16:9 for YouTube, 1:1 for feed posts.'),
         language: z.string().default('en').describe('Narration language code, e.g. "en" or "ar".'),
       },
+      _meta: { ui: { resourceUri: videoPlayerResourceUri } }, // ✅ NEW: نفس الـ widget بتاع check_render_status
     },
     async ({ model, idea, duration, ratio, language }) => {
       try {
@@ -170,8 +175,7 @@ function buildMcpServer(userId, email) {
           finalScenes = mediaData.scenes || scenes;
         }
 
-        // 3) ✅ FIX: كانت ناقصة تمامًا — الفيديو كان بيتبعت للرندر من غير صوت خالص. بنولّد
-        // تعليق صوتي بنفس الطريقة اللي صفحة الموديل العادية بتستخدمها بالظبط
+        // 3) صوت — بنفس الطريقة اللي صفحة الموديل العادية بتستخدمها بالظبط
         let audioUrl = null;
         try {
           const fullText = finalScenes.map(s => s.text).filter(Boolean).join(' ');
@@ -184,7 +188,7 @@ function buildMcpServer(userId, email) {
           }
         } catch (e) { console.warn('[MCP] Voiceover generation failed, continuing without audio:', e.message); }
 
-        // 4) الرندر الفعلي — بيرجع jobId فورًا (async job)
+        // 4) الرندر الفعلي
         const renderRes = await fetch(`${INTERNAL_BASE}/api/render`, {
           method: 'POST', headers,
           body: JSON.stringify({
@@ -201,12 +205,35 @@ function buildMcpServer(userId, email) {
           throw new Error(msg);
         }
 
+        // 5) ✅ NEW: بنراقب التقدّم جوه نفس النداء (بدل ما نرجع فورًا) — لحد 90 ثانية،
+        // عشان الـ widget يتحدّث لوحده للفيديو النهائي من غير ما العميل يطلب "چيك" يدوي
+        const jobId = renderData.jobId;
+        const maxWaitMs = 90_000, pollIntervalMs = 5_000, startedAt = Date.now();
+        while (Date.now() - startedAt < maxWaitMs) {
+          await new Promise(r => setTimeout(r, pollIntervalMs));
+          try {
+            const statusRes = await fetch(`${INTERNAL_BASE}/api/render-status/${encodeURIComponent(jobId)}`, { headers: authHeaders() });
+            const statusData = await statusRes.json();
+            if (statusData.status === 'done') {
+              const videoUrl = `${SITE_URL}${statusData.videoUrl}`;
+              return {
+                content: [{ type: 'text', text: `✅ Video ready: ${videoUrl}\nCredits charged: ${renderData.creditCost ?? 'see check_credits'}` }],
+                structuredContent: { status: 'done', videoUrl, jobId },
+              };
+            }
+            if (statusData.status === 'failed') {
+              throw new Error(statusData.error || 'Render failed');
+            }
+          } catch (pollErr) { /* شبكة متقطعة أثناء المراقبة — نكمل نحاول لحد ما الوقت يخلص */ }
+        }
+
+        // مستغرق أكتر من المتوقع — بنسيب المهمة تكمل في الخلفية ونديله jobId يقدر يتابع بيه
         return {
           content: [{
             type: 'text',
-            text: `Video generation started ✅\nJob ID: ${renderData.jobId}\nCredits charged: ${renderData.creditCost ?? 'see check_credits'}\n\nUse check_render_status with this jobId to track progress and get the final video link once it's ready (usually 1-3 minutes).`,
+            text: `⏳ Still rendering after 90 seconds — this can happen with longer videos. Job ID: ${jobId}\nCredits charged: ${renderData.creditCost ?? 'see check_credits'}\n\nUse check_render_status with this jobId in a bit to get the final video.`,
           }],
-          structuredContent: { jobId: renderData.jobId, creditCost: renderData.creditCost ?? null },
+          structuredContent: { status: 'processing', jobId },
         };
       } catch (e) {
         return { content: [{ type: 'text', text: `Failed to start video generation: ${e.message}` }], isError: true };
