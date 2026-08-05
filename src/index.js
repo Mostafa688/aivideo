@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import fs from 'fs';
+import { execSync } from 'child_process';
 import { generateScenesStream, checkContentSafety, MODERATION_REJECTION_MESSAGE } from './services/scriptService.js';
 import { fetchMediaForScene, resetUsedVideos, clearJobSet } from './services/mediaService.js';
 import { generateVoiceover, generateVoiceoverPerScene, VOICE_OPTIONS } from './services/voiceService.js';
