@@ -85,7 +85,15 @@ export default function Model8Page({ onBack, userPlan = 'free', onNavigate }) {
 
   useEffect(() => () => { clearInterval(pollRef.current); clearInterval(timerRef.current); }, []);
 
-  const sceneCount = Math.max(1, Math.round(totalDurationSec / sceneDurationSec));
+  // ✅ FIX: كان ممكن توصل لـ totalDurationSec == sceneDurationSec (طرف الـ slider) فيطلع
+  // sceneCount = 1 من غير قصد — طلب واحد بس لـ Replicate، فيديو لقطة واحدة مستمرة بدل فيديو
+  // مقسّم مشاهد. دلوقتي بنضمن مشهدين على الأقل دايمًا: لو المستخدم غيّر "SCENE LENGTH" وخلى
+  // totalDurationSec الحالي أقل من ضعف القيمة الجديدة، بنرفعه تلقائيًا لأقل حد آمن.
+  useEffect(() => {
+    setTotalDurationSec(prev => Math.max(prev, sceneDurationSec * 2));
+  }, [sceneDurationSec]);
+
+  const sceneCount = Math.max(2, Math.round(totalDurationSec / sceneDurationSec));
   // ✅ نفس تسعير الباك إند بالظبط: 4 كريديت/ثانية + سرشارج الصوت — لو الرقمين اتغيروا في
   // index.js لازم يتحدثوا هنا كمان يدويًا (مفيش endpoint تسعير منفصل لموديل 8 حاليًا)
   const RATE_NONE = 4, RATE_VOICEOVER = 5, RATE_CINEMATIC = 6;
@@ -368,15 +376,20 @@ export default function Model8Page({ onBack, userPlan = 'free', onNavigate }) {
             ))}
           </div>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>TOTAL VIDEO LENGTH — {totalLabel}</p>
-          <input type="range" min={sceneDurationSec} max={600} step={sceneDurationSec} value={totalDurationSec}
+          <input type="range" min={sceneDurationSec * 2} max={600} step={sceneDurationSec} value={totalDurationSec}
             onChange={e => setTotalDurationSec(parseInt(e.target.value, 10))}
             style={{ width: '100%', accentColor: '#22c55e' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#374151', marginTop: 4 }}>
-            <span>{sceneDurationSec}s</span>
+            <span>{sceneDurationSec * 2}s</span>
             <span>{sceneCount} scenes</span>
             <span>10 min</span>
           </div>
         </div>
+        {sceneCount === 2 && (
+          <p style={{ fontSize: 12, color: '#fbbf24', marginTop: -12, marginBottom: 20 }}>
+            ⚠️ Minimum is 2 scenes — a single-scene video isn't offered here since Model 8 is built for multi-shot cinematic sequences.
+          </p>
+        )}
 
         {/* Audio Mode */}
         <div style={{ marginBottom: 20 }}>

@@ -2146,6 +2146,29 @@ Output ONLY JSON array:
 
       let batchScenes = [];
       try { batchScenes = await groqBatch(systemPrompt, userPrompt); } catch (e) { console.warn(`[Model4] Batch ${b + 1} failed:`, e.message); }
+      // ✅ FIX: Groq مش دايمًا بيلتزم بالعدد المطلوب في "Output ONLY JSON array (${batchCount} items)"
+      // — لو طلبنا مشهدين ورجع مشهد واحد بس، مفيش أي تحقق قبل كده، فالفيديو الناتج كان بيطلع بعدد
+      // مشاهد أقل من اللي المستخدم اختاره وحسب سعره فعليًا (مثلاً "2 مشهد" بيتحول لطلب واحد بس
+      // لـ Replicate). دلوقتي: لو العدد الراجع ناقص، بنعيد المحاولة (مرتين كحد أقصى) ببرومبت أوضح
+      // يفرض العد الصحيح، وكملاذ أخير (لو لسه ناقص) بنكمّل العدد بتكرار آخر مشهد راجع بفهرسة صحيحة
+      // — عشان العدد النهائي يطابق طلب المستخدم بالظبط بدل ما فيديو أقصر يتسرب من غير أي تنبيه.
+      let m4RetryCount = 0;
+      while (Array.isArray(batchScenes) && batchScenes.length > 0 && batchScenes.length < batchCount && m4RetryCount < 2) {
+        m4RetryCount++;
+        console.warn(`[Model4] Batch ${b + 1} returned ${batchScenes.length}/${batchCount} scenes — retrying (${m4RetryCount}/2)`);
+        try {
+          const stricterUserPrompt = userPrompt + `\n\n⚠️ CRITICAL: your last answer had the WRONG number of scenes. You MUST output EXACTLY ${batchCount} scene objects in the array — not fewer, not more. Count them before answering.`;
+          const retryScenes = await groqBatch(systemPrompt, stricterUserPrompt);
+          if (Array.isArray(retryScenes) && retryScenes.length > batchScenes.length) batchScenes = retryScenes;
+        } catch (e) { console.warn(`[Model4] Batch ${b + 1} retry ${m4RetryCount} failed:`, e.message); }
+      }
+      if (Array.isArray(batchScenes) && batchScenes.length > 0 && batchScenes.length < batchCount) {
+        const lastScene = batchScenes[batchScenes.length - 1];
+        while (batchScenes.length < batchCount) {
+          batchScenes.push({ ...lastScene, index: batchStart + batchScenes.length });
+        }
+        console.warn(`[Model4] Batch ${b + 1} still short after retries — padded to ${batchCount} scenes`);
+      }
       if (Array.isArray(batchScenes) && batchScenes.length > 0) allScenes.push(...batchScenes);
     }
     if (allScenes.length === 0) throw new Error('No scenes returned from AI');
