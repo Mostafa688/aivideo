@@ -2325,13 +2325,13 @@ app.post('/api/model8/render', authMiddleware, renderLimiter, async (req, res) =
   if ((m8User?.email || '').toLowerCase() !== MODEL8_ADMIN_EMAIL) {
     return res.status(503).json({ error: 'under_maintenance', message: 'Model 8 is temporarily under maintenance. Please check back soon.' });
   }
-  const perSceneSec = Math.min(20, Math.max(3, Math.round(sceneDurationSec || 5)));
+  const perSceneSec = Math.min(20, Math.max(1, Math.round(sceneDurationSec || 5)));
   // ✅ FIX: كان بيفرض نفس المدة على كل المشاهد إجباريًا حتى لو خطة العميل حددت مدة مختلفة
   // لكل مشهد (مثلاً مشهد 12 ثانية جنب مشهد 20 ثانية) — دلوقتي كل مشهد بياخد مدته الخاصة
   // بيه لو محددة (من parseStructuredScript)، وإلا بيرجع للمدة الموحدة الافتراضية
   const scenesWithDuration = scenes.map(s => ({
     ...s,
-    sceneDurationSec: s.sceneDurationSec ? Math.min(20, Math.max(3, Math.round(s.sceneDurationSec))) : perSceneSec,
+    sceneDurationSec: s.sceneDurationSec ? Math.min(20, Math.max(1, Math.round(s.sceneDurationSec))) : perSceneSec,
   }));
   const totalSeconds = scenesWithDuration.reduce((sum, s) => sum + s.sceneDurationSec, 0);
   const m8Rate = audioMode === 'voiceover' ? MODEL8_RATE_VOICEOVER : audioMode === 'cinematic' ? MODEL8_RATE_CINEMATIC : MODEL8_RATE_NONE;
