@@ -247,6 +247,39 @@ async function initDB() {
   } catch (e) {
     console.warn('[DB] pg_trgm extension unavailable, agent memory will use plain-text fallback matching:', e.message);
   }
+  // ── إدارة قناة العميل يوميًا: مفتاح VidIQ الشخصي بتاعه + تفضيلاته، وسجل كل يوم
+  // اقترحنا فيه فكرة وانتظرنا موافقته قبل ما نعمل الفيديو ────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS managed_channels (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      platform TEXT DEFAULT 'youtube',
+      label TEXT,
+      channel_id TEXT,
+      vidiq_api_key TEXT NOT NULL,
+      format_pref TEXT DEFAULT 'auto',
+      uses_voice INTEGER DEFAULT 0,
+      voice_id TEXT DEFAULT NULL,
+      model_pref INTEGER DEFAULT 4,
+      status TEXT DEFAULT 'active',
+      last_run_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS daily_video_runs (
+      id SERIAL PRIMARY KEY,
+      channel_id INTEGER NOT NULL REFERENCES managed_channels(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      idea_title TEXT,
+      idea_brief TEXT,
+      format TEXT,
+      approve_token TEXT UNIQUE,
+      status TEXT DEFAULT 'pending',
+      video_url TEXT,
+      error TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      decided_at TIMESTAMPTZ
+    );
+  `);
   console.log('[DB] PostgreSQL tables ready');
 }
 
@@ -1316,6 +1349,107 @@ export async function incrementModel7Video(userId) {
      SET credits_used = model7_credits.credits_used + $2, updated_at = NOW()`,
     [userId, ADS_CREDIT_COST]
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// إدارة قنوات العملاء — VidIQ (مفتاح شخصي لكل عميل) + دورة "اقتراح يومي → موافقة/رفض"
+// ═══════════════════════════════════════════════════════════════════════════
+export async function createManagedChannel(userId, { label, channelId, vidiqApiKey, platform = 'youtube', formatPref = 'auto', usesVoice = false, modelPref = 4 }) {
+  const { rows } = await pool.query(
+    `INSERT INTO managed_channels (user_id, platform, label, channel_id, vidiq_api_key, format_pref, uses_voice, model_pref)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, label, channel_id, format_pref, uses_voice, model_pref, status, created_at`,
+    [userId, platform, label || null, channelId || null, vidiqApiKey, formatPref, usesVoice ? 1 : 0, modelPref]
+  );
+  return rows[0];
+}
+
+export async function listManagedChannelsForUser(userId) {
+  const { rows } = await pool.query(
+    `SELECT id, platform, label, channel_id, format_pref, uses_voice, voice_id, model_pref, status, last_run_at, created_at
+     FROM managed_channels WHERE user_id = $1 ORDER BY id DESC`,
+    [userId]
+  );
+  return rows;
+}
+
+export async function getManagedChannelById(id) {
+  const { rows } = await pool.query('SELECT * FROM managed_channels WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+export async function updateManagedChannel(id, userId, patch) {
+  const allowed = ['label', 'channel_id', 'format_pref', 'uses_voice', 'voice_id', 'model_pref', 'status'];
+  const sets = [], params = [];
+  let idx = 1;
+  for (const key of allowed) {
+    if (patch[key] !== undefined) { sets.push(`${key} = $${idx++}`); params.push(key === 'uses_voice' ? (patch[key] ? 1 : 0) : patch[key]); }
+  }
+  if (!sets.length) return getManagedChannelById(id);
+  params.push(id, userId);
+  const { rows } = await pool.query(
+    `UPDATE managed_channels SET ${sets.join(', ')} WHERE id = $${idx++} AND user_id = $${idx} RETURNING *`,
+    params
+  );
+  return rows[0] || null;
+}
+
+export async function deleteManagedChannel(id, userId) {
+  await pool.query('DELETE FROM managed_channels WHERE id = $1 AND user_id = $2', [id, userId]);
+}
+
+// قنوات "مستحقة" اليوم — آخر تشغيل من أكتر من 20 ساعة (أو معملهاش أول مرة أصلاً)
+export async function getDueManagedChannels() {
+  const { rows } = await pool.query(
+    `SELECT mc.*, u.email as user_email, u.name as user_name
+     FROM managed_channels mc JOIN users u ON u.id = mc.user_id
+     WHERE mc.status = 'active' AND (mc.last_run_at IS NULL OR mc.last_run_at < NOW() - INTERVAL '20 hours')`
+  );
+  return rows;
+}
+
+export async function markManagedChannelRun(id) {
+  await pool.query('UPDATE managed_channels SET last_run_at = NOW() WHERE id = $1', [id]);
+}
+
+export async function createDailyVideoRun({ channelId, userId, ideaTitle, ideaBrief, format, approveToken }) {
+  const { rows } = await pool.query(
+    `INSERT INTO daily_video_runs (channel_id, user_id, idea_title, idea_brief, format, approve_token)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [channelId, userId, ideaTitle, ideaBrief, format, approveToken]
+  );
+  return rows[0].id;
+}
+
+export async function getDailyVideoRunByToken(token) {
+  const { rows } = await pool.query('SELECT * FROM daily_video_runs WHERE approve_token = $1', [token]);
+  return rows[0] || null;
+}
+
+export async function updateDailyVideoRunStatus(id, status, extra = {}) {
+  const sets = ['status = $2'], params = [id, status];
+  let idx = 3;
+  if (extra.videoUrl !== undefined) { sets.push(`video_url = $${idx++}`); params.push(extra.videoUrl); }
+  if (extra.error !== undefined) { sets.push(`error = $${idx++}`); params.push(extra.error); }
+  if (extra.decided) sets.push('decided_at = NOW()');
+  await pool.query(`UPDATE daily_video_runs SET ${sets.join(', ')} WHERE id = $1`, params);
+}
+
+export async function listManagedChannelsForAdmin() {
+  const { rows } = await pool.query(
+    `SELECT mc.id, mc.label, mc.channel_id, mc.format_pref, mc.uses_voice, mc.model_pref, mc.status, mc.last_run_at, mc.created_at, u.email as user_email
+     FROM managed_channels mc JOIN users u ON u.id = mc.user_id ORDER BY mc.id DESC LIMIT 200`
+  );
+  return rows;
+}
+
+export async function listRecentDailyRunsForAdmin(limit = 100) {
+  const { rows } = await pool.query(
+    `SELECT dvr.id, dvr.idea_title, dvr.format, dvr.status, dvr.video_url, dvr.error, dvr.created_at, dvr.decided_at, u.email as user_email, mc.label as channel_label
+     FROM daily_video_runs dvr JOIN users u ON u.id = dvr.user_id JOIN managed_channels mc ON mc.id = dvr.channel_id
+     ORDER BY dvr.id DESC LIMIT $1`,
+    [limit]
+  );
+  return rows;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

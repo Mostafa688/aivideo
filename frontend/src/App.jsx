@@ -25,6 +25,7 @@ import SupportPage from './pages/SupportPage.jsx';
 import CommunityPage from './pages/CommunityPage.jsx';
 import AgentPage from './pages/AgentPage.jsx';
 import CoursesPage from './pages/CoursesPage.jsx';
+import ChannelsPage from './pages/ChannelsPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -367,6 +368,7 @@ export default function App() {
       case 'howto':      setPage('howto'); break;
       case 'templates':  setPage('templates'); break;
       case 'courses':    setPage('courses'); break;
+      case 'channels':   setPage('channels'); break;
       case 'home':       setPage('agent'); break;
       default:           setPage('input'); break;
     }
@@ -568,6 +570,7 @@ export default function App() {
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
         {page === 'courses' && <CoursesPage onBack={() => setPage('input')} onNavigate={handleNavigate} userRegion={userRegion} />}
+        {page === 'channels' && <ChannelsPage onBack={() => setPage('input')} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
         {page === 'community' && <CommunityPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'support' && <SupportPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
