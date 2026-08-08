@@ -405,6 +405,10 @@ function NotificationsTab({ s }) {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailResult, setEmailResult] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -436,6 +440,19 @@ function NotificationsTab({ s }) {
     } catch (e) { console.error(e); }
   };
 
+  const sendEmailAll = async () => {
+    if (!emailSubject.trim() || !emailMessage.trim()) return;
+    setEmailSending(true); setEmailResult(null);
+    try {
+      const r = await fetch('/api/admin/notifications/email-all', { method: 'POST', headers, body: JSON.stringify({ subject: emailSubject.trim(), message: emailMessage.trim() }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed');
+      setEmailResult(`✅ اتبعت لـ ${d.sent} من ${d.total} مستخدم`);
+      setEmailSubject(''); setEmailMessage('');
+    } catch (e) { setEmailResult(`❌ ${e.message}`); }
+    setEmailSending(false);
+  };
+
   return (
     <div>
       <div style={s.topbar}>
@@ -444,13 +461,24 @@ function NotificationsTab({ s }) {
       </div>
 
       <div style={s.card}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>بعت إشعار جديد لكل المستخدمين</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>بعت إشعار جديد لكل المستخدمين (داخل الموقع فقط)</div>
         <input style={{ ...s.input, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} placeholder="العنوان — Title" value={title} onChange={e => setTitle(e.target.value)} />
         <textarea style={{ ...s.input, width: '100%', minHeight: 70, marginBottom: 8, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} placeholder="نص الرسالة — Message" value={message} onChange={e => setMessage(e.target.value)} />
         <button style={s.btn()} disabled={sending || !title.trim() || !message.trim()} onClick={send}>
-          {sending ? '⏳ جاري الإرسال...' : '📤 إرسال'}
+          {sending ? '⏳ جاري الإرسال...' : '📤 إرسال داخل الموقع'}
         </button>
         <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>الإشعار بيبان لكل المستخدمين تلقائيًا ويختفي بعد 24 ساعة.</div>
+      </div>
+
+      <div style={s.card}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>📧 بعت إيميل جماعي لكل المستخدمين</div>
+        <input style={{ ...s.input, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} placeholder="عنوان الإيميل — Subject" value={emailSubject} onChange={e => setEmailSubject(e.target.value)} />
+        <textarea style={{ ...s.input, width: '100%', minHeight: 90, marginBottom: 8, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} placeholder="نص الإيميل — Message" value={emailMessage} onChange={e => setEmailMessage(e.target.value)} />
+        <button style={s.btn('#7c6af7')} disabled={emailSending || !emailSubject.trim() || !emailMessage.trim()} onClick={sendEmailAll}>
+          {emailSending ? '⏳ جاري الإرسال...' : '📧 إرسال إيميل لكل المستخدمين'}
+        </button>
+        {emailResult && <div style={{ fontSize: 12, color: emailResult.startsWith('✅') ? '#22c55e' : '#ef4444', marginTop: 8 }}>{emailResult}</div>}
+        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>ده منفصل تمامًا عن الإشعار الداخلي فوق — بيروح فعليًا على إيميل كل مستخدم مسجل.</div>
       </div>
 
       <div style={s.card}>
@@ -914,6 +942,7 @@ export default function AdminPage() {
   const [videos, setVideos] = useState([]);
   const [agentChats, setAgentChats] = useState([]);
   const [answers, setAnswers] = useState([]);
+  const [referralSources, setReferralSources] = useState([]);
   const [communityPosts, setCommunityPosts] = useState([]);
   const [communityQuestions, setCommunityQuestions] = useState([]);
   const [communityPending, setCommunityPending] = useState([]);
@@ -989,7 +1018,18 @@ export default function AdminPage() {
   // ✅ NEW: شات الايجينت مع العملاء (مشتركين أو لأ) — بيتمسح تلقائيًا بعد 24 ساعة من السيرفر،
   // فده بيعرض آخر يوم بس عشان اكتشاف مشاكل العملاء بدري
   const loadAgentChats = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/agent-chats', { headers }); const d = await r.json(); setAgentChats(d.chats || []); } catch (e) { console.error(e); } setLoading(false); }, []);
-  const loadAnswers  = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/onboarding-answers', { headers }); const d = await r.json(); setAnswers(d.answers || []); } catch (e) { console.error(e); } setLoading(false); }, []);
+  const loadAnswers  = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [r, rs] = await Promise.all([
+        fetch('/api/admin/onboarding-answers', { headers }),
+        fetch('/api/admin/referral-sources', { headers }),
+      ]);
+      const d = await r.json(); setAnswers(d.answers || []);
+      const ds = await rs.json(); setReferralSources(ds.sources || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
   const loadCommunity = useCallback(async () => {
     setLoading(true);
     try {
@@ -1579,6 +1619,22 @@ export default function AdminPage() {
             {loading && <div style={{ color: '#6b7280', fontSize: 13 }}>Loading...</div>}
             {!loading && answers.length === 0 && (
               <div style={{ color: '#6b7280', fontSize: 13, padding: '20px 0' }}>اضغط "Load Answers" عشان تجيب الإجابات.</div>
+            )}
+            {referralSources.length > 0 && (
+              <div style={s.card}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>📊 أكتر المنصات اللي بيجي منها عملاء</div>
+                {(() => { const max = Math.max(...referralSources.map(r => r.count), 1); return referralSources.map(r => (
+                  <div key={r.source} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#d1d5db', marginBottom: 4 }}>
+                      <span style={{ textTransform: 'capitalize' }}>{r.source}</span>
+                      <span style={{ fontWeight: 700, color: '#a99bff' }}>{r.count}</span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 4, background: '#1a1a2e', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${(r.count / max) * 100}%`, background: 'linear-gradient(90deg,#7c6af7,#a99bff)' }} />
+                    </div>
+                  </div>
+                )); })()}
+              </div>
             )}
             {answers.length > 0 && (
               <div style={s.card}>

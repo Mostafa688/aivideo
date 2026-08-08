@@ -24,6 +24,7 @@ import FAQPage from './pages/FAQPage.jsx';
 import SupportPage from './pages/SupportPage.jsx';
 import CommunityPage from './pages/CommunityPage.jsx';
 import AgentPage from './pages/AgentPage.jsx';
+import CoursesPage from './pages/CoursesPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -365,6 +366,7 @@ export default function App() {
       case 'faq':        setPage('faq'); break;
       case 'howto':      setPage('howto'); break;
       case 'templates':  setPage('templates'); break;
+      case 'courses':    setPage('courses'); break;
       case 'home':       setPage('agent'); break;
       default:           setPage('input'); break;
     }
@@ -439,6 +441,7 @@ export default function App() {
     { key: 'home', label: 'Home' },
     { key: 'pricing', label: 'Pricing' },
     { key: 'templates', label: 'Templates' },
+    { key: 'courses', label: '🎓 Courses' },
     { key: 'community', label: '🌍 Community' },
     { key: 'about', label: 'About Us' },
     { key: 'support', label: 'Support' },
@@ -564,6 +567,7 @@ export default function App() {
         {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />}
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
+        {page === 'courses' && <CoursesPage onBack={() => setPage('input')} onNavigate={handleNavigate} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
         {page === 'community' && <CommunityPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'support' && <SupportPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}

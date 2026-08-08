@@ -6,18 +6,19 @@ const SLIDER_MIN = 600;
 const SLIDER_MAX = 10000;
 
 // ── الباقات الدولية الثابتة (مرتبطة بمنتجات Gumroad حقيقية — دفعة واحدة) ──
-const GUMROAD_PACKAGES = [
+export const GUMROAD_PACKAGES = [
   { key: 'credits_starter', name: 'Starter', tagline: 'Getting started', credits: 600,   usd: 15,  url: 'https://digiwhirl23.gumroad.com/l/ukgdl',  color: '#7c6af7', icon: '🎬' },
   { key: 'credits_creator', name: 'Creator', tagline: 'For regular creators', credits: 1400,  usd: 35,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: '⭐', popular: true },
   { key: 'credits_studio',  name: 'Studio',  tagline: 'For heavy usage', credits: 3000,  usd: 84,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: '🏆' },
 ];
-const GUMROAD_MORE_PACKAGES = [
+export const GUMROAD_MORE_PACKAGES = [
   { key: 'credits_team',    name: 'Team',    tagline: 'For teams and bulk usage', credits: 6000,  usd: 168, url: 'https://digiwhirl23.gumroad.com/l/vmzubx', color: '#0891b2', icon: '👥' },
   { key: 'credits_agency',  name: 'Agency',  tagline: 'For agencies at scale', credits: 12000, usd: 336, url: 'https://digiwhirl23.gumroad.com/l/ckvlgo', color: '#f59e0b', icon: '🏢' },
 ];
+export const ALL_GUMROAD_PACKAGES = [...GUMROAD_PACKAGES, ...GUMROAD_MORE_PACKAGES];
 
 // ── باقات مصر الثابتة (بنفس سعر الكريديت 0.7 ج.م) — تُعرض كخطط منفصلة زي الدولي ──
-const EG_PACKAGES = [
+export const EG_PACKAGES = [
   { key: 'starter', name: 'Starter', tagline: 'للبداية والتجربة', credits: 600,  egp: 420 },
   { key: 'creator', name: 'Creator', tagline: 'لصنّاع المحتوى المنتظمين', credits: 1400, egp: 980, popular: true },
   { key: 'studio',  name: 'Studio',  tagline: 'للاستخدام المكثف', credits: 3000, egp: 2100 },
@@ -83,7 +84,7 @@ function EnoughForLines({ credits, lang = 'en' }) {
 }
 
 // ─── مودال الدفع المصري (InstaPay + إيصال) ──────────────────────────────────
-function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
+export function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
   const [screenshot, setScreenshot] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -161,7 +162,7 @@ function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
 }
 
 // ─── مودال الدفع الدولي (Gumroad) ────────────────────────────────────────────
-function IntlPaymentModal({ pkg, onClose, onSuccess }) {
+export function IntlPaymentModal({ pkg, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 

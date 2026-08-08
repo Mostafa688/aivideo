@@ -203,6 +203,50 @@ async function initDB() {
       created_at TEXT DEFAULT NOW()
     );
   `);
+  // ✅ FIX: getUserById بيقرأ العمودين دول من زمان بس مفيش أي CREATE/ALTER بينشئهم — ده كان
+  // بيكسر أي SELECT عادي على قاعدة بيانات جديدة (column does not exist)
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS erivion_access INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS erivion_plan TEXT DEFAULT NULL`);
+  // ✅ NEW: منطقة العميل (مصري/دولي) — كانت بتتضاف بس lazy جوه GET /admin/users، دلوقتي
+  // migration حقيقي عشان أي مكان تاني في الكود (زي الايجنت) يقدر يقرأها/يكتبها بأمان
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS region TEXT DEFAULT NULL`);
+  // ✅ FIX: كان endpoint /api/auth/onboarding-answers بيعمل INSERT في الجدول ده من غير ما
+  // يكون معمول له CREATE أصلاً — ده كان هيفشل (relation does not exist) على أي قاعدة بيانات جديدة
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_onboarding (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      source TEXT,
+      content_type TEXT,
+      style TEXT,
+      budget TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  // ── ذاكرة الايجنت — بيحفظ طلبات فيديو "غير عادية" اتفهمت واتنفذت قبل كده، عشان لو نفس
+  // العميل (أو عميل تاني) بعت طلب مشابه تاني، الايجنت يتعرف عليه ويطبّق نفس الفهم تلقائيًا
+  // من غير ما يعيد كل الأسئلة التوضيحية من الأول ──────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_request_memory (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      fingerprint TEXT NOT NULL,
+      raw_request TEXT NOT NULL,
+      resolved_config JSONB NOT NULL,
+      model INTEGER,
+      hits INTEGER DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      last_used_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  // pg_trgm بيدّي بحث "شبه/similarity" حقيقي بدل ما نتقيد بمطابقة نص حرفية — لو الإضافة
+  // مش متاحة على السيرفر (صلاحيات مثلاً)، بنكمل عادي وبنرجع لـ ILIKE كـ fallback وقت البحث
+  try {
+    await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_agent_request_memory_trgm ON agent_request_memory USING gin (fingerprint gin_trgm_ops)`);
+  } catch (e) {
+    console.warn('[DB] pg_trgm extension unavailable, agent memory will use plain-text fallback matching:', e.message);
+  }
   console.log('[DB] PostgreSQL tables ready');
 }
 
@@ -1272,4 +1316,115 @@ export async function incrementModel7Video(userId) {
      SET credits_used = model7_credits.credits_used + $2, updated_at = NOW()`,
     [userId, ADS_CREDIT_COST]
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// المنطقة (مصري/دولي) — الايجنت بيسأل عنها لو مش معروفة وقت الاشتراك، وبتتحفظ
+// على حساب العميل عشان مايتسألش تاني في المحادثات الجاية
+// ═══════════════════════════════════════════════════════════════════════════
+export async function updateUserName(userId, name) {
+  const clean = String(name || '').trim().slice(0, 80);
+  if (!clean) throw new Error('name is required');
+  await pool.query('UPDATE users SET name = $1 WHERE id = $2', [clean, userId]);
+  return clean;
+}
+
+export async function setUserRegion(userId, region) {
+  const clean = region === 'eg' ? 'eg' : region === 'intl' ? 'intl' : null;
+  if (!clean) throw new Error('region must be "eg" or "intl"');
+  await pool.query('UPDATE users SET region = $1 WHERE id = $2', [clean, userId]);
+  return clean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ذاكرة الايجنت — طلبات فيديو "غير مألوفة" (خطة/سكريبت بصيغة خاصة) بتتحفظ بعد أول
+// مرة تتفهم وتتنفذ فيها بنجاح، عشان طلب مشابه لاحقًا (لنفس العميل أو عميل تاني) يتحل
+// ذاتيًا من الذاكرة بدل ما الايجنت يعيد يسأل نفس أسئلة التوضيح من الأول
+// ═══════════════════════════════════════════════════════════════════════════
+export async function rememberAgentRequest(userId, fingerprint, rawRequest, resolvedConfig, model) {
+  try {
+    await pool.query(
+      `INSERT INTO agent_request_memory (user_id, fingerprint, raw_request, resolved_config, model)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId || null, fingerprint.slice(0, 500), rawRequest.slice(0, 4000), JSON.stringify(resolvedConfig), model || null]
+    );
+    // كل مستخدم بياخد آخر 30 نمط بس — مش أرشيف لا نهائي
+    if (userId) {
+      await pool.query(
+        `DELETE FROM agent_request_memory WHERE id IN (
+           SELECT id FROM agent_request_memory WHERE user_id = $1
+           ORDER BY created_at DESC OFFSET 30
+         )`,
+        [userId]
+      );
+    }
+  } catch (e) { console.warn('[Agent Memory] remember failed:', e.message); }
+}
+
+export async function findSimilarAgentRequest(userId, fingerprint) {
+  const clean = fingerprint.slice(0, 500);
+  try {
+    // أولوية لنفس العميل الأول (هو الأكثر دقة لطلباته هو بالذات)، وبعدين أي عميل تاني
+    // بعتب مشابه (عتبة أعلى شوية عشان مانطبقش حل عميل على طلب عميل تاني إلا لو قريب جدًا)
+    if (userId) {
+      const own = await pool.query(
+        `SELECT raw_request, resolved_config, model, similarity(fingerprint, $2) AS sim
+         FROM agent_request_memory WHERE user_id = $1 AND similarity(fingerprint, $2) > 0.35
+         ORDER BY sim DESC LIMIT 1`,
+        [userId, clean]
+      );
+      if (own.rows[0]) return own.rows[0];
+    }
+    const anyUser = await pool.query(
+      `SELECT raw_request, resolved_config, model, similarity(fingerprint, $1) AS sim
+       FROM agent_request_memory WHERE similarity(fingerprint, $1) > 0.55
+       ORDER BY sim DESC LIMIT 1`,
+      [clean]
+    );
+    return anyUser.rows[0] || null;
+  } catch (e) {
+    // pg_trgm مش متاح — رجوع لمطابقة نصية بسيطة بدل البحث الذكي
+    try {
+      const params = userId ? [userId, `%${clean.slice(0, 60)}%`] : [`%${clean.slice(0, 60)}%`];
+      const q = userId
+        ? `SELECT raw_request, resolved_config, model FROM agent_request_memory WHERE user_id = $1 AND fingerprint ILIKE $2 ORDER BY created_at DESC LIMIT 1`
+        : `SELECT raw_request, resolved_config, model FROM agent_request_memory WHERE fingerprint ILIKE $1 ORDER BY created_at DESC LIMIT 1`;
+      const { rows } = await pool.query(q, params);
+      return rows[0] || null;
+    } catch { return null; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// تحليل مصدر العملاء (أونبوردنج) — أكتر منصة بيجي منها عملاء، لصفحة الأدمن
+// ═══════════════════════════════════════════════════════════════════════════
+export async function getReferralSourceStats() {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(source, 'unknown') as source, COUNT(*)::int as count
+     FROM user_onboarding GROUP BY source ORDER BY count DESC`
+  );
+  return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// رسالة جماعية بالإيميل لكل المستخدمين — منفصلة عن الإشعار الداخلي (in-app)
+// ═══════════════════════════════════════════════════════════════════════════
+export async function sendBroadcastEmail(subject, html) {
+  const { rows } = await pool.query('SELECT email FROM users WHERE email IS NOT NULL');
+  const emails = rows.map(r => r.email).filter(Boolean);
+  const CHUNK = 100; // Resend بيقبل لحد 100 عنوان في نداء batch واحد
+  let sent = 0;
+  for (let i = 0; i < emails.length; i += CHUNK) {
+    const chunk = emails.slice(i, i + CHUNK);
+    try {
+      const res = await fetch('https://api.resend.com/emails/batch', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(chunk.map(to => ({ from: 'Erivion <noreply@erivion.net>', to, subject, html }))),
+      });
+      if (res.ok) sent += chunk.length;
+      else console.warn('[Broadcast Email] chunk failed:', res.status, await res.text().catch(() => ''));
+    } catch (e) { console.warn('[Broadcast Email] chunk error:', e.message); }
+  }
+  return { total: emails.length, sent };
 }

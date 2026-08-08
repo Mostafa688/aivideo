@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import RatingPrompt from './RatingPrompt.jsx';
+import { EgPaymentModal, IntlPaymentModal, EG_PACKAGES, ALL_GUMROAD_PACKAGES } from './PricingPage.jsx';
+
+// ✅ NEW: نفس الـ 3 فيديوهات مثال بتتعرض داخل الشات (كل واحد رسالة لوحده) لما الايجنت
+// يحس إن العميل مذبذب بخصوص الاشتراك — بيديله دليل فعلي بدل ما يوصفله بس
+const SHOWCASE_VIDEO_URLS = [
+  'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780696103015.mp4',
+  'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1784902642064.mp4',
+  'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/%D8%A6%D8%A6.mp4',
+];
 
 function authHeaders() {
   return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') };
@@ -202,6 +211,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [lastParsedAdsScenePlan, setLastParsedAdsScenePlan] = useState(null); // ✅ NEW: خطة إعلان جاهزة (Time/Visual/Voiceover) مستخرجة بالكود
   const [lastM12Video, setLastM12Video] = useState(null); // ✅ NEW: آخر فيديو موديل 1/2 كامل — لازم نحفظه عشان نقدر نعدّل مشهد فيه لاحقًا من غير إعادة توليد كامل
   const [lastM345Video, setLastM345Video] = useState(null); // ✅ NEW: نفس الفكرة لموديل 3/4/5 (مش map-video) — { model, ...editContext, videoUrl }
+  const [subscribeModal, setSubscribeModal] = useState(null); // ✅ NEW: { type: 'eg'|'intl', ...pkg } — الايجنت بيفتحها لما العميل يحدد الباقة اللي عايزها
   const voiceInputRef = useRef();
   const imageInputRef = useRef();
   const videoInputRef = useRef();
@@ -346,6 +356,20 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (data.transcript) setLastUploadedTranscript(data.transcript);
       if (Array.isArray(data.structuredScenes) && data.structuredScenes.length) setLastParsedStructuredScenes(data.structuredScenes);
       if (data.adsScenePlan?.scenes?.length) setLastParsedAdsScenePlan(data.adsScenePlan);
+
+      // ✅ NEW: الايجنت قرر يفتح شاشة الدفع (مصري أو دولي) بعد ما العميل حدد الباقة اللي عايزها
+      if (data.subscribe?.region === 'eg') {
+        const pkg = EG_PACKAGES.find(p => p.key === data.subscribe.packageKey) || EG_PACKAGES[0];
+        setSubscribeModal({ type: 'eg', credits: pkg.credits, amountEgp: pkg.egp });
+      } else if (data.subscribe?.region === 'intl') {
+        const pkg = ALL_GUMROAD_PACKAGES.find(p => p.key === data.subscribe.packageKey) || ALL_GUMROAD_PACKAGES[0];
+        setSubscribeModal({ type: 'intl', pkg });
+      }
+
+      // ✅ NEW: 3 فيديوهات مثال — كل واحد بيتعرض كرسالة منفصلة (مش لينك) عشان يقنع العميل
+      if (data.showcaseVideos) {
+        setMessages(m => [...m, ...SHOWCASE_VIDEO_URLS.map(url => ({ role: 'assistant', type: 'video', videoUrl: url }))]);
+      }
 
       if (data.ready) {
         // ✅ FIX: موديل 5 كان بيرفض يكمل من غير صورة حتى لو العميل وصف الشخصية بالنص —
@@ -1085,6 +1109,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             if (m.type === 'render') {
               return <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}><RenderCard job={m.job} lang={lang} onNavigate={onNavigate} /></div>;
             }
+            if (m.type === 'video') {
+              return (
+                <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}>
+                  <video src={m.videoUrl} controls playsInline style={{ width: 200, maxWidth: '70vw', borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+                </div>
+              );
+            }
             const ar = isArabic(m.content);
             return (
               <div key={i} className="agent-bubble" style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -1160,6 +1191,23 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         </div>
         <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
       </div>
+
+      {subscribeModal?.type === 'eg' && (
+        <EgPaymentModal credits={subscribeModal.credits} amountEgp={subscribeModal.amountEgp}
+          onClose={() => setSubscribeModal(null)}
+          onSuccess={() => {
+            setSubscribeModal(null);
+            setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? '✅ تم إرسال طلب الاشتراك! هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.' : '✅ Subscription request sent! It will be reviewed and credits added within 24 hours.' }]);
+          }} />
+      )}
+      {subscribeModal?.type === 'intl' && (
+        <IntlPaymentModal pkg={subscribeModal.pkg}
+          onClose={() => setSubscribeModal(null)}
+          onSuccess={() => {
+            setSubscribeModal(null);
+            setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? '✅ تم إرسال طلب الاشتراك! هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.' : '✅ Subscription request sent! It will be reviewed and credits added within 24 hours.' }]);
+          }} />
+      )}
     </div>
   );
 }

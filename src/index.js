@@ -19,7 +19,7 @@ import { renderModel8Video } from './services/pvideoService.js';
 import mcpRouter from './services/mcpRoutes.js';
 import oauthRouter from './services/oauthRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings } from './services/authService.js';
+import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats } from './services/authService.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
 // عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
 const MODEL3_STANDARD_SCENE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
@@ -600,6 +600,34 @@ app.delete('/api/admin/notifications/:id', async (req, res) => {
     if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     await cPool.query(`DELETE FROM admin_notifications WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW: رسالة جماعية بالإيميل لكل المستخدمين — منفصلة تمامًا عن الإشعار الداخلي (in-app)
+// فوق. زرار مستقل في صفحة الأدمن، مش بيتحفظ في admin_notifications ولا بيظهر جوه الموقع
+app.post('/api/admin/notifications/email-all', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.body.secret;
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    const { subject, message } = req.body;
+    if (!subject?.trim() || !message?.trim()) return res.status(400).json({ error: 'subject and message are required' });
+    const html = `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7;margin-top:0">${subject.trim()}</h2><div style="color:#d1d5db;font-size:14px;line-height:1.8;white-space:pre-wrap">${message.trim()}</div></div>`;
+    const result = await sendBroadcastEmail(subject.trim(), html);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW: أكتر المنصات اللي بيجي منها عملاء — لتاب "Answers" في صفحة الأدمن
+app.get('/api/admin/referral-sources', async (req, res) => {
+  try {
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
+    const sources = await getReferralSourceStats();
+    res.json({ sources });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
