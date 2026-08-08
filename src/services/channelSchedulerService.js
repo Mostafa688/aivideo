@@ -47,22 +47,30 @@ async function draftDailyIdea(profile, candidates, format, uses_voice) {
   return JSON.parse(raw);
 }
 
+// ✅ NEW: نفس منطق جلب الفكرة، بس كدالة منفصلة قابلة لإعادة الاستخدام — الدورة اليومية
+// تحت بتستخدمها، وكمان الايجنت في الشات (agentRoutes.js) بينادوها مباشرة لما العميل
+// يطلب فيديو لقناته دلوقتي من غير ما يستنى الإيميل اليومي
+export async function getFreshChannelIdea(channel) {
+  let channelId = channel.channel_id;
+  if (!channelId) {
+    const verified = await verifyVidiqKey(channel.vidiq_api_key).catch(() => null);
+    channelId = verified?.channels?.[0]?.channelId || null;
+    if (!channelId) throw new Error('No YouTube channel found for this VidIQ key');
+  }
+  const profile = await buildChannelProfile(channel.vidiq_api_key, channelId);
+  const candidates = await findVideoIdeaCandidates(channel.vidiq_api_key, profile);
+  const format = channel.format_pref === 'auto' ? profile.format : channel.format_pref;
+  const idea = await draftDailyIdea(profile, candidates, format, !!channel.uses_voice);
+  return { idea, format, profile };
+}
+
 // ── الخطوة اليومية: تدور على القنوات المستحقة، تجيب فكرة، تبعت إيميل الموافقة ──────
 export async function runDailyChannelCheck() {
   const due = await getDueManagedChannels();
   for (const channel of due) {
     try {
       await markManagedChannelRun(channel.id); // نعلّم فورًا عشان مانعملهاش مرتين لو فشلت
-      let channelId = channel.channel_id;
-      if (!channelId) {
-        const verified = await verifyVidiqKey(channel.vidiq_api_key).catch(() => null);
-        channelId = verified?.channels?.[0]?.channelId || null;
-        if (!channelId) throw new Error('No YouTube channel found for this VidIQ key');
-      }
-      const profile = await buildChannelProfile(channel.vidiq_api_key, channelId);
-      const candidates = await findVideoIdeaCandidates(channel.vidiq_api_key, profile);
-      const format = channel.format_pref === 'auto' ? profile.format : channel.format_pref;
-      const idea = await draftDailyIdea(profile, candidates, format, !!channel.uses_voice);
+      const { idea, format } = await getFreshChannelIdea(channel);
 
       const token = crypto.randomBytes(24).toString('hex');
       await createDailyVideoRun({

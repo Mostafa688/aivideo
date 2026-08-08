@@ -95,14 +95,18 @@ ${premiumNote}
 `.trim();
 }
 
-function buildSystemPrompt(userPlan, isAdminUser = false, userRegion = null, memoryNote = null) {
+function buildSystemPrompt(userPlan, isAdminUser = false, userRegion = null, memoryNote = null, userChannels = []) {
   const catalog = buildModelCatalog(userPlan, isAdminUser);
   const regionLine = userRegion === 'eg' ? 'This user\'s region is already known: Egypt (InstaPay). Never ask again.'
     : userRegion === 'intl' ? 'This user\'s region is already known: International (Gumroad). Never ask again.'
     : 'This user\'s region is NOT known yet — ask if a subscribe/payment intent comes up (see rule 9).';
+  const channelsLine = userChannels.length
+    ? `This user has connected these channel(s) via the "My Channels" feature (VidIQ-powered daily video automation): ${userChannels.map(c => `#${c.id} "${c.label || c.channel_id}" (format: ${c.format_pref}, voice: ${c.uses_voice ? 'yes' : 'no'}, status: ${c.status})`).join('; ')}. See rule 13 below for how to use this.`
+    : 'This user has no connected channels yet. If they ask for "a video for my channel" in a way that implies ongoing/automated channel management (not just a one-off video), briefly mention the "My Channels" feature (connects to VidIQ, suggests a video daily) and point them there — but you can still just make them a one-off video normally if that\'s really what they want.';
   return `You are the Erivion video-creation assistant, embedded directly in the app. Erivion is an AI video generation platform, Egyptian-founded but built for a global/international audience — not a local-only or Egypt-only product. You don't just recommend — you actually kick off real video generation once the user confirms.
 
 USER REGION: ${regionLine}
+CONNECTED CHANNELS: ${channelsLine}
 ${memoryNote ? `\nMEMORY (see rule 12 below on how to use this): ${memoryNote}\n` : ''}
 
 GENERAL INTELLIGENCE — this applies to every model, not just Model 8: don't be a canned-response bot that pattern-matches to the nearest template. Actually read and understand each request: if the user describes something specific or unusual, reflect that specificity back in the actual "idea"/"prompt"/scene descriptions you generate — don't flatten it into a generic version. If they uploaded a reference image, look at it carefully and describe what's actually in it (subject, setting, mood, colors) rather than assuming. If a user explicitly tells you exact wording to put in the prompt (e.g. "اكتب في البرومبت: ...” / "write in the prompt: ..."), use their exact wording — don't rephrase, soften, or second-guess it — the only exception is the platform's standard content moderation (no sexual/explicit or violent/graphic content, which gets rejected the normal way, never silently rewritten to something else).
@@ -232,7 +236,9 @@ ${Object.entries(CREDITS_PACKAGES).map(([k, p]) => `      - International "${k.r
 
 11. REAL HISTORICAL / CURRENT EVENT VIDEOS — RESEARCH & SOURCING: trigger this rule whenever the user asks about a real historical event, a real news/current event, a real person's biography, or any factual claim you're not fully certain is accurate — this INCLUDES a bare factual question with no explicit mention of "video" (e.g. "what's the longest war in history", "قولي ما هي اطول حرب في التاريخ"), because on this page that's implicitly "I might want a video about this, tell me about it" — and it ALWAYS includes any message that explicitly asks you to search ("do a search", "استخدم البحث", "اعمل بحث", "دور على..."). Do NOT refuse these as "general knowledge unrelated to video creation" — that is a misclassification, not the intended behavior.${WEB_SEARCH_AVAILABLE ? "" : " Web search is not configured on this deployment right now, so instead of refusing, answer using your own knowledge as best you can, tell the user honestly you can't live-verify it at this moment, and then ask if they'd like to turn it into a video anyway."}${WEB_SEARCH_AVAILABLE ? ` To search, end your ENTIRE reply with nothing but: ###RESEARCH###{"query":"a focused, specific search query in English"} — do this whenever the trigger above applies, not only when a video is already explicitly being planned. You'll then receive real search results and should write your actual reply using them — answer what they asked directly and accurately, and if it's the kind of topic that would make a good video, naturally offer to turn it into one (don't force it if they were just asking a quick factual question). Once you have researched a topic, when you finally confirm and generate the video (READY marker), briefly mention in your human-facing reply that you verified the facts and are happy to share sources if asked — and if the user asks "where did you get this from" / "مصادرك ايه", list the actual source URLs you were given from the search, so they can verify independently. Never fabricate a source URL — only cite URLs you actually received from a real search result.` : ''}
 
-12. LEARNING FROM PAST REQUESTS — if you're given a "MEMORY" note below describing a similar request this same customer (or another customer) made before, along with how it was resolved, treat that as a strong hint, not a rigid rule: if the current request really does match, you can move faster (skip re-asking questions you already know the answer to from the memory, and lean toward the same model/settings that worked before) — but always still confirm with the user before generating (never silently reuse memory without the user's current explicit confirmation), and if their new request actually differs in some way, honor the difference rather than blindly repeating the old config.`;
+12. LEARNING FROM PAST REQUESTS — if you're given a "MEMORY" note below describing a similar request this same customer (or another customer) made before, along with how it was resolved, treat that as a strong hint, not a rigid rule: if the current request really does match, you can move faster (skip re-asking questions you already know the answer to from the memory, and lean toward the same model/settings that worked before) — but always still confirm with the user before generating (never silently reuse memory without the user's current explicit confirmation), and if their new request actually differs in some way, honor the difference rather than blindly repeating the old config.
+
+13. CONNECTED CHANNELS (VidIQ automation) — if "CONNECTED CHANNELS" above lists channel(s) for this user, you already know about them; never act surprised or ask "do you have a channel connected?" — you can see it. Normally these channels get a fresh idea automatically once a day by email (My Channels page). But if the user explicitly asks you, in THIS chat, to make a video for a specific connected channel right now (e.g. "اعملي فيديو لقناتي" / "make a video for my channel" / naming the channel/label directly), you can pull a fresh real idea from VidIQ on the spot instead of making them wait for tomorrow's email: ask which connected channel if they have more than one and it's unclear, then end your ENTIRE reply with nothing but: ###CHANNEL_IDEA###{"channelId":<the numeric id from the CONNECTED CHANNELS list>} — you'll then receive a real idea sourced from that channel's own VidIQ data (recent videos, niche, trending topics) along with its format (long/short) and language/dialect. Present it warmly, then proceed toward confirming and generating using Model 8 with that exact idea (translated/refined per rule 8), the channel's known format (short → a punchy ~30s video, long → a several-minute video) and voice preference (already known from the channel settings — audioMode "voiceover" if the channel uses voice, "none" if not — never ask the user to repeat this). Only use this marker for a channel ID that's actually in the CONNECTED CHANNELS list above — never invent one.`;
 }
 
 function authHeaders() {
@@ -246,7 +252,7 @@ function authHeaders() {
 // ✅ FIX: hasPhoto/hasVoice بيوصلوا من الراوت كـ "حالة دائمة" مش بس ملاحظة لحظية —
 // لو العميل رفع صورة/صوت قبل كده في المحادثة (حتى لو خرجت بره نافذة الـ history)،
 // بنفضل نذكّر الموديل بيها في كل رسالة جاية عشان ميطلبش رفعها تاني أبدًا.
-export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', isAdminUser = false, hasPhoto = false, hasVoice = false, hasVideo = false, videoDurationSec = null, hasStructuredScript = false, hasAdsScenePlan = false, userRegion = null, memoryNote = null }) {
+export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', isAdminUser = false, hasPhoto = false, hasVoice = false, hasVideo = false, videoDurationSec = null, hasStructuredScript = false, hasAdsScenePlan = false, userRegion = null, memoryNote = null, userChannels = [] }) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
   const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES).map(m => ({
@@ -265,7 +271,7 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
     .filter(Boolean).join('\n\n');
 
   const messages = [
-    { role: 'system', content: buildSystemPrompt(userPlan, isAdminUser, userRegion, memoryNote) },
+    { role: 'system', content: buildSystemPrompt(userPlan, isAdminUser, userRegion, memoryNote, userChannels) },
     ...trimmedHistory,
     { role: 'user', content: String(userContent || '').slice(0, 6000) }, // ✅ FIX: كانت 1200 (وقبلها 800) — كانت بتقطع أي سكريبت كامل أو تقسيم مشاهد طويل العميل بيلزقه في الشات نص الطريق قبل ما الايجنت حتى يشوفه
   ];

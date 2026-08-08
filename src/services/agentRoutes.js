@@ -1,8 +1,9 @@
 import express from 'express';
 import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
-import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest } from './authService.js';
+import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
+import { getFreshChannelIdea } from './channelSchedulerService.js';
 
 // بيحوّل أي رسالة (عربي/إنجليزي/بأي تشكيل) لنص موحّد بسيط — عشان مقارنة "الشبه" بين
 // طلب جديد وطلبات قديمة محفوظة في ذاكرة الايجنت تبقى مستقرة ومش حساسة لعلامات ترقيم/تشكيل
@@ -187,6 +188,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const userRegion = user?.region || null;
     // ⚠️ Model 8 تحت الصيانة — بس الأدمن يقدر يستخدمه من خلال الايجنت كمان
     const isAdminUser = (user?.email || '').toLowerCase() === (process.env.ADMIN_EMAIL || 'digidelight33@gmail.com').toLowerCase();
+    // ✅ NEW: القنوات اللي العميل ربطها بـ VidIQ (My Channels) — الايجنت لازم يكون عارفها
+    const userChannels = await listManagedChannelsForUser(userId).catch(() => []);
 
     // ── ذاكرة الايجنت: هل فيه طلب مشابه اتفهم واتنفذ قبل كده؟ لو أيوه، بنمرر ملخصه
     // كـ "MEMORY" للنموذج عشان يقدر "يحل ذاتيًا" بدل ما يعيد كل أسئلة التوضيح من الأول
@@ -209,6 +212,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       hasAdsScenePlan,
       userRegion,
       memoryNote,
+      userChannels,
     });
 
     // ── RESEARCH: لو الايجنت طلب تحقق حقيقي من معلومة (حدث تاريخي/حقيقي) قبل ما يرد،
@@ -230,18 +234,46 @@ router.post('/chat', authMiddleware, async (req, res) => {
             hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded,
             videoDurationSec: videoDurationSec || null,
-            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels,
           });
         } else if (query) {
           rawReply = await agentChat({
             message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + 'You asked to research this but web search is not configured on this deployment — answer using your own knowledge and honestly tell the user you cannot verify it live right now.', userPlan, isAdminUser,
             hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
-            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels,
           });
         }
       } catch (e) {
         console.warn('[Agent] RESEARCH marker parse failed:', e.message);
+      }
+    }
+
+    // ── CHANNEL_IDEA: العميل طلب فيديو لقناة متربطة دلوقتي (مش مستني الإيميل اليومي) —
+    // بنجيب فكرة حقيقية من VidIQ فورًا وبنديها للايجنت في جولة تانية عشان يكمل بيها ──────
+    if (rawReply.includes('###CHANNEL_IDEA###')) {
+      const afterMarker = rawReply.slice(rawReply.indexOf('###CHANNEL_IDEA###') + '###CHANNEL_IDEA###'.length);
+      const { jsonText } = extractJsonAndRest(afterMarker);
+      try {
+        const { channelId } = JSON.parse(jsonText);
+        const channel = userChannels.find(c => c.id === channelId);
+        let channelNote;
+        if (!channel) {
+          channelNote = `You referenced channel id ${channelId} but it doesn't belong to this user — apologize briefly and list their actual connected channels (see CONNECTED CHANNELS above) instead.`;
+        } else {
+          const fullChannel = await getManagedChannelById(channelId);
+          const { idea, format } = await getFreshChannelIdea(fullChannel);
+          channelNote = `Fresh idea sourced from VidIQ for channel "${channel.label || channel.channel_id}": title="${idea.title}", brief="${idea.brief || ''}", videoLanguage="${idea.videoLanguage || 'en'}", format="${format}" (${format === 'short' ? 'short, punchy, ~30s' : 'long-form, several minutes'}), voice="${channel.uses_voice ? 'yes — use Model 8 audioMode voiceover' : 'no — use Model 8 audioMode none'}". Present this idea warmly to the user, then confirm and generate with Model 8 using this idea (translated/refined per rule 8), matching the format/voice above — do not ask the user for details you already have here.`;
+        }
+        rawReply = await agentChat({
+          message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + channelNote, userPlan, isAdminUser,
+          hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
+          hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
+          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels,
+        });
+      } catch (e) {
+        console.warn('[Agent] CHANNEL_IDEA marker failed:', e.message);
+        rawReply = rawReply.replace(/###CHANNEL_IDEA###.*/s, '').trim() || 'معلش، مش قادر أجيب فكرة من القناة دلوقتي — جرب تاني بعد شوية.';
       }
     }
 
