@@ -4,10 +4,10 @@
 // (Replicate pay-per-use، نفس الحساب المستخدم فعليًا في باقي الموقع). موصى بيها 10 ثواني،
 // مرفوضة لو أكتر من دقيقة.
 //
-// ⚠️ ملحوظة مهمة: أسماء حقول الـ API بتاعت الموديل ده اتلقطت من نتايج بحث (مش من توثيق
-// Replicate الرسمي مباشرة — replicate.com محجوب من بيئة التطوير دي) فمش مؤكدة 100%. لو
-// Replicate رجّع خطأ "invalid input"/"unexpected field"، شوف تاب الـ API بتاع الموديل على
-// replicate.com/resemble-ai/chatterbox-multilingual وظبط أسماء الحقول في REPLICATE_INPUT_MAP تحت.
+// ✅ أسماء الحقول اتأكدت من صفحة replicate.com/resemble-ai/chatterbox-multilingual/api/schema
+// مباشرة (Input schema): text (حد أقصى 300 حرف!)، language، cfg_weight، temperature،
+// exaggeration، reference_audio. عشان النص ممكن يبقى أطول من 300 حرف (سكريبتات فيديو)،
+// النص بيتقسم لقطع أقل من 300 حرف كل واحدة وبيتعمل نداء منفصل لكل قطعة وبعدين تتلحم بـ ffmpeg.
 
 import fetch from 'node-fetch';
 import fs from 'fs';
@@ -62,21 +62,52 @@ export function checkVoiceSampleDuration(audioBase64) {
   }
 }
 
-// ✅ الاستنساخ الفعلي — بياخد عينة الصوت المحفوظة + نص السكريبت، ويرجّع رابط ملف صوت جديد
-// بنفس نبرة/صوت العميل. Zero-shot: مفيش "تدريب" أو voice ID دائم عند المزوّد، كل نداء
-// بيبعت العينة نفسها + النص من جديد
-export async function cloneVoiceNarration(sampleUrl, text, language = 'en') {
-  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
-  const langId = (language || 'en').startsWith('ar') ? 'ar' : (language || 'en').slice(0, 2);
+const CHATTERBOX_TEXT_LIMIT = 300; // ✅ حد الموديل الرسمي (شوف الملحوظة فوق)
+
+// النص بيتقسم على حدود الجمل (. ! ? أو . ! ؟ العربي) لقطع أقل من الحد، من غير ما تتقطع
+// جملة نص نص. لو جملة واحدة أطول من الحد لوحدها، بتتقطع بالمسافات كحل أخير.
+function splitTextIntoChunks(text, maxLen = CHATTERBOX_TEXT_LIMIT) {
+  const sentences = (text || '').match(/[^.!?؟]+[.!?؟]*/g) || [text || ''];
+  const chunks = [];
+  let current = '';
+  for (let sentence of sentences) {
+    sentence = sentence.trim();
+    if (!sentence) continue;
+    if (sentence.length > maxLen) {
+      if (current) { chunks.push(current); current = ''; }
+      const words = sentence.split(/\s+/);
+      let piece = '';
+      for (const w of words) {
+        if ((piece + ' ' + w).trim().length > maxLen) { if (piece) chunks.push(piece.trim()); piece = w; }
+        else piece = (piece + ' ' + w).trim();
+      }
+      if (piece) chunks.push(piece.trim());
+      continue;
+    }
+    if ((current + ' ' + sentence).trim().length > maxLen) {
+      if (current) chunks.push(current.trim());
+      current = sentence;
+    } else {
+      current = (current + ' ' + sentence).trim();
+    }
+  }
+  if (current) chunks.push(current.trim());
+  return chunks.length ? chunks : [(text || '').slice(0, maxLen)];
+}
+
+// نداء واحد لـ Replicate لقطعة نص واحدة (أقل من CHATTERBOX_TEXT_LIMIT حرف) — بيرجّع مسار
+// ملف mp3 محلي مؤقت
+async function cloneVoiceChunk(sampleUrl, textChunk, language) {
   const res = await fetch('https://api.replicate.com/v1/models/resemble-ai/chatterbox-multilingual/predictions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' },
     body: JSON.stringify({
       input: {
-        text_to_synthesize: text,
-        language_id: langId,
+        text: textChunk,
+        language,
         reference_audio: sampleUrl,
         cfg_weight: 0.5,
+        temperature: 0.8,
         exaggeration: 0.5,
       },
     }),
@@ -105,8 +136,41 @@ export async function cloneVoiceNarration(sampleUrl, text, language = 'en') {
 
   const fetchRes = await fetch(audioUrl);
   if (!fetchRes.ok) throw new Error(`Failed to download cloned voice audio: ${fetchRes.status}`);
-  fs.mkdirSync(OUTPUTS_DIR, { recursive: true });
-  const outPath = path.join(OUTPUTS_DIR, `cloned_voice_${Date.now()}.mp3`);
-  fs.writeFileSync(outPath, Buffer.from(await fetchRes.arrayBuffer()));
-  return outPath;
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+  const chunkPath = path.join(TEMP_DIR, `cloned_voice_chunk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.mp3`);
+  fs.writeFileSync(chunkPath, Buffer.from(await fetchRes.arrayBuffer()));
+  return chunkPath;
+}
+
+// ✅ الاستنساخ الفعلي — بياخد عينة الصوت المحفوظة + نص السكريبت (بأي طول)، ويرجّع مسار ملف
+// صوت واحد بنفس نبرة/صوت العميل. Zero-shot: مفيش "تدريب" أو voice ID دائم عند المزوّد.
+// النص الأطول من 300 حرف بيتقسم لقطع وكل قطعة بتتبعت في نداء منفصل، وبعدين القطع بتتلحم
+// بـ ffmpeg concat في ملف واحد نهائي.
+export async function cloneVoiceNarration(sampleUrl, text, language = 'en') {
+  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
+  const lang = (language || 'en').startsWith('ar') ? 'ar' : (language || 'en').slice(0, 2);
+  const chunks = splitTextIntoChunks(text, CHATTERBOX_TEXT_LIMIT);
+
+  const chunkPaths = [];
+  try {
+    for (const chunk of chunks) {
+      chunkPaths.push(await cloneVoiceChunk(sampleUrl, chunk, lang));
+    }
+
+    fs.mkdirSync(OUTPUTS_DIR, { recursive: true });
+    const outPath = path.join(OUTPUTS_DIR, `cloned_voice_${Date.now()}.mp3`);
+
+    if (chunkPaths.length === 1) {
+      fs.copyFileSync(chunkPaths[0], outPath);
+    } else {
+      const listPath = path.join(TEMP_DIR, `cloned_voice_concat_${Date.now()}.txt`);
+      const listContent = chunkPaths.map(p => `file '${path.resolve(p)}'`).join('\n');
+      fs.writeFileSync(listPath, listContent);
+      execSync(`ffmpeg -y -f concat -safe 0 -i "${listPath}" -c copy "${outPath}"`, { stdio: 'pipe' });
+      try { fs.unlinkSync(listPath); } catch {}
+    }
+    return outPath;
+  } finally {
+    for (const p of chunkPaths) { try { fs.unlinkSync(p); } catch {} }
+  }
 }
