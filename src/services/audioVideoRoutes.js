@@ -54,18 +54,43 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
       return res.status(422).json({ error: 'no_elements_found' });
     }
 
-    // ✅ الصور بالترتيب (مش Promise.all) — Pollinations مفيش ليه rate-limit موثّق، بس أفضل
-    // نتجنب ضغط عدد كبير من النداءات المتوازية على خدمة مجانية من غير API key
+    // ✅ الصور بالترتيب (مش Promise.all) مع فاصل زمني بين كل نداء والتاني — Pollinations
+    // فعليًا بترجع 429 لو النداءات جت ورا بعض بسرعة (اتأكد ده من لوجات حقيقية)، فبنبعد عنه
+    // استباقيًا. fetchPollinationsImage نفسها كمان عندها إعادة محاولة تصاعدية على 429.
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const withImages = [];
-    for (const el of elements) {
+    const failedElements = [];
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i];
+      if (i > 0) await sleep(2000);
       try {
         const buffer = await generateElementImage(el.imagePrompt);
         const imageUrl = await uploadElementImageToR2(buffer);
         withImages.push({ ...el, imageUrl });
       } catch (e) {
         console.warn('[AudioVideo] Image generation failed for element:', el.element, e.message);
+        failedElements.push(el);
       }
     }
+
+    // ✅ جولة تانية للعناصر اللي فشلت بعد استراحة أطول — لو السبب كان rate limit مؤقت،
+    // الوقت ده كافي غالبًا إن الحد يترفع تاني
+    if (failedElements.length) {
+      await sleep(8000);
+      for (const el of failedElements) {
+        try {
+          const buffer = await generateElementImage(el.imagePrompt);
+          const imageUrl = await uploadElementImageToR2(buffer);
+          withImages.push({ ...el, imageUrl });
+        } catch (e) {
+          console.warn('[AudioVideo] Image generation retry also failed for element:', el.element, e.message);
+        }
+      }
+    }
+
+    // ✅ نرتب تاني حسب مكانها الأصلي في الكلام (الجولة التانية ممكن تضيف عناصر آخر القائمة)
+    withImages.sort((a, b) => a.startIdx - b.startIdx);
+
     if (!withImages.length) {
       await updateAudioVideoJob(job.id, { status: 'failed', error: 'Image generation failed for all elements' });
       return res.status(502).json({ error: 'image_generation_failed' });

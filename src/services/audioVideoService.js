@@ -143,9 +143,16 @@ Do not over-merge distinct concrete subjects just to keep the list short — cre
   return elements;
 }
 
-async function fetchPollinationsImage(prompt) {
+// ✅ Pollinations مجانية بدون مفتاح، وده معناه limit صارم على معدل الطلبات (429) خصوصًا لو
+// كذا عنصر بيتولدوا ورا بعض بسرعة. بدل ما نستسلم من أول 429، بنعمل backoff تصاعدي (3s, 6s,
+// 9s) ونجرب تاني — الفشل الوحيد المقبول هو بعد استنفاد المحاولات دي كلها
+async function fetchPollinationsImage(prompt, attempt = 1) {
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
   const res = await fetch(url);
+  if (res.status === 429 && attempt <= 3) {
+    await new Promise(r => setTimeout(r, attempt * 3000));
+    return fetchPollinationsImage(prompt, attempt + 1);
+  }
   if (!res.ok) throw new Error(`Pollinations error ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }
