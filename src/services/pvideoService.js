@@ -112,6 +112,31 @@ export async function renderModel8Video({
   const id = jobId || Date.now();
   const [W, H] = ratio === '9:16' ? [1080, 1920] : ratio === '1:1' ? [1080, 1080] : [1920, 1080];
   const aspectRatioForApi = ratio === '9:16' ? '9:16' : ratio === '1:1' ? '1:1' : '16:9';
+  const wantsVoiceover = audioMode === 'voiceover';
+
+  // ── Step 0: فويس أوفر لكل مشهد لوحده الأول — الصوت هو اللي بيحدد مدة المشهد
+  // (1-20 ثانية حسب طول الكلام الفعلي)، مش العكس. مشهد من غير نص بياخد مدته الجاهزة
+  // (لو موجودة من خطة العميل) أو 5 ثواني افتراضي ──────────────────────────────
+  const perSceneVoicePaths = [];
+  if (wantsVoiceover) {
+    for (let i = 0; i < scenes.length; i++) {
+      const text = (scenes[i].text || '').trim();
+      if (!text) { perSceneVoicePaths.push(null); continue; }
+      try {
+        const audioPath = await generateAdsVoiceover(text, voiceKey || 'male_wise', videoLanguage, null, null);
+        let dur = null;
+        try {
+          dur = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`, { encoding: 'utf8' }).trim());
+        } catch {}
+        const clamped = Math.min(20, Math.max(1, Math.round(dur || scenes[i].sceneDurationSec || 5)));
+        scenes[i] = { ...scenes[i], sceneDurationSec: clamped }; // ✅ الصوت الحقيقي بيحدد مدة المشهد
+        perSceneVoicePaths.push({ path: audioPath, clampedDur: clamped });
+      } catch (e) {
+        console.warn(`[Model8] Per-scene voiceover failed for scene ${i + 1}, keeping preset duration:`, e.message);
+        perSceneVoicePaths.push(null);
+      }
+    }
+  }
 
   // ── Step 1: توليد كل مشهد ────────────────────────────────────────────────
   const rawPaths = [];
@@ -124,7 +149,7 @@ export async function renderModel8Video({
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
     const rawPath = path.join(TEMP_DIR, `m8_raw_${id}_${i}.mp4`);
-    const targetSec = Math.min(20, Math.max(3, Math.round(scene.sceneDurationSec || 5)));
+    const targetSec = Math.min(20, Math.max(1, Math.round(scene.sceneDurationSec || 5)));
     try {
       if (scene.existingClipUrl) {
         console.log(`[Model8] Reusing existing clip ${i + 1}/${scenes.length}`);
@@ -222,22 +247,50 @@ export async function renderModel8Video({
     }
   }
 
-  // ── Step 4: فويس أوفر (Gemini TTS) لو مطلوب، مقاس على مدة الفيديو الحقيقية ──
+  // ── Step 4: تركيب الفويس أوفر — كل مشهد بصوته الحقيقي اللي اتولّد في Step 0 (بعد ما
+  // اتقصّ/اتزوّد بسكوت لمطابقة مدة المشهد النهائية بالظبط)، متسلسلين ورا بعض بنفس ترتيب
+  // المشاهد. لو Step 0 فشل تمامًا (مفيش أي صوت اتولّد)، نرجع لأسلوب صوت واحد كامل قديم ──
   let currentPath = mergedPath;
   let audioPathForCaptions = null;
-  if (audioMode === 'voiceover') {
+  if (wantsVoiceover) {
     try {
-      const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
-      if (fullText.trim()) {
-        const totalDur = sceneDurations.reduce((a, b) => a + b, 0) - (numClips - 1) * FADE_DUR;
-        // ✅ FIX: google/gemini-3.1-flash-tts بالظبط (نفس اللي موديل الإعلانات بيستخدمه) — مش
-        // Edge TTS العام. الدالة دي بترجع مسار كامل جاهز، مش اسم ملف يتحتاج ينضم لمسار تاني
-        const audioPath = await generateAdsVoiceover(fullText, voiceKey || 'male_wise', videoLanguage, totalDur, null);
-        if (audioPath) {
-          audioPathForCaptions = audioPath;
-          const withAudioPath = path.join(TEMP_DIR, `m8_voice_${id}.mp4`);
-          execSync(`ffmpeg -i "${currentPath}" -i "${audioPath}" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`, { stdio: 'pipe' });
-          currentPath = withAudioPath;
+      const usable = perSceneVoicePaths.filter(Boolean);
+      if (usable.length) {
+        const paddedPaths = [];
+        for (let i = 0; i < scenes.length; i++) {
+          const entry = perSceneVoicePaths[i];
+          const dur = sceneDurations[i];
+          const paddedPath = path.join(TEMP_DIR, `m8_voice_scene_${id}_${i}.mp3`);
+          if (entry) {
+            // بيقص أو يزوّد سكوت في الآخر عشان طول ملف الصوت يطابق طول المشهد النهائي بالظبط
+            execSync(`ffmpeg -i "${entry.path}" -af "apad" -t ${dur} -y "${paddedPath}"`, { stdio: 'pipe' });
+          } else {
+            execSync(`ffmpeg -f lavfi -i anullsrc=r=48000:cl=mono -t ${dur} -c:a mp3 -y "${paddedPath}"`, { stdio: 'pipe' });
+          }
+          paddedPaths.push(paddedPath);
+        }
+        const concatAudioPath = path.join(TEMP_DIR, `m8_voice_full_${id}.mp3`);
+        const listFile = path.join(TEMP_DIR, `m8_voice_list_${id}.txt`);
+        fs.writeFileSync(listFile, paddedPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
+        execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c:a mp3 -y "${concatAudioPath}"`, { stdio: 'pipe' });
+        try { fs.unlinkSync(listFile); } catch {}
+
+        audioPathForCaptions = concatAudioPath;
+        const withAudioPath = path.join(TEMP_DIR, `m8_voice_${id}.mp4`);
+        execSync(`ffmpeg -i "${currentPath}" -i "${concatAudioPath}" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`, { stdio: 'pipe' });
+        currentPath = withAudioPath;
+      } else {
+        // ── fallback: مفيش أي صوت لمشهد اتولّد (كل المحاولات فشلت) — صوت واحد كامل قديم ──
+        const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
+        if (fullText.trim()) {
+          const totalDur = sceneDurations.reduce((a, b) => a + b, 0) - (numClips - 1) * FADE_DUR;
+          const audioPath = await generateAdsVoiceover(fullText, voiceKey || 'male_wise', videoLanguage, totalDur, null);
+          if (audioPath) {
+            audioPathForCaptions = audioPath;
+            const withAudioPath = path.join(TEMP_DIR, `m8_voice_${id}.mp4`);
+            execSync(`ffmpeg -i "${currentPath}" -i "${audioPath}" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`, { stdio: 'pipe' });
+            currentPath = withAudioPath;
+          }
         }
       }
     } catch (e) { console.warn('[Model8] Voiceover step failed:', e.message); }
