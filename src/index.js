@@ -21,6 +21,7 @@ import oauthRouter from './services/oauthRoutes.js';
 import channelRouter from './services/channelRoutes.js';
 import { runDailyChannelCheck } from './services/channelSchedulerService.js';
 import voiceCloneRouter from './services/voiceCloneRoutes.js';
+import audioVideoRouter from './services/audioVideoRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
@@ -220,6 +221,7 @@ app.use('/api/ads', adsRouter);
 app.use('/api/agent', agentRouter);
 app.use('/api/channels', channelRouter);
 app.use('/api/voice-clone', voiceCloneRouter);
+app.use('/api/admin/audio-video', audioVideoRouter);
 app.use('/mcp', mcpRouter);
 app.use(oauthRouter); // ✅ NEW: على الروت مباشرة — مسارات /.well-known و/oauth/* لازم تكون هنا
 

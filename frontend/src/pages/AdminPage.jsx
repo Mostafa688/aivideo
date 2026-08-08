@@ -595,6 +595,110 @@ function VoicesTab({ s }) {
   );
 }
 
+function AudioVideoTab({ s }) {
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [activeJob, setActiveJob] = useState(null);
+  const fileRef = React.useRef(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/admin/audio-video/jobs', { headers });
+      const d = await r.json();
+      setJobs(d.jobs || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setError(''); setUploading(true); setActiveJob(null);
+    try {
+      const form = new FormData();
+      form.append('audio', file);
+      const r = await fetch('/api/admin/audio-video/transcribe', {
+        method: 'POST',
+        headers: { 'x-admin-secret': ADMIN_SECRET },
+        body: form,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Transcription failed');
+      setActiveJob(d.job);
+      load();
+    } catch (e) {
+      setError('❌ ' + e.message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div>
+      <div style={s.topbar}>
+        <div style={s.title}>🎬 Audio → Video (المرحلة 1: التفريغ بالتوقيت)</div>
+        <button style={s.btn()} onClick={load}>🔄 Refresh</button>
+      </div>
+
+      <div style={s.card}>
+        <div style={{ fontSize: 12.5, color: '#9ca3af', marginBottom: 12 }}>
+          ارفع ملف صوتي (mp3/wav) — هيترفع لـ R2 ويتفرّغ بتوقيت دقيق على مستوى الكلمة الواحدة (Groq Whisper).
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="audio/*"
+          onChange={handleUpload}
+          disabled={uploading}
+          style={{ fontSize: 13, color: '#d1d5db' }}
+        />
+        {uploading && <div style={{ color: '#7c6af7', fontSize: 12.5, marginTop: 10 }}>⏳ بيترفع ويتفرّغ... ممكن ياخد شوية ثواني</div>}
+        {error && <div style={{ color: '#f87171', fontSize: 12.5, marginTop: 10 }}>{error}</div>}
+      </div>
+
+      {activeJob && (
+        <div style={s.card}>
+          <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 10 }}>✅ Job #{activeJob.id} — {activeJob.status}</div>
+          <audio controls src={activeJob.audio_url} style={{ width: '100%', height: 32, marginBottom: 12 }} />
+          <div style={{ fontSize: 12.5, color: '#d1d5db', marginBottom: 12, lineHeight: 1.7 }}>{activeJob.transcript_text}</div>
+          <div style={{ maxHeight: 260, overflow: 'auto', border: '1px solid #1a1a2e', borderRadius: 8 }}>
+            <table style={s.table}>
+              <thead><tr><th style={s.th}>#</th><th style={s.th}>Word</th><th style={s.th}>Start (s)</th><th style={s.th}>End (s)</th></tr></thead>
+              <tbody>
+                {(activeJob.words_json || []).map((w, i) => (
+                  <tr key={i}>
+                    <td style={s.td}>{i + 1}</td>
+                    <td style={s.td}>{w.word}</td>
+                    <td style={s.td}>{Number(w.start).toFixed(2)}</td>
+                    <td style={s.td}>{Number(w.end).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div style={s.card}>
+        <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 10 }}>Jobs سابقة</div>
+        {loading && <div style={{ color: '#6b7280', fontSize: 12.5 }}>Loading...</div>}
+        {!loading && jobs.length === 0 && <div style={{ color: '#6b7280', fontSize: 12.5 }}>لا يوجد بعد.</div>}
+        {jobs.map(j => (
+          <div key={j.id} style={{ padding: '8px 0', borderBottom: '1px solid #1a1a2e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setActiveJob(j)}>
+            <span style={{ fontSize: 12.5, color: '#d1d5db' }}>#{j.id} · {j.status}</span>
+            <span style={{ fontSize: 11.5, color: '#6b7280' }}>{new Date(j.created_at).toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RatingsTab({ s }) {
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1368,6 +1472,7 @@ export default function AdminPage() {
     { key: 'community',  label: '🌍 Community'   },
     { key: 'channels',   label: '📺 Channels'    },
     { key: 'voices',     label: '🗣️ Voices'      },
+    { key: 'audiovideo', label: '🎬 Audio→Video' },
   ];
 
   return (
@@ -1704,6 +1809,7 @@ export default function AdminPage() {
         {tab === 'notifications' && <NotificationsTab s={s} />}
         {tab === 'channels' && <ChannelsTab s={s} />}
         {tab === 'voices' && <VoicesTab s={s} />}
+        {tab === 'audiovideo' && <AudioVideoTab s={s} />}
 
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}
