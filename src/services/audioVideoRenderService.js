@@ -1,22 +1,24 @@
 // ── audioVideoRenderService.js ───────────────────────────────────────────────
 // مصنع فيديو الصوت (أدمن) — المرحلة الأخيرة: بناء الفيديو النهائي.
 //
-// الفكرة: صورة واحدة "جريد" فيها كل عناصر الفيديو مرتبة بجانب بعض على خلفية بيضاء. أول
-// الفيديو بيعرض الجريد كامل ثابت (Intro). بعدين لكل عنصر بالترتيب، زوم-إن (zoompan) من نفس
-// صورة الجريد على الخانة بتاعت العنصر ده لحد ما تملأ الشاشة، بالظبط طول المدة اللي الصوت
-// بيتكلم فيها عن العنصر ده (ممتدة لحد أول العنصر اللي بعده عشان مفيش فريز/فجوة). فوقيها
-// كابشنز كل كلمة تظهر في توقيتها الحقيقي (ASS subtitles، مش drawtext متعدد — أخف وأدق)،
-// والكلمات اللي هي اسم العنصر الحالي بلون مختلف (ذهبي). في الآخر بيتضم الصوت الأصلي.
+// الفكرة (v2 — بعد ملاحظات حقيقية على v1): بدل "جريد صور + زوم-قص جزء منه" (كان طالع
+// انيميشن مقطّع وغير متسق)، كل مشهد دلوقتي "سلايد" واحدة مركّبة بالكامل مسبقًا (sharp):
+// نفس الخلفية الموحدة + نفس شخصية الشارح الثابتة (Stickman، نفس الرسمة بالظبط في كل مشهد)
+// + أيقونة العنصر الحالي (بخلفية شفافة حقيقية بعد إزالة الخلفية) — وبعدين حركة واحدة موحدة
+// (Ken Burns: زوم بطيء متمركز) على كل سلايد بنفس المعادلة بالظبط، طول مدتها = مدة كلام
+// الصوت عن العنصر ده فعليًا. كابشنز كل كلمة في توقيتها الحقيقي، بس دلوقتي أكبر وألوان أوضح
+// (مش شكل سترة كابشن رفيعة).
 
 import fetch from 'node-fetch';
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { uploadFinalVideoToR2 } from './audioVideoService.js';
+import { uploadFinalVideoToR2, generateStickmanCharacterPng } from './audioVideoService.js';
 
 const FPS = 25;
 const RATIO_DIMS = { '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080] };
+const BG_COLOR = '#fdfaf4'; // خلفية موحدة دافية (مش أبيض بارد) — نفسها في كل مشهد طول الفيديو
 
 // ✅ نفس منطق اختيار الفونت المستخدم فعليًا في renderService.js (fc-list ديناميكي حسب
 // اللغة) — بننسخه هنا محليًا بدل ما نصدّره من renderService.js، عشان ملف الكابشن الأساسي
@@ -37,68 +39,50 @@ function getFontPath(lang) {
   return dejaVu;
 }
 
-// ✅ بيبني صورة "جريد" واحدة فيها كل صور العناصر مرتبة على خلفية بيضاء نقية، وبيرجّع
-// إحداثيات خانة كل عنصر جوه الصورة دي (مستخدمة بعدين في الزوم)
-async function buildGridImage(elements, ratio, outPath) {
-  const [W, H] = RATIO_DIMS[ratio] || RATIO_DIMS['16:9'];
-  const n = elements.length;
-  const cols = Math.ceil(Math.sqrt(n));
-  const rows = Math.ceil(n / cols);
-  const cellW = Math.floor(W / cols);
-  const cellH = Math.floor(H / rows);
-  const pad = Math.round(Math.min(cellW, cellH) * 0.08);
+// ✅ سلايد واحدة لعنصر: خلفية موحدة + أيقونة العنصر (شفافة) في النص + الشخصية الثابتة تحت
+// يمين، بنفس التخطيط بالظبط في كل مرة — ده اللي بيدّي إحساس "انيميشن واحد متسق" طول الفيديو
+async function buildElementSlide(iconBuffer, stickmanBuffer, W, H, outPath) {
+  const iconSize = Math.round(Math.min(W, H) * 0.5);
+  const icon = await sharp(iconBuffer).resize(iconSize, iconSize, { fit: 'contain' }).png().toBuffer();
+  const stickSize = Math.round(Math.min(W, H) * 0.22);
+  const stick = await sharp(stickmanBuffer).resize(stickSize, stickSize, { fit: 'contain' }).png().toBuffer();
 
-  const composites = [];
-  const cellRects = [];
-  for (let i = 0; i < n; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x0 = col * cellW, y0 = row * cellH;
-    cellRects.push({ x0, y0, w: cellW, h: cellH });
+  const iconLeft = Math.round(W / 2 - iconSize / 2);
+  const iconTop = Math.round(H * 0.5 - iconSize / 2 - H * 0.06);
+  const stickLeft = Math.round(W * 0.5 + iconSize * 0.18);
+  const stickTop = Math.round(iconTop + iconSize - stickSize * 0.35);
 
-    const imgRes = await fetch(elements[i].imageUrl);
-    if (!imgRes.ok) throw new Error(`Could not download element image: ${elements[i].element}`);
-    const imgBuf = Buffer.from(await imgRes.arrayBuffer());
-    const resized = await sharp(imgBuf)
-      .resize(cellW - pad * 2, cellH - pad * 2, { fit: 'contain', background: '#ffffff' })
-      .flatten({ background: '#ffffff' })
-      .png()
-      .toBuffer();
-    composites.push({ input: resized, left: x0 + pad, top: y0 + pad });
-  }
-
-  await sharp({ create: { width: W, height: H, channels: 3, background: '#ffffff' } })
-    .composite(composites)
+  await sharp({ create: { width: W, height: H, channels: 3, background: BG_COLOR } })
+    .composite([
+      { input: icon, left: iconLeft, top: iconTop },
+      { input: stick, left: Math.min(stickLeft, W - stickSize - 20), top: Math.min(stickTop, H - stickSize - 20) },
+    ])
     .jpeg({ quality: 92 })
     .toFile(outPath);
-
-  return { cellRects, W, H };
 }
 
-// ✅ الكليب الثابت (Intro) — نفس صورة الجريد من غير حركة، مدتها = الوقت قبل ما العنصر
-// الأول يتذكر فعليًا في الصوت (زمن حقيقي، مش رقم ثابت مفروض)
-function buildStaticClip(gridPath, W, H, durationSec, outPath) {
-  execSync(
-    `ffmpeg -y -loop 1 -framerate ${FPS} -i "${gridPath}" -vf "scale=${W}:${H},format=yuv420p" -t ${durationSec.toFixed(3)} -c:v libx264 -pix_fmt yuv420p "${outPath}"`,
-    { stdio: 'pipe' }
-  );
+// ✅ سلايد المقدمة — نفس الخلفية والشخصية بس من غير أيقونة عنصر (لسه محدش اتذكر)، لنفس
+// إحساس "استمرارية" الشخصية من أول لحظة في الفيديو
+async function buildIntroSlide(stickmanBuffer, W, H, outPath) {
+  const stickSize = Math.round(Math.min(W, H) * 0.32);
+  const stick = await sharp(stickmanBuffer).resize(stickSize, stickSize, { fit: 'contain' }).png().toBuffer();
+  await sharp({ create: { width: W, height: H, channels: 3, background: BG_COLOR } })
+    .composite([{ input: stick, left: Math.round(W / 2 - stickSize / 2), top: Math.round(H / 2 - stickSize / 2) }])
+    .jpeg({ quality: 92 })
+    .toFile(outPath);
 }
 
-// ✅ زوم-إن على خانة عنصر معيّن جوه صورة الجريد، من الشكل الكامل (z=1) لحد ما يملأ
-// الشاشة. بنستخدم "-framerate FPS -loop 1" + "d=1" (بدل الحيلة القديمة d=frameCount) —
-// النمط ده أدق وأقل قابلية لمشاكل الـ jitter في zoompan لما المصدر صورة واحدة ثابتة
-function buildZoomClip(gridPath, cellRect, W, H, durationSec, outPath) {
+// ✅ حركة واحدة موحدة لكل السلايدز (Ken Burns: زوم بطيء متمركز في نص الفريم) — نفس
+// المعادلة بالظبط لكل مشهد، ده اللي بيحل مشكلة "الانيميشن متخلف/مقطّع" الأصلية (كانت بسبب
+// القص الحاد لخانة من جريد مزدحم، مش زوم نضيف على سلايد واحدة بسيطة زي دلوقتي)
+function buildKenBurnsClip(slidePath, W, H, durationSec, outPath, zoomTo = 1.07) {
   const totalFrames = Math.max(2, Math.round(durationSec * FPS));
-  const cx = cellRect.x0 + cellRect.w / 2;
-  const cy = cellRect.y0 + cellRect.h / 2;
-  const zTarget = Math.max(W / cellRect.w, H / cellRect.h);
-  const zDelta = (zTarget - 1).toFixed(6);
-  const zExpr = `1+${zDelta}*on/${totalFrames - 1}`;
-  const xExpr = `min(max(${cx.toFixed(1)}-(iw/(${zExpr}))/2,0),iw-(iw/(${zExpr})))`;
-  const yExpr = `min(max(${cy.toFixed(1)}-(ih/(${zExpr}))/2,0),ih-(ih/(${zExpr})))`;
+  const zExpr = `1+${(zoomTo - 1).toFixed(4)}*on/${totalFrames - 1}`;
+  const xExpr = `(iw-(iw/(${zExpr})))/2`;
+  const yExpr = `(ih-(ih/(${zExpr})))/2`;
   const vf = `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=${W}x${H}:fps=${FPS}`;
   execSync(
-    `ffmpeg -y -loop 1 -framerate ${FPS} -i "${gridPath}" -vf "${vf}" -t ${durationSec.toFixed(3)} -c:v libx264 -pix_fmt yuv420p "${outPath}"`,
+    `ffmpeg -y -loop 1 -framerate ${FPS} -i "${slidePath}" -vf "${vf}" -t ${durationSec.toFixed(3)} -c:v libx264 -pix_fmt yuv420p "${outPath}"`,
     { stdio: 'pipe' }
   );
 }
@@ -111,13 +95,16 @@ function toAssTime(s) {
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
-// ✅ كابشنز على مستوى الكلمة الواحدة — سطر ASS منفصل لكل كلمة بتوقيتها الحقيقي من
-// Whisper (مش drawtext متعدد اللي بيبقى تقيل ومعقد التوقيت). الكلمة اللي جوه مدى عنصر
-// حالي (startIdx..endIdx) بلون ذهبي مميز، والباقي أبيض عادي. + اسم العنصر ثابت فوق طول
-// مدة عرضه (segStart..segEnd)
+// ✅ كابشنز على مستوى الكلمة الواحدة — سطر ASS منفصل لكل كلمة بتوقيتها الحقيقي من Whisper.
+// كبيرة وبألوان واضحة عمدًا (Outline تقيل، من غير صندوق شفاف خلفها) — إحساس "نص فيديو
+// شرح" مش شكل ترجمة/كابشن رفيعة. الكلمة اللي جوه مدى عنصر حالي بلون ذهبي مميز والباقي أبيض
 function buildCaptionsAssFile(words, segments, videoLanguage, ratio, fontName, W, H) {
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(normalizeLangBase(videoLanguage));
-  const marginV = (ratio === '9:16' || ratio === '1:1') ? 160 : 90;
+  const isVertical = ratio === '9:16' || ratio === '1:1';
+  const wordSize = isVertical ? 100 : 86;
+  const keywordSize = isVertical ? 112 : 96;
+  const labelSize = isVertical ? 70 : 60;
+  const marginV = isVertical ? 220 : 140;
 
   const header = `[Script Info]
 ScriptType: v4.00+
@@ -127,9 +114,9 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Word,${fontName},58,&H00FFFFFF,&H000000FF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,${marginV},1
-Style: Keyword,${fontName},62,&H0000D7FF,&H000000FF,&H00000000,&H88000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,${marginV},1
-Style: Label,${fontName},48,&H00111111,&H000000FF,&H00FFFFFF,&H00FFFFFF,-1,0,0,0,100,100,0,0,1,0,0,8,20,20,40,1
+Style: Word,${fontName},${wordSize},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,7,0,2,20,20,${marginV},1
+Style: Keyword,${fontName},${keywordSize},&H0000D7FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,7,0,2,20,20,${marginV},1
+Style: Label,${fontName},${labelSize},&H0000D7FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,8,20,20,40,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -155,8 +142,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   return header + events.join('\n');
 }
 
-// ✅ الأوركسترا الكاملة — من الـ job (فيه words_json + elements_json جاهزين) لحد رابط
-// الفيديو النهائي على R2
+// ✅ الأوركسترا الكاملة — من الـ job (فيه words_json + elements_json جاهزين، والعناصر
+// الحساسة دينيًا اتشالت خالص من المرحلة اللي قبل كده) لحد رابط الفيديو النهائي على R2
 export async function renderAudioVideoJob(job) {
   const ratio = RATIO_DIMS[job.ratio] ? job.ratio : '16:9';
   const [W, H] = RATIO_DIMS[ratio];
@@ -169,28 +156,37 @@ export async function renderAudioVideoJob(job) {
   fs.mkdirSync(workDir, { recursive: true });
 
   try {
-    const gridPath = path.join(workDir, 'grid.jpg');
-    const { cellRects } = await buildGridImage(elements, ratio, gridPath);
+    const stickmanBuffer = await generateStickmanCharacterPng(600);
 
     const audioDurationSec = words[words.length - 1].end + 0.3;
     const introDuration = Math.max(0, elements[0].start);
     const segments = elements.map((el, i) => {
       const segStart = el.start;
       const segEnd = i < elements.length - 1 ? elements[i + 1].start : audioDurationSec;
-      return { ...el, cellRect: cellRects[i], segStart, segEnd, segDuration: Math.max(0.5, segEnd - segStart) };
+      return { ...el, segStart, segEnd, segDuration: Math.max(0.5, segEnd - segStart) };
     });
 
     const clipPaths = [];
+
     if (introDuration >= 0.3) {
-      const introPath = path.join(workDir, 'clip_intro.mp4');
-      buildStaticClip(gridPath, W, H, introDuration, introPath);
-      clipPaths.push(introPath);
+      const introSlidePath = path.join(workDir, 'slide_intro.jpg');
+      await buildIntroSlide(stickmanBuffer, W, H, introSlidePath);
+      const introClipPath = path.join(workDir, 'clip_intro.mp4');
+      buildKenBurnsClip(introSlidePath, W, H, introDuration, introClipPath, 1.04);
+      clipPaths.push(introClipPath);
     }
-    segments.forEach((seg, i) => {
+
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const iconRes = await fetch(seg.imageUrl);
+      if (!iconRes.ok) throw new Error(`Could not download element image: ${seg.element}`);
+      const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
+      const slidePath = path.join(workDir, `slide_${i}.jpg`);
+      await buildElementSlide(iconBuffer, stickmanBuffer, W, H, slidePath);
       const clipPath = path.join(workDir, `clip_${i}.mp4`);
-      buildZoomClip(gridPath, seg.cellRect, W, H, seg.segDuration, clipPath);
+      buildKenBurnsClip(slidePath, W, H, seg.segDuration, clipPath);
       clipPaths.push(clipPath);
-    });
+    }
 
     const listPath = path.join(workDir, 'concat_list.txt');
     fs.writeFileSync(listPath, clipPaths.map(p => `file '${path.resolve(p)}'`).join('\n'));

@@ -72,6 +72,23 @@ export function tmpAudioPath(originalName) {
   return path.join('temp', `audiovideo_${Date.now()}.${ext}`);
 }
 
+// ⚠️ احترام رمزية: ممنوع أي تمثيل بصري لله سبحانه وتعالى أو لأي نبي من الأنبياء (وجه/جسد
+// إنسان). القائمة دي شبكة أمان في الكود نفسه — مش بس تعليمات للـ LLM — عشان الموضوع حساس
+// جدًا ومينفعش يعتمد بس على التزام النموذج. أي عنصر بيطابق النمط ده بيتشال تمامًا من قائمة
+// العناصر المرئية (مش بيتستبدل بصورة رمزية، بيتشال خالص — العنصر المجاور ليه في الكلام هو
+// اللي بيفضل ظاهر على الشاشة، بالظبط زي ما طلب العميل).
+// ✅ فحص substring بسيط، عمدًا مش regex بـ \b — \b بيعتمد على \w اللي مبيتعرفش على حروف
+// عربي أصلًا (يعني \b كانت هتفشل تعمل matching صح على نص عربي بالكامل). substring مباشر
+// أوسع شوية (ممكن يشيل عنصر مش لازم يتشال) لكن ده هو الاتجاه الآمن هنا — أي شك بيبقى حذف
+const SENSITIVE_ELEMENT_KEYWORDS = [
+  'الله', 'ﷲ', 'سبحانه وتعالى', 'رب العالمين', 'النبي', 'الرسول', 'رسول الله',
+  'محمد صلى', 'صلى الله عليه وسلم', 'نبي الله', 'سيدنا ',
+];
+function isSensitiveReligiousElement(name) {
+  const n = String(name || '');
+  return SENSITIVE_ELEMENT_KEYWORDS.some(kw => n.includes(kw));
+}
+
 // ✅ استخراج العناصر — بنديله الترانسكريبت كقائمة كلمات مرقّمة ("index:word") ونطلب منه
 // يرجّع أرقام الـ index (مش أرقام ثواني) لبداية/نهاية كل عنصر. ده أدق بكتير من ما نسيبه
 // يحاول "يخترع" أرقام ثواني عشرية بنفسه — إحنا اللي بنحسب start/end الحقيقي من الـ index
@@ -81,7 +98,11 @@ export async function extractVideoElements(words) {
   if (!words || words.length === 0) return [];
 
   const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
-  const system = `You analyze a spoken narration transcript, given as an indexed word list ("index:word", space-separated), and extract the ordered list of distinct visual "elements" (concrete objects/topics/subjects) the narration discusses, in the order first mentioned. For each element, give the word index where its discussion STARTS and the word index where it ENDS (inclusive) — reference ONLY the given indices, never invent timestamps or numbers not present in the list. Also give a short, concrete English image-generation prompt describing the element visually (no style words, just the concrete subject). Merge repeated/scattered mentions of the same subject into ONE element spanning its first mention to its last. Output ONLY valid JSON, no explanation, no markdown fences: [{"element":"short name, in the transcript's own language","start_idx":N,"end_idx":N,"image_prompt":"..."}]. Keep it to at most 12 elements even for a long transcript.`;
+  const system = `You analyze a spoken narration transcript, given as an indexed word list ("index:word", space-separated), and extract the ordered list of distinct visual "elements" (concrete, drawable objects/subjects) the narration discusses, in the order first mentioned. For each element, give the word index where its discussion STARTS and the word index where it ENDS (inclusive) — reference ONLY the given indices, never invent timestamps or numbers not present in the list. Also give a short, concrete English image-generation prompt describing the element visually (just the concrete subject, no style words — style is added later).
+
+CRITICAL religious-respect rule: NEVER create an element for Allah/God, or for any prophet (by name or by title like "the Prophet"/"Messenger of God" in any language) — these must never be visually depicted. When the narration mentions God or a prophet only as an attribution ("the Prophet said...", "God created...") while actually discussing a concrete subject (an animal, object, place, story detail), extract the concrete subject as the element and simply skip the God/prophet mention — do not give it its own element entry at all.
+
+Do not over-merge distinct concrete subjects just to keep the list short — create a new element every time the narration moves to a genuinely different concrete subject, even briefly. Only merge scattered mentions that refer to the exact same subject. Output ONLY valid JSON, no explanation, no markdown fences: [{"element":"short name, in the transcript's own language","start_idx":N,"end_idx":N,"image_prompt":"..."}].`;
   const user = `Indexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -90,7 +111,7 @@ export async function extractVideoElements(words) {
     body: JSON.stringify({
       model: ELEMENT_EXTRACTION_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      max_tokens: 2000, temperature: 0.3,
+      max_tokens: 3000, temperature: 0.3,
     }),
   });
   if (!res.ok) throw new Error(`Element extraction Groq error ${res.status}: ${(await res.text()).slice(0, 300)}`);
@@ -115,6 +136,8 @@ export async function extractVideoElements(words) {
       };
     })
     .filter(el => el.element && Number.isFinite(el.start) && Number.isFinite(el.end) && el.end > el.start)
+    // ✅ شبكة الأمان — بتشيل أي عنصر حساس حتى لو الـ LLM اتجاهل التعليمة فوق (نادر بس ممكن)
+    .filter(el => !isSensitiveReligiousElement(el.element))
     .sort((a, b) => a.startIdx - b.startIdx);
 
   return elements;
@@ -127,22 +150,81 @@ async function fetchPollinationsImage(prompt) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-// ✅ الصورة لازم تبقى بخلفية بيضاء نقية بالكامل — شرط أساسي. بدل السلسلة الأصلية
-// (Pexels/Unsplash + rembg لإزالة الخلفية)، استخدمنا Pollinations وحده بس مع prompt قوي
-// يفرض خلفية بيضاء استوديو مباشرة، لسببين: (1) rembg مكتبة بايثون، والباك اند هنا Node.js
-// بالكامل — إضافة runtime بايثون + موديل segmentation بس لخاصية واحدة تعقيد نشر حقيقي على
-// Railway، (2) حتى مع إزالة الخلفية، صور Stock الحقيقية نادرًا ما بتطلع خلفيتها #FFFFFF نقية
-// فعلًا (فيه حواف/ظلال متبقية) — توليد مباشر "isolated on pure white background, studio
-// product photography" بيديّنا نتيجة أنضف وأكثر اتساقًا لنفس الشرط بالظبط.
+// ✅ إزالة خلفية حقيقية (مش بس "استنى واعتمد على الـ prompt") — بنولّد الصورة على خلفية
+// لون واحد صريح (كروما كي أخضر) بدل الأبيض، وبعدين بنعمل flood-fill حقيقي من حدود الصورة
+// لأي بكسل قريب من نفس اللون ده ونشيله (شفافية). الأسلوب "2D flat illustration" اللي
+// طلبناه من الموديل بالذات مناسب جدًا للطريقة دي لأن خلفيته لون واحد مصمت (عكس الصور
+// الفوتوغرافية اللي فيها تدرّج/ظل بيصعّب أي إزالة خلفية بسيطة زي دي).
+// ⚠️ حد معروف: ممكن يفضل هامش رفيع جدًا ملوّن بلون الخلفية حوالين حواف الشكل (خاصية شائعة
+// في أي كروما كي بسيط من غير alpha matting متقدم) — تحسين محتمل لاحقًا لو ظهر واضح فعليًا.
+async function removeFlatBackground(buffer, tolerance = 45) {
+  const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  const idx = (x, y) => (y * width + x) * channels;
+
+  // نلتقط لون الخلفية الفعلي من زوايا الصورة (متوسطهم) بدل افتراض لون ثابت مسبقًا —
+  // أدق لو Pollinations رجّع درجة خضراء مختلفة شوية عن اللي طلبناها بالظبط
+  const corners = [[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]];
+  let kr = 0, kg = 0, kb = 0;
+  for (const [cx, cy] of corners) {
+    const p = idx(cx, cy);
+    kr += data[p]; kg += data[p + 1]; kb += data[p + 2];
+  }
+  kr /= 4; kg /= 4; kb /= 4;
+
+  const colorDist = (p) => {
+    const dr = data[p] - kr, dg = data[p + 1] - kg, db = data[p + 2] - kb;
+    return Math.sqrt(dr * dr + dg * dg + db * db);
+  };
+
+  const visited = new Uint8Array(width * height);
+  const stack = [];
+  for (let x = 0; x < width; x++) { stack.push(x); stack.push((height - 1) * width + x); }
+  for (let y = 0; y < height; y++) { stack.push(y * width); stack.push(y * width + width - 1); }
+
+  while (stack.length) {
+    const pos = stack.pop();
+    if (visited[pos]) continue;
+    visited[pos] = 1;
+    const p = pos * channels;
+    if (colorDist(p) > tolerance) continue; // مش لون الخلفية — نوقف الانتشار من هنا
+    data[p + 3] = 0; // شفاف
+    const x = pos % width, y = (pos - x) / width;
+    if (x > 0) stack.push(pos - 1);
+    if (x < width - 1) stack.push(pos + 1);
+    if (y > 0) stack.push(pos - width);
+    if (y < height - 1) stack.push(pos + width);
+  }
+
+  return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
+}
+
+// ✅ أسلوب رسم مسطّح (2D flat vector illustration) بدل الصور الفوتوغرافية الواقعية اللي
+// كانت طالعة قبل كده — أنسب لفيديو شرح متسق، وأنسب كمان لإزالة الخلفية الحقيقية فوق (خلفية
+// لون واحد مصمت بدل تدرّج/ظل زي الصور الفوتوغرافية)
 export async function generateElementImage(imagePrompt) {
-  const fullPrompt = `${imagePrompt}, isolated on pure white background, studio product photography, no shadows, no other objects, centered, high detail`;
+  const fullPrompt = `${imagePrompt}, simple flat 2D vector illustration, flat solid colors, clean bold outlines, minimalist icon style, no photorealism, no 3D render, no gradient, no texture, on a solid plain green background (#00FF00), single flat color background, no shadow, centered`;
   let buffer;
   try {
     buffer = await fetchPollinationsImage(fullPrompt);
   } catch (e) {
     // ✅ محاولة تانية بـ prompt معدّل شوية — مفيش تكلفة إضافية من إعادة المحاولة (زي ما طلب)
-    buffer = await fetchPollinationsImage(`${fullPrompt}, plain white backdrop, product catalog photo, minimalist`);
+    buffer = await fetchPollinationsImage(`${fullPrompt}, flat design, sticker style, vector art`);
   }
-  // نفلطح أي شفافية على خلفية بيضاء نقية ونوحد الصيغة PNG
-  return sharp(buffer).flatten({ background: '#ffffff' }).png().toBuffer();
+  return removeFlatBackground(buffer);
+}
+
+// ✅ شخصية الشارح الثابتة (Stickman) — بترسم برمجيًا (SVG → PNG) بدل توليدها بالذكاء
+// الاصطناعي، عشان تبقى **نفس الشخصية بالظبط** في كل مشهد طول الفيديو (لو ولّدناها بـ
+// Pollinations كل مرة هتطلع شكل مختلف كل مرة، وده بيكسر شرط "انيميشن/شخصية واحدة متسقة")
+export async function generateStickmanCharacterPng(size = 600) {
+  const svg = `<svg width="${size}" height="${size}" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="100" cy="42" r="26" fill="#2d2d3a"/>
+    <rect x="88" y="66" width="24" height="72" rx="12" fill="#7c6af7"/>
+    <line x1="100" y1="80" x2="150" y2="55" stroke="#2d2d3a" stroke-width="12" stroke-linecap="round"/>
+    <line x1="100" y1="80" x2="60" y2="112" stroke="#2d2d3a" stroke-width="12" stroke-linecap="round"/>
+    <line x1="94" y1="138" x2="80" y2="196" stroke="#2d2d3a" stroke-width="14" stroke-linecap="round"/>
+    <line x1="106" y1="138" x2="120" y2="196" stroke="#2d2d3a" stroke-width="14" stroke-linecap="round"/>
+  </svg>`;
+  return sharp(Buffer.from(svg)).resize(size, size).png().toBuffer();
 }
