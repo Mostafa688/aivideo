@@ -476,15 +476,14 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       badge:'NEW', free:false, cat:'premium', needsAccess: userPlan === 'free', comingSoon: false, adminOnly: false,
     },
     {
-      // ⚠️ تحت الصيانة — مقفول لكل المستخدمين إلا الأدمن (digidelight33@gmail.com).
-      // بيستخدم نفس نمط comingSoon/adminOnly المستخدم لموديل 5 و7، مع maintenance:true
-      // عشان الـ UI يعرض "Under Maintenance" بدل "Coming Soon".
+      // ✅ فُتح لكل المستخدمين — نفس نمط موديل 7: مقفول للفري بلان بس (needsAccess)، من غير
+      // maintenance/adminOnly خالص
       key:'model8', tag:'MODEL 8', name:'Budget Cinematic', icon:'💸',
       color:'#22c55e', glow:'rgba(34,197,94,0.25)',
-      desc:'AI video clips like Model 4, at a fraction of the cost. Choose 5s or 10s scenes, up to 10 minutes total, with 3 audio options.',
+      desc:'AI video clips like Model 4, at a fraction of the cost. Scenes from 1 to 20 seconds each, up to 10 minutes total, with 3 audio options.',
       tags:['4 Credits/sec','Up to 10 min','Flexible scenes','Cinematic audio'],
       badge:'CHEAPEST', free:false, cat:'premium', needsAccess: userPlan === 'free',
-      maintenance: true, adminOnly: true,
+      maintenance: false, adminOnly: false,
     },
     {
       key:'ai', tag:'MODEL 1', name:'AI Slices', icon:'🎨',
