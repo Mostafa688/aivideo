@@ -102,7 +102,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint } = req.body;
+    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
     // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual
@@ -213,6 +213,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       userRegion,
       memoryNote,
       userChannels,
+      hasClonedVoice,
     });
 
     // ── RESEARCH: لو الايجنت طلب تحقق حقيقي من معلومة (حدث تاريخي/حقيقي) قبل ما يرد،
@@ -234,14 +235,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
             hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded,
             videoDurationSec: videoDurationSec || null,
-            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice,
           });
         } else if (query) {
           rawReply = await agentChat({
             message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + 'You asked to research this but web search is not configured on this deployment — answer using your own knowledge and honestly tell the user you cannot verify it live right now.', userPlan, isAdminUser,
             hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
-            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice,
           });
         }
       } catch (e) {
@@ -269,7 +270,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + channelNote, userPlan, isAdminUser,
           hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
           hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
-          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels,
+          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice,
         });
       } catch (e) {
         console.warn('[Agent] CHANNEL_IDEA marker failed:', e.message);

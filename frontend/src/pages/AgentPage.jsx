@@ -212,6 +212,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [lastM12Video, setLastM12Video] = useState(null); // ✅ NEW: آخر فيديو موديل 1/2 كامل — لازم نحفظه عشان نقدر نعدّل مشهد فيه لاحقًا من غير إعادة توليد كامل
   const [lastM345Video, setLastM345Video] = useState(null); // ✅ NEW: نفس الفكرة لموديل 3/4/5 (مش map-video) — { model, ...editContext, videoUrl }
   const [subscribeModal, setSubscribeModal] = useState(null); // ✅ NEW: { type: 'eg'|'intl', ...pkg } — الايجنت بيفتحها لما العميل يحدد الباقة اللي عايزها
+  const [myClonedVoice, setMyClonedVoice] = useState(null);
+  const [savingVoice, setSavingVoice] = useState(false);
+  const voiceCloneInputRef = useRef();
   const voiceInputRef = useRef();
   const imageInputRef = useRef();
   const videoInputRef = useRef();
@@ -225,6 +228,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
   useEffect(() => {
     fetch('/api/agent/limits', { headers: tokenHeader() }).then(r => r.json()).then(setLimits).catch(() => {});
+    fetch('/api/voice-clone/mine', { headers: tokenHeader() }).then(r => r.json()).then(d => setMyClonedVoice(d.voice || null)).catch(() => {});
     return () => { clearInterval(pollRef.current); clearInterval(timerRef.current); };
   }, []);
 
@@ -242,6 +246,31 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (audio.duration > limits.MAX_AUDIO_SEC) { setError(t.voiceTooLong(limits.MAX_AUDIO_SEC / 60)); return; }
       setVoiceFile(file);
     };
+  };
+
+  // ✅ NEW: فويس كلون — عينة صوت دائمة تُحفظ مرة واحدة (مش مرتبطة برسالة شات)، بتتبعت
+  // مباشرة لـ /api/voice-clone من غير ما تعدي على مسار الشات العادي خالص
+  const handleVoiceCloneFile = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setError(''); setSavingVoice(true);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/voice-clone', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ audioBase64: base64 }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setMyClonedVoice(data.voice);
+      setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? '✅ اتحفظ صوتك! تقدر تطلب مني أي فيديو بصوتك بدل ما تختار صوت جاهز.' : "✅ Your voice is saved! You can now ask me for any video using your own cloned voice instead of a preset one." }]);
+    } catch (e) {
+      setError(lang === 'ar' ? `فشل حفظ الصوت: ${e.message}` : `Failed to save voice: ${e.message}`);
+    } finally {
+      setSavingVoice(false);
+    }
   };
 
   const handleImageFile = (e) => {
@@ -341,6 +370,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         hasStructuredScript: !!lastParsedStructuredScenes,
         hasAdsScenePlan: !!lastParsedAdsScenePlan,
         styleHint: selectedStyle || undefined,
+        hasClonedVoice: !!myClonedVoice,
       };
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
       // ✅ FIX: بتبعت مصفوفة صور دلوقتي (لحد 2) بدل صورة واحدة بس — كمان بيبعت imageBase64
@@ -673,13 +703,23 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       if (![5, 8].includes(ready.model) && lastUploadedVoiceUrl) {
         audioUrl = lastUploadedVoiceUrl;
       } else if (![5, 8].includes(ready.model) && scenes.length) {
-        // مفيش صوت مرفوع — نولّد صوت صناعي بنفس الطريقة اللي صفحة الموديل نفسها بتستخدمها بالظبط
-        try {
-          const fullText = scenes.map(s => s.text).join(' ');
-          const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: fullText, voice: voiceKey, videoLanguage: videoLang }) });
-          const voiceData = await voiceRes.json();
-          if (voiceRes.ok) audioUrl = voiceData.audioUrl;
-        } catch { /* لو فشل التعليق الصوتي، هيكمل الفيديو من غير صوت */ }
+        const fullText = scenes.map(s => s.text).join(' ');
+        // ✅ NEW: فويس كلون — لو العميل طلب صوته المحفوظ، نستخدم /api/voice-clone/narrate بدل الصوت الجاهز
+        if (ready.useMyVoice && myClonedVoice) {
+          try {
+            const cloneRes = await fetch('/api/voice-clone/narrate', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: fullText, videoLanguage: videoLang }) });
+            const cloneData = await cloneRes.json();
+            if (cloneRes.ok) audioUrl = cloneData.audioUrl;
+          } catch { /* لو فشل الاستنساخ، هيكمل بالصوت الجاهز تحت */ }
+        }
+        if (!audioUrl) {
+          // مفيش صوت مرفوع/مستنسخ — نولّد صوت صناعي بنفس الطريقة اللي صفحة الموديل نفسها بتستخدمها بالظبط
+          try {
+            const voiceRes = await fetch('/api/generate-voice', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: fullText, voice: voiceKey, videoLanguage: videoLang }) });
+            const voiceData = await voiceRes.json();
+            if (voiceRes.ok) audioUrl = voiceData.audioUrl;
+          } catch { /* لو فشل التعليق الصوتي، هيكمل الفيديو من غير صوت */ }
+        }
       }
       if (!activeJobRef.current) return;
 
@@ -709,7 +749,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         renderBody = { scenes, audioUrl, ratio: ready.ratio, captions: wantCaptions, music: wantMusic, videoLanguage: videoLang, duration: ready.duration, inputMode: 'idea', videoStyle: style, styleSuffix: styleSuffixFor(style) };
       } else if (ready.model === 8) {
         renderUrl = '/api/model8/render';
-        renderBody = { scenes, ratio: ready.ratio, sceneDurationSec: ready.sceneDurationSec || 5, audioMode: ready.audioMode || 'none', voiceKey: ready.voiceKey || 'male_wise', videoLanguage: videoLang, captions: wantCaptions, characterPhoto: lastUploadedPhotos[0] || undefined };
+        renderBody = { scenes, ratio: ready.ratio, sceneDurationSec: ready.sceneDurationSec || 5, audioMode: ready.audioMode || 'none', voiceKey: ready.voiceKey || 'male_wise', videoLanguage: videoLang, captions: wantCaptions, characterPhoto: lastUploadedPhotos[0] || undefined, useMyVoice: !!(ready.useMyVoice && myClonedVoice) };
       } else {
         renderUrl = '/api/model5/render';
         renderBody = { scenes, ratio: ready.ratio, duration: ready.duration, characterPhotos: lastUploadedPhotos, music: wantMusic };
@@ -984,6 +1024,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const AttachBar = () => (
     <div style={{ position: 'relative' }}>
       <input ref={voiceInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
+      <input ref={voiceCloneInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceCloneFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
       <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
       <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => { handleVideoFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
       <button onClick={() => setAttachMenuOpen(v => !v)} title={t.attachTitle}
@@ -1007,6 +1048,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <span style={{ fontSize: 16 }}>🎞️</span>{lang === 'ar' ? 'ارفع فيديو للتعديل' : 'Upload video to edit'}
+            </button>
+            <button onClick={() => { voiceCloneInputRef.current?.click(); }} disabled={savingVoice}
+              title={lang === 'ar' ? `احفظ صوتك مرة واحدة (موصى بيها 10 ثواني، أقصى دقيقة) واستخدمه في أي فيديو جاي` : `Save your voice once (10s recommended, max 1 minute) and use it in any future video`}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: savingVoice ? 'wait' : 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span style={{ fontSize: 16 }}>🗣️</span>{savingVoice ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (myClonedVoice ? (lang === 'ar' ? 'تحديث صوتي المحفوظ' : 'Update my saved voice') : (lang === 'ar' ? 'احفظ صوتي' : 'Save my voice'))}
             </button>
           </div>
         </>

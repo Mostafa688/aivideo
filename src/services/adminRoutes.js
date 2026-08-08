@@ -3,7 +3,7 @@ import pkg from 'pg';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, listRecentDailyRunsForAdmin } from './authService.js';
+import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, listRecentDailyRunsForAdmin, listClonedVoicesForAdmin } from './authService.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -195,6 +195,16 @@ router.get('/daily-runs', adminAuth, async (req, res) => {
   try {
     const runs = await listRecentDailyRunsForAdmin(100);
     res.json({ runs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── الأصوات المستنسخة المحفوظة لكل عميل ──────────────────────────────────────
+router.get('/voice-clones', adminAuth, async (req, res) => {
+  try {
+    const voices = await listClonedVoicesForAdmin();
+    res.json({ voices });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
