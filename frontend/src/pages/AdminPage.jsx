@@ -595,13 +595,27 @@ function VoicesTab({ s }) {
   );
 }
 
+const AUDIOVIDEO_STATUS_LABEL = {
+  transcribing: '⏳ بيتفرّغ...',
+  transcribed: '✅ اتفرّغ',
+  extracting: '⏳ بيستخرج العناصر ويولّد الصور...',
+  elements_ready: '✅ العناصر والصور جاهزة',
+  rendering: '⏳ بيبني الفيديو النهائي...',
+  done: '🎉 خلص',
+  failed: '❌ فشل',
+};
+
 function AudioVideoTab({ s }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [rendering, setRendering] = useState(false);
+  const [ratio, setRatio] = useState('16:9');
   const [error, setError] = useState('');
   const [activeJob, setActiveJob] = useState(null);
   const fileRef = React.useRef(null);
+  const pollRef = React.useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -613,6 +627,24 @@ function AudioVideoTab({ s }) {
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => () => clearInterval(pollRef.current), []);
+
+  const pollJob = (jobId) => {
+    clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/admin/audio-video/jobs/${jobId}`, { headers });
+        const d = await r.json();
+        if (!r.ok) return;
+        setActiveJob(d.job);
+        if (d.job.status === 'done' || d.job.status === 'failed') {
+          clearInterval(pollRef.current);
+          setRendering(false);
+          load();
+        }
+      } catch (e) { console.error(e); }
+    }, 4000);
+  };
 
   const handleUpload = async (e) => {
     const file = e.target.files[0];
@@ -638,16 +670,49 @@ function AudioVideoTab({ s }) {
     }
   };
 
+  const handleExtract = async () => {
+    if (!activeJob) return;
+    setError(''); setExtracting(true);
+    try {
+      const r = await fetch(`/api/admin/audio-video/jobs/${activeJob.id}/extract`, { method: 'POST', headers });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Extraction failed');
+      setActiveJob(d.job);
+      load();
+    } catch (e) {
+      setError('❌ ' + e.message);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleRender = async () => {
+    if (!activeJob) return;
+    setError(''); setRendering(true);
+    try {
+      const r = await fetch(`/api/admin/audio-video/jobs/${activeJob.id}/render`, {
+        method: 'POST', headers, body: JSON.stringify({ ratio }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Render trigger failed');
+      setActiveJob(d.job);
+      pollJob(activeJob.id);
+    } catch (e) {
+      setError('❌ ' + e.message);
+      setRendering(false);
+    }
+  };
+
   return (
     <div>
       <div style={s.topbar}>
-        <div style={s.title}>🎬 Audio → Video (المرحلة 1: التفريغ بالتوقيت)</div>
+        <div style={s.title}>🎬 Audio → Video (Voiceover → فيديو كامل تلقائيًا)</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
       </div>
 
       <div style={s.card}>
         <div style={{ fontSize: 12.5, color: '#9ca3af', marginBottom: 12 }}>
-          ارفع ملف صوتي (mp3/wav) — هيترفع لـ R2 ويتفرّغ بتوقيت دقيق على مستوى الكلمة الواحدة (Groq Whisper).
+          الخطوة 1: ارفع ملف صوتي (mp3/wav) — هيترفع لـ R2 ويتفرّغ بتوقيت دقيق على مستوى الكلمة الواحدة (Groq Whisper).
         </div>
         <input
           ref={fileRef}
@@ -663,10 +728,13 @@ function AudioVideoTab({ s }) {
 
       {activeJob && (
         <div style={s.card}>
-          <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 10 }}>✅ Job #{activeJob.id} — {activeJob.status}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: '#fff', fontSize: 13 }}>Job #{activeJob.id}</div>
+            <span style={{ fontSize: 12, color: '#a78bfa' }}>{AUDIOVIDEO_STATUS_LABEL[activeJob.status] || activeJob.status}</span>
+          </div>
           <audio controls src={activeJob.audio_url} style={{ width: '100%', height: 32, marginBottom: 12 }} />
           <div style={{ fontSize: 12.5, color: '#d1d5db', marginBottom: 12, lineHeight: 1.7 }}>{activeJob.transcript_text}</div>
-          <div style={{ maxHeight: 260, overflow: 'auto', border: '1px solid #1a1a2e', borderRadius: 8 }}>
+          <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid #1a1a2e', borderRadius: 8, marginBottom: 16 }}>
             <table style={s.table}>
               <thead><tr><th style={s.th}>#</th><th style={s.th}>Word</th><th style={s.th}>Start (s)</th><th style={s.th}>End (s)</th></tr></thead>
               <tbody>
@@ -681,6 +749,51 @@ function AudioVideoTab({ s }) {
               </tbody>
             </table>
           </div>
+
+          {/* الخطوة 2: استخراج العناصر + توليد الصور */}
+          {!activeJob.elements_json && (
+            <button style={{ ...s.btn(extracting ? '#1a1a2e' : '#7c6af7'), opacity: extracting ? 0.6 : 1 }} onClick={handleExtract} disabled={extracting}>
+              {extracting ? '⏳ بيستخرج العناصر ويولّد الصور... (ممكن ياخد دقيقة)' : '🧩 استخرج العناصر وولّد الصور'}
+            </button>
+          )}
+
+          {activeJob.elements_json && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>{activeJob.elements_json.length} عنصر اتستخرجوا:</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+                {activeJob.elements_json.map((el, i) => (
+                  <div key={i} style={{ width: 110, textAlign: 'center' }}>
+                    <img src={el.imageUrl} alt={el.element} style={{ width: 110, height: 110, objectFit: 'contain', background: '#fff', borderRadius: 8, border: '1px solid #2d2d4a' }} />
+                    <div style={{ fontSize: 11, color: '#d1d5db', marginTop: 4 }}>{el.element}</div>
+                    <div style={{ fontSize: 10, color: '#6b7280' }}>{Number(el.start).toFixed(1)}s–{Number(el.end).toFixed(1)}s</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* الخطوة 3+4: بناء الفيديو النهائي */}
+              {activeJob.status !== 'done' && (
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {['16:9', '9:16'].map(r => (
+                      <button key={r} style={{ ...s.btn(ratio === r ? '#7c6af7' : '#1a1a2e'), border: `1px solid ${ratio === r ? '#7c6af7' : '#2d2d4a'}`, fontSize: 12 }} onClick={() => setRatio(r)} disabled={rendering}>{r}</button>
+                    ))}
+                  </div>
+                  <button style={{ ...s.btn(rendering ? '#1a1a2e' : '#059669'), opacity: rendering ? 0.6 : 1 }} onClick={handleRender} disabled={rendering}>
+                    {rendering ? '⏳ بيبني الفيديو... (ممكن ياخد كام دقيقة)' : '🎬 ابني الفيديو النهائي'}
+                  </button>
+                </div>
+              )}
+
+              {activeJob.status === 'done' && activeJob.video_url && (
+                <div style={{ marginTop: 8 }}>
+                  <video controls src={activeJob.video_url} style={{ width: '100%', maxWidth: 480, borderRadius: 10, background: '#000' }} />
+                </div>
+              )}
+              {activeJob.status === 'failed' && activeJob.error && (
+                <div style={{ color: '#f87171', fontSize: 12.5, marginTop: 8 }}>❌ {activeJob.error}</div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -690,7 +803,7 @@ function AudioVideoTab({ s }) {
         {!loading && jobs.length === 0 && <div style={{ color: '#6b7280', fontSize: 12.5 }}>لا يوجد بعد.</div>}
         {jobs.map(j => (
           <div key={j.id} style={{ padding: '8px 0', borderBottom: '1px solid #1a1a2e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setActiveJob(j)}>
-            <span style={{ fontSize: 12.5, color: '#d1d5db' }}>#{j.id} · {j.status}</span>
+            <span style={{ fontSize: 12.5, color: '#d1d5db' }}>#{j.id} · {AUDIOVIDEO_STATUS_LABEL[j.status] || j.status}</span>
             <span style={{ fontSize: 11.5, color: '#6b7280' }}>{new Date(j.created_at).toLocaleString()}</span>
           </div>
         ))}
