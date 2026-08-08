@@ -246,6 +246,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
     {
       items: [
         { icon: '📖', label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
+        { icon: '📺', label: 'My Channels', sub: 'Daily auto-video via VidIQ', key: 'channels', accent: '#7c6af7', badge: 'BETA' },
         { icon: '💰', label: 'Earn with Erivion', sub: 'Affiliate — 20% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
         ...(model3Access ? [{ icon: '🖼️', label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
       ]

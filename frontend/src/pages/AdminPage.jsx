@@ -499,6 +499,64 @@ function NotificationsTab({ s }) {
   );
 }
 
+function ChannelsTab({ s }) {
+  const [channels, setChannels] = useState([]);
+  const [runs, setRuns] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [cr, rr] = await Promise.all([
+        fetch('/api/admin/channels', { headers }),
+        fetch('/api/admin/daily-runs', { headers }),
+      ]);
+      const cd = await cr.json(); setChannels(cd.channels || []);
+      const rd = await rr.json(); setRuns(rd.runs || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div style={s.topbar}>
+        <div style={s.title}>📺 Managed Channels (VidIQ)</div>
+        <button style={s.btn()} onClick={load}>🔄 Refresh</button>
+      </div>
+      {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
+
+      <div style={s.card}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>Connected channels ({channels.length})</div>
+        {channels.length === 0 && <div style={{ color: '#6b7280', fontSize: 12.5 }}>No channels connected yet.</div>}
+        {channels.map(c => (
+          <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #1a1a2e', fontSize: 12.5 }}>
+            <div>
+              <div style={{ fontWeight: 700, color: '#fff' }}>{c.label || c.channel_id} <span style={{ color: '#6b7280', fontWeight: 400 }}>— {c.user_email}</span></div>
+              <div style={{ color: '#6b7280', marginTop: 2 }}>{c.format_pref} · {c.uses_voice ? '🎙️ voice' : '🔇 no voice'} · model {c.model_pref} · last run: {c.last_run_at ? new Date(c.last_run_at).toLocaleString() : 'never'}</div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: c.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)', color: c.status === 'active' ? '#22c55e' : '#f59e0b' }}>{c.status}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={s.card}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>Recent daily runs ({runs.length})</div>
+        {runs.length === 0 && <div style={{ color: '#6b7280', fontSize: 12.5 }}>No runs yet.</div>}
+        {runs.map(r => (
+          <div key={r.id} style={{ padding: '9px 0', borderBottom: '1px solid #1a1a2e', fontSize: 12.5 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, color: '#fff' }}>{r.idea_title}</span>
+              <span style={{ fontWeight: 700, color: r.status === 'done' ? '#22c55e' : r.status === 'failed' ? '#ef4444' : r.status === 'rejected' ? '#6b7280' : '#f59e0b' }}>{r.status}</span>
+            </div>
+            <div style={{ color: '#6b7280', marginTop: 2 }}>{r.channel_label || ''} · {r.user_email} · {new Date(r.created_at).toLocaleString()}{r.error ? ` · ${r.error}` : ''}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RatingsTab({ s }) {
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1270,6 +1328,7 @@ export default function AdminPage() {
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'answers',    label: '📋 Answers'     },
     { key: 'community',  label: '🌍 Community'   },
+    { key: 'channels',   label: '📺 Channels'    },
   ];
 
   return (
@@ -1604,6 +1663,7 @@ export default function AdminPage() {
         {tab === 'affiliates' && <AffiliatesTab s={s} />}
         {tab === 'ratings' && <RatingsTab s={s} />}
         {tab === 'notifications' && <NotificationsTab s={s} />}
+        {tab === 'channels' && <ChannelsTab s={s} />}
 
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}

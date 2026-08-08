@@ -3,7 +3,7 @@ import pkg from 'pg';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations } from './authService.js';
+import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, listRecentDailyRunsForAdmin } from './authService.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -182,6 +182,24 @@ router.get('/videos', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ── القنوات المُدارة (VidIQ) وسجل الفيديوهات اليومية — مراقبة الأدمن ──────────────
+router.get('/channels', adminAuth, async (req, res) => {
+  try {
+    const channels = await listManagedChannelsForAdmin();
+    res.json({ channels });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.get('/daily-runs', adminAuth, async (req, res) => {
+  try {
+    const runs = await listRecentDailyRunsForAdmin(100);
+    res.json({ runs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // چات الايجنت مع العملاء (مشتركين أو لا) — آخر 24 ساعة فقط، بيتمسح تلقائيًا بعد كده (support مراجعة المشاكل بدون ما العميل يشتكي)
 router.get('/agent-chats', adminAuth, async (req, res) => {
   try {

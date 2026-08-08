@@ -18,6 +18,8 @@ import { renderModel4Video, renderModel5Video, renderModel5MapVideo, generateSti
 import { renderModel8Video } from './services/pvideoService.js';
 import mcpRouter from './services/mcpRoutes.js';
 import oauthRouter from './services/oauthRoutes.js';
+import channelRouter from './services/channelRoutes.js';
+import { runDailyChannelCheck } from './services/channelSchedulerService.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats } from './services/authService.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
@@ -217,6 +219,7 @@ app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
 app.use('/api/agent', agentRouter);
+app.use('/api/channels', channelRouter);
 app.use('/mcp', mcpRouter);
 app.use(oauthRouter); // ✅ NEW: على الروت مباشرة — مسارات /.well-known و/oauth/* لازم تكون هنا
 
@@ -3258,6 +3261,11 @@ app.get('*', (req, res) => {
 const server = app.listen(PORT, () => {
   console.log('AI Video Backend running on http://localhost:' + PORT);
 });
+
+// ── القناة اليومية: بنفحص كل ساعة مين مستحق (آخر تشغيل من أكتر من 20 ساعة) —
+// نفس أسلوب setInterval المستخدم في باقي مهام التنظيف الدورية في المشروع ──────────
+setTimeout(() => runDailyChannelCheck().catch(e => console.warn('[ChannelScheduler]', e.message)), 30_000);
+setInterval(() => runDailyChannelCheck().catch(e => console.warn('[ChannelScheduler]', e.message)), 60 * 60 * 1000);
 
 // ── Disable timeouts for long video renders ──────────────────────────────────
 // Railway/reverse proxies have their own idle timeouts — we set Node's to 0
