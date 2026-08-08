@@ -247,6 +247,18 @@ async function initDB() {
   } catch (e) {
     console.warn('[DB] pg_trgm extension unavailable, agent memory will use plain-text fallback matching:', e.message);
   }
+  // ── فويس كلون — عينة صوت العميل المحفوظة (Replicate/chatterbox-multilingual) — بيتسجل
+  // مرة واحدة، وبعدين أي فيديو بصوت مستنسخ بيستخدم نفس العينة دي من غير ما يترفع تاني ────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cloned_voices (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      label TEXT,
+      sample_url TEXT NOT NULL,
+      duration_sec NUMERIC,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
   // ── إدارة قناة العميل يوميًا: مفتاح VidIQ الشخصي بتاعه + تفضيلاته، وسجل كل يوم
   // اقترحنا فيه فكرة وانتظرنا موافقته قبل ما نعمل الفيديو ────────────────────────
   await pool.query(`
@@ -1438,6 +1450,35 @@ export async function listManagedChannelsForAdmin() {
   const { rows } = await pool.query(
     `SELECT mc.id, mc.label, mc.channel_id, mc.format_pref, mc.uses_voice, mc.model_pref, mc.status, mc.last_run_at, mc.created_at, u.email as user_email
      FROM managed_channels mc JOIN users u ON u.id = mc.user_id ORDER BY mc.id DESC LIMIT 200`
+  );
+  return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// فويس كلون — عينة صوت واحدة محفوظة لكل عميل (بيستبدلها لو رفع عينة جديدة)
+// ═══════════════════════════════════════════════════════════════════════════
+export async function saveClonedVoice(userId, { label, sampleUrl, durationSec }) {
+  await pool.query('DELETE FROM cloned_voices WHERE user_id = $1', [userId]); // عينة واحدة بس لكل عميل
+  const { rows } = await pool.query(
+    `INSERT INTO cloned_voices (user_id, label, sample_url, duration_sec) VALUES ($1, $2, $3, $4) RETURNING id, label, sample_url, duration_sec, created_at`,
+    [userId, label || null, sampleUrl, durationSec || null]
+  );
+  return rows[0];
+}
+
+export async function getClonedVoiceForUser(userId) {
+  const { rows } = await pool.query('SELECT * FROM cloned_voices WHERE user_id = $1 ORDER BY id DESC LIMIT 1', [userId]);
+  return rows[0] || null;
+}
+
+export async function deleteClonedVoice(userId) {
+  await pool.query('DELETE FROM cloned_voices WHERE user_id = $1', [userId]);
+}
+
+export async function listClonedVoicesForAdmin() {
+  const { rows } = await pool.query(
+    `SELECT cv.id, cv.label, cv.sample_url, cv.duration_sec, cv.created_at, u.email as user_email
+     FROM cloned_voices cv JOIN users u ON u.id = cv.user_id ORDER BY cv.id DESC LIMIT 200`
   );
   return rows;
 }

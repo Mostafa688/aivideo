@@ -20,8 +20,9 @@ import mcpRouter from './services/mcpRoutes.js';
 import oauthRouter from './services/oauthRoutes.js';
 import channelRouter from './services/channelRoutes.js';
 import { runDailyChannelCheck } from './services/channelSchedulerService.js';
+import voiceCloneRouter from './services/voiceCloneRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats } from './services/authService.js';
+import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
 // عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
 const MODEL3_STANDARD_SCENE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
@@ -218,6 +219,7 @@ app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
 app.use('/api/agent', agentRouter);
 app.use('/api/channels', channelRouter);
+app.use('/api/voice-clone', voiceCloneRouter);
 app.use('/mcp', mcpRouter);
 app.use(oauthRouter); // ✅ NEW: على الروت مباشرة — مسارات /.well-known و/oauth/* لازم تكون هنا
 
@@ -2315,10 +2317,18 @@ app.get('/api/model4/usage', authMiddleware, async (req, res) => {
 //  (نفس الجودة، مفيش داعي نكرره) — هنا بس الرندر الفعلي بموديل prunaai/p-video الأرخص
 // ══════════════════════════════════════════════════════════════════════════
 app.post('/api/model8/render', authMiddleware, renderLimiter, async (req, res) => {
-  const { scenes, ratio, sceneDurationSec, audioMode, voiceKey, videoLanguage, captions, characterPhoto, jobId } = req.body;
+  const { scenes, ratio, sceneDurationSec, audioMode, voiceKey, videoLanguage, captions, characterPhoto, useMyVoice, jobId } = req.body;
   const renderJobId = String(jobId || Date.now());
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const m8User = await getUserById(req.user.userId);
+  // ✅ NEW: فويس كلون — بنجيب رابط عينة الصوت المحفوظة من السيرفر نفسه (مش من كلام العميل)
+  // عشان محدش يقدر يبعت رابط صوت حد تاني كـ voiceCloneSampleUrl مباشرة
+  let m8VoiceCloneSampleUrl = null;
+  if (useMyVoice && audioMode === 'voiceover') {
+    const savedVoice = await getClonedVoiceForUser(req.user.userId).catch(() => null);
+    if (!savedVoice) return res.status(400).json({ error: 'no_saved_voice', message: 'No saved voice found — save one first via "My Voice".' });
+    m8VoiceCloneSampleUrl = savedVoice.sample_url;
+  }
   // ✅ فُتح لكل المستخدمين — نفس شرط موديل 4 بالظبط: لازم يكون شحن كريديت حقيقي مرة على الأقل
   // (plan!='free') قبل ما يقدر يستخدمه، زي باقي الموديلات المدفوعة كلها
   if ((m8User?.plan || 'free') === 'free') {
@@ -2358,6 +2368,7 @@ app.post('/api/model8/render', authMiddleware, renderLimiter, async (req, res) =
         scenes: scenesWithDuration, ratio: ratio || '16:9', audioMode: audioMode || 'none',
         voiceKey: voiceKey || 'male_wise', videoLanguage: videoLanguage || 'en', captions: captions !== false,
         characterPhoto: characterPhoto || null,
+        voiceCloneSampleUrl: m8VoiceCloneSampleUrl,
         jobId: renderJobId,
       });
       setRenderJob(renderJobId, {

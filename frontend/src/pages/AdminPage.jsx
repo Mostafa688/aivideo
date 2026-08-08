@@ -557,6 +557,44 @@ function ChannelsTab({ s }) {
   );
 }
 
+function VoicesTab({ s }) {
+  const [voices, setVoices] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/admin/voice-clones', { headers });
+      const d = await r.json();
+      setVoices(d.voices || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div style={s.topbar}>
+        <div style={s.title}>🗣️ Cloned Voices</div>
+        <button style={s.btn()} onClick={load}>🔄 Refresh</button>
+      </div>
+      {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
+      <div style={s.card}>
+        {voices.length === 0 && !loading && <div style={{ color: '#6b7280', fontSize: 12.5 }}>No saved voices yet.</div>}
+        {voices.map(v => (
+          <div key={v.id} style={{ padding: '10px 0', borderBottom: '1px solid #1a1a2e' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontWeight: 700, color: '#fff', fontSize: 13 }}>{v.user_email}</span>
+              <span style={{ color: '#6b7280', fontSize: 11.5 }}>{v.duration_sec ? `${Number(v.duration_sec).toFixed(1)}s` : ''} · {new Date(v.created_at).toLocaleString()}</span>
+            </div>
+            <audio controls src={v.sample_url} style={{ width: '100%', height: 32 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RatingsTab({ s }) {
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1329,6 +1367,7 @@ export default function AdminPage() {
     { key: 'answers',    label: '📋 Answers'     },
     { key: 'community',  label: '🌍 Community'   },
     { key: 'channels',   label: '📺 Channels'    },
+    { key: 'voices',     label: '🗣️ Voices'      },
   ];
 
   return (
@@ -1664,6 +1703,7 @@ export default function AdminPage() {
         {tab === 'ratings' && <RatingsTab s={s} />}
         {tab === 'notifications' && <NotificationsTab s={s} />}
         {tab === 'channels' && <ChannelsTab s={s} />}
+        {tab === 'voices' && <VoicesTab s={s} />}
 
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}

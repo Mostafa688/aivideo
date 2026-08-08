@@ -12,6 +12,7 @@ import { execSync } from 'child_process';
 import { addRealCaptionsForModel } from './renderService.js';
 import { generateAdsVoiceover } from './adsVideoService.js'; // ✅ FIX: كان بيستخدم generateVoiceover (Edge TTS) — المفروض google/gemini-3.1-flash-tts زي موديل الإعلانات بالظبط
 import { generateReferenceImage } from './seedanceService.js'; // ✅ NEW: نفس FLUX Kontext المستخدم في موديل 5 بالظبط — لرفرنس الشخصية
+import { cloneVoiceNarration } from './voiceCloneService.js'; // ✅ NEW: فويس كلون — لو العميل عنده عينة صوت محفوظة وعايز يستخدمها بدل Gemini
 
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 const OUTPUTS_DIR = 'outputs';
@@ -109,6 +110,7 @@ export async function renderModel8Video({
   videoLanguage = 'en',
   captions = false,
   characterPhoto = null, // ✅ NEW: صورة شخصية (base64 أو رابط) — بتتحول لمرجع FLUX لكل مشهد قبل التحريك
+  voiceCloneSampleUrl = null, // ✅ NEW: لو موجودة، بنستخدم صوت العميل المستنسخ (chatterbox) بدل Gemini
   jobId,
 }) {
   await mkdir(OUTPUTS_DIR, { recursive: true });
@@ -127,7 +129,9 @@ export async function renderModel8Video({
       const text = (scenes[i].text || '').trim();
       if (!text) { perSceneVoicePaths.push(null); continue; }
       try {
-        const audioPath = await generateAdsVoiceover(text, voiceKey || 'male_wise', videoLanguage, null, null, MODEL8_NARRATOR_PROMPT);
+        const audioPath = voiceCloneSampleUrl
+          ? await cloneVoiceNarration(voiceCloneSampleUrl, text, videoLanguage)
+          : await generateAdsVoiceover(text, voiceKey || 'male_wise', videoLanguage, null, null, MODEL8_NARRATOR_PROMPT);
         let dur = null;
         try {
           dur = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`, { encoding: 'utf8' }).trim());
@@ -302,7 +306,9 @@ export async function renderModel8Video({
       const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
       if (fullText.trim()) {
         const totalDur = sceneDurations.reduce((a, b) => a + b, 0) - (numClips - 1) * FADE_DUR;
-        const audioPath = await generateAdsVoiceover(fullText, voiceKey || 'male_wise', videoLanguage, totalDur, null, MODEL8_NARRATOR_PROMPT);
+        const audioPath = voiceCloneSampleUrl
+          ? await cloneVoiceNarration(voiceCloneSampleUrl, fullText, videoLanguage)
+          : await generateAdsVoiceover(fullText, voiceKey || 'male_wise', videoLanguage, totalDur, null, MODEL8_NARRATOR_PROMPT);
         if (audioPath) {
           audioPathForCaptions = audioPath;
           const withAudioPath = path.join(TEMP_DIR, `m8_voice_${id}.mp4`);
