@@ -45,8 +45,6 @@ const MODEL8_RATE_NONE = 4;      // بدون صوت: 4 كريديت/ثانية (
 const MODEL8_RATE_VOICEOVER = 5; // فويس أوفر Gemini: 5 كريديت/ثانية (5 ثواني = 25، 20 ثانية = 100)
 const MODEL8_RATE_CINEMATIC = 6; // صوت متولّد مع الفيديو نفسه: 6 كريديت/ثانية (5 ثواني = 30، 20 ثانية = 120)
 const MODEL8_EDIT_SCENE_COST = 15; // تعديل نصي لمشهد واحد (أرخص من موديل 4 لأن التوليد نفسه أرخص)
-// ⚠️ Model 8 تحت الصيانة (قرار إداري) — الوصول مقصور على إيميل الأدمن بس لحد ما تخلص الصيانة
-const MODEL8_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'digidelight33@gmail.com').toLowerCase();
 import adminRouter from './services/adminRoutes.js';
 import supportRouter from './services/supportRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
@@ -2321,9 +2319,10 @@ app.post('/api/model8/render', authMiddleware, renderLimiter, async (req, res) =
   const renderJobId = String(jobId || Date.now());
   if (!scenes?.length) return res.status(400).json({ error: 'scenes required' });
   const m8User = await getUserById(req.user.userId);
-  // ⚠️ Model 8 تحت الصيانة — مقفول لأي حد إلا إيميل الأدمن، بغض النظر عن الباقة/الكريديت.
-  if ((m8User?.email || '').toLowerCase() !== MODEL8_ADMIN_EMAIL) {
-    return res.status(503).json({ error: 'under_maintenance', message: 'Model 8 is temporarily under maintenance. Please check back soon.' });
+  // ✅ فُتح لكل المستخدمين — نفس شرط موديل 4 بالظبط: لازم يكون شحن كريديت حقيقي مرة على الأقل
+  // (plan!='free') قبل ما يقدر يستخدمه، زي باقي الموديلات المدفوعة كلها
+  if ((m8User?.plan || 'free') === 'free') {
+    return res.status(403).json({ error: 'no_access', message: 'Top up credits to unlock Model 8 (Budget Cinematic).', show_upgrade: true });
   }
   const perSceneSec = Math.min(20, Math.max(1, Math.round(sceneDurationSec || 5)));
   // ✅ FIX: كان بيفرض نفس المدة على كل المشاهد إجباريًا حتى لو خطة العميل حددت مدة مختلفة
@@ -2383,10 +2382,10 @@ app.post('/api/model8/edit-scene', authMiddleware, renderLimiter, async (req, re
   if (!Number.isInteger(idx) || idx < 0 || idx >= scenes.length) return res.status(400).json({ error: 'Invalid sceneIndex' });
   if (!newDescription?.trim()) return res.status(400).json({ error: 'newDescription required' });
   try {
-    // ⚠️ Model 8 تحت الصيانة — مقفول لأي حد إلا إيميل الأدمن
+    // ✅ فُتح لكل المستخدمين — نفس شرط موديل 4
     const m8EditUser = await getUserById(req.user.userId);
-    if ((m8EditUser?.email || '').toLowerCase() !== MODEL8_ADMIN_EMAIL) {
-      return res.status(503).json({ error: 'under_maintenance', message: 'Model 8 is temporarily under maintenance. Please check back soon.' });
+    if ((m8EditUser?.plan || 'free') === 'free') {
+      return res.status(403).json({ error: 'no_access', message: 'Top up credits to unlock Model 8 (Budget Cinematic).', show_upgrade: true });
     }
     const balance = await getCreditsBalance(req.user.userId);
     if (balance < MODEL8_EDIT_SCENE_COST) {
