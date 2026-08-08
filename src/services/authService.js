@@ -292,6 +292,23 @@ async function initDB() {
       decided_at TIMESTAMPTZ
     );
   `);
+  // ── مصنع فيديو الصوت الأدمن — رفع فويس أوفر جاهز، والموقع يفرّغه (Whisper) ويستخرج
+  // العناصر (LLM) ويجيب/يولّد صورهم ويعمل الفيديو النهائي. Pipeline بمراحل، كل مرحلة
+  // بتحدث نفس الـ job بحالتها الجديدة عشان الأدمن يشوف التقدم ─────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS audio_video_jobs (
+      id SERIAL PRIMARY KEY,
+      audio_url TEXT NOT NULL,
+      transcript_text TEXT,
+      words_json JSONB,
+      elements_json JSONB,
+      video_url TEXT,
+      ratio TEXT DEFAULT '16:9',
+      status TEXT DEFAULT 'transcribing',
+      error TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
   console.log('[DB] PostgreSQL tables ready');
 }
 
@@ -1602,4 +1619,44 @@ export async function sendBroadcastEmail(subject, html) {
     } catch (e) { console.warn('[Broadcast Email] chunk error:', e.message); }
   }
   return { total: emails.length, sent };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// مصنع فيديو الصوت (أدمن) — job واحد بيتحدث بمراحله (transcribing → extracting →
+// rendering → done/failed) عشان الأدمن يشوف التقدم من غير polling معقد
+// ═══════════════════════════════════════════════════════════════════════════
+export async function createAudioVideoJob({ audioUrl, transcriptText = null, wordsJson = null, ratio = '16:9', status = 'transcribing' }) {
+  const { rows } = await pool.query(
+    `INSERT INTO audio_video_jobs (audio_url, transcript_text, words_json, ratio, status)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [audioUrl, transcriptText, wordsJson ? JSON.stringify(wordsJson) : null, ratio, status]
+  );
+  return rows[0];
+}
+
+export async function updateAudioVideoJob(id, fields) {
+  const cols = [];
+  const vals = [];
+  let i = 1;
+  for (const [key, value] of Object.entries(fields)) {
+    const col = { transcriptText: 'transcript_text', wordsJson: 'words_json', elementsJson: 'elements_json', videoUrl: 'video_url', status: 'status', error: 'error', ratio: 'ratio' }[key];
+    if (!col) continue;
+    cols.push(`${col} = $${i}`);
+    vals.push((key === 'wordsJson' || key === 'elementsJson') && value != null ? JSON.stringify(value) : value);
+    i++;
+  }
+  if (!cols.length) return getAudioVideoJobById(id);
+  vals.push(id);
+  const { rows } = await pool.query(`UPDATE audio_video_jobs SET ${cols.join(', ')} WHERE id = $${i} RETURNING *`, vals);
+  return rows[0];
+}
+
+export async function getAudioVideoJobById(id) {
+  const { rows } = await pool.query('SELECT * FROM audio_video_jobs WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+export async function listAudioVideoJobsForAdmin(limit = 50) {
+  const { rows } = await pool.query('SELECT * FROM audio_video_jobs ORDER BY id DESC LIMIT $1', [limit]);
+  return rows;
 }
