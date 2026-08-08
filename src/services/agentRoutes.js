@@ -1,7 +1,39 @@
 import express from 'express';
 import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
-import { getUserById, logAgentConversation } from './authService.js';
+import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest } from './authService.js';
+import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
+
+// بيحوّل أي رسالة (عربي/إنجليزي/بأي تشكيل) لنص موحّد بسيط — عشان مقارنة "الشبه" بين
+// طلب جديد وطلبات قديمة محفوظة في ذاكرة الايجنت تبقى مستقرة ومش حساسة لعلامات ترقيم/تشكيل
+function normalizeFingerprint(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[ً-ْ]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ✅ NEW: بيدوّر على أي marker "ثانوي" (SET_REGION/SUBSCRIBE/ACCOUNT_ACTION) جوه نص الرد،
+// بيشيله من النص البشري ويرجّع الـ JSON بتاعه منفصل — الماركرز دي بتيجي في آخر الرد
+// (مش الأول زي READY/EDIT_SCENE) لأنها صغيرة وملهاش خطر قطع بسبب حد التوكنز
+function extractTrailingMarker(text, markerName) {
+  const idx = text.indexOf(markerName);
+  if (idx === -1) return { text, payload: null };
+  const before = text.slice(0, idx);
+  const after = text.slice(idx + markerName.length);
+  const { jsonText, restText } = extractJsonAndRest(after);
+  try {
+    return { text: (before + ' ' + restText).trim(), payload: JSON.parse(jsonText) };
+  } catch {
+    try {
+      return { text: (before + ' ' + restText).trim(), payload: JSON.parse(repairTruncatedJson(jsonText)) };
+    } catch {
+      return { text: before.trim(), payload: null };
+    }
+  }
+}
 
 const router = express.Router();
 
@@ -152,10 +184,22 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     const user = await getUserById(userId).catch(() => null);
     const userPlan = user?.plan || 'free';
+    const userRegion = user?.region || null;
     // ⚠️ Model 8 تحت الصيانة — بس الأدمن يقدر يستخدمه من خلال الايجنت كمان
     const isAdminUser = (user?.email || '').toLowerCase() === (process.env.ADMIN_EMAIL || 'digidelight33@gmail.com').toLowerCase();
 
-    const rawReply = await agentChat({
+    // ── ذاكرة الايجنت: هل فيه طلب مشابه اتفهم واتنفذ قبل كده؟ لو أيوه، بنمرر ملخصه
+    // كـ "MEMORY" للنموذج عشان يقدر "يحل ذاتيًا" بدل ما يعيد كل أسئلة التوضيح من الأول
+    const fingerprint = normalizeFingerprint(message);
+    let memoryNote = null;
+    if (fingerprint.length > 12) {
+      const similar = await findSimilarAgentRequest(userId, fingerprint).catch(() => null);
+      if (similar) {
+        memoryNote = `A similar past request ("${String(similar.raw_request || '').slice(0, 250)}") was previously understood and resolved with this configuration: ${JSON.stringify(similar.resolved_config).slice(0, 900)}.`;
+      }
+    }
+
+    let rawReply = await agentChat({
       message, history, attachmentNote, userPlan, isAdminUser,
       hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
@@ -163,7 +207,43 @@ router.post('/chat', authMiddleware, async (req, res) => {
       videoDurationSec: videoDurationSec || null,
       hasStructuredScript,
       hasAdsScenePlan,
+      userRegion,
+      memoryNote,
     });
+
+    // ── RESEARCH: لو الايجنت طلب تحقق حقيقي من معلومة (حدث تاريخي/حقيقي) قبل ما يرد،
+    // بنعمل بحث فعلي على الإنترنت (Tavily) وبعدين نديله النتائج في جولة ثانية عشان يكتب
+    // رد نهائي مبني عليها، مع مصادر حقيقية يقدر يديها للعميل لو سأل "مصادرك ايه؟" ──────
+    if (rawReply.includes('###RESEARCH###')) {
+      const afterMarker = rawReply.slice(rawReply.indexOf('###RESEARCH###') + '###RESEARCH###'.length);
+      const { jsonText } = extractJsonAndRest(afterMarker);
+      try {
+        const { query } = JSON.parse(jsonText);
+        if (query && WEB_SEARCH_AVAILABLE) {
+          const search = await searchWeb(query).catch(e => ({ error: e.message }));
+          const researchNote = search.error
+            ? `You asked to verify "${query}" but the web search failed (${search.error}) — proceed using your own knowledge, and be upfront with the user that live verification wasn't available this time if they ask about sources.`
+            : `Web search results for "${query}":\n${search.results.map(r => `- ${r.title} — ${r.url}\n  ${r.content}`).join('\n')}\n${search.answer ? `Summary: ${search.answer}\n` : ''}Use this to write an accurate reply/script now, and remember these exact source URLs in case the user asks where the information came from.`;
+          rawReply = await agentChat({
+            message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + researchNote, userPlan, isAdminUser,
+            hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
+            hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
+            hasVideo: !!videoAlreadyUploaded,
+            videoDurationSec: videoDurationSec || null,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote,
+          });
+        } else if (query) {
+          rawReply = await agentChat({
+            message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + 'You asked to research this but web search is not configured on this deployment — answer using your own knowledge and honestly tell the user you cannot verify it live right now.', userPlan, isAdminUser,
+            hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
+            hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote,
+          });
+        }
+      } catch (e) {
+        console.warn('[Agent] RESEARCH marker parse failed:', e.message);
+      }
+    }
 
     // ✅ NEW: لو الموديل رجع رد فاضي تمامًا (مثلاً استهلك كل التوكنز في تفكير مخفي غير ظاهر
     // ولم يترك أي نص فعلي) — منسيبش فقاعة فاضية تظهر للعميل وكأن الأجنت "مش بيرد"، نرجع
@@ -243,12 +323,42 @@ router.post('/chat', authMiddleware, async (req, res) => {
       reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو 🎬' : videoEdit ? 'تمام، هبدأ أعدّل الفيديو دلوقتي 🎬' : 'جاهز، هبدأ التوليد دلوقتي 🎬';
     }
 
+    // ── ماركرز ثانوية (مش بتوقف التوليد العادي فوق) — منطقة، اشتراك، أو إجراء على الحساب.
+    // بتيجي في آخر الرد البشري نفسه (مش بديلة له زي READY/EDIT_SCENE) ────────────────────
+    let showcaseVideos = false;
+    if (reply.includes('###SHOWCASE_VIDEOS###')) {
+      showcaseVideos = true;
+      reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
+    }
+    let setRegionPayload, subscribePayload, accountActionPayload;
+    ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
+    ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
+    ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
 
-    res.json({ reply, transcript, ready, editScene, videoEdit, uploadedVoiceUrl, structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult });
+    if (setRegionPayload?.region) {
+      setUserRegion(userId, setRegionPayload.region).catch(e => console.warn('[Agent] set_region failed:', e.message));
+    }
+    if (accountActionPayload?.action === 'set_region' && accountActionPayload.value) {
+      setUserRegion(userId, accountActionPayload.value).catch(e => console.warn('[Agent] account_action set_region failed:', e.message));
+    } else if (accountActionPayload?.action === 'update_name' && accountActionPayload.value) {
+      updateUserName(userId, accountActionPayload.value).catch(e => console.warn('[Agent] account_action update_name failed:', e.message));
+    }
+
+    res.json({
+      reply, transcript, ready, editScene, videoEdit, uploadedVoiceUrl,
+      structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
+      subscribe: subscribePayload, showcaseVideos,
+    });
 
     // ✅ NEW: تسجيل تبادل الشات (رسالة العميل + رد الايجنت) عشان يظهر للأدمن — مش بيوقف
     // الرد للعميل (بعد res.json بالفعل)، ومش بيفشل الطلب لو التسجيل فشل
     logAgentConversation(userId, user?.email || null, userPlan, message, reply).catch(() => {});
+
+    // ✅ NEW: لو الطلب ده اتفهم وخرج منه فيديو فعلي (READY)، نحفظه في ذاكرة الايجنت —
+    // عشان طلب مشابه لاحقًا (لنفس العميل أو عميل تاني) يتحل ذاتيًا من غير ما يعاد كل السؤال
+    if (ready && fingerprint.length > 12) {
+      rememberAgentRequest(userId, fingerprint, message, ready, ready.model).catch(() => {});
+    }
   } catch (e) {
     console.error('[Agent Chat]', e.message);
     res.status(500).json({ error: e.message });

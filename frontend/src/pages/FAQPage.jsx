@@ -3,55 +3,56 @@ import { useState } from 'react';
 // ─── Arabic Content ────────────────────────────────────────────────────────
 const faqs_ar = [
   {
-    category: '🎬 إنشاء الفيديو',
+    category: '🌟 عن Erivion',
     questions: [
-      { q: 'كيف أصنع فيديو؟', a: 'اكتب فكرتك أو نصك في صفحة الإنشاء، اختر المدة والصوت، ثم اضغط "Generate Script". بعدها راجع المشاهد واضغط "Render Video" لتوليد الفيديو النهائي.' },
-      { q: 'كام وقت يستغرق تصيير الفيديو؟', a: 'يعتمد على مدة الفيديو:\n• 30 ثانية – 1 دقيقة: حوالي 1–3 دقائق\n• 3–5 دقائق: حوالي 5–15 دقيقة\n• 8–10 دقائق: قد يصل إلى 30–60 دقيقة\nإذا ظهرت رسالة "Render taking longer than expected"، تحقق من صفحة "My Videos".' },
-      { q: 'الفيديو لم يظهر بعد انتهاء التصيير، أين هو؟', a: 'اذهب إلى "My Videos" من القائمة العلوية. قد يحتاج الفيديو بعض الوقت الإضافي لرفعه على السيرفر، خاصةً للفيديوهات الطويلة.' },
-      { q: 'هل يمكنني إنشاء أكثر من فيديو في نفس الوقت؟', a: 'حالياً السيرفر يعالج فيديو واحداً في كل مرة للحفاظ على الجودة. إذا كان هناك فيديو آخر يُعالج ستظهر لك رسالة "في الطابور" وسيبدأ فيديوك تلقائياً فور انتهاء الأول.' },
-      { q: 'ما الفرق بين النماذج (Model 3, 4, 5)؟', a: '• Model 3: يستخدم صور AI ثابتة – سريع وأقل تكلفة\n• Model 4: فيديو حقيقي بالذكاء الاصطناعي (Seedance v1) – جودة عالية\n• Model 5 (Cinematic): فيديو سينمائي بشخصيات ثابتة وصوت أصلي' },
+      { q: 'ايه هي Erivion وبتقدم ايه بالظبط؟', a: 'Erivion منصة بتحول أي فكرة، سكريبت، أو حتى صورة، لفيديو جاهز بالذكاء الاصطناعي — صوت، موسيقى، وكابشن، من غير ما تحتاج خبرة مونتاج. عندك أكتر من موديل توليد (فوتيج حقيقي، صور AI فنية، فيديو AI بحركة حقيقية، سينمائي بشخصيات ثابتة، إعلانات منتجات) وايجنت ذكي بيعمل كل ده معاك في شات واحد.' },
+      { q: 'هل فيه خطة مجانية؟', a: 'لأ، الخطة المجانية اتلغت. أي مستخدم جديد بيبدأ برصيد كريديت صفر، ولازم يشحن كريديت (مصري عن طريق InstaPay، أو دولي عن طريق Gumroad) قبل ما يقدر يعمل أي فيديو.' },
+      { q: 'إمتى أستخدم الايجنت وإمتى أستخدم صفحة موديل معينة مباشرة؟', a: 'الايجنت هو أسهل طريق لو مش عارف تختار موديل أو عايز تتكلم بشكل طبيعي عن فكرتك. صفحات الموديلات المباشرة (Model 3، 4، 5، 7...) مفيدة لو عندك تفاصيل دقيقة عايز تتحكم فيها بنفسك (زي عدد المشاهد بالظبط أو إعدادات متقدمة).' },
     ],
   },
   {
-    category: '💳 الكريديت والدفع',
+    category: '🤖 الايجنت الذكي',
     questions: [
-      { q: 'إزاي الكريديت شغال؟', a: 'رصيد كريديت واحد بيشتغل مع كل الموديلات (1، 2، 3، 4، 5، 7) — مفيش اشتراكات منفصلة لكل موديل. تشحن مرة واحدة والكريديت بيفضل في حسابك من غير ما ينتهي أو يتصفّر.' },
-      { q: 'اشتراك واحد بيفتح كل الموديلات؟', a: 'أيوه! رصيد الكريديت الواحد بيفتحلك كل الموديلات وميزات الأجنت مع بعض. مش محتاج تدفع لكل موديل لوحده زي زمان.' },
-      { q: 'الكريديت بيخلص إمتى أو بيتجدد؟', a: 'الكريديت مبيخلصش لوحده ولا بيتجدد أسبوعيًا — إنت بتشحنه مرة واحدة وبيفضل معاك لحد ما تستخدمه، ساعة ما تحتاج تزود ترجع تشحن تاني.' },
-      { q: 'إزاي أدفع؟', a: 'للمصريين: عن طريق InstaPay بسعر 0.7 جنيه للكريديت، وترسل إيصال الدفع للمراجعة. للدفع الدولي: عبر Gumroad بالكارت مباشرة، والتفعيل بيتم تلقائي بعد الدفع.' },
-      { q: 'هل فيه باقة مجانية؟', a: 'أيوه، الخطة المجانية بتديك كريديت محدود تقدر تجرب بيه Model 2 (Real Footage) بس. باقي الموديلات محتاجة رصيد كريديت مدفوع.' },
+      { q: 'الايجنت بيفتكر طلباتي القديمة؟', a: 'أيوه — لو طلبت فيديو بطريقة أو خطة غير مألوفة (سكريبت بصيغة خاصة مثلاً)، الايجنت بيحفظ إزاي فهمها ونفذها. لو بعتّله نفس الخطة أو حاجة قريبة منها تاني، بيتعرف عليها ويقدر يتحرك أسرع من غير ما يعيد كل أسئلة التوضيح من الأول.' },
+      { q: 'أقدر أطلب فيديو عن حدث حقيقي أو تاريخي؟', a: 'أيوه، وده بالظبط اللي الايجنت اتصمم عشانه — لما تطلب فيديو عن حدث حقيقي أو تاريخي، بيقدر يتأكد من المعلومات ببحث فعلي على الإنترنت قبل ما يكتب السكريبت، ولو سألته "مصادرك ايه؟" بيديك الروابط الحقيقية اللي استخدمها.' },
+      { q: 'الايجنت يقدر يعدّل في بيانات حسابي؟', a: 'في حدود بسيطة وآمنة فقط، وبعد موافقتك الواضحة في المحادثة — زي تغيير اسمك المعروض، أو تحديد إن حسابك مصري ولا دولي. أي حاجة تخص الرصيد أو الخطة بتتم فقط عن طريق دفع حقيقي أو مراجعة الأدمن، مش من خلال الشات مباشرة.' },
+      { q: 'أقدر أشترك من خلال الشات مباشرة؟', a: 'أيوه، قوله "عايز أشترك" وهو هيسألك (لو مش عارف) انت مصري ولا برة مصر، يوريك الباقات المناسبة، وبعدين يفتحلك شاشة الدفع هنا في نفس الشات (InstaPay للمصريين، Gumroad للدوليين) — من غير ما تتنقل لصفحة تانية.' },
     ],
   },
   {
-    category: '🤖 الأجنت الذكي',
+    category: '💳 الاشتراك والدفع',
     questions: [
-      { q: 'إيه هو الأجنت؟', a: 'مساعد ذكاء اصطناعي جوه الموقع بتكلمه زي أي شات عادي — تقوله فكرتك أو تطلب منه فيديو معين، وهو بيسألك التفاصيل الناقصة ويجهزلك الفيديو من غير ما تتنقل بين صفحات الموديلات المختلفة.' },
-      { q: 'الأجنت بيعمل موديل واحد بس؟', a: 'لأ، بيقدر يعمل الموديلات 1، 2، 3، 4، 5، و7 (Ads) كلهم من نفس الشات. بس موديل 6 (Atlas Map) لسه محتاج تعمله من صفحته المباشرة.' },
-      { q: 'أقدر أطلب من الأجنت فيديو Stickman؟', a: 'أيوه، تقدر تطلب فيديو ستيك مان بأي فكرة أو مكان (غابة، صحراء، حتى في حرب لو حابب)، والأجنت هيوجهك للموديل المناسب (3، 4، أو 5) ويهتم بتفاصيل الوش والحركة والقصة المتصلة تلقائيًا.' },
-      { q: 'أقدر أرفع صورة وأخلي الأجنت يحركها من غير ما أوصف حاجة؟', a: 'أيوه، موديل 5 فيه وضع "Image to Video" — بترفع صورة بس والأجنت (أو صفحة الموديل مباشرة) بيحوّلها فيديو متحرك على طول، من غير ما تكتب أي وصف. تقدر كمان ترفع صورة مشهد وتقوله "اعملي نفس المشهد ده" وهو هيحلل الصورة ويعمل الفيديو منها.' },
+      { q: 'إزاي الكريديت شغال؟', a: 'رصيد كريديت واحد بيشتغل مع كل الموديلات — تشحن مرة واحدة والكريديت بيفضل في حسابك من غير ما ينتهي أو يتصفّر أسبوعيًا.' },
+      { q: 'إزاي أدفع لو أنا في مصر؟', a: 'تحدد عدد الكريديت اللي عايزه، تحوّل المبلغ عن طريق InstaPay على رقم الموقع، ترفع صورة إيصال التحويل، وتدوس "تم الدفع" — طلبك بيتراجع من فريق Erivion خلال 24 ساعة ويتفعّل الكريديت.' },
+      { q: 'إزاي أدفع لو أنا برة مصر؟', a: 'تختار الباقة المناسبة وتدفع مباشرة بالكارت عن طريق Gumroad، وبعدها تدوس "I\'ve Paid" — التفعيل بيتم بعد المراجعة.' },
+      { q: 'هل فيه استرجاع فلوس؟', a: 'للمصريين (InstaPay): تقدر تطلب استرجاع خلال 4 ساعات فقط من وقت الموافقة على الدفع. بعد كده مفيش استرجاع إلا في حالة عطل تقني مؤكد من عندنا — عدم الرضا عن ستايل الفيديو مش سبب كافي للاسترجاع. التفاصيل الكاملة في صفحة "Refund Policy".' },
     ],
   },
   {
-    category: '🔊 الصوت والترجمة',
+    category: '🎬 الموديلات والفيديوهات',
     questions: [
-      { q: 'كيف أختار صوت الفيديو؟', a: 'في صفحة الإنشاء، قسم "Voice"، اختر الصوت المناسب من القائمة. يمكنك الفلترة بين الأصوات الذكورية والأنثوية والعربية والإنجليزية.' },
-      { q: 'هل تدعم المنصة اللغة العربية؟', a: 'نعم، تدعم المنصة اللغة العربية بالكامل بما في ذلك أصوات عربية متعددة وكابشن من اليمين لليسار.' },
-      { q: 'يمكنني استخدام صوتي الخاص؟', a: 'نعم، اختر "Voice Upload" في صفحة الإنشاء وارفع ملف صوتك MP3 أو WAV.' },
+      { q: 'ايه الفرق بين الموديلات؟', a: '• Model 1/2: صور أو فوتيج حقيقي — أرخص خيار\n• Model 3: صور AI فنية\n• Model 4: فيديو AI بحركة حقيقية\n• Model 5 (Cinematic): شخصية ثابتة عبر كل المشاهد + وضع Map Video للفيديوهات التاريخية/الجغرافية\n• Model 7: إعلانات منتجات من صورة واحدة' },
+      { q: 'كام وقت يستغرق تصيير الفيديو؟', a: 'من دقيقة لحد شوية دقايق حسب مدة الفيديو والموديل. لو اتأخر، هتلاقيه في صفحة "My Videos" حتى لو الشاشة قفلت.' },
+      { q: 'أقدر أرفع سكريبت أو صوت جاهز؟', a: 'أيوه — تقدر تلصق سكريبت كامل (حتى مقسّم مشاهد) أو ترفع تسجيل صوتي وهيتحول لنارريشن حقيقي في الفيديو.' },
+    ],
+  },
+  {
+    category: '🎓 الكورسات',
+    questions: [
+      { q: 'فيه كورسات لتعلم صناعة الفيديوهات على Erivion؟', a: 'أيوه، فيه قسم "Courses" مخصص لده في القائمة العلوية بالموقع — هيحتوي دروس على إزاي تستخدم كل موديل وتعمل فيديوهات ناجحة. المحتوى بيتحدث تباعًا.' },
     ],
   },
   {
     category: '⚙️ مشاكل تقنية',
     questions: [
-      { q: 'الموقع بطيء أو لا يستجيب', a: 'قد يكون هناك فيديو يُعالج حالياً على السيرفر. انتظر بضع دقائق وأعد تحميل الصفحة. إذا استمرت المشكلة تواصل مع الدعم.' },
-      { q: 'الفيديو توقف أثناء التصيير وظهرت رسالة خطأ', a: 'تحقق أولاً من "My Videos" — قد يكون الفيديو اكتمل. إذا لم تجده انتظر 10 دقائق. في حالة الفشل الكامل تواصل مع الدعم وسنعيد الكريديت.' },
-      { q: 'لا أستطيع تسجيل الدخول', a: 'تأكد من تفعيل بريدك الإلكتروني (تحقق من Spam). إذا نسيت كلمة المرور استخدم "Forgot Password". للمشاكل الأخرى تواصل مع الدعم.' },
-      { q: 'الكريديت لا يُحسب بشكل صحيح', a: 'جدد الصفحة أولاً. إذا استمرت المشكلة تواصل مع الدعم مع ذكر البريد الإلكتروني والمشكلة بالتفصيل.' },
+      { q: 'الفيديو توقف أثناء التصيير وظهرت رسالة خطأ', a: 'تحقق أولاً من "My Videos" — قد يكون الفيديو اكتمل. في حالة الفشل الكامل تواصل مع الدعم وسنعيد الكريديت.' },
+      { q: 'لا أستطيع تسجيل الدخول', a: 'تأكد من تفعيل بريدك الإلكتروني (تحقق من Spam). للمشاكل الأخرى تواصل مع الدعم.' },
     ],
   },
   {
     category: '🤝 الشراكة والعمولة',
     questions: [
-      { q: 'ما هو برنامج الشراكة؟', a: 'تقدر تكسب عمولة 20% على كل شحنة كريديت تتم عن طريق رابط الإحالة الخاص بك — سواء باقة ثابتة أو شحن InstaPay، بتترحل مباشرة لـ InstaPay بتاعك.' },
+      { q: 'ما هو برنامج الشراكة؟', a: 'تقدر تكسب عمولة 20% على كل شحنة كريديت تتم عن طريق رابط الإحالة الخاص بك، بتترحل مباشرة لـ InstaPay بتاعك.' },
       { q: 'كيف أحصل على رابط الإحالة؟', a: 'اذهب إلى "Earn with Erivion" من القائمة الجانبية. رابطك الخاص موجود هناك ويمكنك نسخه ومشاركته مباشرةً.' },
     ],
   },
@@ -60,55 +61,56 @@ const faqs_ar = [
 // ─── English Content ───────────────────────────────────────────────────────
 const faqs_en = [
   {
-    category: '🎬 Creating Videos',
+    category: '🌟 About Erivion',
     questions: [
-      { q: 'How do I create a video?', a: 'Type your idea or script on the creation page, choose the duration and voice, then click "Generate Script". Review the scenes and click "Render Video" to generate your final video.' },
-      { q: 'How long does rendering take?', a: 'It depends on video length:\n• 30s – 1min: about 1–3 minutes\n• 3–5min: about 5–15 minutes\n• 8–10min: up to 30–60 minutes\nIf you see "Render taking longer than expected", check "My Videos" — your video will be there.' },
-      { q: 'My video didn\'t appear after rendering, where is it?', a: 'Go to "My Videos" from the top menu. Videos may need a little extra time to upload to the server, especially longer ones.' },
-      { q: 'Can I create multiple videos at the same time?', a: 'Currently the server processes one video at a time to maintain quality. If another video is being processed, you\'ll see a "queue" message and your video will start automatically once the first one finishes.' },
-      { q: 'What\'s the difference between models (Model 3, 4, 5)?', a: '• Model 3: Uses static AI images — fast and cost-efficient\n• Model 4: Real AI-generated video (Seedance v1 Pro) — high quality\n• Model 5 (Cinematic): Cinematic video with consistent characters and original audio' },
-    ],
-  },
-  {
-    category: '💳 Credits & Payment',
-    questions: [
-      { q: 'How do credits work?', a: 'One credit balance works across every model (1, 2, 3, 4, 5, 7) — no separate subscription per model. You top up once and the balance stays in your account until you use it, no expiry, no reset.' },
-      { q: 'Does one subscription unlock all models?', a: 'Yes! A single credit balance unlocks every model and all Agent features together. You no longer need to pay separately for each model.' },
-      { q: 'When do credits expire or renew?', a: "Credits don't expire and don't renew weekly — you top up once and the balance stays until you use it. Top up again anytime you need more." },
-      { q: 'How do I pay?', a: 'Egyptians: via InstaPay at 0.7 EGP per credit, then send your receipt for approval. International: via Gumroad with your card — activation is automatic after payment.' },
-      { q: 'Is there a free plan?', a: 'Yes, the free plan gives you limited credits to try Model 2 (Real Footage) only. Other models require a paid credit balance.' },
+      { q: 'What is Erivion and what does it actually offer?', a: 'Erivion turns any idea, script, or even a single photo into a finished AI-generated video — voiceover, music, and captions included, no editing experience required. You get several generation models (real stock footage, artistic AI images, real AI motion video, cinematic with consistent characters, product ads) plus a smart Agent that can do all of it for you in one chat.' },
+      { q: 'Is there a free plan?', a: "No, the free plan has been discontinued. Every new account starts at 0 credits and needs to top up (Egypt via InstaPay, international via Gumroad) before generating any video." },
+      { q: 'When should I use the Agent vs. a specific model page directly?', a: "The Agent is the easiest path if you're unsure which model fits or just want to describe your idea naturally. The direct model pages (Model 3, 4, 5, 7...) are better when you want fine control over specific settings yourself." },
     ],
   },
   {
     category: '🤖 AI Agent',
     questions: [
-      { q: 'What is the Agent?', a: 'An AI assistant built into the site that you chat with like any normal conversation — tell it your idea or request a specific video, and it asks for any missing details and builds the video for you without navigating between different model pages.' },
-      { q: 'Can the Agent only make one model?', a: 'No, it can create Models 1, 2, 3, 4, 5, and 7 (Ads) all from the same chat. Model 6 (Atlas Map) still needs to be made from its own page directly.' },
-      { q: 'Can I ask the Agent for a Stickman video?', a: 'Yes — you can request a stickman video with any idea or setting (a forest, a desert, even a war scene if you want), and the Agent will route you to the right model (3, 4, or 5), handling facial detail, motion, and a continuous storyline automatically.' },
-      { q: 'Can I upload a photo and have the Agent animate it without describing anything?', a: 'Yes — Model 5 has an "Image to Video" mode: upload one photo and it comes to life directly (via the Agent or the model page), no description needed. You can also upload a photo of a scene and say "make the same scene" and it\'ll analyze the photo and build the video from it.' },
+      { q: 'Does the Agent remember my past requests?', a: "Yes — if you request a video in an unusual way (a custom script format, a specific structured plan), the Agent remembers how it understood and handled it. If you or another customer send a similar request later, it recognizes the pattern and can move faster instead of re-asking every clarifying question from scratch." },
+      { q: 'Can I ask for a video about a real historical or current event?', a: 'Yes — that\'s exactly what the Agent is built to handle. For real historical/current-event videos, it can verify facts with an actual web search before writing the script, and if you ask "where did you get this from?", it will give you the real source links it used.' },
+      { q: 'Can the Agent make changes to my account?', a: "Only within safe, limited bounds, and only after you clearly agree in the conversation — like updating your display name or setting whether you're an Egypt or international customer. Anything involving your credit balance or plan only ever happens through a real payment or admin review, never directly through chat." },
+      { q: 'Can I subscribe directly through the chat?', a: 'Yes — just tell it "I want to subscribe" and it will ask (if it doesn\'t already know) whether you\'re in Egypt or international, show you the right packages, and open the actual payment screen right there in the chat (InstaPay for Egypt, Gumroad for international) — no need to navigate anywhere else.' },
     ],
   },
   {
-    category: '🔊 Voice & Captions',
+    category: '💳 Subscription & Payment',
     questions: [
-      { q: 'How do I choose the video voice?', a: 'On the creation page, go to the "Voice" section and choose from the list. You can filter between male, female, Arabic, and English voices.' },
-      { q: 'Does the platform support Arabic?', a: 'Yes, Erivion fully supports Arabic including multiple Arabic voices and right-to-left captions.' },
-      { q: 'Can I use my own voice?', a: 'Yes, select "Voice Upload" on the creation page and upload your MP3 or WAV file.' },
+      { q: 'How do credits work?', a: 'One credit balance works across every model — you top up once and the balance stays in your account, no weekly expiry or reset.' },
+      { q: 'How do I pay if I\'m in Egypt?', a: 'Pick how many credits you want, transfer the amount via InstaPay to the site\'s number, upload a screenshot of the receipt, and tap "I\'ve Paid" — the Erivion team reviews it within 24 hours and activates your credits.' },
+      { q: 'How do I pay if I\'m outside Egypt?', a: 'Choose the package that fits, pay directly by card via Gumroad, then click "I\'ve Paid" — activation follows after review.' },
+      { q: 'Is there a refund?', a: "Egypt (InstaPay): you can request a refund only within 4 hours of the payment being approved. After that, no refunds except for a confirmed technical failure on our side — not liking the video's style isn't a valid reason. Full details are on the Refund Policy page." },
+    ],
+  },
+  {
+    category: '🎬 Models & Videos',
+    questions: [
+      { q: "What's the difference between the models?", a: '• Model 1/2: images or real stock footage — the cheapest option\n• Model 3: artistic AI images\n• Model 4: real AI motion video\n• Model 5 (Cinematic): consistent character across every scene + Map Video mode for historical/geographic videos\n• Model 7: product ads from a single photo' },
+      { q: 'How long does rendering take?', a: "From under a minute to a few minutes depending on video length and model. If it's taking a while, check the \"My Videos\" page — it'll be there even if you closed the screen." },
+      { q: 'Can I upload a ready-made script or voice recording?', a: "Yes — you can paste a full script (even scene-by-scene) or upload a voice recording and it becomes the video's actual narration." },
+    ],
+  },
+  {
+    category: '🎓 Courses',
+    questions: [
+      { q: 'Are there courses to learn video creation on Erivion?', a: 'Yes, there\'s a dedicated "Courses" section in the top navigation — it covers how to use each model and make videos that perform well. Content is being added over time.' },
     ],
   },
   {
     category: '⚙️ Technical Issues',
     questions: [
-      { q: 'The site is slow or unresponsive', a: 'There may be a video being processed on the server. Wait a few minutes and reload the page. If the problem persists, contact support.' },
-      { q: 'My video stopped rendering and showed an error', a: 'First check "My Videos" — it may have completed. If not found, wait 10 minutes and check again. In case of complete failure, contact support and we\'ll restore your credits.' },
-      { q: 'I can\'t log in', a: 'Make sure your email is verified (check Spam). If you forgot your password, use "Forgot Password". For other issues, contact support.' },
-      { q: 'My credits aren\'t calculating correctly', a: 'Refresh the page first. If the problem continues, contact support with your email and a detailed description of the issue.' },
+      { q: 'My video stopped rendering and showed an error', a: "First check \"My Videos\" — it may have completed. In case of complete failure, contact support and we'll restore your credits." },
+      { q: "I can't log in", a: 'Make sure your email is verified (check Spam). For other issues, contact support.' },
     ],
   },
   {
     category: '🤝 Affiliate Program',
     questions: [
-      { q: 'What is the affiliate program?', a: 'You earn a 20% commission on every credit pack purchase that comes through your referral link — whether a fixed pack or an InstaPay top-up — paid straight to your InstaPay.' },
+      { q: 'What is the affiliate program?', a: 'You earn a 20% commission on every credit purchase that comes through your referral link, paid straight to your InstaPay.' },
       { q: 'How do I get my referral link?', a: 'Go to "Earn with Erivion" from the side menu. Your personal link is there and you can copy and share it directly.' },
     ],
   },

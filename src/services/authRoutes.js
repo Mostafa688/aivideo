@@ -15,7 +15,7 @@ import {
   getModel5Usage, MODEL5_PLANS, getModel5Credits, addModel5Credits,
   resetModel3Usage, resetModel4Usage, resetModel5Usage,
   EGP_PER_CREDIT, CREDITS_PACKAGES, getCreditsBalance, approveCreditsPayment,
-  generateApiKey, listApiKeys, revokeApiKey,
+  generateApiKey, listApiKeys, revokeApiKey, setUserRegion,
 } from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
@@ -712,7 +712,33 @@ router.post('/gumroad-ping', async (req, res) => {
   }
 });
 
-router.post('/referral', authMiddleware, async (req, res) => { res.json({ ok: true }); });
+// ✅ FIX: كان stub ملوش أي تأثير (بيرجع ok: true بس من غير ما يحفظ حاجة) — دلوقتي بيحفظ
+// مصدر العميل فعليًا (نفس جدول user_onboarding اللي onboarding-answers بيستخدمه)
+router.post('/referral', authMiddleware, async (req, res) => {
+  try {
+    const { source } = req.body;
+    if (source) {
+      await pool.query(`
+        INSERT INTO user_onboarding (user_id, source, created_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_id) DO UPDATE SET source = $2
+      `, [req.user.userId, source]);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── حفظ منطقة العميل (مصري/دولي) — الايجنت بيسألها لو مش معروفة وقت الاشتراك ────────
+router.post('/set-region', authMiddleware, async (req, res) => {
+  try {
+    const region = await setUserRegion(req.user.userId, req.body?.region);
+    res.json({ ok: true, region });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
 
 // ── Save onboarding survey answers ────────────────────────────────────────
 router.post('/onboarding-answers', authMiddleware, async (req, res) => {
@@ -957,7 +983,7 @@ router.post('/change-password', authMiddleware, async (req, res) => {
   if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   try {
     const hash = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user.userId]);
+    await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hash, req.user.userId]);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update password' });
