@@ -750,12 +750,12 @@ function AudioVideoTab({ s }) {
             </table>
           </div>
 
-          {/* الخطوة 2: استخراج العناصر + توليد الصور */}
-          {!activeJob.elements_json && (
-            <button style={{ ...s.btn(extracting ? '#1a1a2e' : '#7c6af7'), opacity: extracting ? 0.6 : 1 }} onClick={handleExtract} disabled={extracting}>
-              {extracting ? '⏳ بيستخرج العناصر ويولّد الصور... (ممكن ياخد دقيقة)' : '🧩 استخرج العناصر وولّد الصور'}
-            </button>
-          )}
+          {/* الخطوة 2: استخراج العناصر + توليد الصور — زرار "أعد الاستخراج" فاضل ظاهر حتى
+              لو العناصر موجودة بالفعل، عشان تقدر تعيد التوليد على نفس الـ job (بعد أي تعديل
+              على منطق الاستخراج/الصور) من غير ما تحتاج ترفع الصوت تاني من الصفر */}
+          <button style={{ ...s.btn(extracting ? '#1a1a2e' : '#7c6af7'), opacity: extracting ? 0.6 : 1, marginBottom: activeJob.elements_json ? 12 : 0 }} onClick={handleExtract} disabled={extracting}>
+            {extracting ? '⏳ بيستخرج العناصر ويولّد الصور... (ممكن ياخد دقيقة)' : activeJob.elements_json ? '🔄 أعد الاستخراج والصور' : '🧩 استخرج العناصر وولّد الصور'}
+          </button>
 
           {activeJob.elements_json && (
             <div style={{ marginTop: 8 }}>
