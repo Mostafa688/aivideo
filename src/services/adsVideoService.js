@@ -303,14 +303,17 @@ async function enforceAudioDuration(audioPath, maxSeconds) {
   }
 }
 
-export async function generateAdsVoiceover(script, aiVoiceKey, language, targetSeconds = null, style = null) {
+// ✅ NEW: customPrompt بيسمح لمستخدمين تانيين غير الإعلانات (زي موديل 8) إنهم يديلوا نبرة
+// راوي عامة/قصصية بدل نبرة "إعلان تجاري" اللي مش مناسبة لمحتوى عادي — من غير ما يأثر على
+// موديل الإعلانات نفسه (لسه بياخد نفس النبرة الإعلانية القديمة لو customPrompt متبعتش)
+export async function generateAdsVoiceover(script, aiVoiceKey, language, targetSeconds = null, style = null, customPrompt = null) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const voice = GEMINI_VOICE_MAP[aiVoiceKey] || (String(aiVoiceKey||'').startsWith('female') ? 'Sulafat' : 'Charon');
   const langCode = language?.startsWith('ar') ? 'ar-EG' : 'en-US';
   const styleModifiers = getStyleModifiers(style);
-  const stylePrompt = styleModifiers
+  const stylePrompt = customPrompt || (styleModifiers
     ? `A professional advertisement narrator recording a commercial voiceover. ${styleModifiers.voiceTone}. Natural pacing with brief pauses at commas and periods so the delivery breathes naturally.`
-    : 'A confident, warm advertisement narrator recording a commercial voiceover. Clear, persuasive, upbeat energy, natural pacing with brief pauses at commas and periods so the delivery breathes naturally — never rushed or robotic.';
+    : 'A confident, warm advertisement narrator recording a commercial voiceover. Clear, persuasive, upbeat energy, natural pacing with brief pauses at commas and periods so the delivery breathes naturally — never rushed or robotic.');
 
   const res = await fetch('https://api.replicate.com/v1/models/google/gemini-3.1-flash-tts/predictions', {
     method: 'POST',

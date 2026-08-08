@@ -16,6 +16,10 @@ import { generateReferenceImage } from './seedanceService.js'; // ✅ NEW: نف�
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 const OUTPUTS_DIR = 'outputs';
 const TEMP_DIR = 'temp';
+// ✅ FIX: كان بيستخدم نبرة "راوي إعلان تجاري" الجاهزة في generateAdsVoiceover حتى لو الفيديو
+// مش إعلان خالص — ده كان بيطلّع تعليق صوتي بنبرة غريبة/غير مناسبة لمحتوى عادي (قصة، توثيقي،
+// إلخ). موديل 8 عام، فبنديله نبرة راوي محايدة بدل ما يورّث نبرة الإعلانات
+const MODEL8_NARRATOR_PROMPT = 'A skilled documentary/storytelling narrator. Clear, natural, engaging delivery matched to the content\'s mood — calm and warm for a gentle story, more energetic for action, but always natural pacing with brief pauses at commas and periods, never rushed or robotic, never like a commercial advertisement.';
 
 // ✅ اتأكد من الـ schema من تاب الـ API نفسه على Replicate — الحقول دي بالظبط
 async function generatePVideoClipOnce({ prompt, duration = 5, imageUrl = null, generateAudio = true, aspectRatio = '16:9', resolution = '720p' }) {
@@ -123,7 +127,7 @@ export async function renderModel8Video({
       const text = (scenes[i].text || '').trim();
       if (!text) { perSceneVoicePaths.push(null); continue; }
       try {
-        const audioPath = await generateAdsVoiceover(text, voiceKey || 'male_wise', videoLanguage, null, null);
+        const audioPath = await generateAdsVoiceover(text, voiceKey || 'male_wise', videoLanguage, null, null, MODEL8_NARRATOR_PROMPT);
         let dur = null;
         try {
           dur = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`, { encoding: 'utf8' }).trim());
@@ -137,6 +141,7 @@ export async function renderModel8Video({
       }
     }
   }
+  const voiceoverAvailable = wantsVoiceover && perSceneVoicePaths.some(Boolean);
 
   // ── Step 1: توليد كل مشهد ────────────────────────────────────────────────
   const rawPaths = [];
@@ -188,16 +193,45 @@ export async function renderModel8Video({
     catch { sceneClipUrls.push(null); }
   }
 
-  // ── Step 2: تطبيع كل كليب (نفس الأبعاد، مدته الحقيقية، fps موحّد) ──────────
+  // ── Step 1b: لو فويس أوفر، نجهّز صوت كل مشهد بمدته النهائية بالظبط (قص أو سكوت إضافي)
+  // قبل ما نطبّع — عشان الصوت يتضمّن جوه الكليب نفسه ويتزامن مع الفيديو في الـ crossfade
+  // بالظبط زي ما بيحصل في الوضع السينمائي (بدل ما يتلزّق فوق الفيديو الكامل في الآخر
+  // بدون overlap، اللي كان بيعمل انزياح تراكمي بين الصوت والصورة كل ما مشهد جديد يبدأ) ──
+  const paddedVoicePaths = [];
+  if (voiceoverAvailable) {
+    for (let i = 0; i < scenes.length; i++) {
+      const entry = perSceneVoicePaths[i];
+      const dur = sceneDurations[i];
+      const paddedPath = path.join(TEMP_DIR, `m8_voice_scene_${id}_${i}.mp3`);
+      if (entry) {
+        execSync(`ffmpeg -i "${entry.path}" -af "apad" -t ${dur} -y "${paddedPath}"`, { stdio: 'pipe' });
+      } else {
+        execSync(`ffmpeg -f lavfi -i anullsrc=r=48000:cl=mono -t ${dur} -c:a mp3 -y "${paddedPath}"`, { stdio: 'pipe' });
+      }
+      paddedVoicePaths.push(paddedPath);
+    }
+  }
+
+  // ── Step 2: تطبيع كل كليب (نفس الأبعاد، مدته الحقيقية، fps موحّد) — لو فويس أوفر، بندمج
+  // صوت المشهد بتاعه (اللي جهزناه فوق) جوه الكليب من هنا، مش بعد الدمج ──────────────────
   const normPaths = [];
   for (let i = 0; i < rawPaths.length; i++) {
     const np = path.join(TEMP_DIR, `m8_norm_${id}_${i}.mp4`);
-    execSync(
-      `ffmpeg -i "${rawPaths[i]}" -vf "scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24" ` +
-      `-t ${sceneDurations[i]} -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p ` +
-      `${wantsCinematicAudio ? '-c:a aac -b:a 192k -ar 48000 -ac 2' : '-an'} -movflags +faststart -y "${np}"`,
-      { stdio: 'pipe', maxBuffer: 200 * 1024 * 1024 }
-    );
+    if (voiceoverAvailable) {
+      execSync(
+        `ffmpeg -i "${rawPaths[i]}" -i "${paddedVoicePaths[i]}" -vf "scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24" ` +
+        `-t ${sceneDurations[i]} -map 0:v -map 1:a -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p ` +
+        `-c:a aac -b:a 192k -ar 48000 -ac 2 -shortest -movflags +faststart -y "${np}"`,
+        { stdio: 'pipe', maxBuffer: 200 * 1024 * 1024 }
+      );
+    } else {
+      execSync(
+        `ffmpeg -i "${rawPaths[i]}" -vf "scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=24" ` +
+        `-t ${sceneDurations[i]} -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p ` +
+        `${wantsCinematicAudio ? '-c:a aac -b:a 192k -ar 48000 -ac 2' : '-an'} -movflags +faststart -y "${np}"`,
+        { stdio: 'pipe', maxBuffer: 200 * 1024 * 1024 }
+      );
+    }
     normPaths.push(np);
   }
 
@@ -205,13 +239,13 @@ export async function renderModel8Video({
   const mergedPath = path.join(TEMP_DIR, `m8_merged_${id}.mp4`);
   const FADE_DUR = 0.5;
   const numClips = normPaths.length;
+  const hasAudioTrack = wantsCinematicAudio || voiceoverAvailable;
   if (numClips === 1) {
     fs.copyFileSync(normPaths[0], mergedPath);
   } else {
     try {
       const inputArgs = normPaths.flatMap(p => ['-i', p]);
       let filterComplex = '';
-      const hasAudioTrack = wantsCinematicAudio;
       let lastV = '[0:v]', lastA = hasAudioTrack ? '[0:a]' : null;
       let acc = sceneDurations[0] - FADE_DUR;
       for (let i = 1; i < numClips; i++) {
@@ -242,58 +276,41 @@ export async function renderModel8Video({
       // "temp/temp/m8_norm_..._0.mp4" and failing with "Impossible to open". Using absolute
       // paths here makes resolution unambiguous regardless of where the list file sits.
       fs.writeFileSync(listFile, normPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
-      execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p ${wantsCinematicAudio ? '-c:a aac -b:a 192k' : '-an'} -movflags +faststart -y "${mergedPath}"`, { stdio: 'pipe' });
+      execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c:v libx264 -crf 18 -preset fast -pix_fmt yuv420p ${hasAudioTrack ? '-c:a aac -b:a 192k' : '-an'} -movflags +faststart -y "${mergedPath}"`, { stdio: 'pipe' });
       try { fs.unlinkSync(listFile); } catch {}
     }
   }
 
-  // ── Step 4: تركيب الفويس أوفر — كل مشهد بصوته الحقيقي اللي اتولّد في Step 0 (بعد ما
-  // اتقصّ/اتزوّد بسكوت لمطابقة مدة المشهد النهائية بالظبط)، متسلسلين ورا بعض بنفس ترتيب
-  // المشاهد. لو Step 0 فشل تمامًا (مفيش أي صوت اتولّد)، نرجع لأسلوب صوت واحد كامل قديم ──
+  // ── Step 4: الصوت (فويس أوفر) بقى متضمّن ومتزامن جوه mergedPath نفسه من Step 2/3 —
+  // هنا بس بنجهّز نسخة مسطّحة (concat عادي، بدون crossfade) من نفس مقاطع الصوت المضبوطة
+  // لاستخدامها في الكابشن، ولو كل محاولات الصوت لكل مشهد فشلت بالكامل، نرجع لأسلوب صوت
+  // واحد كامل قديم كخط أمان أخير ─────────────────────────────────────────────────
   let currentPath = mergedPath;
   let audioPathForCaptions = null;
-  if (wantsVoiceover) {
+  if (voiceoverAvailable) {
     try {
-      const usable = perSceneVoicePaths.filter(Boolean);
-      if (usable.length) {
-        const paddedPaths = [];
-        for (let i = 0; i < scenes.length; i++) {
-          const entry = perSceneVoicePaths[i];
-          const dur = sceneDurations[i];
-          const paddedPath = path.join(TEMP_DIR, `m8_voice_scene_${id}_${i}.mp3`);
-          if (entry) {
-            // بيقص أو يزوّد سكوت في الآخر عشان طول ملف الصوت يطابق طول المشهد النهائي بالظبط
-            execSync(`ffmpeg -i "${entry.path}" -af "apad" -t ${dur} -y "${paddedPath}"`, { stdio: 'pipe' });
-          } else {
-            execSync(`ffmpeg -f lavfi -i anullsrc=r=48000:cl=mono -t ${dur} -c:a mp3 -y "${paddedPath}"`, { stdio: 'pipe' });
-          }
-          paddedPaths.push(paddedPath);
-        }
-        const concatAudioPath = path.join(TEMP_DIR, `m8_voice_full_${id}.mp3`);
-        const listFile = path.join(TEMP_DIR, `m8_voice_list_${id}.txt`);
-        fs.writeFileSync(listFile, paddedPaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
-        execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c:a mp3 -y "${concatAudioPath}"`, { stdio: 'pipe' });
-        try { fs.unlinkSync(listFile); } catch {}
-
-        audioPathForCaptions = concatAudioPath;
-        const withAudioPath = path.join(TEMP_DIR, `m8_voice_${id}.mp4`);
-        execSync(`ffmpeg -i "${currentPath}" -i "${concatAudioPath}" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`, { stdio: 'pipe' });
-        currentPath = withAudioPath;
-      } else {
-        // ── fallback: مفيش أي صوت لمشهد اتولّد (كل المحاولات فشلت) — صوت واحد كامل قديم ──
-        const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
-        if (fullText.trim()) {
-          const totalDur = sceneDurations.reduce((a, b) => a + b, 0) - (numClips - 1) * FADE_DUR;
-          const audioPath = await generateAdsVoiceover(fullText, voiceKey || 'male_wise', videoLanguage, totalDur, null);
-          if (audioPath) {
-            audioPathForCaptions = audioPath;
-            const withAudioPath = path.join(TEMP_DIR, `m8_voice_${id}.mp4`);
-            execSync(`ffmpeg -i "${currentPath}" -i "${audioPath}" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`, { stdio: 'pipe' });
-            currentPath = withAudioPath;
-          }
+      const concatAudioPath = path.join(TEMP_DIR, `m8_voice_full_${id}.mp3`);
+      const listFile = path.join(TEMP_DIR, `m8_voice_list_${id}.txt`);
+      fs.writeFileSync(listFile, paddedVoicePaths.map(f => `file '${path.resolve(f).replace(/\\/g, '/')}'`).join('\n'));
+      execSync(`ffmpeg -f concat -safe 0 -i "${listFile}" -c:a mp3 -y "${concatAudioPath}"`, { stdio: 'pipe' });
+      try { fs.unlinkSync(listFile); } catch {}
+      audioPathForCaptions = concatAudioPath;
+    } catch (e) { console.warn('[Model8] Caption-audio build failed (captions may be skipped):', e.message); }
+  } else if (wantsVoiceover) {
+    // ── كل محاولات الصوت لكل مشهد فشلت (Step 0) — صوت واحد كامل قديم كخط أمان أخير ──
+    try {
+      const fullText = scenes.map(s => s.text).filter(Boolean).join(' ');
+      if (fullText.trim()) {
+        const totalDur = sceneDurations.reduce((a, b) => a + b, 0) - (numClips - 1) * FADE_DUR;
+        const audioPath = await generateAdsVoiceover(fullText, voiceKey || 'male_wise', videoLanguage, totalDur, null, MODEL8_NARRATOR_PROMPT);
+        if (audioPath) {
+          audioPathForCaptions = audioPath;
+          const withAudioPath = path.join(TEMP_DIR, `m8_voice_${id}.mp4`);
+          execSync(`ffmpeg -i "${currentPath}" -i "${audioPath}" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart -y "${withAudioPath}"`, { stdio: 'pipe' });
+          currentPath = withAudioPath;
         }
       }
-    } catch (e) { console.warn('[Model8] Voiceover step failed:', e.message); }
+    } catch (e) { console.warn('[Model8] Fallback voiceover step failed:', e.message); }
   }
 
   // ── Step 5: كابشن اختياري (محتاج صوت حقيقي يتفرغ منه) ──────────────────────
@@ -311,7 +328,8 @@ export async function renderModel8Video({
   catch { fs.copyFileSync(currentPath, outputPath); }
 
   setTimeout(() => {
-    [...rawPaths, ...normPaths, mergedPath].forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
+    [...rawPaths, ...normPaths, ...paddedVoicePaths, ...perSceneVoicePaths.filter(Boolean).map(e => e.path), mergedPath]
+      .forEach(f => { try { if (f && fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
   }, 60000);
 
   console.log(`[Model8] DONE → ${outputPath}`);
