@@ -27,7 +27,7 @@ async function generatePVideoClipOnce({ prompt, duration = 5, imageUrl = null, g
     duration: Math.min(20, Math.max(1, Math.round(duration))),
     resolution,
     fps: 24,
-    draft: true, // ✅ NEW: أرخص 4 أضعاف ($0.005 بدل $0.02 لكل ثانية على 720p) — نفس السعر اللي بنحصّله من العميل، هامش ربح أعلى
+    draft: false, // ✅ FIX: قرار إداري — Standard مش Draft ($0.02/ثانية على 720p بدل $0.005). لسه هامش صحي: بنحصّل 4 كريديت/ثانية (~$0.10) من العميل للوضع بدون صوت، يعني تقريبًا ×5 على تكلفة الـ720p Standard وأكتر من ×2.5 حتى لو 1080p ($0.04/ثانية).
     save_audio: !!generateAudio, // ✅ ده اللي بيتحكم في الصوت الأصلي المتولّد مع الفيديو (وضع "سينمائي")
     prompt_upsampling: true,
     disable_safety_filter: false,

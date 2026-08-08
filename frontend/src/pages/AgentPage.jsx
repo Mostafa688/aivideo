@@ -624,8 +624,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             scenesBody = { structuredScenes: lastParsedStructuredScenes, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) };
           } else {
           const m8SceneDur = ready.sceneDurationSec || 5;
+          // ✅ FIX: لو الايجنت قال عدد المشاهد صراحة (sceneCount)، ده بيبقى مصدر الحقيقة —
+          // مش نعتمد على قسمة totalDurationSec÷sceneDurationSec اللي كانت بتنهار لمشهد واحد
+          // لو totalDurationSec جالنا خطأ (أو الايجنت اتلخبط وحط نفس رقم المدة الكلية)
           const m8TotalDur = ready.totalDurationSec || 30;
-          const m8SceneCount = Math.max(1, Math.round(m8TotalDur / m8SceneDur));
+          const m8SceneCount = ready.sceneCount ? Math.max(1, Math.round(ready.sceneCount)) : Math.max(1, Math.round(m8TotalDur / m8SceneDur));
           scenesBody = hasUploadedScript
             ? { idea: null, script: scriptText, inputMode: 'script', sceneCount: m8SceneCount, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) }
             : { idea: ready.idea, script: undefined, inputMode: 'idea', sceneCount: m8SceneCount, videoLanguage: videoLang, videoStyle: style, styleSuffix: styleSuffixFor(style) };
