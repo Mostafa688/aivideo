@@ -616,7 +616,7 @@ app.post('/api/admin/notifications/email-all', async (req, res) => {
   try {
     const secret = req.headers['x-admin-secret'] || req.body.secret;
     if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
-    const { subject, message, html: customHtml } = req.body;
+    const { subject, message, html: customHtml, excludeEmails } = req.body;
     if (!subject?.trim()) return res.status(400).json({ error: 'subject is required' });
     if (!customHtml?.trim() && !message?.trim()) return res.status(400).json({ error: 'message or html is required' });
     // ✅ NEW: لو الأدمن بعت HTML مخصص كامل (تصميم بالألوان/جدول أسعار/زرار)، بيتبعت زي ما هو
@@ -624,7 +624,10 @@ app.post('/api/admin/notifications/email-all', async (req, res) => {
     const html = customHtml?.trim()
       ? customHtml.trim()
       : `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#7c6af7;margin-top:0">${subject.trim()}</h2><div style="color:#d1d5db;font-size:14px;line-height:1.8;white-space:pre-wrap">${message.trim()}</div></div>`;
-    const result = await sendBroadcastEmail(subject.trim(), html);
+    // ✅ NEW: عشان لو broadcast سابق فشل في نصه (باج rate limit اتصلح النهاردة)، الأدمن يقدر
+    // يستثني الإيميلات اللي وصلتها فعلًا بدل ما يتكرر عليهم الإيميل تاني
+    const excludeList = Array.isArray(excludeEmails) ? excludeEmails : [];
+    const result = await sendBroadcastEmail(subject.trim(), html, excludeList);
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ error: err.message });
