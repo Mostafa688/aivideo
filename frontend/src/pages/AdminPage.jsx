@@ -407,6 +407,8 @@ function NotificationsTab({ s }) {
   const [sending, setSending] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailMessage, setEmailMessage] = useState('');
+  const [emailUseHtml, setEmailUseHtml] = useState(false);
+  const [emailHtml, setEmailHtml] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [emailResult, setEmailResult] = useState(null);
 
@@ -441,14 +443,18 @@ function NotificationsTab({ s }) {
   };
 
   const sendEmailAll = async () => {
-    if (!emailSubject.trim() || !emailMessage.trim()) return;
+    const bodyText = emailUseHtml ? emailHtml : emailMessage;
+    if (!emailSubject.trim() || !bodyText.trim()) return;
     setEmailSending(true); setEmailResult(null);
     try {
-      const r = await fetch('/api/admin/notifications/email-all', { method: 'POST', headers, body: JSON.stringify({ subject: emailSubject.trim(), message: emailMessage.trim() }) });
+      const payload = emailUseHtml
+        ? { subject: emailSubject.trim(), html: emailHtml.trim() }
+        : { subject: emailSubject.trim(), message: emailMessage.trim() };
+      const r = await fetch('/api/admin/notifications/email-all', { method: 'POST', headers, body: JSON.stringify(payload) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Failed');
       setEmailResult(`✅ اتبعت لـ ${d.sent} من ${d.total} مستخدم`);
-      setEmailSubject(''); setEmailMessage('');
+      setEmailSubject(''); setEmailMessage(''); setEmailHtml('');
     } catch (e) { setEmailResult(`❌ ${e.message}`); }
     setEmailSending(false);
   };
@@ -471,10 +477,29 @@ function NotificationsTab({ s }) {
       </div>
 
       <div style={s.card}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>📧 بعت إيميل جماعي لكل المستخدمين</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>📧 بعت إيميل جماعي لكل المستخدمين</div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#9ca3af', cursor: 'pointer' }}>
+            <input type="checkbox" checked={emailUseHtml} onChange={e => setEmailUseHtml(e.target.checked)} />
+            🎨 HTML مخصص بدل النص البسيط
+          </label>
+        </div>
         <input style={{ ...s.input, width: '100%', marginBottom: 8, boxSizing: 'border-box' }} placeholder="عنوان الإيميل — Subject" value={emailSubject} onChange={e => setEmailSubject(e.target.value)} />
-        <textarea style={{ ...s.input, width: '100%', minHeight: 90, marginBottom: 8, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} placeholder="نص الإيميل — Message" value={emailMessage} onChange={e => setEmailMessage(e.target.value)} />
-        <button style={s.btn('#7c6af7')} disabled={emailSending || !emailSubject.trim() || !emailMessage.trim()} onClick={sendEmailAll}>
+        {emailUseHtml ? (
+          <>
+            <textarea style={{ ...s.input, width: '100%', minHeight: 180, marginBottom: 8, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'monospace', fontSize: 11.5 }} placeholder="الصق كود الـ HTML الكامل للإيميل هنا" value={emailHtml} onChange={e => setEmailHtml(e.target.value)} />
+            {emailHtml.trim() && (
+              <a
+                href={`data:text/html;charset=utf-8,${encodeURIComponent(emailHtml)}`}
+                target="_blank" rel="noreferrer"
+                style={{ display: 'inline-block', fontSize: 11.5, color: '#7c6af7', marginBottom: 8 }}
+              >👁️ معاينة الشكل في تاب جديد</a>
+            )}
+          </>
+        ) : (
+          <textarea style={{ ...s.input, width: '100%', minHeight: 90, marginBottom: 8, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} placeholder="نص الإيميل — Message" value={emailMessage} onChange={e => setEmailMessage(e.target.value)} />
+        )}
+        <button style={s.btn('#7c6af7')} disabled={emailSending || !emailSubject.trim() || !(emailUseHtml ? emailHtml : emailMessage).trim()} onClick={sendEmailAll}>
           {emailSending ? '⏳ جاري الإرسال...' : '📧 إرسال إيميل لكل المستخدمين'}
         </button>
         {emailResult && <div style={{ fontSize: 12, color: emailResult.startsWith('✅') ? '#22c55e' : '#ef4444', marginTop: 8 }}>{emailResult}</div>}
