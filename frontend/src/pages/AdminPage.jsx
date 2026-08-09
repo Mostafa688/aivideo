@@ -633,6 +633,93 @@ const AUDIOVIDEO_STATUS_LABEL = {
   failed: '❌ فشل',
 };
 
+function AnalyticsTab({ s }) {
+  const [overview, setOverview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const r = await fetch('/api/admin/analytics/overview', { headers });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || d.error || 'Failed');
+      setOverview(d.overview);
+    } catch (e) { setError(e.message); }
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const fmtDuration = (sec) => { const m = Math.floor(sec / 60), s2 = Math.round(sec % 60); return `${m}:${String(s2).padStart(2, '0')}`; };
+
+  return (
+    <div>
+      <div style={s.topbar}>
+        <div style={s.title}>📈 Google Analytics</div>
+        <button style={s.btn()} onClick={load}>🔄 Refresh</button>
+      </div>
+
+      {loading && <div style={{ color: '#6b7280', fontSize: 12.5 }}>Loading...</div>}
+
+      {!loading && error && (
+        <div style={s.card}>
+          <div style={{ color: '#f87171', fontSize: 13, marginBottom: 8 }}>❌ {error}</div>
+          {error.includes('not_configured') || error.includes('GA4_') ? (
+            <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.8 }}>
+              محتاج تضيف على Railway: <code style={{ color: '#a78bfa' }}>GA4_PROPERTY_ID</code> (من GA4 Admin → Property Settings)
+              و <code style={{ color: '#a78bfa' }}>GA4_SERVICE_ACCOUNT_JSON</code> (محتوى ملف الـ Service Account كامل)،
+              وتضيف إيميل الـ Service Account كـ Viewer في GA4 Admin → Property Access Management.
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {!loading && overview && (
+        <>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }} className="admin-stats">
+            {[
+              { label: 'زوار (7 أيام)', value: fmt(overview.last7d.activeUsers) },
+              { label: 'جلسات (7 أيام)', value: fmt(overview.last7d.sessions) },
+              { label: 'مشاهدات صفحات (7 أيام)', value: fmt(overview.last7d.pageViews) },
+              { label: 'متوسط مدة الجلسة', value: fmtDuration(overview.last7d.avgSessionDurationSec) },
+              { label: 'نسبة الارتداد', value: `${(overview.last7d.bounceRate * 100).toFixed(1)}%` },
+              { label: 'زوار (30 يوم)', value: fmt(overview.last30d.activeUsers) },
+            ].map((c, i) => (
+              <div key={i} className="admin-stat-card" style={{ ...s.card, flex: 1, minWidth: 140, marginBottom: 0, textAlign: 'center' }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#a78bfa' }}>{c.value}</div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{c.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="admin-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={s.card}>
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 10 }}>أكتر صفحات (7 أيام)</div>
+              {overview.topPages.length === 0 && <div style={{ color: '#6b7280', fontSize: 12 }}>لا بيانات.</div>}
+              {overview.topPages.map((p, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #1a1a2e', fontSize: 12 }}>
+                  <span style={{ color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{p.path}</span>
+                  <span style={{ color: '#a78bfa', fontWeight: 700 }}>{fmt(p.views)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={s.card}>
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 10 }}>مصادر الزيارات (7 أيام)</div>
+              {overview.topSources.length === 0 && <div style={{ color: '#6b7280', fontSize: 12 }}>لا بيانات.</div>}
+              {overview.topSources.map((src, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #1a1a2e', fontSize: 12 }}>
+                  <span style={{ color: '#d1d5db' }}>{src.channel}</span>
+                  <span style={{ color: '#a78bfa', fontWeight: 700 }}>{fmt(src.sessions)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AudioVideoTab({ s }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1614,6 +1701,7 @@ export default function AdminPage() {
     { key: 'channels',   label: '📺 Channels'    },
     { key: 'voices',     label: '🗣️ Voices'      },
     { key: 'audiovideo', label: '🎬 Audio→Video' },
+    { key: 'analytics',  label: '📈 Analytics'    },
   ];
 
   return (
@@ -1951,6 +2039,7 @@ export default function AdminPage() {
         {tab === 'channels' && <ChannelsTab s={s} />}
         {tab === 'voices' && <VoicesTab s={s} />}
         {tab === 'audiovideo' && <AudioVideoTab s={s} />}
+        {tab === 'analytics' && <AnalyticsTab s={s} />}
 
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}
