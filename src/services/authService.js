@@ -1627,21 +1627,40 @@ export async function getReferralSourceStats() {
 // ═══════════════════════════════════════════════════════════════════════════
 // رسالة جماعية بالإيميل لكل المستخدمين — منفصلة عن الإشعار الداخلي (in-app)
 // ═══════════════════════════════════════════════════════════════════════════
-export async function sendBroadcastEmail(subject, html) {
+// ✅ FIX: كان بيبعت كل الـ chunks ورا بعض من غير أي فاصل زمني — Resend عنده rate limit
+// (رسالتين في الثانية على الخطط العادية)، فأول chunk بس كان بينجح والباقي بيرجع 429 ويتحذف
+// بصمت (نفس نمط باج Pollinations اللي اتصلح النهاردة). دلوقتي فيه فاصل زمني بين كل chunk
+// وريتراي مع backoff تصاعدي لو رجع 429 بالذات، فباقي المستخدمين يوصلهم الإيميل فعلًا
+export async function sendBroadcastEmail(subject, html, excludeEmails = []) {
   const { rows } = await pool.query('SELECT email FROM users WHERE email IS NOT NULL');
-  const emails = rows.map(r => r.email).filter(Boolean);
+  const excludeSet = new Set(excludeEmails.map(e => String(e).toLowerCase().trim()));
+  const emails = rows.map(r => r.email).filter(Boolean).filter(e => !excludeSet.has(e.toLowerCase().trim()));
   const CHUNK = 100; // Resend بيقبل لحد 100 عنوان في نداء batch واحد
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  async function sendChunk(chunk, attempt = 1) {
+    const res = await fetch('https://api.resend.com/emails/batch', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(chunk.map(to => ({ from: 'Erivion <noreply@erivion.net>', to, subject, html }))),
+    });
+    if (res.status === 429 && attempt <= 3) {
+      await sleep(attempt * 3000);
+      return sendChunk(chunk, attempt + 1);
+    }
+    if (!res.ok) {
+      console.warn('[Broadcast Email] chunk failed:', res.status, await res.text().catch(() => ''));
+      return false;
+    }
+    return true;
+  }
+
   let sent = 0;
   for (let i = 0; i < emails.length; i += CHUNK) {
+    if (i > 0) await sleep(700); // ✅ تحت حد Resend (2 نداء/ثانية) بأمان
     const chunk = emails.slice(i, i + CHUNK);
     try {
-      const res = await fetch('https://api.resend.com/emails/batch', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk.map(to => ({ from: 'Erivion <noreply@erivion.net>', to, subject, html }))),
-      });
-      if (res.ok) sent += chunk.length;
-      else console.warn('[Broadcast Email] chunk failed:', res.status, await res.text().catch(() => ''));
+      if (await sendChunk(chunk)) sent += chunk.length;
     } catch (e) { console.warn('[Broadcast Email] chunk error:', e.message); }
   }
   return { total: emails.length, sent };

@@ -409,6 +409,7 @@ function NotificationsTab({ s }) {
   const [emailMessage, setEmailMessage] = useState('');
   const [emailUseHtml, setEmailUseHtml] = useState(false);
   const [emailHtml, setEmailHtml] = useState('');
+  const [emailExclude, setEmailExclude] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [emailResult, setEmailResult] = useState(null);
 
@@ -447,14 +448,15 @@ function NotificationsTab({ s }) {
     if (!emailSubject.trim() || !bodyText.trim()) return;
     setEmailSending(true); setEmailResult(null);
     try {
+      const excludeEmails = emailExclude.split(/[\n,]/).map(e => e.trim()).filter(Boolean);
       const payload = emailUseHtml
-        ? { subject: emailSubject.trim(), html: emailHtml.trim() }
-        : { subject: emailSubject.trim(), message: emailMessage.trim() };
+        ? { subject: emailSubject.trim(), html: emailHtml.trim(), excludeEmails }
+        : { subject: emailSubject.trim(), message: emailMessage.trim(), excludeEmails };
       const r = await fetch('/api/admin/notifications/email-all', { method: 'POST', headers, body: JSON.stringify(payload) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Failed');
       setEmailResult(`✅ اتبعت لـ ${d.sent} من ${d.total} مستخدم`);
-      setEmailSubject(''); setEmailMessage(''); setEmailHtml('');
+      setEmailSubject(''); setEmailMessage(''); setEmailHtml(''); setEmailExclude('');
     } catch (e) { setEmailResult(`❌ ${e.message}`); }
     setEmailSending(false);
   };
@@ -499,6 +501,7 @@ function NotificationsTab({ s }) {
         ) : (
           <textarea style={{ ...s.input, width: '100%', minHeight: 90, marginBottom: 8, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} placeholder="نص الإيميل — Message" value={emailMessage} onChange={e => setEmailMessage(e.target.value)} />
         )}
+        <textarea style={{ ...s.input, width: '100%', minHeight: 44, marginBottom: 8, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', fontSize: 11.5 }} placeholder="استثناء إيميلات (اختياري — سطر أو فاصلة لكل إيميل، مفيد لو broadcast سابق فشل في نصه وعايز متكررش على اللي وصلهم فعلًا)" value={emailExclude} onChange={e => setEmailExclude(e.target.value)} />
         <button style={s.btn('#7c6af7')} disabled={emailSending || !emailSubject.trim() || !(emailUseHtml ? emailHtml : emailMessage).trim()} onClick={sendEmailAll}>
           {emailSending ? '⏳ جاري الإرسال...' : '📧 إرسال إيميل لكل المستخدمين'}
         </button>
