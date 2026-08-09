@@ -13,6 +13,10 @@ const T = {
     voice: 'الحساب ده بيستخدم صوت في الفيديوهات؟', add: 'إضافة القناة', adding: 'جاري الإضافة...',
     yourChannels: 'قنواتك', noChannels: 'لسه معملتش أي قناة.', pause: 'إيقاف مؤقت', resume: 'تشغيل',
     remove: 'حذف', lastRun: 'آخر تشغيل', never: 'لسه معملش أي تشغيل',
+    analytics: 'تحليلات الأداء', hideAnalytics: 'إخفاء التحليلات', noRuns: 'لسه مفيش فيديوهات اتعملت.',
+    linkPlaceholder: 'الصق رابط اليوتيوب بعد الرفع', link: 'اربط', refreshStats: 'حدّث الأداء',
+    views: 'مشاهدة', likes: 'لايك', comments: 'كومنت', avgView: 'متوسط وقت المشاهدة',
+    notLinkedYet: 'لسه ما اترفعش/اترباط بيوتيوب', loadingStats: 'بيجيب الأداء...',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -22,8 +26,18 @@ const T = {
     voice: 'Does this channel use voice narration?', add: 'Connect channel', adding: 'Connecting...',
     yourChannels: 'Your channels', noChannels: "You haven't connected a channel yet.", pause: 'Pause', resume: 'Resume',
     remove: 'Remove', lastRun: 'Last run', never: 'Never run yet',
+    analytics: 'Performance analytics', hideAnalytics: 'Hide analytics', noRuns: 'No videos made yet.',
+    linkPlaceholder: 'Paste the YouTube link after uploading', link: 'Link', refreshStats: 'Refresh stats',
+    views: 'views', likes: 'likes', comments: 'comments', avgView: 'avg. view duration',
+    notLinkedYet: 'Not linked to a YouTube video yet', loadingStats: 'Loading stats...',
   },
 };
+
+function formatDuration(sec) {
+  if (sec == null) return '–';
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 function Toggle({ value, onChange }) {
   return (
@@ -47,6 +61,47 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [usesVoice, setUsesVoice] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
+
+  const [expandedChannelId, setExpandedChannelId] = useState(null);
+  const [runsByChannel, setRunsByChannel] = useState({});
+  const [linkInputs, setLinkInputs] = useState({});
+  const [performanceByRun, setPerformanceByRun] = useState({});
+
+  const toggleAnalytics = async (channelId) => {
+    if (expandedChannelId === channelId) { setExpandedChannelId(null); return; }
+    setExpandedChannelId(channelId);
+    if (!runsByChannel[channelId]) {
+      try {
+        const res = await fetch(`/api/channels/${channelId}/runs`, { headers: authHeaders() });
+        const data = await res.json();
+        setRunsByChannel(prev => ({ ...prev, [channelId]: data.runs || [] }));
+      } catch { setRunsByChannel(prev => ({ ...prev, [channelId]: [] })); }
+    }
+  };
+
+  const linkYoutube = async (channelId, runId) => {
+    const url = (linkInputs[runId] || '').trim();
+    if (!url) return;
+    try {
+      const res = await fetch(`/api/channels/runs/${runId}/link-youtube`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ youtubeUrl: url }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setRunsByChannel(prev => ({ ...prev, [channelId]: prev[channelId].map(r => r.id === runId ? data.run : r) }));
+      setLinkInputs(prev => ({ ...prev, [runId]: '' }));
+    } catch (e) { alert(e.message); }
+  };
+
+  const refreshPerformance = async (runId) => {
+    setPerformanceByRun(prev => ({ ...prev, [runId]: 'loading' }));
+    try {
+      const res = await fetch(`/api/channels/runs/${runId}/performance`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setPerformanceByRun(prev => ({ ...prev, [runId]: data.performance }));
+    } catch (e) {
+      setPerformanceByRun(prev => ({ ...prev, [runId]: { error: e.message } }));
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -142,7 +197,47 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   <button onClick={() => removeChannel(ch.id)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
                     {t.remove}
                   </button>
+                  <button onClick={() => toggleAnalytics(ch.id)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.08)', color: '#a78bfa', fontSize: 12, cursor: 'pointer', marginInlineStart: 'auto' }}>
+                    {expandedChannelId === ch.id ? t.hideAnalytics : `📊 ${t.analytics}`}
+                  </button>
                 </div>
+
+                {expandedChannelId === ch.id && (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {!runsByChannel[ch.id] ? null : runsByChannel[ch.id].length === 0 ? (
+                      <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12.5, margin: 0 }}>{t.noRuns}</p>
+                    ) : runsByChannel[ch.id].filter(r => r.status === 'done').map(run => {
+                      const perf = performanceByRun[run.id];
+                      return (
+                        <div key={run.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px' }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{run.idea_title}</div>
+                          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>{new Date(run.created_at).toLocaleDateString()}</div>
+
+                          {!run.youtube_video_id ? (
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <input value={linkInputs[run.id] || ''} onChange={e => setLinkInputs(prev => ({ ...prev, [run.id]: e.target.value }))} placeholder={t.linkPlaceholder}
+                                style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 11.5 }} />
+                              <button onClick={() => linkYoutube(ch.id, run.id)} style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#7c6af7', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>{t.link}</button>
+                            </div>
+                          ) : !perf ? (
+                            <button onClick={() => refreshPerformance(run.id)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}>{t.refreshStats}</button>
+                          ) : perf === 'loading' ? (
+                            <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)' }}>{t.loadingStats}</span>
+                          ) : perf.error ? (
+                            <span style={{ fontSize: 11.5, color: '#ef4444' }}>{perf.error}</span>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11.5, color: '#d1d5db' }}>
+                              <span>👁️ {perf.views ?? '–'} {t.views}</span>
+                              <span>👍 {perf.likes ?? '–'} {t.likes}</span>
+                              <span>💬 {perf.comments ?? '–'} {t.comments}</span>
+                              <span>⏱️ {formatDuration(perf.avgViewDurationSec)} {t.avgView}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ))}
           </div>

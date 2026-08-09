@@ -287,11 +287,13 @@ async function initDB() {
       approve_token TEXT UNIQUE,
       status TEXT DEFAULT 'pending',
       video_url TEXT,
+      youtube_video_id TEXT,
       error TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       decided_at TIMESTAMPTZ
     );
   `);
+  await pool.query('ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS youtube_video_id TEXT').catch(() => {});
   // ── مصنع فيديو الصوت الأدمن — رفع فويس أوفر جاهز، والموقع يفرّغه (Whisper) ويستخرج
   // العناصر (LLM) ويجيب/يولّد صورهم ويعمل الفيديو النهائي. Pipeline بمراحل، كل مرحلة
   // بتحدث نفس الـ job بحالتها الجديدة عشان الأدمن يشوف التقدم ─────────────────────────
@@ -1461,6 +1463,30 @@ export async function updateDailyVideoRunStatus(id, status, extra = {}) {
   if (extra.error !== undefined) { sets.push(`error = $${idx++}`); params.push(extra.error); }
   if (extra.decided) sets.push('decided_at = NOW()');
   await pool.query(`UPDATE daily_video_runs SET ${sets.join(', ')} WHERE id = $1`, params);
+}
+
+// ✅ العميل نفسه (مش الأدمن) — سجل فيديوهات القناة بتاعته، عشان يقدر يربط كل واحد بلينك
+// اليوتيوب الحقيقي بتاعه (بعد الرفع اليدوي) ويشوف أداءه الحقيقي
+export async function listDailyVideoRunsForChannel(channelId, userId) {
+  const { rows } = await pool.query(
+    `SELECT id, idea_title, idea_brief, format, status, video_url, youtube_video_id, error, created_at, decided_at
+     FROM daily_video_runs WHERE channel_id = $1 AND user_id = $2 ORDER BY id DESC LIMIT 100`,
+    [channelId, userId]
+  );
+  return rows;
+}
+
+export async function getDailyVideoRunById(runId, userId) {
+  const { rows } = await pool.query('SELECT * FROM daily_video_runs WHERE id = $1 AND user_id = $2', [runId, userId]);
+  return rows[0] || null;
+}
+
+export async function linkYoutubeVideoToRun(runId, userId, youtubeVideoId) {
+  const { rows } = await pool.query(
+    `UPDATE daily_video_runs SET youtube_video_id = $1 WHERE id = $2 AND user_id = $3 AND status = 'done' RETURNING *`,
+    [youtubeVideoId, runId, userId]
+  );
+  return rows[0] || null;
 }
 
 export async function listManagedChannelsForAdmin() {
