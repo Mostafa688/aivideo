@@ -2,12 +2,21 @@ import express from 'express';
 import { authMiddleware } from './authRoutes.js';
 import {
   createManagedChannel, listManagedChannelsForUser, updateManagedChannel, deleteManagedChannel,
-  getDailyVideoRunByToken, updateDailyVideoRunStatus, getUserById,
+  getDailyVideoRunByToken, updateDailyVideoRunStatus, getUserById, getManagedChannelById,
+  listDailyVideoRunsForChannel, getDailyVideoRunById, linkYoutubeVideoToRun,
 } from './authService.js';
-import { verifyVidiqKey } from './vidiqClientService.js';
+import { verifyVidiqKey, getVideoPerformance } from './vidiqClientService.js';
 import { triggerApprovedGeneration, sendDailyResultEmail } from './channelSchedulerService.js';
 
 const router = express.Router();
+
+// ✅ بيقبل رابط يوتيوب كامل (watch/shorts/youtu.be) أو الـ video ID الخام (11 حرف) مباشرة
+function extractYoutubeVideoId(input) {
+  const s = String(input || '').trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
+  const m = s.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
 
 router.post('/', authMiddleware, async (req, res) => {
   try {
@@ -59,6 +68,46 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ── تحليلات الأداء — سجل فيديوهات القناة، ربط كل واحد بلينك اليوتيوب الحقيقي بعد الرفع
+// اليدوي، وجلب أداءه الفعلي (مشاهدات/لايكات/كومنتات) من VidIQ عند الطلب ────────────────
+router.get('/:id/runs', authMiddleware, async (req, res) => {
+  try {
+    const channel = await getManagedChannelById(req.params.id);
+    if (!channel || channel.user_id !== req.user.userId) return res.status(404).json({ error: 'Channel not found' });
+    const runs = await listDailyVideoRunsForChannel(req.params.id, req.user.userId);
+    res.json({ runs });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/runs/:runId/link-youtube', authMiddleware, async (req, res) => {
+  try {
+    const videoId = extractYoutubeVideoId(req.body.youtubeUrl);
+    if (!videoId) return res.status(400).json({ error: 'Could not find a valid YouTube video ID in that link' });
+    const run = await linkYoutubeVideoToRun(req.params.runId, req.user.userId, videoId);
+    if (!run) return res.status(404).json({ error: 'Run not found, not yours, or not a completed video yet' });
+    res.json({ run });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/runs/:runId/performance', authMiddleware, async (req, res) => {
+  try {
+    const run = await getDailyVideoRunById(req.params.runId, req.user.userId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    if (!run.youtube_video_id) return res.status(400).json({ error: 'No YouTube video linked to this run yet' });
+    const channel = await getManagedChannelById(run.channel_id);
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    const performance = await getVideoPerformance(channel.vidiq_api_key, run.youtube_video_id);
+    if (!performance) return res.status(502).json({ error: 'VidIQ returned no data for this video yet — it may take a little while after upload' });
+    res.json({ performance });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
   }
 });
 

@@ -62,6 +62,28 @@ export async function buildChannelProfile(apiKey, channelId) {
   };
 }
 
+// ✅ أداء فيديو حقيقي على يوتيوب (مشاهدات/لايكات/كومنتات/متوسط وقت المشاهدة) — بياخد
+// video ID حقيقي (مش رابط، الاستخراج من الرابط بيحصل في channelRoutes.js) بعد ما العميل
+// يربط فيديو رفعه فعليًا على يوتيوب بأحد أيام القناة اليومية.
+// ⚠️ ملحوظة مهمة: اسم الأداة (vidiq_get_videos_by_ids) وأسماء الحقول تحت مبنية على قائمة
+// أدوات VidIQ المعروفة، لكن سيرفر VidIQ MCP كان غير متصل وقت كتابة الكود ده فمقدرتش أتأكد
+// من الشكل الدقيق للرد فعليًا. لو رجع "unknown tool" أو الحقول طلعت فاضية رغم إن الفيديو
+// موجود فعلًا، محتاج نتأكد من الاسم/الحقول الصح من توثيق VidIQ ونظبطهم هنا.
+export async function getVideoPerformance(apiKey, youtubeVideoId) {
+  const data = await callVidiqTool(apiKey, 'vidiq_get_videos_by_ids', { videoIds: [youtubeVideoId] });
+  const video = Array.isArray(data?.videos) ? data.videos[0] : (Array.isArray(data) ? data[0] : data);
+  if (!video) return null;
+  return {
+    title: video.title || null,
+    views: video.viewCount ?? video.views ?? null,
+    likes: video.likeCount ?? video.likes ?? null,
+    comments: video.commentCount ?? video.comments ?? null,
+    avgViewDurationSec: video.averageViewDuration ?? video.avgViewDuration ?? null,
+    publishedAt: video.publishedAt ?? video.publishDate ?? null,
+    thumbnailUrl: video.thumbnail ?? video.thumbnailUrl ?? null,
+  };
+}
+
 // ✅ بيدوّر على أفكار حقيقية شغالة دلوقتي في نفس مجال القناة — مبني على العناوين الحالية
 // (بيستخرج منها كلمة مفتاحية) بدل ما يخمّن مجال عشوائي
 export async function findVideoIdeaCandidates(apiKey, profile, limit = 6) {
