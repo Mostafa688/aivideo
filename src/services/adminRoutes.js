@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, listRecentDailyRunsForAdmin, listClonedVoicesForAdmin } from './authService.js';
+import { isGA4Configured, getGA4Overview } from './googleAnalyticsService.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -207,6 +208,16 @@ router.get('/voice-clones', adminAuth, async (req, res) => {
     res.json({ voices });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/analytics/overview', adminAuth, async (req, res) => {
+  try {
+    if (!isGA4Configured()) return res.status(400).json({ error: 'not_configured', message: 'GA4_PROPERTY_ID و/أو GA4_SERVICE_ACCOUNT_JSON مش متضافين في env vars لسه' });
+    const overview = await getGA4Overview();
+    res.json({ overview });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 
