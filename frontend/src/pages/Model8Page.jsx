@@ -104,7 +104,7 @@ export default function Model8Page({ onBack, userPlan = 'free', onNavigate }) {
   const scriptCharCount = script.length;
   const scriptOverLimit = mode === 'script' && scriptCharCount > MAX_SCRIPT_CHARS;
   // ✅ الأدمن معفي من قيد "لازم مشترك" — عنده access كامل للموديل دايمًا طول ما هو تحت الصيانة
-  const canGenerate = (isAdminM8 || userPlan !== 'free') && !loading && !scriptOverLimit && (mode === 'idea' ? idea.trim().length > 5 : script.trim().length > 20);
+  const canGenerate = userPlan !== 'free' && !loading && !scriptOverLimit && (mode === 'idea' ? idea.trim().length > 5 : script.trim().length > 20);
 
   const handlePhotoUpload = (file) => {
     if (!file) return;
@@ -115,7 +115,7 @@ export default function Model8Page({ onBack, userPlan = 'free', onNavigate }) {
   };
 
   const handleGenerateScenes = async () => {
-    if (!isAdminM8 && userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
+    if (userPlan === 'free') { if (onNavigate) onNavigate('pricing'); return; }
     const inputText = mode === 'idea' ? idea : script;
     if (!inputText?.trim()) { setError('Please enter your idea or script first'); return; }
     setLoading(true); setError('');

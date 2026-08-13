@@ -23,15 +23,28 @@ import { runDailyChannelCheck } from './services/channelSchedulerService.js';
 import voiceCloneRouter from './services/voiceCloneRoutes.js';
 import audioVideoRouter from './services/audioVideoRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
+import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
 // عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
 const MODEL3_STANDARD_SCENE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
 const MODEL4_STANDARD_SCENE_COUNT = { '30s': 4, '1min': 8, '3min': 24 };
 const MODEL5_STANDARD_SCENE_COUNT = { '30s': 6, '1min': 12 }; // 5s/10s/15s single-clip modes مالهمش جدول، مش بيتفرض عليهم سرشارج
-const MODEL3_EXTRA_SCENE_COST = 20;
-const MODEL4_EXTRA_SCENE_COST = 35;
-const MODEL5_EXTRA_SCENE_COST = 70;
+// ✅ FIX (تصحيح تسعير من العميل): موديل 3 المشهد الزيادة عن أي مدة كان 20، الصح 10
+const MODEL3_EXTRA_SCENE_COST = 10;
+// ✅ FIX: موديل 4 مبقاش فيه فرق بين "مشهد جوه الباقة" و"مشهد زيادة" — كل مشهد (أيًا كان)
+// بسعر ثابت 20 كريديت، مفيش خصم باقة خالص. استبدلنا الجدول (MODEL4_CREDIT_COSTS ~25/مشهد)
+// والسرشارج القديم (35) بسعر موحّد واحد
+const MODEL4_SCENE_COST = 20;
+// ✅ FIX: موديل 5 مبقاش بيتحسب بجدول باقات + سرشارج زيادة — التسعير بقى بالثانية زي موديل 8
+// بالظبط (12 كريديت/ثانية من غير صورة، 13 مع صورة شخصية واحدة). مشهد 5 ثواني = 60/65 كريديت
+// (مطابق تمامًا لكلام العميل)، ومشهد أطول (10 أو 15 ثانية في وضع الكليب الواحد) بياخد سعره
+// الحقيقي بالثانية من غير ما يتباع بسعر مشهد 5 ثواني بس. الزيادة (كريديت لكل صورة زيادة بعد
+// الأولى) وسرشارج الستيك مان بقوا برضو بيتضاعفوا مع العدد الحقيقي للمشاهد مش بيتضافوا مرة
+// واحدة بس على الفيديو كله (كان ده الباج: فيديو 10 مشاهد بصورة كان بيتحسب 605 بدل 650)
+const MODEL5_CREDIT_PER_SECOND = 12;
+const MODEL5_CREDIT_PER_SECOND_WITH_PHOTO = 13;
+const MODEL5_DURATION_SECONDS = { '5s': 5, '10s': 10, '15s': 15, '30s': 30, '1min': 60 };
+const MODEL5_STICKMAN_SURCHARGE_PER_SCENE = 20;
 // ✅ NEW: تعديل video-to-video حقيقي (Lucy Edit 2) — أغلى بكتير من التعديل النصي العادي
 // لأنه بيحافظ فعليًا على الحركة/التوقيت الأصلي بدل ما يولّد المشهد من الصفر
 const VIDEO_EDIT_SCENE_COST_MODEL4 = 130; // لكل مشهد
@@ -1671,16 +1684,27 @@ app.get('/api/model3/credit-cost', authMiddleware, (req, res) => {
 });
 app.get('/api/model4/credit-cost', authMiddleware, (req, res) => {
   const { duration } = req.query;
-  res.json({ creditCost: MODEL4_CREDIT_COSTS[duration] || 10, duration });
+  // ✅ FIX: مفيش جدول باقات تاني، بس ده preview قبل ما المشاهد تتولد فعليًا فلسه بيعتمد على
+  // تقدير عدد المشاهد "العادي" للمدة دي × سعر المشهد الثابت — التكلفة الحقيقية النهائية دايمًا
+  // بتتحسب في /api/model4/render من العدد الحقيقي الفعلي للمشاهد
+  const estScenes = MODEL4_STANDARD_SCENE_COUNT[duration] || 4;
+  res.json({ creditCost: estScenes * MODEL4_SCENE_COST, duration });
 });
 app.get('/api/model5/credit-cost', authMiddleware, (req, res) => {
   const { duration, hasPhoto, photoCount, stickman } = req.query;
   // ✅ FIX: بيقبل دلوقتي عدد الصور الفعلي (photoCount) مش بس علم hasPhoto ثنائي —
   // عشان يعرض السعر الصحيح المتزايد مع كل صورة إضافية قبل ما العميل يأكد التوليد
   const count = photoCount ? parseInt(photoCount, 10) || 0 : (hasPhoto === 'true' ? 1 : 0);
-  // ✅ NEW: السعر الطبيعي (بدون صور) + سرشارج الستيك مان حسب المدة لو مفيش صور ومطلوب stickman
-  const stickmanSurcharge = (count === 0 && stickman === 'true') ? (STICKMAN_SURCHARGE[duration] || 0) : 0;
-  res.json({ creditCost: getModel5CreditCost(duration, count) + stickmanSurcharge, duration, photoCount: count });
+  // ✅ FIX: نفس معادلة /api/model5/render بالظبط (بالثانية، مش جدول باقات) — ده preview قبل
+  // التوليد الفعلي فبيقدّر عدد المشاهد من المدة (1 لأوضاع الكليب الواحد 5s/10s/15s، أو
+  // MODEL5_STANDARD_SCENE_COUNT لوضع المشاهد المتعددة)
+  const estScenes = MODEL5_STANDARD_SCENE_COUNT[duration] || 1;
+  const totalSeconds = estScenes <= 1 ? (MODEL5_DURATION_SECONDS[duration] || 5) : estScenes * 5;
+  const perSecondRate = count > 0 ? MODEL5_CREDIT_PER_SECOND_WITH_PHOTO : MODEL5_CREDIT_PER_SECOND;
+  const extraPhotos = count > 1 ? MODEL5_EXTRA_CREDITS_PER_PHOTO * (count - 1) : 0;
+  const stickmanSurcharge = (count === 0 && stickman === 'true') ? MODEL5_STICKMAN_SURCHARGE_PER_SCENE : 0;
+  const creditCost = totalSeconds * perSecondRate + estScenes * (extraPhotos + stickmanSurcharge);
+  res.json({ creditCost, duration, photoCount: count });
 });
 
 // ── Model 3 Routes ─────────────────────────────────────────────────────────
@@ -1702,10 +1726,6 @@ async function checkModel3Access(req, res, next) {
 // لكن برضو نخلي التفاصيل بسيطة/مسطحة عشان يفضل متماشي مع أسلوب الرسم البسيط.
 // بيتطبق في كل مكان بيتحدد فيه styleHint/styleInstruction (موديل 3، 4، 5)، وبيفحص نص الفكرة
 // نفسها كمان لأن غالبًا العميل بيكتب "stickman" جوه فكرة الفيديو مش في خانة الستايل بس.
-// ── سرشارج الستيك مان: كريديت إضافي فوق سعر موديل 5 idea-to-video العادي (بدون صور) بالظبط —
-// مش بيستبدل السعر الطبيعي، بيتضاف عليه. القيمة بتزيد مع المدة لأن عدد المشاهد (وبالتالي عدد
-// مرات تركيب الشخصية بـ FLUX Kontext لكل مشهد) بيزيد هو كمان.
-const STICKMAN_SURCHARGE = { '5s': 20, '10s': 30, '15s': 40, '30s': 80, '1min': 180 };
 
 function applyStickmanStyleRule(styleText, ideaText = '') {
   const combined = `${styleText || ''} ${ideaText || ''}`;
@@ -2234,13 +2254,10 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
   if ((m4User?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 4.', show_upgrade: true });
   }
-  // ✅ FIX (باج حقيقي اتصادف مع عميل حقيقي طلب فيديو 10 دقايق/120 مشهد ورجع "100 كريديت"
-  // بس): نفس منطق موديل 3 فوق — كان fallback "عدد المشاهد القياسي" بيرجّع scenes.length نفسه
-  // لو المدة مش في الجدول (30s/1min/2min/3min بس)، فبيلغي أي سرشارج على المشاهد الزيادة
-  // تلقائيًا، والتكلفة الأساسية بترجع لرقم صغير ثابت (100) مهما كان عدد المشاهد الحقيقي. أي
-  // مدة برة الجدول (مفيش سقف مدة أصلًا) دلوقتي بتتحسب صح: كل مشهد بسعر MODEL4_EXTRA_SCENE_COST
-  const m4CreditCost = (MODEL4_CREDIT_COSTS[duration] || 0)
-    + Math.max(0, scenes.length - (MODEL4_STANDARD_SCENE_COUNT[duration] || 0)) * MODEL4_EXTRA_SCENE_COST;
+  // ✅ FIX (تصحيح تسعير من العميل): مفيش تفرقة "مشهد جوه باقة" و"مشهد زيادة" تاني — كل
+  // مشهد (أيًا كان عدد المشاهد أو المدة) بسعر ثابت MODEL4_SCENE_COST، فمفيش رقم صغير ثابت
+  // بيرجع لأي مدة (زي الباج القديم اللي كان بيرجّع "100" لفيديو 120 مشهد)
+  const m4CreditCost = scenes.length * MODEL4_SCENE_COST;
   const m4Balance = await getCreditsBalance(req.user.userId);
   if (m4Balance < m4CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m4CreditCost} credits, you have ${m4Balance}.`, cost: m4CreditCost, remaining: m4Balance });
@@ -2680,16 +2697,18 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
     console.log(`[Model5] All ${photos.length} character photo(s) linked together in ${scenesWithPhotos.length} scenes`);
   }
 
-  // ✅ FIX: التكلفة دلوقتي بتزيد مع كل صورة إضافية (25 كريديت لكل صورة زيادة بعد الأولى) —
-  // مطابق للتكلفة الحقيقية الإضافية على Replicate لكل صورة تتضاف للدمج
-  // ✅ NEW: سرشارج الستيك مان بيتضاف فوق السعر الطبيعي (بدون صور) مباشرة — مش بيغيّر شريحة
-  // التسعير الأساسية، بس بيضيف كريديت إضافي حسب المدة (شوف STICKMAN_SURCHARGE فوق)
+  // ✅ FIX (تصحيح تسعير من العميل): مفيش جدول باقات + سرشارج زيادة تاني — التسعير بالثانية
+  // الحقيقية للفيديو (زي موديل 8): وضع الكليب الواحد (image/prompt-to-video) فيه مشهد واحد
+  // بس بطول 5/10/15 ثانية حسب duration، ووضع المشاهد المتعددة (idea) كل مشهد فيه 5 ثواني
+  // بالظبط. وأي سرشارج زيادة (صور إضافية بعد الأولى، أو ستيك مان) بيتضاعف مع العدد الحقيقي
+  // للمشاهد — مش بيتضاف مرة واحدة بس على الفيديو كله (ده كان الباج: فيديو 10 مشاهد بصورة كان
+  // بيتحسب 605 بدل 650)
   const hasStickmanImage = scenes.some(s => s.stickmanGenerated);
-  const stickmanSurcharge = hasStickmanImage ? (STICKMAN_SURCHARGE[duration] || 0) : 0;
-  // ✅ FIX: نفس باج موديل 3/4 — fallback عدد المشاهد القياسي كان بيرجّع scenes.length نفسه
-  // فبيلغي السرشارج تلقائيًا لأي مدة برة الجدول (30s/1min بس للوضع متعدد المشاهد)
-  const m5CreditCost = getModel5CreditCost(duration, photos.length) + stickmanSurcharge
-    + Math.max(0, scenes.length - (MODEL5_STANDARD_SCENE_COUNT[duration] || 0)) * MODEL5_EXTRA_SCENE_COST;
+  const m5TotalSeconds = scenes.length <= 1 ? (MODEL5_DURATION_SECONDS[duration] || 5) : scenes.length * 5;
+  const m5PerSecondRate = photos.length > 0 ? MODEL5_CREDIT_PER_SECOND_WITH_PHOTO : MODEL5_CREDIT_PER_SECOND;
+  const m5PerSceneExtraPhotos = photos.length > 1 ? MODEL5_EXTRA_CREDITS_PER_PHOTO * (photos.length - 1) : 0;
+  const m5PerSceneStickman = hasStickmanImage ? MODEL5_STICKMAN_SURCHARGE_PER_SCENE : 0;
+  const m5CreditCost = m5TotalSeconds * m5PerSecondRate + scenes.length * (m5PerSceneExtraPhotos + m5PerSceneStickman);
   const m5Balance = await getCreditsBalance(req.user.userId);
   if (m5Balance < m5CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m5CreditCost} credits, you have ${m5Balance}.`, cost: m5CreditCost, remaining: m5Balance });
