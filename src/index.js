@@ -1909,8 +1909,14 @@ app.post('/api/model3/render', authMiddleware, renderLimiter, async (req, res) =
   if ((m3User?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 3.', show_upgrade: true });
   }
-  const m3CreditCost = (MODEL3_CREDIT_COSTS[duration] || 20)
-    + Math.max(0, scenes.length - (MODEL3_STANDARD_SCENE_COUNT[duration] || scenes.length)) * MODEL3_EXTRA_SCENE_COST;
+  // ✅ FIX: كان fallback الـ "عدد المشاهد القياسي" بيرجّع scenes.length نفسه لو المدة مش في
+  // الجدول (30s/1min/2min/3min/5min بس)، فده كان بيخلي "المشاهد الزيادة" = صفر دايمًا مهما كان
+  // العدد الحقيقي، والتكلفة الأساسية بترجع لرقم صغير ثابت (fallback 20) بدل ما تتحسب من عدد
+  // المشاهد الفعلي. أي مدة برة الجدول دلوقتي بتتحسب بالسعر الحقيقي لكل مشهد إضافي
+  // (MODEL3_EXTRA_SCENE_COST) على كل المشاهد، من غير أي سقف مدة — مفيش خصم "باقة" لمدة مش
+  // معروفة، بس السعر لسه بيتحسب صح من عدد المشاهد الحقيقي
+  const m3CreditCost = (MODEL3_CREDIT_COSTS[duration] || 0)
+    + Math.max(0, scenes.length - (MODEL3_STANDARD_SCENE_COUNT[duration] || 0)) * MODEL3_EXTRA_SCENE_COST;
   const m3Balance = await getCreditsBalance(req.user.userId);
   if (m3Balance < m3CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m3CreditCost} credits, you have ${m3Balance}.`, cost: m3CreditCost, remaining: m3Balance });
@@ -2228,8 +2234,13 @@ app.post('/api/model4/render', authMiddleware, renderLimiter, async (req, res) =
   if ((m4User?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock Model 4.', show_upgrade: true });
   }
-  const m4CreditCost = (MODEL4_CREDIT_COSTS[duration] || 100)
-    + Math.max(0, scenes.length - (MODEL4_STANDARD_SCENE_COUNT[duration] || scenes.length)) * MODEL4_EXTRA_SCENE_COST;
+  // ✅ FIX (باج حقيقي اتصادف مع عميل حقيقي طلب فيديو 10 دقايق/120 مشهد ورجع "100 كريديت"
+  // بس): نفس منطق موديل 3 فوق — كان fallback "عدد المشاهد القياسي" بيرجّع scenes.length نفسه
+  // لو المدة مش في الجدول (30s/1min/2min/3min بس)، فبيلغي أي سرشارج على المشاهد الزيادة
+  // تلقائيًا، والتكلفة الأساسية بترجع لرقم صغير ثابت (100) مهما كان عدد المشاهد الحقيقي. أي
+  // مدة برة الجدول (مفيش سقف مدة أصلًا) دلوقتي بتتحسب صح: كل مشهد بسعر MODEL4_EXTRA_SCENE_COST
+  const m4CreditCost = (MODEL4_CREDIT_COSTS[duration] || 0)
+    + Math.max(0, scenes.length - (MODEL4_STANDARD_SCENE_COUNT[duration] || 0)) * MODEL4_EXTRA_SCENE_COST;
   const m4Balance = await getCreditsBalance(req.user.userId);
   if (m4Balance < m4CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m4CreditCost} credits, you have ${m4Balance}.`, cost: m4CreditCost, remaining: m4Balance });
@@ -2675,8 +2686,10 @@ app.post('/api/model5/render', authMiddleware, renderLimiter, async (req, res) =
   // التسعير الأساسية، بس بيضيف كريديت إضافي حسب المدة (شوف STICKMAN_SURCHARGE فوق)
   const hasStickmanImage = scenes.some(s => s.stickmanGenerated);
   const stickmanSurcharge = hasStickmanImage ? (STICKMAN_SURCHARGE[duration] || 0) : 0;
+  // ✅ FIX: نفس باج موديل 3/4 — fallback عدد المشاهد القياسي كان بيرجّع scenes.length نفسه
+  // فبيلغي السرشارج تلقائيًا لأي مدة برة الجدول (30s/1min بس للوضع متعدد المشاهد)
   const m5CreditCost = getModel5CreditCost(duration, photos.length) + stickmanSurcharge
-    + Math.max(0, scenes.length - (MODEL5_STANDARD_SCENE_COUNT[duration] || scenes.length)) * MODEL5_EXTRA_SCENE_COST;
+    + Math.max(0, scenes.length - (MODEL5_STANDARD_SCENE_COUNT[duration] || 0)) * MODEL5_EXTRA_SCENE_COST;
   const m5Balance = await getCreditsBalance(req.user.userId);
   if (m5Balance < m5CreditCost) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${m5CreditCost} credits, you have ${m5Balance}.`, cost: m5CreditCost, remaining: m5Balance });
