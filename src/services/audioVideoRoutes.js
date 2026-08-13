@@ -41,81 +41,94 @@ router.post('/transcribe', adminAuth, upload.single('audio'), async (req, res) =
   }
 });
 
+// ✅ FIX: كانت الخطوة دي متزامنة (الأدمن مستنّي الرد HTTP لحد ما تخلص) — مع التقسيم الكثيف
+// الجديد (15-20+ صورة للـ job) وصبر أكبر على الـ 429 (fetchPollinationsImage ممكن تاخد لحد
+// ~100 ثانية للصورة الواحدة في أسوأ حالة)، الخطوة كلها ممكن تاخد دقايق كتير — ده بيخاطر إن
+// أي proxy/متصفح بينه وبين السيرفر يعمل timeout قبل ما الرد يوصل خالص. دلوقتي زي /render
+// بالظبط: بترجع فورًا (202-style) والشغل بيحصل في الخلفية، والفرونت إند بيعمل poll على
+// GET /jobs/:id لحد ما status يبقى elements_ready/failed.
 router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
   try {
     const job = await getAudioVideoJobById(req.params.id);
     if (!job) return res.status(404).json({ error: 'not_found' });
     if (!job.words_json || !job.words_json.length) return res.status(400).json({ error: 'no_transcript' });
 
-    await updateAudioVideoJob(job.id, { status: 'extracting' });
-    const elements = await extractVideoElements(job.words_json);
-    if (!elements.length) {
-      await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements extracted from transcript' });
-      return res.status(422).json({ error: 'no_elements_found' });
-    }
+    const extractingJob = await updateAudioVideoJob(job.id, { status: 'extracting' });
+    res.json({ job: extractingJob });
 
-    // ✅ الصور بالترتيب (مش Promise.all) مع فاصل زمني بين كل نداء والتاني — Pollinations
-    // فعليًا بترجع 429 لو النداءات جت ورا بعض بسرعة (اتأكد ده من لوجات حقيقية)، فبنبعد عنه
-    // استباقيًا. fetchPollinationsImage نفسها كمان عندها إعادة محاولة تصاعدية على 429.
-    // ✅ شخصيات مسمّاة (kind:'character') بتتكرر بنفس الـ characterKey بتاخد نفس صورة الملصق
-    // المولّدة أول مرة بس — من غير ما تولّد صورة جديدة (شكل مختلف) في كل ظهور، عشان تفضل
-    // نفس الشخصية بصريًا زي ما طلب العميل، وكمان بيوفر نداءات فعليًا
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    const characterImageCache = new Map(); // characterKey -> imageUrl
-    const withImages = [];
-    const failedElements = [];
-    let generatedCount = 0;
-    for (const el of elements) {
-      if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
-        withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
-        continue;
-      }
-      if (generatedCount > 0) await sleep(2000);
-      generatedCount++;
+    (async () => {
       try {
-        const buffer = await generateElementImage(el.imagePrompt);
-        const imageUrl = await uploadElementImageToR2(buffer);
-        withImages.push({ ...el, imageUrl });
-        if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
-      } catch (e) {
-        console.warn('[AudioVideo] Image generation failed for element:', el.element, e.message);
-        failedElements.push(el);
-      }
-    }
-
-    // ✅ جولة تانية للعناصر اللي فشلت بعد استراحة أطول — لو السبب كان rate limit مؤقت،
-    // الوقت ده كافي غالبًا إن الحد يترفع تاني
-    if (failedElements.length) {
-      await sleep(8000);
-      for (const el of failedElements) {
-        if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
-          withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
-          continue;
+        const elements = await extractVideoElements(job.words_json);
+        if (!elements.length) {
+          await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements extracted from transcript' });
+          return;
         }
-        try {
-          const buffer = await generateElementImage(el.imagePrompt);
-          const imageUrl = await uploadElementImageToR2(buffer);
-          withImages.push({ ...el, imageUrl });
-          if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
-        } catch (e) {
-          console.warn('[AudioVideo] Image generation retry also failed for element:', el.element, e.message);
+
+        // ✅ الصور بالترتيب (مش Promise.all) مع فاصل زمني بين كل نداء والتاني — Pollinations
+        // فعليًا بترجع 429 لو النداءات جت ورا بعض بسرعة (اتأكد ده من لوجات حقيقية)، فبنبعد
+        // عنه استباقيًا. fetchPollinationsImage نفسها كمان عندها إعادة محاولة تصاعدية طويلة.
+        // ✅ شخصيات مسمّاة (kind:'character') بتتكرر بنفس الـ characterKey بتاخد نفس صورة
+        // الملصق المولّدة أول مرة بس — من غير ما تولّد صورة جديدة (شكل مختلف) في كل ظهور،
+        // عشان تفضل نفس الشخصية بصريًا زي ما طلب العميل، وكمان بيوفر نداءات فعليًا
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        const characterImageCache = new Map(); // characterKey -> imageUrl
+        const withImages = [];
+        const failedElements = [];
+        let generatedCount = 0;
+        for (const el of elements) {
+          if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
+            withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
+            continue;
+          }
+          if (generatedCount > 0) await sleep(4000);
+          generatedCount++;
+          try {
+            const buffer = await generateElementImage(el.imagePrompt);
+            const imageUrl = await uploadElementImageToR2(buffer);
+            withImages.push({ ...el, imageUrl });
+            if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
+          } catch (e) {
+            console.warn('[AudioVideo] Image generation failed for element:', el.element, e.message);
+            failedElements.push(el);
+          }
         }
+
+        // ✅ جولة تانية للعناصر اللي فشلت بعد استراحة أطول — لو السبب كان rate limit مؤقت،
+        // الوقت ده كافي غالبًا إن الحد يترفع تاني
+        if (failedElements.length) {
+          await sleep(20000);
+          for (const el of failedElements) {
+            if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
+              withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
+              continue;
+            }
+            try {
+              const buffer = await generateElementImage(el.imagePrompt);
+              const imageUrl = await uploadElementImageToR2(buffer);
+              withImages.push({ ...el, imageUrl });
+              if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
+            } catch (e) {
+              console.warn('[AudioVideo] Image generation retry also failed for element:', el.element, e.message);
+            }
+          }
+        }
+
+        // ✅ نرتب تاني حسب مكانها الأصلي في الكلام (الجولة التانية ممكن تضيف عناصر آخر القائمة)
+        withImages.sort((a, b) => a.startIdx - b.startIdx);
+
+        if (!withImages.length) {
+          await updateAudioVideoJob(job.id, { status: 'failed', error: 'Image generation failed for all elements' });
+          return;
+        }
+
+        await updateAudioVideoJob(job.id, { elementsJson: withImages, status: 'elements_ready' });
+      } catch (err) {
+        console.error('[AudioVideo] Extract error:', err);
+        await updateAudioVideoJob(job.id, { status: 'failed', error: err.message }).catch(() => {});
       }
-    }
-
-    // ✅ نرتب تاني حسب مكانها الأصلي في الكلام (الجولة التانية ممكن تضيف عناصر آخر القائمة)
-    withImages.sort((a, b) => a.startIdx - b.startIdx);
-
-    if (!withImages.length) {
-      await updateAudioVideoJob(job.id, { status: 'failed', error: 'Image generation failed for all elements' });
-      return res.status(502).json({ error: 'image_generation_failed' });
-    }
-
-    const updated = await updateAudioVideoJob(job.id, { elementsJson: withImages, status: 'elements_ready' });
-    res.json({ job: updated });
+    })();
   } catch (err) {
-    console.error('[AudioVideo] Extract error:', err);
-    await updateAudioVideoJob(req.params.id, { status: 'failed', error: err.message }).catch(() => {});
+    console.error('[AudioVideo] Extract trigger error:', err);
     res.status(500).json({ error: err.message });
   }
 });

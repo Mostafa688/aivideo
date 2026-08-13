@@ -186,8 +186,12 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
 async function fetchPollinationsImage(prompt, attempt = 1) {
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
   const res = await fetch(url);
-  if (res.status === 429 && attempt <= 3) {
-    await new Promise(r => setTimeout(r, attempt * 3000));
+  // ✅ FIX: التقسيم الكثيف الجديد (لقطة كل 3-5 كلمات) بيطلب 15-20+ صورة للـ job الواحد بدل
+  // 6-8 زي الأول — لوجات حقيقية أظهرت إن الـ 429 بيفضل مستمر حتى بعد فواصل 40-80 ثانية بين
+  // الطلبات، يعني حد Pollinations أصعب بكتير من افتراضنا الأول. بدل backoff قصير (3s/6s/9s)
+  // اللي بيرمي الصورة بسرعة، دلوقتي أطول وأصبر بكتير (10s/20s/30s/40s)
+  if (res.status === 429 && attempt <= 4) {
+    await new Promise(r => setTimeout(r, attempt * 10000));
     return fetchPollinationsImage(prompt, attempt + 1);
   }
   if (!res.ok) throw new Error(`Pollinations error ${res.status}`);
