@@ -1,24 +1,27 @@
 // ── audioVideoRenderService.js ───────────────────────────────────────────────
 // مصنع فيديو الصوت (أدمن) — المرحلة الأخيرة: بناء الفيديو النهائي.
 //
-// الفكرة (v2 — بعد ملاحظات حقيقية على v1): بدل "جريد صور + زوم-قص جزء منه" (كان طالع
-// انيميشن مقطّع وغير متسق)، كل مشهد دلوقتي "سلايد" واحدة مركّبة بالكامل مسبقًا (sharp):
-// نفس الخلفية الموحدة + نفس شخصية الشارح الثابتة (Stickman، نفس الرسمة بالظبط في كل مشهد)
-// + أيقونة العنصر الحالي (بخلفية شفافة حقيقية بعد إزالة الخلفية) — وبعدين حركة واحدة موحدة
-// (Ken Burns: زوم بطيء متمركز) على كل سلايد بنفس المعادلة بالظبط، طول مدتها = مدة كلام
-// الصوت عن العنصر ده فعليًا. كابشنز كل كلمة في توقيتها الحقيقي، بس دلوقتي أكبر وألوان أوضح
-// (مش شكل سترة كابشن رفيعة).
+// v3 — بعد ملاحظات حقيقية على v2 (شكل مرجعي اتبعت لينا: فيديوهات "قصص وعبر" العربية
+// المشهورة، ملصقات 2D كثيفة جدًا، مفيش شخصية شارح، النص كبير متحرك مش كابشن رفيع):
+// - اتشالت شخصية الـ Stickman خالص.
+// - كل "لقطة" (beat) دلوقتي كل 3-4 كلمات تقريبًا (مش موضوع كبير) — ملصق واحد كبير في
+//   النص، بيظهر ويختفي بحركة fade+zoom خفيفة (مش زوم-قص جريد زي قبل كده).
+// - الشخصيات المسمّاة (kind:'character') بتستخدم نفس صورة الملصق في كل ظهور — الاتساق ده
+//   بيتضمن من مرحلة الاستخراج/توليد الصور في audioVideoService.js، هنا بس بنستخدم الرابط.
+// - النص دلوقتي مرحلة واحدة لكل لقطة (مش كل كلمة لوحدها)، كبير وبخط واضح، بيظهر ويختفي
+//   بانيميشن (ASS \fad) بدل كابشن ثابت.
 
 import fetch from 'node-fetch';
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { uploadFinalVideoToR2, generateStickmanCharacterPng } from './audioVideoService.js';
+import { uploadFinalVideoToR2 } from './audioVideoService.js';
 
 const FPS = 25;
 const RATIO_DIMS = { '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080] };
 const BG_COLOR = '#fdfaf4'; // خلفية موحدة دافية (مش أبيض بارد) — نفسها في كل مشهد طول الفيديو
+const BG_HEX = '0xfdfaf4'; // نفس اللون بصيغة hex لفلتر fade بتاع ffmpeg
 
 // ✅ نفس منطق اختيار الفونت المستخدم فعليًا في renderService.js (fc-list ديناميكي حسب
 // اللغة) — بننسخه هنا محليًا بدل ما نصدّره من renderService.js، عشان ملف الكابشن الأساسي
@@ -39,48 +42,33 @@ function getFontPath(lang) {
   return dejaVu;
 }
 
-// ✅ سلايد واحدة لعنصر: خلفية موحدة + أيقونة العنصر (شفافة) في النص + الشخصية الثابتة تحت
-// يمين، بنفس التخطيط بالظبط في كل مرة — ده اللي بيدّي إحساس "انيميشن واحد متسق" طول الفيديو
-async function buildElementSlide(iconBuffer, stickmanBuffer, W, H, outPath) {
-  const iconSize = Math.round(Math.min(W, H) * 0.5);
+// ✅ سلايد واحدة للقطة: خلفية موحدة + ملصق اللقطة كبير في النص — بسيطة عمدًا، الحركة كلها
+// بتتضاف بعد كده في buildAnimatedClip (فصل الرسم عن الحركة أسهل صيانة وأدق توقيتًا)
+async function buildElementSlide(iconBuffer, W, H, outPath) {
+  const iconSize = Math.round(Math.min(W, H) * 0.62);
   const icon = await sharp(iconBuffer).resize(iconSize, iconSize, { fit: 'contain' }).png().toBuffer();
-  const stickSize = Math.round(Math.min(W, H) * 0.22);
-  const stick = await sharp(stickmanBuffer).resize(stickSize, stickSize, { fit: 'contain' }).png().toBuffer();
-
-  const iconLeft = Math.round(W / 2 - iconSize / 2);
-  const iconTop = Math.round(H * 0.5 - iconSize / 2 - H * 0.06);
-  const stickLeft = Math.round(W * 0.5 + iconSize * 0.18);
-  const stickTop = Math.round(iconTop + iconSize - stickSize * 0.35);
-
+  const left = Math.round(W / 2 - iconSize / 2);
+  const top = Math.round(H * 0.42 - iconSize / 2);
   await sharp({ create: { width: W, height: H, channels: 3, background: BG_COLOR } })
-    .composite([
-      { input: icon, left: iconLeft, top: iconTop },
-      { input: stick, left: Math.min(stickLeft, W - stickSize - 20), top: Math.min(stickTop, H - stickSize - 20) },
-    ])
+    .composite([{ input: icon, left, top }])
     .jpeg({ quality: 92 })
     .toFile(outPath);
 }
 
-// ✅ سلايد المقدمة — نفس الخلفية والشخصية بس من غير أيقونة عنصر (لسه محدش اتذكر)، لنفس
-// إحساس "استمرارية" الشخصية من أول لحظة في الفيديو
-async function buildIntroSlide(stickmanBuffer, W, H, outPath) {
-  const stickSize = Math.round(Math.min(W, H) * 0.32);
-  const stick = await sharp(stickmanBuffer).resize(stickSize, stickSize, { fit: 'contain' }).png().toBuffer();
-  await sharp({ create: { width: W, height: H, channels: 3, background: BG_COLOR } })
-    .composite([{ input: stick, left: Math.round(W / 2 - stickSize / 2), top: Math.round(H / 2 - stickSize / 2) }])
-    .jpeg({ quality: 92 })
-    .toFile(outPath);
-}
-
-// ✅ حركة واحدة موحدة لكل السلايدز (Ken Burns: زوم بطيء متمركز في نص الفريم) — نفس
-// المعادلة بالظبط لكل مشهد، ده اللي بيحل مشكلة "الانيميشن متخلف/مقطّع" الأصلية (كانت بسبب
-// القص الحاد لخانة من جريد مزدحم، مش زوم نضيف على سلايد واحدة بسيطة زي دلوقتي)
-function buildKenBurnsClip(slidePath, W, H, durationSec, outPath, zoomTo = 1.07) {
+// ✅ حركة كل لقطة: زوم بسيط جدًا طول المدة (شوية حياة/حركة) + fade-in/fade-out عند بداية
+// ونهاية اللقطة — بما إن لون الـ fade هو نفس لون الخلفية بالظبط، اللي بيظهر ويختفي فعليًا
+// هو الملصق بس (مش الفريم كله يسود) وده بيدّي إحساس "دخول/خروج" نضيف من غير تراكب ألفا معقّد
+function buildAnimatedClip(slidePath, W, H, durationSec, outPath) {
+  const fadeSec = Math.min(0.3, Math.max(0.08, durationSec * 0.25));
   const totalFrames = Math.max(2, Math.round(durationSec * FPS));
+  const zoomTo = 1.05;
   const zExpr = `1+${(zoomTo - 1).toFixed(4)}*on/${totalFrames - 1}`;
   const xExpr = `(iw-(iw/(${zExpr})))/2`;
   const yExpr = `(ih-(ih/(${zExpr})))/2`;
-  const vf = `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=${W}x${H}:fps=${FPS}`;
+  const outStart = Math.max(0, durationSec - fadeSec);
+  const vf = `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=${W}x${H}:fps=${FPS},` +
+    `fade=t=in:st=0:d=${fadeSec.toFixed(3)}:color=${BG_HEX},` +
+    `fade=t=out:st=${outStart.toFixed(3)}:d=${fadeSec.toFixed(3)}:color=${BG_HEX}`;
   execSync(
     `ffmpeg -y -loop 1 -framerate ${FPS} -i "${slidePath}" -vf "${vf}" -t ${durationSec.toFixed(3)} -c:v libx264 -pix_fmt yuv420p "${outPath}"`,
     { stdio: 'pipe' }
@@ -95,16 +83,14 @@ function toAssTime(s) {
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
-// ✅ كابشنز على مستوى الكلمة الواحدة — سطر ASS منفصل لكل كلمة بتوقيتها الحقيقي من Whisper.
-// كبيرة وبألوان واضحة عمدًا (Outline تقيل، من غير صندوق شفاف خلفها) — إحساس "نص فيديو
-// شرح" مش شكل ترجمة/كابشن رفيعة. الكلمة اللي جوه مدى عنصر حالي بلون ذهبي مميز والباقي أبيض
-function buildCaptionsAssFile(words, segments, videoLanguage, ratio, fontName, W, H) {
+// ✅ نص متحرك لكل لقطة — سطر ASS واحد لكل لقطة (مش لكل كلمة) بنفس توقيتها بالظبط، وبتاعه
+// \fad(in,out) بيدّي ظهور/اختفاء متدرّج بدل ظهور مفاجئ. كبير وبخط واضح غامق (Outline تقيل،
+// من غير صندوق كابشن رفيع خلفه) — إحساس "نص فيديو شرح" احترافي مش كابشن آلي
+function buildCaptionsAssFile(segments, videoLanguage, ratio, fontName, W, H) {
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(normalizeLangBase(videoLanguage));
   const isVertical = ratio === '9:16' || ratio === '1:1';
-  const wordSize = isVertical ? 100 : 86;
-  const keywordSize = isVertical ? 112 : 96;
-  const labelSize = isVertical ? 70 : 60;
-  const marginV = isVertical ? 220 : 140;
+  const fontSize = isVertical ? 88 : 74;
+  const marginV = isVertical ? 170 : 100;
 
   const header = `[Script Info]
 ScriptType: v4.00+
@@ -114,30 +100,20 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Word,${fontName},${wordSize},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,7,0,2,20,20,${marginV},1
-Style: Keyword,${fontName},${keywordSize},&H0000D7FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,7,0,2,20,20,${marginV},1
-Style: Label,${fontName},${labelSize},&H0000D7FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,8,20,20,40,1
+Style: Text,${fontName},${fontSize},&H00181818,&H000000FF,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,30,30,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  const events = [];
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i];
-    const wordText = String(w.word || '').replace(/['"`\\{}|<>]/g, '').trim();
-    if (!wordText) continue;
-    const isKeyword = segments.some(seg => i >= seg.startIdx && i <= seg.endIdx);
-    const styleName = isKeyword ? 'Keyword' : 'Word';
-    const text = isRTL ? `‏${wordText}` : wordText;
-    events.push(`Dialogue: 0,${toAssTime(w.start)},${toAssTime(w.end)},${styleName},,0,0,0,,${text}`);
-  }
-  for (const seg of segments) {
-    const labelText = String(seg.element || '').replace(/['"`\\{}|<>]/g, '').trim();
-    if (!labelText) continue;
-    const text = isRTL ? `‏${labelText}` : labelText;
-    events.push(`Dialogue: 0,${toAssTime(seg.segStart)},${toAssTime(seg.segEnd)},Label,,0,0,0,,${text}`);
-  }
+  const events = segments.map(seg => {
+    const text = String(seg.text || seg.element || '').replace(/['"`\\{}|<>]/g, '').trim();
+    if (!text) return null;
+    const dispText = isRTL ? `‏${text}` : text;
+    const durMs = Math.max(1, (seg.segEnd - seg.segStart) * 1000);
+    const fadeMs = Math.round(Math.min(280, durMs * 0.25));
+    return `Dialogue: 0,${toAssTime(seg.segStart)},${toAssTime(seg.segEnd)},Text,,0,0,0,,{\\fad(${fadeMs},${fadeMs})}${dispText}`;
+  }).filter(Boolean);
 
   return header + events.join('\n');
 }
@@ -156,35 +132,25 @@ export async function renderAudioVideoJob(job) {
   fs.mkdirSync(workDir, { recursive: true });
 
   try {
-    const stickmanBuffer = await generateStickmanCharacterPng(600);
-
     const audioDurationSec = words[words.length - 1].end + 0.3;
-    const introDuration = Math.max(0, elements[0].start);
+    // ✅ اللقطة الأولى بتبدأ من t=0 مباشرة (مفيش "مقدمة" منفصلة دلوقتي بعد ما اتشالت
+    // شخصية الشارح) — أي صمت قبل أول كلمة بيتغطى بملصق أول لقطة نفسه
     const segments = elements.map((el, i) => {
-      const segStart = el.start;
+      const segStart = i === 0 ? 0 : el.start;
       const segEnd = i < elements.length - 1 ? elements[i + 1].start : audioDurationSec;
-      return { ...el, segStart, segEnd, segDuration: Math.max(0.5, segEnd - segStart) };
+      return { ...el, segStart, segEnd, segDuration: Math.max(0.4, segEnd - segStart) };
     });
 
     const clipPaths = [];
-
-    if (introDuration >= 0.3) {
-      const introSlidePath = path.join(workDir, 'slide_intro.jpg');
-      await buildIntroSlide(stickmanBuffer, W, H, introSlidePath);
-      const introClipPath = path.join(workDir, 'clip_intro.mp4');
-      buildKenBurnsClip(introSlidePath, W, H, introDuration, introClipPath, 1.04);
-      clipPaths.push(introClipPath);
-    }
-
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const iconRes = await fetch(seg.imageUrl);
       if (!iconRes.ok) throw new Error(`Could not download element image: ${seg.element}`);
       const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
       const slidePath = path.join(workDir, `slide_${i}.jpg`);
-      await buildElementSlide(iconBuffer, stickmanBuffer, W, H, slidePath);
+      await buildElementSlide(iconBuffer, W, H, slidePath);
       const clipPath = path.join(workDir, `clip_${i}.mp4`);
-      buildKenBurnsClip(slidePath, W, H, seg.segDuration, clipPath);
+      buildAnimatedClip(slidePath, W, H, seg.segDuration, clipPath);
       clipPaths.push(clipPath);
     }
 
@@ -200,7 +166,7 @@ export async function renderAudioVideoJob(job) {
     const fontName = fontfile.includes('Naskh') ? 'Noto Naskh Arabic' :
                       fontfile.includes('Noto') ? 'Noto Sans Arabic' :
                       fontfile.includes('DejaVu') ? 'DejaVu Sans' : 'Arial';
-    const assContent = buildCaptionsAssFile(words, segments, videoLanguage, ratio, fontName, W, H);
+    const assContent = buildCaptionsAssFile(segments, videoLanguage, ratio, fontName, W, H);
     const assPath = path.join(workDir, 'captions.ass');
     fs.writeFileSync(assPath, assContent, 'utf8');
     const safeAss = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
