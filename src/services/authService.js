@@ -26,8 +26,12 @@ export const MODEL5_CREDIT_COSTS_WITH_PHOTO = { '5s': 65, '10s': 125, '15s': 185
 // +25 كريديت لكل صورة إضافية بعد الأولى، بنفس القيمة في كل مدة (5s/10s/15s/30s/1min) —
 // مطابق تمامًا لجدول التكلفة اللي اتفقنا عليه: 1 صورة=الأساس، 2=+25، 3=+50، 4=+75، 5=+100
 export const MODEL5_EXTRA_CREDITS_PER_PHOTO = 25;
+// ✅ FIX: كان fallback الأساس بيرجّع رقم ثابت (180/185) لأي "duration" مش موجودة في الجدول
+// (الجدول بيغطي بس 5s/10s/15s/30s/1min) — ده كان بيضيف رسم أساسي وهمي فوق سرشارج المشاهد
+// الإضافية اللي بيتحسب في index.js لأي مدة كلية مخصصة برة الجدول (مفيش سقف مدة أصلًا).
+// دلوقتي 0 لأي مدة مش معروفة، والتكلفة كلها بتيجي من عدد المشاهد الحقيقي × السعر الإضافي
 export function getModel5CreditCost(duration, photoCount = 0) {
-  const base = photoCount > 0 ? (MODEL5_CREDIT_COSTS_WITH_PHOTO[duration] || 185) : (MODEL5_CREDIT_COSTS[duration] || 180);
+  const base = photoCount > 0 ? (MODEL5_CREDIT_COSTS_WITH_PHOTO[duration] || 0) : (MODEL5_CREDIT_COSTS[duration] || 0);
   const extra = photoCount > 1 ? MODEL5_EXTRA_CREDITS_PER_PHOTO * (photoCount - 1) : 0;
   return base + extra;
 }
