@@ -122,15 +122,37 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
     body: JSON.stringify({
       model: ELEMENT_EXTRACTION_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      max_tokens: 7000, temperature: 0.3,
+      max_tokens: 8000, temperature: 0.3,
     }),
   });
   if (!res.ok) throw new Error(`Element extraction Groq error ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
-  const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+  const finishReason = data.choices?.[0]?.finish_reason;
+  let raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+  const firstBracket = raw.indexOf('[');
+  if (firstBracket > 0) raw = raw.slice(firstBracket);
 
+  // ✅ التقسيم الكثيف (لقطة كل 3-5 كلمات) بيطلع رد أطول بكتير من قبل، وممكن يتقطع لو وصل
+  // لحد max_tokens قبل ما يخلص المصفوفة (finish_reason:"length") — بدل ما نفشل ونضيع كل حاجة
+  // اتستخرجت لحد وقتها، بنحاول نصلح الـ JSON: نلاقي آخر "}" كامل قبل الجزء الناقص ونقفل
+  // المصفوفة من هناك. لو نجح، بيرجّع كل اللقطات الكاملة اللي اتولدت قبل القطع.
   let parsed;
-  try { parsed = JSON.parse(raw); } catch { throw new Error('Element extraction returned invalid JSON'); }
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const lastCompleteObjEnd = raw.lastIndexOf('}');
+    if (lastCompleteObjEnd === -1) {
+      console.error('[AudioVideo] Extraction raw response (unparseable):', raw.slice(0, 500));
+      throw new Error(`Element extraction returned invalid JSON (finish_reason: ${finishReason}, length: ${raw.length} chars)`);
+    }
+    try {
+      parsed = JSON.parse(raw.slice(0, lastCompleteObjEnd + 1) + ']');
+      console.warn(`[AudioVideo] Extraction JSON was truncated (finish_reason: ${finishReason}) — recovered ${parsed.length} complete beats`);
+    } catch {
+      console.error('[AudioVideo] Extraction raw response (unparseable even after truncation repair):', raw.slice(0, 300), '...', raw.slice(-300));
+      throw new Error(`Element extraction returned invalid JSON (finish_reason: ${finishReason}, length: ${raw.length} chars)`);
+    }
+  }
   if (!Array.isArray(parsed)) throw new Error('Element extraction did not return a JSON array');
 
   const maxIdx = words.length - 1;
