@@ -57,16 +57,26 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
     // ✅ الصور بالترتيب (مش Promise.all) مع فاصل زمني بين كل نداء والتاني — Pollinations
     // فعليًا بترجع 429 لو النداءات جت ورا بعض بسرعة (اتأكد ده من لوجات حقيقية)، فبنبعد عنه
     // استباقيًا. fetchPollinationsImage نفسها كمان عندها إعادة محاولة تصاعدية على 429.
+    // ✅ شخصيات مسمّاة (kind:'character') بتتكرر بنفس الـ characterKey بتاخد نفس صورة الملصق
+    // المولّدة أول مرة بس — من غير ما تولّد صورة جديدة (شكل مختلف) في كل ظهور، عشان تفضل
+    // نفس الشخصية بصريًا زي ما طلب العميل، وكمان بيوفر نداءات فعليًا
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const characterImageCache = new Map(); // characterKey -> imageUrl
     const withImages = [];
     const failedElements = [];
-    for (let i = 0; i < elements.length; i++) {
-      const el = elements[i];
-      if (i > 0) await sleep(2000);
+    let generatedCount = 0;
+    for (const el of elements) {
+      if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
+        withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
+        continue;
+      }
+      if (generatedCount > 0) await sleep(2000);
+      generatedCount++;
       try {
         const buffer = await generateElementImage(el.imagePrompt);
         const imageUrl = await uploadElementImageToR2(buffer);
         withImages.push({ ...el, imageUrl });
+        if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
       } catch (e) {
         console.warn('[AudioVideo] Image generation failed for element:', el.element, e.message);
         failedElements.push(el);
@@ -78,10 +88,15 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
     if (failedElements.length) {
       await sleep(8000);
       for (const el of failedElements) {
+        if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
+          withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
+          continue;
+        }
         try {
           const buffer = await generateElementImage(el.imagePrompt);
           const imageUrl = await uploadElementImageToR2(buffer);
           withImages.push({ ...el, imageUrl });
+          if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
         } catch (e) {
           console.warn('[AudioVideo] Image generation retry also failed for element:', el.element, e.message);
         }

@@ -1,8 +1,9 @@
 // ── audioVideoService.js ─────────────────────────────────────────────────────
 // مصنع فيديو الصوت (أدمن) — رفع فويس أوفر جاهز، تفريغه لنص بتوقيت دقيق على مستوى الكلمة
-// (Groq Whisper)، استخراج العناصر المذكورة فيه (Groq LLM)، وتوليد صورة بخلفية بيضاء لكل
-// عنصر (Pollinations.ai — مجاني بالكامل بدون مفتاح). بناء الفيديو النهائي (زوم + كابشنز
-// + دمج الصوت) في audioVideoRenderService.js.
+// (Groq Whisper)، تقسيمه للقطات كثيفة (كل 3-4 كلمات تقريبًا، Groq LLM) مع صورة ملصق 2D
+// شفافة الخلفية لكل لقطة (Pollinations.ai — مجاني بالكامل بدون مفتاح)، والشخصيات المسمّاة
+// بتتكرر بنفس الملصق. بناء الفيديو النهائي (ملصقات متحركة + نص متحرك + دمج الصوت) في
+// audioVideoRenderService.js.
 
 import Groq from 'groq-sdk';
 import fetch from 'node-fetch';
@@ -89,20 +90,30 @@ function isSensitiveReligiousElement(name) {
   return SENSITIVE_ELEMENT_KEYWORDS.some(kw => n.includes(kw));
 }
 
-// ✅ استخراج العناصر — بنديله الترانسكريبت كقائمة كلمات مرقّمة ("index:word") ونطلب منه
-// يرجّع أرقام الـ index (مش أرقام ثواني) لبداية/نهاية كل عنصر. ده أدق بكتير من ما نسيبه
-// يحاول "يخترع" أرقام ثواني عشرية بنفسه — إحنا اللي بنحسب start/end الحقيقي من الـ index
-// اللي هو رجّعه، مباشرة من الـ words array الأصلي اللي فيه التوقيت الحقيقي من Whisper.
+// ✅ استخراج "لقطات" كثيفة — عنصر كل 3-4 كلمات تقريبًا (مش عنصر لكل "موضوع" كبير زي الأول)،
+// عشان الفيديو يبقى كثيف بالملصقات زي المرجع اللي العميل بعته. بنديله الترانسكريبت كقائمة
+// كلمات مرقّمة ("index:word") ونطلب منه يرجّع أرقام الـ index (مش أرقام ثواني) — إحنا اللي
+// بنحسب start/end الحقيقي من الـ index اللي هو رجّعه، مباشرة من الـ words array الأصلي اللي
+// فيه التوقيت الحقيقي من Whisper. كل لقطة كمان بترجع نص اللقطة نفسه (هيتحط على الشاشة كنص
+// متحرك) — وبتترمز كـ "character" لو بتمثل شخصية معينة بالاسم، مع characterKey ثابت لنفس
+// الشخصية في كل مرة تتذكر، عشان نعيد استخدام نفس صورة الملصق بدل ما نولّد شكل مختلف كل مرة.
 export async function extractVideoElements(words) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
   if (!words || words.length === 0) return [];
 
   const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
-  const system = `You analyze a spoken narration transcript, given as an indexed word list ("index:word", space-separated), and extract the ordered list of distinct visual "elements" (concrete, drawable objects/subjects) the narration discusses, in the order first mentioned. For each element, give the word index where its discussion STARTS and the word index where it ENDS (inclusive) — reference ONLY the given indices, never invent timestamps or numbers not present in the list. Also give a short, concrete English image-generation prompt describing the element visually (just the concrete subject, no style words — style is added later).
+  const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short visual "beats" that will each get their own animated sticker + on-screen text in a video — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
 
-CRITICAL religious-respect rule: NEVER create an element for Allah/God, or for any prophet (by name or by title like "the Prophet"/"Messenger of God" in any language) — these must never be visually depicted. When the narration mentions God or a prophet only as an attribution ("the Prophet said...", "God created...") while actually discussing a concrete subject (an animal, object, place, story detail), extract the concrete subject as the element and simply skip the God/prophet mention — do not give it its own element entry at all.
+For each beat, output:
+- "start_idx","end_idx": word indices (inclusive) it covers — reference ONLY the given indices, never invent numbers
+- "text": the exact words for this beat, copied verbatim from the transcript — this becomes on-screen animated text
+- "kind": "character" if this beat depicts or refers to a specific named recurring person in the story, otherwise "object" (an object, place, action, or abstract concept)
+- "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their sticker stays visually consistent
+- "image_prompt": a short, concrete English visual description for a 2D sticker — for a "character" beat, describe their appearance/clothing/pose once (it's still fine to repeat it on later beats with the same character_key, it'll just be ignored after the first use)
 
-Do not over-merge distinct concrete subjects just to keep the list short — create a new element every time the narration moves to a genuinely different concrete subject, even briefly. Only merge scattered mentions that refer to the exact same subject. Output ONLY valid JSON, no explanation, no markdown fences: [{"element":"short name, in the transcript's own language","start_idx":N,"end_idx":N,"image_prompt":"..."}].`;
+CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or a visual image_prompt of any figure. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
+
+Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character","character_key":"...","image_prompt":"..."}].`;
   const user = `Indexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -111,7 +122,7 @@ Do not over-merge distinct concrete subjects just to keep the list short — cre
     body: JSON.stringify({
       model: ELEMENT_EXTRACTION_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      max_tokens: 3000, temperature: 0.3,
+      max_tokens: 7000, temperature: 0.3,
     }),
   });
   if (!res.ok) throw new Error(`Element extraction Groq error ${res.status}: ${(await res.text()).slice(0, 300)}`);
@@ -127,9 +138,13 @@ Do not over-merge distinct concrete subjects just to keep the list short — cre
     .map(el => {
       const startIdx = Math.max(0, Math.min(maxIdx, Math.round(Number(el.start_idx))));
       const endIdx = Math.max(startIdx, Math.min(maxIdx, Math.round(Number(el.end_idx))));
+      const kind = el.kind === 'character' ? 'character' : 'object';
       return {
-        element: String(el.element || '').slice(0, 80).trim(),
-        imagePrompt: String(el.image_prompt || el.element || '').slice(0, 300).trim(),
+        element: String(el.text || '').slice(0, 200).trim(),
+        text: String(el.text || '').slice(0, 200).trim(),
+        imagePrompt: String(el.image_prompt || el.text || '').slice(0, 300).trim(),
+        kind,
+        characterKey: kind === 'character' ? String(el.character_key || '').toLowerCase().trim().slice(0, 60) : null,
         startIdx, endIdx,
         start: words[startIdx].start,
         end: words[endIdx].end,
@@ -219,19 +234,4 @@ export async function generateElementImage(imagePrompt) {
     buffer = await fetchPollinationsImage(`${fullPrompt}, flat design, sticker style, vector art`);
   }
   return removeFlatBackground(buffer);
-}
-
-// ✅ شخصية الشارح الثابتة (Stickman) — بترسم برمجيًا (SVG → PNG) بدل توليدها بالذكاء
-// الاصطناعي، عشان تبقى **نفس الشخصية بالظبط** في كل مشهد طول الفيديو (لو ولّدناها بـ
-// Pollinations كل مرة هتطلع شكل مختلف كل مرة، وده بيكسر شرط "انيميشن/شخصية واحدة متسقة")
-export async function generateStickmanCharacterPng(size = 600) {
-  const svg = `<svg width="${size}" height="${size}" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="100" cy="42" r="26" fill="#2d2d3a"/>
-    <rect x="88" y="66" width="24" height="72" rx="12" fill="#7c6af7"/>
-    <line x1="100" y1="80" x2="150" y2="55" stroke="#2d2d3a" stroke-width="12" stroke-linecap="round"/>
-    <line x1="100" y1="80" x2="60" y2="112" stroke="#2d2d3a" stroke-width="12" stroke-linecap="round"/>
-    <line x1="94" y1="138" x2="80" y2="196" stroke="#2d2d3a" stroke-width="14" stroke-linecap="round"/>
-    <line x1="106" y1="138" x2="120" y2="196" stroke="#2d2d3a" stroke-width="14" stroke-linecap="round"/>
-  </svg>`;
-  return sharp(Buffer.from(svg)).resize(size, size).png().toBuffer();
 }
