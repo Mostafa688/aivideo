@@ -744,7 +744,9 @@ function AudioVideoTab({ s }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => () => clearInterval(pollRef.current), []);
 
-  const pollJob = (jobId) => {
+  // ✅ stopStatuses/onStop معمّمة عشان نفس الـ poller يخدم كل من الاستخراج (elements_ready/
+  // failed) والرندر (done/failed) — كل واحد له endpoint async مختلف بس نفس شكل الـ polling
+  const pollJob = (jobId, stopStatuses, onStop) => {
     clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
@@ -752,9 +754,9 @@ function AudioVideoTab({ s }) {
         const d = await r.json();
         if (!r.ok) return;
         setActiveJob(d.job);
-        if (d.job.status === 'done' || d.job.status === 'failed') {
+        if (stopStatuses.includes(d.job.status)) {
           clearInterval(pollRef.current);
-          setRendering(false);
+          onStop();
           load();
         }
       } catch (e) { console.error(e); }
@@ -793,10 +795,9 @@ function AudioVideoTab({ s }) {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Extraction failed');
       setActiveJob(d.job);
-      load();
+      pollJob(activeJob.id, ['elements_ready', 'failed'], () => setExtracting(false));
     } catch (e) {
       setError('❌ ' + e.message);
-    } finally {
       setExtracting(false);
     }
   };
@@ -811,7 +812,7 @@ function AudioVideoTab({ s }) {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Render trigger failed');
       setActiveJob(d.job);
-      pollJob(activeJob.id);
+      pollJob(activeJob.id, ['done', 'failed'], () => setRendering(false));
     } catch (e) {
       setError('❌ ' + e.message);
       setRendering(false);
@@ -869,7 +870,7 @@ function AudioVideoTab({ s }) {
               لو العناصر موجودة بالفعل، عشان تقدر تعيد التوليد على نفس الـ job (بعد أي تعديل
               على منطق الاستخراج/الصور) من غير ما تحتاج ترفع الصوت تاني من الصفر */}
           <button style={{ ...s.btn(extracting ? '#1a1a2e' : '#7c6af7'), opacity: extracting ? 0.6 : 1, marginBottom: activeJob.elements_json ? 12 : 0 }} onClick={handleExtract} disabled={extracting}>
-            {extracting ? '⏳ بيستخرج العناصر ويولّد الصور... (ممكن ياخد دقيقة)' : activeJob.elements_json ? '🔄 أعد الاستخراج والصور' : '🧩 استخرج العناصر وولّد الصور'}
+            {extracting ? '⏳ بيستخرج العناصر ويولّد الصور... (ممكن ياخد كذا دقيقة، العدد كبير دلوقتي)' : activeJob.elements_json ? '🔄 أعد الاستخراج والصور' : '🧩 استخرج العناصر وولّد الصور'}
           </button>
 
           {activeJob.elements_json && (
