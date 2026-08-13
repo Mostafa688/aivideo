@@ -311,6 +311,15 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  // ✅ FIX: حالة "extracting"/"rendering" كانت بتعيش في ذاكرة الـ process بس (fire-and-forget
+  // async IIFE) — لو السيرفر اترستارت في نص الشغل (ديبلوي جديد، كراش، صيانة Railway)، الشغل
+  // بيتقفل من غير ما حد يحدّث حالة الـ job، فيفضل عالق على "extracting" للأبد من غير أي طريقة
+  // يتعافى بيها لوحده. بنعمل تنظيف مرة واحدة عند كل bootstrap: أي job كان لسه شغال وقت ما
+  // السيرفر القديم اتقفل يتحول لـ "failed" برسالة واضحة، عشان الأدمن يقدر يعيد المحاولة
+  await pool.query(
+    `UPDATE audio_video_jobs SET status = 'failed', error = 'Interrupted by a server restart — please retry'
+     WHERE status IN ('extracting', 'rendering')`
+  ).catch(e => console.warn('[DB] Could not clean up stuck audio_video_jobs:', e.message));
   console.log('[DB] PostgreSQL tables ready');
 }
 
