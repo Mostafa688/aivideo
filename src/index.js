@@ -160,7 +160,6 @@ const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 200,
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many requests, please try again in a few minutes.' },
-  skip: (req) => req.path === '/health',
 });
 
 const authLimiter = rateLimit({
@@ -182,7 +181,16 @@ const sceneLimiter = rateLimit({
   message: { error: 'Scene generation limit reached. Please wait.' },
 });
 
-app.use(generalLimiter);
+// ✅ FIX (باج حقيقي خطير: "الموقع كله بقى شاشة سوداء حتى صفحة الأدمن"): كان مطبّق على كل
+// طلب بلا استثناء (app.use(generalLimiter) بدون path)، من قبل static file serving بتاع
+// الفرونت إند (dist) بكتير — يعني كل طلب لتحميل الصفحة نفسها (JS bundle, CSS, favicon,
+// index.html) كان بيتحسب من نفس حد الـ 200 طلب/15 دقيقة المفروض يحمي الـ API بس. جلسة
+// تصفح عادية (تحميل + إعادة تحميل + تنقل بين صفحات) بسهولة بتعدّي 200 طلب، وبمجرد ما
+// الحد يتعدى، حتى تحميل ملف الـ JS الأساسي نفسه كان بيرجع 429 — يعني الموقع كله بيقف
+// (شاشة سودة، مفيش React اتحمل خالص) لحد ما الـ 15 دقيقة تعدي. دلوقتي مقصور على /api بس
+// (زي باقي الـ limiters التانية authLimiter/renderLimiter/sceneLimiter بالظبط)، فمينفعش
+// يأثر على تحميل الموقع نفسه أبدًا، وبردو بيحمي كل الـ API endpoints زي ما كان المفروض له.
+app.use('/api', generalLimiter);
 app.use(cors({ origin: true, credentials: true }));
 // ✅ FIX: كانت 10mb، وده كان بيرفض أي طلب فيه أكتر من صورة شخصية واحدة (موديل 5 بيسمح
 // لحد 5 صور) لأن كل صورة base64 لوحدها ممكن تاخد 2-4 ميجا، فمجموعهم بسهولة بيعدي 10mb
