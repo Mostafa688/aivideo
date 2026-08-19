@@ -10,6 +10,14 @@
 //   بيتضمن من مرحلة الاستخراج/توليد الصور في audioVideoService.js، هنا بس بنستخدم الرابط.
 // - النص دلوقتي مرحلة واحدة لكل لقطة (مش كل كلمة لوحدها)، كبير وبخط واضح، بيظهر ويختفي
 //   بانيميشن (ASS \fad) بدل كابشن ثابت.
+//
+// v4 — ملاحظات حقيقية على v3 (فيديو حقيقي اتعمل وظهرت فيه مشاكل واضحة):
+// - الخلفية بقت أبيض صريح بدل الكريمي الدافئ (طلب صريح من العميل).
+// - كل ملصق/مشهد دلوقتي بيدخل بحركة "pop" (يبدأ صغير، يكبر لحد ما يزيد شوية عن حجمه
+//   الطبيعي، ويرجع يستقر) بدل الزوم البطيء اللي كان قبل كده — تقريبًا زي bounce خفيف.
+// - النص بقى في نص الشاشة فعليًا (Alignment=5) مش لاصق تحت زي كابشن، وبقى ليه نفس حركة
+//   الـ pop (يكبر شوية لحد ما يستقر) بدل fade بس.
+// - الملصق نفسه اتحرك لأعلى الفريم شوية عشان يسيب مساحة للنص في النص من غير تراكب كبير.
 
 import fetch from 'node-fetch';
 import sharp from 'sharp';
@@ -20,8 +28,8 @@ import { uploadFinalVideoToR2 } from './audioVideoService.js';
 
 const FPS = 25;
 const RATIO_DIMS = { '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080] };
-const BG_COLOR = '#fdfaf4'; // خلفية موحدة دافية (مش أبيض بارد) — نفسها في كل مشهد طول الفيديو
-const BG_HEX = '0xfdfaf4'; // نفس اللون بصيغة hex لفلتر fade بتاع ffmpeg
+const BG_COLOR = '#ffffff'; // ✅ FIX: خلفية بيضاء صريحة (كان كريمي دافئ) — طلب صريح من العميل
+const BG_HEX = '0xffffff'; // نفس اللون بصيغة hex لفلتر fade بتاع ffmpeg
 
 // ✅ نفس منطق اختيار الفونت المستخدم فعليًا في renderService.js (fc-list ديناميكي حسب
 // اللغة) — بننسخه هنا محليًا بدل ما نصدّره من renderService.js، عشان ملف الكابشن الأساسي
@@ -42,35 +50,38 @@ function getFontPath(lang) {
   return dejaVu;
 }
 
-// ✅ سلايد واحدة للقطة: خلفية موحدة + ملصق اللقطة كبير في النص — بسيطة عمدًا، الحركة كلها
-// بتتضاف بعد كده في buildAnimatedClip (فصل الرسم عن الحركة أسهل صيانة وأدق توقيتًا)
-async function buildElementSlide(iconBuffer, W, H, outPath) {
-  const iconSize = Math.round(Math.min(W, H) * 0.62);
-  const icon = await sharp(iconBuffer).resize(iconSize, iconSize, { fit: 'contain' }).png().toBuffer();
-  const left = Math.round(W / 2 - iconSize / 2);
-  const top = Math.round(H * 0.42 - iconSize / 2);
-  await sharp({ create: { width: W, height: H, channels: 3, background: BG_COLOR } })
-    .composite([{ input: icon, left, top }])
-    .jpeg({ quality: 92 })
+// ✅ FIX: بنجهّز الملصق كـ PNG شفاف لوحده (bounding box مربع، contain-fit) بدل ما نلزّقه
+// مع الخلفية في صورة واحدة مسطحة — لازم يفضل شفاف حقيقي عشان buildAnimatedClip يقدر
+// يكبّره/يصغّره كطبقة منفصلة فوق خلفية ثابتة (overlay)، مش يزوم على الفريم كله زي قبل كده
+async function prepareIconPng(iconBuffer, size, outPath) {
+  await sharp(iconBuffer)
+    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
     .toFile(outPath);
 }
 
-// ✅ حركة كل لقطة: زوم بسيط جدًا طول المدة (شوية حياة/حركة) + fade-in/fade-out عند بداية
-// ونهاية اللقطة — بما إن لون الـ fade هو نفس لون الخلفية بالظبط، اللي بيظهر ويختفي فعليًا
-// هو الملصق بس (مش الفريم كله يسود) وده بيدّي إحساس "دخول/خروج" نضيف من غير تراكب ألفا معقّد
-function buildAnimatedClip(slidePath, W, H, durationSec, outPath) {
-  const fadeSec = Math.min(0.3, Math.max(0.08, durationSec * 0.25));
-  const totalFrames = Math.max(2, Math.round(durationSec * FPS));
-  const zoomTo = 1.05;
-  const zExpr = `1+${(zoomTo - 1).toFixed(4)}*on/${totalFrames - 1}`;
-  const xExpr = `(iw-(iw/(${zExpr})))/2`;
-  const yExpr = `(ih-(ih/(${zExpr})))/2`;
+// ✅ FIX: حركة "pop" حقيقية بدل الزوم البطيء اللي كان قبل كده. ملحوظة مهمة: zoompan (اللي
+// كان مستخدم قبل كده) بيعمل "زوم على الفريم كله" (يقص جزء من الصورة ويكبّره) ومش مصمم أصلًا
+// إنه "يصغّر" (zoom<1 مش سلوك مدعوم فيه) — فمينفعش نستخدمه لعمل تأثير "يبدأ صغير ويكبر".
+// بدل كده، الملصق دلوقتي طبقة PNG شفافة منفصلة (input تاني) بيتكبّر فعليًا بـ scale filter
+// بحجم بيتغيّر كل فريم (eval=frame)، وبيتحط فوق خلفية ثابتة اللون بـ overlay في نص الفريم
+// أفقيًا وعند 30% ارتفاعًا. معادلة نوسان مخمّد (damped oscillation):
+// size(t) = baseSize · (1 - 0.4·e^(-16·t)·cos(20·t)) — تبدأ 60% من الحجم عند t=0، تكبر
+// بسرعة وتعدّي 100% شوية (overshoot/bounce)، وتستقر عند الحجم الطبيعي خلال أقل من نص ثانية.
+// fade-in/out (بلون الخلفية نفسه) فضل موجود فوقها عشان دخول/خروج ناعم.
+function buildAnimatedClip(iconPngPath, W, H, baseSize, durationSec, outPath) {
+  const fadeSec = Math.min(0.25, Math.max(0.06, durationSec * 0.2));
   const outStart = Math.max(0, durationSec - fadeSec);
-  const vf = `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=${W}x${H}:fps=${FPS},` +
-    `fade=t=in:st=0:d=${fadeSec.toFixed(3)}:color=${BG_HEX},` +
-    `fade=t=out:st=${outStart.toFixed(3)}:d=${fadeSec.toFixed(3)}:color=${BG_HEX}`;
+  const popExpr = `${baseSize}*(1-0.4*exp(-16*t)*cos(20*t))`;
+  const filterComplex =
+    `[1:v]scale=w='${popExpr}':h='${popExpr}':eval=frame[icon];` +
+    `[0:v][icon]overlay=x='(main_w-overlay_w)/2':y='(main_h*0.3-overlay_h/2)'[ov];` +
+    `[ov]fade=t=in:st=0:d=${fadeSec.toFixed(3)}:color=${BG_HEX},` +
+    `fade=t=out:st=${outStart.toFixed(3)}:d=${fadeSec.toFixed(3)}:color=${BG_HEX}[outv]`;
   execSync(
-    `ffmpeg -y -loop 1 -framerate ${FPS} -i "${slidePath}" -vf "${vf}" -t ${durationSec.toFixed(3)} -c:v libx264 -pix_fmt yuv420p "${outPath}"`,
+    `ffmpeg -y -f lavfi -i "color=c=${BG_HEX}:s=${W}x${H}:d=${durationSec.toFixed(3)}:r=${FPS}" ` +
+    `-loop 1 -framerate ${FPS} -i "${iconPngPath}" ` +
+    `-filter_complex "${filterComplex}" -map "[outv]" -t ${durationSec.toFixed(3)} -c:v libx264 -pix_fmt yuv420p "${outPath}"`,
     { stdio: 'pipe' }
   );
 }
@@ -83,9 +94,15 @@ function toAssTime(s) {
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
-// ✅ نص متحرك لكل لقطة — سطر ASS واحد لكل لقطة (مش لكل كلمة) بنفس توقيتها بالظبط، وبتاعه
-// \fad(in,out) بيدّي ظهور/اختفاء متدرّج بدل ظهور مفاجئ. كبير وبخط واضح غامق (Outline تقيل،
-// من غير صندوق كابشن رفيع خلفه) — إحساس "نص فيديو شرح" احترافي مش كابشن آلي
+// ✅ نص متحرك لكل لقطة — سطر ASS واحد لكل لقطة (مش لكل كلمة) بنفس توقيتها بالظبط. كبير
+// وبخط واضح غامق (Outline تقيل، من غير صندوق كابشن رفيع خلفه) — إحساس "نص فيديو شرح"
+// احترافي مش كابشن آلي.
+// ✅ FIX (شكوى حقيقية: "مش عايز كابشن، عايز نص في النص بانيميشن pop"):
+// - Alignment اتغيّر من 2 (تحت-في-النص، زي أي كابشن) لـ5 (نص الشاشة فعليًا) — عند
+//   Alignment 4/5/6 اللي هو الصف الأوسط، ASS بيتجاهل MarginV تلقائيًا ويحط النص في نص
+//   الفريم بالظبط بغض النظر عن قيمته.
+// - كل سطر بقى معاه \fscx/\fscy + \t transform بتعمل نفس حركة الـ pop بتاعة الملصق
+//   (يبدأ أصغر من حجمه الطبيعي، يكبر ويعدّي 100% شوية، ويستقر) بدل \fad وبس.
 function buildCaptionsAssFile(segments, videoLanguage, ratio, fontName, W, H) {
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(normalizeLangBase(videoLanguage));
   const isVertical = ratio === '9:16' || ratio === '1:1';
@@ -100,7 +117,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Text,${fontName},${fontSize},&H00181818,&H000000FF,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,30,30,${marginV},1
+Style: Text,${fontName},${fontSize},&H00181818,&H000000FF,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,5,30,30,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -112,7 +129,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     const dispText = isRTL ? `‏${text}` : text;
     const durMs = Math.max(1, (seg.segEnd - seg.segStart) * 1000);
     const fadeMs = Math.round(Math.min(280, durMs * 0.25));
-    return `Dialogue: 0,${toAssTime(seg.segStart)},${toAssTime(seg.segEnd)},Text,,0,0,0,,{\\fad(${fadeMs},${fadeMs})}${dispText}`;
+    const popMidMs = Math.min(150, Math.round(durMs * 0.5));
+    const popEndMs = Math.max(popMidMs + 20, Math.min(280, Math.round(durMs * 0.85)));
+    return `Dialogue: 0,${toAssTime(seg.segStart)},${toAssTime(seg.segEnd)},Text,,0,0,0,,{\\fad(${fadeMs},${fadeMs})\\fscx55\\fscy55\\t(0,${popMidMs},\\fscx115\\fscy115)\\t(${popMidMs},${popEndMs},\\fscx100\\fscy100)}${dispText}`;
   }).filter(Boolean);
 
   return header + events.join('\n');
@@ -147,10 +166,11 @@ export async function renderAudioVideoJob(job) {
       const iconRes = await fetch(seg.imageUrl);
       if (!iconRes.ok) throw new Error(`Could not download element image: ${seg.element}`);
       const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
-      const slidePath = path.join(workDir, `slide_${i}.jpg`);
-      await buildElementSlide(iconBuffer, W, H, slidePath);
+      const iconPngPath = path.join(workDir, `icon_${i}.png`);
+      const iconSize = Math.round(Math.min(W, H) * 0.5);
+      await prepareIconPng(iconBuffer, iconSize, iconPngPath);
       const clipPath = path.join(workDir, `clip_${i}.mp4`);
-      buildAnimatedClip(slidePath, W, H, seg.segDuration, clipPath);
+      buildAnimatedClip(iconPngPath, W, H, iconSize, seg.segDuration, clipPath);
       clipPaths.push(clipPath);
     }
 

@@ -198,14 +198,17 @@ async function fetchPollinationsImage(prompt, attempt = 1) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-// ✅ إزالة خلفية حقيقية (مش بس "استنى واعتمد على الـ prompt") — بنولّد الصورة على خلفية
-// لون واحد صريح (كروما كي أخضر) بدل الأبيض، وبعدين بنعمل flood-fill حقيقي من حدود الصورة
-// لأي بكسل قريب من نفس اللون ده ونشيله (شفافية). الأسلوب "2D flat illustration" اللي
-// طلبناه من الموديل بالذات مناسب جدًا للطريقة دي لأن خلفيته لون واحد مصمت (عكس الصور
-// الفوتوغرافية اللي فيها تدرّج/ظل بيصعّب أي إزالة خلفية بسيطة زي دي).
-// ⚠️ حد معروف: ممكن يفضل هامش رفيع جدًا ملوّن بلون الخلفية حوالين حواف الشكل (خاصية شائعة
-// في أي كروما كي بسيط من غير alpha matting متقدم) — تحسين محتمل لاحقًا لو ظهر واضح فعليًا.
-async function removeFlatBackground(buffer, tolerance = 45) {
+// ✅ FIX (شكوى حقيقية: "العناصر كانت بتبقى لونها اخضر ومش مفهومة"): الطريقة القديمة كانت
+// binary بس — بكسل إما شفاف تمامًا أو سايبه زي ما هو بلون الخلفية الأصلي. بكسلات الحافة
+// (anti-aliasing) بين الشكل والخلفية الخضراء هي مزيج أخضر+لون الشكل، ولو المسافة اللونية
+// بتاعتها طلعت أكبر من tolerance، كانت بتفضل بلونها الأخضر الممزوج ده كامل بلا أي تغيير —
+// ده بالظبط الهامش/الوهج الأخضر اللي كان ظاهر حوالين كل ملصق. دلوقتي بندمج حلين:
+// 1) alpha متدرّج (مش قطع ثنائي) في نطاق بين tolerance داخلي وخارجي، فحواف الشكل بتطلع
+//    ناعمة بدل مسننة.
+// 2) "despill" حقيقي: أي بكسل فضل شبه-شفاف (يعني على حافة الخلفية) وقناة الأخضر فيه أعلى
+//    من الأحمر/الأزرق، بنسحب الأخضر لتحت لمستوى أقرب لباقي الألوان — ده بالظبط اللي بيشيل
+//    "الوهج/التلوين الأخضر" المتبقي على حواف الشخصية بعد الإزالة، مش بس على الخلفية نفسها.
+async function removeFlatBackground(buffer, innerTolerance = 30, outerTolerance = 75) {
   const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width, height, channels } = info;
   const idx = (x, y) => (y * width + x) * channels;
@@ -226,6 +229,7 @@ async function removeFlatBackground(buffer, tolerance = 45) {
   };
 
   const visited = new Uint8Array(width * height);
+  const edgePixels = []; // بكسلات شبه-شفافة (حافة) — محتاجين despill عليها بعد الانتشار
   const stack = [];
   for (let x = 0; x < width; x++) { stack.push(x); stack.push((height - 1) * width + x); }
   for (let y = 0; y < height; y++) { stack.push(y * width); stack.push(y * width + width - 1); }
@@ -235,13 +239,30 @@ async function removeFlatBackground(buffer, tolerance = 45) {
     if (visited[pos]) continue;
     visited[pos] = 1;
     const p = pos * channels;
-    if (colorDist(p) > tolerance) continue; // مش لون الخلفية — نوقف الانتشار من هنا
-    data[p + 3] = 0; // شفاف
+    const dist = colorDist(p);
+    if (dist > outerTolerance) continue; // مش لون الخلفية خالص — نوقف الانتشار من هنا
+    // ✅ alpha متدرّج: قريب جدًا من الأخضر = شفاف تمامًا، على الحافة = شفافية جزئية،
+    // بعيد شوية (لسه جوه نطاق الانتشار) = يفضل شبه معتم لحد ما يتفحص بـ despill تحت
+    const alphaFactor = dist <= innerTolerance ? 0 : (dist - innerTolerance) / (outerTolerance - innerTolerance);
+    const newAlpha = Math.round(Math.min(255, Math.max(0, alphaFactor * 255)));
+    data[p + 3] = newAlpha;
+    if (newAlpha > 0) edgePixels.push(p);
     const x = pos % width, y = (pos - x) / width;
     if (x > 0) stack.push(pos - 1);
     if (x < width - 1) stack.push(pos + 1);
     if (y > 0) stack.push(pos - width);
     if (y < height - 1) stack.push(pos + width);
+  }
+
+  // ✅ Despill: على أي بكسل حافة (شبه-شفاف) لسه فيه أثر أخضر واضح، نسحب قناة الأخضر لتحت
+  // لمستوى متوسط الأحمر/الأزرق — بيشيل الوهج الأخضر المتبقي على حواف الشكل نفسه
+  for (const p of edgePixels) {
+    const r = data[p], g = data[p + 1], b = data[p + 2];
+    const neutralG = (r + b) / 2;
+    if (g > neutralG) {
+      const opacity = data[p + 3] / 255; // كل ما البكسل أشفف، كل ما نسحب الأخضر أكتر
+      data[p + 1] = Math.round(g - (g - neutralG) * (1 - opacity * 0.5));
+    }
   }
 
   return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
@@ -251,7 +272,11 @@ async function removeFlatBackground(buffer, tolerance = 45) {
 // كانت طالعة قبل كده — أنسب لفيديو شرح متسق، وأنسب كمان لإزالة الخلفية الحقيقية فوق (خلفية
 // لون واحد مصمت بدل تدرّج/ظل زي الصور الفوتوغرافية)
 export async function generateElementImage(imagePrompt) {
-  const fullPrompt = `${imagePrompt}, simple flat 2D vector illustration, flat solid colors, clean bold outlines, minimalist icon style, no photorealism, no 3D render, no gradient, no texture, on a solid plain green background (#00FF00), single flat color background, no shadow, centered`;
+  // ✅ FIX (شكوى حقيقية: الملصقات كانت طالعة بلون أخضر مش مفهوم): أضفنا تعليمات صريحة إن
+  // الأخضر ده بس لون الخلفية (عشان الإزالة)، والشكل نفسه لازم ألوان طبيعية غنية واضحة —
+  // بيقلل احتمال إن الموديل يخلط الأخضر في تفاصيل الشكل نفسه، وده بيتضاف فوق التصحيح
+  // البرمجي في removeFlatBackground (طبقة أمان ثانية، مش بديل عنه)
+  const fullPrompt = `${imagePrompt}, simple flat 2D vector illustration, flat solid colors, clean bold outlines, minimalist icon style, vibrant natural colors, rich saturated color palette (never green — the ONLY green pixel in the whole image is the plain background), no photorealism, no 3D render, no gradient, no texture, on a solid plain green background (#00FF00), single flat color background, no shadow, centered`;
   let buffer;
   try {
     buffer = await fetchPollinationsImage(fullPrompt);
