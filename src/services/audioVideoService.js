@@ -13,7 +13,10 @@ import path from 'path';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const ELEMENT_EXTRACTION_MODEL = 'llama-3.3-70b-versatile'; // نفس الموديل المستخدم فعليًا في باقي الموقع لمهام الـ JSON السريعة
+// ✅ FIX: كان 'llama-3.3-70b-versatile' — Groq بقى بيرجّع 404 model_not_found عليه (اتشال/اتقفل
+// الوصول ليه)، فأي job كان بيفشل فورًا على مرحلة الاستخراج. استبدلناه بـ openai/gpt-oss-120b
+// (نفس الموديل المستخدم فعليًا وبنجاح في كل أماكن توليد الـ JSON التانية في src/index.js)
+const ELEMENT_EXTRACTION_MODEL = 'openai/gpt-oss-120b';
 
 const S3_ENDPOINT_URL = process.env.S3_ENDPOINT_URL;
 const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY;
@@ -74,16 +77,17 @@ export function tmpAudioPath(originalName) {
 }
 
 // ⚠️ احترام رمزية: ممنوع أي تمثيل بصري لله سبحانه وتعالى أو لأي نبي من الأنبياء (وجه/جسد
-// إنسان). القائمة دي شبكة أمان في الكود نفسه — مش بس تعليمات للـ LLM — عشان الموضوع حساس
-// جدًا ومينفعش يعتمد بس على التزام النموذج. أي عنصر بيطابق النمط ده بيتشال تمامًا من قائمة
-// العناصر المرئية (مش بيتستبدل بصورة رمزية، بيتشال خالص — العنصر المجاور ليه في الكلام هو
-// اللي بيفضل ظاهر على الشاشة، بالظبط زي ما طلب العميل).
+// إنسان)، وكذلك آيات القرآن والأحاديث الشريفة — كل ده يتحط "نص بس على الشاشة" (زي أي لقطة
+// عادية، نفس الأنيميشن) من غير أي ملصق/صورة خالص، مش بيتشال من الفيديو (كان قبل كده بيتشال
+// تمامًا فيضيع النص). القائمة دي شبكة أمان في الكود نفسه — مش بس تعليمات للـ LLM — عشان
+// الموضوع حساس جدًا ومينفعش يعتمد بس على التزام النموذج.
 // ✅ فحص substring بسيط، عمدًا مش regex بـ \b — \b بيعتمد على \w اللي مبيتعرفش على حروف
 // عربي أصلًا (يعني \b كانت هتفشل تعمل matching صح على نص عربي بالكامل). substring مباشر
-// أوسع شوية (ممكن يشيل عنصر مش لازم يتشال) لكن ده هو الاتجاه الآمن هنا — أي شك بيبقى حذف
+// أوسع شوية (ممكن يحوّل عنصر مش لازم يتحول) لكن ده هو الاتجاه الآمن هنا — أي شك يتحول لنص
 const SENSITIVE_ELEMENT_KEYWORDS = [
   'الله', 'ﷲ', 'سبحانه وتعالى', 'رب العالمين', 'النبي', 'الرسول', 'رسول الله',
-  'محمد صلى', 'صلى الله عليه وسلم', 'نبي الله', 'سيدنا ',
+  'محمد صلى', 'صلى الله عليه وسلم', 'نبي الله', 'سيدنا ', 'قال تعالى', 'قال رسول الله',
+  'حديث', 'الحديث', 'آية', 'الآية', 'سورة', 'القرآن',
 ];
 function isSensitiveReligiousElement(name) {
   const n = String(name || '');
@@ -107,13 +111,13 @@ export async function extractVideoElements(words) {
 For each beat, output:
 - "start_idx","end_idx": word indices (inclusive) it covers — reference ONLY the given indices, never invent numbers
 - "text": the exact words for this beat, copied verbatim from the transcript — this becomes on-screen animated text
-- "kind": "character" if this beat depicts or refers to a specific named recurring person in the story, otherwise "object" (an object, place, action, or abstract concept)
+- "kind": "character" if this beat depicts or refers to a specific named recurring person in the story, "quote" for a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet (see rule below), otherwise "object" (an object, place, action, or abstract concept)
 - "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their sticker stays visually consistent
-- "image_prompt": a short, concrete English visual description for a 2D sticker — for a "character" beat, describe their appearance/clothing/pose once (it's still fine to repeat it on later beats with the same character_key, it'll just be ignored after the first use)
+- "image_prompt": a short, concrete English visual description for a 2D sticker — ONLY for "character"/"object" kinds. OMIT this field entirely for "quote" kind — it gets on-screen text only, never an image.
 
-CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or a visual image_prompt of any figure. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
+CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or a visual image_prompt of any figure. Use "quote" kind instead for these beats (and for direct Quranic verses / Hadith text) so the words still appear as on-screen text with no image. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
 
-Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character","character_key":"...","image_prompt":"..."}].`;
+Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character"|"quote","character_key":"...","image_prompt":"..."}].`;
   const user = `Indexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -122,7 +126,7 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
     body: JSON.stringify({
       model: ELEMENT_EXTRACTION_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      max_tokens: 8000, temperature: 0.3,
+      max_tokens: 8000, temperature: 0.3, reasoning_effort: 'low',
     }),
   });
   if (!res.ok) throw new Error(`Element extraction Groq error ${res.status}: ${(await res.text()).slice(0, 300)}`);
@@ -160,11 +164,11 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
     .map(el => {
       const startIdx = Math.max(0, Math.min(maxIdx, Math.round(Number(el.start_idx))));
       const endIdx = Math.max(startIdx, Math.min(maxIdx, Math.round(Number(el.end_idx))));
-      const kind = el.kind === 'character' ? 'character' : 'object';
+      const kind = el.kind === 'character' ? 'character' : el.kind === 'quote' ? 'quote' : 'object';
       return {
         element: String(el.text || '').slice(0, 200).trim(),
         text: String(el.text || '').slice(0, 200).trim(),
-        imagePrompt: String(el.image_prompt || el.text || '').slice(0, 300).trim(),
+        imagePrompt: kind === 'quote' ? null : String(el.image_prompt || el.text || '').slice(0, 300).trim(),
         kind,
         characterKey: kind === 'character' ? String(el.character_key || '').toLowerCase().trim().slice(0, 60) : null,
         startIdx, endIdx,
@@ -173,8 +177,11 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
       };
     })
     .filter(el => el.element && Number.isFinite(el.start) && Number.isFinite(el.end) && el.end > el.start)
-    // ✅ شبكة الأمان — بتشيل أي عنصر حساس حتى لو الـ LLM اتجاهل التعليمة فوق (نادر بس ممكن)
-    .filter(el => !isSensitiveReligiousElement(el.element))
+    // ✅ FIX (طلب العميل): شبكة الأمان دلوقتي بتحوّل العنصر الحساس لـ"quote" (نص بس، من غير
+    // صورة/ملصق) بدل ما تشيله بالكامل — الآيات والأحاديث وأي إشارة لله/نبي لازم تفضل ظاهرة
+    // كنص على الشاشة، بس من غير أي تمثيل بصري خالص، حتى لو الـ LLM حطها "character"/"object"
+    // غلط بدل "quote" من الأول
+    .map(el => isSensitiveReligiousElement(el.element) ? { ...el, kind: 'quote', imagePrompt: null, characterKey: null } : el)
     .sort((a, b) => a.startIdx - b.startIdx);
 
   return elements;

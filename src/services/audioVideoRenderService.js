@@ -69,9 +69,24 @@ async function prepareIconPng(iconBuffer, size, outPath) {
 // size(t) = baseSize · (1 - 0.4·e^(-16·t)·cos(20·t)) — تبدأ 60% من الحجم عند t=0، تكبر
 // بسرعة وتعدّي 100% شوية (overshoot/bounce)، وتستقر عند الحجم الطبيعي خلال أقل من نص ثانية.
 // fade-in/out (بلون الخلفية نفسه) فضل موجود فوقها عشان دخول/خروج ناعم.
+// ✅ FIX (طلب العميل): آيات/أحاديث/أي إشارة لله أو نبي (kind:'quote') مالهاش ملصق خالص —
+// iconPngPath بيبقى null، فبنبني كليب خلفية بس (بدون طبقة الملصق/overlay) مع نفس الـ
+// fade-in/out — النص نفسه بيتحط عليه بعدين زي أي لقطة تانية (buildCaptionsAssFile)
 function buildAnimatedClip(iconPngPath, W, H, baseSize, durationSec, outPath) {
   const fadeSec = Math.min(0.25, Math.max(0.06, durationSec * 0.2));
   const outStart = Math.max(0, durationSec - fadeSec);
+
+  if (!iconPngPath) {
+    const vf = `fade=t=in:st=0:d=${fadeSec.toFixed(3)}:color=${BG_HEX},` +
+      `fade=t=out:st=${outStart.toFixed(3)}:d=${fadeSec.toFixed(3)}:color=${BG_HEX}`;
+    execSync(
+      `ffmpeg -y -f lavfi -i "color=c=${BG_HEX}:s=${W}x${H}:d=${durationSec.toFixed(3)}:r=${FPS}" ` +
+      `-vf "${vf}" -t ${durationSec.toFixed(3)} -c:v libx264 -pix_fmt yuv420p "${outPath}"`,
+      { stdio: 'pipe' }
+    );
+    return;
+  }
+
   const popExpr = `${baseSize}*(1-0.4*exp(-16*t)*cos(20*t))`;
   const filterComplex =
     `[1:v]scale=w='${popExpr}':h='${popExpr}':eval=frame[icon];` +
@@ -161,15 +176,22 @@ export async function renderAudioVideoJob(job) {
     });
 
     const clipPaths = [];
+    const iconSize = Math.round(Math.min(W, H) * 0.5);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
+      const clipPath = path.join(workDir, `clip_${i}.mp4`);
+      // ✅ FIX: لقطات "quote" (آيات/أحاديث/إشارة لله أو نبي) مالهاش imageUrl خالص —
+      // نص بس على الشاشة، من غير أي تحميل/توليد ملصق
+      if (!seg.imageUrl) {
+        buildAnimatedClip(null, W, H, iconSize, seg.segDuration, clipPath);
+        clipPaths.push(clipPath);
+        continue;
+      }
       const iconRes = await fetch(seg.imageUrl);
       if (!iconRes.ok) throw new Error(`Could not download element image: ${seg.element}`);
       const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
       const iconPngPath = path.join(workDir, `icon_${i}.png`);
-      const iconSize = Math.round(Math.min(W, H) * 0.5);
       await prepareIconPng(iconBuffer, iconSize, iconPngPath);
-      const clipPath = path.join(workDir, `clip_${i}.mp4`);
       buildAnimatedClip(iconPngPath, W, H, iconSize, seg.segDuration, clipPath);
       clipPaths.push(clipPath);
     }
