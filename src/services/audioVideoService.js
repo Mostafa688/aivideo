@@ -1,13 +1,12 @@
 // ── audioVideoService.js ─────────────────────────────────────────────────────
 // مصنع فيديو الصوت (أدمن) — رفع فويس أوفر جاهز، تفريغه لنص بتوقيت دقيق على مستوى الكلمة
-// (Groq Whisper)، تقسيمه للقطات كثيفة (كل 3-4 كلمات تقريبًا، Groq LLM) مع صورة ملصق 2D
-// شفافة الخلفية لكل لقطة (Pollinations.ai — مجاني بالكامل بدون مفتاح)، والشخصيات المسمّاة
-// بتتكرر بنفس الملصق. بناء الفيديو النهائي (ملصقات متحركة + نص متحرك + دمج الصوت) في
-// audioVideoRenderService.js.
+// (Groq Whisper)، تقسيمه للقطات كثيفة (كل 3-4 كلمات تقريبًا، Groq LLM) مع صورة مشهد 2D
+// Cartoon تملا الفريم كامل لكل لقطة عندها تصور بصري (Pollinations.ai — مجاني بالكامل بدون
+// مفتاح)، والشخصيات المسمّاة بتتكرر بنفس المشهد. بناء الفيديو النهائي (مشاهد متحركة بحركة
+// pop + نص متحرك للقطات المجردة + دمج الصوت) في audioVideoRenderService.js.
 
 import Groq from 'groq-sdk';
 import fetch from 'node-fetch';
-import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 
@@ -195,8 +194,10 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
 // ✅ Pollinations مجانية بدون مفتاح، وده معناه limit صارم على معدل الطلبات (429) خصوصًا لو
 // كذا عنصر بيتولدوا ورا بعض بسرعة. بدل ما نستسلم من أول 429، بنعمل backoff تصاعدي (3s, 6s,
 // 9s) ونجرب تاني — الفشل الوحيد المقبول هو بعد استنفاد المحاولات دي كلها
-async function fetchPollinationsImage(prompt, attempt = 1) {
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
+// ✅ FIX (طلب العميل): المشهد بقى بيملا الفيديو كله (16:9) مش أيقونة مربعة في النص — بنطلب
+// الصورة من Pollinations بنسبة 16:9 من الأول (1280x720) بدل المربع القديم (1024x1024)
+async function fetchPollinationsImage(prompt, attempt = 1, width = 1280, height = 720) {
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true`;
   const res = await fetch(url);
   // ✅ FIX: التقسيم الكثيف الجديد (لقطة كل 3-5 كلمات) بيطلب 15-20+ صورة للـ job الواحد بدل
   // 6-8 زي الأول — لوجات حقيقية أظهرت إن الـ 429 بيفضل مستمر حتى بعد فواصل 40-80 ثانية بين
@@ -210,98 +211,19 @@ async function fetchPollinationsImage(prompt, attempt = 1) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-// ✅ FIX (شكوى حقيقية: "العناصر كانت بتبقى لونها اخضر ومش مفهومة"): الطريقة القديمة كانت
-// binary بس — بكسل إما شفاف تمامًا أو سايبه زي ما هو بلون الخلفية الأصلي. بكسلات الحافة
-// (anti-aliasing) بين الشكل والخلفية الخضراء هي مزيج أخضر+لون الشكل، ولو المسافة اللونية
-// بتاعتها طلعت أكبر من tolerance، كانت بتفضل بلونها الأخضر الممزوج ده كامل بلا أي تغيير —
-// ده بالظبط الهامش/الوهج الأخضر اللي كان ظاهر حوالين كل ملصق. دلوقتي بندمج حلين:
-// 1) alpha متدرّج (مش قطع ثنائي) في نطاق بين tolerance داخلي وخارجي، فحواف الشكل بتطلع
-//    ناعمة بدل مسننة.
-// 2) "despill" حقيقي: أي بكسل فضل شبه-شفاف (يعني على حافة الخلفية) وقناة الأخضر فيه أعلى
-//    من الأحمر/الأزرق، بنسحب الأخضر لتحت لمستوى أقرب لباقي الألوان — ده بالظبط اللي بيشيل
-//    "الوهج/التلوين الأخضر" المتبقي على حواف الشخصية بعد الإزالة، مش بس على الخلفية نفسها.
-async function removeFlatBackground(buffer, innerTolerance = 30, outerTolerance = 75) {
-  const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const { width, height, channels } = info;
-  const idx = (x, y) => (y * width + x) * channels;
-
-  // نلتقط لون الخلفية الفعلي من زوايا الصورة (متوسطهم) بدل افتراض لون ثابت مسبقًا —
-  // أدق لو Pollinations رجّع درجة خضراء مختلفة شوية عن اللي طلبناها بالظبط
-  const corners = [[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]];
-  let kr = 0, kg = 0, kb = 0;
-  for (const [cx, cy] of corners) {
-    const p = idx(cx, cy);
-    kr += data[p]; kg += data[p + 1]; kb += data[p + 2];
-  }
-  kr /= 4; kg /= 4; kb /= 4;
-
-  const colorDist = (p) => {
-    const dr = data[p] - kr, dg = data[p + 1] - kg, db = data[p + 2] - kb;
-    return Math.sqrt(dr * dr + dg * dg + db * db);
-  };
-
-  const visited = new Uint8Array(width * height);
-  const edgePixels = []; // بكسلات شبه-شفافة (حافة) — محتاجين despill عليها بعد الانتشار
-  const stack = [];
-  for (let x = 0; x < width; x++) { stack.push(x); stack.push((height - 1) * width + x); }
-  for (let y = 0; y < height; y++) { stack.push(y * width); stack.push(y * width + width - 1); }
-
-  while (stack.length) {
-    const pos = stack.pop();
-    if (visited[pos]) continue;
-    visited[pos] = 1;
-    const p = pos * channels;
-    const dist = colorDist(p);
-    if (dist > outerTolerance) continue; // مش لون الخلفية خالص — نوقف الانتشار من هنا
-    // ✅ alpha متدرّج: قريب جدًا من الأخضر = شفاف تمامًا، على الحافة = شفافية جزئية،
-    // بعيد شوية (لسه جوه نطاق الانتشار) = يفضل شبه معتم لحد ما يتفحص بـ despill تحت
-    const alphaFactor = dist <= innerTolerance ? 0 : (dist - innerTolerance) / (outerTolerance - innerTolerance);
-    const newAlpha = Math.round(Math.min(255, Math.max(0, alphaFactor * 255)));
-    data[p + 3] = newAlpha;
-    if (newAlpha > 0) edgePixels.push(p);
-    const x = pos % width, y = (pos - x) / width;
-    if (x > 0) stack.push(pos - 1);
-    if (x < width - 1) stack.push(pos + 1);
-    if (y > 0) stack.push(pos - width);
-    if (y < height - 1) stack.push(pos + width);
-  }
-
-  // ✅ Despill: على أي بكسل حافة (شبه-شفاف) لسه فيه أثر أخضر واضح، نسحب قناة الأخضر لتحت
-  // لمستوى متوسط الأحمر/الأزرق — بيشيل الوهج الأخضر المتبقي على حواف الشكل نفسه
-  for (const p of edgePixels) {
-    const r = data[p], g = data[p + 1], b = data[p + 2];
-    const neutralG = (r + b) / 2;
-    if (g > neutralG) {
-      const opacity = data[p + 3] / 255; // كل ما البكسل أشفف، كل ما نسحب الأخضر أكتر
-      data[p + 1] = Math.round(g - (g - neutralG) * (1 - opacity * 0.5));
-    }
-  }
-
-  return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
-}
-
-// ✅ أسلوب رسم مسطّح (2D flat vector illustration) بدل الصور الفوتوغرافية الواقعية اللي
-// كانت طالعة قبل كده — أنسب لفيديو شرح متسق، وأنسب كمان لإزالة الخلفية الحقيقية فوق (خلفية
-// لون واحد مصمت بدل تدرّج/ظل زي الصور الفوتوغرافية)
+// ✅ أسلوب 2D Cartoon مسطّح — بدل الصور الفوتوغرافية الواقعية اللي كانت طالعة قبل كده،
+// أنسب لفيديو شرح متسق
 export async function generateElementImage(imagePrompt) {
-  // ✅ FIX (شكوى حقيقية: كل ملصق طالع بلون أخضر/نعناعي مش مفهوم رغم تصحيح removeFlatBackground
-  // في الحواف): المشكلة كانت أعمق من الحواف — طلب "خلفية خضراء" في البرومبت نفسه كان بيخلي
-  // الموديل يميل بلوحة ألوان الشكل كله ناحية الأخضر/النعناعي (تسرّب لوني في التوليد نفسه، مش
-  // بس في الحواف بعد الإزالة). الحل المباشر اللي طلبه العميل: خلفية الفيديو النهائي بيضاء
-  // أصلًا (BG_COLOR في audioVideoRenderService.js)، فمفيش داعي لخلفية خضراء + إزالة خالص —
-  // نطلب من Pollinations خلفية بيضاء صريحة من الأول، فألوان الشكل نفسه تفضل طبيعية زي ما هي.
-  // removeFlatBackground فضلت زي ما هي بالظبط (بتاخد لون الخلفية الفعلي من زوايا الصورة
-  // ديناميكيًا، مش لون مكتوب في الكود)، فبتشتغل صح مع أي لون خلفية من غير أي تغيير فيها.
-  // ✅ FIX (طلب العميل): مفيش كلمة "sticker"/"icon" في البرومبت تاني — ده كان بيخلي الموديل
-  // يطلع رموز/أيقونات مجردة غريبة لأي مفهوم صعب التصوير (زي ساعة رملية لـ"مدة")، بدل ما يرسم
-  // "مشهد" حقيقي بسيط زي أي رسمة توضيحية عادية بتصوّر اللحظة/الفكرة فعليًا
-  const fullPrompt = `${imagePrompt}, a natural ordinary illustrated scene — not an icon, not a sticker, not an abstract symbol, no isolated single object floating alone — depict an actual small moment or scene that captures the meaning, simple flat 2D illustration style, clean bold outlines, flat solid colors, vibrant natural colors, rich saturated color palette, no photorealism, no 3D render, no gradient, no texture, on a solid plain pure white background (#FFFFFF), single flat white background, no shadow, no vignette, centered`;
-  let buffer;
+  // ✅ FIX (طلب العميل): المشهد بقى بيملا الفيديو كله (16:9) بدل ما يبقى ملصق/أيقونة صغيرة
+  // على خلفية بيضاء — فمفيش داعي لطلب "خلفية بيضاء" ولا لأي إزالة خلفية خالص، الصورة اللي
+  // بترجع من Pollinations هي نفسها الفريم كامل (بعد resize/crop لمقاس الفيديو في
+  // audioVideoRenderService.js). Style "2D Cartoon" مطلوب صراحةً بدل "flat vector illustration"
+  // العام اللي كان مستخدم قبل كده.
+  const fullPrompt = `${imagePrompt}, 2D cartoon style, a natural ordinary illustrated scene — not an icon, not a sticker, not an abstract symbol, no isolated single object floating alone with empty space around it — a full illustrated scene with a real setting/background that fills the whole frame, depict an actual small moment or scene that captures the meaning, clean bold outlines, flat solid colors, vibrant natural colors, rich saturated color palette, no photorealism, no 3D render, no gradient, no texture, wide 16:9 composition`;
   try {
-    buffer = await fetchPollinationsImage(fullPrompt);
+    return await fetchPollinationsImage(fullPrompt);
   } catch (e) {
     // ✅ محاولة تانية بـ prompt معدّل شوية — مفيش تكلفة إضافية من إعادة المحاولة (زي ما طلب)
-    buffer = await fetchPollinationsImage(`${fullPrompt}, flat illustration, clean vector art`);
+    return await fetchPollinationsImage(`${fullPrompt}, flat illustration, clean vector art`);
   }
-  return removeFlatBackground(buffer);
 }
