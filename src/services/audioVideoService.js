@@ -279,11 +279,15 @@ async function removeFlatBackground(buffer, innerTolerance = 30, outerTolerance 
 // كانت طالعة قبل كده — أنسب لفيديو شرح متسق، وأنسب كمان لإزالة الخلفية الحقيقية فوق (خلفية
 // لون واحد مصمت بدل تدرّج/ظل زي الصور الفوتوغرافية)
 export async function generateElementImage(imagePrompt) {
-  // ✅ FIX (شكوى حقيقية: الملصقات كانت طالعة بلون أخضر مش مفهوم): أضفنا تعليمات صريحة إن
-  // الأخضر ده بس لون الخلفية (عشان الإزالة)، والشكل نفسه لازم ألوان طبيعية غنية واضحة —
-  // بيقلل احتمال إن الموديل يخلط الأخضر في تفاصيل الشكل نفسه، وده بيتضاف فوق التصحيح
-  // البرمجي في removeFlatBackground (طبقة أمان ثانية، مش بديل عنه)
-  const fullPrompt = `${imagePrompt}, simple flat 2D vector illustration, flat solid colors, clean bold outlines, minimalist icon style, vibrant natural colors, rich saturated color palette (never green — the ONLY green pixel in the whole image is the plain background), no photorealism, no 3D render, no gradient, no texture, on a solid plain green background (#00FF00), single flat color background, no shadow, centered`;
+  // ✅ FIX (شكوى حقيقية: كل ملصق طالع بلون أخضر/نعناعي مش مفهوم رغم تصحيح removeFlatBackground
+  // في الحواف): المشكلة كانت أعمق من الحواف — طلب "خلفية خضراء" في البرومبت نفسه كان بيخلي
+  // الموديل يميل بلوحة ألوان الشكل كله ناحية الأخضر/النعناعي (تسرّب لوني في التوليد نفسه، مش
+  // بس في الحواف بعد الإزالة). الحل المباشر اللي طلبه العميل: خلفية الفيديو النهائي بيضاء
+  // أصلًا (BG_COLOR في audioVideoRenderService.js)، فمفيش داعي لخلفية خضراء + إزالة خالص —
+  // نطلب من Pollinations خلفية بيضاء صريحة من الأول، فألوان الشكل نفسه تفضل طبيعية زي ما هي.
+  // removeFlatBackground فضلت زي ما هي بالظبط (بتاخد لون الخلفية الفعلي من زوايا الصورة
+  // ديناميكيًا، مش لون مكتوب في الكود)، فبتشتغل صح مع أي لون خلفية من غير أي تغيير فيها.
+  const fullPrompt = `${imagePrompt}, simple flat 2D vector illustration, flat solid colors, clean bold outlines, minimalist icon style, vibrant natural colors, rich saturated color palette, no photorealism, no 3D render, no gradient, no texture, on a solid plain pure white background (#FFFFFF), single flat white background, no shadow, no vignette, centered`;
   let buffer;
   try {
     buffer = await fetchPollinationsImage(fullPrompt);

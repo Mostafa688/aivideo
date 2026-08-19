@@ -121,7 +121,9 @@ function toAssTime(s) {
 function buildCaptionsAssFile(segments, videoLanguage, ratio, fontName, W, H) {
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(normalizeLangBase(videoLanguage));
   const isVertical = ratio === '9:16' || ratio === '1:1';
-  const fontSize = isVertical ? 88 : 74;
+  // ✅ FIX (شكوى حقيقية: النص طالع صغير في الفيديو الحقيقي): رفعنا الحجم بشكل واضح — ده المفروض
+  // "نص فيديو" كبير بارز، مش تفصيلة صغيرة تحت الملصق
+  const fontSize = isVertical ? 120 : 108;
   const marginV = isVertical ? 170 : 100;
 
   const header = `[Script Info]

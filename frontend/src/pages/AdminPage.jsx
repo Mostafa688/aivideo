@@ -879,7 +879,12 @@ function AudioVideoTab({ s }) {
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
                 {activeJob.elements_json.map((el, i) => (
                   <div key={i} style={{ width: 110, textAlign: 'center' }}>
-                    <img src={el.imageUrl} alt={el.element} style={{ width: 110, height: 110, objectFit: 'contain', background: '#fff', borderRadius: 8, border: '1px solid #2d2d4a' }} />
+                    {el.imageUrl
+                      ? <img src={el.imageUrl} alt={el.element} style={{ width: 110, height: 110, objectFit: 'contain', background: '#fff', borderRadius: 8, border: '1px solid #2d2d4a' }} />
+                      /* ✅ FIX: عناصر kind:'quote' (آيات/أحاديث/إشارة لله أو نبي) مالهاش
+                         imageUrl خالص عن قصد — نص بس بدون صورة. كان <img src={null}> بيطلع
+                         أيقونة "صورة مكسورة" مربكة، دلوقتي بتوضح إنه نص بس بشكل واضح */
+                      : <div style={{ width: 110, height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 8, border: '1px dashed #2d2d4a', fontSize: 11, color: '#6b7280', padding: 6, boxSizing: 'border-box' }}>📝 نص بس (بدون صورة)</div>}
                     <div style={{ fontSize: 11, color: '#d1d5db', marginTop: 4 }}>{el.element}</div>
                     <div style={{ fontSize: 10, color: '#6b7280' }}>{Number(el.start).toFixed(1)}s–{Number(el.end).toFixed(1)}s</div>
                   </div>
