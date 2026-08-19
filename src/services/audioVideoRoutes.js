@@ -76,10 +76,11 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
         const failedElements = [];
         let generatedCount = 0;
         for (const el of elements) {
-          // ✅ FIX (طلب العميل): آيات/أحاديث/أي إشارة لله أو نبي (kind:'quote') بتتحط كنص بس
-          // على الشاشة من غير أي صورة/ملصق خالص — مفيش نداء لـ Pollinations أصلاً، ومفيش
-          // استهلاك من فترات الانتظار بتاعة توليد الصور التانية
-          if (el.kind === 'quote') {
+          // ✅ FIX (طلب العميل): بقى كل مشهد يا استيكر يا نص — مش الاتنين مع بعض. آيات/أحاديث/
+          // أي إشارة لله أو نبي (kind:'quote')، وكمان أي جملة مالهاش تصور بصري واضح
+          // (kind:'text') بتتحط كنص بس على الشاشة من غير أي صورة/ملصق خالص — مفيش نداء لـ
+          // Pollinations أصلاً، ومفيش استهلاك من فترات الانتظار بتاعة توليد الصور التانية
+          if (el.kind === 'quote' || el.kind === 'text') {
             withImages.push({ ...el, imageUrl: null });
             continue;
           }

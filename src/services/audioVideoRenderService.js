@@ -18,6 +18,15 @@
 // - النص بقى في نص الشاشة فعليًا (Alignment=5) مش لاصق تحت زي كابشن، وبقى ليه نفس حركة
 //   الـ pop (يكبر شوية لحد ما يستقر) بدل fade بس.
 // - الملصق نفسه اتحرك لأعلى الفريم شوية عشان يسيب مساحة للنص في النص من غير تراكب كبير.
+//
+// v5 — تصحيح تصميمي حقيقي من العميل بعد تجربة v4: كل لقطة كانت بتاخد ملصق + نص مع بعض
+// دايمًا، ومش كل جملة محتاجة ملصق أصلًا — العميل طلب صراحةً إن كل لقطة تبقى يا ملصق يا نص،
+// مش الاتنين مع بعض، وإن اللي مالوش تصور بصري واضح يتكتب كنص بس:
+// - kind الجديدة "text" (بجانب "character"/"object"/"quote" الموجودين) — بتتقرر لكل لقطة في
+//   audioVideoService.js نفسه (مش هنا)، مش كل لقطة لازم ملصق.
+// - buildCaptionsAssFile بقى بيتجاهل لقطات character/object خالص (ملصق بس، مفيش نص فوقه).
+// - الملصق رجع لنص الشاشة بالظبط (مش 30% ارتفاع زي v4) وكبر حجمه — مفيش نص تاني بيشاركه
+//   نفس اللقطة يستاهل نسيب مساحة له.
 
 import fetch from 'node-fetch';
 import sharp from 'sharp';
@@ -65,7 +74,9 @@ async function prepareIconPng(iconBuffer, size, outPath) {
 // إنه "يصغّر" (zoom<1 مش سلوك مدعوم فيه) — فمينفعش نستخدمه لعمل تأثير "يبدأ صغير ويكبر".
 // بدل كده، الملصق دلوقتي طبقة PNG شفافة منفصلة (input تاني) بيتكبّر فعليًا بـ scale filter
 // بحجم بيتغيّر كل فريم (eval=frame)، وبيتحط فوق خلفية ثابتة اللون بـ overlay في نص الفريم
-// أفقيًا وعند 30% ارتفاعًا. معادلة نوسان مخمّد (damped oscillation):
+// بالظبط (أفقيًا ورأسيًا) — مفيش نص بيشارك نفس اللقطة تاني (كل لقطة يا ملصق يا نص، مش
+// الاتنين) فمفيش داعي نسيب مكان تحت للنص، الملصق بياخد نص الشاشة بالكامل. معادلة نوسان
+// مخمّد (damped oscillation):
 // size(t) = baseSize · (1 - 0.4·e^(-16·t)·cos(20·t)) — تبدأ 60% من الحجم عند t=0، تكبر
 // بسرعة وتعدّي 100% شوية (overshoot/bounce)، وتستقر عند الحجم الطبيعي خلال أقل من نص ثانية.
 // fade-in/out (بلون الخلفية نفسه) فضل موجود فوقها عشان دخول/خروج ناعم.
@@ -90,7 +101,7 @@ function buildAnimatedClip(iconPngPath, W, H, baseSize, durationSec, outPath) {
   const popExpr = `${baseSize}*(1-0.4*exp(-16*t)*cos(20*t))`;
   const filterComplex =
     `[1:v]scale=w='${popExpr}':h='${popExpr}':eval=frame[icon];` +
-    `[0:v][icon]overlay=x='(main_w-overlay_w)/2':y='(main_h*0.3-overlay_h/2)'[ov];` +
+    `[0:v][icon]overlay=x='(main_w-overlay_w)/2':y='(main_h-overlay_h)/2'[ov];` +
     `[ov]fade=t=in:st=0:d=${fadeSec.toFixed(3)}:color=${BG_HEX},` +
     `fade=t=out:st=${outStart.toFixed(3)}:d=${fadeSec.toFixed(3)}:color=${BG_HEX}[outv]`;
   execSync(
@@ -140,7 +151,9 @@ Style: Text,${fontName},${fontSize},&H00181818,&H000000FF,&H00FFFFFF,&H00000000,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  const events = segments.map(seg => {
+  // ✅ FIX (طلب العميل): كل لقطة يا ملصق يا نص، مش الاتنين مع بعض — لقطات الملصق
+  // (kind:'character'/'object') مالهاش سطر نص خالص هنا، النص بس للقطات text/quote
+  const events = segments.filter(seg => seg.kind === 'text' || seg.kind === 'quote').map(seg => {
     const text = String(seg.text || seg.element || '').replace(/['"`\\{}|<>]/g, '').trim();
     if (!text) return null;
     const dispText = isRTL ? `‏${text}` : text;
@@ -178,7 +191,9 @@ export async function renderAudioVideoJob(job) {
     });
 
     const clipPaths = [];
-    const iconSize = Math.round(Math.min(W, H) * 0.5);
+    // ✅ FIX: كبّرنا الحجم (كان 0.5) — دلوقتي الملصق ماشاركش الفريم مع نص تاني في نفس اللقطة،
+    // فقادر ياخد مساحة أكبر في نص الشاشة
+    const iconSize = Math.round(Math.min(W, H) * 0.65);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const clipPath = path.join(workDir, `clip_${i}.mp4`);

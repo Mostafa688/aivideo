@@ -106,18 +106,22 @@ export async function extractVideoElements(words) {
   if (!words || words.length === 0) return [];
 
   const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
-  const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short visual "beats" that will each get their own animated sticker + on-screen text in a video — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
+  const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short "beats" — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
+
+CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either an animated STICKER (no text), or on-screen TEXT (no sticker). Never combine a sticker with text for the same beat. Decide per beat which fits better:
+- Use a STICKER ("character"/"object" kind) when the phrase names a concrete, drawable thing — a person, object, place, or clear physical action. Most beats should be this if the narration is at all concrete.
+- Use TEXT ("text" kind) when the phrase is abstract, a transition, a connector, or otherwise has no good concrete visual — words like "لا بد أن"/"إذاً"/"وبهذا"/"المحددة ولم يتحدث عنه كثيرون" don't need an invented sticker; just show them as text. Don't force a sticker onto a phrase that doesn't really have one — text is a completely normal, expected outcome for plenty of beats, not a fallback to avoid.
 
 For each beat, output:
 - "start_idx","end_idx": word indices (inclusive) it covers — reference ONLY the given indices, never invent numbers
-- "text": the exact words for this beat, copied verbatim from the transcript — this becomes on-screen animated text
-- "kind": "character" if this beat depicts or refers to a specific named recurring person in the story, "quote" for a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet (see rule below), otherwise "object" (an object, place, action, or abstract concept)
+- "text": the exact words for this beat, copied verbatim from the transcript
+- "kind": "character" (sticker, depicts/refers to a specific named recurring person), "object" (sticker, a concrete object/place/action), "text" (on-screen text only, no sticker — abstract/transition/no good visual), or "quote" (on-screen text only, no sticker — a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet, see rule below)
 - "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their sticker stays visually consistent
-- "image_prompt": a short, concrete English visual description for a 2D sticker — ONLY for "character"/"object" kinds. OMIT this field entirely for "quote" kind — it gets on-screen text only, never an image.
+- "image_prompt": a short, concrete English visual description for a 2D sticker — ONLY for "character"/"object" kinds. OMIT this field entirely for "text"/"quote" kinds — they get on-screen text only, never an image.
 
 CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or a visual image_prompt of any figure. Use "quote" kind instead for these beats (and for direct Quranic verses / Hadith text) so the words still appear as on-screen text with no image. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
 
-Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character"|"quote","character_key":"...","image_prompt":"..."}].`;
+Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character"|"text"|"quote","character_key":"...","image_prompt":"..."}].`;
   const user = `Indexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -164,11 +168,12 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
     .map(el => {
       const startIdx = Math.max(0, Math.min(maxIdx, Math.round(Number(el.start_idx))));
       const endIdx = Math.max(startIdx, Math.min(maxIdx, Math.round(Number(el.end_idx))));
-      const kind = el.kind === 'character' ? 'character' : el.kind === 'quote' ? 'quote' : 'object';
+      const kind = el.kind === 'character' ? 'character' : el.kind === 'quote' ? 'quote' : el.kind === 'text' ? 'text' : 'object';
+      const isTextOnly = kind === 'quote' || kind === 'text';
       return {
         element: String(el.text || '').slice(0, 200).trim(),
         text: String(el.text || '').slice(0, 200).trim(),
-        imagePrompt: kind === 'quote' ? null : String(el.image_prompt || el.text || '').slice(0, 300).trim(),
+        imagePrompt: isTextOnly ? null : String(el.image_prompt || el.text || '').slice(0, 300).trim(),
         kind,
         characterKey: kind === 'character' ? String(el.character_key || '').toLowerCase().trim().slice(0, 60) : null,
         startIdx, endIdx,
