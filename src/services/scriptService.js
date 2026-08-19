@@ -31,14 +31,22 @@ export async function checkContentSafety(text) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_API_KEY },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', max_tokens: 100, temperature: 0,
+        model: 'openai/gpt-oss-120b', reasoning_effort: 'low', max_tokens: 100, temperature: 0,
         messages: [
           { role: 'system', content: MODERATION_SYSTEM_PROMPT },
           { role: 'user', content: trimmed.slice(0, 1500) },
         ],
       }),
     });
-    if (!res.ok) return { unsafe: false, category: 'none', reason: '' };
+    // ✅ FIX (باج أمان خطير حقيقي): كان بيستخدم موديل اتقفل الوصول ليه من Groq
+    // (llama-3.3-70b-versatile → 404 model_not_found)، فكل نداء فحص محتوى كان بيرجع
+    // !res.ok وبيعدي fail-open بصمت من غير أي log — يعني فحص المحتوى (بورن/عنصرية/عنف)
+    // كان معطّل فعليًا على المنصة كلها من غير ما حد يعرف. دلوقتي بنسجّل تحذير واضح لو
+    // الفحص فشل، عشان أي عطل مستقبلي يبقى ظاهر في اللوجات مش صامت
+    if (!res.ok) {
+      console.warn(`[Moderation] Groq API returned ${res.status}, allowing by default:`, (await res.text()).slice(0, 300));
+      return { unsafe: false, category: 'none', reason: '' };
+    }
     const data = await res.json();
     const raw = data.choices?.[0]?.message?.content || '';
     const m = raw.match(/\{[\s\S]*\}/);

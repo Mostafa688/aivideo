@@ -58,7 +58,7 @@ async function determineAdLocation(productName, productDesc) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', max_tokens: 120, temperature: 0.4,
+        model: 'openai/gpt-oss-120b', reasoning_effort: 'low', max_tokens: 120, temperature: 0.4,
         messages: [
           { role: 'system', content: 'You are an expert commercial ad director. Given a product, pick ONE specific, realistic, visually-rich real-world location/environment that best fits this exact product for an advertisement — the kind a real ad agency would choose. Examples: milk product → a sunlit dairy farm with cows in the background; luxury watch → an elegant jewelry boutique display; running shoes → an outdoor running track at sunrise; coffee → a cozy rustic cafe interior. Output ONLY the location description in English, max 20 words, no explanation, no quotes.' },
           { role: 'user', content: `Product: "${productName}". Description: "${productDesc}". Best advertisement location:` },
@@ -86,7 +86,7 @@ async function determineAdSoundEffects(productName, productDesc, location) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', max_tokens: 80, temperature: 0.4,
+        model: 'openai/gpt-oss-120b', reasoning_effort: 'low', max_tokens: 80, temperature: 0.4,
         messages: [
           { role: 'system', content: 'You are a professional sound designer for commercial ads. Given a product and its setting, list 2-3 SPECIFIC, realistic sound effects that would genuinely be heard in that exact scene (never music, never generic words like "ambient sound"). Examples: dairy farm → "cow moos softly, distant birdsong, gentle breeze through grass"; jewelry boutique → "soft footsteps on marble, faint clink of glass display cases"; running track → "sneakers striking pavement, steady breathing, wind past ears". Output ONLY a short comma-separated list in English, max 15 words, no explanation, no quotes.' },
           { role: 'user', content: `Product: "${productName}". Description: "${productDesc}". Setting: "${location}". Specific sound effects for this scene:` },
@@ -113,7 +113,7 @@ async function analyzeProductType(productName, productDesc, customHook) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', max_tokens: 100, temperature: 0,
+        model: 'openai/gpt-oss-120b', reasoning_effort: 'low', max_tokens: 100, temperature: 0,
         messages: [
           { role: 'system', content: `Classify a product for an ad video. Determine:
 1. "isWearable": true if the product is clothing, shoes, an accessory worn on the body, or similar (e.g. t-shirt, dress, watch, sunglasses, shoes, jacket, hijab, jewelry). false for anything else (food, drinks, electronics, furniture, cosmetics in a bottle, etc.)
@@ -214,7 +214,7 @@ async function generateAdScript(productName, productDesc, customHook, videoDurat
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', max_tokens: 200, temperature: 0.8,
+        model: 'openai/gpt-oss-120b', reasoning_effort: 'low', max_tokens: 200, temperature: 0.8,
         messages: [
           { role: 'system', content: `You are an elite direct-response ad copywriter. Write a voiceover script for a short video ad that:
 1. Opens with a VERY strong, scroll-stopping hook in the first sentence — create curiosity, desire, or urgency immediately (not a generic greeting).

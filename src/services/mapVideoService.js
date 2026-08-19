@@ -660,7 +660,7 @@ Countries: 2-letter ISO codes. zoom options: world, europe, western-europe, east
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 4000, temperature: 0.2 }),
+    body: JSON.stringify({ model: 'openai/gpt-oss-120b', reasoning_effort: 'low', messages: [{ role: 'user', content: prompt }], max_tokens: 4000, temperature: 0.2 }),
   });
 
   const data = await res.json();

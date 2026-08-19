@@ -144,7 +144,8 @@ LTX-Video prompt rules (MUST follow):
       : `You are a professional AI screenwriter. Generate ${sceneCount} scenes.\n${ltxGuide}\n${voiceGuide}${charGuide}\nReply with JSON only: {"scenes": [{"text": "...", "prompt": "..."}]}`;
 
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
+      reasoning_effort: 'low',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: inputText }
