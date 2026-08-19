@@ -76,6 +76,13 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
         const failedElements = [];
         let generatedCount = 0;
         for (const el of elements) {
+          // ✅ FIX (طلب العميل): آيات/أحاديث/أي إشارة لله أو نبي (kind:'quote') بتتحط كنص بس
+          // على الشاشة من غير أي صورة/ملصق خالص — مفيش نداء لـ Pollinations أصلاً، ومفيش
+          // استهلاك من فترات الانتظار بتاعة توليد الصور التانية
+          if (el.kind === 'quote') {
+            withImages.push({ ...el, imageUrl: null });
+            continue;
+          }
           if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
             withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
             continue;
