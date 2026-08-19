@@ -27,6 +27,12 @@
 // - buildCaptionsAssFile بقى بيتجاهل لقطات character/object خالص (ملصق بس، مفيش نص فوقه).
 // - الملصق رجع لنص الشاشة بالظبط (مش 30% ارتفاع زي v4) وكبر حجمه — مفيش نص تاني بيشاركه
 //   نفس اللقطة يستاهل نسيب مساحة له.
+//
+// v6 — تصحيح تاني من العميل: المشهد (لقطات character/object) بقى يملا الفريم كامل (16:9)
+// بدل ما يبقى ملصق صغير على خلفية بيضاء — يعني مفيش داعي لخلفية بيضاء ولا إزالة خلفية خالص،
+// الصورة نفسها هي الفريم. حركة الـ pop اتعممت من "مربع صغير في النص" لـ"مستطيل الفريم كامل"
+// (baseW×baseH بدل baseSize مربع واحد) — نفس معادلة النوسان المخمّد، بس على أبعاد الفريم
+// كله. لقطات text/quote لسه بخلفية بيضاء عادية (مفيش مشهد أصلًا يملاها).
 
 import fetch from 'node-fetch';
 import sharp from 'sharp';
@@ -59,31 +65,31 @@ function getFontPath(lang) {
   return dejaVu;
 }
 
-// ✅ FIX: بنجهّز الملصق كـ PNG شفاف لوحده (bounding box مربع، contain-fit) بدل ما نلزّقه
-// مع الخلفية في صورة واحدة مسطحة — لازم يفضل شفاف حقيقي عشان buildAnimatedClip يقدر
-// يكبّره/يصغّره كطبقة منفصلة فوق خلفية ثابتة (overlay)، مش يزوم على الفريم كله زي قبل كده
-async function prepareIconPng(iconBuffer, size, outPath) {
+// ✅ FIX (طلب العميل): المشهد بقى بيملا الفريم كامل بدل ما يبقى ملصق صغير على خلفية بيضاء —
+// بنعمل resize بـ fit:'cover' لمقاس الفيديو بالظبط (W×H)، بيقص الزيادة بدل ما يسيب حواف
+// فاضية، ومفيش داعي لشفافية (opaque بالكامل، الصورة نفسها هي الفريم كله)
+async function prepareSceneImage(iconBuffer, W, H, outPath) {
   await sharp(iconBuffer)
-    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png()
+    .resize(W, H, { fit: 'cover' })
+    .jpeg({ quality: 92 })
     .toFile(outPath);
 }
 
 // ✅ FIX: حركة "pop" حقيقية بدل الزوم البطيء اللي كان قبل كده. ملحوظة مهمة: zoompan (اللي
 // كان مستخدم قبل كده) بيعمل "زوم على الفريم كله" (يقص جزء من الصورة ويكبّره) ومش مصمم أصلًا
 // إنه "يصغّر" (zoom<1 مش سلوك مدعوم فيه) — فمينفعش نستخدمه لعمل تأثير "يبدأ صغير ويكبر".
-// بدل كده، الملصق دلوقتي طبقة PNG شفافة منفصلة (input تاني) بيتكبّر فعليًا بـ scale filter
-// بحجم بيتغيّر كل فريم (eval=frame)، وبيتحط فوق خلفية ثابتة اللون بـ overlay في نص الفريم
-// بالظبط (أفقيًا ورأسيًا) — مفيش نص بيشارك نفس اللقطة تاني (كل لقطة يا ملصق يا نص، مش
-// الاتنين) فمفيش داعي نسيب مكان تحت للنص، الملصق بياخد نص الشاشة بالكامل. معادلة نوسان
-// مخمّد (damped oscillation):
-// size(t) = baseSize · (1 - 0.4·e^(-16·t)·cos(20·t)) — تبدأ 60% من الحجم عند t=0، تكبر
-// بسرعة وتعدّي 100% شوية (overshoot/bounce)، وتستقر عند الحجم الطبيعي خلال أقل من نص ثانية.
-// fade-in/out (بلون الخلفية نفسه) فضل موجود فوقها عشان دخول/خروج ناعم.
-// ✅ FIX (طلب العميل): آيات/أحاديث/أي إشارة لله أو نبي (kind:'quote') مالهاش ملصق خالص —
-// iconPngPath بيبقى null، فبنبني كليب خلفية بس (بدون طبقة الملصق/overlay) مع نفس الـ
-// fade-in/out — النص نفسه بيتحط عليه بعدين زي أي لقطة تانية (buildCaptionsAssFile)
-function buildAnimatedClip(iconPngPath, W, H, baseSize, durationSec, outPath) {
+// بدل كده، المشهد دلوقتي طبقة صورة منفصلة (input تاني) بيتكبّر فعليًا بـ scale filter بحجم
+// بيتغيّر كل فريم (eval=frame)، وبيتحط فوق خلفية ثابتة اللون بـ overlay في نص الفريم بالظبط
+// (أفقيًا ورأسيًا). معادلة نوسان مخمّد (damped oscillation) على أبعاد الفريم كله (baseW×baseH
+// — 16:9 كامل، مش مربع صغير زي قبل كده):
+// size(t) = base · (1 - 0.4·e^(-16·t)·cos(20·t)) — تبدأ 60% من الحجم عند t=0، تكبر بسرعة
+// وتعدّي 100% شوية (overshoot/bounce)، وتستقر عند الحجم الطبيعي (يملا الفريم بالكامل) خلال
+// أقل من نص ثانية. fade-in/out (بلون الخلفية نفسه) فضل موجود فوقها عشان دخول/خروج ناعم.
+// ✅ FIX (طلب العميل): آيات/أحاديث/أي إشارة لله أو نبي (kind:'quote')، وكمان لقطات text
+// المجردة، مالهاش مشهد خالص — iconPngPath بيبقى null، فبنبني كليب خلفية بيضاء بس (بدون طبقة
+// مشهد/overlay) مع نفس الـ fade-in/out — النص نفسه بيتحط عليه بعدين زي أي لقطة تانية
+// (buildCaptionsAssFile)
+function buildAnimatedClip(iconPngPath, W, H, baseW, baseH, durationSec, outPath) {
   const fadeSec = Math.min(0.25, Math.max(0.06, durationSec * 0.2));
   const outStart = Math.max(0, durationSec - fadeSec);
 
@@ -98,9 +104,10 @@ function buildAnimatedClip(iconPngPath, W, H, baseSize, durationSec, outPath) {
     return;
   }
 
-  const popExpr = `${baseSize}*(1-0.4*exp(-16*t)*cos(20*t))`;
+  const popExprW = `${baseW}*(1-0.4*exp(-16*t)*cos(20*t))`;
+  const popExprH = `${baseH}*(1-0.4*exp(-16*t)*cos(20*t))`;
   const filterComplex =
-    `[1:v]scale=w='${popExpr}':h='${popExpr}':eval=frame[icon];` +
+    `[1:v]scale=w='${popExprW}':h='${popExprH}':eval=frame[icon];` +
     `[0:v][icon]overlay=x='(main_w-overlay_w)/2':y='(main_h-overlay_h)/2'[ov];` +
     `[ov]fade=t=in:st=0:d=${fadeSec.toFixed(3)}:color=${BG_HEX},` +
     `fade=t=out:st=${outStart.toFixed(3)}:d=${fadeSec.toFixed(3)}:color=${BG_HEX}[outv]`;
@@ -191,25 +198,23 @@ export async function renderAudioVideoJob(job) {
     });
 
     const clipPaths = [];
-    // ✅ FIX: كبّرنا الحجم (كان 0.5) — دلوقتي الملصق ماشاركش الفريم مع نص تاني في نفس اللقطة،
-    // فقادر ياخد مساحة أكبر في نص الشاشة
-    const iconSize = Math.round(Math.min(W, H) * 0.65);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const clipPath = path.join(workDir, `clip_${i}.mp4`);
-      // ✅ FIX: لقطات "quote" (آيات/أحاديث/إشارة لله أو نبي) مالهاش imageUrl خالص —
-      // نص بس على الشاشة، من غير أي تحميل/توليد ملصق
+      // ✅ FIX: لقطات "quote"/"text" (آيات/أحاديث/إشارة لله أو نبي/جمل مجردة) مالهاش
+      // imageUrl خالص — نص بس على الشاشة، من غير أي تحميل/توليد مشهد
       if (!seg.imageUrl) {
-        buildAnimatedClip(null, W, H, iconSize, seg.segDuration, clipPath);
+        buildAnimatedClip(null, W, H, W, H, seg.segDuration, clipPath);
         clipPaths.push(clipPath);
         continue;
       }
       const iconRes = await fetch(seg.imageUrl);
       if (!iconRes.ok) throw new Error(`Could not download element image: ${seg.element}`);
       const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
-      const iconPngPath = path.join(workDir, `icon_${i}.png`);
-      await prepareIconPng(iconBuffer, iconSize, iconPngPath);
-      buildAnimatedClip(iconPngPath, W, H, iconSize, seg.segDuration, clipPath);
+      const iconPngPath = path.join(workDir, `icon_${i}.jpg`);
+      // ✅ FIX (طلب العميل): المشهد بقى بيملا الفريم كامل (W×H) بدل ملصق صغير مربع
+      await prepareSceneImage(iconBuffer, W, H, iconPngPath);
+      buildAnimatedClip(iconPngPath, W, H, W, H, seg.segDuration, clipPath);
       clipPaths.push(clipPath);
     }
 
