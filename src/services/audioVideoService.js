@@ -108,16 +108,16 @@ export async function extractVideoElements(words) {
   const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
   const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short "beats" — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
 
-CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either an animated STICKER (no text), or on-screen TEXT (no sticker). Never combine a sticker with text for the same beat. Decide per beat which fits better:
-- Use a STICKER ("character"/"object" kind) when the phrase names a concrete, drawable thing — a person, object, place, or clear physical action. Most beats should be this if the narration is at all concrete.
-- Use TEXT ("text" kind) when the phrase is abstract, a transition, a connector, or otherwise has no good concrete visual — words like "لا بد أن"/"إذاً"/"وبهذا"/"المحددة ولم يتحدث عنه كثيرون" don't need an invented sticker; just show them as text. Don't force a sticker onto a phrase that doesn't really have one — text is a completely normal, expected outcome for plenty of beats, not a fallback to avoid.
+CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either an animated illustrated SCENE (no text), or on-screen TEXT (no scene image). Never combine a scene image with text for the same beat. Decide per beat which fits better:
+- Use a SCENE ("character"/"object" kind) when the phrase names a concrete, drawable thing — a person, object, place, or clear physical action. Most beats should be this if the narration is at all concrete.
+- Use TEXT ("text" kind) when the phrase is abstract, a transition, a connector, or otherwise has no good concrete visual — words like "لا بد أن"/"إذاً"/"وبهذا"/"المحددة ولم يتحدث عنه كثيرون" don't need an invented scene; just show them as text. Don't force a scene onto a phrase that doesn't really have one — text is a completely normal, expected outcome for plenty of beats, not a fallback to avoid.
 
 For each beat, output:
 - "start_idx","end_idx": word indices (inclusive) it covers — reference ONLY the given indices, never invent numbers
 - "text": the exact words for this beat, copied verbatim from the transcript
-- "kind": "character" (sticker, depicts/refers to a specific named recurring person), "object" (sticker, a concrete object/place/action), "text" (on-screen text only, no sticker — abstract/transition/no good visual), or "quote" (on-screen text only, no sticker — a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet, see rule below)
-- "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their sticker stays visually consistent
-- "image_prompt": a short, concrete English visual description for a 2D sticker — ONLY for "character"/"object" kinds. OMIT this field entirely for "text"/"quote" kinds — they get on-screen text only, never an image.
+- "kind": "character" (scene, depicts/refers to a specific named recurring person), "object" (scene, a concrete object/place/action), "text" (on-screen text only, no scene image — abstract/transition/no good visual), or "quote" (on-screen text only, no scene image — a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet, see rule below)
+- "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their scene image stays visually consistent
+- "image_prompt": ONLY for "character"/"object" kinds — OMIT this field entirely for "text"/"quote" kinds (they get on-screen text only, never an image). CRITICAL — this must show real comprehension, not word-matching: read the beat's actual MEANING in context (use the surrounding beats/narration to understand what's really being said), then describe a short, concrete English scene of what is actually happening or being depicted at that moment — a real illustrated moment with a setting and (where relevant) a person doing something, not a generic isolated icon/symbol standing for a keyword. E.g. for a phrase about a long period whose end only God knows, don't just draw "an hourglass" — depict the actual scene implied by the narration (people waiting, a long road stretching into the distance, etc., whatever truly fits the context). Never take a single abstract noun and turn it into a floating generic icon — always ground it in the real scene the narration is describing.
 
 CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or a visual image_prompt of any figure. Use "quote" kind instead for these beats (and for direct Quranic verses / Hadith text) so the words still appear as on-screen text with no image. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
 
@@ -292,13 +292,16 @@ export async function generateElementImage(imagePrompt) {
   // نطلب من Pollinations خلفية بيضاء صريحة من الأول، فألوان الشكل نفسه تفضل طبيعية زي ما هي.
   // removeFlatBackground فضلت زي ما هي بالظبط (بتاخد لون الخلفية الفعلي من زوايا الصورة
   // ديناميكيًا، مش لون مكتوب في الكود)، فبتشتغل صح مع أي لون خلفية من غير أي تغيير فيها.
-  const fullPrompt = `${imagePrompt}, simple flat 2D vector illustration, flat solid colors, clean bold outlines, minimalist icon style, vibrant natural colors, rich saturated color palette, no photorealism, no 3D render, no gradient, no texture, on a solid plain pure white background (#FFFFFF), single flat white background, no shadow, no vignette, centered`;
+  // ✅ FIX (طلب العميل): مفيش كلمة "sticker"/"icon" في البرومبت تاني — ده كان بيخلي الموديل
+  // يطلع رموز/أيقونات مجردة غريبة لأي مفهوم صعب التصوير (زي ساعة رملية لـ"مدة")، بدل ما يرسم
+  // "مشهد" حقيقي بسيط زي أي رسمة توضيحية عادية بتصوّر اللحظة/الفكرة فعليًا
+  const fullPrompt = `${imagePrompt}, a natural ordinary illustrated scene — not an icon, not a sticker, not an abstract symbol, no isolated single object floating alone — depict an actual small moment or scene that captures the meaning, simple flat 2D illustration style, clean bold outlines, flat solid colors, vibrant natural colors, rich saturated color palette, no photorealism, no 3D render, no gradient, no texture, on a solid plain pure white background (#FFFFFF), single flat white background, no shadow, no vignette, centered`;
   let buffer;
   try {
     buffer = await fetchPollinationsImage(fullPrompt);
   } catch (e) {
     // ✅ محاولة تانية بـ prompt معدّل شوية — مفيش تكلفة إضافية من إعادة المحاولة (زي ما طلب)
-    buffer = await fetchPollinationsImage(`${fullPrompt}, flat design, sticker style, vector art`);
+    buffer = await fetchPollinationsImage(`${fullPrompt}, flat illustration, clean vector art`);
   }
   return removeFlatBackground(buffer);
 }
