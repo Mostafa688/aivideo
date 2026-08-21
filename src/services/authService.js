@@ -3,6 +3,7 @@ const { Pool } = pkg;
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import { deleteAudioVideoFileFromR2 } from './audioVideoService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'erivion_secret_2026';
 
@@ -319,6 +320,9 @@ async function initDB() {
   // لفترة زمنية معيّنة في الفيديو، مع نقاط زوم/pan محددة يدويًا (كل نقطة = مربع قص من
   // الصورة + وقت توصل فيه) بدل ما تتقسم لملصقات منفصلة زي باقي الفيديو
   await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS composite_scenes_json JSONB').catch(() => {});
+  // ✅ NEW (طلب العميل): الفيديو النهائي يتحذف تلقائيًا من R2 بعد 24 ساعة من التصيير عشان
+  // التخزين مايتجمعش — محتاجين نعرف امتى بالظبط الفيديو بقى جاهز (مش وقت إنشاء الـ job نفسه)
+  await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS video_ready_at TIMESTAMPTZ').catch(() => {});
   // ✅ FIX: حالة "extracting"/"rendering" كانت بتعيش في ذاكرة الـ process بس (fire-and-forget
   // async IIFE) — لو السيرفر اترستارت في نص الشغل (ديبلوي جديد، كراش، صيانة Railway)، الشغل
   // بيتقفل من غير ما حد يحدّث حالة الـ job، فيفضل عالق على "extracting" للأبد من غير أي طريقة
@@ -384,6 +388,27 @@ export async function cleanupExpiredAgentConversations() {
 
 // بتتنضف كل ساعة عشان الجدول ميفضلش يكبر، وبرضو بنفلتر بـ 24 ساعة وقت القراءة كحماية إضافية
 setInterval(() => { cleanupExpiredAgentConversations(); }, 60 * 60 * 1000);
+
+// ✅ NEW (طلب العميل): الفيديو النهائي بتاع مصنع الصوت-لفيديو يتحذف تلقائيًا من R2 بعد 24
+// ساعة من التصيير عشان التخزين مايتجمعش — الأدمن لازم ينزّله لو عايز يحتفظ بيه قبل كده.
+// بنمسح ملف R2 نفسه الأول، وبعدين نصفّر video_url ونحوّل الحالة لـ"expired" في نفس الصف
+// (مش بنمسح الـ job كله — الترانسكريبت/العناصر بتفضل موجودة للمرجعية)
+export async function cleanupExpiredAudioVideoRenders() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, video_url FROM audio_video_jobs
+       WHERE status = 'done' AND video_url IS NOT NULL AND video_ready_at < NOW() - INTERVAL '24 hours'`
+    );
+    for (const row of rows) {
+      await deleteAudioVideoFileFromR2(row.video_url);
+      await pool.query(`UPDATE audio_video_jobs SET video_url = NULL, status = 'expired' WHERE id = $1`, [row.id]);
+    }
+    if (rows.length) console.log(`[AudioVideo] 🧹 expired ${rows.length} render(s) older than 24h`);
+  } catch (e) {
+    console.warn('[AudioVideo] Expired render cleanup failed:', e.message);
+  }
+}
+setInterval(() => { cleanupExpiredAudioVideoRenders(); }, 60 * 60 * 1000);
 
 // ✅ Secure random code using crypto
 function generateCode() {
@@ -1718,6 +1743,11 @@ export async function updateAudioVideoJob(id, fields) {
     cols.push(`${col} = $${i}`);
     vals.push((key === 'wordsJson' || key === 'elementsJson' || key === 'compositeScenesJson') && value != null ? JSON.stringify(value) : value);
     i++;
+  }
+  // ✅ NEW: نسجّل وقت جهوزية الفيديو بالظبط لما الحالة تتحول لـ"done" مع رابط فيديو —
+  // ده اللي بنقيس منه الـ24 ساعة قبل الحذف التلقائي من R2، مش وقت إنشاء الـ job نفسه
+  if (fields.status === 'done' && fields.videoUrl) {
+    cols.push('video_ready_at = NOW()');
   }
   if (!cols.length) return getAudioVideoJobById(id);
   vals.push(id);

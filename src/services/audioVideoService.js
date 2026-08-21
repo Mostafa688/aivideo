@@ -85,6 +85,27 @@ export async function uploadFinalVideoToR2(buffer) {
   return uploadBufferToR2(buffer, key, 'video/mp4');
 }
 
+// ✅ NEW (طلب العميل): الفيديو النهائي يتحذف تلقائيًا من R2 بعد 24 ساعة عشان التخزين
+// مايتجمعش — بنشتق مفتاح الملف من رابطه العام مباشرة (بنشيل بادئة R2_PUBLIC_URL بس)
+export async function deleteAudioVideoFileFromR2(fileUrl) {
+  if (!fileUrl) return;
+  const prefix = `${R2_PUBLIC_URL}/`;
+  if (!fileUrl.startsWith(prefix)) return;
+  const key = fileUrl.slice(prefix.length);
+  if (!key) return;
+  try {
+    const { S3Client, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+    const s3 = new S3Client({
+      region: 'auto',
+      endpoint: S3_ENDPOINT_URL,
+      credentials: { accessKeyId: S3_ACCESS_KEY, secretAccessKey: S3_SECRET_KEY },
+    });
+    await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+  } catch (e) {
+    console.warn('[AudioVideo] Failed to delete expired R2 file:', fileUrl, e.message);
+  }
+}
+
 // ✅ تفريغ الصوت بتوقيت دقيق على مستوى الكلمة — response_format: verbose_json +
 // timestamp_granularities: ['word'] بيرجّع كل كلمة مع start/end بالثانية (نفس بروتوكول
 // OpenAI Whisper API اللي Groq متوافق معاه بالظبط)
@@ -153,7 +174,7 @@ export async function extractVideoElements(words) {
   if (!words || words.length === 0) return [];
 
   const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
-  const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short "beats" — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
+  const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short "beats" — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better, STRETCHING to 6-8 words when that's what it takes to include one concrete, icon-able subject rather than cutting a clause into two bare connector fragments with nothing to show. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
 
 CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either a small ICON/emoji-style sticker (no text), or on-screen TEXT (no icon). Never combine an icon with text for the same beat. Icons come from a real public icon/emoji library search (not AI-generated), and the library is large and covers most everyday nouns, actions, and places — so lean toward requesting an icon whenever the beat names ANY concrete person, object, action, or place, even a moderately specific one (the search tries the full phrase and then falls back to its individual words, so a partial match still finds something). Only use TEXT when the phrase is genuinely abstract, a transition/connector, a feeling with no physical form, or a very specific/niche description with no plausible icon at all — an unmatched icon request automatically becomes text anyway, so there's little downside to trying the icon first whenever there's a real concrete thing to point at.
 

@@ -631,6 +631,7 @@ const AUDIOVIDEO_STATUS_LABEL = {
   rendering: '⏳ بيبني الفيديو النهائي...',
   done: '🎉 خلص',
   failed: '❌ فشل',
+  expired: '🗑️ الفيديو اتحذف من التخزين بعد 24 ساعة',
 };
 
 function AnalyticsTab({ s }) {
@@ -1145,10 +1146,19 @@ function CompositeSceneEditor({ job, onSaved }) {
       {scenes.length > 0 && (
         <div style={{ marginBottom: showNew ? 14 : 0 }}>
           {scenes.map((sc, i) => (
-            <div key={sc.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid #1a1a2e' }}>
-              <img src={sc.imageUrl} alt="" style={{ width: 50, height: 30, objectFit: 'cover', borderRadius: 4 }} />
-              <span style={{ fontSize: 12, color: '#d1d5db' }}>{Number(sc.startTime).toFixed(1)}s–{Number(sc.endTime).toFixed(1)}s · {(sc.keyframes || []).length} نقطة</span>
-              <button onClick={() => handleDeleteScene(i)} style={{ marginRight: 'auto', background: 'none', border: '1px solid #2d2d4a', color: '#f87171', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>حذف</button>
+            <div key={sc.id || i} style={{ padding: '6px 0', borderBottom: '1px solid #1a1a2e' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <img src={sc.imageUrl} alt="" style={{ width: 50, height: 30, objectFit: 'cover', borderRadius: 4 }} />
+                <span style={{ fontSize: 12, color: '#d1d5db' }}>{Number(sc.startTime).toFixed(1)}s–{Number(sc.endTime).toFixed(1)}s · {(sc.keyframes || []).length} نقطة</span>
+                <button onClick={() => handleDeleteScene(i)} style={{ marginRight: 'auto', background: 'none', border: '1px solid #2d2d4a', color: '#f87171', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>حذف</button>
+              </div>
+              {/* ✅ NEW: عرض ثانية كل نقطة صراحة (كان بيوريك العدد بس) — عشان تقدر تتأكد بنفسك
+                  إن كل نقطة فعلاً جوه نطاق المشهد، وعشان يبقى سهل تبعتلي سكرين شوت واضح لو فيه مشكلة */}
+              {(sc.keyframes || []).length > 0 && (
+                <div style={{ fontSize: 11, color: '#7c7c9a', marginTop: 4, paddingRight: 60 }}>
+                  {sc.keyframes.map((k, ki) => `${Number(k.time).toFixed(1)}s${k.label ? ` (${k.label})` : ''}`).join(' · ')}
+                </div>
+              )}
             </div>
           ))}
         </div>
