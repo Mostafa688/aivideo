@@ -70,12 +70,15 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
         // أول مرة (مفيش بحث جديد في كل ظهور).
         const characterImageCache = new Map(); // characterKey -> imageUrl
         const withImages = [];
+        let llmTextCount = 0, iconFoundCount = 0, iconMissCount = 0;
         for (const el of elements) {
           if (el.kind === 'quote' || el.kind === 'text') {
+            llmTextCount++;
             withImages.push({ ...el, imageUrl: null });
             continue;
           }
           if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
+            iconFoundCount++;
             withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
             continue;
           }
@@ -86,13 +89,19 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
             console.warn('[AudioVideo] Icon lookup failed, falling back to text:', el.element, e.message);
           }
           if (!buffer) {
+            iconMissCount++;
             withImages.push({ ...el, kind: 'text', imageUrl: null, imagePrompt: null, characterKey: null });
             continue;
           }
+          iconFoundCount++;
           const imageUrl = await uploadElementImageToR2(buffer);
           withImages.push({ ...el, imageUrl });
           if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
         }
+        // ✅ تشخيص: لوج واضح يفرّق بين "الموديل نفسه قرر نص" و"طلب ملصق بس المكتبة مالقتش
+        // نتيجة" — عشان نعرف بسرعة لو فيه باج في البحث نفسه (زي اللي كان فيه فلتر prefixes
+        // غلط وبيلغي كل نتيجة) بدل ما نفترض إنه مجرد محتوى مجرد مالوش تصور بصري
+        console.log(`[AudioVideo] Extract summary: ${elements.length} beats — LLM chose text/quote directly: ${llmTextCount}, icon found: ${iconFoundCount}, icon search came back empty (downgraded to text): ${iconMissCount}`);
 
         if (!withImages.length) {
           await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements could be processed' });

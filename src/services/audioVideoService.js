@@ -197,30 +197,42 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
 // بيجمع مئات الآلاف من الأيقونات من مكتبات مفتوحة المصدر كتير، من غير أي مفتاح API أو تسجيل).
 // لو مفيش نتيجة مطابقة، بترجع null — والـ caller (audioVideoRoutes.js) وقتها بيحوّل اللقطة
 // دي لـ"نص بس" بدل ما يفضل يحاول يخترع ملصق، بالظبط زي ما طلب العميل.
-// أولوية البحث: مجموعات الإيموجي الملوّنة (noto, twemoji, openmoji...) الأقرب لشكل "ملصق"
-// حقيقي، وبعدين أي أيقونة تانية في أي مكتبة لو مفيش نتيجة إيموجي.
-const EMOJI_PREFIXES = 'noto,twemoji,openmoji,fxemoji,emojione,noto-v1,streamline-emojis';
+// ✅ FIX (باج حقيقي: كل اللقطات كانت بترجع "نص بس" حتى لكلمات عادية جدًا زي "كتاب"): كان
+// فيه نداء أول بفلتر "prefixes" على مجموعات إيموجي معيّنة، ولو أي اسم مجموعة فيها غلط أو مش
+// موجود فعليًا، Iconify كانت بترجع رد غير ناجح، والكود كان بيعمل throw فورًا من غير ما يجرب
+// النداء التاني (بحث عام من غير فلتر) خالص — يعني أي مشكلة في فلتر الإيموجي كانت بتلغي
+// البحث كله وتحول كل حاجة لنص. دلوقتي نداء واحد بس (بحث عام مضمون الصيغة، من غير فلتر
+// prefixes خطر)، وتفضيل نتيجة من مجموعة إيموجي ملوّنة *بعد* ما النتائج ترجع (فلترة محلية
+// آمنة، مش شرط في الطلب نفسه) — وأي خطأ شبكة/API بيترجع null هادي (مش throw) عشان اللقطة
+// تتحول لنص بس، مش توقف البحث كله.
+const PREFERRED_EMOJI_PREFIXES = ['noto', 'twemoji', 'openmoji', 'fxemoji', 'noto-v1'];
 
-async function iconifySearch(query, prefixes) {
-  const url = `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=6${prefixes ? `&prefixes=${prefixes}` : ''}`;
+async function iconifySearch(query) {
+  const url = `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=24`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Iconify search error ${res.status}`);
+  if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data.icons) ? data.icons : [];
 }
 
 // ✅ بيرجّع buffer الـ SVG الخام (مش PNG) — التحويل/الـresize بيحصل في audioVideoRenderService.js
-// بـ sharp، اللي بيقدر يرندر SVG مباشرة. بيرجّع null لو مفيش ولا نتيجة واحدة (مش خطأ، حالة
-// طبيعية ومتوقعة — يعني الجملة دي هتتحول لنص بدل ملصق)
+// بـ sharp، اللي بيقدر يرندر SVG مباشرة. بيرجّع null لو مفيش ولا نتيجة واحدة أو حصل أي خطأ
+// (مش استثناء بيوقف حاجة — حالة طبيعية ومتوقعة، يعني الجملة دي هتتحول لنص بدل ملصق)
 export async function findLibraryIcon(keyword) {
   const q = String(keyword || '').trim();
   if (!q) return null;
-  let icons = await iconifySearch(q, EMOJI_PREFIXES);
-  if (!icons.length) icons = await iconifySearch(q); // كل المكتبات، من غير تحديد مجموعة
-  if (!icons.length) return null;
-  const [prefix, ...nameParts] = icons[0].split(':');
-  const name = nameParts.join(':');
-  const svgRes = await fetch(`https://api.iconify.design/${prefix}/${name}.svg`);
-  if (!svgRes.ok) return null;
-  return Buffer.from(await svgRes.arrayBuffer());
+  try {
+    const icons = await iconifySearch(q);
+    if (!icons.length) return null;
+    const preferred = icons.find(i => PREFERRED_EMOJI_PREFIXES.some(p => i.startsWith(`${p}:`)));
+    const chosen = preferred || icons[0];
+    const [prefix, ...nameParts] = chosen.split(':');
+    const name = nameParts.join(':');
+    const svgRes = await fetch(`https://api.iconify.design/${prefix}/${name}.svg`);
+    if (!svgRes.ok) return null;
+    return Buffer.from(await svgRes.arrayBuffer());
+  } catch (e) {
+    console.warn('[AudioVideo] Iconify lookup failed for keyword:', q, e.message);
+    return null;
+  }
 }
