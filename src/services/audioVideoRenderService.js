@@ -41,6 +41,16 @@
 // buildAnimatedClip فضلت زي ما هي بالظبط (عامة، بتاخد baseW/baseH بغض النظر عن الحجم)، بس
 // السايز رجع مربّع صغير بدل W×H الفريم كامل، وprepareSceneImage اتبدلت بـprepareIconImage
 // (contain-fit شفاف بدل cover-fit معتم).
+//
+// v8 — فيتشر جديد بطلب العميل: "مشاهد مركّبة" (Composite Scenes) — لفترة زمنية بتغطي عدة
+// لقطات (زي مثال العميل: 11 مرحلة البرزخ)، الأدمن بيرفع صورة دايجرام واحدة ويحدد يدويًا نقاط
+// زوم/pan (كل نقطة = مربع قص من الصورة + الوقت اللي المفروض توصل عنده) بدل التقسيم لملصقات
+// منفصلة. buildCompositeSceneClip بيبني كليب واحد للفترة كلها بـ zoompan (نفس فلتر الـ pop
+// بتاع buildAnimatedClip، بس هنا z/x/y بتتحرك بين نقاط الأدمن بـinterpolation خطي عبر
+// buildPiecewiseExpr بدل نوسان مخمّد ثابت) — بيبدأ وينتهي دايمًا بعرض الصورة كاملة (bookend
+// keyframes تلقائية). renderAudioVideoJob بيشيل أي لقطة عادية (ملصق/نص) بتتقاطع زمنيًا مع
+// مشهد مركّب (المشهد المركّب بيغطي الفترة دي بالكامل بدالها)، وبيرتّب كل الكليبات (عادية +
+// مركّبة) كرونولوجيًا بالـ startTime بتاعها قبل الـ concat.
 
 import fetch from 'node-fetch';
 import sharp from 'sharp';
@@ -127,6 +137,72 @@ function buildAnimatedClip(iconPngPath, W, H, baseW, baseH, durationSec, outPath
   );
 }
 
+// ✅ NEW (طلب العميل — "مشاهد مركّبة"): بيبني تعبير ffmpeg واحد بيعمل interpolation خطي
+// (piecewise linear) بين قيمة كل keyframe والتالي له بمرور الوقت — نفس الأسلوب مستخدم 4 مرات
+// (مركز-x، مركز-y، عرض، ارتفاع مربع القص) عشان نعمل زوم/pan ناعم بين نقاط الأدمن اليدوية.
+// t قبل أول keyframe = قيمته ثابتة، وt بعد آخر keyframe = قيمته ثابتة (مفيش extrapolation)
+function buildPiecewiseExpr(keyframes, valueFn, timeVar) {
+  const n = keyframes.length;
+  if (n === 1) return String(valueFn(keyframes[0]));
+  let result = String(valueFn(keyframes[n - 1]));
+  for (let i = n - 2; i >= 0; i--) {
+    const v0 = valueFn(keyframes[i]), v1 = valueFn(keyframes[i + 1]);
+    const t0 = keyframes[i].relTime, t1 = keyframes[i + 1].relTime;
+    const dt = Math.max(0.001, t1 - t0);
+    const interp = `(${v0}+(${v1}-${v0})*(${timeVar}-${t0})/${dt})`;
+    result = `if(lt(${timeVar},${t1}),${interp},${result})`;
+  }
+  return `if(lt(${timeVar},${keyframes[0].relTime}),${valueFn(keyframes[0])},${result})`;
+}
+
+// ✅ NEW: كليب "مشهد مركّب" واحد يغطي الفترة الزمنية كلها (scene.startTime → scene.endTime)
+// — صورة دايجرام ثابتة واحدة، بيتعمل عليها زوم/pan (zoompan) بين نقاط الأدمن اليدوية.
+// بيبدأ وبينتهي دايمًا بعرض الصورة كاملة (الـ bookend keyframes) — مطابق لطلب العميل: الصورة
+// تظهر كاملة، تزوم على كل مرحلة وقت ذكرها، وترجع تزوم آوت في الآخر
+function buildCompositeSceneClip(scene, imagePath, W, H, outPath) {
+  const duration = Math.max(0.5, scene.endTime - scene.startTime);
+  const fadeSec = Math.min(0.4, Math.max(0.1, duration * 0.05));
+  const imgW = scene.imageWidth, imgH = scene.imageHeight;
+
+  const userKfs = (scene.keyframes || []).map(k => ({
+    relTime: Math.max(0, Math.min(duration, k.time - scene.startTime)),
+    cx: (k.x + k.width / 2) * imgW,
+    cy: (k.y + k.height / 2) * imgH,
+    cw: Math.max(1, k.width * imgW),
+    ch: Math.max(1, k.height * imgH),
+  }));
+  const fullFrame = { cx: imgW / 2, cy: imgH / 2, cw: imgW, ch: imgH };
+  const allKfs = [{ ...fullFrame, relTime: 0 }, ...userKfs, { ...fullFrame, relTime: duration }]
+    .sort((a, b) => a.relTime - b.relTime);
+  // ✅ إزالة أي keyframes متلاصقة جدًا في الوقت (فرق أقل من 50ms) عشان منوقعش في قسمة على رقم
+  // قريب جدًا من صفر في الـ interpolation
+  const kfs = [];
+  for (const k of allKfs) {
+    if (kfs.length && k.relTime - kfs[kfs.length - 1].relTime < 0.05) continue;
+    kfs.push(k);
+  }
+
+  const tVar = `(on/${FPS})`;
+  const cwExpr = buildPiecewiseExpr(kfs, k => k.cw.toFixed(2), tVar);
+  const chExpr = buildPiecewiseExpr(kfs, k => k.ch.toFixed(2), tVar);
+  const cxExpr = buildPiecewiseExpr(kfs, k => k.cx.toFixed(2), tVar);
+  const cyExpr = buildPiecewiseExpr(kfs, k => k.cy.toFixed(2), tVar);
+  // z = iw/cropWidth — مضمون دايمًا >= 1 (cw دايمًا <= imgW) وهو الشرط الوحيد اللي zoompan
+  // بيحتاجه عشان يشتغل صح (زي ما اتوضح في buildAnimatedClip فوق)
+  const zExpr = `(iw/(${cwExpr}))`;
+  const xExpr = `((${cxExpr})-(${cwExpr})/2)`;
+  const yExpr = `((${cyExpr})-(${chExpr})/2)`;
+
+  const outStart = Math.max(0, duration - fadeSec);
+  const vf = `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=${W}x${H}:fps=${FPS},` +
+    `fade=t=in:st=0:d=${fadeSec.toFixed(3)}:color=${BG_HEX},` +
+    `fade=t=out:st=${outStart.toFixed(3)}:d=${fadeSec.toFixed(3)}:color=${BG_HEX}`;
+  execSync(
+    `ffmpeg -y -loop 1 -framerate ${FPS} -i "${imagePath}" -vf "${vf}" -t ${duration.toFixed(3)} -c:v libx264 -pix_fmt yuv420p "${outPath}"`,
+    { stdio: 'pipe' }
+  );
+}
+
 function toAssTime(s) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -205,18 +281,25 @@ export async function renderAudioVideoJob(job) {
       return { ...el, segStart, segEnd, segDuration: Math.max(0.4, segEnd - segStart) };
     });
 
-    const clipPaths = [];
+    // ✅ NEW (طلب العميل — "مشاهد مركّبة"): أي فترة زمنية عليها مشهد مركّب (صورة دايجرام
+    // واحدة بزوم/pan يدوي) بتستبدل تمامًا أي لقطات عادية (ملصق/نص) بتتقاطع معاها زمنيًا —
+    // اللقطات دي بتتشال من التصيير والكابشن، والمشهد المركّب هو اللي بيغطي الفترة دي بدالها
+    const compositeScenes = Array.isArray(job.composite_scenes_json) ? job.composite_scenes_json : [];
+    const isCoveredByComposite = seg => compositeScenes.some(cs => seg.segStart < cs.endTime && seg.segEnd > cs.startTime);
+    const regularSegments = segments.filter(seg => !isCoveredByComposite(seg));
+
     // ✅ FIX (طلب العميل): رجعنا لملصق صغير مربّع في نص الفريم بدل ما يملا الفريم كامل —
     // الملصقات دلوقتي من مكتبة أيقونات حقيقية، مش صور مولّدة تمثّل الفريم كله
     const iconSize = Math.round(Math.min(W, H) * 0.65);
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
+    const timedClips = []; // { startTime, clipPath } — بيتترتب كرونولوجيًا في الآخر
+    for (let i = 0; i < regularSegments.length; i++) {
+      const seg = regularSegments[i];
       const clipPath = path.join(workDir, `clip_${i}.mp4`);
       // ✅ FIX: لقطات "quote"/"text" (آيات/أحاديث/إشارة لله أو نبي/جمل مجردة) مالهاش
       // imageUrl خالص — نص بس على الشاشة، من غير أي تحميل/توليد ملصق
       if (!seg.imageUrl) {
         buildAnimatedClip(null, W, H, iconSize, iconSize, seg.segDuration, clipPath);
-        clipPaths.push(clipPath);
+        timedClips.push({ startTime: seg.segStart, clipPath });
         continue;
       }
       const iconRes = await fetch(seg.imageUrl);
@@ -225,9 +308,22 @@ export async function renderAudioVideoJob(job) {
       const iconPngPath = path.join(workDir, `icon_${i}.png`);
       await prepareIconImage(iconBuffer, iconSize, iconPngPath);
       buildAnimatedClip(iconPngPath, W, H, iconSize, iconSize, seg.segDuration, clipPath);
-      clipPaths.push(clipPath);
+      timedClips.push({ startTime: seg.segStart, clipPath });
     }
 
+    for (let i = 0; i < compositeScenes.length; i++) {
+      const cs = compositeScenes[i];
+      const imgRes = await fetch(cs.imageUrl);
+      if (!imgRes.ok) throw new Error(`Could not download composite scene image (scene ${i + 1})`);
+      const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+      const imgPath = path.join(workDir, `composite_src_${i}.jpg`);
+      fs.writeFileSync(imgPath, imgBuffer);
+      const clipPath = path.join(workDir, `composite_${i}.mp4`);
+      buildCompositeSceneClip(cs, imgPath, W, H, clipPath);
+      timedClips.push({ startTime: cs.startTime, clipPath });
+    }
+
+    const clipPaths = timedClips.sort((a, b) => a.startTime - b.startTime).map(c => c.clipPath);
     const listPath = path.join(workDir, 'concat_list.txt');
     fs.writeFileSync(listPath, clipPaths.map(p => `file '${path.resolve(p)}'`).join('\n'));
     const silentPath = path.join(workDir, 'silent.mp4');
@@ -240,7 +336,9 @@ export async function renderAudioVideoJob(job) {
     const fontName = fontfile.includes('Naskh') ? 'Noto Naskh Arabic' :
                       fontfile.includes('Noto') ? 'Noto Sans Arabic' :
                       fontfile.includes('DejaVu') ? 'DejaVu Sans' : 'Arial';
-    const assContent = buildCaptionsAssFile(segments, videoLanguage, ratio, fontName, W, H);
+    // ✅ كابشن اللقطات العادية بس — المشاهد المركّبة مالهاش نص فوقها (الدايجرام نفسه هو
+    // المحتوى البصري، والتسميات المفروض تكون مرسومة جوه الصورة نفسها)
+    const assContent = buildCaptionsAssFile(regularSegments, videoLanguage, ratio, fontName, W, H);
     const assPath = path.join(workDir, 'captions.ass');
     fs.writeFileSync(assPath, assContent, 'utf8');
     const safeAss = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');

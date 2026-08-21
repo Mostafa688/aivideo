@@ -48,14 +48,27 @@ export async function uploadElementImageToR2(buffer) {
   return uploadBufferToR2(buffer, key, 'image/svg+xml');
 }
 
-// ✅ NEW (طلب العميل): صور مرجعية ثابتة بيرفعها الأدمن يدويًا (غلاف القرآن الكريم، صحيح
-// البخاري، صحيح مسلم...) — بتحافظ على نوع الملف الحقيقي اللي اترفع (JPG/PNG عادةً)، عكس
-// uploadElementImageToR2 اللي بتفترض SVG دايمًا من Iconify
-export async function uploadReferenceImageToR2(buffer, mimeExt = 'jpg', refKey = 'ref') {
+// ✅ بيحافظ على نوع الملف الحقيقي اللي اترفع (JPG/PNG/WEBP)، عكس uploadElementImageToR2
+// اللي بتفترض SVG دايمًا من Iconify
+function imageExtToContentType(ext) {
+  return ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+}
+async function uploadUserImageToR2(buffer, mimeExt, folder, name) {
   const ext = String(mimeExt || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-  const key = `audio-video/reference/${refKey}_${Date.now()}.${ext}`;
-  return uploadBufferToR2(buffer, key, contentType);
+  const key = `audio-video/${folder}/${name}_${Date.now()}.${ext}`;
+  return uploadBufferToR2(buffer, key, imageExtToContentType(ext));
+}
+
+// ✅ NEW (طلب العميل): صور مرجعية ثابتة بيرفعها الأدمن يدويًا (غلاف القرآن الكريم، صحيح
+// البخاري، صحيح مسلم...) — بتتستخدم تلقائيًا مع لقطات "quote"
+export async function uploadReferenceImageToR2(buffer, mimeExt = 'jpg', refKey = 'ref') {
+  return uploadUserImageToR2(buffer, mimeExt, 'reference', refKey);
+}
+
+// ✅ NEW (طلب العميل): صورة "مشهد مركّب" — دايجرام واحد (زي 11 مرحلة) بيتحدد عليه نقاط
+// زوم/pan يدويًا بدل ما يتقسم لملصقات منفصلة
+export async function uploadCompositeImageToR2(buffer, mimeExt = 'jpg') {
+  return uploadUserImageToR2(buffer, mimeExt, 'composite', 'scene');
 }
 
 export async function uploadFinalVideoToR2(buffer) {

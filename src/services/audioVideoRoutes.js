@@ -9,7 +9,8 @@
 import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
-import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, uploadElementImageToR2, uploadReferenceImageToR2 } from './audioVideoService.js';
+import sharp from 'sharp';
+import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2 } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
 import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobById, listAudioVideoJobsForAdmin, upsertReferenceImage, listReferenceImages, getReferenceImagesMap, deleteReferenceImage } from './authService.js';
 
@@ -169,6 +170,88 @@ router.get('/jobs/:id', adminAuth, async (req, res) => {
     if (!job) return res.status(404).json({ error: 'not_found' });
     res.json({ job });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── مشاهد مركّبة (Composite Scenes) ────────────────────────────────────────────────────
+// ✅ NEW (طلب العميل): بدل ما فترة معيّنة من الفيديو (زي "11 مرحلة البرزخ") تتقسم لملصقات
+// منفصلة، الأدمن بيرفع صورة دايجرام واحدة تغطي الفترة دي كلها، ويحدد يدويًا نقاط زوم/pan
+// (كل نقطة = مربع قص من الصورة + الوقت اللي المفروض يوصل عنده) — الرندر (audioVideoRenderService.js)
+// بيعمل زوم/pan ناعم بين النقاط دي، بيبدأ بصورة كاملة (pop) وينتهي برجوع لصورة كاملة (zoom out)
+router.post('/jobs/:id/composite-image', adminAuth, upload.single('image'), async (req, res) => {
+  try {
+    const job = await getAudioVideoJobById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'not_found' });
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+    const ext = (req.file.originalname.split('.').pop() || 'jpg').toLowerCase();
+    const meta = await sharp(req.file.buffer).metadata();
+    const imageUrl = await uploadCompositeImageToR2(req.file.buffer, ext);
+    res.json({ imageUrl, width: meta.width, height: meta.height });
+  } catch (err) {
+    console.error('[AudioVideo] Composite image upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW: أي مربع قص بيرسمه الأدمن على الصورة ممكن يكون بأي نسبة عرض/ارتفاع — لو استخدمناه
+// زي ما هو في الرندر، الفريم النهائي هيتمدد/ينضغط (distortion) لأنه بيتحط في فريم 16:9 ثابت.
+// بنعدّل المربع هنا (على نفس المركز) عشان يطابق نسبة فيديو الـ job بالظبط قبل ما نحفظه —
+// ده بيضمن مفيش تمدد خالص في الرندر بغض النظر عن المربع اللي الأدمن رسمه فعليًا
+function normalizeRectToAspect(k, imageWidth, imageHeight, targetAspect) {
+  const cx = k.x + k.width / 2, cy = k.y + k.height / 2;
+  let w = k.width, h = k.height;
+  const pixelAspect = (w * imageWidth) / (h * imageHeight);
+  if (pixelAspect > targetAspect) h = (w * imageWidth) / targetAspect / imageHeight;
+  else w = (h * imageHeight) * targetAspect / imageWidth;
+  if (w > 1) { const scale = 1 / w; w *= scale; h *= scale; }
+  if (h > 1) { const scale = 1 / h; w *= scale; h *= scale; }
+  const x = Math.max(0, Math.min(1 - w, cx - w / 2));
+  const y = Math.max(0, Math.min(1 - h, cy - h / 2));
+  return { x, y, width: w, height: h };
+}
+const RATIO_ASPECT = { '16:9': 16 / 9, '9:16': 9 / 16, '1:1': 1 };
+
+// بيحفظ مصفوفة المشاهد المركّبة كاملة للـ job (بيستبدل القديم بالكامل — الفرونت إند بيبعت
+// القائمة النهائية كل مرة، أبسط من endpoints جزئية للإضافة/التعديل/الحذف)
+router.post('/jobs/:id/composite-scenes', adminAuth, async (req, res) => {
+  try {
+    const job = await getAudioVideoJobById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'not_found' });
+    const targetAspect = RATIO_ASPECT[job.ratio] || RATIO_ASPECT['16:9'];
+    const scenes = Array.isArray(req.body?.scenes) ? req.body.scenes : [];
+    const cleaned = scenes
+      .map((s, i) => {
+        const imageWidth = Math.max(0, Number(s.imageWidth) || 0);
+        const imageHeight = Math.max(0, Number(s.imageHeight) || 0);
+        return {
+          id: s.id || `scene_${Date.now()}_${i}`,
+          imageUrl: String(s.imageUrl || ''),
+          imageWidth, imageHeight,
+          startTime: Math.max(0, Number(s.startTime) || 0),
+          endTime: Math.max(0, Number(s.endTime) || 0),
+          keyframes: Array.isArray(s.keyframes) && imageWidth > 0 && imageHeight > 0
+            ? s.keyframes
+                .map(k => {
+                  const raw = {
+                    x: Math.max(0, Math.min(1, Number(k.x) || 0)),
+                    y: Math.max(0, Math.min(1, Number(k.y) || 0)),
+                    width: Math.max(0.02, Math.min(1, Number(k.width) || 1)),
+                    height: Math.max(0.02, Math.min(1, Number(k.height) || 1)),
+                  };
+                  const rect = normalizeRectToAspect(raw, imageWidth, imageHeight, targetAspect);
+                  return { time: Math.max(0, Number(k.time) || 0), ...rect, label: String(k.label || '').slice(0, 100) };
+                })
+                .sort((a, b) => a.time - b.time)
+            : [],
+        };
+      })
+      .filter(s => s.imageUrl && s.imageWidth > 0 && s.imageHeight > 0 && s.endTime > s.startTime)
+      .sort((a, b) => a.startTime - b.startTime);
+    const updated = await updateAudioVideoJob(job.id, { compositeScenesJson: cleaned });
+    res.json({ job: updated });
+  } catch (err) {
+    console.error('[AudioVideo] Save composite scenes error:', err);
     res.status(500).json({ error: err.message });
   }
 });

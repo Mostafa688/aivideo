@@ -938,6 +938,8 @@ function AudioVideoTab({ s }) {
             </table>
           </div>
 
+          <CompositeSceneEditor job={activeJob} onSaved={setActiveJob} />
+
           {/* الخطوة 2: استخراج العناصر + توليد الصور — زرار "أعد الاستخراج" فاضل ظاهر حتى
               لو العناصر موجودة بالفعل، عشان تقدر تعيد التوليد على نفس الـ job (بعد أي تعديل
               على منطق الاستخراج/الصور) من غير ما تحتاج ترفع الصوت تاني من الصفر */}
@@ -1001,6 +1003,203 @@ function AudioVideoTab({ s }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ✅ NEW (طلب العميل — "مشاهد مركّبة"): محرر بسيط لرفع صورة دايجرام واحدة (زي مراحل مرقّمة)
+// وتحديد نقاط زوم/pan يدويًا عليها — كل نقطة = مربع بيتحدد بالسحب على الصورة + ثانية يتقال
+// فيها الكلام المطابق. الرندر (audioVideoRenderService.js) بيعمل زوم/pan ناعم بين النقط دي.
+function CompositeSceneEditor({ job, onSaved }) {
+  const [scenes, setScenes] = useState(job.composite_scenes_json || []);
+  useEffect(() => { setScenes(job.composite_scenes_json || []); }, [job.id, job.composite_scenes_json]);
+
+  const [showNew, setShowNew] = useState(false);
+  const [csImage, setCsImage] = useState(null); // { url, width, height }
+  const [csUploading, setCsUploading] = useState(false);
+  const [csStart, setCsStart] = useState('');
+  const [csEnd, setCsEnd] = useState('');
+  const [csKeyframes, setCsKeyframes] = useState([]); // { time, x, y, width, height, label }
+  const [csKeyTime, setCsKeyTime] = useState('');
+  const [csKeyLabel, setCsKeyLabel] = useState('');
+  const [drag, setDrag] = useState(null); // { startX, startY, curX, curY } — نسب 0-1 من الصورة
+  const imgWrapRef = React.useRef(null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setCsUploading(true); setErr('');
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      const r = await fetch(`/api/admin/audio-video/jobs/${job.id}/composite-image`, {
+        method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: form,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Upload failed');
+      setCsImage({ url: d.imageUrl, width: d.width, height: d.height });
+    } catch (e) {
+      setErr('❌ ' + e.message);
+    } finally {
+      setCsUploading(false);
+    }
+  };
+
+  const getRelPos = (e) => {
+    const rect = imgWrapRef.current.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
+    };
+  };
+  const handleMouseDown = (e) => { const p = getRelPos(e); setDrag({ startX: p.x, startY: p.y, curX: p.x, curY: p.y }); };
+  const handleMouseMove = (e) => { if (!drag) return; const p = getRelPos(e); setDrag(d => ({ ...d, curX: p.x, curY: p.y })); };
+
+  const addKeyframe = () => {
+    if (!drag || !csKeyTime.trim()) return;
+    const x = Math.min(drag.startX, drag.curX);
+    const y = Math.min(drag.startY, drag.curY);
+    const width = Math.abs(drag.curX - drag.startX);
+    const height = Math.abs(drag.curY - drag.startY);
+    if (width < 0.02 || height < 0.02) { setErr('❌ حدد مربع أكبر على الصورة الأول (اسحب بالماوس)'); return; }
+    setErr('');
+    setCsKeyframes(kfs => [...kfs, { time: Number(csKeyTime), x, y, width, height, label: csKeyLabel.trim() }].sort((a, b) => a.time - b.time));
+    setCsKeyTime(''); setCsKeyLabel(''); setDrag(null);
+  };
+  const removeKeyframe = (idx) => setCsKeyframes(kfs => kfs.filter((_, i) => i !== idx));
+
+  const resetDraft = () => { setCsImage(null); setCsStart(''); setCsEnd(''); setCsKeyframes([]); setDrag(null); setErr(''); };
+
+  const saveScenes = async (nextScenes) => {
+    const r = await fetch(`/api/admin/audio-video/jobs/${job.id}/composite-scenes`, {
+      method: 'POST', headers, body: JSON.stringify({ scenes: nextScenes }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Save failed');
+    setScenes(d.job.composite_scenes_json || []);
+    onSaved(d.job);
+  };
+
+  const handleSaveNewScene = async () => {
+    if (!csImage || !csStart.trim() || !csEnd.trim() || csKeyframes.length === 0) {
+      setErr('❌ لازم صورة + من/لحد ثانية + نقطة واحدة على الأقل قبل الحفظ');
+      return;
+    }
+    setSaving(true); setErr('');
+    try {
+      const newScene = {
+        imageUrl: csImage.url, imageWidth: csImage.width, imageHeight: csImage.height,
+        startTime: Number(csStart), endTime: Number(csEnd), keyframes: csKeyframes,
+      };
+      await saveScenes([...scenes, newScene]);
+      setShowNew(false);
+      resetDraft();
+    } catch (e) {
+      setErr('❌ ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteScene = async (idx) => {
+    try { await saveScenes(scenes.filter((_, i) => i !== idx)); } catch (e) { console.error(e); }
+  };
+
+  return (
+    <div style={{ border: '1px solid #2d2d4a', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 700, color: '#fff', fontSize: 13 }}>🖼️ مشاهد مركّبة (Composite Scenes)</div>
+        <button
+          style={{ background: 'none', border: '1px solid #2d2d4a', color: '#a78bfa', borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
+          onClick={() => { setShowNew(v => !v); if (showNew) resetDraft(); }}
+        >
+          {showNew ? 'إلغاء' : '+ مشهد جديد'}
+        </button>
+      </div>
+      <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 10, lineHeight: 1.7 }}>
+        صورة دايجرام واحدة (زي مراحل مرقّمة) بتغطي فترة معيّنة من الفيديو بدل ما تتقسم لملصقات منفصلة — بيتعمل زوم/pan تلقائي بين النقاط اللي تحددها، وبيبدأ/بينتهي بعرض الصورة كاملة.
+      </div>
+
+      {scenes.length > 0 && (
+        <div style={{ marginBottom: showNew ? 14 : 0 }}>
+          {scenes.map((sc, i) => (
+            <div key={sc.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid #1a1a2e' }}>
+              <img src={sc.imageUrl} alt="" style={{ width: 50, height: 30, objectFit: 'cover', borderRadius: 4 }} />
+              <span style={{ fontSize: 12, color: '#d1d5db' }}>{Number(sc.startTime).toFixed(1)}s–{Number(sc.endTime).toFixed(1)}s · {(sc.keyframes || []).length} نقطة</span>
+              <button onClick={() => handleDeleteScene(i)} style={{ marginRight: 'auto', background: 'none', border: '1px solid #2d2d4a', color: '#f87171', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>حذف</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showNew && (
+        <div>
+          {!csImage ? (
+            <div>
+              <input type="file" accept="image/*" onChange={handleImageUpload} disabled={csUploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+              {csUploading && <span style={{ color: '#7c6af7', fontSize: 12, marginRight: 10 }}>⏳ بيترفع...</span>}
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                <input type="number" placeholder="من ثانية" value={csStart} onChange={e => setCsStart(e.target.value)} style={{ width: 100, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+                <input type="number" placeholder="لحد ثانية" value={csEnd} onChange={e => setCsEnd(e.target.value)} style={{ width: 100, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+              </div>
+              <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 6 }}>اسحب مربع على الصورة عشان تحدد المكان اللي عايز تزوم عليه، بص لجدول الكلمات فوق عشان تعرف ثانية الكلمة اللي بتتقال فيها المرحلة دي، وبعدين "أضف نقطة". كرّر لكل مرحلة.</div>
+              <div
+                ref={imgWrapRef}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={() => {}}
+                onMouseLeave={() => {}}
+                style={{ position: 'relative', width: '100%', maxWidth: 560, cursor: 'crosshair', userSelect: 'none' }}
+              >
+                <img src={csImage.url} alt="" draggable={false} style={{ width: '100%', display: 'block', borderRadius: 8, border: '1px solid #2d2d4a' }} />
+                {drag && (
+                  <div style={{
+                    position: 'absolute',
+                    left: `${Math.min(drag.startX, drag.curX) * 100}%`,
+                    top: `${Math.min(drag.startY, drag.curY) * 100}%`,
+                    width: `${Math.abs(drag.curX - drag.startX) * 100}%`,
+                    height: `${Math.abs(drag.curY - drag.startY) * 100}%`,
+                    border: '2px solid #7c6af7', background: 'rgba(124,106,247,0.2)', pointerEvents: 'none', boxSizing: 'border-box',
+                  }} />
+                )}
+                {csKeyframes.map((k, i) => (
+                  <div key={i} style={{
+                    position: 'absolute', left: `${k.x * 100}%`, top: `${k.y * 100}%`,
+                    width: `${k.width * 100}%`, height: `${k.height * 100}%`,
+                    border: '1.5px dashed #22c55e', pointerEvents: 'none', boxSizing: 'border-box',
+                  }} />
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+                <input type="number" placeholder="ثانية النقطة دي" value={csKeyTime} onChange={e => setCsKeyTime(e.target.value)} style={{ width: 110, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+                <input type="text" placeholder="تسمية (اختياري)" value={csKeyLabel} onChange={e => setCsKeyLabel(e.target.value)} style={{ width: 140, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+                <button onClick={addKeyframe} disabled={!drag} style={{ background: drag ? '#7c6af7' : '#1a1a2e', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12.5, cursor: drag ? 'pointer' : 'not-allowed' }}>+ أضف نقطة</button>
+              </div>
+
+              {csKeyframes.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  {csKeyframes.map((k, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#d1d5db', padding: '4px 0' }}>
+                      <span>{k.time}s {k.label ? `— ${k.label}` : ''}</span>
+                      <button onClick={() => removeKeyframe(i)} style={{ marginRight: 'auto', background: 'none', border: 'none', color: '#f87171', fontSize: 11, cursor: 'pointer' }}>حذف</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button onClick={handleSaveNewScene} disabled={saving} style={{ marginTop: 14, background: saving ? '#1a1a2e' : '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}>
+                {saving ? '⏳ بيحفظ...' : '💾 احفظ المشهد المركّب'}
+              </button>
+            </div>
+          )}
+          {err && <div style={{ color: '#f87171', fontSize: 12, marginTop: 10 }}>{err}</div>}
+        </div>
+      )}
     </div>
   );
 }
