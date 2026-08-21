@@ -966,19 +966,21 @@ function AudioVideoTab({ s }) {
                 ))}
               </div>
 
-              {/* الخطوة 3+4: بناء الفيديو النهائي */}
-              {activeJob.status !== 'done' && (
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {['16:9', '9:16'].map(r => (
-                      <button key={r} style={{ ...s.btn(ratio === r ? '#7c6af7' : '#1a1a2e'), border: `1px solid ${ratio === r ? '#7c6af7' : '#2d2d4a'}`, fontSize: 12 }} onClick={() => setRatio(r)} disabled={rendering}>{r}</button>
-                    ))}
-                  </div>
-                  <button style={{ ...s.btn(rendering ? '#1a1a2e' : '#059669'), opacity: rendering ? 0.6 : 1 }} onClick={handleRender} disabled={rendering}>
-                    {rendering ? '⏳ بيبني الفيديو... (ممكن ياخد كام دقيقة)' : '🎬 ابني الفيديو النهائي'}
-                  </button>
+              <TimelineEditor job={activeJob} onSaved={setActiveJob} />
+
+              {/* الخطوة 3+4: بناء الفيديو النهائي — الزرار فاضل ظاهر حتى لو الفيديو خلص قبل
+                  كده، عشان تقدر تعيد البناء بعد أي تعديل من التايم لاين فوق من غير ما تحتاج
+                  تنزل لزرار "احفظ وأعد بناء الفيديو" جوه التايم لاين نفسه */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['16:9', '9:16'].map(r => (
+                    <button key={r} style={{ ...s.btn(ratio === r ? '#7c6af7' : '#1a1a2e'), border: `1px solid ${ratio === r ? '#7c6af7' : '#2d2d4a'}`, fontSize: 12 }} onClick={() => setRatio(r)} disabled={rendering}>{r}</button>
+                  ))}
                 </div>
-              )}
+                <button style={{ ...s.btn(rendering ? '#1a1a2e' : '#059669'), opacity: rendering ? 0.6 : 1 }} onClick={handleRender} disabled={rendering}>
+                  {rendering ? '⏳ بيبني الفيديو... (ممكن ياخد كام دقيقة)' : activeJob.status === 'done' ? '🔁 أعد بناء الفيديو' : '🎬 ابني الفيديو النهائي'}
+                </button>
+              </div>
 
               {activeJob.status === 'done' && activeJob.video_url && (
                 <div style={{ marginTop: 8 }}>
@@ -1234,6 +1236,275 @@ function CompositeSceneEditor({ job, onSaved }) {
           {err && <div style={{ color: '#f87171', fontSize: 12, marginTop: 10 }}>{err}</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+// ✅ NEW (طلب العميل — "تايم لاين كبير زي CapCut"): تعديل الفيديو بعد ما يتعمل من غير ما
+// تعيد الاستخراج من الأول: عدّل نص أي لقطة، غيّر/امسح/ارفع ملصق من عندك، احذف لقطة، ضيف
+// لقطة جديدة، أو اسحب الحد الفاصل بين لقطتين لتقصير/تطويل واحدة منهم — وبعدين احفظ وأعد
+// بناء الفيديو من غير ما تلمس التفريغ أو الاستخراج تاني.
+// ⚠️ مهم جدًا (وده اللي التايم لاين ده مبني عليه): في الرندر الفعلي (audioVideoRenderService.js)
+// مدة عرض أي لقطة على الشاشة هي [لقطة.start → اللقطة اللي بعدها.start) — حقل "end" بتاع
+// اللقطة نفسه مش بيتقرأ خالص وقت الرندر (فضل من مرحلة الاستخراج القديمة بس مالوش تأثير).
+// يعني تعديل "start" للقطة رقم i بيغيّر تلقائيًا مدة اللقطة اللي قبلها (لأنها بتخلص عند
+// بداية اللقطة دي بالظبط) — التايم لاين ده بيعرض ويتعامل مع الموضوع بالظبط زي ما هو حقيقي
+// في الرندر، مش تمثيل تخيلي منفصل ممكن يختلف عن الفيديو الحقيقي.
+const TIMELINE_PX_PER_SEC = 42;
+const TIMELINE_KIND_COLOR = { character: '#3b82f6', object: '#22c55e', text: '#6b7280', quote: '#a855f7' };
+const TIMELINE_KIND_LABEL = { character: '👤 شخصية', object: '🖼️ ملصق', text: '📝 نص', quote: '📖 آية/حديث' };
+
+function TimelineEditor({ job, onSaved }) {
+  const words = job.words_json || [];
+  const audioDuration = words.length ? words[words.length - 1].end + 0.3 : 60;
+  const compositeScenes = job.composite_scenes_json || [];
+
+  const [elements, setElements] = useState(job.elements_json || []);
+  useEffect(() => { setElements(job.elements_json || []); }, [job.id, job.elements_json]);
+
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const [dragBoundaryIdx, setDragBoundaryIdx] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [rendering, setRendering] = useState(false);
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const [err, setErr] = useState('');
+  const trackRef = React.useRef(null);
+  const pollRef = React.useRef(null);
+  useEffect(() => () => clearInterval(pollRef.current), []);
+
+  const segments = elements.map((el, i) => ({
+    ...el,
+    segStart: i === 0 ? 0 : Number(el.start) || 0,
+    segEnd: i < elements.length - 1 ? Number(elements[i + 1].start) || 0 : audioDuration,
+  }));
+  const trackWidth = Math.max(600, audioDuration * TIMELINE_PX_PER_SEC);
+
+  useEffect(() => {
+    if (dragBoundaryIdx == null) return;
+    const handleMove = (e) => {
+      if (e.buttons !== 1 || !trackRef.current) return;
+      const rect = trackRef.current.getBoundingClientRect();
+      const t = Math.max(0, Math.min(audioDuration, (e.clientX - rect.left) / TIMELINE_PX_PER_SEC));
+      setElements(els => {
+        const prevStart = dragBoundaryIdx > 0 ? (Number(els[dragBoundaryIdx - 1].start) || 0) : 0;
+        const nextStart = dragBoundaryIdx < els.length - 1 ? (Number(els[dragBoundaryIdx + 1].start) || 0) : audioDuration;
+        const clamped = Math.max(prevStart + 0.1, Math.min(nextStart - 0.1, t));
+        return els.map((el, i) => i === dragBoundaryIdx ? { ...el, start: clamped } : el);
+      });
+    };
+    const handleUp = () => setDragBoundaryIdx(null);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp); };
+  }, [dragBoundaryIdx, audioDuration]);
+
+  const updateElement = (idx, patch) => setElements(els => els.map((el, i) => i === idx ? { ...el, ...patch } : el));
+
+  const handleKindChange = (idx, newKind) => {
+    if (newKind === 'text' || newKind === 'quote') {
+      updateElement(idx, { kind: newKind, imageUrl: null, imagePrompt: null, characterKey: null, quoteSource: newKind === 'quote' ? (elements[idx].quoteSource || 'other') : null });
+    } else {
+      updateElement(idx, { kind: newKind });
+    }
+  };
+
+  const handleDelete = (idx) => {
+    setElements(els => els.filter((_, i) => i !== idx));
+    setSelectedIdx(null);
+  };
+
+  const handleAddAfter = (idx) => {
+    const seg = segments[idx];
+    const mid = (seg.segStart + seg.segEnd) / 2;
+    const newEl = { element: 'عنصر جديد', text: 'عنصر جديد', kind: 'text', imagePrompt: null, characterKey: null, quoteSource: null, imageUrl: null, start: mid, end: mid };
+    setElements(els => {
+      const next = [...els];
+      next.splice(idx + 1, 0, newEl);
+      return next;
+    });
+    setSelectedIdx(idx + 1);
+  };
+
+  const handleUploadCustomImage = async (e) => {
+    const file = e.target.files[0];
+    const inputEl = e.target;
+    if (!file || selectedIdx == null) return;
+    setUploadingImg(true); setErr('');
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      const r = await fetch(`/api/admin/audio-video/jobs/${job.id}/element-image`, {
+        method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: form,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Upload failed');
+      const curKind = elements[selectedIdx].kind;
+      updateElement(selectedIdx, { imageUrl: d.imageUrl, kind: (curKind === 'text' || curKind === 'quote') ? 'object' : curKind });
+    } catch (e2) {
+      setErr('❌ ' + e2.message);
+    } finally {
+      setUploadingImg(false);
+      if (inputEl) inputEl.value = '';
+    }
+  };
+
+  const saveElements = async () => {
+    const r = await fetch(`/api/admin/audio-video/jobs/${job.id}/elements`, {
+      method: 'POST', headers, body: JSON.stringify({ elements }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Save failed');
+    return d.job;
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setErr('');
+    try { onSaved(await saveElements()); } catch (e) { setErr('❌ ' + e.message); } finally { setSaving(false); }
+  };
+
+  const handleSaveAndRerender = async () => {
+    setSaving(true); setErr('');
+    try {
+      const savedJob = await saveElements();
+      onSaved(savedJob);
+      setRendering(true);
+      const r = await fetch(`/api/admin/audio-video/jobs/${job.id}/render`, {
+        method: 'POST', headers, body: JSON.stringify({ ratio: job.ratio || '16:9' }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Render trigger failed');
+      onSaved(d.job);
+      clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const rp = await fetch(`/api/admin/audio-video/jobs/${job.id}`, { headers });
+          const dp = await rp.json();
+          if (!rp.ok) return;
+          onSaved(dp.job);
+          if (['done', 'failed'].includes(dp.job.status)) { clearInterval(pollRef.current); setRendering(false); }
+        } catch (e2) { console.error(e2); }
+      }, 4000);
+    } catch (e) {
+      setErr('❌ ' + e.message);
+      setRendering(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!elements.length) return null;
+  const ticks = [];
+  for (let t = 0; t <= audioDuration; t += 10) ticks.push(t);
+  const sel = selectedIdx != null ? segments[selectedIdx] : null;
+
+  return (
+    <div style={{ border: '1px solid #2d2d4a', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 8 }}>🎞️ تايم لاين تعديل الفيديو</div>
+      <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 10, lineHeight: 1.7 }}>
+        اضغط على أي لقطة عشان تعدّل نصها أو ملصقها أو تحذفها، اسحب الحد الفاصل بين لقطتين عشان تقصّر/تطوّل واحدة منهم، أو دوس "+ عنصر جديد" لتقسيم لقطة لحتتين. لما تخلص، احفظ وأعد بناء الفيديو.
+      </div>
+
+      <div style={{ overflowX: 'auto', border: '1px solid #1a1a2e', borderRadius: 8, background: '#0d0d18' }}>
+        <div ref={trackRef} style={{ position: 'relative', width: trackWidth, height: 74, userSelect: 'none' }}>
+          {ticks.map(t => (
+            <div key={t} style={{ position: 'absolute', left: t * TIMELINE_PX_PER_SEC, top: 0, bottom: 0, borderRight: '1px solid #1f1f38', fontSize: 9.5, color: '#565676', paddingRight: 3 }}>{t}s</div>
+          ))}
+          {segments.map((seg, i) => (
+            <div
+              key={i}
+              onClick={() => setSelectedIdx(i)}
+              style={{
+                position: 'absolute', top: 14, left: seg.segStart * TIMELINE_PX_PER_SEC,
+                width: Math.max(2, (seg.segEnd - seg.segStart) * TIMELINE_PX_PER_SEC - 2), height: 44,
+                background: TIMELINE_KIND_COLOR[seg.kind] || '#6b7280', opacity: selectedIdx === i ? 1 : 0.72,
+                border: selectedIdx === i ? '2px solid #fff' : '1px solid rgba(0,0,0,0.3)',
+                borderRadius: 5, cursor: 'pointer', boxSizing: 'border-box', overflow: 'hidden',
+                display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px',
+              }}
+              title={seg.element}
+            >
+              {seg.imageUrl && <img src={seg.imageUrl} alt="" style={{ width: 20, height: 20, objectFit: 'contain', background: '#fff', borderRadius: 3, flexShrink: 0 }} />}
+              <span style={{ fontSize: 10, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{seg.element}</span>
+            </div>
+          ))}
+          {elements.map((el, i) => i === 0 ? null : (
+            <div
+              key={`b${i}`}
+              onMouseDown={(e) => { e.stopPropagation(); setDragBoundaryIdx(i); }}
+              style={{
+                position: 'absolute', top: 14, left: (Number(el.start) || 0) * TIMELINE_PX_PER_SEC - 4, width: 8, height: 44,
+                cursor: 'col-resize', zIndex: 5, background: dragBoundaryIdx === i ? 'rgba(255,255,255,0.5)' : 'transparent',
+              }}
+            />
+          ))}
+          {compositeScenes.map((cs, i) => (
+            <div key={`cs${i}`} style={{
+              position: 'absolute', bottom: 2, left: cs.startTime * TIMELINE_PX_PER_SEC,
+              width: Math.max(2, (cs.endTime - cs.startTime) * TIMELINE_PX_PER_SEC), height: 8,
+              background: '#f59e0b', borderRadius: 3, opacity: 0.85,
+            }} title={`مشهد مركّب: ${cs.startTime}s–${cs.endTime}s`} />
+          ))}
+        </div>
+      </div>
+
+      {sel && (
+        <div style={{ marginTop: 14, padding: 12, border: '1px solid #2d2d4a', borderRadius: 8, background: '#12121f' }}>
+          <div style={{ fontSize: 12, color: '#a78bfa', marginBottom: 8 }}>
+            تعديل اللقطة #{selectedIdx + 1} · {sel.segStart.toFixed(1)}s–{sel.segEnd.toFixed(1)}s
+          </div>
+          <textarea
+            value={elements[selectedIdx].element}
+            onChange={e => updateElement(selectedIdx, { element: e.target.value, text: e.target.value })}
+            rows={2}
+            style={{ width: '100%', background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: 8, fontSize: 13, marginBottom: 8, resize: 'vertical', boxSizing: 'border-box' }}
+          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+            <select value={elements[selectedIdx].kind} onChange={e => handleKindChange(selectedIdx, e.target.value)} style={{ background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }}>
+              {Object.entries(TIMELINE_KIND_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            </select>
+            {selectedIdx > 0 && (
+              <input
+                type="number" title="ثانية بداية اللقطة دي (من بداية الفيديو كله) — بيغيّر تلقائيًا نهاية اللي قبلها"
+                value={elements[selectedIdx].start}
+                onChange={e => {
+                  const t = Math.max(0, Number(e.target.value) || 0);
+                  const prevStart = selectedIdx > 1 ? (Number(elements[selectedIdx - 1].start) || 0) : 0;
+                  const nextStart = selectedIdx < elements.length - 1 ? (Number(elements[selectedIdx + 1].start) || 0) : audioDuration;
+                  updateElement(selectedIdx, { start: Math.max(prevStart + 0.1, Math.min(nextStart - 0.1, t)) });
+                }}
+                style={{ width: 100, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }}
+              />
+            )}
+          </div>
+          {(elements[selectedIdx].kind === 'object' || elements[selectedIdx].kind === 'character') && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+              {elements[selectedIdx].imageUrl
+                ? <img src={elements[selectedIdx].imageUrl} alt="" style={{ width: 50, height: 50, objectFit: 'contain', background: '#fff', borderRadius: 6, border: '1px solid #2d2d4a' }} />
+                : <div style={{ width: 50, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 6, border: '1px dashed #2d2d4a', fontSize: 9, color: '#6b7280', textAlign: 'center' }}>بدون ملصق</div>}
+              <input type="file" accept="image/*" onChange={handleUploadCustomImage} disabled={uploadingImg} style={{ fontSize: 12, color: '#d1d5db' }} />
+              {uploadingImg && <span style={{ color: '#7c6af7', fontSize: 12 }}>⏳ بيترفع...</span>}
+              {elements[selectedIdx].imageUrl && (
+                <button onClick={() => updateElement(selectedIdx, { imageUrl: null, kind: 'text', imagePrompt: null, characterKey: null })} style={{ background: 'none', border: '1px solid #2d2d4a', color: '#f87171', borderRadius: 6, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer' }}>امسح الملصق (يتحول نص)</button>
+              )}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => handleAddAfter(selectedIdx)} style={{ background: '#1a1a2e', border: '1px solid #2d2d4a', color: '#a78bfa', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>+ عنصر جديد بعد ده</button>
+            <button onClick={() => handleDelete(selectedIdx)} style={{ background: 'none', border: '1px solid #2d2d4a', color: '#f87171', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>🗑️ احذف اللقطة دي</button>
+          </div>
+        </div>
+      )}
+
+      {err && <div style={{ color: '#f87171', fontSize: 12, marginTop: 10 }}>{err}</div>}
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+        <button onClick={handleSave} disabled={saving || rendering} style={{ background: saving ? '#1a1a2e' : '#374151', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 12.5, fontWeight: 700, cursor: (saving || rendering) ? 'not-allowed' : 'pointer' }}>
+          {saving && !rendering ? '⏳ بيحفظ...' : '💾 احفظ التعديلات بس'}
+        </button>
+        <button onClick={handleSaveAndRerender} disabled={saving || rendering} style={{ background: rendering ? '#1a1a2e' : '#22c55e', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 12.5, fontWeight: 700, cursor: (saving || rendering) ? 'not-allowed' : 'pointer' }}>
+          {rendering ? '⏳ بيبني الفيديو من تاني... (ممكن ياخد كام دقيقة)' : '💾🎬 احفظ وأعد بناء الفيديو'}
+        </button>
+      </div>
     </div>
   );
 }

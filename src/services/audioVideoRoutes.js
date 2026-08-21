@@ -194,6 +194,59 @@ router.post('/jobs/:id/composite-image', adminAuth, upload.single('image'), asyn
   }
 });
 
+// ── تايم لاين تعديل العناصر (زي CapCut) — بعد ما الفيديو يتعمل، الأدمن يقدر يعدّل نص أي
+// لقطة، يغيّر/يمسح/يرفع ملصق من عنده، يحذف لقطة، أو يضيف لقطة جديدة، من غير ما يعيد
+// التفريغ/الاستخراج من الأول — بيحفظ elements_json المعدّل وبعدين يعيد /render عادي ─────
+// ⚠️ ملحوظة مهمة عن التوقيت: مدة عرض كل عنصر على الشاشة في الرندر الفعلي هي [عنصر.start
+// → العنصر اللي بعده.start) — مش عنصر.end (ده حقل قديم من الاستخراج مش مستخدم في الرندر
+// خالص). يعني تعديل "start" لعنصر بيغيّر تلقائيًا مدة العنصر اللي قبله كمان (لأنه بينتهي
+// عند بداية العنصر ده)، وده بالظبط اللي التايم لاين في الفرونت إند بيعرضه ويعتمد عليه
+router.post('/jobs/:id/element-image', adminAuth, upload.single('image'), async (req, res) => {
+  try {
+    const job = await getAudioVideoJobById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'not_found' });
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+    const imageUrl = await uploadElementImageToR2(req.file.buffer);
+    res.json({ imageUrl });
+  } catch (err) {
+    console.error('[AudioVideo] Custom element image upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/jobs/:id/elements', adminAuth, async (req, res) => {
+  try {
+    const job = await getAudioVideoJobById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'not_found' });
+    const raw = Array.isArray(req.body?.elements) ? req.body.elements : [];
+    const KNOWN_KINDS = ['character', 'object', 'text', 'quote'];
+    const cleaned = raw
+      .map(el => {
+        const kind = KNOWN_KINDS.includes(el.kind) ? el.kind : 'text';
+        const text = String(el.element ?? el.text ?? '').slice(0, 200).trim();
+        return {
+          element: text,
+          text,
+          kind,
+          imagePrompt: kind === 'text' || kind === 'quote' ? null : (el.imagePrompt ? String(el.imagePrompt).slice(0, 300).trim() : null),
+          characterKey: kind === 'character' && el.characterKey ? String(el.characterKey).toLowerCase().trim().slice(0, 60) : null,
+          quoteSource: kind === 'quote' ? String(el.quoteSource || 'other').slice(0, 20) : null,
+          imageUrl: (kind === 'character' || kind === 'object' || kind === 'quote') && el.imageUrl ? String(el.imageUrl) : null,
+          start: Math.max(0, Number(el.start) || 0),
+          end: Math.max(0, Number(el.end) || 0),
+        };
+      })
+      .filter(el => el.element)
+      .sort((a, b) => a.start - b.start);
+    if (!cleaned.length) return res.status(400).json({ error: 'no_elements' });
+    const updated = await updateAudioVideoJob(job.id, { elementsJson: cleaned });
+    res.json({ job: updated });
+  } catch (err) {
+    console.error('[AudioVideo] Save elements error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ✅ NEW: أي مربع قص بيرسمه الأدمن على الصورة ممكن يكون بأي نسبة عرض/ارتفاع — لو استخدمناه
 // زي ما هو في الرندر، الفريم النهائي هيتمدد/ينضغط (distortion) لأنه بيتحط في فريم 16:9 ثابت.
 // بنعدّل المربع هنا (على نفس المركز) عشان يطابق نسبة فيديو الـ job بالظبط قبل ما نحفظه —
