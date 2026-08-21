@@ -92,20 +92,28 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
             withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
             continue;
           }
+          // ✅ NEW (طلب العميل: "زود الملصقات"): بنجرب كل بديل بحث اقترحه الـ LLM على التوالي
+          // (الأكثر تحديدًا الأول) لحد ما واحد يلاقي نتيجة — مش بس كلمة واحدة زي الأول
+          const promptCandidates = Array.isArray(el.imagePromptCandidates) && el.imagePromptCandidates.length
+            ? el.imagePromptCandidates
+            : (el.imagePrompt ? [el.imagePrompt] : []);
           let buffer = null;
-          try {
-            buffer = await findLibraryIcon(el.imagePrompt);
-          } catch (e) {
-            console.warn('[AudioVideo] Icon lookup failed, falling back to text:', el.element, e.message);
+          for (const candidate of promptCandidates) {
+            try {
+              buffer = await findLibraryIcon(candidate);
+            } catch (e) {
+              console.warn('[AudioVideo] Icon lookup failed for candidate, trying next:', candidate, e.message);
+            }
+            if (buffer) break;
           }
           if (!buffer) {
             iconMissCount++;
-            withImages.push({ ...el, kind: 'text', imageUrl: null, imagePrompt: null, characterKey: null });
+            withImages.push({ ...el, kind: 'text', imageUrl: null, imagePrompt: null, imagePromptCandidates: [], characterKey: null });
             continue;
           }
           iconFoundCount++;
           const imageUrl = await uploadElementImageToR2(buffer);
-          withImages.push({ ...el, imageUrl });
+          withImages.push({ ...el, imageUrl, imagePromptCandidates: undefined });
           if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
         }
         // ✅ تشخيص: لوج واضح يفرّق بين "الموديل نفسه قرر نص" و"طلب ملصق بس المكتبة مالقتش

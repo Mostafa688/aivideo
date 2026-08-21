@@ -187,12 +187,12 @@ For each beat, output:
 - "text": the exact words for this beat, copied verbatim from the transcript
 - "kind": "character" (icon, depicts/refers to a specific named recurring person — use a generic person/role icon, e.g. "man"), "object" (icon, a common concrete object/place/action), "text" (on-screen text only, no icon — abstract/transition/niche/no good simple-icon match), or "quote" (a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet, see rule below)
 - "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their icon stays consistent
-- "image_prompt": ONLY for "character"/"object" kinds — OMIT this field entirely for "text"/"quote" kinds (they get on-screen text only, never an icon). This is a SEARCH KEYWORD for a public icon/emoji library, NOT a scene description: 1-2 common English words naming the single concrete thing to search for (e.g. "book", "clock", "handshake", "mosque", "man walking", "heart", "compass") — simple, universal, generic terms only, never a sentence or a specific/niche description.
+- "image_prompts": ONLY for "character"/"object" kinds — OMIT this field entirely for "text"/"quote" kinds (they get on-screen text only, never an icon). An ARRAY of 2-3 alternative SEARCH KEYWORDS for a public icon/emoji library, NOT scene descriptions: each is 1-2 common English words naming the single concrete thing to search for. Order them from most specific/descriptive to most generic/fallback (e.g. for "an elderly man walking slowly": ["old man walking", "elderly man", "person"]; for "a mosque at sunset": ["mosque sunset", "mosque", "building"]) — the search tries each in order and stops at the first that finds an icon, so the later ones are safety-net fallbacks, not just repeats of the first idea.
 - "quote_source": ONLY when kind is "quote" — which real source this is: "quran" (a direct Quranic verse/ayah), "bukhari" (a Hadith explicitly attributed to Sahih al-Bukhari), "muslim" (a Hadith explicitly attributed to Sahih Muslim), or "other" (any other Hadith/religious reference, or an Allah/prophet mention with no specific named source). Only use "bukhari"/"muslim" when the narration itself names that specific collection — default to "other" if it just says "a Hadith says..." with no named collection.
 
 CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or an icon search of any figure. Use "quote" kind instead for these beats (and for direct Quranic verses / Hadith text) — these may still show a real cover image of the actual source book (Quran/Bukhari/Muslim) alongside the text, which is NOT a depiction of Allah or a prophet, just the physical book/text itself. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
 
-Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character"|"text"|"quote","character_key":"...","image_prompt":"...","quote_source":"..."}].`;
+Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character"|"text"|"quote","character_key":"...","image_prompts":["...","..."],"quote_source":"..."}].`;
   const user = `Indexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -241,10 +241,19 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
       const endIdx = Math.max(startIdx, Math.min(maxIdx, Math.round(Number(el.end_idx))));
       const kind = el.kind === 'character' ? 'character' : el.kind === 'quote' ? 'quote' : el.kind === 'text' ? 'text' : 'object';
       const isTextOnly = kind === 'quote' || kind === 'text';
+      // ✅ NEW (طلب العميل: "زود الملصقات"): بدل ما نطلب كلمة بحث واحدة بس لكل لقطة، بنطلب
+      // من الـ LLM 2-3 بدائل مرتبة (الأكثر تحديدًا الأول، وبدائل أعم كشبكة أمان) في نفس
+      // النداء بالظبط (مفيش نداء إضافي/تكلفة إضافية) — findLibraryIcon هيجرب كل واحدة على
+      // التوالي في مرحلة الاستخراج (audioVideoRoutes.js) لحد ما توحد نتيجة، فرصة أكبر للقطة
+      // إنها تلاقي ملصق بدل ما تتحول لنص. imagePrompt بيفضل أول بديل بس للتوافق مع أي كود قديم
+      const promptCandidates = isTextOnly ? [] : (Array.isArray(el.image_prompts) && el.image_prompts.length
+        ? el.image_prompts.map(p => String(p || '').slice(0, 300).trim()).filter(Boolean)
+        : (el.image_prompt || el.text ? [String(el.image_prompt || el.text || '').slice(0, 300).trim()] : []));
       return {
         element: String(el.text || '').slice(0, 200).trim(),
         text: String(el.text || '').slice(0, 200).trim(),
-        imagePrompt: isTextOnly ? null : String(el.image_prompt || el.text || '').slice(0, 300).trim(),
+        imagePrompt: promptCandidates[0] || null,
+        imagePromptCandidates: promptCandidates,
         kind,
         characterKey: kind === 'character' ? String(el.character_key || '').toLowerCase().trim().slice(0, 60) : null,
         quoteSource: kind === 'quote' ? guessQuoteSource(el.quote_source, el.text) : null,
@@ -259,7 +268,7 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
     // كنص على الشاشة، بس من غير أي تمثيل بصري خالص، حتى لو الـ LLM حطها "character"/"object"
     // غلط بدل "quote" من الأول
     .map(el => isSensitiveReligiousElement(el.element)
-      ? { ...el, kind: 'quote', imagePrompt: null, characterKey: null, quoteSource: el.quoteSource || guessQuoteSource(null, el.element) }
+      ? { ...el, kind: 'quote', imagePrompt: null, imagePromptCandidates: [], characterKey: null, quoteSource: el.quoteSource || guessQuoteSource(null, el.element) }
       : el)
     .sort((a, b) => a.startIdx - b.startIdx);
 
