@@ -83,11 +83,26 @@ const ARABIC_FONT_PRIORITY = [
   '/usr/share/fonts/opentype/noto/NotoSansArabic-Regular.otf',
   '/usr/share/fonts/truetype/arabic/NotoNaskhArabic-Regular.ttf',
 ];
+// ✅ FIX إضافي: لو مسارات ARABIC_FONT_PRIORITY المكتوبة يدويًا مش موجودة بالظبط على
+// السيرفر الفعلي (توزيعة/نسخة مختلفة)، بندوّر بالاسم في قاعدة بيانات fontconfig نفسها
+// (بتلاقي الخط أيًا كان مساره الحقيقي) قبل ما نرجع لأسلوب "أول نتيجة" العشوائي القديم
+function findFontByFamilyName(pattern) {
+  try {
+    const result = execSync(`fc-list | grep -i "${pattern}" | grep -v '\\[' | head -1`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+      .trim().split(':')[0].trim();
+    if (result && fs.existsSync(result)) return result;
+  } catch { /* ignore, fallback below */ }
+  return null;
+}
 function getFontPath(lang) {
   const dejaVu = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
   const base = normalizeLangBase(lang);
   if (base === 'ar') {
-    const preferred = ARABIC_FONT_PRIORITY.find(f => fs.existsSync(f));
+    const preferred = ARABIC_FONT_PRIORITY.find(f => fs.existsSync(f))
+      || findFontByFamilyName('NotoNaskhArabic')
+      || findFontByFamilyName('Noto Naskh Arabic')
+      || findFontByFamilyName('NotoSansArabic')
+      || findFontByFamilyName('Noto Sans Arabic');
     if (preferred) return preferred;
   }
   const langCode = { ar: 'ar', ja: 'ja', zh: 'zh', ko: 'ko', ru: 'ru' }[base];
