@@ -1055,7 +1055,12 @@ function CompositeSceneEditor({ job, onSaved }) {
     };
   };
   const handleMouseDown = (e) => { const p = getRelPos(e); setDrag({ startX: p.x, startY: p.y, curX: p.x, curY: p.y }); };
-  const handleMouseMove = (e) => { if (!drag) return; const p = getRelPos(e); setDrag(d => ({ ...d, curX: p.x, curY: p.y })); };
+  // ✅ FIX (لخبطة بلاغها العميل: "مش فاهم أحدد المرحلة ازاي"): كان مفيش أي تتبع لحالة "الماوس
+  // لسه مضغوط"، فالمربع كان فاضل بيتحرك مع الماوس حتى بعد ما تسيب الزرار — أي تحريك بسيط
+  // للماوس فوق الصورة (حتى بالغلط وانت رايح تكتب في الحقول) كان بيغيّر حجم/مكان المربع من
+  // غير ما تكون ضاغط. دلوقتي بنتأكد إن زرار الماوس لسه مضغوط فعليًا (e.buttons === 1) قبل
+  // ما نكمل تحديث المربع، فالمربع بيستقر فورًا لما تسيب الزرار
+  const handleMouseMove = (e) => { if (!drag || e.buttons !== 1) return; const p = getRelPos(e); setDrag(d => ({ ...d, curX: p.x, curY: p.y })); };
 
   const addKeyframe = () => {
     if (!drag || !csKeyTime.trim()) return;
@@ -1147,7 +1152,11 @@ function CompositeSceneEditor({ job, onSaved }) {
                 <input type="number" placeholder="من ثانية" value={csStart} onChange={e => setCsStart(e.target.value)} style={{ width: 100, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
                 <input type="number" placeholder="لحد ثانية" value={csEnd} onChange={e => setCsEnd(e.target.value)} style={{ width: 100, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
               </div>
-              <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 6 }}>اسحب مربع على الصورة عشان تحدد المكان اللي عايز تزوم عليه، بص لجدول الكلمات فوق عشان تعرف ثانية الكلمة اللي بتتقال فيها المرحلة دي، وبعدين "أضف نقطة". كرّر لكل مرحلة.</div>
+              <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 6, lineHeight: 1.8 }}>
+                <b style={{ color: '#c4b5fd' }}>1)</b> اضغط وأنت ماسك زرار الماوس واسحب على الصورة لحد ما تعمل مربع حوالين المرحلة اللي عايزها (سيبه لما توصل للحجم المناسب).<br />
+                <b style={{ color: '#c4b5fd' }}>2)</b> بص لجدول الكلمات فوق ودوّر على الكلمة اللي بتتقال فيها المرحلة دي بالظبط، واكتب "ثانية" اللي جنبها (الرقم في العمود التاني) في خانة "ثانية النقطة دي" تحت — دي ثانية من بداية الفيديو كله، مش من بداية المشهد ده.<br />
+                <b style={{ color: '#c4b5fd' }}>3)</b> اضغط "+ أضف نقطة". المربع الأخضر المتقطع هيفضل ظاهر يفكّرك إنك حددت النقطة دي. كرّر 1-2-3 لكل مرحلة من الـ 11 مرحلة.
+              </div>
               <div
                 ref={imgWrapRef}
                 onMouseDown={handleMouseDown}
@@ -1176,7 +1185,7 @@ function CompositeSceneEditor({ job, onSaved }) {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-                <input type="number" placeholder="ثانية النقطة دي" value={csKeyTime} onChange={e => setCsKeyTime(e.target.value)} style={{ width: 110, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+                <input type="number" placeholder="ثانية النقطة (من بداية الفيديو)" title="الثانية من بداية الفيديو كله اللي المفروض الزوم يوصل عندها للمربع اللي حددته — شوف جدول الكلمات فوق" value={csKeyTime} onChange={e => setCsKeyTime(e.target.value)} style={{ width: 190, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
                 <input type="text" placeholder="تسمية (اختياري)" value={csKeyLabel} onChange={e => setCsKeyLabel(e.target.value)} style={{ width: 140, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
                 <button onClick={addKeyframe} disabled={!drag} style={{ background: drag ? '#7c6af7' : '#1a1a2e', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12.5, cursor: drag ? 'pointer' : 'not-allowed' }}>+ أضف نقطة</button>
               </div>
