@@ -324,6 +324,18 @@ async function initDB() {
     `UPDATE audio_video_jobs SET status = 'failed', error = 'Interrupted by a server restart — please retry'
      WHERE status IN ('extracting', 'rendering')`
   ).catch(e => console.warn('[DB] Could not clean up stuck audio_video_jobs:', e.message));
+  // ✅ NEW (طلب العميل): صور مرجعية ثابتة بيرفعها الأدمن مرة واحدة (مش لكل job) — القرآن
+  // الكريم، صحيح البخاري، صحيح مسلم، إلخ — بتتستخدم تلقائيًا لأي لقطة "quote" (آية/حديث)
+  // بدل ما تفضل نص بس من غير أي صورة، لو الأدمن رفع صورة لنفس المصدر ده
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS audio_video_reference_images (
+      id SERIAL PRIMARY KEY,
+      ref_key TEXT UNIQUE NOT NULL,
+      label TEXT,
+      image_url TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
   console.log('[DB] PostgreSQL tables ready');
 }
 
@@ -1717,4 +1729,31 @@ export async function getAudioVideoJobById(id) {
 export async function listAudioVideoJobsForAdmin(limit = 50) {
   const { rows } = await pool.query('SELECT * FROM audio_video_jobs ORDER BY id DESC LIMIT $1', [limit]);
   return rows;
+}
+
+// ── صور مرجعية ثابتة (القرآن الكريم، صحيح البخاري، صحيح مسلم...) ────────────────────────
+export async function upsertReferenceImage(refKey, label, imageUrl) {
+  const { rows } = await pool.query(
+    `INSERT INTO audio_video_reference_images (ref_key, label, image_url) VALUES ($1, $2, $3)
+     ON CONFLICT (ref_key) DO UPDATE SET label = $2, image_url = $3
+     RETURNING *`,
+    [refKey, label, imageUrl]
+  );
+  return rows[0];
+}
+
+export async function listReferenceImages() {
+  const { rows } = await pool.query('SELECT * FROM audio_video_reference_images ORDER BY ref_key');
+  return rows;
+}
+
+export async function getReferenceImagesMap() {
+  const rows = await listReferenceImages();
+  const map = {};
+  for (const r of rows) map[r.ref_key] = r.image_url;
+  return map;
+}
+
+export async function deleteReferenceImage(refKey) {
+  await pool.query('DELETE FROM audio_video_reference_images WHERE ref_key = $1', [refKey]);
 }
