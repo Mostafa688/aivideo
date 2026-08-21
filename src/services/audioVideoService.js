@@ -146,7 +146,7 @@ export async function extractVideoElements(words) {
   const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
   const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short "beats" — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
 
-CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either a small ICON/emoji-style sticker (no text), or on-screen TEXT (no icon). Never combine an icon with text for the same beat. Icons come from a real public icon/emoji library search (not AI-generated) — so ONLY request an icon when the beat names a common, universal, concrete thing that a normal icon set would plausibly have (a person, a well-known object, a common action, a place) — think "would a generic icon set have a picture for this exact word?" If the phrase is abstract, a transition, a connector, a specific/niche description, or anything unusual/hard to find as a plain icon, use TEXT instead — text is a completely normal, expected outcome for plenty of beats (likely most of them), not a fallback to avoid. When in doubt, prefer TEXT — an unmatched icon request just becomes text anyway, so only ask for an icon when you're fairly confident a simple, common icon for it exists.
+CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either a small ICON/emoji-style sticker (no text), or on-screen TEXT (no icon). Never combine an icon with text for the same beat. Icons come from a real public icon/emoji library search (not AI-generated), and the library is large and covers most everyday nouns, actions, and places — so lean toward requesting an icon whenever the beat names ANY concrete person, object, action, or place, even a moderately specific one (the search tries the full phrase and then falls back to its individual words, so a partial match still finds something). Only use TEXT when the phrase is genuinely abstract, a transition/connector, a feeling with no physical form, or a very specific/niche description with no plausible icon at all — an unmatched icon request automatically becomes text anyway, so there's little downside to trying the icon first whenever there's a real concrete thing to point at.
 
 For each beat, output:
 - "start_idx","end_idx": word indices (inclusive) it covers — reference ONLY the given indices, never invent numbers
@@ -255,24 +255,50 @@ async function iconifySearch(query) {
   return Array.isArray(data.icons) ? data.icons : [];
 }
 
+// ✅ NEW (طلب العميل: "زود ملصقات") — لو عبارة البحث الكاملة (مثلاً "man walking") مالهاش أي
+// نتيجة في Iconify، ده مش معناه إن مفيش أيقونة مناسبة خالص — غالبًا كلمة واحدة من العبارة
+// (الاسم الأساسي فيها، زي "man") هي اللي فعلاً موجودة كأيقونة، والكلمة التانية (فعل/صفة زي
+// "walking") هي اللي مخليّة البحث الدقيق يفشل. فبنبني قائمة محاولات بديلة: العبارة كاملة
+// الأول، وبعدين كل كلمة لوحدها (الأطول فالأقصر، عشان الاسم المميز غالبًا أطول من كلمة ربط)،
+// وبعدين محاولة أخيرة بإفراد الجمع (strip "s") لو الكلمة منتهية بيها
+function buildIconSearchCandidates(keyword) {
+  const q = String(keyword || '').trim().toLowerCase();
+  if (!q) return [];
+  const candidates = [q];
+  const words = q.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    for (const w of [...words].sort((a, b) => b.length - a.length)) {
+      if (w.length > 2 && !candidates.includes(w)) candidates.push(w);
+    }
+  }
+  const last = candidates[candidates.length - 1];
+  if (last && last.length > 3 && last.endsWith('s') && !candidates.includes(last.slice(0, -1))) {
+    candidates.push(last.slice(0, -1));
+  }
+  return candidates;
+}
+
 // ✅ بيرجّع buffer الـ SVG الخام (مش PNG) — التحويل/الـresize بيحصل في audioVideoRenderService.js
 // بـ sharp، اللي بيقدر يرندر SVG مباشرة. بيرجّع null لو مفيش ولا نتيجة واحدة أو حصل أي خطأ
 // (مش استثناء بيوقف حاجة — حالة طبيعية ومتوقعة، يعني الجملة دي هتتحول لنص بدل ملصق)
 export async function findLibraryIcon(keyword) {
-  const q = String(keyword || '').trim();
-  if (!q) return null;
+  const candidates = buildIconSearchCandidates(keyword);
+  if (!candidates.length) return null;
   try {
-    const icons = await iconifySearch(q);
-    if (!icons.length) return null;
-    const preferred = icons.find(i => PREFERRED_EMOJI_PREFIXES.some(p => i.startsWith(`${p}:`)));
-    const chosen = preferred || icons[0];
-    const [prefix, ...nameParts] = chosen.split(':');
-    const name = nameParts.join(':');
-    const svgRes = await fetch(`https://api.iconify.design/${prefix}/${name}.svg`);
-    if (!svgRes.ok) return null;
-    return Buffer.from(await svgRes.arrayBuffer());
+    for (const q of candidates) {
+      const icons = await iconifySearch(q);
+      if (!icons.length) continue;
+      const preferred = icons.find(i => PREFERRED_EMOJI_PREFIXES.some(p => i.startsWith(`${p}:`)));
+      const chosen = preferred || icons[0];
+      const [prefix, ...nameParts] = chosen.split(':');
+      const name = nameParts.join(':');
+      const svgRes = await fetch(`https://api.iconify.design/${prefix}/${name}.svg`);
+      if (!svgRes.ok) continue;
+      return Buffer.from(await svgRes.arrayBuffer());
+    }
+    return null;
   } catch (e) {
-    console.warn('[AudioVideo] Iconify lookup failed for keyword:', q, e.message);
+    console.warn('[AudioVideo] Iconify lookup failed for keyword:', keyword, e.message);
     return null;
   }
 }
