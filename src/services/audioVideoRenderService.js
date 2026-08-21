@@ -298,12 +298,28 @@ export async function renderAudioVideoJob(job) {
       return { ...el, segStart, segEnd, segDuration: Math.max(0.4, segEnd - segStart) };
     });
 
-    // ✅ NEW (طلب العميل — "مشاهد مركّبة"): أي فترة زمنية عليها مشهد مركّب (صورة دايجرام
-    // واحدة بزوم/pan يدوي) بتستبدل تمامًا أي لقطات عادية (ملصق/نص) بتتقاطع معاها زمنيًا —
-    // اللقطات دي بتتشال من التصيير والكابشن، والمشهد المركّب هو اللي بيغطي الفترة دي بدالها
+    // ✅ FIX (بلاغ العميل: الفيديو بيوصل "قبل معاده" بعد المشهد المركّب — يعني الصوت والصورة
+    // بقوا مش متزامنين لباقي الفيديو): كان بيشيل أي لقطة عادية بتتقاطع زمنيًا مع مشهد مركّب
+    // بالكامل، مهما كانت مدة التقاطع جزئية بس — يعني لو مشهد مركّب مدته ثانيتين (29→31) قاطع
+    // لقطتين عاديتين مدتهم مجتمعة 6 ثواني (زي 26.9→30.1 و30.1→33.1)، كانت اللقطتين دول بيتشالوا
+    // بالكامل ويتعوضوا بكليب المشهد المركّب اللي مدته ثانيتين بس — يعني 4 ثواني ضاعت من الفيديو
+    // من غير ما تتعوض من الصوت (اللي فضل زي ما هو، طوله ثابت)، فكل حاجة بعد كده تتزاح 4 ثواني
+    // قبل معادها الحقيقي في السكريبت. الحل الصح: نقص (trim) بس الجزء المتقاطع فعليًا من كل لقطة
+    // عادية بدل ما نشيلها بالكامل — ده بيضمن الطول الكلي للفيديو يفضل مطابق تمامًا لطول الصوت
+    // دايمًا، مهما كانت حدود المشهد المركّب متطابقة أو لأ مع حدود اللقطات
     const compositeScenes = Array.isArray(job.composite_scenes_json) ? job.composite_scenes_json : [];
-    const isCoveredByComposite = seg => compositeScenes.some(cs => seg.segStart < cs.endTime && seg.segEnd > cs.startTime);
-    const regularSegments = segments.filter(seg => !isCoveredByComposite(seg));
+    function subtractCompositeRange(span, cs) {
+      if (span.segStart >= cs.endTime || span.segEnd <= cs.startTime) return [span];
+      const pieces = [];
+      if (span.segStart < cs.startTime) pieces.push({ ...span, segStart: span.segStart, segEnd: cs.startTime });
+      if (span.segEnd > cs.endTime) pieces.push({ ...span, segStart: cs.endTime, segEnd: span.segEnd });
+      return pieces.filter(p => p.segEnd - p.segStart >= 0.05);
+    }
+    let regularSegments = segments;
+    for (const cs of compositeScenes) {
+      regularSegments = regularSegments.flatMap(span => subtractCompositeRange(span, cs));
+    }
+    regularSegments = regularSegments.map(s => ({ ...s, segDuration: Math.max(0.1, s.segEnd - s.segStart) }));
 
     // ✅ FIX (طلب العميل): رجعنا لملصق صغير مربّع في نص الفريم بدل ما يملا الفريم كامل —
     // الملصقات دلوقتي من مكتبة أيقونات حقيقية، مش صور مولّدة تمثّل الفريم كله
