@@ -1069,6 +1069,11 @@ function CompositeSceneEditor({ job, onSaved }) {
     const width = Math.abs(drag.curX - drag.startX);
     const height = Math.abs(drag.curY - drag.startY);
     if (width < 0.02 || height < 0.02) { setErr('❌ حدد مربع أكبر على الصورة الأول (اسحب بالماوس)'); return; }
+    const time = Number(csKeyTime);
+    if (csStart.trim() && csEnd.trim() && (time < Number(csStart) || time > Number(csEnd))) {
+      setErr(`❌ الثانية دي (${time}) برة نطاق المشهد (${csStart} إلى ${csEnd}) — لازم تكون ثانية من بداية الفيديو، جوه النطاق ده`);
+      return;
+    }
     setErr('');
     setCsKeyframes(kfs => [...kfs, { time: Number(csKeyTime), x, y, width, height, label: csKeyLabel.trim() }].sort((a, b) => a.time - b.time));
     setCsKeyTime(''); setCsKeyLabel(''); setDrag(null);
@@ -1090,6 +1095,16 @@ function CompositeSceneEditor({ job, onSaved }) {
   const handleSaveNewScene = async () => {
     if (!csImage || !csStart.trim() || !csEnd.trim() || csKeyframes.length === 0) {
       setErr('❌ لازم صورة + من/لحد ثانية + نقطة واحدة على الأقل قبل الحفظ');
+      return;
+    }
+    // ✅ FIX (بلاغ العميل: "ليه معملش زوم"): لو ثانية أي نقطة برة نطاق "من/لحد ثانية"
+    // المشهد (زي لو حد كتب رقم المرحلة بدل ثانية الفيديو فعليًا)، كانت بتتحسب في الرندر
+    // بس بتتقص (clamp) لبداية/نهاية المشهد من غير أي تنبيه — ولو كل النقط وقعت على نفس
+    // القيمة المقصوصة، كل الزوم كان بيتلغي بصمت والفيديو يفضل على الصورة كاملة طول المدة
+    const start = Number(csStart), end = Number(csEnd);
+    const outOfRange = csKeyframes.filter(k => k.time < start || k.time > end);
+    if (outOfRange.length) {
+      setErr(`❌ ثانية النقطة لازم تكون بين ${start} و${end} (نطاق المشهد نفسه) — النقط دي برة النطاق: ${outOfRange.map(k => k.time).join('، ')}`);
       return;
     }
     setSaving(true); setErr('');

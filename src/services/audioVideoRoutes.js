@@ -224,12 +224,18 @@ router.post('/jobs/:id/composite-scenes', adminAuth, async (req, res) => {
       .map((s, i) => {
         const imageWidth = Math.max(0, Number(s.imageWidth) || 0);
         const imageHeight = Math.max(0, Number(s.imageHeight) || 0);
+        const startTime = Math.max(0, Number(s.startTime) || 0);
+        const endTime = Math.max(0, Number(s.endTime) || 0);
         return {
           id: s.id || `scene_${Date.now()}_${i}`,
           imageUrl: String(s.imageUrl || ''),
           imageWidth, imageHeight,
-          startTime: Math.max(0, Number(s.startTime) || 0),
-          endTime: Math.max(0, Number(s.endTime) || 0),
+          startTime, endTime,
+          // ✅ FIX (بلاغ العميل: "ليه معملش زوم"): أي نقطة ثانيتها برة نطاق المشهد
+          // (startTime→endTime) كانت بتتقص (clamp) بصمت في الرندر لحافة المشهد، ولو كل
+          // النقط وقعت برة النطاق كلها كانت بتتلغي كلها (تتحول لبداية/نهاية الصورة الكاملة)
+          // فيضيع الزوم كله من غير أي خطأ ظاهر للأدمن — دلوقتي بنرفض أي نقطة برة النطاق هنا
+          // كمان (مش بس في الفرونت إند) عشان نضمن مفيش نقطة تضيع بصمت أيًا كان مصدر الطلب
           keyframes: Array.isArray(s.keyframes) && imageWidth > 0 && imageHeight > 0
             ? s.keyframes
                 .map(k => {
@@ -240,8 +246,10 @@ router.post('/jobs/:id/composite-scenes', adminAuth, async (req, res) => {
                     height: Math.max(0.02, Math.min(1, Number(k.height) || 1)),
                   };
                   const rect = normalizeRectToAspect(raw, imageWidth, imageHeight, targetAspect);
-                  return { time: Math.max(0, Number(k.time) || 0), ...rect, label: String(k.label || '').slice(0, 100) };
+                  const time = Math.max(0, Number(k.time) || 0);
+                  return { time, ...rect, label: String(k.label || '').slice(0, 100) };
                 })
+                .filter(k => k.time >= startTime && k.time <= endTime)
                 .sort((a, b) => a.time - b.time)
             : [],
         };
