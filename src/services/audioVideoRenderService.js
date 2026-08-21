@@ -70,9 +70,26 @@ const BG_HEX = '0xffffff'; // نفس اللون بصيغة hex لفلتر fade �
 function normalizeLangBase(lang) {
   return String(lang || 'en').split('_')[0].toLowerCase();
 }
+// ✅ FIX (بلاغ العميل: مربعات tofu غريبة بدل بعض حروف عربي زي "لأ"/"لإ"): كان بياخد أول
+// خط يرجعه "fc-list :lang=ar" من غير أي ترتيب أولوية — أي خط عشوائي على السيرفر ممكن يدّعي
+// دعم لغة عربي في الـ metadata بتاعه من غير ما يغطي كل أشكال الحروف المركّبة (ligatures) زي
+// لام+ألف-بهمزة، فيطلع مربع فاضي بدل الحرف. باقي الملفات في المشروع (renderService.js،
+// mapVideoService.js، stabilityService.js) بتحل نفس المشكلة دي بتفضيل "Noto Naskh Arabic"
+// صراحة الأول (خط شامل ومُختبر) — بنطبّق نفس المنطق هنا بدل الاعتماد على ترتيب fc-list العشوائي
+const ARABIC_FONT_PRIORITY = [
+  '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf',
+  '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf',
+  '/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.otf',
+  '/usr/share/fonts/opentype/noto/NotoSansArabic-Regular.otf',
+  '/usr/share/fonts/truetype/arabic/NotoNaskhArabic-Regular.ttf',
+];
 function getFontPath(lang) {
   const dejaVu = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
   const base = normalizeLangBase(lang);
+  if (base === 'ar') {
+    const preferred = ARABIC_FONT_PRIORITY.find(f => fs.existsSync(f));
+    if (preferred) return preferred;
+  }
   const langCode = { ar: 'ar', ja: 'ja', zh: 'zh', ko: 'ko', ru: 'ru' }[base];
   if (!langCode) return dejaVu;
   try {
@@ -225,7 +242,7 @@ function buildCaptionsAssFile(segments, videoLanguage, ratio, fontName, W, H) {
   const isVertical = ratio === '9:16' || ratio === '1:1';
   // ✅ FIX (شكوى حقيقية: النص طالع صغير في الفيديو الحقيقي): رفعنا الحجم بشكل واضح — ده المفروض
   // "نص فيديو" كبير بارز، مش تفصيلة صغيرة تحت الملصق
-  const fontSize = isVertical ? 120 : 108;
+  const fontSize = isVertical ? 140 : 128;
   const marginV = isVertical ? 170 : 100;
 
   const header = `[Script Info]
