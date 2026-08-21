@@ -335,8 +335,19 @@ export async function findLibraryIcon(keyword) {
     for (const q of candidates) {
       const icons = await iconifySearch(q);
       if (!icons.length) continue;
-      const preferred = icons.find(i => PREFERRED_EMOJI_PREFIXES.some(p => i.startsWith(`${p}:`)));
-      const chosen = preferred || icons[0];
+      // ✅ FIX (بلاغ العميل: "لازم يكون فيه ذكاء أكتر في اختيار الملصق مش أي ملصق يختاره"):
+      // كنا بنفضّل أي أيقونة من مجموعات إيموجي معيّنة لمجرد إنها من المجموعة دي، حتى لو اسمها
+      // مش قريب من كلمة البحث خالص — ده كان أحيانًا بيستبدل أفضل نتيجة رجّعتها Iconify نفسها
+      // (مرتبة بالفعل بالأصلح للكلمة) بملصق إيموجي أقل صلة بس لأنه من الأسلوب المفضّل بصريًا.
+      // دلوقتي بنفضّل ملصق الإيموجي بس لو اسمه فعلاً قريب من كلمة البحث، وإلا بناخد أول نتيجة
+      // زي ما هي (ترتيب Iconify نفسه حسب الصلة)
+      const qLower = q.toLowerCase();
+      const relevantEmoji = icons.find(i => {
+        if (!PREFERRED_EMOJI_PREFIXES.some(p => i.startsWith(`${p}:`))) return false;
+        const name = i.split(':').slice(1).join(':').replace(/-/g, ' ');
+        return name.includes(qLower) || qLower.includes(name);
+      });
+      const chosen = relevantEmoji || icons[0];
       const [prefix, ...nameParts] = chosen.split(':');
       const name = nameParts.join(':');
       const svgRes = await fetch(`https://api.iconify.design/${prefix}/${name}.svg`);
