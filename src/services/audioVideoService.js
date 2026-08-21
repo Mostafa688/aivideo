@@ -1,9 +1,10 @@
 // ── audioVideoService.js ─────────────────────────────────────────────────────
 // مصنع فيديو الصوت (أدمن) — رفع فويس أوفر جاهز، تفريغه لنص بتوقيت دقيق على مستوى الكلمة
-// (Groq Whisper)، تقسيمه للقطات كثيفة (كل 3-4 كلمات تقريبًا، Groq LLM) مع صورة مشهد 2D
-// Cartoon تملا الفريم كامل لكل لقطة عندها تصور بصري (Pollinations.ai — مجاني بالكامل بدون
-// مفتاح)، والشخصيات المسمّاة بتتكرر بنفس المشهد. بناء الفيديو النهائي (مشاهد متحركة بحركة
-// pop + نص متحرك للقطات المجردة + دمج الصوت) في audioVideoRenderService.js.
+// (Groq Whisper)، تقسيمه للقطات كثيفة (كل 3-4 كلمات تقريبًا، Groq LLM) مع ملصق حقيقي من
+// مكتبة أيقونات/إيموجي مجانية (Iconify — بدون مفتاح API) لكل لقطة عندها تصور بصري بسيط
+// وشائع؛ أي لقطة مالهاش نتيجة مطابقة في المكتبة بتتحول لنص بدل ما تتلغى. الشخصيات المسمّاة
+// بتتكرر بنفس الملصق. بناء الفيديو النهائي (ملصقات متحركة بحركة pop + نص متحرك للقطات
+// النصية + دمج الصوت) في audioVideoRenderService.js.
 
 import Groq from 'groq-sdk';
 import fetch from 'node-fetch';
@@ -40,9 +41,11 @@ export async function uploadAudioVideoSourceToR2(buffer, mimeExt = 'mp3') {
   return uploadBufferToR2(buffer, `audio-video/source_${Date.now()}.${mimeExt}`, `audio/${mimeExt === 'mp3' ? 'mpeg' : mimeExt}`);
 }
 
+// ✅ FIX: الملصقات بقت SVG خام جاي من مكتبة Iconify (مش PNG مولّد بالذكاء الاصطناعي) —
+// SVG بيتفتح عادي في <img> في واجهة الأدمن، وsharp بيقدر يرندره مباشرة في مرحلة البناء
 export async function uploadElementImageToR2(buffer) {
-  const key = `audio-video/images/element_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.png`;
-  return uploadBufferToR2(buffer, key, 'image/png');
+  const key = `audio-video/images/element_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.svg`;
+  return uploadBufferToR2(buffer, key, 'image/svg+xml');
 }
 
 export async function uploadFinalVideoToR2(buffer) {
@@ -107,18 +110,16 @@ export async function extractVideoElements(words) {
   const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
   const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short "beats" — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
 
-CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either an animated illustrated SCENE (no text), or on-screen TEXT (no scene image). Never combine a scene image with text for the same beat. Decide per beat which fits better:
-- Use a SCENE ("character"/"object" kind) when the phrase names a concrete, drawable thing — a person, object, place, or clear physical action. Most beats should be this if the narration is at all concrete.
-- Use TEXT ("text" kind) when the phrase is abstract, a transition, a connector, or otherwise has no good concrete visual — words like "لا بد أن"/"إذاً"/"وبهذا"/"المحددة ولم يتحدث عنه كثيرون" don't need an invented scene; just show them as text. Don't force a scene onto a phrase that doesn't really have one — text is a completely normal, expected outcome for plenty of beats, not a fallback to avoid.
+CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either a small ICON/emoji-style sticker (no text), or on-screen TEXT (no icon). Never combine an icon with text for the same beat. Icons come from a real public icon/emoji library search (not AI-generated) — so ONLY request an icon when the beat names a common, universal, concrete thing that a normal icon set would plausibly have (a person, a well-known object, a common action, a place) — think "would a generic icon set have a picture for this exact word?" If the phrase is abstract, a transition, a connector, a specific/niche description, or anything unusual/hard to find as a plain icon, use TEXT instead — text is a completely normal, expected outcome for plenty of beats (likely most of them), not a fallback to avoid. When in doubt, prefer TEXT — an unmatched icon request just becomes text anyway, so only ask for an icon when you're fairly confident a simple, common icon for it exists.
 
 For each beat, output:
 - "start_idx","end_idx": word indices (inclusive) it covers — reference ONLY the given indices, never invent numbers
 - "text": the exact words for this beat, copied verbatim from the transcript
-- "kind": "character" (scene, depicts/refers to a specific named recurring person), "object" (scene, a concrete object/place/action), "text" (on-screen text only, no scene image — abstract/transition/no good visual), or "quote" (on-screen text only, no scene image — a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet, see rule below)
-- "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their scene image stays visually consistent
-- "image_prompt": ONLY for "character"/"object" kinds — OMIT this field entirely for "text"/"quote" kinds (they get on-screen text only, never an image). CRITICAL — this must show real comprehension, not word-matching: read the beat's actual MEANING in context (use the surrounding beats/narration to understand what's really being said), then describe a short, concrete English scene of what is actually happening or being depicted at that moment — a real illustrated moment with a setting and (where relevant) a person doing something, not a generic isolated icon/symbol standing for a keyword. E.g. for a phrase about a long period whose end only God knows, don't just draw "an hourglass" — depict the actual scene implied by the narration (people waiting, a long road stretching into the distance, etc., whatever truly fits the context). Never take a single abstract noun and turn it into a floating generic icon — always ground it in the real scene the narration is describing.
+- "kind": "character" (icon, depicts/refers to a specific named recurring person — use a generic person/role icon, e.g. "man"), "object" (icon, a common concrete object/place/action), "text" (on-screen text only, no icon — abstract/transition/niche/no good simple-icon match), or "quote" (on-screen text only, no icon — a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet, see rule below)
+- "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their icon stays consistent
+- "image_prompt": ONLY for "character"/"object" kinds — OMIT this field entirely for "text"/"quote" kinds (they get on-screen text only, never an icon). This is a SEARCH KEYWORD for a public icon/emoji library, NOT a scene description: 1-2 common English words naming the single concrete thing to search for (e.g. "book", "clock", "handshake", "mosque", "man walking", "heart", "compass") — simple, universal, generic terms only, never a sentence or a specific/niche description.
 
-CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or a visual image_prompt of any figure. Use "quote" kind instead for these beats (and for direct Quranic verses / Hadith text) so the words still appear as on-screen text with no image. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
+CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or an icon search of any figure. Use "quote" kind instead for these beats (and for direct Quranic verses / Hadith text) so the words still appear as on-screen text with no icon. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
 
 Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character"|"text"|"quote","character_key":"...","image_prompt":"..."}].`;
   const user = `Indexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
@@ -191,39 +192,35 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
   return elements;
 }
 
-// ✅ Pollinations مجانية بدون مفتاح، وده معناه limit صارم على معدل الطلبات (429) خصوصًا لو
-// كذا عنصر بيتولدوا ورا بعض بسرعة. بدل ما نستسلم من أول 429، بنعمل backoff تصاعدي (3s, 6s,
-// 9s) ونجرب تاني — الفشل الوحيد المقبول هو بعد استنفاد المحاولات دي كلها
-// ✅ FIX (طلب العميل): المشهد بقى بيملا الفيديو كله (16:9) مش أيقونة مربعة في النص — بنطلب
-// الصورة من Pollinations بنسبة 16:9 من الأول (1280x720) بدل المربع القديم (1024x1024)
-async function fetchPollinationsImage(prompt, attempt = 1, width = 1280, height = 720) {
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&nologo=true`;
+// ✅ FIX (طلب العميل): بدل ما نولّد صور بالذكاء الاصطناعي (كانت طالعة وحشة/مش مفهومة كتير)،
+// دلوقتي بندور على ملصق حقيقي جاهز في مكتبة أيقونات/إيموجي عامة ومجانية بالكامل (Iconify —
+// بيجمع مئات الآلاف من الأيقونات من مكتبات مفتوحة المصدر كتير، من غير أي مفتاح API أو تسجيل).
+// لو مفيش نتيجة مطابقة، بترجع null — والـ caller (audioVideoRoutes.js) وقتها بيحوّل اللقطة
+// دي لـ"نص بس" بدل ما يفضل يحاول يخترع ملصق، بالظبط زي ما طلب العميل.
+// أولوية البحث: مجموعات الإيموجي الملوّنة (noto, twemoji, openmoji...) الأقرب لشكل "ملصق"
+// حقيقي، وبعدين أي أيقونة تانية في أي مكتبة لو مفيش نتيجة إيموجي.
+const EMOJI_PREFIXES = 'noto,twemoji,openmoji,fxemoji,emojione,noto-v1,streamline-emojis';
+
+async function iconifySearch(query, prefixes) {
+  const url = `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=6${prefixes ? `&prefixes=${prefixes}` : ''}`;
   const res = await fetch(url);
-  // ✅ FIX: التقسيم الكثيف الجديد (لقطة كل 3-5 كلمات) بيطلب 15-20+ صورة للـ job الواحد بدل
-  // 6-8 زي الأول — لوجات حقيقية أظهرت إن الـ 429 بيفضل مستمر حتى بعد فواصل 40-80 ثانية بين
-  // الطلبات، يعني حد Pollinations أصعب بكتير من افتراضنا الأول. بدل backoff قصير (3s/6s/9s)
-  // اللي بيرمي الصورة بسرعة، دلوقتي أطول وأصبر بكتير (10s/20s/30s/40s)
-  if (res.status === 429 && attempt <= 4) {
-    await new Promise(r => setTimeout(r, attempt * 10000));
-    return fetchPollinationsImage(prompt, attempt + 1);
-  }
-  if (!res.ok) throw new Error(`Pollinations error ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  if (!res.ok) throw new Error(`Iconify search error ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data.icons) ? data.icons : [];
 }
 
-// ✅ أسلوب 2D Cartoon مسطّح — بدل الصور الفوتوغرافية الواقعية اللي كانت طالعة قبل كده،
-// أنسب لفيديو شرح متسق
-export async function generateElementImage(imagePrompt) {
-  // ✅ FIX (طلب العميل): المشهد بقى بيملا الفيديو كله (16:9) بدل ما يبقى ملصق/أيقونة صغيرة
-  // على خلفية بيضاء — فمفيش داعي لطلب "خلفية بيضاء" ولا لأي إزالة خلفية خالص، الصورة اللي
-  // بترجع من Pollinations هي نفسها الفريم كامل (بعد resize/crop لمقاس الفيديو في
-  // audioVideoRenderService.js). Style "2D Cartoon" مطلوب صراحةً بدل "flat vector illustration"
-  // العام اللي كان مستخدم قبل كده.
-  const fullPrompt = `${imagePrompt}, 2D cartoon style, a natural ordinary illustrated scene — not an icon, not a sticker, not an abstract symbol, no isolated single object floating alone with empty space around it — a full illustrated scene with a real setting/background that fills the whole frame, depict an actual small moment or scene that captures the meaning, clean bold outlines, flat solid colors, vibrant natural colors, rich saturated color palette, no photorealism, no 3D render, no gradient, no texture, wide 16:9 composition`;
-  try {
-    return await fetchPollinationsImage(fullPrompt);
-  } catch (e) {
-    // ✅ محاولة تانية بـ prompt معدّل شوية — مفيش تكلفة إضافية من إعادة المحاولة (زي ما طلب)
-    return await fetchPollinationsImage(`${fullPrompt}, flat illustration, clean vector art`);
-  }
+// ✅ بيرجّع buffer الـ SVG الخام (مش PNG) — التحويل/الـresize بيحصل في audioVideoRenderService.js
+// بـ sharp، اللي بيقدر يرندر SVG مباشرة. بيرجّع null لو مفيش ولا نتيجة واحدة (مش خطأ، حالة
+// طبيعية ومتوقعة — يعني الجملة دي هتتحول لنص بدل ملصق)
+export async function findLibraryIcon(keyword) {
+  const q = String(keyword || '').trim();
+  if (!q) return null;
+  let icons = await iconifySearch(q, EMOJI_PREFIXES);
+  if (!icons.length) icons = await iconifySearch(q); // كل المكتبات، من غير تحديد مجموعة
+  if (!icons.length) return null;
+  const [prefix, ...nameParts] = icons[0].split(':');
+  const name = nameParts.join(':');
+  const svgRes = await fetch(`https://api.iconify.design/${prefix}/${name}.svg`);
+  if (!svgRes.ok) return null;
+  return Buffer.from(await svgRes.arrayBuffer());
 }

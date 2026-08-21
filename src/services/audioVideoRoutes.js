@@ -9,7 +9,7 @@
 import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
-import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, generateElementImage, uploadElementImageToR2 } from './audioVideoService.js';
+import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, uploadElementImageToR2 } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
 import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobById, listAudioVideoJobsForAdmin } from './authService.js';
 
@@ -41,12 +41,10 @@ router.post('/transcribe', adminAuth, upload.single('audio'), async (req, res) =
   }
 });
 
-// ✅ FIX: كانت الخطوة دي متزامنة (الأدمن مستنّي الرد HTTP لحد ما تخلص) — مع التقسيم الكثيف
-// الجديد (15-20+ صورة للـ job) وصبر أكبر على الـ 429 (fetchPollinationsImage ممكن تاخد لحد
-// ~100 ثانية للصورة الواحدة في أسوأ حالة)، الخطوة كلها ممكن تاخد دقايق كتير — ده بيخاطر إن
-// أي proxy/متصفح بينه وبين السيرفر يعمل timeout قبل ما الرد يوصل خالص. دلوقتي زي /render
-// بالظبط: بترجع فورًا (202-style) والشغل بيحصل في الخلفية، والفرونت إند بيعمل poll على
-// GET /jobs/:id لحد ما status يبقى elements_ready/failed.
+// ✅ الاستخراج بقى async (بيرجع فورًا 202-style، والشغل الفعلي بيحصل في الخلفية، والفرونت
+// إند بيعمل poll على GET /jobs/:id لحد ما status يبقى elements_ready/failed) — أصلًا مش
+// محتاجينها بنفس القوة زي زمان (بحث Iconify سريع جدًا، مفيش انتظار توليد صور بالذكاء
+// الاصطناعي تاني)، بس سايبينها زي ما هي لتبسيط الكود ومنع أي timeout نادر من الفرونت إند.
 router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
   try {
     const job = await getAudioVideoJobById(req.params.id);
@@ -64,22 +62,15 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
           return;
         }
 
-        // ✅ الصور بالترتيب (مش Promise.all) مع فاصل زمني بين كل نداء والتاني — Pollinations
-        // فعليًا بترجع 429 لو النداءات جت ورا بعض بسرعة (اتأكد ده من لوجات حقيقية)، فبنبعد
-        // عنه استباقيًا. fetchPollinationsImage نفسها كمان عندها إعادة محاولة تصاعدية طويلة.
-        // ✅ شخصيات مسمّاة (kind:'character') بتتكرر بنفس الـ characterKey بتاخد نفس صورة
-        // الملصق المولّدة أول مرة بس — من غير ما تولّد صورة جديدة (شكل مختلف) في كل ظهور،
-        // عشان تفضل نفس الشخصية بصريًا زي ما طلب العميل، وكمان بيوفر نداءات فعليًا
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        // ✅ FIX (طلب العميل): بدل توليد صور بالذكاء الاصطناعي (كانت طالعة وحشة)، بندور على
+        // ملصق حقيقي من مكتبة Iconify المجانية. آيات/أحاديث/إشارة لله أو نبي (kind:'quote')،
+        // وكمان أي جملة مالهاش تصور بصري (kind:'text') بتتحط كنص بس من الأول من غير أي بحث.
+        // لأي لقطة character/object، لو مفيش نتيجة مطابقة في المكتبة، بتتحول لـ"نص" بدل ما
+        // تتلغى — بالظبط زي ما طلب العميل. الشخصيات المسمّاة بتتكرر بنفس الملصق المتفق عليه
+        // أول مرة (مفيش بحث جديد في كل ظهور).
         const characterImageCache = new Map(); // characterKey -> imageUrl
         const withImages = [];
-        const failedElements = [];
-        let generatedCount = 0;
         for (const el of elements) {
-          // ✅ FIX (طلب العميل): بقى كل مشهد يا استيكر يا نص — مش الاتنين مع بعض. آيات/أحاديث/
-          // أي إشارة لله أو نبي (kind:'quote')، وكمان أي جملة مالهاش تصور بصري واضح
-          // (kind:'text') بتتحط كنص بس على الشاشة من غير أي صورة/ملصق خالص — مفيش نداء لـ
-          // Pollinations أصلاً، ومفيش استهلاك من فترات الانتظار بتاعة توليد الصور التانية
           if (el.kind === 'quote' || el.kind === 'text') {
             withImages.push({ ...el, imageUrl: null });
             continue;
@@ -88,44 +79,23 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
             withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
             continue;
           }
-          if (generatedCount > 0) await sleep(4000);
-          generatedCount++;
+          let buffer = null;
           try {
-            const buffer = await generateElementImage(el.imagePrompt);
-            const imageUrl = await uploadElementImageToR2(buffer);
-            withImages.push({ ...el, imageUrl });
-            if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
+            buffer = await findLibraryIcon(el.imagePrompt);
           } catch (e) {
-            console.warn('[AudioVideo] Image generation failed for element:', el.element, e.message);
-            failedElements.push(el);
+            console.warn('[AudioVideo] Icon lookup failed, falling back to text:', el.element, e.message);
           }
-        }
-
-        // ✅ جولة تانية للعناصر اللي فشلت بعد استراحة أطول — لو السبب كان rate limit مؤقت،
-        // الوقت ده كافي غالبًا إن الحد يترفع تاني
-        if (failedElements.length) {
-          await sleep(20000);
-          for (const el of failedElements) {
-            if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
-              withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
-              continue;
-            }
-            try {
-              const buffer = await generateElementImage(el.imagePrompt);
-              const imageUrl = await uploadElementImageToR2(buffer);
-              withImages.push({ ...el, imageUrl });
-              if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
-            } catch (e) {
-              console.warn('[AudioVideo] Image generation retry also failed for element:', el.element, e.message);
-            }
+          if (!buffer) {
+            withImages.push({ ...el, kind: 'text', imageUrl: null, imagePrompt: null, characterKey: null });
+            continue;
           }
+          const imageUrl = await uploadElementImageToR2(buffer);
+          withImages.push({ ...el, imageUrl });
+          if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
         }
-
-        // ✅ نرتب تاني حسب مكانها الأصلي في الكلام (الجولة التانية ممكن تضيف عناصر آخر القائمة)
-        withImages.sort((a, b) => a.startIdx - b.startIdx);
 
         if (!withImages.length) {
-          await updateAudioVideoJob(job.id, { status: 'failed', error: 'Image generation failed for all elements' });
+          await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements could be processed' });
           return;
         }
 

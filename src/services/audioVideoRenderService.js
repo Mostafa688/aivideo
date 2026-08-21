@@ -33,6 +33,14 @@
 // الصورة نفسها هي الفريم. حركة الـ pop اتعممت من "مربع صغير في النص" لـ"مستطيل الفريم كامل"
 // (baseW×baseH بدل baseSize مربع واحد) — نفس معادلة النوسان المخمّد، بس على أبعاد الفريم
 // كله. لقطات text/quote لسه بخلفية بيضاء عادية (مفيش مشهد أصلًا يملاها).
+//
+// v7 — تصحيح تصميمي تاني من العميل: الصور المولّدة بالذكاء الاصطناعي كانت "وحشة جدًا" —
+// بدل التوليد، بقينا بندور على ملصق حقيقي من مكتبة أيقونات/إيموجي مجانية (Iconify) في
+// audioVideoService.js. ده معناه رجعنا لملصق صغير مربّع (شفاف الخلفية) في نص الفريم على
+// خلفية بيضاء، مش صورة تملا الفريم كامل — أيقونة حقيقية مالهاش "خلفية" لتملاها أصلاً.
+// buildAnimatedClip فضلت زي ما هي بالظبط (عامة، بتاخد baseW/baseH بغض النظر عن الحجم)، بس
+// السايز رجع مربّع صغير بدل W×H الفريم كامل، وprepareSceneImage اتبدلت بـprepareIconImage
+// (contain-fit شفاف بدل cover-fit معتم).
 
 import fetch from 'node-fetch';
 import sharp from 'sharp';
@@ -65,13 +73,13 @@ function getFontPath(lang) {
   return dejaVu;
 }
 
-// ✅ FIX (طلب العميل): المشهد بقى بيملا الفريم كامل بدل ما يبقى ملصق صغير على خلفية بيضاء —
-// بنعمل resize بـ fit:'cover' لمقاس الفيديو بالظبط (W×H)، بيقص الزيادة بدل ما يسيب حواف
-// فاضية، ومفيش داعي لشفافية (opaque بالكامل، الصورة نفسها هي الفريم كله)
-async function prepareSceneImage(iconBuffer, W, H, outPath) {
-  await sharp(iconBuffer)
-    .resize(W, H, { fit: 'cover' })
-    .jpeg({ quality: 92 })
+// ✅ FIX (طلب العميل): رجعنا لملصق صغير شفاف الخلفية (contain-fit) بدل ما يملا الفريم كامل —
+// دلوقتي الملصقات جايه من مكتبة Iconify (SVG حقيقي)، فلازم نرندرها بكثافة (density) عالية
+// الأول عشان تطلع حادة/واضحة مش مبكسلة لما تتكبّر، وبعدين contain-fit على مربع شفاف
+async function prepareIconImage(iconBuffer, size, outPath) {
+  await sharp(iconBuffer, { density: 900 })
+    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
     .toFile(outPath);
 }
 
@@ -198,23 +206,25 @@ export async function renderAudioVideoJob(job) {
     });
 
     const clipPaths = [];
+    // ✅ FIX (طلب العميل): رجعنا لملصق صغير مربّع في نص الفريم بدل ما يملا الفريم كامل —
+    // الملصقات دلوقتي من مكتبة أيقونات حقيقية، مش صور مولّدة تمثّل الفريم كله
+    const iconSize = Math.round(Math.min(W, H) * 0.65);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const clipPath = path.join(workDir, `clip_${i}.mp4`);
       // ✅ FIX: لقطات "quote"/"text" (آيات/أحاديث/إشارة لله أو نبي/جمل مجردة) مالهاش
-      // imageUrl خالص — نص بس على الشاشة، من غير أي تحميل/توليد مشهد
+      // imageUrl خالص — نص بس على الشاشة، من غير أي تحميل/توليد ملصق
       if (!seg.imageUrl) {
-        buildAnimatedClip(null, W, H, W, H, seg.segDuration, clipPath);
+        buildAnimatedClip(null, W, H, iconSize, iconSize, seg.segDuration, clipPath);
         clipPaths.push(clipPath);
         continue;
       }
       const iconRes = await fetch(seg.imageUrl);
       if (!iconRes.ok) throw new Error(`Could not download element image: ${seg.element}`);
       const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
-      const iconPngPath = path.join(workDir, `icon_${i}.jpg`);
-      // ✅ FIX (طلب العميل): المشهد بقى بيملا الفريم كامل (W×H) بدل ملصق صغير مربع
-      await prepareSceneImage(iconBuffer, W, H, iconPngPath);
-      buildAnimatedClip(iconPngPath, W, H, W, H, seg.segDuration, clipPath);
+      const iconPngPath = path.join(workDir, `icon_${i}.png`);
+      await prepareIconImage(iconBuffer, iconSize, iconPngPath);
+      buildAnimatedClip(iconPngPath, W, H, iconSize, iconSize, seg.segDuration, clipPath);
       clipPaths.push(clipPath);
     }
 
