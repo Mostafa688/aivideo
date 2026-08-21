@@ -315,6 +315,10 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  // ✅ NEW (طلب العميل): "مشاهد مركّبة" — صورة واحدة (زي دايجرام 11 مرحلة) بيرفعها الأدمن
+  // لفترة زمنية معيّنة في الفيديو، مع نقاط زوم/pan محددة يدويًا (كل نقطة = مربع قص من
+  // الصورة + وقت توصل فيه) بدل ما تتقسم لملصقات منفصلة زي باقي الفيديو
+  await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS composite_scenes_json JSONB').catch(() => {});
   // ✅ FIX: حالة "extracting"/"rendering" كانت بتعيش في ذاكرة الـ process بس (fire-and-forget
   // async IIFE) — لو السيرفر اترستارت في نص الشغل (ديبلوي جديد، كراش، صيانة Railway)، الشغل
   // بيتقفل من غير ما حد يحدّث حالة الـ job، فيفضل عالق على "extracting" للأبد من غير أي طريقة
@@ -1709,10 +1713,10 @@ export async function updateAudioVideoJob(id, fields) {
   const vals = [];
   let i = 1;
   for (const [key, value] of Object.entries(fields)) {
-    const col = { transcriptText: 'transcript_text', wordsJson: 'words_json', elementsJson: 'elements_json', videoUrl: 'video_url', status: 'status', error: 'error', ratio: 'ratio' }[key];
+    const col = { transcriptText: 'transcript_text', wordsJson: 'words_json', elementsJson: 'elements_json', videoUrl: 'video_url', status: 'status', error: 'error', ratio: 'ratio', compositeScenesJson: 'composite_scenes_json' }[key];
     if (!col) continue;
     cols.push(`${col} = $${i}`);
-    vals.push((key === 'wordsJson' || key === 'elementsJson') && value != null ? JSON.stringify(value) : value);
+    vals.push((key === 'wordsJson' || key === 'elementsJson' || key === 'compositeScenesJson') && value != null ? JSON.stringify(value) : value);
     i++;
   }
   if (!cols.length) return getAudioVideoJobById(id);
