@@ -732,6 +732,50 @@ function AudioVideoTab({ s }) {
   const fileRef = React.useRef(null);
   const pollRef = React.useRef(null);
 
+  // ✅ NEW (طلب العميل): صور مرجعية ثابتة (القرآن الكريم، صحيح البخاري، صحيح مسلم...) —
+  // بتتستخدم تلقائيًا مع لقطات "quote" بدل ما تفضل نص بس
+  const [refImages, setRefImages] = useState([]);
+  const [refUploading, setRefUploading] = useState(false);
+  const [refKeyInput, setRefKeyInput] = useState('quran');
+  const refFileRef = React.useRef(null);
+
+  const loadRefImages = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin/audio-video/reference-images', { headers });
+      const d = await r.json();
+      setRefImages(d.images || []);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  const handleRefUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !refKeyInput.trim()) return;
+    setRefUploading(true);
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      form.append('ref_key', refKeyInput.trim().toLowerCase());
+      const r = await fetch('/api/admin/audio-video/reference-images', {
+        method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: form,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Upload failed');
+      loadRefImages();
+    } catch (e) {
+      setError('❌ ' + e.message);
+    } finally {
+      setRefUploading(false);
+      if (refFileRef.current) refFileRef.current.value = '';
+    }
+  };
+
+  const handleRefDelete = async (refKey) => {
+    try {
+      await fetch(`/api/admin/audio-video/reference-images/${refKey}`, { method: 'DELETE', headers });
+      loadRefImages();
+    } catch (e) { console.error(e); }
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -741,7 +785,7 @@ function AudioVideoTab({ s }) {
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadRefImages(); }, [load, loadRefImages]);
   useEffect(() => () => clearInterval(pollRef.current), []);
 
   // ✅ stopStatuses/onStop معمّمة عشان نفس الـ poller يخدم كل من الاستخراج (elements_ready/
@@ -840,6 +884,34 @@ function AudioVideoTab({ s }) {
         />
         {uploading && <div style={{ color: '#7c6af7', fontSize: 12.5, marginTop: 10 }}>⏳ بيترفع ويتفرّغ... ممكن ياخد شوية ثواني</div>}
         {error && <div style={{ color: '#f87171', fontSize: 12.5, marginTop: 10 }}>{error}</div>}
+      </div>
+
+      <div style={s.card}>
+        <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 8 }}>📖 صور مرجعية (القرآن الكريم / صحيح البخاري / صحيح مسلم)</div>
+        <div style={{ fontSize: 12.5, color: '#9ca3af', marginBottom: 12 }}>
+          ارفع صورة مرة واحدة لكل مصدر — بتتستخدم تلقائيًا لأي لقطة آية/حديث بنفس المصدر ده بدل ما تفضل نص بس. المفاتيح المعروفة: quran, bukhari, muslim, other (احتياطي لأي مصدر تاني).
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+          <select value={refKeyInput} onChange={e => setRefKeyInput(e.target.value)} style={{ background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 8, padding: '6px 10px', fontSize: 12.5 }}>
+            <option value="quran">quran — القرآن الكريم</option>
+            <option value="bukhari">bukhari — صحيح البخاري</option>
+            <option value="muslim">muslim — صحيح مسلم</option>
+            <option value="other">other — احتياطي لأي مصدر تاني</option>
+          </select>
+          <input ref={refFileRef} type="file" accept="image/*" onChange={handleRefUpload} disabled={refUploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+          {refUploading && <span style={{ color: '#7c6af7', fontSize: 12 }}>⏳ بيترفع...</span>}
+        </div>
+        {refImages.length > 0 && (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {refImages.map(img => (
+              <div key={img.ref_key} style={{ width: 100, textAlign: 'center' }}>
+                <img src={img.image_url} alt={img.ref_key} style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid #2d2d4a' }} />
+                <div style={{ fontSize: 11, color: '#d1d5db', marginTop: 4 }}>{img.label || img.ref_key}</div>
+                <button onClick={() => handleRefDelete(img.ref_key)} style={{ marginTop: 4, background: 'none', border: '1px solid #2d2d4a', color: '#f87171', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>حذف</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {activeJob && (

@@ -9,9 +9,9 @@
 import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
-import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, uploadElementImageToR2 } from './audioVideoService.js';
+import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, uploadElementImageToR2, uploadReferenceImageToR2 } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
-import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobById, listAudioVideoJobsForAdmin } from './authService.js';
+import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobById, listAudioVideoJobsForAdmin, upsertReferenceImage, listReferenceImages, getReferenceImagesMap, deleteReferenceImage } from './authService.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -63,16 +63,25 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
         }
 
         // ✅ FIX (طلب العميل): بدل توليد صور بالذكاء الاصطناعي (كانت طالعة وحشة)، بندور على
-        // ملصق حقيقي من مكتبة Iconify المجانية. آيات/أحاديث/إشارة لله أو نبي (kind:'quote')،
-        // وكمان أي جملة مالهاش تصور بصري (kind:'text') بتتحط كنص بس من الأول من غير أي بحث.
-        // لأي لقطة character/object، لو مفيش نتيجة مطابقة في المكتبة، بتتحول لـ"نص" بدل ما
-        // تتلغى — بالظبط زي ما طلب العميل. الشخصيات المسمّاة بتتكرر بنفس الملصق المتفق عليه
-        // أول مرة (مفيش بحث جديد في كل ظهور).
+        // ملصق حقيقي من مكتبة Iconify المجانية. لقطات "text" (جملة مالهاش تصور بصري) بتتحط
+        // كنص بس من الأول من غير أي بحث. لأي لقطة character/object، لو مفيش نتيجة مطابقة في
+        // المكتبة، بتتحول لـ"نص" بدل ما تتلغى — بالظبط زي ما طلب العميل. الشخصيات المسمّاة
+        // بتتكرر بنفس الملصق المتفق عليه أول مرة (مفيش بحث جديد في كل ظهور).
+        // ✅ NEW (طلب العميل): لقطات "quote" (آية/حديث) بقى ليها صورة حقيقية لو الأدمن رفع
+        // صورة مرجعية لنفس المصدر ده (قرآن/بخاري/مسلم) — بتتحط جنب النص نفسه (مش بدلاً منه)،
+        // مش نص بس زي الافتراضي القديم
+        const referenceImages = await getReferenceImagesMap();
         const characterImageCache = new Map(); // characterKey -> imageUrl
         const withImages = [];
         let llmTextCount = 0, iconFoundCount = 0, iconMissCount = 0;
         for (const el of elements) {
-          if (el.kind === 'quote' || el.kind === 'text') {
+          if (el.kind === 'quote') {
+            const refUrl = referenceImages[el.quoteSource] || referenceImages.other || null;
+            if (refUrl) iconFoundCount++; else llmTextCount++;
+            withImages.push({ ...el, imageUrl: refUrl });
+            continue;
+          }
+          if (el.kind === 'text') {
             llmTextCount++;
             withImages.push({ ...el, imageUrl: null });
             continue;
@@ -159,6 +168,43 @@ router.get('/jobs/:id', adminAuth, async (req, res) => {
     const job = await getAudioVideoJobById(req.params.id);
     if (!job) return res.status(404).json({ error: 'not_found' });
     res.json({ job });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── صور مرجعية ثابتة (القرآن الكريم، صحيح البخاري، صحيح مسلم...) ────────────────────────
+// ✅ NEW (طلب العميل): الأدمن بيرفع صورة مرة واحدة لكل مصدر (ref_key)، وبتتستخدم تلقائيًا
+// بعد كده في أي لقطة "quote" بنفس المصدر ده بدل ما تفضل نص بس
+router.get('/reference-images', adminAuth, async (req, res) => {
+  try {
+    const images = await listReferenceImages();
+    res.json({ images });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/reference-images', adminAuth, upload.single('image'), async (req, res) => {
+  try {
+    const refKey = String(req.body?.ref_key || '').toLowerCase().trim();
+    if (!refKey) return res.status(400).json({ error: 'ref_key is required' });
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+    const ext = (req.file.originalname.split('.').pop() || 'jpg').toLowerCase();
+    const imageUrl = await uploadReferenceImageToR2(req.file.buffer, ext, refKey);
+    const label = req.body?.label || refKey;
+    const image = await upsertReferenceImage(refKey, label, imageUrl);
+    res.json({ image });
+  } catch (err) {
+    console.error('[AudioVideo] Reference image upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/reference-images/:refKey', adminAuth, async (req, res) => {
+  try {
+    await deleteReferenceImage(req.params.refKey);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

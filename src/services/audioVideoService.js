@@ -48,6 +48,16 @@ export async function uploadElementImageToR2(buffer) {
   return uploadBufferToR2(buffer, key, 'image/svg+xml');
 }
 
+// ✅ NEW (طلب العميل): صور مرجعية ثابتة بيرفعها الأدمن يدويًا (غلاف القرآن الكريم، صحيح
+// البخاري، صحيح مسلم...) — بتحافظ على نوع الملف الحقيقي اللي اترفع (JPG/PNG عادةً)، عكس
+// uploadElementImageToR2 اللي بتفترض SVG دايمًا من Iconify
+export async function uploadReferenceImageToR2(buffer, mimeExt = 'jpg', refKey = 'ref') {
+  const ext = String(mimeExt || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+  const key = `audio-video/reference/${refKey}_${Date.now()}.${ext}`;
+  return uploadBufferToR2(buffer, key, contentType);
+}
+
 export async function uploadFinalVideoToR2(buffer) {
   const key = `audio-video/final/video_${Date.now()}.mp4`;
   return uploadBufferToR2(buffer, key, 'video/mp4');
@@ -96,6 +106,19 @@ function isSensitiveReligiousElement(name) {
   return SENSITIVE_ELEMENT_KEYWORDS.some(kw => n.includes(kw));
 }
 
+// ✅ NEW (طلب العميل): تحديد مصدر لقطة "quote" (قرآن/بخاري/مسلم/تاني) — بنفضّل قيمة الـ LLM
+// نفسها لو موجودة ومعروفة، وإلا بنحاول نستنتجها من كلمات مفتاحية في نص اللقطة كشبكة أمان
+// (لو الشبكة فوق هي اللي حوّلت اللقطة لـ"quote" أصلًا، الـ LLM ميكونش دّى quote_source خالص)
+function guessQuoteSource(llmValue, text) {
+  const known = ['quran', 'bukhari', 'muslim', 'other'];
+  if (known.includes(llmValue)) return llmValue;
+  const n = String(text || '');
+  if (/بخاري/.test(n)) return 'bukhari';
+  if (/مسلم/.test(n)) return 'muslim';
+  if (/قرآن|آية|الآية|سورة/.test(n)) return 'quran';
+  return 'other';
+}
+
 // ✅ استخراج "لقطات" كثيفة — عنصر كل 3-4 كلمات تقريبًا (مش عنصر لكل "موضوع" كبير زي الأول)،
 // عشان الفيديو يبقى كثيف بالملصقات زي المرجع اللي العميل بعته. بنديله الترانسكريبت كقائمة
 // كلمات مرقّمة ("index:word") ونطلب منه يرجّع أرقام الـ index (مش أرقام ثواني) — إحنا اللي
@@ -115,13 +138,14 @@ CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either a 
 For each beat, output:
 - "start_idx","end_idx": word indices (inclusive) it covers — reference ONLY the given indices, never invent numbers
 - "text": the exact words for this beat, copied verbatim from the transcript
-- "kind": "character" (icon, depicts/refers to a specific named recurring person — use a generic person/role icon, e.g. "man"), "object" (icon, a common concrete object/place/action), "text" (on-screen text only, no icon — abstract/transition/niche/no good simple-icon match), or "quote" (on-screen text only, no icon — a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet, see rule below)
+- "kind": "character" (icon, depicts/refers to a specific named recurring person — use a generic person/role icon, e.g. "man"), "object" (icon, a common concrete object/place/action), "text" (on-screen text only, no icon — abstract/transition/niche/no good simple-icon match), or "quote" (a direct Quranic verse, an authentic Hadith quote, or anything that would require depicting Allah/God or a prophet, see rule below)
 - "character_key": ONLY when kind is "character" — a short lowercase English slug identifying that person (e.g. "bilal") — reuse the EXACT SAME character_key every single time this same person is depicted anywhere else in the transcript, so their icon stays consistent
 - "image_prompt": ONLY for "character"/"object" kinds — OMIT this field entirely for "text"/"quote" kinds (they get on-screen text only, never an icon). This is a SEARCH KEYWORD for a public icon/emoji library, NOT a scene description: 1-2 common English words naming the single concrete thing to search for (e.g. "book", "clock", "handshake", "mosque", "man walking", "heart", "compass") — simple, universal, generic terms only, never a sentence or a specific/niche description.
+- "quote_source": ONLY when kind is "quote" — which real source this is: "quran" (a direct Quranic verse/ayah), "bukhari" (a Hadith explicitly attributed to Sahih al-Bukhari), "muslim" (a Hadith explicitly attributed to Sahih Muslim), or "other" (any other Hadith/religious reference, or an Allah/prophet mention with no specific named source). Only use "bukhari"/"muslim" when the narration itself names that specific collection — default to "other" if it just says "a Hadith says..." with no named collection.
 
-CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or an icon search of any figure. Use "quote" kind instead for these beats (and for direct Quranic verses / Hadith text) so the words still appear as on-screen text with no icon. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
+CRITICAL religious-respect rule: NEVER create a beat depicting Allah/God, or any prophet (by name or title like "the Prophet"/"Messenger of God", in any language) — never give them "character" kind or an icon search of any figure. Use "quote" kind instead for these beats (and for direct Quranic verses / Hadith text) — these may still show a real cover image of the actual source book (Quran/Bukhari/Muslim) alongside the text, which is NOT a depiction of Allah or a prophet, just the physical book/text itself. When the narration only attributes something to them ("the Prophet said...") while actually discussing a concrete subject, make the beat about that concrete subject and skip the attribution — do not create a separate beat for the attribution itself.
 
-Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character"|"text"|"quote","character_key":"...","image_prompt":"..."}].`;
+Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end_idx":N,"text":"...","kind":"object"|"character"|"text"|"quote","character_key":"...","image_prompt":"...","quote_source":"..."}].`;
   const user = `Indexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -176,6 +200,7 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
         imagePrompt: isTextOnly ? null : String(el.image_prompt || el.text || '').slice(0, 300).trim(),
         kind,
         characterKey: kind === 'character' ? String(el.character_key || '').toLowerCase().trim().slice(0, 60) : null,
+        quoteSource: kind === 'quote' ? guessQuoteSource(el.quote_source, el.text) : null,
         startIdx, endIdx,
         start: words[startIdx].start,
         end: words[endIdx].end,
@@ -186,7 +211,9 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
     // صورة/ملصق) بدل ما تشيله بالكامل — الآيات والأحاديث وأي إشارة لله/نبي لازم تفضل ظاهرة
     // كنص على الشاشة، بس من غير أي تمثيل بصري خالص، حتى لو الـ LLM حطها "character"/"object"
     // غلط بدل "quote" من الأول
-    .map(el => isSensitiveReligiousElement(el.element) ? { ...el, kind: 'quote', imagePrompt: null, characterKey: null } : el)
+    .map(el => isSensitiveReligiousElement(el.element)
+      ? { ...el, kind: 'quote', imagePrompt: null, characterKey: null, quoteSource: el.quoteSource || guessQuoteSource(null, el.element) }
+      : el)
     .sort((a, b) => a.startIdx - b.startIdx);
 
   return elements;
