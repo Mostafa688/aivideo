@@ -41,11 +41,20 @@ export async function uploadAudioVideoSourceToR2(buffer, mimeExt = 'mp3') {
   return uploadBufferToR2(buffer, `audio-video/source_${Date.now()}.${mimeExt}`, `audio/${mimeExt === 'mp3' ? 'mpeg' : mimeExt}`);
 }
 
-// ✅ FIX: الملصقات بقت SVG خام جاي من مكتبة Iconify (مش PNG مولّد بالذكاء الاصطناعي) —
-// SVG بيتفتح عادي في <img> في واجهة الأدمن، وsharp بيقدر يرندره مباشرة في مرحلة البناء
+// ✅ FIX: الملصقات بقت جايه من أكتر من مصدر دلوقتي — SVG خام من Iconify (المصدر الأساسي)،
+// أو PNG من GitHub emoji API (مصدر احتياطي تاني لو Iconify مالقاش حاجة، شوف findLibraryIcon).
+// بنكتشف النوع الحقيقي من أول بايتات الملف (magic bytes) بدل ما نفترض SVG دايمًا زي الأول —
+// لو اترفع PNG بامتداد/Content-Type غلط (.svg / image/svg+xml)، المتصفح مش هيقدر يعرضه صح
+function detectImageExt(buffer) {
+  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'png';
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpg';
+  return 'svg';
+}
 export async function uploadElementImageToR2(buffer) {
-  const key = `audio-video/images/element_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.svg`;
-  return uploadBufferToR2(buffer, key, 'image/svg+xml');
+  const ext = detectImageExt(buffer);
+  const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' ? 'image/jpeg' : 'image/svg+xml';
+  const key = `audio-video/images/element_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  return uploadBufferToR2(buffer, key, contentType);
 }
 
 // ✅ بيحافظ على نوع الملف الحقيقي اللي اترفع (JPG/PNG/WEBP)، عكس uploadElementImageToR2
@@ -278,9 +287,47 @@ function buildIconSearchCandidates(keyword) {
   return candidates;
 }
 
-// ✅ بيرجّع buffer الـ SVG الخام (مش PNG) — التحويل/الـresize بيحصل في audioVideoRenderService.js
-// بـ sharp، اللي بيقدر يرندر SVG مباشرة. بيرجّع null لو مفيش ولا نتيجة واحدة أو حصل أي خطأ
-// (مش استثناء بيوقف حاجة — حالة طبيعية ومتوقعة، يعني الجملة دي هتتحول لنص بدل ملصق)
+// ✅ NEW (طلب العميل: "ممكن نزود مواقع تانية للملصقات لو ملقاش يدور في واحد تاني") — مصدر
+// احتياطي ثاني، منفصل تمامًا عن Iconify: GitHub الرسمي بيوفر قائمة كل الإيموجي بتاعته
+// (شورت-كود → رابط صورة PNG حقيقي) من غير أي مفتاح API خالص. بنجيبها مرة واحدة ونكاشها في
+// الميموري، وبندوّر فيها بمطابقة نصية بسيطة (شورت-كود مطابق أو جزء منه) على كل كلمة من كلمات
+// البحث. لو Iconify فشل تمامًا (مش مجرد الكلمة دي، فشل حقيقي)، ده بيديها فرصة تانية قبل ما
+// اللقطة تتحول لنص بدل ملصق
+let githubEmojiMapCache = null;
+async function loadGithubEmojiMap() {
+  if (githubEmojiMapCache) return githubEmojiMapCache;
+  try {
+    const res = await fetch('https://api.github.com/emojis');
+    if (!res.ok) return (githubEmojiMapCache = {});
+    const data = await res.json();
+    return (githubEmojiMapCache = data && typeof data === 'object' ? data : {});
+  } catch {
+    return (githubEmojiMapCache = {});
+  }
+}
+async function findGithubEmojiUrl(keyword) {
+  const q = String(keyword || '').trim().toLowerCase();
+  if (!q) return null;
+  const map = await loadGithubEmojiMap();
+  const keys = Object.keys(map);
+  if (!keys.length) return null;
+  const words = q.split(/\s+/).filter(w => w.length > 2);
+  const tries = [q, ...words.sort((a, b) => b.length - a.length)];
+  for (const w of tries) {
+    const exact = keys.find(k => k === w || k.replace(/_/g, ' ') === w);
+    if (exact) return map[exact];
+  }
+  for (const w of tries) {
+    const partial = keys.find(k => k.includes(w) || w.includes(k));
+    if (partial) return map[partial];
+  }
+  return null;
+}
+
+// ✅ بيرجّع buffer الصورة الخام (SVG من Iconify أو PNG من الاحتياطي) — التحويل/الـresize
+// بيحصل في audioVideoRenderService.js بـ sharp، اللي بيقدر يرندر الاتنين. بيرجّع null لو
+// مفيش نتيجة في أي مصدر أو حصل أي خطأ (مش استثناء بيوقف حاجة — حالة طبيعية ومتوقعة، يعني
+// الجملة دي هتتحول لنص بدل ملصق)
 export async function findLibraryIcon(keyword) {
   const candidates = buildIconSearchCandidates(keyword);
   if (!candidates.length) return null;
@@ -296,9 +343,14 @@ export async function findLibraryIcon(keyword) {
       if (!svgRes.ok) continue;
       return Buffer.from(await svgRes.arrayBuffer());
     }
+    const ghUrl = await findGithubEmojiUrl(keyword);
+    if (ghUrl) {
+      const ghRes = await fetch(ghUrl);
+      if (ghRes.ok) return Buffer.from(await ghRes.arrayBuffer());
+    }
     return null;
   } catch (e) {
-    console.warn('[AudioVideo] Iconify lookup failed for keyword:', keyword, e.message);
+    console.warn('[AudioVideo] Icon lookup failed for keyword:', keyword, e.message);
     return null;
   }
 }
