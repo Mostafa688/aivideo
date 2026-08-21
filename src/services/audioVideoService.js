@@ -45,14 +45,18 @@ export async function uploadAudioVideoSourceToR2(buffer, mimeExt = 'mp3') {
 // أو PNG من GitHub emoji API (مصدر احتياطي تاني لو Iconify مالقاش حاجة، شوف findLibraryIcon).
 // بنكتشف النوع الحقيقي من أول بايتات الملف (magic bytes) بدل ما نفترض SVG دايمًا زي الأول —
 // لو اترفع PNG بامتداد/Content-Type غلط (.svg / image/svg+xml)، المتصفح مش هيقدر يعرضه صح
+// ✅ NEW: زودنا webp/gif برضو (Tenor بيرجع الاتنين دول للستيكرز) — sharp بيقدر يفك أول
+// فريم من الاتنين مباشرة زي أي صورة عادية، فمحتاجين بس نتعرف على النوع الصح عشان الرفع
 function detectImageExt(buffer) {
   if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'png';
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpg';
+  if (buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+  if (buffer.length >= 4 && buffer.toString('ascii', 0, 3) === 'GIF') return 'gif';
   return 'svg';
 }
 export async function uploadElementImageToR2(buffer) {
   const ext = detectImageExt(buffer);
-  const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' ? 'image/jpeg' : 'image/svg+xml';
+  const contentType = ext === 'png' ? 'image/png' : ext === 'jpg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/svg+xml';
   const key = `audio-video/images/element_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
   return uploadBufferToR2(buffer, key, contentType);
 }
@@ -326,6 +330,35 @@ async function loadGithubEmojiMap() {
     return (githubEmojiMapCache = {});
   }
 }
+// ✅ NEW (طلب العميل: "زود مواقع للملصقات، فيه موقع زي Tenor بس ستيكر مش GIF"): Tenor
+// (بتاع جوجل) عنده قسم "Sticker" منفصل تمامًا عن الـ GIFs العادية (صور ثابتة أو متحركة
+// بخلفية شفافة، مصممة أصلًا كملصقات) — محتاج مفتاح API مجاني من Google (Tenor API)، مش
+// زي Iconify/GitHub اللي من غير مفتاح خالص. لو المفتاح مش متظبط في متغيرات البيئة
+// (TENOR_API_KEY)، الدالة دي بترجع null بهدوء والبحث بيكمل عادي على المصادر التانية —
+// يعني المصدر ده اختياري بالكامل، مش شرط يشتغل الموقع من غيره
+const TENOR_API_KEY = process.env.TENOR_API_KEY;
+async function findTenorStickerUrl(keyword) {
+  if (!TENOR_API_KEY) return null;
+  const q = String(keyword || '').trim();
+  if (!q) return null;
+  try {
+    const url = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q)}&key=${TENOR_API_KEY}&client_key=erivion_audiovideo&limit=6&contentfilter=high&searchfilter=sticker&media_filter=png_transparent,webp_transparent,tinygif_transparent,gif_transparent`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const results = Array.isArray(data.results) ? data.results : [];
+    for (const r of results) {
+      const mf = r.media_formats || {};
+      const pick = mf.png_transparent || mf.webp_transparent || mf.tinygif_transparent || mf.gif_transparent;
+      if (pick?.url) return pick.url;
+    }
+    return null;
+  } catch (e) {
+    console.warn('[AudioVideo] Tenor sticker lookup failed:', keyword, e.message);
+    return null;
+  }
+}
+
 async function findGithubEmojiUrl(keyword) {
   const q = String(keyword || '').trim().toLowerCase();
   if (!q) return null;
@@ -374,6 +407,12 @@ export async function findLibraryIcon(keyword) {
       const svgRes = await fetch(`https://api.iconify.design/${prefix}/${name}.svg`);
       if (!svgRes.ok) continue;
       return Buffer.from(await svgRes.arrayBuffer());
+    }
+    for (const q of candidates) {
+      const tenorUrl = await findTenorStickerUrl(q);
+      if (!tenorUrl) continue;
+      const tenorRes = await fetch(tenorUrl);
+      if (tenorRes.ok) return Buffer.from(await tenorRes.arrayBuffer());
     }
     const ghUrl = await findGithubEmojiUrl(keyword);
     if (ghUrl) {

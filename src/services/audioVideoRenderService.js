@@ -274,10 +274,21 @@ Style: Text,${fontName},${fontSize},&H00181818,&H000000FF,&H00FFFFFF,&H00000000,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
+  // ✅ FIX (بلاغ متكرر: مربع فاضي بدل بعض الحروف العربي زي "لأ"/"لإ"): بغض النظر عن سبب
+  // نقص glyph الـ ligature ده بالظبط (خط ناقص، أو محرك الشكل نفسه)، بنمنع تكوين الـ ligature
+  // دي من الأساس بإدخال Zero-Width Non-Joiner (U+200C) بين "ل" وأي شكل ألف بعدها مباشرة —
+  // ده بيخلي الخط يعرض الحرفين منفصلين (بس متصلين بصريًا زي الطبيعي) بدل ما يحاول يستبدلهم
+  // بجليف الـ ligature المركّب (اللي هو المفقود). ده طبقة حماية إضافية فوق اختيار الفونت،
+  // مش بديل عنه — بتشتغل أيًا كان السبب الحقيقي للمشكلة
+  function disjoinArabicLigatures(s) {
+    return String(s || '').replace(/ل(?=[اأإآ])/g, 'ل‌');
+  }
+
   // ✅ FIX (طلب العميل): كل لقطة يا ملصق يا نص، مش الاتنين مع بعض — لقطات الملصق
   // (kind:'character'/'object') مالهاش سطر نص خالص هنا، النص بس للقطات text/quote
   const events = segments.filter(seg => seg.kind === 'text' || seg.kind === 'quote').map(seg => {
-    const text = String(seg.text || seg.element || '').replace(/['"`\\{}|<>]/g, '').trim();
+    const rawText = String(seg.text || seg.element || '').replace(/['"`\\{}|<>]/g, '').trim();
+    const text = isRTL ? disjoinArabicLigatures(rawText) : rawText;
     if (!text) return null;
     const dispText = isRTL ? `‏${text}` : text;
     const durMs = Math.max(1, (seg.segEnd - seg.segStart) * 1000);
@@ -384,6 +395,10 @@ export async function renderAudioVideoJob(job) {
     const fontName = fontfile.includes('Naskh') ? 'Noto Naskh Arabic' :
                       fontfile.includes('Noto') ? 'Noto Sans Arabic' :
                       fontfile.includes('DejaVu') ? 'DejaVu Sans' : 'Arial';
+    // ✅ تشخيص (بلاغ متكرر عن مربعات غريبة في النص): بيوضح في اللوج بالظبط أي فونت اتختار
+    // فعليًا لكل رندر — لو المشكلة رجعت تاني، اللوج ده هيوضح لو المشكلة في اختيار الفونت
+    // نفسه (فونت غلط اتختار) أو في حاجة تانية (نفس الفونت الصح بس لسه فيه مشكلة)
+    console.log(`[AudioVideo] Render font for language "${videoLanguage}": ${fontfile} (ASS name: ${fontName})`);
     // ✅ كابشن اللقطات العادية بس — المشاهد المركّبة مالهاش نص فوقها (الدايجرام نفسه هو
     // المحتوى البصري، والتسميات المفروض تكون مرسومة جوه الصورة نفسها)
     const assContent = buildCaptionsAssFile(regularSegments, videoLanguage, ratio, fontName, W, H);
