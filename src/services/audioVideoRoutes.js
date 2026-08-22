@@ -42,12 +42,18 @@ router.post('/transcribe', adminAuth, upload.array('audio', 10), async (req, res
   try {
     const words = [];
     const textParts = [];
+    // ✅ NEW (طلب العميل): بنسجّل حدود كل ملف صوت أصلي (اسمه + من/لحد ثانية جوه التايم لاين
+    // المدموج) — عشان الأدمن يقدر يحدد نقاط زوم/تقسيم بـ"ثانية X جوه الصوت رقم N" بدل ما
+    // يحسب الثانية المطلقة يدويًا
+    const audioParts = [];
     let offset = 0;
-    for (const tmpPath of tmpPaths) {
-      const { text, words: partWords } = await transcribeAudioWithTimestamps(tmpPath);
+    for (let i = 0; i < tmpPaths.length; i++) {
+      const { text, words: partWords } = await transcribeAudioWithTimestamps(tmpPaths[i]);
       textParts.push(text);
       words.push(...partWords.map(w => ({ word: w.word, start: w.start + offset, end: w.end + offset })));
-      offset += partWords.length ? partWords[partWords.length - 1].end + 0.3 : 0;
+      const partDuration = partWords.length ? partWords[partWords.length - 1].end + 0.3 : 0;
+      audioParts.push({ index: i + 1, name: req.files[i].originalname, offsetSec: offset, durationSec: partDuration });
+      offset += partDuration;
     }
 
     let finalBuffer, finalExt;
@@ -67,7 +73,7 @@ router.post('/transcribe', adminAuth, upload.array('audio', 10), async (req, res
     }
 
     const audioUrl = await uploadAudioVideoSourceToR2(finalBuffer, finalExt);
-    const job = await createAudioVideoJob({ audioUrl, transcriptText: textParts.join(' '), wordsJson: words, status: 'transcribed' });
+    const job = await createAudioVideoJob({ audioUrl, transcriptText: textParts.join(' '), wordsJson: words, status: 'transcribed', audioPartsJson: audioParts });
     res.json({ job });
   } catch (err) {
     console.error('[AudioVideo] Transcribe error:', err);
@@ -311,8 +317,24 @@ router.post('/jobs/:id/bulk-stickers', adminAuth, upload.array('images', 20), as
     if (!job.words_json?.length) return res.status(400).json({ error: 'no_transcript' });
 
     // ✅ NEW (طلب العميل): بديل يدوي اختياري للمطابقة بالـ AI — سطر واحد لكل صورة (بنفس
-    // ترتيب رفعها) في حقل نصي "manualTimes"، كل سطر إما فاضي (سيب الـ AI يحدد) أو رقم
-    // ثانية صريح (استخدمه زي ما هو، من غير ما نستهلك نداء مطابقة عليه خالص)
+    // ترتيب رفعها) في حقل نصي "manualTimes"، كل سطر إما فاضي (سيب الـ AI يحدد)، رقم ثانية
+    // مطلقة، أو "رقم الصوت:ثانية جوه الصوت ده" (زي "2:8.5") لو الصوت مقسّم لأكتر من ملف —
+    // بنحوّلها لثانية مطلقة تلقائيًا من audio_parts_json بدل ما الأدمن يحسبها يدويًا
+    const audioParts = Array.isArray(job.audio_parts_json) ? job.audio_parts_json : [];
+    function resolveManualTime(line) {
+      const trimmed = (line || '').trim();
+      if (!trimmed) return null;
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx > -1) {
+        const partIdx = Number(trimmed.slice(0, colonIdx).trim());
+        const localSec = Number(trimmed.slice(colonIdx + 1).trim());
+        const part = audioParts.find(p => p.index === partIdx);
+        if (part && Number.isFinite(localSec)) return Math.max(0, part.offsetSec + localSec);
+        return null;
+      }
+      const abs = Number(trimmed);
+      return Number.isFinite(abs) ? Math.max(0, abs) : null;
+    }
     const manualLines = String(req.body.manualTimes || '').split(/\r?\n/);
 
     const uploaded = [];
@@ -322,12 +344,11 @@ router.post('/jobs/:id/bulk-stickers', adminAuth, upload.array('images', 20), as
       const ext = (file.originalname.split('.').pop() || 'png').toLowerCase();
       const imageUrl = await uploadBulkStickerToR2(file.buffer, ext);
       const caption = await captionImageWithVision(imageUrl);
-      const manualLine = (manualLines[i] || '').trim();
-      const manualTime = manualLine ? Number(manualLine) : NaN;
+      const manualTime = resolveManualTime(manualLines[i]);
       uploaded.push({
         imageUrl, imageWidth: meta.width, imageHeight: meta.height,
         caption: caption || file.originalname.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '),
-        manualTime: Number.isFinite(manualTime) ? Math.max(0, manualTime) : null,
+        manualTime,
       });
     }
 
