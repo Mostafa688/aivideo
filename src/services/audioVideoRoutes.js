@@ -304,90 +304,110 @@ router.post('/jobs/:id/elements', adminAuth, async (req, res) => {
 
 // ✅ NEW (طلب العميل): رفع ملصقات/صور جاهزة بالجملة (ممكن يكون فيها نص مكتوب أصلًا) —
 // النظام بيقرا كل صورة بموديل رؤية مجاني (نفس مفتاح Groq المستخدم أصلًا، مفيش تسجيل جديد)،
-// وبعدين نداء LLM واحد بيحدد لكل صورة أنسب لحظة في الترانسكريبت تتحط عندها، وبيتحطوا
+// وبعدين نداء/نداءات LLM بتحدد لكل صورة أنسب لحظة في الترانسكريبت تتحط عندها، وبيتحطوا
 // كـ"عناصر" عادية (imageWidth/imageHeight بتتسجل معاهم عشان الرندر يحافظ على نسبتهم
-// الأصلية 16:9/3:2/1:1... بدل ما يفرض مربع تابت زي أيقونات Iconify). متزامن (مش async
-// polling) عشان التنفيذ أبسط — ممكن ياخد وقت لو عدد الصور كبير (نداء رؤية لكل صورة + نداء
-// مطابقة واحد في الآخر)
-router.post('/jobs/:id/bulk-stickers', adminAuth, upload.array('images', 20), async (req, res) => {
-  try {
-    const job = await getAudioVideoJobById(req.params.id);
-    if (!job) return res.status(404).json({ error: 'not_found' });
-    if (!req.files?.length) return res.status(400).json({ error: 'No images uploaded' });
-    if (!job.words_json?.length) return res.status(400).json({ error: 'no_transcript' });
+// الأصلية 16:9/3:2/1:1... بدل ما يفرض مربع تابت زي أيقونات Iconify).
+// ✅ FIX (بلاغ العميل: "Unexpected field" مع 107 صورة + الفيديو معلّق): كانت العملية
+// متزامنة بالكامل (multer array حده 20 ملف بس، ونداء مطابقة واحد لكل الصور مهما كان
+// عددهم) — أي رفعة أكبر من 20 صورة كانت بترفض الباقي بـ"Unexpected field"، وحتى لو
+// عدّلنا الحد، مئات الصور في نداء LLM واحد كانت ممكن تتقطع (max_tokens) أو الطلب كله
+// ياخد دقايق ويعلّق المتصفح/يضرب timeout. دلوقتي: حد الملفات اتزوّد لـ300، العملية بقت
+// async (بترجع فورًا وتكمل في الخلفية) مع تتبع تقدّم بسيط في الذاكرة يقدر الفرونت إند
+// يعمله poll، ونداء المطابقة اتقسّم لدفعات صغيرة (25 صورة كل مرة) بدل نداء واحد ضخم
+const BULK_STICKER_MATCH_CHUNK_SIZE = 25;
+const bulkStickerProgress = new Map(); // jobId(string) -> { total, done, stage, finished, error, matchedCount }
 
-    // ✅ NEW (طلب العميل): بديل يدوي اختياري للمطابقة بالـ AI — سطر واحد لكل صورة (بنفس
-    // ترتيب رفعها) في حقل نصي "manualTimes"، كل سطر إما فاضي (سيب الـ AI يحدد)، رقم ثانية
-    // مطلقة، أو "رقم الصوت:ثانية جوه الصوت ده" (زي "2:8.5") لو الصوت مقسّم لأكتر من ملف —
-    // بنحوّلها لثانية مطلقة تلقائيًا من audio_parts_json بدل ما الأدمن يحسبها يدويًا
-    const audioParts = Array.isArray(job.audio_parts_json) ? job.audio_parts_json : [];
-    function resolveManualTime(line) {
-      const trimmed = (line || '').trim();
-      if (!trimmed) return null;
-      const colonIdx = trimmed.indexOf(':');
-      if (colonIdx > -1) {
-        const partIdx = Number(trimmed.slice(0, colonIdx).trim());
-        const localSec = Number(trimmed.slice(colonIdx + 1).trim());
-        const part = audioParts.find(p => p.index === partIdx);
-        if (part && Number.isFinite(localSec)) return Math.max(0, part.offsetSec + localSec);
-        return null;
+router.post('/jobs/:id/bulk-stickers', adminAuth, upload.array('images', 300), async (req, res) => {
+  const job = await getAudioVideoJobById(req.params.id);
+  if (!job) return res.status(404).json({ error: 'not_found' });
+  if (!req.files?.length) return res.status(400).json({ error: 'No images uploaded' });
+  if (!job.words_json?.length) return res.status(400).json({ error: 'no_transcript' });
+
+  const total = req.files.length;
+  const jobKey = String(job.id);
+  bulkStickerProgress.set(jobKey, { total, done: 0, stage: 'captioning', finished: false, error: null, matchedCount: 0 });
+  res.json({ started: true, total });
+
+  (async () => {
+    try {
+      const audioParts = Array.isArray(job.audio_parts_json) ? job.audio_parts_json : [];
+      function resolveManualTime(line) {
+        const trimmed = (line || '').trim();
+        if (!trimmed) return null;
+        const colonIdx = trimmed.indexOf(':');
+        if (colonIdx > -1) {
+          const partIdx = Number(trimmed.slice(0, colonIdx).trim());
+          const localSec = Number(trimmed.slice(colonIdx + 1).trim());
+          const part = audioParts.find(p => p.index === partIdx);
+          if (part && Number.isFinite(localSec)) return Math.max(0, part.offsetSec + localSec);
+          return null;
+        }
+        const abs = Number(trimmed);
+        return Number.isFinite(abs) ? Math.max(0, abs) : null;
       }
-      const abs = Number(trimmed);
-      return Number.isFinite(abs) ? Math.max(0, abs) : null;
-    }
-    const manualLines = String(req.body.manualTimes || '').split(/\r?\n/);
+      const manualLines = String(req.body.manualTimes || '').split(/\r?\n/);
 
-    const uploaded = [];
-    for (let i = 0; i < req.files.length; i++) {
-      const file = req.files[i];
-      const meta = await sharp(file.buffer).metadata();
-      const ext = (file.originalname.split('.').pop() || 'png').toLowerCase();
-      const imageUrl = await uploadBulkStickerToR2(file.buffer, ext);
-      const caption = await captionImageWithVision(imageUrl);
-      const manualTime = resolveManualTime(manualLines[i]);
-      uploaded.push({
-        imageUrl, imageWidth: meta.width, imageHeight: meta.height,
-        caption: caption || file.originalname.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '),
-        manualTime,
+      const uploaded = [];
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const meta = await sharp(file.buffer).metadata();
+        const ext = (file.originalname.split('.').pop() || 'png').toLowerCase();
+        const imageUrl = await uploadBulkStickerToR2(file.buffer, ext);
+        const caption = await captionImageWithVision(imageUrl);
+        const manualTime = resolveManualTime(manualLines[i]);
+        uploaded.push({
+          imageUrl, imageWidth: meta.width, imageHeight: meta.height,
+          caption: caption || file.originalname.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '),
+          manualTime,
+        });
+        bulkStickerProgress.set(jobKey, { total, done: i + 1, stage: 'captioning', finished: false, error: null, matchedCount: 0 });
+      }
+
+      bulkStickerProgress.set(jobKey, { total, done: total, stage: 'matching', finished: false, error: null, matchedCount: 0 });
+
+      // ✅ بس الصور اللي معندهاش وقت يدوي هي اللي بتدخل نداء المطابقة بالـ AI — الباقي بياخد
+      // وقته الصريح مباشرة من غير أي تخمين. المطابقة بتتقسّم لدفعات صغيرة بدل نداء واحد ضخم
+      const needsAiMatch = uploaded.map((img, idx) => ({ ...img, idx })).filter(img => img.manualTime == null);
+      const results = uploaded.map((img, idx) => img.manualTime != null ? { idx, startTime: img.manualTime } : null);
+      for (let c = 0; c < needsAiMatch.length; c += BULK_STICKER_MATCH_CHUNK_SIZE) {
+        const chunk = needsAiMatch.slice(c, c + BULK_STICKER_MATCH_CHUNK_SIZE);
+        const chunkMatches = await matchStickersToTranscript(job.words_json, chunk);
+        for (const m of chunkMatches) {
+          const orig = chunk[m.imageIndex];
+          if (!orig) continue;
+          results[orig.idx] = { idx: orig.idx, startTime: job.words_json[m.startIdx].start };
+        }
+      }
+      const finalResults = results.filter(Boolean);
+      if (!finalResults.length) throw new Error('Could not place any uploaded image on the timeline');
+
+      const newElements = finalResults.map(r => {
+        const img = uploaded[r.idx];
+        return {
+          element: img.caption, text: img.caption, kind: 'object',
+          imagePrompt: null, characterKey: null, quoteSource: null,
+          imageUrl: img.imageUrl, imageWidth: img.imageWidth, imageHeight: img.imageHeight,
+          start: r.startTime, end: r.startTime,
+        };
       });
+
+      // ✅ أي عنصر قديم قريب جدًا (أقل من ثانية) من نقطة ملصق جديد بيتشال، عشان الملصق
+      // المخصّص يحل محله مباشرة بدل ما يفضل عنصر قديم بمدة شبه صفرية قبله
+      const existing = Array.isArray(job.elements_json) ? job.elements_json : [];
+      const pruned = existing.filter(el => !newElements.some(ne => Math.abs((Number(el.start) || 0) - ne.start) < 1));
+      const merged = [...pruned, ...newElements].sort((a, b) => (Number(a.start) || 0) - (Number(b.start) || 0));
+
+      await updateAudioVideoJob(job.id, { elementsJson: merged });
+      bulkStickerProgress.set(jobKey, { total, done: total, stage: 'done', finished: true, error: null, matchedCount: newElements.length });
+    } catch (err) {
+      console.error('[AudioVideo] Bulk sticker upload error:', err);
+      bulkStickerProgress.set(jobKey, { total, done: 0, stage: 'error', finished: true, error: err.message, matchedCount: 0 });
     }
+  })();
+});
 
-    // ✅ بس الصور اللي معندهاش وقت يدوي هي اللي بتدخل نداء المطابقة بالـ AI — الباقي بياخد
-    // وقته الصريح مباشرة من غير أي تخمين
-    const needsAiMatch = uploaded.map((img, idx) => ({ ...img, idx })).filter(img => img.manualTime == null);
-    const aiMatches = needsAiMatch.length ? await matchStickersToTranscript(job.words_json, needsAiMatch) : [];
-
-    const results = uploaded.map((img, idx) => img.manualTime != null ? { idx, startTime: img.manualTime } : null);
-    for (const m of aiMatches) {
-      const orig = needsAiMatch[m.imageIndex];
-      if (!orig) continue;
-      results[orig.idx] = { idx: orig.idx, startTime: job.words_json[m.startIdx].start };
-    }
-    const finalResults = results.filter(Boolean);
-    if (!finalResults.length) return res.status(500).json({ error: 'Could not place any uploaded image on the timeline' });
-
-    const newElements = finalResults.map(r => {
-      const img = uploaded[r.idx];
-      return {
-        element: img.caption, text: img.caption, kind: 'object',
-        imagePrompt: null, characterKey: null, quoteSource: null,
-        imageUrl: img.imageUrl, imageWidth: img.imageWidth, imageHeight: img.imageHeight,
-        start: r.startTime, end: r.startTime,
-      };
-    });
-
-    // ✅ أي عنصر قديم قريب جدًا (أقل من ثانية) من نقطة ملصق جديد بيتشال، عشان الملصق
-    // المخصّص يحل محله مباشرة بدل ما يفضل عنصر قديم بمدة شبه صفرية قبله
-    const existing = Array.isArray(job.elements_json) ? job.elements_json : [];
-    const pruned = existing.filter(el => !newElements.some(ne => Math.abs((Number(el.start) || 0) - ne.start) < 1));
-    const merged = [...pruned, ...newElements].sort((a, b) => (Number(a.start) || 0) - (Number(b.start) || 0));
-
-    const updated = await updateAudioVideoJob(job.id, { elementsJson: merged });
-    res.json({ job: updated, matchedCount: newElements.length, totalUploaded: uploaded.length });
-  } catch (err) {
-    console.error('[AudioVideo] Bulk sticker upload error:', err);
-    res.status(500).json({ error: err.message });
-  }
+router.get('/jobs/:id/bulk-stickers/progress', adminAuth, (req, res) => {
+  res.json({ progress: bulkStickerProgress.get(String(req.params.id)) || null });
 });
 
 // ✅ NEW: أي مربع قص بيرسمه الأدمن على الصورة ممكن يكون بأي نسبة عرض/ارتفاع — لو استخدمناه
