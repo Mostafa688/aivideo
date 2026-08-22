@@ -381,6 +381,18 @@ router.post('/jobs/:id/bulk-stickers', adminAuth, upload.array('images', 300), a
       const finalResults = results.filter(Boolean);
       if (!finalResults.length) throw new Error('Could not place any uploaded image on the timeline');
 
+      // ✅ FIX (بلاغ العميل: أكتر من ملصق واقع على نفس الثانية بالظبط، فمحدش منهم بياخد
+      // مدة عرض حقيقية — بيحصل لو المطابقة (يدوي أو AI) رجّعت نفس الثانية لصورتين، غالبًا
+      // لما الوصف مش كان مفيد كفاية يفرّق بينهم. بعد الترتيب الزمني، بنضمن نص ثانية على
+      // الأقل بين أي ملصقين متتاليين، عشان كل ملصق يفضل له مدة عرض حقيقية على الشاشة
+      finalResults.sort((a, b) => a.startTime - b.startTime);
+      const MIN_STICKER_GAP_SEC = 0.5;
+      for (let i = 1; i < finalResults.length; i++) {
+        if (finalResults[i].startTime - finalResults[i - 1].startTime < MIN_STICKER_GAP_SEC) {
+          finalResults[i].startTime = finalResults[i - 1].startTime + MIN_STICKER_GAP_SEC;
+        }
+      }
+
       const newElements = finalResults.map(r => {
         const img = uploaded[r.idx];
         return {
