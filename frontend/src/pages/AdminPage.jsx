@@ -1026,6 +1026,7 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState('');
   const [result, setResult] = useState(null);
+  const [progress, setProgress] = useState(null); // { total, done, stage }
   const audioRef = React.useRef(null);
   const imagesRef = React.useRef(null);
   const timingRef = React.useRef(null);
@@ -1063,8 +1064,32 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Upload failed');
-      onSaved(d.job);
-      setResult({ matched: d.matchedCount, total: d.totalUploaded });
+
+      // ✅ FIX (بلاغ العميل: "Unexpected field" + الموقع بيعلّق مع دفعات كبيرة من الصور):
+      // العملية بقت async في الباك إند (بترجع فورًا وتكمل في الخلفية) — بنعمل poll على
+      // تقدّمها بدل ما ننتظر رد واحد طويل ممكن يعلّق المتصفح أو يضرب timeout
+      const targetJobId = targetJob.id;
+      await new Promise((resolve, reject) => {
+        const poll = setInterval(async () => {
+          try {
+            const pr = await fetch(`/api/admin/audio-video/jobs/${targetJobId}/bulk-stickers/progress`, { headers });
+            const pd = await pr.json();
+            const p = pd.progress;
+            if (!p) return;
+            setProgress(p);
+            if (p.finished) {
+              clearInterval(poll);
+              if (p.error) { reject(new Error(p.error)); return; }
+              const jr = await fetch(`/api/admin/audio-video/jobs/${targetJobId}`, { headers });
+              const jd = await jr.json();
+              if (jr.ok) onSaved(jd.job);
+              setResult({ matched: p.matchedCount, total: p.total });
+              resolve();
+            }
+          } catch (e3) { clearInterval(poll); reject(e3); }
+        }, 2000);
+      });
+
       setAudioFiles([]); setImageFiles([]); setTimingFile(null);
       if (audioRef.current) audioRef.current.value = '';
       if (imagesRef.current) imagesRef.current.value = '';
@@ -1073,6 +1098,7 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
       setErr('❌ ' + e2.message);
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   };
 
@@ -1108,7 +1134,13 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
         </button>
       </div>
 
-      {uploading && <div style={{ color: '#7c6af7', fontSize: 12, marginTop: 8 }}>⏳ بيحلل الصور ويطابقها مع الصوت... (ممكن ياخد شوية وقت حسب عدد الصور)</div>}
+      {uploading && (
+        <div style={{ color: '#7c6af7', fontSize: 12, marginTop: 8 }}>
+          {progress
+            ? (progress.stage === 'captioning' ? `⏳ بيحلل الصورة ${progress.done} من ${progress.total}...` : `⏳ بيطابق ${progress.total} صورة مع الصوت...`)
+            : '⏳ بيبدأ الرفع...'}
+        </div>
+      )}
       {result && <div style={{ color: '#22c55e', fontSize: 12, marginTop: 8 }}>✅ اتطابق {result.matched} من {result.total} صورة. راجعهم في التايم لاين تحت.</div>}
       {err && <div style={{ color: '#f87171', fontSize: 12, marginTop: 8 }}>{err}</div>}
     </div>
