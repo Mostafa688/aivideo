@@ -1093,8 +1093,15 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
           <input ref={imagesRef} type="file" accept="image/*" multiple onChange={e => setImageFiles(Array.from(e.target.files || []))} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
         </div>
         <div>
-          <div style={{ fontSize: 11.5, color: '#a78bfa', marginBottom: 4 }}>3) تقسيم يدوي (اختياري) — ملف .txt، سطر لكل صورة بنفس ترتيب رفعها فوق: اكتب ثانية الظهور أو سيب السطر فاضي عشان الـ AI يقرر بنفسه</div>
+          <div style={{ fontSize: 11.5, color: '#a78bfa', marginBottom: 4 }}>
+            3) تقسيم يدوي (اختياري) — ملف .txt، سطر لكل صورة بنفس ترتيب رفعها فوق: اكتب ثانية الظهور (مطلقة من بداية الفيديو)، أو "رقم الصوت:ثانية جواه" لو الصوت متقسّم لأكتر من ملف (مثلاً 2:8.5 يعني الثانية 8.5 جوه الصوت رقم 2)، أو سيب السطر فاضي عشان الـ AI يقرر بنفسه
+          </div>
           <input ref={timingRef} type="file" accept=".txt,text/plain" onChange={e => setTimingFile(e.target.files[0] || null)} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+          {(job?.audio_parts_json?.length > 1) && (
+            <div style={{ fontSize: 10.5, color: '#565676', marginTop: 4 }}>
+              الصوت الحالي متقسّم لـ{job.audio_parts_json.length} أجزاء: {job.audio_parts_json.map(p => `صوت ${p.index} (${p.offsetSec.toFixed(1)}s–${(p.offsetSec + p.durationSec).toFixed(1)}s)`).join(' · ')}
+            </div>
+          )}
         </div>
         <button onClick={handleSubmit} disabled={uploading} style={{ background: uploading ? '#1a1a2e' : '#7c6af7', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 12.5, fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', alignSelf: 'flex-start' }}>
           {uploading ? '⏳ بيرفع ويطابق...' : '⬆️ ارفع وطابق'}
@@ -1111,9 +1118,35 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
 // ✅ NEW (طلب العميل — "مشاهد مركّبة"): محرر بسيط لرفع صورة دايجرام واحدة (زي مراحل مرقّمة)
 // وتحديد نقاط زوم/pan يدويًا عليها — كل نقطة = مربع بيتحدد بالسحب على الصورة + ثانية يتقال
 // فيها الكلام المطابق. الرندر (audioVideoRenderService.js) بيعمل زوم/pan ناعم بين النقط دي.
+// ✅ NEW (طلب العميل): لو الصوت مقسّم لأكتر من ملف، بدل ما تحسب الثانية المطلقة يدويًا،
+// اختار رقم الصوت واكتب الثانية جواه، واضغط "احسب" — هيملا الحقل المطلوب بالثانية المطلقة
+// الصح تلقائيًا (باستخدام offsetSec المسجّل لكل جزء وقت التفريغ)
+function AudioPartTimeHelper({ audioParts, onCompute }) {
+  const [partIdx, setPartIdx] = useState(audioParts[0]?.index || 1);
+  const [localSec, setLocalSec] = useState('');
+  if (!audioParts.length) return null;
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+      <select value={partIdx} onChange={e => setPartIdx(Number(e.target.value))} style={{ background: '#0d0d18', color: '#a78bfa', border: '1px solid #2d2d4a', borderRadius: 5, fontSize: 11, padding: '3px 4px' }}>
+        {audioParts.map(p => <option key={p.index} value={p.index}>صوت {p.index}</option>)}
+      </select>
+      <input type="number" placeholder="ثانية جواه" value={localSec} onChange={e => setLocalSec(e.target.value)} style={{ width: 70, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 5, fontSize: 11, padding: '3px 5px' }} />
+      <button
+        onClick={() => {
+          const part = audioParts.find(p => p.index === partIdx);
+          if (!part || !localSec.trim()) return;
+          onCompute(part.offsetSec + Number(localSec));
+        }}
+        style={{ background: '#1a1a2e', border: '1px solid #2d2d4a', color: '#22c55e', borderRadius: 5, fontSize: 11, padding: '3px 8px', cursor: 'pointer' }}
+      >احسب</button>
+    </span>
+  );
+}
+
 function CompositeSceneEditor({ job, onSaved }) {
   const [scenes, setScenes] = useState(job.composite_scenes_json || []);
   useEffect(() => { setScenes(job.composite_scenes_json || []); }, [job.id, job.composite_scenes_json]);
+  const audioParts = Array.isArray(job.audio_parts_json) ? job.audio_parts_json : [];
 
   const [showNew, setShowNew] = useState(false);
   const [csImage, setCsImage] = useState(null); // { url, width, height }
@@ -1273,10 +1306,17 @@ function CompositeSceneEditor({ job, onSaved }) {
             </div>
           ) : (
             <div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <input type="number" placeholder="من ثانية" value={csStart} onChange={e => setCsStart(e.target.value)} style={{ width: 100, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+                {audioParts.length > 1 && <AudioPartTimeHelper audioParts={audioParts} onCompute={t => setCsStart(String(t))} />}
                 <input type="number" placeholder="لحد ثانية" value={csEnd} onChange={e => setCsEnd(e.target.value)} style={{ width: 100, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+                {audioParts.length > 1 && <AudioPartTimeHelper audioParts={audioParts} onCompute={t => setCsEnd(String(t))} />}
               </div>
+              {audioParts.length > 1 && (
+                <div style={{ fontSize: 10.5, color: '#565676', marginBottom: 6 }}>
+                  الصوت ده متقسّم لـ{audioParts.length} أجزاء: {audioParts.map(p => `صوت ${p.index} (${p.offsetSec.toFixed(1)}s–${(p.offsetSec + p.durationSec).toFixed(1)}s)`).join(' · ')}
+                </div>
+              )}
               <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 6, lineHeight: 1.8 }}>
                 <b style={{ color: '#c4b5fd' }}>1)</b> اضغط وأنت ماسك زرار الماوس واسحب على الصورة لحد ما تعمل مربع حوالين المرحلة اللي عايزها (سيبه لما توصل للحجم المناسب).<br />
                 <b style={{ color: '#c4b5fd' }}>2)</b> بص لجدول الكلمات فوق ودوّر على الكلمة اللي بتتقال فيها المرحلة دي بالظبط، واكتب "ثانية" اللي جنبها (الرقم في العمود التاني) في خانة "ثانية النقطة دي" تحت — دي ثانية من بداية الفيديو كله، مش من بداية المشهد ده.<br />
@@ -1311,6 +1351,7 @@ function CompositeSceneEditor({ job, onSaved }) {
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
                 <input type="number" placeholder="ثانية النقطة (من بداية الفيديو)" title="الثانية من بداية الفيديو كله اللي المفروض الزوم يوصل عندها للمربع اللي حددته — شوف جدول الكلمات فوق" value={csKeyTime} onChange={e => setCsKeyTime(e.target.value)} style={{ width: 190, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
+                {audioParts.length > 1 && <AudioPartTimeHelper audioParts={audioParts} onCompute={t => setCsKeyTime(String(t))} />}
                 <input type="text" placeholder="تسمية (اختياري)" value={csKeyLabel} onChange={e => setCsKeyLabel(e.target.value)} style={{ width: 140, background: '#0d0d18', color: '#fff', border: '1px solid #2d2d4a', borderRadius: 6, padding: '5px 8px', fontSize: 12.5 }} />
                 <button onClick={addKeyframe} disabled={!drag} style={{ background: drag ? '#7c6af7' : '#1a1a2e', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12.5, cursor: drag ? 'pointer' : 'not-allowed' }}>+ أضف نقطة</button>
               </div>

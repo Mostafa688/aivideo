@@ -323,6 +323,10 @@ async function initDB() {
   // ✅ NEW (طلب العميل): الفيديو النهائي يتحذف تلقائيًا من R2 بعد 24 ساعة من التصيير عشان
   // التخزين مايتجمعش — محتاجين نعرف امتى بالظبط الفيديو بقى جاهز (مش وقت إنشاء الـ job نفسه)
   await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS video_ready_at TIMESTAMPTZ').catch(() => {});
+  // ✅ NEW (طلب العميل): لما الصوت بيتقسم لأكتر من ملف، بنسجّل حدود كل جزء (اسمه الأصلي +
+  // من/لحد ثانية جوه التايم لاين المدموج) — ده اللي بيخلي الأدمن يقدر يحدد "ثانية X جوه
+  // الصوت رقم N" بدل ما يحسب الثانية المطلقة يدويًا لأي نقطة زوم/تقسيم
+  await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS audio_parts_json JSONB').catch(() => {});
   // ✅ FIX: حالة "extracting"/"rendering" كانت بتعيش في ذاكرة الـ process بس (fire-and-forget
   // async IIFE) — لو السيرفر اترستارت في نص الشغل (ديبلوي جديد، كراش، صيانة Railway)، الشغل
   // بيتقفل من غير ما حد يحدّث حالة الـ job، فيفضل عالق على "extracting" للأبد من غير أي طريقة
@@ -1724,11 +1728,11 @@ export async function sendBroadcastEmail(subject, html, excludeEmails = []) {
 // مصنع فيديو الصوت (أدمن) — job واحد بيتحدث بمراحله (transcribing → extracting →
 // rendering → done/failed) عشان الأدمن يشوف التقدم من غير polling معقد
 // ═══════════════════════════════════════════════════════════════════════════
-export async function createAudioVideoJob({ audioUrl, transcriptText = null, wordsJson = null, ratio = '16:9', status = 'transcribing' }) {
+export async function createAudioVideoJob({ audioUrl, transcriptText = null, wordsJson = null, ratio = '16:9', status = 'transcribing', audioPartsJson = null }) {
   const { rows } = await pool.query(
-    `INSERT INTO audio_video_jobs (audio_url, transcript_text, words_json, ratio, status)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [audioUrl, transcriptText, wordsJson ? JSON.stringify(wordsJson) : null, ratio, status]
+    `INSERT INTO audio_video_jobs (audio_url, transcript_text, words_json, ratio, status, audio_parts_json)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [audioUrl, transcriptText, wordsJson ? JSON.stringify(wordsJson) : null, ratio, status, audioPartsJson ? JSON.stringify(audioPartsJson) : null]
   );
   return rows[0];
 }
