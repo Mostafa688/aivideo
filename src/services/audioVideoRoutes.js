@@ -274,29 +274,48 @@ router.post('/jobs/:id/bulk-stickers', adminAuth, upload.array('images', 20), as
     if (!req.files?.length) return res.status(400).json({ error: 'No images uploaded' });
     if (!job.words_json?.length) return res.status(400).json({ error: 'no_transcript' });
 
+    // ✅ NEW (طلب العميل): بديل يدوي اختياري للمطابقة بالـ AI — سطر واحد لكل صورة (بنفس
+    // ترتيب رفعها) في حقل نصي "manualTimes"، كل سطر إما فاضي (سيب الـ AI يحدد) أو رقم
+    // ثانية صريح (استخدمه زي ما هو، من غير ما نستهلك نداء مطابقة عليه خالص)
+    const manualLines = String(req.body.manualTimes || '').split(/\r?\n/);
+
     const uploaded = [];
-    for (const file of req.files) {
+    for (let i = 0; i < req.files.length; i++) {
+      const file = req.files[i];
       const meta = await sharp(file.buffer).metadata();
       const ext = (file.originalname.split('.').pop() || 'png').toLowerCase();
       const imageUrl = await uploadBulkStickerToR2(file.buffer, ext);
       const caption = await captionImageWithVision(imageUrl);
+      const manualLine = (manualLines[i] || '').trim();
+      const manualTime = manualLine ? Number(manualLine) : NaN;
       uploaded.push({
         imageUrl, imageWidth: meta.width, imageHeight: meta.height,
         caption: caption || file.originalname.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '),
+        manualTime: Number.isFinite(manualTime) ? Math.max(0, manualTime) : null,
       });
     }
 
-    const matches = await matchStickersToTranscript(job.words_json, uploaded);
-    if (!matches.length) return res.status(500).json({ error: 'Could not match any uploaded image to the transcript' });
+    // ✅ بس الصور اللي معندهاش وقت يدوي هي اللي بتدخل نداء المطابقة بالـ AI — الباقي بياخد
+    // وقته الصريح مباشرة من غير أي تخمين
+    const needsAiMatch = uploaded.map((img, idx) => ({ ...img, idx })).filter(img => img.manualTime == null);
+    const aiMatches = needsAiMatch.length ? await matchStickersToTranscript(job.words_json, needsAiMatch) : [];
 
-    const newElements = matches.map(m => {
-      const img = uploaded[m.imageIndex];
-      const startTime = job.words_json[m.startIdx].start;
+    const results = uploaded.map((img, idx) => img.manualTime != null ? { idx, startTime: img.manualTime } : null);
+    for (const m of aiMatches) {
+      const orig = needsAiMatch[m.imageIndex];
+      if (!orig) continue;
+      results[orig.idx] = { idx: orig.idx, startTime: job.words_json[m.startIdx].start };
+    }
+    const finalResults = results.filter(Boolean);
+    if (!finalResults.length) return res.status(500).json({ error: 'Could not place any uploaded image on the timeline' });
+
+    const newElements = finalResults.map(r => {
+      const img = uploaded[r.idx];
       return {
         element: img.caption, text: img.caption, kind: 'object',
         imagePrompt: null, characterKey: null, quoteSource: null,
         imageUrl: img.imageUrl, imageWidth: img.imageWidth, imageHeight: img.imageHeight,
-        start: startTime, end: startTime,
+        start: r.startTime, end: r.startTime,
       };
     });
 
@@ -307,7 +326,7 @@ router.post('/jobs/:id/bulk-stickers', adminAuth, upload.array('images', 20), as
     const merged = [...pruned, ...newElements].sort((a, b) => (Number(a.start) || 0) - (Number(b.start) || 0));
 
     const updated = await updateAudioVideoJob(job.id, { elementsJson: merged });
-    res.json({ job: updated, matchedCount: newElements.length, totalUploaded: uploaded.length, matches });
+    res.json({ job: updated, matchedCount: newElements.length, totalUploaded: uploaded.length });
   } catch (err) {
     console.error('[AudioVideo] Bulk sticker upload error:', err);
     res.status(500).json({ error: err.message });

@@ -915,6 +915,8 @@ function AudioVideoTab({ s }) {
         )}
       </div>
 
+      <BulkStickerUploader job={activeJob} onSaved={setActiveJob} onNewJob={load} />
+
       {activeJob && (
         <div style={s.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -940,8 +942,6 @@ function AudioVideoTab({ s }) {
           </div>
 
           <CompositeSceneEditor job={activeJob} onSaved={setActiveJob} />
-
-          <BulkStickerUploader job={activeJob} onSaved={setActiveJob} />
 
           {/* الخطوة 2: استخراج العناصر + توليد الصور — زرار "أعد الاستخراج" فاضل ظاهر حتى
               لو العناصر موجودة بالفعل، عشان تقدر تعيد التوليد على نفس الـ job (بعد أي تعديل
@@ -1018,43 +1018,88 @@ function AudioVideoTab({ s }) {
 // أنسب لحظة في الترانسكريبت. بيتحطوا كعناصر عادية في نفس التايم لاين تحت (imageWidth/
 // imageHeight بيتسجّلوا معاهم عشان الرندر يحافظ على نسبتهم الأصلية) — راجع/عدّل نتيجة
 // المطابقة من التايم لاين لو الـ AI حط أي صورة في مكان غلط
-function BulkStickerUploader({ job, onSaved }) {
+function BulkStickerUploader({ job, onSaved, onNewJob }) {
+  const [audioFile, setAudioFile] = useState(null);
+  const [imageFiles, setImageFiles] = useState([]);
+  const [timingFile, setTimingFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState('');
   const [result, setResult] = useState(null);
-  const fileRef = React.useRef(null);
+  const audioRef = React.useRef(null);
+  const imagesRef = React.useRef(null);
+  const timingRef = React.useRef(null);
 
-  const handleUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+  // ✅ NEW (طلب العميل): الأدمن يقدر يرفع الصوت من هنا مباشرة (يبدأ Job جديد بالكامل) بدل
+  // ما يحتاج ينزل لقسم الرفع فوق الأول — لو مفيش صوت متختار، بيستخدم الـ Job الحالي زي ما هو
+  const handleSubmit = async () => {
+    if (!audioFile && !job) { setErr('❌ لازم ترفع صوت الأول (مفيش Job حاليًا) — من هنا أو من قسم الرفع فوق'); return; }
+    if (!imageFiles.length) { setErr('❌ اختار صورة واحدة على الأقل'); return; }
     setUploading(true); setErr(''); setResult(null);
     try {
+      let targetJob = job;
+      if (audioFile) {
+        const audioForm = new FormData();
+        audioForm.append('audio', audioFile);
+        const ar = await fetch('/api/admin/audio-video/transcribe', {
+          method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: audioForm,
+        });
+        const ad = await ar.json();
+        if (!ar.ok) throw new Error(ad.error || 'Transcription failed');
+        targetJob = ad.job;
+        onSaved(targetJob);
+        if (onNewJob) onNewJob();
+      }
+      if (!targetJob?.words_json?.length) throw new Error('لسه مفيش ترانسكريبت للـ Job ده');
+
       const form = new FormData();
-      files.forEach(f => form.append('images', f));
-      const r = await fetch(`/api/admin/audio-video/jobs/${job.id}/bulk-stickers`, {
+      imageFiles.forEach(f => form.append('images', f));
+      // ✅ NEW (طلب العميل): ملف تقسيم يدوي اختياري — سطر لكل صورة (بنفس ترتيب رفعها)،
+      // إما ثانية صريحة (يتستخدم زي ما هو) أو سطر فاضي (سيب الـ AI يقرر). بنقراه في المتصفح
+      // ونبعت محتواه كنص عادي، مش كملف منفصل، أبسط في السيرفر
+      if (timingFile) form.append('manualTimes', await timingFile.text());
+      const r = await fetch(`/api/admin/audio-video/jobs/${targetJob.id}/bulk-stickers`, {
         method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: form,
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Upload failed');
       onSaved(d.job);
       setResult({ matched: d.matchedCount, total: d.totalUploaded });
+      setAudioFile(null); setImageFiles([]); setTimingFile(null);
+      if (audioRef.current) audioRef.current.value = '';
+      if (imagesRef.current) imagesRef.current.value = '';
+      if (timingRef.current) timingRef.current.value = '';
     } catch (e2) {
       setErr('❌ ' + e2.message);
     } finally {
       setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   };
-
-  if (!job.words_json?.length) return null;
 
   return (
     <div style={{ border: '1px solid #2d2d4a', borderRadius: 10, padding: 14, marginBottom: 16 }}>
       <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 8 }}>📚 رفع ملصقات بالجملة (AI بيطابقهم مع الصوت تلقائيًا)</div>
       <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 10, lineHeight: 1.7 }}>
-        ارفع أي عدد من الصور/الملصقات دفعة واحدة (ممكن يكون فيها نص مكتوب أصلًا) — الذكاء الاصطناعي بيقرا كل صورة وبيحدد بنفسه أنسب لحظة في الفيديو على حسب الكلام المنطوق وقتها، وبيحطهم بحركة pop سريعة. كل صورة بتتحط بنسبتها الأصلية (16:9 بتملا الفريم، 1:1/3:2 بتتحط بحجمها المتناسب) من غير أي تمدد. لو الـ AI حط أي صورة في مكان غلط، راجع وعدّل من التايم لاين تحت (اسحب مكانها أو احذفها).
+        ارفع أي عدد من الصور/الملصقات دفعة واحدة (ممكن يكون فيها نص مكتوب أصلًا) — الذكاء الاصطناعي بيقرا كل صورة وبيحدد بنفسه أنسب لحظة في الفيديو على حسب الكلام المنطوق وقتها، وبيحطهم بحركة pop سريعة بنسبتها الأصلية (16:9 بتملا الفريم، 1:1/3:2 بتتحط بحجمها المتناسب من غير أي تمدد). عايز تحدد التوقيت بنفسك بدل الـ AI؟ استخدم ملف التقسيم اليدوي تحت. لو الـ AI حط أي صورة في مكان غلط، عدّل من التايم لاين تحت.
       </div>
-      <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleUpload} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 11.5, color: '#a78bfa', marginBottom: 4 }}>1) صوت (اختياري — لبدء Job جديد من هنا مباشرة؛ لو سبته فاضي هيستخدم الـ Job الحالي)</div>
+          <input ref={audioRef} type="file" accept="audio/*" onChange={e => setAudioFile(e.target.files[0] || null)} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11.5, color: '#a78bfa', marginBottom: 4 }}>2) الصور/الملصقات (مطلوب)</div>
+          <input ref={imagesRef} type="file" accept="image/*" multiple onChange={e => setImageFiles(Array.from(e.target.files || []))} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11.5, color: '#a78bfa', marginBottom: 4 }}>3) تقسيم يدوي (اختياري) — ملف .txt، سطر لكل صورة بنفس ترتيب رفعها فوق: اكتب ثانية الظهور أو سيب السطر فاضي عشان الـ AI يقرر بنفسه</div>
+          <input ref={timingRef} type="file" accept=".txt,text/plain" onChange={e => setTimingFile(e.target.files[0] || null)} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+        </div>
+        <button onClick={handleSubmit} disabled={uploading} style={{ background: uploading ? '#1a1a2e' : '#7c6af7', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 12.5, fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', alignSelf: 'flex-start' }}>
+          {uploading ? '⏳ بيرفع ويطابق...' : '⬆️ ارفع وطابق'}
+        </button>
+      </div>
+
       {uploading && <div style={{ color: '#7c6af7', fontSize: 12, marginTop: 8 }}>⏳ بيحلل الصور ويطابقها مع الصوت... (ممكن ياخد شوية وقت حسب عدد الصور)</div>}
       {result && <div style={{ color: '#22c55e', fontSize: 12, marginTop: 8 }}>✅ اتطابق {result.matched} من {result.total} صورة. راجعهم في التايم لاين تحت.</div>}
       {err && <div style={{ color: '#f87171', fontSize: 12, marginTop: 8 }}>{err}</div>}
