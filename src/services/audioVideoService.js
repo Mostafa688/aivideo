@@ -447,39 +447,51 @@ async function uploadBulkStickerToR2(buffer, mimeExt) {
   return uploadUserImageToR2(buffer, mimeExt, 'bulk-sticker', 'img');
 }
 
-// ✅ موديل رؤية Groq (نفس الـ API endpoint المستخدم لباقي نداءات الـ LLM في الملف ده،
-// بس بموديل بيقبل صور). لو الموديل ده اتشال/اتغيّر اسمه يومًا ما (زي ما حصل قبل كده مع
-// موديل الاستخراج)، الدالة بترجع null بهدوء والمطابقة بتكمل بالاسم الأصلي للملف كبديل
-// ضعيف بدل ما توقف الميزة كلها
-const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+// ✅ FIX (بلاغ حقيقي من اللوج: 404 model_not_found): كان فيه اسم موديل رؤية واحد بس
+// مكتوب يدويًا، واتضح إنه مش متاح فعليًا على الحساب ده. بدل ما نراهن على اسم واحد
+// (ونتفاجئ تاني لو اتغيّر/اتشال زي ما حصل قبل كده مع موديل الاستخراج)، بنجرب كذا موديل
+// رؤية معروف على Groq بالترتيب لحد ما واحد ينجح — ونحفظ أول واحد نجح في الذاكرة عشان
+// الصور اللي بعده تستخدمه على طول من غير ما تعيد تجربة الفاشلين في كل مرة
+const VISION_MODEL_CANDIDATES = [
+  'meta-llama/llama-4-maverick-17b-128e-instruct',
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'llama-3.2-90b-vision-preview',
+  'llama-3.2-11b-vision-preview',
+];
+let workingVisionModel = null;
 async function captionImageWithVision(imageUrl) {
   if (!GROQ_API_KEY) return null;
-  try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Describe this sticker/image in one short sentence (max 20 words): what it depicts, and if it has any text written on it, quote that text exactly. Answer in the same language as any text in the image, or English if there is none. No preamble, just the description.' },
-            { type: 'image_url', image_url: { url: imageUrl } },
-          ],
-        }],
-        max_tokens: 150, temperature: 0.2,
-      }),
-    });
-    if (!res.ok) {
-      console.warn('[AudioVideo] Vision caption request failed:', res.status, (await res.text()).slice(0, 200));
-      return null;
+  const candidates = workingVisionModel ? [workingVisionModel, ...VISION_MODEL_CANDIDATES.filter(m => m !== workingVisionModel)] : VISION_MODEL_CANDIDATES;
+  for (const model of candidates) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Describe this sticker/image in one short sentence (max 20 words): what it depicts, and if it has any text written on it, quote that text exactly. Answer in the same language as any text in the image, or English if there is none. No preamble, just the description.' },
+              { type: 'image_url', image_url: { url: imageUrl } },
+            ],
+          }],
+          max_tokens: 150, temperature: 0.2,
+        }),
+      });
+      if (!res.ok) {
+        const errText = (await res.text()).slice(0, 200);
+        console.warn('[AudioVideo] Vision caption request failed:', model, res.status, errText);
+        continue;
+      }
+      workingVisionModel = model;
+      const data = await res.json();
+      return (data.choices?.[0]?.message?.content || '').trim().slice(0, 300) || null;
+    } catch (e) {
+      console.warn('[AudioVideo] Vision caption failed:', model, e.message);
     }
-    const data = await res.json();
-    return (data.choices?.[0]?.message?.content || '').trim().slice(0, 300) || null;
-  } catch (e) {
-    console.warn('[AudioVideo] Vision caption failed:', e.message);
-    return null;
   }
+  return null;
 }
 export { captionImageWithVision, uploadBulkStickerToR2 };
 
@@ -493,7 +505,7 @@ export async function matchStickersToTranscript(words, images) {
   const imageList = images.map((img, i) => `${i}: ${img.caption || '(no description available)'}`).join('\n');
   const system = `You are given a numbered list of custom sticker images an admin uploaded for a narration video, and the video's full narration transcript as an indexed word list ("index:word", space-separated). For EACH image, find the single word index in the transcript where that image's content best matches what's being said at that moment (if the sticker has text written on it, match it to the point where the narration says something equivalent or closely related). Assume the images are roughly in the same order as they'll appear in the narration unless the content clearly says otherwise. Briefly reason before deciding, then give your final answer.
 
-Output ONLY valid JSON, no explanation outside the JSON, no markdown fences: [{"image_index":N,"start_idx":N,"reasoning":"short reason"}] — one entry per image, in image_index order.`;
+Output ONLY valid JSON, no explanation outside the JSON, no markdown fences: [{"image_index":N,"start_idx":N,"reasoning":"reason in 6 words or fewer"}] — one entry per image, in image_index order. Keep "reasoning" very short (a few words, not a sentence) so the full response stays compact.`;
   const user = `Images:\n${imageList}\n\nIndexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -502,19 +514,37 @@ Output ONLY valid JSON, no explanation outside the JSON, no markdown fences: [{"
     body: JSON.stringify({
       model: ELEMENT_EXTRACTION_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-      max_tokens: 4000, temperature: 0.2, reasoning_effort: 'low',
+      max_tokens: 6000, temperature: 0.2, reasoning_effort: 'low',
     }),
   });
   if (!res.ok) throw new Error(`Sticker matching Groq error ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
+  const finishReason = data.choices?.[0]?.finish_reason;
   let raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
   const firstBracket = raw.indexOf('[');
   if (firstBracket > 0) raw = raw.slice(firstBracket);
+
+  // ✅ FIX (بلاغ حقيقي من اللوج: "Sticker matching returned invalid JSON"): نفس مشكلة
+  // الاستخراج بالظبط ممكن تحصل هنا — لو الرد اتقطع قبل ما يخلص المصفوفة (finish_reason:
+  // "length")، كان أي خطأ JSON.parse بيفشّل الدفعة كلها من غير أي محاولة تعافي. دلوقتي
+  // بنحاول نصلح الـ JSON زي extractVideoElements بالظبط: نلاقي آخر "}" كامل ونقفل المصفوفة
+  // من هناك، فنسترجع كل المطابقات الكاملة اللي اتولدت قبل القطع بدل ما نضيعها كلها
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error('Sticker matching returned invalid JSON');
+    const lastCompleteObjEnd = raw.lastIndexOf('}');
+    if (lastCompleteObjEnd === -1) {
+      console.error('[AudioVideo] Sticker matching raw response (unparseable):', raw.slice(0, 500));
+      throw new Error(`Sticker matching returned invalid JSON (finish_reason: ${finishReason}, length: ${raw.length} chars)`);
+    }
+    try {
+      parsed = JSON.parse(raw.slice(0, lastCompleteObjEnd + 1) + ']');
+      console.warn(`[AudioVideo] Sticker matching JSON was truncated (finish_reason: ${finishReason}) — recovered ${parsed.length} complete matches`);
+    } catch {
+      console.error('[AudioVideo] Sticker matching raw response (unparseable even after truncation repair):', raw.slice(0, 300), '...', raw.slice(-300));
+      throw new Error(`Sticker matching returned invalid JSON (finish_reason: ${finishReason}, length: ${raw.length} chars)`);
+    }
   }
   if (!Array.isArray(parsed)) throw new Error('Sticker matching did not return a JSON array');
 
