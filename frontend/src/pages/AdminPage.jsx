@@ -809,12 +809,12 @@ function AudioVideoTab({ s }) {
   };
 
   const handleUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setError(''); setUploading(true); setActiveJob(null);
     try {
       const form = new FormData();
-      form.append('audio', file);
+      files.forEach(f => form.append('audio', f));
       const r = await fetch('/api/admin/audio-video/transcribe', {
         method: 'POST',
         headers: { 'x-admin-secret': ADMIN_SECRET },
@@ -873,12 +873,13 @@ function AudioVideoTab({ s }) {
 
       <div style={s.card}>
         <div style={{ fontSize: 12.5, color: '#9ca3af', marginBottom: 12 }}>
-          الخطوة 1: ارفع ملف صوتي (mp3/wav) — هيترفع لـ R2 ويتفرّغ بتوقيت دقيق على مستوى الكلمة الواحدة (Groq Whisper).
+          الخطوة 1: ارفع ملف صوتي (mp3/wav) — هيترفع لـ R2 ويتفرّغ بتوقيت دقيق على مستوى الكلمة الواحدة (Groq Whisper). لو الصوت مقسّم لأكتر من ملف (فيديو طويل)، اختار كل الملفات دفعة واحدة بنفس الترتيب اللي بيتقالوا بيه — هيتفرّغوا كل واحد لوحده وبعدين يتدمجوا في تايم لاين واحد متصل.
         </div>
         <input
           ref={fileRef}
           type="file"
           accept="audio/*"
+          multiple
           onChange={handleUpload}
           disabled={uploading}
           style={{ fontSize: 13, color: '#d1d5db' }}
@@ -1019,7 +1020,7 @@ function AudioVideoTab({ s }) {
 // imageHeight بيتسجّلوا معاهم عشان الرندر يحافظ على نسبتهم الأصلية) — راجع/عدّل نتيجة
 // المطابقة من التايم لاين لو الـ AI حط أي صورة في مكان غلط
 function BulkStickerUploader({ job, onSaved, onNewJob }) {
-  const [audioFile, setAudioFile] = useState(null);
+  const [audioFiles, setAudioFiles] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
   const [timingFile, setTimingFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -1032,14 +1033,14 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
   // ✅ NEW (طلب العميل): الأدمن يقدر يرفع الصوت من هنا مباشرة (يبدأ Job جديد بالكامل) بدل
   // ما يحتاج ينزل لقسم الرفع فوق الأول — لو مفيش صوت متختار، بيستخدم الـ Job الحالي زي ما هو
   const handleSubmit = async () => {
-    if (!audioFile && !job) { setErr('❌ لازم ترفع صوت الأول (مفيش Job حاليًا) — من هنا أو من قسم الرفع فوق'); return; }
+    if (!audioFiles.length && !job) { setErr('❌ لازم ترفع صوت الأول (مفيش Job حاليًا) — من هنا أو من قسم الرفع فوق'); return; }
     if (!imageFiles.length) { setErr('❌ اختار صورة واحدة على الأقل'); return; }
     setUploading(true); setErr(''); setResult(null);
     try {
       let targetJob = job;
-      if (audioFile) {
+      if (audioFiles.length) {
         const audioForm = new FormData();
-        audioForm.append('audio', audioFile);
+        audioFiles.forEach(f => audioForm.append('audio', f));
         const ar = await fetch('/api/admin/audio-video/transcribe', {
           method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: audioForm,
         });
@@ -1064,7 +1065,7 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
       if (!r.ok) throw new Error(d.error || 'Upload failed');
       onSaved(d.job);
       setResult({ matched: d.matchedCount, total: d.totalUploaded });
-      setAudioFile(null); setImageFiles([]); setTimingFile(null);
+      setAudioFiles([]); setImageFiles([]); setTimingFile(null);
       if (audioRef.current) audioRef.current.value = '';
       if (imagesRef.current) imagesRef.current.value = '';
       if (timingRef.current) timingRef.current.value = '';
@@ -1084,8 +1085,8 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 11.5, color: '#a78bfa', marginBottom: 4 }}>1) صوت (اختياري — لبدء Job جديد من هنا مباشرة؛ لو سبته فاضي هيستخدم الـ Job الحالي)</div>
-          <input ref={audioRef} type="file" accept="audio/*" onChange={e => setAudioFile(e.target.files[0] || null)} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+          <div style={{ fontSize: 11.5, color: '#a78bfa', marginBottom: 4 }}>1) صوت (اختياري — لبدء Job جديد من هنا مباشرة؛ لو سبته فاضي هيستخدم الـ Job الحالي). لو الصوت مقسّم لأكتر من ملف، اختارهم كلهم دفعة واحدة بنفس الترتيب</div>
+          <input ref={audioRef} type="file" accept="audio/*" multiple onChange={e => setAudioFiles(Array.from(e.target.files || []))} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
         </div>
         <div>
           <div style={{ fontSize: 11.5, color: '#a78bfa', marginBottom: 4 }}>2) الصور/الملصقات (مطلوب)</div>

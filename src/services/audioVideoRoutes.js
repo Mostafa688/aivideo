@@ -9,6 +9,8 @@
 import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2, uploadBulkStickerToR2, captionImageWithVision, matchStickersToTranscript } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
@@ -24,21 +26,55 @@ function adminAuth(req, res, next) {
   next();
 }
 
-router.post('/transcribe', adminAuth, upload.single('audio'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No audio file uploaded' });
-  const tmpPath = tmpAudioPath(req.file.originalname);
-  fs.writeFileSync(tmpPath, req.file.buffer);
+// ✅ NEW (طلب العميل): فيديوهات طويلة بيتقسم صوتها لأكتر من ملف — بنقبل لحد 10 ملفات صوت
+// دفعة واحدة، وبنفرّغ كل ملف لوحده (كل ملف يفضل تحت أي حد حجم/مدة بتاع Whisper نفسه، وده
+// السبب الحقيقي وراء تقسيمهم أصلًا)، وبنزيح توقيت كل كلمة بمقدار مجموع مدة الملفات اللي
+// قبلها عشان الكل يفضل على تايم لاين واحد متصل. الصوت نفسه بيتدمج في ملف واحد بفلتر
+// concat (يشتغل مع فورمات مختلفة مع بعض، عكس الـ concat demuxer اللي محتاج نفس الكوديك)
+router.post('/transcribe', adminAuth, upload.array('audio', 10), async (req, res) => {
+  if (!req.files?.length) return res.status(400).json({ error: 'No audio file uploaded' });
+  const tmpPaths = req.files.map(f => {
+    const p = tmpAudioPath(f.originalname);
+    fs.writeFileSync(p, f.buffer);
+    return p;
+  });
+  let mergedPath = null;
   try {
-    const ext = tmpPath.split('.').pop();
-    const audioUrl = await uploadAudioVideoSourceToR2(req.file.buffer, ext);
-    const { text, words } = await transcribeAudioWithTimestamps(tmpPath);
-    const job = await createAudioVideoJob({ audioUrl, transcriptText: text, wordsJson: words, status: 'transcribed' });
+    const words = [];
+    const textParts = [];
+    let offset = 0;
+    for (const tmpPath of tmpPaths) {
+      const { text, words: partWords } = await transcribeAudioWithTimestamps(tmpPath);
+      textParts.push(text);
+      words.push(...partWords.map(w => ({ word: w.word, start: w.start + offset, end: w.end + offset })));
+      offset += partWords.length ? partWords[partWords.length - 1].end + 0.3 : 0;
+    }
+
+    let finalBuffer, finalExt;
+    if (tmpPaths.length > 1) {
+      mergedPath = path.join('temp', `audiovideo_merged_${Date.now()}.mp3`);
+      const inputs = tmpPaths.map(p => `-i "${p}"`).join(' ');
+      const filterInputs = tmpPaths.map((_, i) => `[${i}:a]`).join('');
+      execSync(
+        `ffmpeg -y ${inputs} -filter_complex "${filterInputs}concat=n=${tmpPaths.length}:v=0:a=1[out]" -map "[out]" "${mergedPath}"`,
+        { stdio: 'pipe' }
+      );
+      finalBuffer = fs.readFileSync(mergedPath);
+      finalExt = 'mp3';
+    } else {
+      finalBuffer = req.files[0].buffer;
+      finalExt = tmpPaths[0].split('.').pop();
+    }
+
+    const audioUrl = await uploadAudioVideoSourceToR2(finalBuffer, finalExt);
+    const job = await createAudioVideoJob({ audioUrl, transcriptText: textParts.join(' '), wordsJson: words, status: 'transcribed' });
     res.json({ job });
   } catch (err) {
     console.error('[AudioVideo] Transcribe error:', err);
     res.status(500).json({ error: err.message || 'Transcription failed' });
   } finally {
-    try { fs.unlinkSync(tmpPath); } catch {}
+    for (const p of tmpPaths) { try { fs.unlinkSync(p); } catch {} }
+    if (mergedPath) { try { fs.unlinkSync(mergedPath); } catch {} }
   }
 });
 
