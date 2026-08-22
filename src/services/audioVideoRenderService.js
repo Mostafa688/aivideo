@@ -125,6 +125,29 @@ async function prepareIconImage(iconBuffer, size, outPath) {
     .toFile(outPath);
 }
 
+// ✅ NEW (طلب العميل — ملصقات مخصّصة بالجملة): الملصقات المرفوعة بالجملة أبعادها الأصلية
+// بتتحفظ (imageWidth/imageHeight)، وعايزين نعرضها بنسبتها الأصلية بدل ما نفرض مربع تابت
+// زي أيقونات Iconify العادية. لو الصورة قريبة من نسبة الفيديو نفسه (16:9 على فيديو 16:9
+// مثلًا)، بتملا الفريم بالكامل زي ما طلب العميل بالظبط؛ غير كده (3:2، 1:1...)، بتتحط بأكبر
+// حجم ممكن يحافظ على نسبتها الأصلية من غير أي تمدد/تكبير غير متناسب
+function computeStickerDisplaySize(imgW, imgH, W, H) {
+  const imgAspect = imgW / imgH;
+  const frameAspect = W / H;
+  if (Math.abs(imgAspect - frameAspect) / frameAspect < 0.05) {
+    return { baseW: W, baseH: H };
+  }
+  const maxDim = Math.min(W, H) * 0.85;
+  return imgAspect >= 1
+    ? { baseW: maxDim, baseH: maxDim / imgAspect }
+    : { baseW: maxDim * imgAspect, baseH: maxDim };
+}
+async function prepareCustomStickerImage(buffer, targetW, targetH, outPath) {
+  await sharp(buffer, { density: 900 })
+    .resize(Math.round(targetW), Math.round(targetH), { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toFile(outPath);
+}
+
 // ✅ FIX: حركة "pop" حقيقية بدل الزوم البطيء اللي كان قبل كده. ملحوظة مهمة: zoompan (اللي
 // كان مستخدم قبل كده) بيعمل "زوم على الفريم كله" (يقص جزء من الصورة ويكبّره) ومش مصمم أصلًا
 // إنه "يصغّر" (zoom<1 مش سلوك مدعوم فيه) — فمينفعش نستخدمه لعمل تأثير "يبدأ صغير ويكبر".
@@ -365,8 +388,17 @@ export async function renderAudioVideoJob(job) {
       if (!iconRes.ok) throw new Error(`Could not download element image: ${seg.element}`);
       const iconBuffer = Buffer.from(await iconRes.arrayBuffer());
       const iconPngPath = path.join(workDir, `icon_${i}.png`);
-      await prepareIconImage(iconBuffer, iconSize, iconPngPath);
-      buildAnimatedClip(iconPngPath, W, H, iconSize, iconSize, seg.segDuration, clipPath);
+      // ✅ NEW (طلب العميل — ملصقات مخصّصة بالجملة): لو العنصر ده معاه أبعاد أصلية محفوظة
+      // (imageWidth/imageHeight)، ده معناه ملصق مرفوع بالجملة ومحتاج يحافظ على نسبته
+      // الأصلية بدل المربع التابت المستخدم لأيقونات Iconify/Tenor/GitHub العادية
+      if (seg.imageWidth && seg.imageHeight) {
+        const { baseW, baseH } = computeStickerDisplaySize(seg.imageWidth, seg.imageHeight, W, H);
+        await prepareCustomStickerImage(iconBuffer, baseW, baseH, iconPngPath);
+        buildAnimatedClip(iconPngPath, W, H, baseW, baseH, seg.segDuration, clipPath);
+      } else {
+        await prepareIconImage(iconBuffer, iconSize, iconPngPath);
+        buildAnimatedClip(iconPngPath, W, H, iconSize, iconSize, seg.segDuration, clipPath);
+      }
       timedClips.push({ startTime: seg.segStart, clipPath });
     }
 

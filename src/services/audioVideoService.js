@@ -434,3 +434,96 @@ export async function findLibraryIcon(keyword) {
     return null;
   }
 }
+
+// ── ملصقات مخصّصة بالجملة (طلب العميل) ───────────────────────────────────────────
+// الأدمن بيرفع مجموعة صور/ملصقات جاهزة (ممكن يكون فيها نص مكتوب أصلًا)، والنظام:
+// 1) بيقرأ كل صورة بموديل رؤية (vision) مجاني على Groq — نفس مفتاح GROQ_API_KEY المستخدم
+//    أصلًا للتفريغ والاستخراج، فمفيش أي تسجيل/مفتاح جديد مطلوب من العميل خالص.
+// 2) بيدي النظام كل الأوصاف دي + الترانسكريبت الكامل مرقّم بالكلمة لنداء LLM واحد يحدد
+//    لكل صورة أنسب لحظة في الفيديو تتناسب مع كلامها.
+// 3) بيتحط كل ملصق كـ"عنصر" عادي زي أي لقطة تانية (imageWidth/imageHeight بتتخزن معاه
+//    عشان الرندر يحافظ على نسبته الأصلية بدل ما يفرض مربع تابت زي الأيقونات العادية).
+async function uploadBulkStickerToR2(buffer, mimeExt) {
+  return uploadUserImageToR2(buffer, mimeExt, 'bulk-sticker', 'img');
+}
+
+// ✅ موديل رؤية Groq (نفس الـ API endpoint المستخدم لباقي نداءات الـ LLM في الملف ده،
+// بس بموديل بيقبل صور). لو الموديل ده اتشال/اتغيّر اسمه يومًا ما (زي ما حصل قبل كده مع
+// موديل الاستخراج)، الدالة بترجع null بهدوء والمطابقة بتكمل بالاسم الأصلي للملف كبديل
+// ضعيف بدل ما توقف الميزة كلها
+const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+async function captionImageWithVision(imageUrl) {
+  if (!GROQ_API_KEY) return null;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this sticker/image in one short sentence (max 20 words): what it depicts, and if it has any text written on it, quote that text exactly. Answer in the same language as any text in the image, or English if there is none. No preamble, just the description.' },
+            { type: 'image_url', image_url: { url: imageUrl } },
+          ],
+        }],
+        max_tokens: 150, temperature: 0.2,
+      }),
+    });
+    if (!res.ok) {
+      console.warn('[AudioVideo] Vision caption request failed:', res.status, (await res.text()).slice(0, 200));
+      return null;
+    }
+    const data = await res.json();
+    return (data.choices?.[0]?.message?.content || '').trim().slice(0, 300) || null;
+  } catch (e) {
+    console.warn('[AudioVideo] Vision caption failed:', e.message);
+    return null;
+  }
+}
+export { captionImageWithVision, uploadBulkStickerToR2 };
+
+// ✅ نداء واحد بس (زي extractVideoElements بالظبط): بياخد الترانسكريبت مرقّم بالكلمة +
+// وصف كل صورة، ويرجّع لكل صورة أنسب word_index تظهر عنده. reasoning اختياري بيساعد في
+// الدقة (بيخلي الموديل يفكر خطوة بخطوة) وممكن نلوجه للتشخيص لو المطابقة غلط
+export async function matchStickersToTranscript(words, images) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+  if (!words?.length || !images?.length) return [];
+  const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
+  const imageList = images.map((img, i) => `${i}: ${img.caption || '(no description available)'}`).join('\n');
+  const system = `You are given a numbered list of custom sticker images an admin uploaded for a narration video, and the video's full narration transcript as an indexed word list ("index:word", space-separated). For EACH image, find the single word index in the transcript where that image's content best matches what's being said at that moment (if the sticker has text written on it, match it to the point where the narration says something equivalent or closely related). Assume the images are roughly in the same order as they'll appear in the narration unless the content clearly says otherwise. Briefly reason before deciding, then give your final answer.
+
+Output ONLY valid JSON, no explanation outside the JSON, no markdown fences: [{"image_index":N,"start_idx":N,"reasoning":"short reason"}] — one entry per image, in image_index order.`;
+  const user = `Images:\n${imageList}\n\nIndexed transcript (word_index:word):\n${indexedTranscript}\n\nJSON only:`;
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: ELEMENT_EXTRACTION_MODEL,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      max_tokens: 4000, temperature: 0.2, reasoning_effort: 'low',
+    }),
+  });
+  if (!res.ok) throw new Error(`Sticker matching Groq error ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const data = await res.json();
+  let raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+  const firstBracket = raw.indexOf('[');
+  if (firstBracket > 0) raw = raw.slice(firstBracket);
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('Sticker matching returned invalid JSON');
+  }
+  if (!Array.isArray(parsed)) throw new Error('Sticker matching did not return a JSON array');
+
+  const maxIdx = words.length - 1;
+  return parsed
+    .map(m => ({
+      imageIndex: Math.round(Number(m.image_index)),
+      startIdx: Math.max(0, Math.min(maxIdx, Math.round(Number(m.start_idx)))),
+      reasoning: String(m.reasoning || '').slice(0, 200),
+    }))
+    .filter(m => Number.isInteger(m.imageIndex) && m.imageIndex >= 0 && m.imageIndex < images.length);
+}

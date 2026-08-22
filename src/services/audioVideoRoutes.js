@@ -10,7 +10,7 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import sharp from 'sharp';
-import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2 } from './audioVideoService.js';
+import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2, uploadBulkStickerToR2, captionImageWithVision, matchStickersToTranscript } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
 import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobById, listAudioVideoJobsForAdmin, upsertReferenceImage, listReferenceImages, getReferenceImagesMap, deleteReferenceImage } from './authService.js';
 
@@ -240,6 +240,11 @@ router.post('/jobs/:id/elements', adminAuth, async (req, res) => {
           characterKey: kind === 'character' && el.characterKey ? String(el.characterKey).toLowerCase().trim().slice(0, 60) : null,
           quoteSource: kind === 'quote' ? String(el.quoteSource || 'other').slice(0, 20) : null,
           imageUrl: (kind === 'character' || kind === 'object' || kind === 'quote') && el.imageUrl ? String(el.imageUrl) : null,
+          // ✅ NEW: لو العنصر ده ملصق مخصّص (بلوك رفع بالجملة) وله أبعاد أصلية محفوظة،
+          // لازم تفضل متسجّلة حتى بعد أي حفظ من التايم لاين — عشان الرندر يفضل محافظ على
+          // نسبته الأصلية بدل ما يرجع يفرض مربع تابت زي الأيقونات العادية
+          imageWidth: el.imageWidth ? Math.max(0, Number(el.imageWidth) || 0) || null : null,
+          imageHeight: el.imageHeight ? Math.max(0, Number(el.imageHeight) || 0) || null : null,
           start: Math.max(0, Number(el.start) || 0),
           end: Math.max(0, Number(el.end) || 0),
         };
@@ -251,6 +256,60 @@ router.post('/jobs/:id/elements', adminAuth, async (req, res) => {
     res.json({ job: updated });
   } catch (err) {
     console.error('[AudioVideo] Save elements error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW (طلب العميل): رفع ملصقات/صور جاهزة بالجملة (ممكن يكون فيها نص مكتوب أصلًا) —
+// النظام بيقرا كل صورة بموديل رؤية مجاني (نفس مفتاح Groq المستخدم أصلًا، مفيش تسجيل جديد)،
+// وبعدين نداء LLM واحد بيحدد لكل صورة أنسب لحظة في الترانسكريبت تتحط عندها، وبيتحطوا
+// كـ"عناصر" عادية (imageWidth/imageHeight بتتسجل معاهم عشان الرندر يحافظ على نسبتهم
+// الأصلية 16:9/3:2/1:1... بدل ما يفرض مربع تابت زي أيقونات Iconify). متزامن (مش async
+// polling) عشان التنفيذ أبسط — ممكن ياخد وقت لو عدد الصور كبير (نداء رؤية لكل صورة + نداء
+// مطابقة واحد في الآخر)
+router.post('/jobs/:id/bulk-stickers', adminAuth, upload.array('images', 20), async (req, res) => {
+  try {
+    const job = await getAudioVideoJobById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'not_found' });
+    if (!req.files?.length) return res.status(400).json({ error: 'No images uploaded' });
+    if (!job.words_json?.length) return res.status(400).json({ error: 'no_transcript' });
+
+    const uploaded = [];
+    for (const file of req.files) {
+      const meta = await sharp(file.buffer).metadata();
+      const ext = (file.originalname.split('.').pop() || 'png').toLowerCase();
+      const imageUrl = await uploadBulkStickerToR2(file.buffer, ext);
+      const caption = await captionImageWithVision(imageUrl);
+      uploaded.push({
+        imageUrl, imageWidth: meta.width, imageHeight: meta.height,
+        caption: caption || file.originalname.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' '),
+      });
+    }
+
+    const matches = await matchStickersToTranscript(job.words_json, uploaded);
+    if (!matches.length) return res.status(500).json({ error: 'Could not match any uploaded image to the transcript' });
+
+    const newElements = matches.map(m => {
+      const img = uploaded[m.imageIndex];
+      const startTime = job.words_json[m.startIdx].start;
+      return {
+        element: img.caption, text: img.caption, kind: 'object',
+        imagePrompt: null, characterKey: null, quoteSource: null,
+        imageUrl: img.imageUrl, imageWidth: img.imageWidth, imageHeight: img.imageHeight,
+        start: startTime, end: startTime,
+      };
+    });
+
+    // ✅ أي عنصر قديم قريب جدًا (أقل من ثانية) من نقطة ملصق جديد بيتشال، عشان الملصق
+    // المخصّص يحل محله مباشرة بدل ما يفضل عنصر قديم بمدة شبه صفرية قبله
+    const existing = Array.isArray(job.elements_json) ? job.elements_json : [];
+    const pruned = existing.filter(el => !newElements.some(ne => Math.abs((Number(el.start) || 0) - ne.start) < 1));
+    const merged = [...pruned, ...newElements].sort((a, b) => (Number(a.start) || 0) - (Number(b.start) || 0));
+
+    const updated = await updateAudioVideoJob(job.id, { elementsJson: merged });
+    res.json({ job: updated, matchedCount: newElements.length, totalUploaded: uploaded.length, matches });
+  } catch (err) {
+    console.error('[AudioVideo] Bulk sticker upload error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -941,6 +941,8 @@ function AudioVideoTab({ s }) {
 
           <CompositeSceneEditor job={activeJob} onSaved={setActiveJob} />
 
+          <BulkStickerUploader job={activeJob} onSaved={setActiveJob} />
+
           {/* الخطوة 2: استخراج العناصر + توليد الصور — زرار "أعد الاستخراج" فاضل ظاهر حتى
               لو العناصر موجودة بالفعل، عشان تقدر تعيد التوليد على نفس الـ job (بعد أي تعديل
               على منطق الاستخراج/الصور) من غير ما تحتاج ترفع الصوت تاني من الصفر */}
@@ -1006,6 +1008,56 @@ function AudioVideoTab({ s }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ✅ NEW (طلب العميل — "ملصقات مخصّصة بالجملة"): رفع أي عدد من الصور/الملصقات الجاهزة
+// دفعة واحدة (ممكن يكون فيها نص مكتوب أصلًا) — الباك إند بيقرا كل صورة بموديل رؤية Groq
+// مجاني (نفس مفتاح GROQ_API_KEY، مفيش تسجيل جديد)، وبعدين نداء LLM واحد بيحدد لكل صورة
+// أنسب لحظة في الترانسكريبت. بيتحطوا كعناصر عادية في نفس التايم لاين تحت (imageWidth/
+// imageHeight بيتسجّلوا معاهم عشان الرندر يحافظ على نسبتهم الأصلية) — راجع/عدّل نتيجة
+// المطابقة من التايم لاين لو الـ AI حط أي صورة في مكان غلط
+function BulkStickerUploader({ job, onSaved }) {
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState('');
+  const [result, setResult] = useState(null);
+  const fileRef = React.useRef(null);
+
+  const handleUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true); setErr(''); setResult(null);
+    try {
+      const form = new FormData();
+      files.forEach(f => form.append('images', f));
+      const r = await fetch(`/api/admin/audio-video/jobs/${job.id}/bulk-stickers`, {
+        method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: form,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Upload failed');
+      onSaved(d.job);
+      setResult({ matched: d.matchedCount, total: d.totalUploaded });
+    } catch (e2) {
+      setErr('❌ ' + e2.message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  if (!job.words_json?.length) return null;
+
+  return (
+    <div style={{ border: '1px solid #2d2d4a', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, color: '#fff', fontSize: 13, marginBottom: 8 }}>📚 رفع ملصقات بالجملة (AI بيطابقهم مع الصوت تلقائيًا)</div>
+      <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 10, lineHeight: 1.7 }}>
+        ارفع أي عدد من الصور/الملصقات دفعة واحدة (ممكن يكون فيها نص مكتوب أصلًا) — الذكاء الاصطناعي بيقرا كل صورة وبيحدد بنفسه أنسب لحظة في الفيديو على حسب الكلام المنطوق وقتها، وبيحطهم بحركة pop سريعة. كل صورة بتتحط بنسبتها الأصلية (16:9 بتملا الفريم، 1:1/3:2 بتتحط بحجمها المتناسب) من غير أي تمدد. لو الـ AI حط أي صورة في مكان غلط، راجع وعدّل من التايم لاين تحت (اسحب مكانها أو احذفها).
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleUpload} disabled={uploading} style={{ fontSize: 12.5, color: '#d1d5db' }} />
+      {uploading && <div style={{ color: '#7c6af7', fontSize: 12, marginTop: 8 }}>⏳ بيحلل الصور ويطابقها مع الصوت... (ممكن ياخد شوية وقت حسب عدد الصور)</div>}
+      {result && <div style={{ color: '#22c55e', fontSize: 12, marginTop: 8 }}>✅ اتطابق {result.matched} من {result.total} صورة. راجعهم في التايم لاين تحت.</div>}
+      {err && <div style={{ color: '#f87171', fontSize: 12, marginTop: 8 }}>{err}</div>}
     </div>
   );
 }
