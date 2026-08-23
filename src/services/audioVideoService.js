@@ -263,6 +263,25 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
       };
     })
     .filter(el => el.element && Number.isFinite(el.start) && Number.isFinite(el.end) && el.end > el.start)
+    // ✅ FIX (بلاغ العميل: كتلة نص ضخمة — اقتباس/جملة كاملة طويلة جدًا ظاهرة ثابتة على الشاشة
+    // بدل نص بيتغيّر كل شوية زي باقي اللقطات): التعليمات فوق بتقول للموديل يلتزم بـ3-5 كلمات
+    // لكل لقطة، لكن ده مش مضمون 100% (خصوصًا لقطات "quote" لما الموديل يفضّل يسيب الاقتباس
+    // كامل كوحدة واحدة). شبكة أمان في الكود نفسه: أي لقطة أطول من الحد ده بتتقسّم هنا لبيتات
+    // فرعية متتالية (~5 كلمات لكل واحدة)، كل واحدة بتوقيتها الحقيقي من الـ words array الأصلي —
+    // نفس الـ kind/quoteSource بتتورّث لكل جزء
+    .flatMap(el => {
+      const MAX_BEAT_WORDS = 8, SPLIT_CHUNK_WORDS = 5;
+      const span = el.endIdx - el.startIdx + 1;
+      if (span <= MAX_BEAT_WORDS) return [el];
+      const chunks = [];
+      for (let s = el.startIdx; s <= el.endIdx; s += SPLIT_CHUNK_WORDS) {
+        const e = Math.min(el.endIdx, s + SPLIT_CHUNK_WORDS - 1);
+        const chunkText = words.slice(s, e + 1).map(w => w.word).join(' ').trim();
+        if (!chunkText) continue;
+        chunks.push({ ...el, element: chunkText, text: chunkText, startIdx: s, endIdx: e, start: words[s].start, end: words[e].end });
+      }
+      return chunks.length ? chunks : [el];
+    })
     // ✅ FIX (طلب العميل): شبكة الأمان دلوقتي بتحوّل العنصر الحساس لـ"quote" (نص بس، من غير
     // صورة/ملصق) بدل ما تشيله بالكامل — الآيات والأحاديث وأي إشارة لله/نبي لازم تفضل ظاهرة
     // كنص على الشاشة، بس من غير أي تمثيل بصري خالص، حتى لو الـ LLM حطها "character"/"object"
