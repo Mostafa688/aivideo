@@ -99,22 +99,6 @@ router.post('/transcribe', adminAuth, upload.array('audio', 10), async (req, res
       finalExt = tmpPaths[0].split('.').pop();
     }
 
-    // ✅ تشخيص (بلاغ العميل: العناصر/الكابشن لسه بتسبق الصوت شوية حتى بعد تصحيح تراكم تقريب
-    // الفريمات في الرندر): بنقارن هنا آخر توقيت كلمة رجّعه Whisper بالمدة الحقيقية للملف
-    // الصوتي نفسه (ffprobe) — لو فيه فرق حقيقي بينهم، ده معناه المشكلة مش في الرندر خالص،
-    // دي في توقيت Whisper نفسه (بيقصّر شوية عن الطول الحقيقي للصوت)، ومحتاجة حل مختلف تمامًا
-    try {
-      const lastWordEnd = words.length ? words[words.length - 1].end : 0;
-      const realAudioPath = tmpPaths.length > 1 ? mergedPath : tmpPaths[0];
-      const realDuration = parseFloat(execSync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${realAudioPath}"`,
-        { encoding: 'utf8' }
-      ).trim());
-      console.log(`[AudioVideo] Timing check — last Whisper word ends at ${lastWordEnd.toFixed(3)}s, real audio file duration is ${realDuration.toFixed(3)}s (gap: ${(realDuration - lastWordEnd).toFixed(3)}s)`);
-    } catch (e) {
-      console.warn('[AudioVideo] Timing check failed:', e.message);
-    }
-
     const audioUrl = await uploadAudioVideoSourceToR2(finalBuffer, finalExt);
     const job = await createAudioVideoJob({ audioUrl, transcriptText: textParts.join(' '), wordsJson: words, status: 'transcribed', audioPartsJson: audioParts });
     res.json({ job });
