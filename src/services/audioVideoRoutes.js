@@ -50,8 +50,35 @@ router.post('/transcribe', adminAuth, upload.array('audio', 10), async (req, res
     for (let i = 0; i < tmpPaths.length; i++) {
       const { text, words: partWords } = await transcribeAudioWithTimestamps(tmpPaths[i]);
       textParts.push(text);
-      words.push(...partWords.map(w => ({ word: w.word, start: w.start + offset, end: w.end + offset })));
-      const partDuration = partWords.length ? partWords[partWords.length - 1].end + 0.3 : 0;
+
+      // ✅ FIX (بلاغ متكرر: "الصوت بيسبق العناصر والنصوص" حتى بعد تصحيح تراكم تقريب الفريمات
+      // في الرندر): السبب الحقيقي مش في الرندر خالص — Whisper نفسه بيرجّع توقيت كل كلمة
+      // بـinterpolation من توقيت الجملة (segment)، مش قياس مباشر، وده بيعمل "drift" بيكبر كل ما
+      // الصوت طال (سلوك موثّق معروف عن Whisper، مش حاجة غلط في الكود). الحل: نقيس المدة الحقيقية
+      // للملف الصوتي نفسه بـffprobe (أداة مجانية موجودة أصلًا)، ولو آخر كلمة رجّعها Whisper
+      // بعيدة عن المدة الحقيقية دي بنسبة محسوسة، بنعمل rescale نسبي لكل توقيتات الكلمات في
+      // الجزء ده عشان تتصحح على طول التايم لاين مش بس في الآخر — كده أي drift نسبي (بينمو كل ما
+      // الصوت طال) بيتصحح تلقائيًا بغض النظر عن طول الصوت
+      let scaledWords = partWords;
+      try {
+        const realPartDuration = parseFloat(execSync(
+          `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmpPaths[i]}"`,
+          { encoding: 'utf8' }
+        ).trim());
+        const lastWordEnd = partWords.length ? partWords[partWords.length - 1].end : 0;
+        if (lastWordEnd > 0.5 && realPartDuration > 0) {
+          const scale = realPartDuration / lastWordEnd;
+          console.log(`[AudioVideo] Timing check (part ${i + 1}) — last Whisper word ends at ${lastWordEnd.toFixed(3)}s, real audio file duration is ${realPartDuration.toFixed(3)}s (scale ${scale.toFixed(4)})`);
+          if (Math.abs(scale - 1) > 0.005) {
+            scaledWords = partWords.map(w => ({ word: w.word, start: w.start * scale, end: w.end * scale }));
+          }
+        }
+      } catch (e) {
+        console.warn('[AudioVideo] Timing check failed:', e.message);
+      }
+
+      words.push(...scaledWords.map(w => ({ word: w.word, start: w.start + offset, end: w.end + offset })));
+      const partDuration = scaledWords.length ? scaledWords[scaledWords.length - 1].end + 0.3 : 0;
       audioParts.push({ index: i + 1, name: req.files[i].originalname, offsetSec: offset, durationSec: partDuration });
       offset += partDuration;
     }
@@ -70,22 +97,6 @@ router.post('/transcribe', adminAuth, upload.array('audio', 10), async (req, res
     } else {
       finalBuffer = req.files[0].buffer;
       finalExt = tmpPaths[0].split('.').pop();
-    }
-
-    // ✅ تشخيص (بلاغ العميل: العناصر/الكابشن لسه بتسبق الصوت شوية حتى بعد تصحيح تراكم تقريب
-    // الفريمات في الرندر): بنقارن هنا آخر توقيت كلمة رجّعه Whisper بالمدة الحقيقية للملف
-    // الصوتي نفسه (ffprobe) — لو فيه فرق حقيقي بينهم، ده معناه المشكلة مش في الرندر خالص،
-    // دي في توقيت Whisper نفسه (بيقصّر شوية عن الطول الحقيقي للصوت)، ومحتاجة حل مختلف تمامًا
-    try {
-      const lastWordEnd = words.length ? words[words.length - 1].end : 0;
-      const realAudioPath = tmpPaths.length > 1 ? mergedPath : tmpPaths[0];
-      const realDuration = parseFloat(execSync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${realAudioPath}"`,
-        { encoding: 'utf8' }
-      ).trim());
-      console.log(`[AudioVideo] Timing check — last Whisper word ends at ${lastWordEnd.toFixed(3)}s, real audio file duration is ${realDuration.toFixed(3)}s (gap: ${(realDuration - lastWordEnd).toFixed(3)}s)`);
-    } catch (e) {
-      console.warn('[AudioVideo] Timing check failed:', e.message);
     }
 
     const audioUrl = await uploadAudioVideoSourceToR2(finalBuffer, finalExt);
