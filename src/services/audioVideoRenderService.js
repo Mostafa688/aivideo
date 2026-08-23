@@ -214,8 +214,11 @@ function buildPiecewiseExpr(keyframes, valueFn, timeVar) {
 // — صورة دايجرام ثابتة واحدة، بيتعمل عليها زوم/pan (zoompan) بين نقاط الأدمن اليدوية.
 // بيبدأ وبينتهي دايمًا بعرض الصورة كاملة (الـ bookend keyframes) — مطابق لطلب العميل: الصورة
 // تظهر كاملة، تزوم على كل مرحلة وقت ذكرها، وترجع تزوم آوت في الآخر
-function buildCompositeSceneClip(scene, imagePath, W, H, outPath) {
-  const duration = Math.max(0.5, scene.endTime - scene.startTime);
+// ✅ durationOverride (اختياري): بيستخدم مدة مصحّحة بالفريم بدل endTime-startTime الخام —
+// شوف تعليق "clipPlans" في renderAudioVideoJob لسبب التصحيح ده. الفرق أقل من فريم واحد
+// (≤0.04 ثانية) فمالوش أي تأثير محسوس على توقيت الزوم/الـ pan نفسه
+function buildCompositeSceneClip(scene, imagePath, W, H, outPath, durationOverride) {
+  const duration = durationOverride ?? Math.max(0.5, scene.endTime - scene.startTime);
   const fadeSec = Math.min(0.4, Math.max(0.1, duration * 0.05));
   const imgW = scene.imageWidth, imgH = scene.imageHeight;
 
@@ -370,17 +373,53 @@ export async function renderAudioVideoJob(job) {
     }
     regularSegments = regularSegments.map(s => ({ ...s, segDuration: Math.max(0.1, s.segEnd - s.segStart) }));
 
+    // ✅ FIX (بلاغ العميل: "الصوت بيسبق العناصر" تدريجيًا في الفيديوهات الطويلة): كل كليب
+    // بيتبني لوحده بمدة (-t) وffmpeg بيقرّب المدة دي لأقرب فريم (اتأكد ده بتجربة محلية:
+    // طلب 0.85s طلع 0.84s فعليًا، 2.3s طلع 2.32s...). الفرق صغير جدًا لكل كليب لوحده (أقل من
+    // نص فريم غالبًا)، لكن مع عشرات/مئات الكليبات في فيديو طويل بيتراكم (لاحظنا +0.09 ثانية
+    // زيادة على 10 كليبات بس في تجربة محلية) ويكبر أكتر كل ما الفيديو يطول — وده بالظبط سبب
+    // "الصوت بيسبق العناصر" اللي العميل لاحظه: الفيديو الصامت بيطول شوية شوية عن الصوت الحقيقي.
+    // الحل: نحسب "عدد الفريمات المستهدف التراكمي" لحد نهاية كل كليب (على التسلسل الزمني الكامل
+    // للفيديو، ملصقات عادية + مشاهد مركّبة مع بعض)، وناخد فرق الفريمات بينه وبين اللي اتجمّع
+    // لحد دلوقتي بس — كده أي خطأ تقريب بيتصحح تلقائيًا في الكليب اللي بعده، ومفيش تراكم خالص
+    // (أقصى انحراف كلي عن الصوت الحقيقي = نص فريم بس، حتى لو الفيديو فيه مئات الكليبات)
+    const clipPlans = [
+      ...regularSegments.map((seg, i) => ({ kind: 'regular', seg, i, endTime: seg.segEnd, startTime: seg.segStart })),
+      ...compositeScenes.map((cs, i) => ({ kind: 'composite', cs, i, endTime: cs.endTime, startTime: cs.startTime })),
+    ].sort((a, b) => a.startTime - b.startTime);
+    let cumFrames = 0;
+    for (const plan of clipPlans) {
+      const targetFrames = Math.round(plan.endTime * FPS);
+      plan.exactFrames = Math.max(1, targetFrames - cumFrames);
+      plan.exactDuration = plan.exactFrames / FPS;
+      cumFrames += plan.exactFrames;
+    }
+
     // ✅ FIX (طلب العميل): رجعنا لملصق صغير مربّع في نص الفريم بدل ما يملا الفريم كامل —
     // الملصقات دلوقتي من مكتبة أيقونات حقيقية، مش صور مولّدة تمثّل الفريم كله
     const iconSize = Math.round(Math.min(W, H) * 0.65);
     const timedClips = []; // { startTime, clipPath } — بيتترتب كرونولوجيًا في الآخر
-    for (let i = 0; i < regularSegments.length; i++) {
-      const seg = regularSegments[i];
+    for (const plan of clipPlans) {
+      if (plan.kind === 'composite') {
+        const cs = plan.cs, i = plan.i;
+        const imgRes = await fetch(cs.imageUrl);
+        if (!imgRes.ok) throw new Error(`Could not download composite scene image (scene ${i + 1})`);
+        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+        const imgPath = path.join(workDir, `composite_src_${i}.jpg`);
+        fs.writeFileSync(imgPath, imgBuffer);
+        const clipPath = path.join(workDir, `composite_${i}.mp4`);
+        buildCompositeSceneClip(cs, imgPath, W, H, clipPath, plan.exactDuration);
+        timedClips.push({ startTime: cs.startTime, clipPath });
+        continue;
+      }
+
+      const seg = plan.seg, i = plan.i;
       const clipPath = path.join(workDir, `clip_${i}.mp4`);
+      const duration = plan.exactDuration;
       // ✅ FIX: لقطات "quote"/"text" (آيات/أحاديث/إشارة لله أو نبي/جمل مجردة) مالهاش
       // imageUrl خالص — نص بس على الشاشة، من غير أي تحميل/توليد ملصق
       if (!seg.imageUrl) {
-        buildAnimatedClip(null, W, H, iconSize, iconSize, seg.segDuration, clipPath);
+        buildAnimatedClip(null, W, H, iconSize, iconSize, duration, clipPath);
         timedClips.push({ startTime: seg.segStart, clipPath });
         continue;
       }
@@ -394,24 +433,12 @@ export async function renderAudioVideoJob(job) {
       if (seg.imageWidth && seg.imageHeight) {
         const { baseW, baseH } = computeStickerDisplaySize(seg.imageWidth, seg.imageHeight, W, H);
         await prepareCustomStickerImage(iconBuffer, baseW, baseH, iconPngPath);
-        buildAnimatedClip(iconPngPath, W, H, baseW, baseH, seg.segDuration, clipPath);
+        buildAnimatedClip(iconPngPath, W, H, baseW, baseH, duration, clipPath);
       } else {
         await prepareIconImage(iconBuffer, iconSize, iconPngPath);
-        buildAnimatedClip(iconPngPath, W, H, iconSize, iconSize, seg.segDuration, clipPath);
+        buildAnimatedClip(iconPngPath, W, H, iconSize, iconSize, duration, clipPath);
       }
       timedClips.push({ startTime: seg.segStart, clipPath });
-    }
-
-    for (let i = 0; i < compositeScenes.length; i++) {
-      const cs = compositeScenes[i];
-      const imgRes = await fetch(cs.imageUrl);
-      if (!imgRes.ok) throw new Error(`Could not download composite scene image (scene ${i + 1})`);
-      const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-      const imgPath = path.join(workDir, `composite_src_${i}.jpg`);
-      fs.writeFileSync(imgPath, imgBuffer);
-      const clipPath = path.join(workDir, `composite_${i}.mp4`);
-      buildCompositeSceneClip(cs, imgPath, W, H, clipPath);
-      timedClips.push({ startTime: cs.startTime, clipPath });
     }
 
     const clipPaths = timedClips.sort((a, b) => a.startTime - b.startTime).map(c => c.clipPath);
