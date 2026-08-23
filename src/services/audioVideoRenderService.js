@@ -387,13 +387,27 @@ export async function renderAudioVideoJob(job) {
       ...regularSegments.map((seg, i) => ({ kind: 'regular', seg, i, endTime: seg.segEnd, startTime: seg.segStart })),
       ...compositeScenes.map((cs, i) => ({ kind: 'composite', cs, i, endTime: cs.endTime, startTime: cs.startTime })),
     ].sort((a, b) => a.startTime - b.startTime);
+    // ✅ FIX (بلاغ تاني من العميل: لسه فيه فرق ملحوظ حتى بعد التصحيح فوق، حتى في فيديو بسيط
+    // من غير مشهد مركّب أو ملصقات): الكابشن (buildCaptionsAssFile) كان لسه بيستخدم segStart/
+    // segEnd الخام (مش المصحّحة بالفريم) — يعني الملصق/الأيقونة بيتغيّر عند التوقيت المصحّح
+    // (الصح)، لكن نص الكابشن كان بيتغيّر عند التوقيت الخام (غير المصحّح)، فبيحصل عدم اتساق
+    // بين الاتنين يتراكم بنفس الطريقة بالظبط. بنسجّل بداية/نهاية كل كليب الفعلية (بالفريم
+    // المصحّح) هنا عشان نستخدمها لبناء الكابشن كمان تحت، مش بس لبناء الكليبات نفسها
     let cumFrames = 0;
     for (const plan of clipPlans) {
+      const frameStart = cumFrames;
       const targetFrames = Math.round(plan.endTime * FPS);
       plan.exactFrames = Math.max(1, targetFrames - cumFrames);
       plan.exactDuration = plan.exactFrames / FPS;
+      plan.actualStart = frameStart / FPS;
+      plan.actualEnd = (frameStart + plan.exactFrames) / FPS;
       cumFrames += plan.exactFrames;
     }
+    // ✅ نسخة من regularSegments بتوقيت مصحّح بالفريم (بدل الخام) — للكابشن بس، عشان يتزامن
+    // بالظبط مع نفس توقيت تغيّر الأيقونة/الملصق في الفيديو الفعلي
+    const captionSegments = clipPlans.filter(p => p.kind === 'regular').map(p => ({
+      ...p.seg, segStart: p.actualStart, segEnd: p.actualEnd,
+    }));
 
     // ✅ FIX (طلب العميل): رجعنا لملصق صغير مربّع في نص الفريم بدل ما يملا الفريم كامل —
     // الملصقات دلوقتي من مكتبة أيقونات حقيقية، مش صور مولّدة تمثّل الفريم كله
@@ -460,7 +474,7 @@ export async function renderAudioVideoJob(job) {
     console.log(`[AudioVideo] Render font for language "${videoLanguage}": ${fontfile} (ASS name: ${fontName})`);
     // ✅ كابشن اللقطات العادية بس — المشاهد المركّبة مالهاش نص فوقها (الدايجرام نفسه هو
     // المحتوى البصري، والتسميات المفروض تكون مرسومة جوه الصورة نفسها)
-    const assContent = buildCaptionsAssFile(regularSegments, videoLanguage, ratio, fontName, W, H);
+    const assContent = buildCaptionsAssFile(captionSegments, videoLanguage, ratio, fontName, W, H);
     const assPath = path.join(workDir, 'captions.ass');
     fs.writeFileSync(assPath, assContent, 'utf8');
     const safeAss = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
