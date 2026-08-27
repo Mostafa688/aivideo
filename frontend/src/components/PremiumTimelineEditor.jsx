@@ -21,6 +21,14 @@ function fmtTime(s) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
+// ✅ FIX (طلب العميل: "الحركة بتاعته غريبة مش عارف احركه، المفروض يتحرك مع معايا بحركة
+// الماوس لو على الكومبيوتر وباللمس لو على الموبايل"): بيسحب الـclientX من إيفنت الماوس أو
+// اللمس، عشان كل السحب في المحرر (خط التشغيل، نقل اللقطات، تقصير/تطويل الحدود) يشتغل
+// بنفس المنطق على الماوس والتاتش من غير تكرار كود
+function clientXOf(e) {
+  return (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+}
+
 // ✅ FIX (اكتشفناها أثناء اختبار حقيقي للسحب-والإفلات): لو عنصر جديد اتحط بنفس ثانية
 // بداية لقطة تانية بالظبط (مثلاً حط ملصق عند خط التشغيل وهو لسه واقف عند 0)، اللقطة
 // الأصلية بتنكمش لعرض شبه صفري وتختفي عمليًا من الشريط. الدالة دي بتتأكد إن كل لقطة
@@ -94,9 +102,10 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   useEffect(() => {
     if (dragBoundaryIdx == null) return;
     const handleMove = (e) => {
-      if (e.buttons !== 1 || !trackRef.current) return;
+      if (e.type === 'mousemove' && e.buttons !== 1) return;
+      if (!trackRef.current) return;
       const rect = trackRef.current.getBoundingClientRect();
-      const tt = Math.max(0, Math.min(audioDuration, (e.clientX - rect.left) / pxPerSec));
+      const tt = Math.max(0, Math.min(audioDuration, (clientXOf(e) - rect.left) / pxPerSec));
       setElements(els => {
         const prevStart = dragBoundaryIdx > 0 ? (Number(els[dragBoundaryIdx - 1].start) || 0) : 0;
         const nextStart = dragBoundaryIdx < els.length - 1 ? (Number(els[dragBoundaryIdx + 1].start) || 0) : audioDuration;
@@ -107,7 +116,14 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     const handleUp = () => setDragBoundaryIdx(null);
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
-    return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp); };
+    window.addEventListener('touchmove', handleMove, { passive: true });
+    window.addEventListener('touchend', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleUp);
+    };
   }, [dragBoundaryIdx, audioDuration, pxPerSec]);
 
   // ✅ NEW (طلب العميل: "مش عارف ابدل بين العناصر ولو عايز احركه الموضوع صعب"): سحب جسم
@@ -123,15 +139,15 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     // سحبها مش هيغيّر حاجة فعليًا، فبنسمح بس بتحديدها
     if (i === 0) { setSelectedIdx(0); return; }
     e.stopPropagation();
-    moveDragRef.current = { x: e.clientX, startTime: Number(elements[i].start) || 0, moved: false, idx: i };
+    moveDragRef.current = { x: clientXOf(e), startTime: Number(elements[i].start) || 0, moved: false, idx: i };
     setMovingIdx(i);
   };
 
   useEffect(() => {
     if (movingIdx == null) return;
     const handleMove = (e) => {
-      if (e.buttons !== 1) return;
-      const dx = e.clientX - moveDragRef.current.x;
+      if (e.type === 'mousemove' && e.buttons !== 1) return;
+      const dx = clientXOf(e) - moveDragRef.current.x;
       if (Math.abs(dx) > 4) moveDragRef.current.moved = true;
       if (!moveDragRef.current.moved) return;
       const newStart = Math.max(0.05, Math.min(audioDuration - 0.05, moveDragRef.current.startTime + dx / pxPerSec));
@@ -157,7 +173,14 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     };
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
-    return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp); };
+    window.addEventListener('touchmove', handleMove, { passive: true });
+    window.addEventListener('touchend', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleUp);
+    };
   }, [movingIdx, audioDuration, pxPerSec]);
 
   // ✅ خط التشغيل (playhead) بيتزامن مع الفيديو الحقيقي فوق — تجربة محرر فيديو حقيقي
@@ -182,6 +205,39 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
 
   const togglePlay = () => { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause(); };
   const seekTo = (sec) => { const v = videoRef.current; if (v) v.currentTime = Math.max(0, Math.min(duration || sec, sec)); };
+
+  // ✅ FIX (طلب العميل: "خط التشغيل حركته غريبة، مش عارف احركه، المفروض يتحرك مع معايا
+  // بحركة الماوس... أو باللمس على الموبايل"): الرولر كان بيحدد المكان مرة واحدة بس لحظة
+  // الدوس (onMouseDown)، ولو المستخدم فضل ماسك وسحب من غير ما يرفع إيده، خط التشغيل ماكانش
+  // بيتحرك تاني — دلوقتي بيفضل يتابع الماوس/اللمس باستمرار طول ما لسه ماسك، بالظبط زي باقي
+  // أنواع السحب التانية في المحرر (نقل اللقطات، تقصير/تطويل الحدود)
+  const [draggingPlayhead, setDraggingPlayhead] = useState(false);
+  const startPlayheadDrag = (e) => {
+    if (!job.video_url || !trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    seekTo((clientXOf(e) - rect.left) / pxPerSec);
+    setDraggingPlayhead(true);
+  };
+  useEffect(() => {
+    if (!draggingPlayhead) return;
+    const handleMove = (e) => {
+      if (e.type === 'mousemove' && e.buttons !== 1) return;
+      if (!trackRef.current) return;
+      const rect = trackRef.current.getBoundingClientRect();
+      seekTo((clientXOf(e) - rect.left) / pxPerSec);
+    };
+    const handleEnd = () => setDraggingPlayhead(false);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleMove, { passive: true });
+    window.addEventListener('touchend', handleEnd);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
+    };
+  }, [draggingPlayhead, pxPerSec, duration]);
 
   const updateElement = (idx, patch) => setElements(els => els.map((el, i) => i === idx ? { ...el, ...patch } : el));
 
@@ -424,16 +480,14 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
               ref={trackRef} style={{ position: 'relative', width: trackWidth, userSelect: 'none' }}
               onDragOver={handleStripDragOver} onDragLeave={handleStripDragLeave} onDrop={handleStripDrop}
             >
-              {/* ✅ NEW (طلب العميل: "خط نقدر نحدد بيه المكان اللي نقف فيه"): الرولر بقى
-                  قابل للدوس عليه/سحبه عشان يحدد مكان خط التشغيل (playhead) بدقة — ده اللي
-                  زرار "✂️ قص هنا" تحت بيستخدمه كمرجع لتقسيم اللقطة عند نقطة محددة بالظبط */}
+              {/* ✅ NEW (طلب العميل: "خط نقدر نحدد بيه المكان اللي نقف فيه"): الرولر قابل
+                  للدوس عليه/سحبه عشان يحدد مكان خط التشغيل (playhead) بدقة — ده اللي زرار
+                  "✂️ قص هنا" تحت بيستخدمه كمرجع لتقسيم اللقطة عند نقطة محددة بالظبط.
+                  ✅ FIX: بيفضل يتابع الماوس/اللمس باستمرار طول ما لسه ماسك (مش بس لحظة الدوس) */}
               <div
-                style={{ position: 'relative', height: 18, cursor: job.video_url ? 'pointer' : 'default' }}
-                onMouseDown={(e) => {
-                  if (!job.video_url) return;
-                  const rect = trackRef.current.getBoundingClientRect();
-                  seekTo((e.clientX - rect.left) / pxPerSec);
-                }}
+                style={{ position: 'relative', height: 18, cursor: job.video_url ? 'grab' : 'default', touchAction: 'none' }}
+                onMouseDown={startPlayheadDrag}
+                onTouchStart={startPlayheadDrag}
               >
                 {ticks.map(tk => (
                   <div key={tk} style={{ position: 'absolute', left: tk * pxPerSec, top: 0, fontSize: 10, color: 'var(--text3)' }}>{tk}s</div>
@@ -453,13 +507,14 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                         key={i}
                         className={`pte-cell${selectedIdx === i ? ' selected' : ''}`}
                         onMouseDown={(e) => handleCellMouseDown(i, e)}
+                        onTouchStart={(e) => handleCellMouseDown(i, e)}
                         title={i === 0 ? seg.element : `${seg.element} — ${t('اسحب عشان تحرّكه لمكان تاني', 'drag to move it elsewhere')}`}
                         style={{
                           width: w, height: '100%', flexShrink: 0,
                           background: seg.imageUrl ? '#0d0d18' : 'var(--bg3)',
                           borderRight: i < segments.length - 1 ? '1px solid rgba(0,0,0,0.5)' : 'none',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                          cursor: i === 0 ? 'pointer' : (movingIdx === i ? 'grabbing' : 'grab'),
+                          cursor: i === 0 ? 'pointer' : (movingIdx === i ? 'grabbing' : 'grab'), touchAction: 'none',
                           opacity: movingIdx === i && moveDragRef.current.moved ? 0.6 : 1,
                         }}
                       >
@@ -491,11 +546,12 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                     key={`b${i}`}
                     className="pte-handle"
                     onMouseDown={(e) => { e.stopPropagation(); setDragBoundaryIdx(i); }}
+                    onTouchStart={(e) => { e.stopPropagation(); setDragBoundaryIdx(i); }}
                     title={t('اسحب عشان تقصّر/تطوّل اللقطتين', 'Drag to trim/extend the two scenes')}
                     style={{
                       position: 'absolute', top: 0, left: (Number(el.start) || 0) * pxPerSec - 9, width: 18, height: '100%',
                       cursor: 'col-resize', zIndex: 5, background: dragBoundaryIdx === i ? 'rgba(124,106,247,0.25)' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none',
                     }}
                   >
                     <div style={{
