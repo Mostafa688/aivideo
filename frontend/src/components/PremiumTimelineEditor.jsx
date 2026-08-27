@@ -121,7 +121,57 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     setSelectedIdx(idx + 1);
   };
 
+  // ✅ NEW (طلب العميل: "لما يبحث عن عنصر ويلاقيه ياخد العنصر ويحطه في المكان الي هو عايز"):
+  // زي insertNewElement فوق، بس بيحسب مكان الإدراج من ثانية مطلقة (مكان الإفلات الفعلي على
+  // التايم لاين) مش من اللقطة المختارة حاليًا — ده اللي بيخلي السحب-وإفلات ممكن
+  const insertElementAtTime = (timeSec, patch) => {
+    const clamped = Math.max(0, Math.min(audioDuration - 0.1, timeSec));
+    let idx = segments.findIndex(s => clamped < s.segEnd);
+    if (idx === -1) idx = segments.length - 1;
+    const newEl = { element: t('ملصق', 'Sticker'), text: t('ملصق', 'Sticker'), kind: 'object', imagePrompt: null, characterKey: null, quoteSource: null, imageUrl: null, start: clamped, end: clamped, ...patch };
+    setElements(els => { const next = [...els]; next.splice(idx + 1, 0, newEl); return next; });
+    setSelectedIdx(idx + 1);
+  };
+
+  const [dragOverTime, setDragOverTime] = useState(null);
+  const handleStripDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    setDragOverTime(Math.max(0, (e.clientX - rect.left) / pxPerSec));
+  };
+  const handleStripDragLeave = () => setDragOverTime(null);
+  const handleStripDrop = async (e) => {
+    e.preventDefault();
+    const url = e.dataTransfer.getData('text/plain');
+    setDragOverTime(null);
+    if (!url || !trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const time = Math.max(0, (e.clientX - rect.left) / pxPerSec);
+    try {
+      const r = await fetch(`${apiBase}/jobs/${job.id}/element-from-search`, { method: 'POST', headers, body: JSON.stringify({ url }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not add sticker');
+      insertElementAtTime(time, { imageUrl: d.imageUrl });
+    } catch (e2) {
+      setErr('❌ ' + e2.message);
+    }
+  };
+
   const handleStickerPicked = (imageUrl) => { insertNewElement({ kind: 'object', element: t('ملصق', 'Sticker'), text: t('ملصق', 'Sticker'), imageUrl }); setShowStickerSearch(false); };
+
+  // ✅ NEW (طلب العميل: "خط نحدد بيه المكان اللي نقف فيه ونقص عنصر"): بيقسم اللقطة
+  // المختارة لجزئين عند نقطة خط التشغيل (playhead) بالظبط — الجزء التاني بياخد نفس
+  // النوع/الصورة/النص (المستخدم بعدين يعدّل نص كل جزء لوحده)
+  const splitAtPlayhead = () => {
+    if (selectedIdx == null || !sel) return;
+    if (curTime <= sel.segStart + 0.1 || curTime >= sel.segEnd - 0.1) return;
+    const orig = elements[selectedIdx];
+    const newEl = { ...orig, start: curTime };
+    setElements(els => { const next = [...els]; next.splice(selectedIdx + 1, 0, newEl); return next; });
+    setSelectedIdx(selectedIdx + 1);
+  };
 
   const handleUploadCustomImage = async (e) => {
     const file = e.target.files[0];
@@ -216,10 +266,12 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
           زي أي أداة فيديو حقيقية، بس فاصل خفيف جدًا (border-radius بسيط) عشان تفضل واضحة
           حدودها من غير ما تحس إنها "متحبسة" */}
       <div style={{ background: 'var(--bg2)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-        {/* Preview */}
-        <div style={{ background: '#000', textAlign: 'center' }}>
+        {/* ✅ FIX (طلب العميل: "صغّر شاشة عرض الفيديو نفسها لكن التايم لاين زي ما هو") —
+            المعاينة بقت بحجم متواضع (مش full-bleed زي قبل كده)، والتايم لاين تحتها فضل
+            بعرضه الكامل من غير أي تغيير */}
+        <div style={{ background: '#000', textAlign: 'center', padding: '16px 0' }}>
           {job.video_url ? (
-            <video ref={videoRef} src={job.video_url} style={{ maxWidth: '100%', maxHeight: 640, width: '100%', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+            <video ref={videoRef} src={job.video_url} style={{ maxWidth: 420, maxHeight: 260, width: '100%', objectFit: 'contain', display: 'block', margin: '0 auto', borderRadius: 8 }} />
           ) : (
             <div style={{ padding: '60px 0', color: 'var(--text3)', fontSize: 13 }}>
               {t('مفيش معاينة لسه — احفظ وأعد البناء عشان تشوف الفيديو', 'No preview yet — save & rebuild to see the video')}
@@ -255,9 +307,21 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
           </div>
 
           <div style={{ overflowX: 'auto', paddingBottom: 6 }}>
-            <div ref={trackRef} style={{ position: 'relative', width: trackWidth, userSelect: 'none' }}>
-              {/* ruler */}
-              <div style={{ position: 'relative', height: 18 }}>
+            <div
+              ref={trackRef} style={{ position: 'relative', width: trackWidth, userSelect: 'none' }}
+              onDragOver={handleStripDragOver} onDragLeave={handleStripDragLeave} onDrop={handleStripDrop}
+            >
+              {/* ✅ NEW (طلب العميل: "خط نقدر نحدد بيه المكان اللي نقف فيه"): الرولر بقى
+                  قابل للدوس عليه/سحبه عشان يحدد مكان خط التشغيل (playhead) بدقة — ده اللي
+                  زرار "✂️ قص هنا" تحت بيستخدمه كمرجع لتقسيم اللقطة عند نقطة محددة بالظبط */}
+              <div
+                style={{ position: 'relative', height: 18, cursor: job.video_url ? 'pointer' : 'default' }}
+                onMouseDown={(e) => {
+                  if (!job.video_url) return;
+                  const rect = trackRef.current.getBoundingClientRect();
+                  seekTo((e.clientX - rect.left) / pxPerSec);
+                }}
+              >
                 {ticks.map(tk => (
                   <div key={tk} style={{ position: 'absolute', left: tk * pxPerSec, top: 0, fontSize: 10, color: 'var(--text3)' }}>{tk}s</div>
                 ))}
@@ -319,6 +383,10 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                 {/* playhead */}
                 {playheadLeft != null && (
                   <div style={{ position: 'absolute', top: 0, bottom: 0, left: playheadLeft, width: 2, background: '#fff', boxShadow: '0 0 6px rgba(255,255,255,0.8)', zIndex: 6, pointerEvents: 'none' }} />
+                )}
+                {/* ✅ مؤشر مكان الإفلات وقت سحب ملصق من لوحة البحث */}
+                {dragOverTime != null && (
+                  <div style={{ position: 'absolute', top: 0, bottom: 0, left: dragOverTime * pxPerSec, width: 3, background: 'var(--accent2)', boxShadow: '0 0 10px var(--accent-glow)', zIndex: 7, pointerEvents: 'none' }} />
                 )}
               </div>
 
@@ -384,6 +452,14 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button className="btn-ghost" onClick={() => insertNewElement({})} style={{ fontSize: 12.5 }}>➕ {t('عنصر جديد بعد ده', 'New element after this')}</button>
+            <button
+              className="btn-ghost" onClick={splitAtPlayhead}
+              disabled={!job.video_url || curTime <= sel.segStart + 0.1 || curTime >= sel.segEnd - 0.1}
+              style={{ fontSize: 12.5 }}
+              title={t('حرّك خط التشغيل جوه اللقطة دي الأول', 'Move the playhead inside this scene first')}
+            >
+              ✂️ {t(`قص هنا (${fmtTime(curTime)})`, `Split here (${fmtTime(curTime)})`)}
+            </button>
             <button className="btn-ghost" onClick={() => handleDelete(selectedIdx)} style={{ color: 'var(--red)', fontSize: 12.5 }}>🗑️ {t('احذف اللقطة', 'Delete scene')}</button>
           </div>
         </div>
@@ -401,7 +477,10 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
       </div>
 
       {showStickerSearch && (
-        <StickerSearchPanel apiBase={apiBase} authHeaders={headers} jobId={job.id} onPick={handleStickerPicked} onClose={() => setShowStickerSearch(false)} />
+        <StickerSearchPanel
+          apiBase={apiBase} authHeaders={headers} jobId={job.id} onPick={handleStickerPicked} onClose={() => setShowStickerSearch(false)}
+          onDragStart={() => {}} lang={lang}
+        />
       )}
     </div>
   );
