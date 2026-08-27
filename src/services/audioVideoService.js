@@ -10,7 +10,6 @@ import Groq from 'groq-sdk';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
-import sharp from 'sharp';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -458,13 +457,12 @@ export async function findLibraryIcon(keyword) {
 // ✅ NEW (طلب العميل: "لو مفيش ملصق مطابق يعملهولي بالكود، ملوّن و2D Cartoon"): لو مكتبة
 // الأيقونات كلها (Iconify/Tenor/GitHub emoji) مالقتش نتيجة لأي بديل بحث، بدل ما نستسلم
 // ونحوّل اللقطة لنص فورًا، بنجرّب نولّد صورة بالذكاء الاصطناعي (Pollinations.ai — مجاني
-// بالكامل بدون مفتاح API، نفس التقنية اللي كانت مستخدمة قبل ما نرجع لمكتبة الأيقونات).
-// ده fallback أخير بس (مكتبة حقيقية لسه هي الأول دايمًا — أسرع وأدق)، مش بديل عن البحث.
-//
-// ✅ نفس تقنية إزالة الخلفية المُصلَّحة قبل كده (PR #42 — مشكلة "وهج أخضر" حوالين كل
-// ملصق): توليد على خلفية كروما كي خضراء صريحة، وبعدين flood-fill حقيقي من حدود الصورة
-// بـalpha متدرّج (مش قطع ثنائي) + despill لأي بكسل حافة لسه فيه أثر أخضر — بيشيل الوهج
-// المتبقي حوالين الشكل نفسه، مش بس الخلفية
+// بالكامل بدون مفتاح API). ده fallback أخير بس (مكتبة حقيقية لسه هي الأول دايمًا — أسرع
+// وأدق)، مش بديل عن البحث.
+// ✅ FIX (طلب العميل: "الخلفية تكون بيضاء أصلًا من غير أي إزالة خلفية"): بدل التوليد على
+// خلفية كروما كي خضراء وبعدين محاولة إزالتها بالكود (اللي ممكن يسيب وهج/حواف مش نضيفة مهما
+// اتحسّنت الخوارزمية)، بنولّد الصورة على خلفية بيضاء صريحة من الأساس — نفس لون خلفية الرندر
+// بالظبط (BG_COLOR في audioVideoRenderService.js) — فبتندمج تلقائيًا من غير أي حاجة زيادة
 async function fetchPollinationsImage(prompt, attempt = 1) {
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
   const res = await fetch(url);
@@ -476,71 +474,14 @@ async function fetchPollinationsImage(prompt, attempt = 1) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function removeFlatBackground(buffer, innerTolerance = 30, outerTolerance = 75) {
-  const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const { width, height, channels } = info;
-  const idx = (x, y) => (y * width + x) * channels;
-
-  const corners = [[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]];
-  let kr = 0, kg = 0, kb = 0;
-  for (const [cx, cy] of corners) {
-    const p = idx(cx, cy);
-    kr += data[p]; kg += data[p + 1]; kb += data[p + 2];
-  }
-  kr /= 4; kg /= 4; kb /= 4;
-
-  const colorDist = (p) => {
-    const dr = data[p] - kr, dg = data[p + 1] - kg, db = data[p + 2] - kb;
-    return Math.sqrt(dr * dr + dg * dg + db * db);
-  };
-
-  const visited = new Uint8Array(width * height);
-  const edgePixels = [];
-  const stack = [];
-  for (let x = 0; x < width; x++) { stack.push(x); stack.push((height - 1) * width + x); }
-  for (let y = 0; y < height; y++) { stack.push(y * width); stack.push(y * width + width - 1); }
-
-  while (stack.length) {
-    const pos = stack.pop();
-    if (visited[pos]) continue;
-    visited[pos] = 1;
-    const p = pos * channels;
-    const dist = colorDist(p);
-    if (dist > outerTolerance) continue;
-    const alphaFactor = dist <= innerTolerance ? 0 : (dist - innerTolerance) / (outerTolerance - innerTolerance);
-    const newAlpha = Math.round(Math.min(255, Math.max(0, alphaFactor * 255)));
-    data[p + 3] = newAlpha;
-    if (newAlpha > 0) edgePixels.push(p);
-    const x = pos % width, y = (pos - x) / width;
-    if (x > 0) stack.push(pos - 1);
-    if (x < width - 1) stack.push(pos + 1);
-    if (y > 0) stack.push(pos - width);
-    if (y < height - 1) stack.push(pos + width);
-  }
-
-  for (const p of edgePixels) {
-    const r = data[p], g = data[p + 1], b = data[p + 2];
-    const neutralG = (r + b) / 2;
-    if (g > neutralG) {
-      const opacity = data[p + 3] / 255;
-      data[p + 1] = Math.round(g - (g - neutralG) * (1 - opacity * 0.5));
-    }
-  }
-
-  return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
-}
-
-// ✅ ستايل "2D Cartoon" ملوّن بالظبط زي ما طلب العميل — نفس المنطق القديم (flat illustration
-// على خلفية خضراء) بس الصياغة اتظبطت لتؤكد على cartoon/vibrant colors صراحة
+// ✅ ستايل "2D Cartoon" ملوّن بالظبط زي ما طلب العميل، على خلفية بيضاء صريحة
 export async function generateElementImage(imagePrompt) {
-  const fullPrompt = `${imagePrompt}, 2D cartoon illustration, flat solid colors, clean bold outlines, vibrant natural colors, rich saturated color palette (never green — the ONLY green pixel in the whole image is the plain background), no photorealism, no 3D render, no gradient, no texture, on a solid plain green background (#00FF00), single flat color background, no shadow, centered`;
-  let buffer;
+  const fullPrompt = `${imagePrompt}, 2D cartoon illustration, flat solid colors, clean bold outlines, vibrant natural colors, rich saturated color palette, no photorealism, no 3D render, no gradient, no texture, on a solid plain white background (#FFFFFF), single flat white background, no shadow, centered`;
   try {
-    buffer = await fetchPollinationsImage(fullPrompt);
+    return await fetchPollinationsImage(fullPrompt);
   } catch {
-    buffer = await fetchPollinationsImage(`${fullPrompt}, flat design, sticker style, vector art`);
+    return fetchPollinationsImage(`${fullPrompt}, flat design, sticker style, vector art`);
   }
-  return removeFlatBackground(buffer);
 }
 
 // ── ملصقات مخصّصة بالجملة (طلب العميل) ───────────────────────────────────────────
