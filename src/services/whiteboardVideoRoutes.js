@@ -12,9 +12,9 @@ import express from 'express';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { authMiddleware } from './authRoutes.js';
-import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements } from './audioVideoService.js';
+import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, resolveElementImages } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
-import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobForUser, listAudioVideoJobsForUser, getUserWhiteboardFreeSecondsUsed, addUserWhiteboardFreeSecondsUsed, WHITEBOARD_FREE_SECONDS_LIFETIME } from './authService.js';
+import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobForUser, listAudioVideoJobsForUser, getUserWhiteboardFreeSecondsUsed, addUserWhiteboardFreeSecondsUsed, WHITEBOARD_FREE_SECONDS_LIFETIME, getReferenceImagesMap } from './authService.js';
 import fs from 'fs';
 
 const router = express.Router();
@@ -82,7 +82,8 @@ router.post('/create', authMiddleware, createLimiter, upload.single('audio'), as
     if (!words.length) return res.status(400).json({ error: 'Could not transcribe any speech from this audio' });
 
     const audioUrl = await uploadAudioVideoSourceToR2(req.file.buffer, (req.file.originalname.split('.').pop() || 'mp3'));
-    const job = await createAudioVideoJob({ audioUrl, transcriptText: text, wordsJson: words, status: 'extracting', userId, ratio: req.body?.ratio || '9:16' });
+    // ✅ FIX (بلاغ العميل: الفيديو طلع 9:16 — فيديوهات whiteboard لازم تكون 16:9 دايمًا)
+    const job = await createAudioVideoJob({ audioUrl, transcriptText: text, wordsJson: words, status: 'extracting', userId, ratio: req.body?.ratio || '16:9' });
     res.json({ job, thisVideoSeconds });
 
     (async () => {
@@ -96,7 +97,18 @@ router.post('/create', authMiddleware, createLimiter, upload.single('audio'), as
           await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements extracted from transcript' });
           return;
         }
-        await updateAudioVideoJob(job.id, { elementsJson: elements, status: 'rendering' });
+        // ✅ FIX (بلاغ العميل: "العناصر مظهرتش") — كان ناقص هنا خالص: extractVideoElements
+        // بترجع بس النص/النوع/كلمات البحث المقترحة، مش imageUrl فعلي. من غير الخطوة دي (نفسها
+        // المستخدمة في أداة الأدمن)، كل عنصر character/object كان بيتحط في الرندر من غير أي
+        // صورة، وبما إن الكابشن مش بيتحط على character/object أصلًا (بس على text/quote)،
+        // الفيديو كان بيطلع فاضي تمامًا — لا ملصق ولا نص
+        const referenceImages = await getReferenceImagesMap();
+        const withImages = await resolveElementImages(elements, referenceImages);
+        if (!withImages.length) {
+          await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements could be processed' });
+          return;
+        }
+        await updateAudioVideoJob(job.id, { elementsJson: withImages, status: 'rendering' });
         const renderJob = await getAudioVideoJobForUser(job.id, userId);
         const videoUrl = await renderAudioVideoJob(renderJob, { maxDurationSec: thisVideoSeconds });
         await updateAudioVideoJob(job.id, { status: 'done', videoUrl });

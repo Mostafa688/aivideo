@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import sharp from 'sharp';
-import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, generateElementImage, searchStickerCandidates, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2, uploadBulkStickerToR2, captionImageWithVision, matchStickersToTranscript } from './audioVideoService.js';
+import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, resolveElementImages, searchStickerCandidates, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2, uploadBulkStickerToR2, captionImageWithVision, matchStickersToTranscript } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
 import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobById, listAudioVideoJobsForAdmin, upsertReferenceImage, listReferenceImages, getReferenceImagesMap, deleteReferenceImage } from './authService.js';
 
@@ -132,73 +132,7 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
         // صورة مرجعية لنفس المصدر ده (قرآن/بخاري/مسلم) — بتتحط جنب النص نفسه (مش بدلاً منه)،
         // مش نص بس زي الافتراضي القديم
         const referenceImages = await getReferenceImagesMap();
-        const characterImageCache = new Map(); // characterKey -> imageUrl
-        const withImages = [];
-        let llmTextCount = 0, iconFoundCount = 0, iconMissCount = 0, aiGeneratedCount = 0;
-        for (const el of elements) {
-          if (el.kind === 'quote') {
-            const refUrl = referenceImages[el.quoteSource] || referenceImages.other || null;
-            if (refUrl) iconFoundCount++; else llmTextCount++;
-            withImages.push({ ...el, imageUrl: refUrl });
-            continue;
-          }
-          if (el.kind === 'text') {
-            llmTextCount++;
-            withImages.push({ ...el, imageUrl: null });
-            continue;
-          }
-          if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
-            iconFoundCount++;
-            withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
-            continue;
-          }
-          // ✅ NEW (طلب العميل: "زود الملصقات"): بنجرب كل بديل بحث اقترحه الـ LLM على التوالي
-          // (الأكثر تحديدًا الأول) لحد ما واحد يلاقي نتيجة — مش بس كلمة واحدة زي الأول
-          const promptCandidates = Array.isArray(el.imagePromptCandidates) && el.imagePromptCandidates.length
-            ? el.imagePromptCandidates
-            : (el.imagePrompt ? [el.imagePrompt] : []);
-          let buffer = null;
-          for (const candidate of promptCandidates) {
-            try {
-              buffer = await findLibraryIcon(candidate);
-            } catch (e) {
-              console.warn('[AudioVideo] Icon lookup failed for candidate, trying next:', candidate, e.message);
-            }
-            if (buffer) break;
-          }
-          if (!buffer) {
-            // ✅ NEW (طلب العميل: "لو مفيش ملصق مطابق يعملهولي بالكود، ملوّن و2D Cartoon"):
-            // مفيش نتيجة حقيقية في أي مكتبة — قبل ما نستسلم للنص، نجرّب نولّد صورة بالذكاء
-            // الاصطناعي (generateElementImage — Pollinations، 2D cartoon ملوّن، نفس تقنية
-            // إزالة الخلفية المُصلَّحة قبل كده). ده fallback أخير بس؛ لو فشل هو كمان، بترجع
-            // لنص عادي زي الأول (مفيش داعي نلغي اللقطة خالص)
-            try {
-              const genBuffer = await generateElementImage(promptCandidates[0] || el.text);
-              const genImageUrl = await uploadElementImageToR2(genBuffer);
-              aiGeneratedCount++;
-              console.log(`[AudioVideo] Icon miss — beat "${el.text}" tried [${promptCandidates.join(', ') || 'none'}], no match in any icon library, generated one with AI instead`);
-              withImages.push({ ...el, imageUrl: genImageUrl, imagePromptCandidates: undefined });
-              if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, genImageUrl);
-              continue;
-            } catch (e) {
-              console.warn('[AudioVideo] AI image generation fallback also failed:', el.text, e.message);
-            }
-            iconMissCount++;
-            // ✅ لوج واضح بالعنصر نفسه وكل كلمات البحث اللي اتجرّبت ومفيش نتيجة منها في أي
-            // مكتبة، وفشل التوليد بالذكاء الاصطناعي كمان — بدل ما التحويل لـ"نص" يحصل بصمت
-            console.log(`[AudioVideo] Icon miss — beat "${el.text}" tried [${promptCandidates.join(', ') || 'none'}], no match in any icon library, AI generation also failed, downgraded to text`);
-            withImages.push({ ...el, kind: 'text', imageUrl: null, imagePrompt: null, imagePromptCandidates: [], characterKey: null });
-            continue;
-          }
-          iconFoundCount++;
-          const imageUrl = await uploadElementImageToR2(buffer);
-          withImages.push({ ...el, imageUrl, imagePromptCandidates: undefined });
-          if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
-        }
-        // ✅ تشخيص: لوج واضح يفرّق بين "الموديل نفسه قرر نص" و"طلب ملصق بس المكتبة مالقتش
-        // نتيجة" — عشان نعرف بسرعة لو فيه باج في البحث نفسه (زي اللي كان فيه فلتر prefixes
-        // غلط وبيلغي كل نتيجة) بدل ما نفترض إنه مجرد محتوى مجرد مالوش تصور بصري
-        console.log(`[AudioVideo] Extract summary: ${elements.length} beats — LLM chose text/quote directly: ${llmTextCount}, icon found: ${iconFoundCount}, AI-generated (icon miss fallback): ${aiGeneratedCount}, icon search + AI generation both failed (downgraded to text): ${iconMissCount}`);
+        const withImages = await resolveElementImages(elements, referenceImages);
 
         if (!withImages.length) {
           await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements could be processed' });
