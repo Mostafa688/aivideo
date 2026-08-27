@@ -327,6 +327,14 @@ async function initDB() {
   // من/لحد ثانية جوه التايم لاين المدموج) — ده اللي بيخلي الأدمن يقدر يحدد "ثانية X جوه
   // الصوت رقم N" بدل ما يحسب الثانية المطلقة يدويًا لأي نقطة زوم/تقسيم
   await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS audio_parts_json JSONB').catch(() => {});
+  // ✅ NEW (طلب العميل: "فيديو whiteboard مجاني للناس كلها"): مصنع الصوت-للفيديو ده كان
+  // أدمن-فقط بالكامل (jobs مجهولة الهوية، بيتشافوا بس من لوحة الأدمن) — دلوقتي محتاجينه
+  // يبقى منتج عام لكل مستخدم مسجّل، فمحتاج يتربط بحساب المستخدم صاحبه عشان يقدر يشوف
+  // فيديوهاته بعدين ويكملها (زر "Continue Video")
+  await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)').catch(() => {});
+  // ✅ NEW: رصيد الفيديو المجاني (whiteboard) — 10 دقايق (600 ثانية) مدى الحياة لكل حساب،
+  // بيتوزع على أي عدد فيديوهات/تكملات، مش لكل فيديو لوحده (اتفقنا مع العميل على كده صراحة)
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS whiteboard_free_seconds_used INTEGER DEFAULT 0').catch(() => {});
   // ✅ FIX: حالة "extracting"/"rendering" كانت بتعيش في ذاكرة الـ process بس (fire-and-forget
   // async IIFE) — لو السيرفر اترستارت في نص الشغل (ديبلوي جديد، كراش، صيانة Railway)، الشغل
   // بيتقفل من غير ما حد يحدّث حالة الـ job، فيفضل عالق على "extracting" للأبد من غير أي طريقة
@@ -1728,11 +1736,11 @@ export async function sendBroadcastEmail(subject, html, excludeEmails = []) {
 // مصنع فيديو الصوت (أدمن) — job واحد بيتحدث بمراحله (transcribing → extracting →
 // rendering → done/failed) عشان الأدمن يشوف التقدم من غير polling معقد
 // ═══════════════════════════════════════════════════════════════════════════
-export async function createAudioVideoJob({ audioUrl, transcriptText = null, wordsJson = null, ratio = '16:9', status = 'transcribing', audioPartsJson = null }) {
+export async function createAudioVideoJob({ audioUrl, transcriptText = null, wordsJson = null, ratio = '16:9', status = 'transcribing', audioPartsJson = null, userId = null }) {
   const { rows } = await pool.query(
-    `INSERT INTO audio_video_jobs (audio_url, transcript_text, words_json, ratio, status, audio_parts_json)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [audioUrl, transcriptText, wordsJson ? JSON.stringify(wordsJson) : null, ratio, status, audioPartsJson ? JSON.stringify(audioPartsJson) : null]
+    `INSERT INTO audio_video_jobs (audio_url, transcript_text, words_json, ratio, status, audio_parts_json, user_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [audioUrl, transcriptText, wordsJson ? JSON.stringify(wordsJson) : null, ratio, status, audioPartsJson ? JSON.stringify(audioPartsJson) : null, userId]
   );
   return rows[0];
 }
@@ -1767,6 +1775,41 @@ export async function getAudioVideoJobById(id) {
 export async function listAudioVideoJobsForAdmin(limit = 50) {
   const { rows } = await pool.query('SELECT * FROM audio_video_jobs ORDER BY id DESC LIMIT $1', [limit]);
   return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// فيديو Whiteboard المجاني (عام لكل المستخدمين) — نفس محرك مصنع فيديو الصوت فوق، بس
+// بيربط كل job بحساب مستخدم حقيقي، وبيتتبّع رصيد مجاني إجمالي مدى الحياة (10 دقايق/600
+// ثانية لكل حساب، بيتوزع على أي عدد فيديوهات/تكملات — مش لكل فيديو لوحده)
+// ═══════════════════════════════════════════════════════════════════════════
+export const WHITEBOARD_FREE_SECONDS_LIFETIME = 600;
+
+export async function listAudioVideoJobsForUser(userId, limit = 20) {
+  const { rows } = await pool.query(
+    'SELECT * FROM audio_video_jobs WHERE user_id = $1 ORDER BY id DESC LIMIT $2',
+    [userId, limit]
+  );
+  return rows;
+}
+
+export async function getAudioVideoJobForUser(id, userId) {
+  const { rows } = await pool.query('SELECT * FROM audio_video_jobs WHERE id = $1 AND user_id = $2', [id, userId]);
+  return rows[0] || null;
+}
+
+export async function getUserWhiteboardFreeSecondsUsed(userId) {
+  const { rows } = await pool.query('SELECT COALESCE(whiteboard_free_seconds_used, 0) AS used FROM users WHERE id = $1', [userId]);
+  return rows[0]?.used || 0;
+}
+
+// ✅ زيادة ذرّية (atomic) — نفس نمط credits_balance فوق، عشان مفيش سباق (race) لو المستخدم
+// عمل أكتر من فيديو في نفس اللحظة تقريبًا
+export async function addUserWhiteboardFreeSecondsUsed(userId, seconds) {
+  const { rows } = await pool.query(
+    'UPDATE users SET whiteboard_free_seconds_used = COALESCE(whiteboard_free_seconds_used, 0) + $1 WHERE id = $2 RETURNING whiteboard_free_seconds_used',
+    [Math.max(0, Math.round(seconds)), userId]
+  );
+  return rows[0]?.whiteboard_free_seconds_used || 0;
 }
 
 // ── صور مرجعية ثابتة (القرآن الكريم، صحيح البخاري، صحيح مسلم...) ────────────────────────

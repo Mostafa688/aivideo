@@ -329,10 +329,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 // ✅ الأوركسترا الكاملة — من الـ job (فيه words_json + elements_json جاهزين، والعناصر
 // الحساسة دينيًا اتشالت خالص من المرحلة اللي قبل كده) لحد رابط الفيديو النهائي على R2
-export async function renderAudioVideoJob(job) {
+export async function renderAudioVideoJob(job, opts = {}) {
   const ratio = RATIO_DIMS[job.ratio] ? job.ratio : '16:9';
   const [W, H] = RATIO_DIMS[ratio];
-  const elements = job.elements_json;
+  let elements = job.elements_json;
   const words = job.words_json;
   if (!elements || !elements.length) throw new Error('No elements to render');
   if (!words || !words.length) throw new Error('No transcript words to render');
@@ -341,7 +341,17 @@ export async function renderAudioVideoJob(job) {
   fs.mkdirSync(workDir, { recursive: true });
 
   try {
-    const audioDurationSec = words[words.length - 1].end + 0.3;
+    let audioDurationSec = words[words.length - 1].end + 0.3;
+    // ✅ NEW (طلب العميل: فيديو whiteboard مجاني 30 ثانية للمستخدمين): opts.maxDurationSec
+    // بيقفل طول الفيديو عند مدة معيّنة بغض النظر عن طول الصوت الأصلي الكامل (ممكن يكون
+    // أطول بكتير، خصوصًا إن المستخدم بيكمله لاحقًا على دفعات) — أي لقطة تبدأ بعد الحد ده
+    // بتتجاهل خالص. الصوت الحقيقي المرفوع لسه بيتحمّل كامل عند الـmux الأخير، لكن فلاج
+    // -shortest الموجود بالفعل بيقصّه تلقائيًا لطول الفيديو الصامت المبني (المقفول هنا)
+    if (opts.maxDurationSec && opts.maxDurationSec > 0) {
+      audioDurationSec = Math.min(audioDurationSec, opts.maxDurationSec);
+      elements = elements.filter(el => (Number(el.start) || 0) < audioDurationSec);
+      if (!elements.length) throw new Error('No elements within the requested duration cap');
+    }
     // ✅ اللقطة الأولى بتبدأ من t=0 مباشرة (مفيش "مقدمة" منفصلة دلوقتي بعد ما اتشالت
     // شخصية الشارح) — أي صمت قبل أول كلمة بيتغطى بملصق أول لقطة نفسه
     const segments = elements.map((el, i) => {
