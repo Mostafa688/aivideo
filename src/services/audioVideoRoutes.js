@@ -167,6 +167,10 @@ router.post('/jobs/:id/extract', adminAuth, async (req, res) => {
           }
           if (!buffer) {
             iconMissCount++;
+            // ✅ NEW (طلب العميل): لوج واضح بالعنصر نفسه وكل كلمات البحث اللي اتجرّبت ومفيش
+            // نتيجة منها في أي مكتبة (Iconify/Tenor/GitHub emoji) — بدل ما التحويل لـ"نص" يحصل
+            // بصمت، عشان يبان بسهولة في اللوج أي عناصر بتفشل ومحتاجة كلمات بحث أدق
+            console.log(`[AudioVideo] Icon miss — beat "${el.text}" tried [${promptCandidates.join(', ') || 'none'}], no match in any icon library, downgraded to text`);
             withImages.push({ ...el, kind: 'text', imageUrl: null, imagePrompt: null, imagePromptCandidates: [], characterKey: null });
             continue;
           }
