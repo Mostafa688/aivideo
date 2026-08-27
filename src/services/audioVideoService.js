@@ -180,7 +180,7 @@ export async function extractVideoElements(words) {
   const indexedTranscript = words.map((w, i) => `${i}:${w.word}`).join(' ');
   const system = `You break a spoken narration transcript (given as an indexed word list "index:word", space-separated) into a DENSE, ordered sequence of short "beats" — roughly every 3 to 5 words, or a short natural phrase/clause if that reads better, STRETCHING to 6-8 words when that's what it takes to include one concrete, icon-able subject rather than cutting a clause into two bare connector fragments with nothing to show. Cover the ENTIRE narration with near-gapless beats — do not skip stretches of it, and do not merge everything into a few broad topics like a summary would.
 
-CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either a small ICON/emoji-style sticker (no text), or on-screen TEXT (no icon). Never combine an icon with text for the same beat. Icons come from a real public icon/emoji library search (not AI-generated), and the library is large and covers most everyday nouns, actions, and places — so lean toward requesting an icon whenever the beat names ANY concrete person, object, action, or place, even a moderately specific one (the search tries the full phrase and then falls back to its individual words, so a partial match still finds something). Only use TEXT when the phrase is genuinely abstract, a transition/connector, a feeling with no physical form, or a very specific/niche description with no plausible icon at all — an unmatched icon request automatically becomes text anyway, so there's little downside to trying the icon first whenever there's a real concrete thing to point at.
+CRITICAL — EVERY beat shows EXACTLY ONE thing on screen, NEVER both: either a small ICON/emoji-style sticker (no text), or on-screen TEXT (no icon). Never combine an icon with text for the same beat. Icons come from a real public icon/emoji library search across FOUR sources (Iconify, Tenor stickers, Giphy stickers, GitHub emoji) covering most everyday nouns, actions, and places, and if all four still miss, the system automatically GENERATES a custom illustration for the request instead of giving up — so an icon/object/character request essentially always ends up with a real visual one way or another. Given that safety net, be AGGRESSIVE about choosing "character"/"object" over "text": lean toward an icon/generated-image request whenever the beat names ANY person, object, action, place, or even a moderately concrete abstract idea that could plausibly be drawn as a simple scene (e.g. "growing wealth" -> coins/money icon, "feeling lost" -> a person icon looking confused). Reserve "text" for the genuinely small remainder: pure connectors/transitions ("and so", "therefore"), or a phrase with truly no visual referent at all (a number, a date, a direct abstract claim with no depictable subject). Most of the video's beats should end up as "character"/"object", not "text" — text should be the minority.
 
 For each beat, output:
 - "start_idx","end_idx": word indices (inclusive) it covers — reference ONLY the given indices, never invent numbers
@@ -387,6 +387,33 @@ async function findTenorStickerUrl(keyword) {
   }
 }
 
+// ✅ NEW (طلب العميل: "زود مواقع للملصقات، فيه موقع اسمه giphy"): Giphy عنده قسم "Stickers"
+// منفصل عن الـ GIFs العادية بالظبط زي Tenor (صور بخلفية شفافة، مصممة أصلًا كملصقات) —
+// نفس النمط بالظبط: مفتاح API مجاني من Giphy (GIPHY_API_KEY)، لو مش متظبط الدالة بترجع
+// null بهدوء والبحث بيكمل عادي على المصادر التانية — مصدر اختياري بالكامل
+const GIPHY_API_KEY = process.env.GIPHY_API_KEY;
+async function findGiphyStickerUrl(keyword) {
+  if (!GIPHY_API_KEY) return null;
+  const q = String(keyword || '').trim();
+  if (!q) return null;
+  try {
+    const url = `https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(q)}&limit=6&rating=g`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const results = Array.isArray(data.data) ? data.data : [];
+    for (const r of results) {
+      const images = r.images || {};
+      const pick = images.fixed_width_downsampled || images.downsized || images.original;
+      if (pick?.url) return pick.url;
+    }
+    return null;
+  } catch (e) {
+    console.warn('[AudioVideo] Giphy sticker lookup failed:', keyword, e.message);
+    return null;
+  }
+}
+
 async function findGithubEmojiUrl(keyword) {
   const q = String(keyword || '').trim().toLowerCase();
   if (!q) return null;
@@ -441,6 +468,12 @@ export async function findLibraryIcon(keyword) {
       if (!tenorUrl) continue;
       const tenorRes = await fetch(tenorUrl);
       if (tenorRes.ok) return Buffer.from(await tenorRes.arrayBuffer());
+    }
+    for (const q of candidates) {
+      const giphyUrl = await findGiphyStickerUrl(q);
+      if (!giphyUrl) continue;
+      const giphyRes = await fetch(giphyUrl);
+      if (giphyRes.ok) return Buffer.from(await giphyRes.arrayBuffer());
     }
     const ghUrl = await findGithubEmojiUrl(keyword);
     if (ghUrl) {
