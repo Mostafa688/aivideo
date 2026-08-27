@@ -11,6 +11,7 @@
 // يضيف/يبحث عن ملصقات ونصوص بنفسه). لحد ما رصيد الـ10 دقايق يخلص.
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import PremiumTimelineEditor from '../components/PremiumTimelineEditor.jsx';
+import { EgPaymentModal, IntlPaymentModal, EG_PACKAGES, GUMROAD_PACKAGES } from './PricingPage.jsx';
 
 function authHeaders() { return { Authorization: 'Bearer ' + localStorage.getItem('token') }; }
 function jsonAuthHeaders() { return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') }; }
@@ -24,6 +25,63 @@ const STEP_LABEL = {
 function formatMin(sec) {
   const m = Math.floor(sec / 60), s = Math.round(sec % 60);
   return s ? `${m}m ${s}s` : `${m}m`;
+}
+
+// ✅ NEW (Task #5 — "professional paywall" once the 10-minute lifetime free budget runs
+// out): reuses the platform's real pricing packages/payment modals (PricingPage.jsx) —
+// same InstaPay-receipt flow for Egypt, same Gumroad checkout for international — so
+// upgrading from here feels like a real plan, not a dead-end placeholder message.
+function PaywallPanel({ lang, region, onPick }) {
+  const t = (ar, en) => (lang === 'ar' ? ar : en);
+  const packages = region === 'eg' ? EG_PACKAGES : GUMROAD_PACKAGES;
+  const features = lang === 'ar'
+    ? ['كل موديلات الفيديو بالذكاء الاصطناعي', 'بدون أي علامة مائية', 'الكريديت ما يخلصش أبدًا', 'تصدير بجودة HD']
+    : ['Access to every AI video model', 'No watermark on any video', 'Credits never expire', 'HD export on every model'];
+  return (
+    <div className="card animate-in" style={{ textAlign: 'center', borderColor: 'var(--accent)', padding: '32px 22px' }}>
+      <div style={{ fontSize: 40, marginBottom: 10 }}>🎉</div>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 21, color: 'var(--text)', marginBottom: 8 }}>
+        {t('استخدمت رصيدك المجاني بالكامل!', "You've used your full free budget!")}
+      </div>
+      <div style={{ color: 'var(--text2)', fontSize: 13.5, lineHeight: 1.7, marginBottom: 22, maxWidth: 460, marginInline: 'auto' }}>
+        {t(
+          '10 دقايق فيديو Whiteboard المجانية خلصت — دلوقتي وقت ترقّي حسابك وتفتح كل موديلات الفيديو بالذكاء الاصطناعي، من غير أي حد على مدة الفيديو.',
+          "You've used the full 10 minutes of free Whiteboard video. Time to unlock every AI video model on the platform, with no length limit."
+        )}
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 26px', display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 320, marginInline: 'auto', textAlign: lang === 'ar' ? 'right' : 'left' }}>
+        {features.map((f, i) => (
+          <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)' }}>
+            <span style={{ color: 'var(--accent)', flexShrink: 0 }}>✓</span>{f}
+          </li>
+        ))}
+      </ul>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, maxWidth: 560, marginInline: 'auto' }}>
+        {packages.map(pkg => (
+          <div
+            key={pkg.key}
+            className="card wb-paywall-pkg"
+            style={{
+              position: 'relative', padding: '18px 14px', cursor: 'pointer',
+              borderColor: pkg.popular ? 'var(--accent)' : undefined,
+              background: pkg.popular ? 'var(--accent-bg)' : undefined,
+            }}
+            onClick={() => onPick(pkg)}
+          >
+            {pkg.popular && (
+              <div className="pill" style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', fontSize: 10, padding: '3px 10px', cursor: 'default' }}>
+                {t('الأكثر طلبًا', 'Most popular')}
+              </div>
+            )}
+            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{pkg.name}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', margin: '2px 0 10px' }}>{pkg.tagline}</div>
+            <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--accent)' }}>{region === 'eg' ? `${pkg.egp} ${t('ج.م', 'EGP')}` : `$${pkg.usd}`}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 2 }}>{pkg.credits.toLocaleString()} {t('كريديت', 'credits')}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
@@ -52,6 +110,16 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   const [continueError, setContinueError] = useState('');
   const [continuing, setContinuing] = useState(false);
   const continueFileInputRef = useRef(null);
+
+  // ── Paywall (Task #5) — shown once the 10-minute lifetime budget is exhausted,
+  // either on the very first upload or mid "Continue Video" ──
+  const [showContinuePaywall, setShowContinuePaywall] = useState(false);
+  const [paywallModal, setPaywallModal] = useState(null); // { type: 'eg', credits, amountEgp } | { type: 'intl', pkg }
+  const [paywallSuccess, setPaywallSuccess] = useState(false);
+  const pickPaywallPackage = (pkg) => {
+    if (region === 'eg') setPaywallModal({ type: 'eg', credits: pkg.credits, amountEgp: pkg.egp });
+    else setPaywallModal({ type: 'intl', pkg });
+  };
 
   const fetchBudget = useCallback(async () => {
     try {
@@ -128,7 +196,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
     }
   };
 
-  const reset = () => { setJob(null); setFile(null); setError(''); setContinueStep(null); setEditing(false); clearInterval(pollRef.current); };
+  const reset = () => { setJob(null); setFile(null); setError(''); setContinueStep(null); setEditing(false); setShowContinuePaywall(false); setPaywallSuccess(false); clearInterval(pollRef.current); };
 
   const pickContinueFile = (f) => {
     if (!f) return;
@@ -146,7 +214,8 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
       const r = await fetch(`/api/whiteboard-video/jobs/${job.id}/extend`, { method: 'POST', headers: authHeaders(), body: form });
       const d = await r.json();
       if (r.status === 402) {
-        setContinueError(t('خلصت رصيدك المجاني (10 دقايق).', 'You\'ve used your free 10-minute budget.'));
+        setContinueStep(null);
+        setShowContinuePaywall(true);
         return;
       }
       if (!r.ok) throw new Error(d.error || 'Failed to extend');
@@ -226,20 +295,20 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
         )}
       </div>
 
-      {/* Exhausted budget */}
+      {/* Exhausted budget — Task #5: a real paywall (packages + payment modals), not
+          just a placeholder message */}
       {budgetExhausted && !job && (
-        <div className="card animate-in" style={{ textAlign: 'center', borderColor: 'var(--accent)' }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>🔒</div>
-          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
-            {t('خلصت رصيدك المجاني', 'Your free budget is used up')}
+        paywallSuccess ? (
+          <div className="card animate-in" style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{t('تم إرسال طلب الاشتراك!', 'Subscription request sent!')}</div>
+            <div style={{ color: 'var(--text2)', fontSize: 13, marginTop: 6 }}>
+              {t('هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.', 'It will be reviewed and credits added within 24 hours.')}
+            </div>
           </div>
-          <div style={{ color: 'var(--text2)', fontSize: 13.5, marginBottom: 18 }}>
-            {t('استخدمت 10 دقايق المجانية بالكامل. اشترك عشان تكمل تعمل فيديوهات.', 'You\'ve used the full 10 minutes of free video. Subscribe to keep creating.')}
-          </div>
-          <button className="btn-primary" onClick={() => onNavigate?.('pricing')}>
-            {t('شوف الخطط', 'View plans')}
-          </button>
-        </div>
+        ) : (
+          <PaywallPanel lang={lang} region={region} onPick={pickPaywallPackage} />
+        )
       )}
 
       {/* Upload (first video) */}
@@ -356,6 +425,28 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
         </div>
       )}
 
+      {/* Continue Video hit the 402 budget-exhausted wall mid-flow — same paywall as
+          the top-level one, shown as an overlay so it works from inside the editor too */}
+      {showContinuePaywall && !paywallSuccess && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }} onClick={() => setShowContinuePaywall(false)}>
+          <div style={{ width: 'min(640px, 100%)', margin: '24px 0' }} onClick={e => e.stopPropagation()}>
+            <PaywallPanel lang={lang} region={region} onPick={pickPaywallPackage} />
+          </div>
+        </div>
+      )}
+      {showContinuePaywall && paywallSuccess && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => { setShowContinuePaywall(false); setPaywallSuccess(false); }}>
+          <div className="card wb-modal-pop" style={{ width: 'min(420px, 100%)', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{t('تم إرسال طلب الاشتراك!', 'Subscription request sent!')}</div>
+            <div style={{ color: 'var(--text2)', fontSize: 13, marginTop: 6 }}>
+              {t('هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.', 'It will be reviewed and credits added within 24 hours.')}
+            </div>
+            <button className="btn-ghost" style={{ marginTop: 16 }} onClick={() => { setShowContinuePaywall(false); setPaywallSuccess(false); }}>{t('تمام', 'OK')}</button>
+          </div>
+        </div>
+      )}
+
       {/* Continue Video: choose AI vs Manual */}
       {continueStep === 'choose' && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setContinueStep(null)}>
@@ -413,6 +504,16 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
         </div>
       )}
 
+      {paywallModal?.type === 'eg' && (
+        <EgPaymentModal credits={paywallModal.credits} amountEgp={paywallModal.amountEgp}
+          onClose={() => setPaywallModal(null)}
+          onSuccess={() => { setPaywallModal(null); setPaywallSuccess(true); }} />
+      )}
+      {paywallModal?.type === 'intl' && (
+        <IntlPaymentModal pkg={paywallModal.pkg}
+          onClose={() => setPaywallModal(null)}
+          onSuccess={() => { setPaywallModal(null); setPaywallSuccess(true); }} />
+      )}
     </div>
   );
 }
