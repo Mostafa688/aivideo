@@ -186,6 +186,66 @@ function RenderCard({ job, lang, onNavigate }) {
   );
 }
 
+// ✅ NEW (طلب العميل: "اربط ده بالايجنت... يظهر في شات الايجنت كمّل الفيديو"): كارت فيديو
+// الـwhiteboard المجاني جوه الشات — بيعمل poll لحالته لوحده لحد ما يخلص، وبعد كده بيظهر
+// زرار "كمّل الفيديو" بيحفظ الـjob id في localStorage وينقل المستخدم لصفحة الـwhiteboard
+// العامة، اللي بتقرأه وتكمل عليه (بدل ما تبدأ رفع صوت جديد من الصفر)
+function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
+  const tt = lang === 'ar'
+    ? { transcribing: 'بيسمع الصوت...', extracting: 'بيحلل المحتوى...', rendering: 'بيبني الفيديو...', continueLabel: 'كمّل الفيديو', failed: 'حصلت مشكلة في بناء الفيديو' }
+    : { transcribing: 'Listening to your audio...', extracting: 'Analyzing content...', rendering: 'Building the video...', continueLabel: 'Continue Video', failed: 'Something went wrong building the video' };
+  const [job, setJob] = useState(initialJob);
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    if (['done', 'failed'].includes(job.status)) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/whiteboard-video/jobs/${job.id}`, { headers: tokenHeader() });
+        const d = await r.json();
+        if (r.ok && d.job) {
+          setJob(d.job);
+          if (['done', 'failed'].includes(d.job.status)) clearInterval(pollRef.current);
+        }
+      } catch { /* keep polling */ }
+    }, 3000);
+    return () => clearInterval(pollRef.current);
+  }, [job.status, job.id]);
+
+  const goContinue = () => {
+    try { localStorage.setItem('erivion_resume_whiteboard_job', String(job.id)); } catch { /* ignore */ }
+    onNavigate?.('whiteboard');
+  };
+
+  if (job.status === 'failed') {
+    return (
+      <div style={{ maxWidth: 280, padding: '12px 16px', borderRadius: 14, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+        <div style={{ fontSize: 13, color: '#ef4444' }}>⚠️ {job.error || tt.failed}</div>
+      </div>
+    );
+  }
+
+  if (job.status === 'done') {
+    return (
+      <div style={{ width: 240 }}>
+        <video src={job.video_url} controls playsInline style={{ width: 240, borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+        <button onClick={goContinue} className="btn-primary" style={{ marginTop: 8, width: '100%', fontSize: 13, padding: '8px 12px' }}>
+          ➕ {tt.continueLabel} →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: 240, padding: '14px 16px', borderRadius: 14, background: 'linear-gradient(135deg, rgba(124,106,247,0.18), rgba(0,0,0,0.6))', border: '1px solid rgba(124,106,247,0.3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="spinning" style={{ display: 'inline-block', fontSize: 18 }}>◐</span>
+        <span style={{ fontSize: 13, color: '#fff' }}>📝 {tt[job.status] || tt.transcribing}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const region = localStorage.getItem('erivion_region') || 'eg';
   const lang = region === 'eg' ? 'ar' : 'en';
@@ -427,6 +487,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         } else {
           setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'معنديش فيديو مرفوع في المحادثة دي أقدر أعدّله — ارفع الفيديو الأول.' : "I don't have an uploaded video in this chat to edit — please upload one first." }]);
         }
+      }
+
+      // ✅ NEW (طلب العميل: "اربط ده بالايجنت... يظهر في شات الايجنت كمّل الفيديو"): فيديو
+      // whiteboard مجاني اتعمل من صوت اتصوّر في نفس الرسالة — بيظهر كارت منفصل بيعمل poll
+      // لحالته، وبعد ما يخلص بيظهر زرار "كمّل الفيديو" بيودّي لصفحة Whiteboard العامة
+      if (data.whiteboardVideo?.job) {
+        setMessages(m => [...m, { role: 'assistant', type: 'whiteboard', job: data.whiteboardVideo.job }]);
       }
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message);
@@ -1165,6 +1232,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
                   <video src={m.videoUrl} controls playsInline style={{ width: 200, maxWidth: '70vw', borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
                 </div>
               );
+            }
+            if (m.type === 'whiteboard') {
+              return <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}><WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} /></div>;
             }
             const ar = isArabic(m.content);
             return (

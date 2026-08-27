@@ -90,59 +90,82 @@ router.get('/sticker-search', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ NEW: الـpipeline الأساسي (تفريغ → استخراج → رندر) اتفصل لدالة مستقلة قابلة لإعادة
+// الاستخدام — عشان الايجنت (agentRoutes.js) يقدر يبدأ فيديو whiteboard من صوت اتصوّر
+// بالفعل في المحادثة (رسالة صوتية) من غير ما يحتاج المستخدم يرفعه تاني من الصفحة العامة.
+// بترجع فورًا بـ{job, thisVideoSeconds} والـpipeline الفعلي بيكمل في الخلفية (fire-and-forget)
+export async function startWhiteboardVideoCreation(userId, audioBuffer, audioExt = 'mp3', originalName = 'audio') {
+  const usedSeconds = await getUserWhiteboardFreeSecondsUsed(userId);
+  const remainingSeconds = WHITEBOARD_FREE_SECONDS_LIFETIME - usedSeconds;
+  if (remainingSeconds <= 0) {
+    const err = new Error('free_budget_exhausted');
+    err.code = 'free_budget_exhausted';
+    err.usedSeconds = usedSeconds;
+    throw err;
+  }
+  const thisVideoSeconds = Math.min(INITIAL_VIDEO_SECONDS, remainingSeconds);
+
+  const tmpPath = tmpAudioPath(originalName.includes('.') ? originalName : `${originalName}.${audioExt}`);
+  fs.writeFileSync(tmpPath, audioBuffer);
+  let text, words;
+  try {
+    ({ text, words } = await transcribeAudioWithTimestamps(tmpPath));
+  } finally {
+    try { fs.unlinkSync(tmpPath); } catch {}
+  }
+  if (!words.length) {
+    const err = new Error('Could not transcribe any speech from this audio');
+    err.code = 'no_speech';
+    throw err;
+  }
+
+  const audioUrl = await uploadAudioVideoSourceToR2(audioBuffer, audioExt);
+  const job = await createAudioVideoJob({ audioUrl, transcriptText: text, wordsJson: words, status: 'extracting', userId, ratio: '16:9' });
+
+  (async () => {
+    try {
+      const windowWords = words.filter(w => w.start < thisVideoSeconds + 1);
+      const elements = await extractVideoElements(windowWords);
+      if (!elements.length) {
+        await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements extracted from transcript' });
+        return;
+      }
+      const referenceImages = await getReferenceImagesMap();
+      const withImages = await resolveElementImages(elements, referenceImages);
+      if (!withImages.length) {
+        await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements could be processed' });
+        return;
+      }
+      await updateAudioVideoJob(job.id, { elementsJson: withImages, status: 'rendering' });
+      const renderJob = await getAudioVideoJobForUser(job.id, userId);
+      const videoUrl = await renderAudioVideoJob(renderJob, { maxDurationSec: thisVideoSeconds });
+      await updateAudioVideoJob(job.id, { status: 'done', videoUrl, renderedSeconds: thisVideoSeconds });
+      await addUserWhiteboardFreeSecondsUsed(userId, thisVideoSeconds);
+    } catch (err) {
+      console.error('[WhiteboardVideo] Pipeline failed:', err);
+      await updateAudioVideoJob(job.id, { status: 'failed', error: err.message }).catch(() => {});
+    }
+  })();
+
+  return { job, thisVideoSeconds };
+}
+
 // ✅ Pipeline كامل (رفع → تفريغ → استخراج → رندر) في نداء واحد للفيديو الأول — بيرجع فورًا
 // (async — الشغل بيحصل في الخلفية) والفرونت إند بيعمل poll على GET /jobs/:id
 router.post('/create', authMiddleware, createLimiter, upload.single('audio'), async (req, res) => {
   const userId = req.user.userId;
-  let tmpPath = null;
   try {
     if (!req.file) return res.status(400).json({ error: 'No audio file uploaded' });
-
-    const usedSeconds = await getUserWhiteboardFreeSecondsUsed(userId);
-    const remainingSeconds = WHITEBOARD_FREE_SECONDS_LIFETIME - usedSeconds;
-    if (remainingSeconds <= 0) {
-      return res.status(402).json({ error: 'free_budget_exhausted', usedSeconds, limitSeconds: WHITEBOARD_FREE_SECONDS_LIFETIME });
-    }
-    const thisVideoSeconds = Math.min(INITIAL_VIDEO_SECONDS, remainingSeconds);
-
-    tmpPath = tmpAudioPath(req.file.originalname);
-    fs.writeFileSync(tmpPath, req.file.buffer);
-    const { text, words } = await transcribeAudioWithTimestamps(tmpPath);
-    if (!words.length) return res.status(400).json({ error: 'Could not transcribe any speech from this audio' });
-
-    const audioUrl = await uploadAudioVideoSourceToR2(req.file.buffer, (req.file.originalname.split('.').pop() || 'mp3'));
-    const job = await createAudioVideoJob({ audioUrl, transcriptText: text, wordsJson: words, status: 'extracting', userId, ratio: req.body?.ratio || '16:9' });
-    res.json({ job, thisVideoSeconds });
-
-    (async () => {
-      try {
-        const windowWords = words.filter(w => w.start < thisVideoSeconds + 1);
-        const elements = await extractVideoElements(windowWords);
-        if (!elements.length) {
-          await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements extracted from transcript' });
-          return;
-        }
-        const referenceImages = await getReferenceImagesMap();
-        const withImages = await resolveElementImages(elements, referenceImages);
-        if (!withImages.length) {
-          await updateAudioVideoJob(job.id, { status: 'failed', error: 'No elements could be processed' });
-          return;
-        }
-        await updateAudioVideoJob(job.id, { elementsJson: withImages, status: 'rendering' });
-        const renderJob = await getAudioVideoJobForUser(job.id, userId);
-        const videoUrl = await renderAudioVideoJob(renderJob, { maxDurationSec: thisVideoSeconds });
-        await updateAudioVideoJob(job.id, { status: 'done', videoUrl, renderedSeconds: thisVideoSeconds });
-        await addUserWhiteboardFreeSecondsUsed(userId, thisVideoSeconds);
-      } catch (err) {
-        console.error('[WhiteboardVideo] Pipeline failed:', err);
-        await updateAudioVideoJob(job.id, { status: 'failed', error: err.message }).catch(() => {});
-      }
-    })();
+    const ext = (req.file.originalname.split('.').pop() || 'mp3').toLowerCase();
+    const result = await startWhiteboardVideoCreation(userId, req.file.buffer, ext, req.file.originalname);
+    res.json(result);
   } catch (err) {
+    if (err.code === 'free_budget_exhausted') {
+      return res.status(402).json({ error: 'free_budget_exhausted', usedSeconds: err.usedSeconds, limitSeconds: WHITEBOARD_FREE_SECONDS_LIFETIME });
+    }
+    if (err.code === 'no_speech') return res.status(400).json({ error: err.message });
     console.error('[WhiteboardVideo] Create error:', err);
     res.status(500).json({ error: err.message || 'Could not start video creation' });
-  } finally {
-    if (tmpPath) { try { fs.unlinkSync(tmpPath); } catch {} }
   }
 });
 
