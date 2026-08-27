@@ -210,12 +210,16 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
         .pte-add-btn:hover { transform: scale(1.1); }
       `}</style>
 
-      {/* Editor surface: preview + transport + filmstrip, one continuous panel */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+      {/* ✅ FIX (طلب العميل، كرره أكتر من مرة: "التايم لاين محصور في مربع، عايزه ياخد الشاشة
+          كلها"): شيلنا كلاس "card" (بورder + زوايا دائرية تقيلة + خلفية مختلفة) اللي كان
+          مخلّي السطح كله يحس إنه widget صغير جوه صفحة — دلوقتي مساحة تحرير مستمرة full-bleed
+          زي أي أداة فيديو حقيقية، بس فاصل خفيف جدًا (border-radius بسيط) عشان تفضل واضحة
+          حدودها من غير ما تحس إنها "متحبسة" */}
+      <div style={{ background: 'var(--bg2)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
         {/* Preview */}
         <div style={{ background: '#000', textAlign: 'center' }}>
           {job.video_url ? (
-            <video ref={videoRef} src={job.video_url} style={{ maxWidth: '100%', maxHeight: 400, display: 'block', margin: '0 auto' }} />
+            <video ref={videoRef} src={job.video_url} style={{ maxWidth: '100%', maxHeight: 640, width: '100%', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           ) : (
             <div style={{ padding: '60px 0', color: 'var(--text3)', fontSize: 13 }}>
               {t('مفيش معاينة لسه — احفظ وأعد البناء عشان تشوف الفيديو', 'No preview yet — save & rebuild to see the video')}
