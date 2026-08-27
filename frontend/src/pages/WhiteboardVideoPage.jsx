@@ -263,12 +263,18 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
           transition: width 0.6s ease;
         }
         .wb-step { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
-        .wb-step-dot { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; transition: all 0.3s; }
+        .wb-step-dot { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; transition: all 0.3s cubic-bezier(0.16,1,0.3,1); }
+        .wb-step-pop { animation: wb-pop 0.3s cubic-bezier(0.16,1,0.3,1); display: inline-block; }
         .wb-video-wrap { animation: wb-glow 2.5s ease-in-out infinite; border-radius: var(--r-xl); }
         .wb-choice-card { transition: all 0.2s cubic-bezier(0.16,1,0.3,1); cursor: pointer; text-align: center; }
         .wb-choice-card:hover { transform: translateY(-3px); border-color: var(--accent) !important; }
         .wb-choice-card.selected { border-color: var(--accent) !important; background: var(--accent-bg) !important; }
         .wb-modal-pop { animation: wb-pop 0.2s cubic-bezier(0.16,1,0.3,1); }
+        .wb-paywall-pkg { transition: all 0.2s cubic-bezier(0.16,1,0.3,1); animation: wb-pop 0.35s cubic-bezier(0.16,1,0.3,1) backwards; }
+        .wb-paywall-pkg:hover { transform: translateY(-4px); border-color: var(--accent) !important; box-shadow: 0 10px 28px rgba(0,0,0,0.28); }
+        .wb-paywall-pkg:nth-of-type(1) { animation-delay: 0.05s; }
+        .wb-paywall-pkg:nth-of-type(2) { animation-delay: 0.15s; }
+        .wb-paywall-pkg:nth-of-type(3) { animation-delay: 0.25s; }
       `}</style>
 
       {/* Hero — مختصر أثناء التعديل (isEditable) عشان المحرر ياخد أكبر مساحة ممكنة فوق
@@ -361,8 +367,11 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
                 <div className="wb-step-dot" style={{
                   background: i < stepIdx ? 'var(--green)' : i === stepIdx ? 'var(--accent)' : 'var(--bg3)',
                   color: i <= stepIdx ? '#fff' : 'var(--text3)',
+                  transform: i === stepIdx ? 'scale(1.1)' : 'scale(1)',
                 }}>
-                  {i < stepIdx ? '✓' : i === stepIdx ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : (i + 1)}
+                  <span key={i < stepIdx ? 'done' : i === stepIdx ? 'active' : 'pending'} className="wb-step-pop">
+                    {i < stepIdx ? '✓' : i === stepIdx ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : (i + 1)}
+                  </span>
                 </div>
                 <span style={{ fontSize: 13.5, color: i <= stepIdx ? 'var(--text)' : 'var(--text3)' }}>
                   {STEP_LABEL[lang][s]}

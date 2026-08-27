@@ -67,7 +67,11 @@ export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClos
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div style={{ background: '#12121f', border: '1px solid #2d2d4a', borderRadius: 12, padding: 18, width: 'min(520px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+      <style>{`
+        .avte-sticker-btn { transition: transform 0.15s cubic-bezier(0.16,1,0.3,1), box-shadow 0.15s; }
+        .avte-sticker-btn:hover:not(:disabled) { transform: translateY(-2px) scale(1.04); box-shadow: 0 6px 16px rgba(0,0,0,0.35); }
+      `}</style>
+      <div className="animate-in" style={{ background: '#12121f', border: '1px solid #2d2d4a', borderRadius: 12, padding: 18, width: 'min(520px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontWeight: 700, color: '#fff', fontSize: 14 }}>🔍 دور وضيف ملصق</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 18, cursor: 'pointer' }}>✕</button>
@@ -93,6 +97,7 @@ export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClos
               // بنحط رابط الصورة في dataTransfer عشان الـdrop handler في التايم لاين يلقطه
               draggable={showDrag}
               onDragStart={(e) => { if (onDragStart) { e.dataTransfer.setData('text/plain', r.url); e.dataTransfer.effectAllowed = 'copy'; onDragStart(r); } }}
+              className="avte-sticker-btn"
               style={{
                 background: '#fff', border: adding === i ? '2px solid #7c6af7' : '1px solid #2d2d4a', borderRadius: 8,
                 padding: 6, cursor: adding != null ? 'wait' : (showDrag ? 'grab' : 'pointer'), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
