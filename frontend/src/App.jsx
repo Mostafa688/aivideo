@@ -26,6 +26,7 @@ import CommunityPage from './pages/CommunityPage.jsx';
 import AgentPage from './pages/AgentPage.jsx';
 import CoursesPage from './pages/CoursesPage.jsx';
 import ChannelsPage from './pages/ChannelsPage.jsx';
+import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -369,6 +370,7 @@ export default function App() {
       case 'templates':  setPage('templates'); break;
       case 'courses':    setPage('courses'); break;
       case 'channels':   setPage('channels'); break;
+      case 'whiteboard': setPage('whiteboard'); break;
       case 'home':       setPage('agent'); break;
       default:           setPage('input'); break;
     }
@@ -553,6 +555,7 @@ export default function App() {
             if (data.videoType === 'model5') { setPage('model5'); return; }
             if (data.videoType === 'model6') { setFormData(data); setPage('model6'); return; }
             if (data.videoType === 'model7') { setPage('model7'); return; }
+            if (data.videoType === 'whiteboard') { setPage('whiteboard'); return; }
             // model1 / model2 — show welcome modal
             const modelKey = data.videoType === 'model2' ? 'model2' : 'model1';
             goToModelWithWelcome(modelKey, () => { setFormData(data); setPage('scenes'); });
@@ -566,6 +569,7 @@ export default function App() {
         {page === 'model5' && <ModelCinematicPage onBack={() => { setPage('input'); fetchCredits(); }} model5Plan={model5Plan} model5Access={model5Access} userPlan={userPlan} onNavigate={handleNavigate} />}
         {page === 'model6' && <MapVideoPage formData={formData} onBack={() => setPage('input')} />}
         {page === 'model7' && <ModelErivionPage onBack={() => { setPage('input'); fetchCredits(); }} erivionPlan={erivionPlan} erivionAccess={erivionAccess} onNavigate={handleNavigate} />}
+        {page === 'whiteboard' && <WhiteboardVideoPage region={userRegion || localStorage.getItem('erivion_region') || 'intl'} onBack={() => setPage('input')} onNavigate={handleNavigate} />}
         {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />}
         {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
