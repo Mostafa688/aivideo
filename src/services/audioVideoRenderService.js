@@ -283,7 +283,9 @@ function buildCaptionsAssFile(segments, videoLanguage, ratio, fontName, W, H) {
   const isVertical = ratio === '9:16' || ratio === '1:1';
   // ✅ FIX (شكوى حقيقية: النص طالع صغير في الفيديو الحقيقي): رفعنا الحجم بشكل واضح — ده المفروض
   // "نص فيديو" كبير بارز، مش تفصيلة صغيرة تحت الملصق
-  const fontSize = isVertical ? 140 : 128;
+  // ✅ FIX (طلب العميل: "خط النص لازم يبقى احسن من كده وكبر النص شوية"): زيادة تانية في الحجم
+  // (128→144 أفقي، 140→156 رأسي) فوق الزيادة اللي قبل كده
+  const fontSize = isVertical ? 156 : 144;
   const marginV = isVertical ? 170 : 100;
 
   const header = `[Script Info]
@@ -294,27 +296,25 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Text,${fontName},${fontSize},&H00181818,&H000000FF,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,5,30,30,${marginV},1
+Style: Text,${fontName},${fontSize},&H00181818,&H000000FF,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,1,7,0,5,30,30,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  // ✅ FIX (بلاغ متكرر: مربع فاضي بدل بعض الحروف العربي زي "لأ"/"لإ"): بغض النظر عن سبب
-  // نقص glyph الـ ligature ده بالظبط (خط ناقص، أو محرك الشكل نفسه)، بنمنع تكوين الـ ligature
-  // دي من الأساس بإدخال Zero-Width Non-Joiner (U+200C) بين "ل" وأي شكل ألف بعدها مباشرة —
-  // ده بيخلي الخط يعرض الحرفين منفصلين (بس متصلين بصريًا زي الطبيعي) بدل ما يحاول يستبدلهم
-  // بجليف الـ ligature المركّب (اللي هو المفقود). ده طبقة حماية إضافية فوق اختيار الفونت،
-  // مش بديل عنه — بتشتغل أيًا كان السبب الحقيقي للمشكلة
-  function disjoinArabicLigatures(s) {
-    return String(s || '').replace(/ل(?=[اأإآ])/g, 'ل‌');
-  }
+  // ⚠️ REVERTED (بلاغ العميل: "لا" بقت طالعة "ل ا" منفصلة بمسافة فعلية): كان هنا حقن
+  // Zero-Width Non-Joiner بين "ل" وأي ألف بعدها عشان نمنع مشكلة قديمة (مربع فاضي بدل بعض
+  // حروف زي "لأ"/"لإ") — لكن الـZWNJ ده بيتعامل معاه كحرف له عرض فعلي (مش صفر فعليًا) في
+  // محرك الرندر الحالي (libass عبر ffmpeg)، فبقى بيفصل حرفين "لا" (كلمة شائعة جدًا) بمسافة
+  // ظاهرة بدل ما يمنع الـligature بصمت زي المفروض — ده أسوأ بكتير من المشكلة الأصلية اللي
+  // كان بيحلها. اختيار الفونت (Noto Naskh Arabic أولوية) المفروض يغطي الحالة الأصلية لوحده
+  // من غير أي حقن حروف تحكّم إضافية
 
   // ✅ FIX (طلب العميل): كل لقطة يا ملصق يا نص، مش الاتنين مع بعض — لقطات الملصق
   // (kind:'character'/'object') مالهاش سطر نص خالص هنا، النص بس للقطات text/quote
   const events = segments.filter(seg => seg.kind === 'text' || seg.kind === 'quote').map(seg => {
     const rawText = String(seg.text || seg.element || '').replace(/['"`\\{}|<>]/g, '').trim();
-    const text = isRTL ? disjoinArabicLigatures(rawText) : rawText;
+    const text = rawText;
     if (!text) return null;
     const dispText = isRTL ? `‏${text}` : text;
     const durMs = Math.max(1, (seg.segEnd - seg.segStart) * 1000);
