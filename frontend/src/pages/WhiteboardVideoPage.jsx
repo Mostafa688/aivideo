@@ -135,16 +135,26 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   // line"): الايجنت بيحط job id في localStorage قبل ما ينقل المستخدم هنا (بدل ما تفتح
   // شاشة رفع صوت جديد من الصفر) — هنا بنقراه مرة واحدة عند الدخول ونجيب نفس الـjob
   useEffect(() => {
-    let resumeId;
-    try { resumeId = localStorage.getItem('erivion_resume_whiteboard_job'); } catch { /* ignore */ }
+    let resumeId, resumeEdit;
+    try {
+      resumeId = localStorage.getItem('erivion_resume_whiteboard_job');
+      resumeEdit = localStorage.getItem('erivion_resume_whiteboard_edit');
+    } catch { /* ignore */ }
     if (!resumeId) return;
-    try { localStorage.removeItem('erivion_resume_whiteboard_job'); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem('erivion_resume_whiteboard_job');
+      localStorage.removeItem('erivion_resume_whiteboard_edit');
+    } catch { /* ignore */ }
     (async () => {
       try {
         const r = await fetch(`/api/whiteboard-video/jobs/${resumeId}`, { headers: authHeaders() });
         const d = await r.json();
         if (!r.ok || !d.job) return;
         setJob(d.job);
+        // ✅ FIX (طلب العميل: "لما ادوس كمل الفيديو المفروض يدخلني على التيم لاين علطول"):
+        // لو جاي من زرار "كمّل الفيديو" في شات الايجنت، ادخل على التايم لاين على طول —
+        // من غير ما يحتاج يدوس تاني على شاشة النتيجة البسيطة
+        if (resumeEdit) setEditing(true);
         if (!['done', 'failed'].includes(d.job.status)) pollJob(d.job.id);
       } catch { /* ignore, falls back to fresh-upload screen */ }
     })();
