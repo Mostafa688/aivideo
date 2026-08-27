@@ -294,6 +294,71 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
   return elements;
 }
 
+// ✅ NEW: اتفصلت من audioVideoRoutes.js (كانت جوه /jobs/:id/extract مباشرة) عشان أي pipeline
+// تاني (زي whiteboardVideoRoutes.js العام) يقدر يستخدم نفس منطق "جيب/ولّد صورة لكل عنصر"
+// من غير تكرار كود — ده اللي كان ناقص في الـpipeline العام، فكل العناصر كانت بتتحط في
+// الفيديو من غير imageUrl خالص (طالعة فاضية تمامًا، ولا حتى نص لأن kind فضلت object/character
+// مش text). بياخد العناصر الخام من extractVideoElements + خريطة الصور المرجعية (Quran/
+// Bukhari/Muslim)، وبيرجّع نفس العناصر بس معاها imageUrl (أو kind:'text' لو مفيش نتيجة خالص)
+export async function resolveElementImages(elements, referenceImages = {}) {
+  const characterImageCache = new Map(); // characterKey -> imageUrl
+  const withImages = [];
+  let llmTextCount = 0, iconFoundCount = 0, iconMissCount = 0, aiGeneratedCount = 0;
+  for (const el of elements) {
+    if (el.kind === 'quote') {
+      const refUrl = referenceImages[el.quoteSource] || referenceImages.other || null;
+      if (refUrl) iconFoundCount++; else llmTextCount++;
+      withImages.push({ ...el, imageUrl: refUrl });
+      continue;
+    }
+    if (el.kind === 'text') {
+      llmTextCount++;
+      withImages.push({ ...el, imageUrl: null });
+      continue;
+    }
+    if (el.kind === 'character' && el.characterKey && characterImageCache.has(el.characterKey)) {
+      iconFoundCount++;
+      withImages.push({ ...el, imageUrl: characterImageCache.get(el.characterKey) });
+      continue;
+    }
+    const promptCandidates = Array.isArray(el.imagePromptCandidates) && el.imagePromptCandidates.length
+      ? el.imagePromptCandidates
+      : (el.imagePrompt ? [el.imagePrompt] : []);
+    let buffer = null;
+    for (const candidate of promptCandidates) {
+      try {
+        buffer = await findLibraryIcon(candidate);
+      } catch (e) {
+        console.warn('[AudioVideo] Icon lookup failed for candidate, trying next:', candidate, e.message);
+      }
+      if (buffer) break;
+    }
+    if (!buffer) {
+      try {
+        const genBuffer = await generateElementImage(promptCandidates[0] || el.text);
+        const genImageUrl = await uploadElementImageToR2(genBuffer);
+        aiGeneratedCount++;
+        console.log(`[AudioVideo] Icon miss — beat "${el.text}" tried [${promptCandidates.join(', ') || 'none'}], no match in any icon library, generated one with AI instead`);
+        withImages.push({ ...el, imageUrl: genImageUrl, imagePromptCandidates: undefined });
+        if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, genImageUrl);
+        continue;
+      } catch (e) {
+        console.warn('[AudioVideo] AI image generation fallback also failed:', el.text, e.message);
+      }
+      iconMissCount++;
+      console.log(`[AudioVideo] Icon miss — beat "${el.text}" tried [${promptCandidates.join(', ') || 'none'}], no match in any icon library, AI generation also failed, downgraded to text`);
+      withImages.push({ ...el, kind: 'text', imageUrl: null, imagePrompt: null, imagePromptCandidates: [], characterKey: null });
+      continue;
+    }
+    iconFoundCount++;
+    const imageUrl = await uploadElementImageToR2(buffer);
+    withImages.push({ ...el, imageUrl, imagePromptCandidates: undefined });
+    if (el.kind === 'character' && el.characterKey) characterImageCache.set(el.characterKey, imageUrl);
+  }
+  console.log(`[AudioVideo] Extract summary: ${elements.length} beats — LLM chose text/quote directly: ${llmTextCount}, icon found: ${iconFoundCount}, AI-generated (icon miss fallback): ${aiGeneratedCount}, icon search + AI generation both failed (downgraded to text): ${iconMissCount}`);
+  return withImages;
+}
+
 // ✅ FIX (طلب العميل): بدل ما نولّد صور بالذكاء الاصطناعي (كانت طالعة وحشة/مش مفهومة كتير)،
 // دلوقتي بندور على ملصق حقيقي جاهز في مكتبة أيقونات/إيموجي عامة ومجانية بالكامل (Iconify —
 // بيجمع مئات الآلاف من الأيقونات من مكتبات مفتوحة المصدر كتير، من غير أي مفتاح API أو تسجيل).
