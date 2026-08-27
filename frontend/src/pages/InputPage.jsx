@@ -469,6 +469,13 @@ function ModelSelector({ onSelect, model3Access, model4Access, model5Access, mod
       badge:'FREE', free:true, cat:'free',
     },
     {
+      key:'whiteboard', tag:'WHITEBOARD', name:'Whiteboard Video', icon:'📝',
+      color:'#7c6af7', glow:'rgba(124,106,247,0.25)',
+      desc:'Upload your own narration audio and get an animated whiteboard-style video automatically — free, no credits.',
+      tags:['Upload your audio','Auto stickers & text','30s free','No credits'],
+      badge:'FREE', free:true, cat:'free',
+    },
+    {
       key:'model7', tag:'ADS', name:'Ad Creator', icon:'📢',
       color:'#f97316', glow:'rgba(249,115,22,0.25)',
       desc:'Upload your product photo and get a cinematic AI video ad — scenes, voiceover, and transitions included.',
@@ -724,6 +731,7 @@ export default function InputPage({ onSubmit, model3Access = false, model4Access
         if (model === 'model5') { onSubmit({ videoType: 'model5' }); return; }
         if (model === 'model6') { setSelectedModel('model6'); return; }
         if (model === 'model7') { setSelectedModel('model7'); return; }
+        if (model === 'whiteboard') { onSubmit({ videoType: 'whiteboard' }); return; }
         setSelectedModel(model);
       }}
       model3Access={model3Access}
