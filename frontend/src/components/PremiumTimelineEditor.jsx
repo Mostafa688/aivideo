@@ -1,20 +1,25 @@
 // ── PremiumTimelineEditor.jsx ────────────────────────────────────────────────
-// ✅ NEW (طلب العميل: "ده بسيط أوي، عايز زي اللي وريتهولك في الصورة"): نسخة مصمّمة بشكل
-// احترافي من محرر التايم لاين، مخصّصة للصفحة العامة (فيديو Whiteboard) — نفس المنطق/الـAPI
-// بالظبط بتاع AudioVideoTimelineEditor.jsx (الأدمن)، بس شكل مختلف تمامًا: مشغّل فيديو
-// حقيقي فوق (آخر نسخة محفوظة)، كروت لقطات كبيرة بصورة/إيموجي بارز بدل شرايط لون رفيعة،
-// لوحة تعديل بتاعمل slide-in بانيميشن، أزرار وأيقونات بستايل الموقع نفسه (btn-primary/
-// btn-ghost/card من global.css) بدل مربعات رمادية بسيطة
-import React, { useState, useEffect } from 'react';
+// ✅ NEW (طلب العميل — تكرر أكتر من مرة، رافق صورة مرجعية من Google Flow): محرر تايم لاين
+// احترافي حقيقي، مش صف كروت رمادية بسيطة. نفس المنطق/الـAPI بالظبط بتاع
+// AudioVideoTimelineEditor.jsx (الأدمن)، بس شكل شريط فيلم حقيقي متلاصق (زي أي محرر فيديو
+// حقيقي — CapCut/Google Flow): خلايا متلاصقة بصورة العنصر كخلفية كاملة، خط تشغيل (playhead)
+// متحرك فوق الشريط متزامن مع الفيديو، شريط تحكّم مخصّص (تشغيل/إيقاف + وقت + زووم)، وزرار "+"
+// دائري صغير مدمج في الشريط نفسه (مش كارت كبير منفصل) لإضافة/تكملة.
+import React, { useState, useEffect, useRef } from 'react';
 import { StickerSearchPanel } from './AudioVideoTimelineEditor.jsx';
 
-const TIMELINE_PX_PER_SEC = 56;
+const BASE_PX_PER_SEC = 50;
 const KIND_META = {
   character: { color: '#3b82f6', icon: '👤', label: { ar: 'شخصية', en: 'Character' } },
   object:    { color: '#22c55e', icon: '🖼️', label: { ar: 'ملصق', en: 'Sticker' } },
   text:      { color: '#6b7280', icon: '📝', label: { ar: 'نص', en: 'Text' } },
   quote:     { color: '#a855f7', icon: '📖', label: { ar: 'آية/حديث', en: 'Quote' } },
 };
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
 
 export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/admin/audio-video', authHeaders, lang = 'ar', onRequestExtend, remainingBudgetSec = null }) {
   const headers = authHeaders || { 'Content-Type': 'application/json' };
@@ -34,24 +39,31 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   const [uploadingImg, setUploadingImg] = useState(false);
   const [showStickerSearch, setShowStickerSearch] = useState(false);
   const [err, setErr] = useState('');
-  const trackRef = React.useRef(null);
-  const pollRef = React.useRef(null);
+  const [zoom, setZoom] = useState(1);
+  const [curTime, setCurTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const trackRef = useRef(null);
+  const videoRef = useRef(null);
+  const pollRef = useRef(null);
   useEffect(() => () => clearInterval(pollRef.current), []);
+
+  const pxPerSec = BASE_PX_PER_SEC * zoom;
 
   const segments = elements.map((el, i) => ({
     ...el,
     segStart: i === 0 ? 0 : Number(el.start) || 0,
     segEnd: i < elements.length - 1 ? Number(elements[i + 1].start) || 0 : audioDuration,
   }));
-  const showExtendCard = typeof onRequestExtend === 'function' && (remainingBudgetSec == null || remainingBudgetSec > 0);
-  const trackWidth = Math.max(600, audioDuration * TIMELINE_PX_PER_SEC) + (showExtendCard ? 130 : 0);
+  const showExtendButton = typeof onRequestExtend === 'function' && (remainingBudgetSec == null || remainingBudgetSec > 0);
+  const trackWidth = Math.max(600, audioDuration * pxPerSec) + 50;
 
   useEffect(() => {
     if (dragBoundaryIdx == null) return;
     const handleMove = (e) => {
       if (e.buttons !== 1 || !trackRef.current) return;
       const rect = trackRef.current.getBoundingClientRect();
-      const tt = Math.max(0, Math.min(audioDuration, (e.clientX - rect.left) / TIMELINE_PX_PER_SEC));
+      const tt = Math.max(0, Math.min(audioDuration, (e.clientX - rect.left) / pxPerSec));
       setElements(els => {
         const prevStart = dragBoundaryIdx > 0 ? (Number(els[dragBoundaryIdx - 1].start) || 0) : 0;
         const nextStart = dragBoundaryIdx < els.length - 1 ? (Number(els[dragBoundaryIdx + 1].start) || 0) : audioDuration;
@@ -63,7 +75,30 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
     return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp); };
-  }, [dragBoundaryIdx, audioDuration]);
+  }, [dragBoundaryIdx, audioDuration, pxPerSec]);
+
+  // ✅ خط التشغيل (playhead) بيتزامن مع الفيديو الحقيقي فوق — تجربة محرر فيديو حقيقي
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onTime = () => setCurTime(v.currentTime);
+    const onMeta = () => setDuration(v.duration || 0);
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    v.addEventListener('timeupdate', onTime);
+    v.addEventListener('loadedmetadata', onMeta);
+    v.addEventListener('play', onPlay);
+    v.addEventListener('pause', onPause);
+    return () => {
+      v.removeEventListener('timeupdate', onTime);
+      v.removeEventListener('loadedmetadata', onMeta);
+      v.removeEventListener('play', onPlay);
+      v.removeEventListener('pause', onPause);
+    };
+  }, [job.video_url]);
+
+  const togglePlay = () => { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause(); };
+  const seekTo = (sec) => { const v = videoRef.current; if (v) v.currentTime = Math.max(0, Math.min(duration || sec, sec)); };
 
   const updateElement = (idx, patch) => setElements(els => els.map((el, i) => i === idx ? { ...el, ...patch } : el));
 
@@ -153,106 +188,145 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   const ticks = [];
   for (let ti = 0; ti <= audioDuration; ti += 5) ticks.push(ti);
   const sel = selectedIdx != null ? segments[selectedIdx] : null;
+  const playheadLeft = job.video_url ? curTime * pxPerSec : null;
 
   return (
     <div>
       <style>{`
         @keyframes pte-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .pte-card { transition: all 0.18s cubic-bezier(0.16,1,0.3,1); cursor: pointer; }
-        .pte-card:hover { transform: translateY(-2px); }
-        button.pte-card:hover { border-color: var(--accent) !important; background: var(--accent-bg) !important; }
-        .pte-card.selected { box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(124,106,247,0.3); }
+        .pte-cell { transition: box-shadow 0.15s, filter 0.15s; cursor: pointer; position: relative; }
+        .pte-cell:hover { filter: brightness(1.15); }
+        .pte-cell.selected { box-shadow: inset 0 0 0 3px var(--accent), 0 0 16px rgba(124,106,247,0.5); z-index: 2; }
         .pte-panel { animation: pte-in 0.2s cubic-bezier(0.16,1,0.3,1); }
         .pte-kind-pill { transition: all 0.15s; cursor: pointer; }
         .pte-kind-pill:hover { transform: translateY(-1px); }
         .pte-handle { transition: background 0.15s; }
+        .pte-handle:hover { background: rgba(255,255,255,0.35) !important; }
+        .pte-transport-btn { width: 34px; height: 34px; border-radius: 50%; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
+        .pte-transport-btn:hover { background: var(--accent-bg); border-color: var(--accent); color: var(--accent2); }
+        .pte-zoom-btn { width: 26px; height: 26px; border-radius: 6px; background: var(--bg3); border: 1px solid var(--border2); color: var(--text2); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+        .pte-zoom-btn:hover { color: var(--text); border-color: var(--border3); }
+        .pte-add-btn { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: #fff; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; font-weight: 700; box-shadow: 0 4px 16px var(--accent-glow); transition: all 0.15s; }
+        .pte-add-btn:hover { transform: scale(1.1); }
       `}</style>
 
-      {/* Preview player — last saved render, for context while editing the draft below */}
-      <div className="card" style={{ marginBottom: 16, textAlign: 'center', padding: 16 }}>
-        {job.video_url ? (
-          <>
-            <video src={job.video_url} controls style={{ maxWidth: '100%', maxHeight: 380, borderRadius: 'var(--r-lg)', background: '#000' }} />
-            <div style={{ color: 'var(--text3)', fontSize: 11.5, marginTop: 8 }}>
-              {t('آخر نسخة محفوظة — احفظ وأعد البناء عشان تشوف التعديلات', 'Last saved version — save & rebuild to see your edits')}
+      {/* Editor surface: preview + transport + filmstrip, one continuous panel */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+        {/* Preview */}
+        <div style={{ background: '#000', textAlign: 'center' }}>
+          {job.video_url ? (
+            <video ref={videoRef} src={job.video_url} style={{ maxWidth: '100%', maxHeight: 400, display: 'block', margin: '0 auto' }} />
+          ) : (
+            <div style={{ padding: '60px 0', color: 'var(--text3)', fontSize: 13 }}>
+              {t('مفيش معاينة لسه — احفظ وأعد البناء عشان تشوف الفيديو', 'No preview yet — save & rebuild to see the video')}
             </div>
-          </>
-        ) : (
-          <div style={{ padding: '40px 0', color: 'var(--text3)', fontSize: 13 }}>
-            {t('مفيش معاينة لسه — احفظ وأعد البناء عشان تشوف الفيديو', 'No preview yet — save & rebuild to see the video')}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* Timeline */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>🎞️ {t('التايم لاين', 'Timeline')}</div>
-          <button className="btn-primary" onClick={() => setShowStickerSearch(true)} style={{ padding: '7px 14px', fontSize: 12.5 }}>
-            🔍 {t('دور وضيف ملصق', 'Find & add a sticker')}
+        {/* Transport bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border)', borderTop: '1px solid var(--border)' }}>
+          <button className="pte-transport-btn" onClick={togglePlay} disabled={!job.video_url}>
+            {playing ? '⏸' : '▶'}
           </button>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.7 }}>
-          {t('دوس على أي لقطة تعدّلها، اسحب الخط الفاصل بين لقطتين تقصّر/تطوّل، أو ضيف عنصر/ملصق جديد.',
-             'Click any card to edit it, drag the divider between two cards to trim, or add a new element/sticker.')}
+          <span style={{ fontSize: 12.5, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', minWidth: 78 }}>
+            {fmtTime(curTime)} / {fmtTime(duration || audioDuration)}
+          </span>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: 'var(--text3)' }}>{t('آخر نسخة محفوظة', 'Last saved version')}</span>
+          <div style={{ flex: 1 }} />
+          <button className="pte-zoom-btn" onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}>−</button>
+          <span style={{ fontSize: 11, color: 'var(--text3)', minWidth: 32, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+          <button className="pte-zoom-btn" onClick={() => setZoom(z => Math.min(3, z + 0.25))}>+</button>
         </div>
 
-        <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-          <div ref={trackRef} style={{ position: 'relative', width: trackWidth, height: 118, userSelect: 'none' }}>
-            {ticks.map(tk => (
-              <div key={tk} style={{ position: 'absolute', left: tk * TIMELINE_PX_PER_SEC, top: 0, bottom: 0, borderRight: '1px dashed var(--border2)', fontSize: 10, color: 'var(--text3)', paddingLeft: 4 }}>{tk}s</div>
-            ))}
-            {segments.map((seg, i) => {
-              const meta = KIND_META[seg.kind] || KIND_META.text;
-              const w = Math.max(60, (seg.segEnd - seg.segStart) * TIMELINE_PX_PER_SEC - 6);
-              return (
-                <div
-                  key={i}
-                  className={`card pte-card${selectedIdx === i ? ' selected' : ''}`}
-                  onClick={() => setSelectedIdx(i)}
-                  style={{
-                    position: 'absolute', top: 16, left: seg.segStart * TIMELINE_PX_PER_SEC, width: w, height: 86,
-                    padding: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-                    borderTop: `3px solid ${meta.color}`, overflow: 'hidden',
-                  }}
-                  title={seg.element}
-                >
-                  {seg.imageUrl
-                    ? <img src={seg.imageUrl} alt="" style={{ width: 34, height: 34, objectFit: 'contain', background: '#fff', borderRadius: 6 }} />
-                    : <span style={{ fontSize: 22 }}>{meta.icon}</span>}
-                  <span style={{ fontSize: 10.5, color: 'var(--text2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{seg.element}</span>
+        {/* Filmstrip */}
+        <div style={{ padding: '14px 16px 16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', lineHeight: 1.6 }}>
+              {t('دوس على أي خلية تعدّلها، اسحب الحد بين خليتين تقصّر/تطوّل.', 'Click any cell to edit it, drag the border between two cells to trim.')}
+            </div>
+            <button className="btn-primary" onClick={() => setShowStickerSearch(true)} style={{ padding: '6px 12px', fontSize: 12, flexShrink: 0 }}>
+              🔍 {t('دور وضيف ملصق', 'Find & add sticker')}
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto', paddingBottom: 6 }}>
+            <div ref={trackRef} style={{ position: 'relative', width: trackWidth, userSelect: 'none' }}>
+              {/* ruler */}
+              <div style={{ position: 'relative', height: 18 }}>
+                {ticks.map(tk => (
+                  <div key={tk} style={{ position: 'absolute', left: tk * pxPerSec, top: 0, fontSize: 10, color: 'var(--text3)' }}>{tk}s</div>
+                ))}
+              </div>
+
+              {/* contiguous filmstrip cells */}
+              <div style={{ position: 'relative', height: 74, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border2)' }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+                  {segments.map((seg, i) => {
+                    const meta = KIND_META[seg.kind] || KIND_META.text;
+                    const w = Math.max(1, (seg.segEnd - seg.segStart) * pxPerSec);
+                    return (
+                      <div
+                        key={i}
+                        className={`pte-cell${selectedIdx === i ? ' selected' : ''}`}
+                        onClick={() => setSelectedIdx(i)}
+                        title={seg.element}
+                        style={{
+                          width: w, height: '100%', flexShrink: 0,
+                          background: seg.imageUrl ? `${meta.color}22` : `${meta.color}33`,
+                          borderRight: i < segments.length - 1 ? '1px solid rgba(0,0,0,0.4)' : 'none',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                        }}
+                      >
+                        {seg.imageUrl ? (
+                          <img src={seg.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ fontSize: Math.min(26, w * 0.4) }}>{meta.icon}</span>
+                        )}
+                        {/* caption scrim */}
+                        <div style={{
+                          position: 'absolute', left: 0, right: 0, bottom: 0, padding: '3px 5px',
+                          background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
+                          fontSize: 9.5, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>
+                          {seg.element}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-            {elements.map((el, i) => i === 0 ? null : (
-              <div
-                key={`b${i}`}
-                className="pte-handle"
-                onMouseDown={(e) => { e.stopPropagation(); setDragBoundaryIdx(i); }}
-                style={{
-                  position: 'absolute', top: 16, left: (Number(el.start) || 0) * TIMELINE_PX_PER_SEC - 5, width: 10, height: 86,
-                  cursor: 'col-resize', zIndex: 5, background: dragBoundaryIdx === i ? 'var(--accent)' : 'transparent', borderRadius: 4,
-                }}
-              />
-            ))}
-            {/* ✅ NEW (طلب العميل: "+" جنب الفيديو زي الصورة اللي وريتهولي) — كارت "+" في آخر
-                التايم لاين، مش داخل مدة الفيديو الحالية — بيفتح تدفق "تكملة الفيديو" (رفع
-                صوت إضافي + AI/يدوي) بدل ما يكون زرار منفصل برّه التايم لاين خالص */}
-            {showExtendCard && (
-              <button
-                onClick={onRequestExtend}
-                className="pte-card"
-                style={{
-                  position: 'absolute', top: 16, left: audioDuration * TIMELINE_PX_PER_SEC + 14, width: 100, height: 86,
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: 'transparent', border: '2px dashed var(--border3)', borderRadius: 'var(--r-lg)', color: 'var(--accent2)',
-                }}
-                title={t('كمّل الفيديو', 'Continue video')}
-              >
-                <span style={{ fontSize: 26, lineHeight: 1 }}>➕</span>
-                <span style={{ fontSize: 10.5, fontWeight: 600 }}>{t('كمّل الفيديو', 'Continue')}</span>
-              </button>
-            )}
+
+                {/* drag handles between cells */}
+                {elements.map((el, i) => i === 0 ? null : (
+                  <div
+                    key={`b${i}`}
+                    className="pte-handle"
+                    onMouseDown={(e) => { e.stopPropagation(); setDragBoundaryIdx(i); }}
+                    style={{
+                      position: 'absolute', top: 0, left: (Number(el.start) || 0) * pxPerSec - 4, width: 8, height: '100%',
+                      cursor: 'col-resize', zIndex: 5, background: dragBoundaryIdx === i ? 'var(--accent)' : 'transparent',
+                    }}
+                  />
+                ))}
+
+                {/* playhead */}
+                {playheadLeft != null && (
+                  <div style={{ position: 'absolute', top: 0, bottom: 0, left: playheadLeft, width: 2, background: '#fff', boxShadow: '0 0 6px rgba(255,255,255,0.8)', zIndex: 6, pointerEvents: 'none' }} />
+                )}
+              </div>
+
+              {/* inline + to continue */}
+              {showExtendButton && (
+                <button
+                  className="pte-add-btn"
+                  onClick={onRequestExtend}
+                  title={t('كمّل الفيديو', 'Continue video')}
+                  style={{ position: 'absolute', top: 18 + 37, left: audioDuration * pxPerSec + 14 }}
+                >
+                  +
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
