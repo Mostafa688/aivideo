@@ -16,7 +16,7 @@ const KIND_META = {
   quote:     { color: '#a855f7', icon: '📖', label: { ar: 'آية/حديث', en: 'Quote' } },
 };
 
-export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/admin/audio-video', authHeaders, lang = 'ar' }) {
+export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/admin/audio-video', authHeaders, lang = 'ar', onRequestExtend, remainingBudgetSec = null }) {
   const headers = authHeaders || { 'Content-Type': 'application/json' };
   const fileHeaders = Object.fromEntries(Object.entries(headers).filter(([k]) => k.toLowerCase() !== 'content-type'));
   const t = (ar, en) => (lang === 'ar' ? ar : en);
@@ -43,7 +43,8 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     segStart: i === 0 ? 0 : Number(el.start) || 0,
     segEnd: i < elements.length - 1 ? Number(elements[i + 1].start) || 0 : audioDuration,
   }));
-  const trackWidth = Math.max(600, audioDuration * TIMELINE_PX_PER_SEC);
+  const showExtendCard = typeof onRequestExtend === 'function' && (remainingBudgetSec == null || remainingBudgetSec > 0);
+  const trackWidth = Math.max(600, audioDuration * TIMELINE_PX_PER_SEC) + (showExtendCard ? 130 : 0);
 
   useEffect(() => {
     if (dragBoundaryIdx == null) return;
@@ -159,6 +160,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
         @keyframes pte-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .pte-card { transition: all 0.18s cubic-bezier(0.16,1,0.3,1); cursor: pointer; }
         .pte-card:hover { transform: translateY(-2px); }
+        button.pte-card:hover { border-color: var(--accent) !important; background: var(--accent-bg) !important; }
         .pte-card.selected { box-shadow: 0 0 0 2px var(--accent), 0 8px 24px rgba(124,106,247,0.3); }
         .pte-panel { animation: pte-in 0.2s cubic-bezier(0.16,1,0.3,1); }
         .pte-kind-pill { transition: all 0.15s; cursor: pointer; }
@@ -233,6 +235,24 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                 }}
               />
             ))}
+            {/* ✅ NEW (طلب العميل: "+" جنب الفيديو زي الصورة اللي وريتهولي) — كارت "+" في آخر
+                التايم لاين، مش داخل مدة الفيديو الحالية — بيفتح تدفق "تكملة الفيديو" (رفع
+                صوت إضافي + AI/يدوي) بدل ما يكون زرار منفصل برّه التايم لاين خالص */}
+            {showExtendCard && (
+              <button
+                onClick={onRequestExtend}
+                className="pte-card"
+                style={{
+                  position: 'absolute', top: 16, left: audioDuration * TIMELINE_PX_PER_SEC + 14, width: 100, height: 86,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: 'transparent', border: '2px dashed var(--border3)', borderRadius: 'var(--r-lg)', color: 'var(--accent2)',
+                }}
+                title={t('كمّل الفيديو', 'Continue video')}
+              >
+                <span style={{ fontSize: 26, lineHeight: 1 }}>➕</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600 }}>{t('كمّل الفيديو', 'Continue')}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

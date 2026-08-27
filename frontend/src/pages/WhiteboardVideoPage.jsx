@@ -127,12 +127,8 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
       if (!r.ok) throw new Error(d.error || 'Failed to extend');
       setJob(d.job);
       setContinueFile(null);
-      if (continueMode === 'manual') {
-        setContinueStep('manual-edit');
-      } else {
-        setContinueStep(null);
-        pollJob(job.id);
-      }
+      setContinueStep(null);
+      if (continueMode === 'ai') pollJob(job.id);
     } catch (e) {
       setContinueError(e.message || t('حصل خطأ، حاول تاني', 'Something went wrong, please try again'));
     } finally {
@@ -141,9 +137,13 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   };
 
   const stepIdx = job ? STEP_ORDER.indexOf(job.status) : -1;
-  const isProcessing = job && !['done', 'failed'].includes(job.status) && continueStep !== 'manual-edit';
+  // ✅ FIX (طلب العميل: "لما يدوس تكمّل يخش على التايم لاين الأول"): بدل ما يبقى فيه شاشة
+  // نتيجة منفصلة وزرار "كمّل الفيديو" مخبّي جواها، التايم لاين نفسه دلوقتي هو الشاشة
+  // الرئيسية بمجرد ما يبقى فيه عناصر جاهزة للتعديل (done أو elements_ready بعد تكملة
+  // يدوي) — و"+" جوه التايم لاين نفسه (PremiumTimelineEditor) هو اللي بيفتح تدفق التكملة
+  const isEditable = job && ['done', 'elements_ready'].includes(job.status);
+  const isProcessing = job && !isEditable && job.status !== 'failed';
   const budgetExhausted = budget && budget.remainingSeconds <= 0;
-  const canContinue = budget && budget.remainingSeconds > 0;
 
   return (
     <div dir={dir} style={{ maxWidth: 720, margin: '0 auto', padding: '32px 16px 60px' }} className="animate-in">
@@ -242,62 +242,64 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
         </div>
       )}
 
-      {/* Processing / result */}
-      {job && continueStep !== 'manual-edit' && (
+      {/* Processing */}
+      {job && isProcessing && (
         <div className="card animate-in" style={{ marginTop: 8 }}>
-          {isProcessing && (
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 14, textAlign: 'center' }}>
-                {STEP_LABEL[lang][job.status] || STEP_LABEL[lang].transcribing}
+          <div style={{ fontWeight: 700, marginBottom: 14, textAlign: 'center' }}>
+            {STEP_LABEL[lang][job.status] || STEP_LABEL[lang].transcribing}
+          </div>
+          <div className="wb-progress-track">
+            <div className="wb-progress-fill" style={{ width: `${Math.max(8, ((stepIdx + 1) / STEP_ORDER.length) * 100)}%` }} />
+          </div>
+          <div style={{ marginTop: 18 }}>
+            {STEP_ORDER.slice(0, 3).map((s, i) => (
+              <div key={s} className="wb-step">
+                <div className="wb-step-dot" style={{
+                  background: i < stepIdx ? 'var(--green)' : i === stepIdx ? 'var(--accent)' : 'var(--bg3)',
+                  color: i <= stepIdx ? '#fff' : 'var(--text3)',
+                }}>
+                  {i < stepIdx ? '✓' : i === stepIdx ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : (i + 1)}
+                </div>
+                <span style={{ fontSize: 13.5, color: i <= stepIdx ? 'var(--text)' : 'var(--text3)' }}>
+                  {STEP_LABEL[lang][s]}
+                </span>
               </div>
-              <div className="wb-progress-track">
-                <div className="wb-progress-fill" style={{ width: `${Math.max(8, ((stepIdx + 1) / STEP_ORDER.length) * 100)}%` }} />
-              </div>
-              <div style={{ marginTop: 18 }}>
-                {STEP_ORDER.slice(0, 3).map((s, i) => (
-                  <div key={s} className="wb-step">
-                    <div className="wb-step-dot" style={{
-                      background: i < stepIdx ? 'var(--green)' : i === stepIdx ? 'var(--accent)' : 'var(--bg3)',
-                      color: i <= stepIdx ? '#fff' : 'var(--text3)',
-                    }}>
-                      {i < stepIdx ? '✓' : i === stepIdx ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : (i + 1)}
-                    </div>
-                    <span style={{ fontSize: 13.5, color: i <= stepIdx ? 'var(--text)' : 'var(--text3)' }}>
-                      {STEP_LABEL[lang][s]}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12, marginTop: 14 }}>
-                {t('ممكن ياخد كام دقيقة، متقفلش الصفحة...', 'This can take a few minutes, please keep this page open...')}
-              </div>
-            </div>
-          )}
+            ))}
+          </div>
+          <div style={{ textAlign: 'center', color: 'var(--text3)', fontSize: 12, marginTop: 14 }}>
+            {t('ممكن ياخد كام دقيقة، متقفلش الصفحة...', 'This can take a few minutes, please keep this page open...')}
+          </div>
+        </div>
+      )}
 
-          {job.status === 'done' && (
-            <div style={{ textAlign: 'center' }}>
-              <div className="wb-video-wrap" style={{ display: 'inline-block', maxWidth: '100%' }}>
-                <video src={job.video_url} controls style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 'var(--r-xl)', background: '#000' }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
-                <button className="btn-primary" disabled={!canContinue} onClick={() => setContinueStep('choose')} title={!canContinue ? t('خلص الرصيد المجاني', 'Free budget used up') : ''}>
-                  ➕ {t('كمّل الفيديو', 'Continue Video')}
-                </button>
-                <button className="btn-ghost" onClick={reset}>
-                  {t('اعمل فيديو جديد', 'Make another video')}
-                </button>
-              </div>
-            </div>
-          )}
+      {job && job.status === 'failed' && (
+        <div className="card animate-in" style={{ marginTop: 8, textAlign: 'center' }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>😕</div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('حصل خطأ في بناء الفيديو', 'Something went wrong building the video')}</div>
+          <div style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 16 }}>{job.error}</div>
+          <button className="btn-ghost" onClick={reset}>{t('حاول تاني', 'Try again')}</button>
+        </div>
+      )}
 
-          {job.status === 'failed' && (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 28, marginBottom: 8 }}>😕</div>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('حصل خطأ في بناء الفيديو', 'Something went wrong building the video')}</div>
-              <div style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 16 }}>{job.error}</div>
-              <button className="btn-ghost" onClick={reset}>{t('حاول تاني', 'Try again')}</button>
-            </div>
-          )}
+      {/* ✅ الشاشة الرئيسية بعد أول فيديو: التايم لاين نفسه (معاينة + كروت اللقطات)، و"+"
+          جواه هو اللي بيفتح تدفق التكملة (AI/يدوي) — مش زرار منفصل برّه */}
+      {job && isEditable && (
+        <div className="animate-in" style={{ marginTop: 8 }}>
+          <PremiumTimelineEditor
+            job={job}
+            onSaved={(updated) => {
+              setJob(updated);
+              if (updated.status === 'done') fetchBudget();
+            }}
+            apiBase="/api/whiteboard-video"
+            authHeaders={jsonAuthHeaders()}
+            lang={lang}
+            onRequestExtend={() => setContinueStep('choose')}
+            remainingBudgetSec={budget?.remainingSeconds ?? null}
+          />
+          <div style={{ textAlign: 'center', marginTop: 16 }}>
+            <button className="btn-ghost" onClick={reset}>{t('اعمل فيديو جديد', 'Make another video')}</button>
+          </div>
         </div>
       )}
 
@@ -358,24 +360,6 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
         </div>
       )}
 
-      {/* Continue Video: manual timeline editor */}
-      {continueStep === 'manual-edit' && job && (
-        <div className="animate-in" style={{ marginTop: 8 }}>
-          <div style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>
-            {t('ضيف ملصقات ونصوص للجزء الجديد، وبعدين احفظ وأعد بناء الفيديو', 'Add stickers/text for the new part, then save and rebuild the video')}
-          </div>
-          <PremiumTimelineEditor
-            job={job}
-            onSaved={(updated) => {
-              setJob(updated);
-              if (updated.status === 'done') { setContinueStep(null); fetchBudget(); }
-            }}
-            apiBase="/api/whiteboard-video"
-            authHeaders={jsonAuthHeaders()}
-            lang={lang}
-          />
-        </div>
-      )}
     </div>
   );
 }
