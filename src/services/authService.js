@@ -332,6 +332,11 @@ async function initDB() {
   // يبقى منتج عام لكل مستخدم مسجّل، فمحتاج يتربط بحساب المستخدم صاحبه عشان يقدر يشوف
   // فيديوهاته بعدين ويكملها (زر "Continue Video")
   await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)').catch(() => {});
+  // ✅ NEW ("Continue Video"): بيسجّل آخر مدة (بالثانية) اتعمل لها رندر فعلي لنفس الـjob ده —
+  // لازم نعرفها عشان أي "تكملة" لاحقة (AI أو يدوي) تعرف: (1) تحسب الوقت الجديد من غير ما
+  // تتكرر مع القديم، (2) تخصم من رصيد الـ10 دقايق بس الفرق الجديد المُضاف، مش الفيديو كله
+  // تاني من الأول في كل مرة
+  await pool.query('ALTER TABLE audio_video_jobs ADD COLUMN IF NOT EXISTS rendered_seconds NUMERIC DEFAULT 0').catch(() => {});
   // ✅ NEW: رصيد الفيديو المجاني (whiteboard) — 10 دقايق (600 ثانية) مدى الحياة لكل حساب،
   // بيتوزع على أي عدد فيديوهات/تكملات، مش لكل فيديو لوحده (اتفقنا مع العميل على كده صراحة)
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS whiteboard_free_seconds_used INTEGER DEFAULT 0').catch(() => {});
@@ -1750,7 +1755,7 @@ export async function updateAudioVideoJob(id, fields) {
   const vals = [];
   let i = 1;
   for (const [key, value] of Object.entries(fields)) {
-    const col = { transcriptText: 'transcript_text', wordsJson: 'words_json', elementsJson: 'elements_json', videoUrl: 'video_url', status: 'status', error: 'error', ratio: 'ratio', compositeScenesJson: 'composite_scenes_json' }[key];
+    const col = { transcriptText: 'transcript_text', wordsJson: 'words_json', elementsJson: 'elements_json', videoUrl: 'video_url', status: 'status', error: 'error', ratio: 'ratio', compositeScenesJson: 'composite_scenes_json', audioUrl: 'audio_url', renderedSeconds: 'rendered_seconds' }[key];
     if (!col) continue;
     cols.push(`${col} = $${i}`);
     vals.push((key === 'wordsJson' || key === 'elementsJson' || key === 'compositeScenesJson') && value != null ? JSON.stringify(value) : value);
