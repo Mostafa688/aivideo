@@ -22,7 +22,9 @@ const TIMELINE_KIND_LABEL = { character: '👤 شخصية', object: '🖼️ م�
 const SOURCE_LABEL = { iconify: 'Iconify', tenor: 'Tenor', giphy: 'Giphy', github: 'GitHub' };
 
 // ✅ NEW: لوحة بحث/إضافة ملصق يدوي — منفصلة كمكوّن فرعي عشان تفضل مستقلة وسهلة إعادة الاستخدام
-function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClose }) {
+// (مُصدّرة عشان محرر التايم لاين الفاخر بتاع صفحة Whiteboard العامة يقدر يعيد استخدامها
+// بدل ما يكرر نفس الكود)
+export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClose }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);

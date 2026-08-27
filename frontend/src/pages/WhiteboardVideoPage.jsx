@@ -10,7 +10,7 @@
 // نفس محرر التايم لاين بتاع الأدمن — AudioVideoTimelineEditor.jsx، مشترك بينهم — عشان
 // يضيف/يبحث عن ملصقات ونصوص بنفسه). لحد ما رصيد الـ10 دقايق يخلص.
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import TimelineEditor from '../components/AudioVideoTimelineEditor.jsx';
+import PremiumTimelineEditor from '../components/PremiumTimelineEditor.jsx';
 
 function authHeaders() { return { Authorization: 'Bearer ' + localStorage.getItem('token') }; }
 function jsonAuthHeaders() { return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') }; }
@@ -364,7 +364,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
           <div style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>
             {t('ضيف ملصقات ونصوص للجزء الجديد، وبعدين احفظ وأعد بناء الفيديو', 'Add stickers/text for the new part, then save and rebuild the video')}
           </div>
-          <TimelineEditor
+          <PremiumTimelineEditor
             job={job}
             onSaved={(updated) => {
               setJob(updated);
@@ -372,6 +372,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
             }}
             apiBase="/api/whiteboard-video"
             authHeaders={jsonAuthHeaders()}
+            lang={lang}
           />
         </div>
       )}
