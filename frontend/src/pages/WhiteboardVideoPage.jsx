@@ -150,8 +150,13 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   const budgetExhausted = budget && budget.remainingSeconds <= 0;
   const canContinue = budget && budget.remainingSeconds > 0;
 
+  // ✅ FIX (طلب العميل — كرر الصورة المرجعية أكتر من مرة: "التايم لاين مش محصور في مربع،
+  // بص عريض ازاي"): الصفحة كانت maxWidth:720 ثابت دايمًا (عرض مقال/نص عادي) — مناسب لمرحلة
+  // الرفع والنتيجة البسيطة، لكن أداة تحرير حقيقية محتاجة تملا الشاشة عرضًا زي أي محرر فيديو
+  // احترافي. العرض بقى واسع بس وإحنا في وضع التعديل (isEditable)، وضيّق زي ما كان لباقي الحالات
+  const wide = isEditable;
   return (
-    <div dir={dir} style={{ maxWidth: 720, margin: '0 auto', padding: '32px 16px 60px' }} className="animate-in">
+    <div dir={dir} style={{ maxWidth: wide ? 1400 : 720, margin: '0 auto', padding: wide ? '24px 20px 60px' : '32px 16px 60px', transition: 'max-width 0.3s ease' }} className="animate-in">
       <style>{`
         @keyframes wb-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         @keyframes wb-shimmer { 0% { background-position: -200px 0; } 100% { background-position: calc(200px + 100%) 0; } }
@@ -177,15 +182,20 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
         .wb-modal-pop { animation: wb-pop 0.2s cubic-bezier(0.16,1,0.3,1); }
       `}</style>
 
-      {/* Hero */}
-      <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <div className="wb-hero-icon" style={{ fontSize: 44, marginBottom: 10 }}>📝✨</div>
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, color: 'var(--text)', marginBottom: 6 }}>
-          {t('فيديو Whiteboard مجاني', 'Free Whiteboard Video')}
-        </div>
-        <div style={{ color: 'var(--text2)', fontSize: 14.5, lineHeight: 1.7 }}>
-          {t('ارفع صوت السرد بتاعك، وهنعمل لك فيديو احترافي تلقائي — مجانًا، من غير كريديت.', 'Upload your narration audio and we\'ll build a professional video automatically — free, no credits.')}
-        </div>
+      {/* Hero — مختصر أثناء التعديل (isEditable) عشان المحرر ياخد أكبر مساحة ممكنة فوق
+          الصفحة، زي أي أداة تحرير حقيقية (مش صفحة تسويقية) */}
+      <div style={{ textAlign: 'center', marginBottom: wide ? 14 : 28 }}>
+        {!wide && <div className="wb-hero-icon" style={{ fontSize: 44, marginBottom: 10 }}>📝✨</div>}
+        {!wide && (
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, color: 'var(--text)', marginBottom: 6 }}>
+            {t('فيديو Whiteboard مجاني', 'Free Whiteboard Video')}
+          </div>
+        )}
+        {!wide && (
+          <div style={{ color: 'var(--text2)', fontSize: 14.5, lineHeight: 1.7 }}>
+            {t('ارفع صوت السرد بتاعك، وهنعمل لك فيديو احترافي تلقائي — مجانًا، من غير كريديت.', 'Upload your narration audio and we\'ll build a professional video automatically — free, no credits.')}
+          </div>
+        )}
         {budget && (
           <div className="pill" style={{ marginTop: 14, cursor: 'default' }}>
             🎁 {t(
