@@ -213,7 +213,14 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
   }, [job.status, job.id]);
 
   const goContinue = () => {
-    try { localStorage.setItem('erivion_resume_whiteboard_job', String(job.id)); } catch { /* ignore */ }
+    // ✅ FIX (طلب العميل: "لما ادوس كمل الفيديو المفروض يدخلني على التيم لاين علطول مش
+    // يدخلني على الموديل وبعد كده ادوس كمل الفيديو تاني"): علم إضافي بيقول لصفحة الـ
+    // whiteboard تدخل على التايم لاين على طول من غير الشاشة البسيطة (فيديو + زرار) اللي
+    // كانت بتحتاج ضغطة تانية
+    try {
+      localStorage.setItem('erivion_resume_whiteboard_job', String(job.id));
+      localStorage.setItem('erivion_resume_whiteboard_edit', '1');
+    } catch { /* ignore */ }
     onNavigate?.('whiteboard');
   };
 

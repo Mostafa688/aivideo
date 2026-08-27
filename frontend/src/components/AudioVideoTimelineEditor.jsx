@@ -85,6 +85,16 @@ export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClos
             {searching ? '⏳' : 'بحث'}
           </button>
         </form>
+        {/* ✅ FIX (طلب العميل: "بضغط عليه بينزل وخلاص كده في اي حته ومش عارف احدد المكان"):
+            توضيح صريح إن فيه طريقتين للإضافة — دوس (يحطه مكان خط التشغيل) أو اسحب (يحطه
+            بالظبط مكان ما تفلته) — عشان الفرق يبقى مفهوم من الأول */}
+        {showDrag && (
+          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10, lineHeight: 1.6 }}>
+            {lang === 'ar'
+              ? '💡 دوس على أي نتيجة عشان تضيفها مكان خط التشغيل الحالي — أو اسحبها على التايم لاين عشان تحطها بالظبط في المكان اللي عايزه.'
+              : '💡 Click a result to add it at the current playhead — or drag it onto the timeline to place it exactly where you want.'}
+          </div>
+        )}
         {err && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{err}</div>}
         <div style={{ overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 8 }}>
           {results.map((r, i) => (
