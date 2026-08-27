@@ -380,9 +380,11 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                   />
                 ))}
 
-                {/* playhead */}
+                {/* playhead — transition بسيط بيلمّس الحركة بين نبضات timeupdate (بتحصل
+                    كذا مرة/ثانية) عشان تحس بحركة متصلة زي أي محرر فيديو حقيقي، من غير ما
+                    تحس بتأخير محسوس لما تدوس عشان تحدد مكان جديد */}
                 {playheadLeft != null && (
-                  <div style={{ position: 'absolute', top: 0, bottom: 0, left: playheadLeft, width: 2, background: '#fff', boxShadow: '0 0 6px rgba(255,255,255,0.8)', zIndex: 6, pointerEvents: 'none' }} />
+                  <div style={{ position: 'absolute', top: 0, bottom: 0, left: playheadLeft, width: 2, background: '#fff', boxShadow: '0 0 6px rgba(255,255,255,0.8)', zIndex: 6, pointerEvents: 'none', transition: 'left 0.1s linear' }} />
                 )}
                 {/* ✅ مؤشر مكان الإفلات وقت سحب ملصق من لوحة البحث */}
                 {dragOverTime != null && (
