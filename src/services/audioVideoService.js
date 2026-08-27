@@ -294,7 +294,29 @@ Output ONLY valid JSON, no explanation, no markdown fences: [{"start_idx":N,"end
       : el)
     .sort((a, b) => a.startIdx - b.startIdx);
 
-  return elements;
+  // ✅ FIX (بلاغ العميل: "الفيديو بيبقى ماشي صح في الأول بس في الآخر بلاقي جمل متكررة، وده
+  // السبب"): المشكلة مش في تزامن الرندر نفسه — الاستخراج (الـLLM) أحيانًا بيرجّع لقطات
+  // نطاقها (start_idx/end_idx) متداخل أو مكرر تمامًا مع اللي قبلها، خصوصًا قرب آخر رد طويل
+  // (النماذج بتميل تكرر/تتوه شوية قرب حد الرد الطويل — وده بقى أوضح دلوقتي بعد ما زودنا
+  // كثافة اللقطات في التعديل اللي فات). أي لقطة تبدأ من كلمة سبق وغطتها لقطة قبلها بنقصّها
+  // تبدأ فورًا بعد ما خلصت اللقطة السابقة، ولو ماعادش فيه نطاق صالح بعد القص (تكرار كامل)
+  // بنشيلها تمامًا بدل ما تفضل ظاهرة مرتين في الفيديو النهائي
+  const deduped = [];
+  let lastEndIdx = -1;
+  for (const el of elements) {
+    if (el.startIdx <= lastEndIdx) {
+      const newStartIdx = lastEndIdx + 1;
+      if (newStartIdx > el.endIdx) continue; // تكرار كامل — اتجاهلت
+      const newText = words.slice(newStartIdx, el.endIdx + 1).map(w => w.word).join(' ').trim();
+      if (!newText) continue;
+      deduped.push({ ...el, startIdx: newStartIdx, element: newText, text: newText, start: words[newStartIdx].start });
+    } else {
+      deduped.push(el);
+    }
+    lastEndIdx = deduped[deduped.length - 1].endIdx;
+  }
+
+  return deduped;
 }
 
 // ✅ NEW: اتفصلت من audioVideoRoutes.js (كانت جوه /jobs/:id/extract مباشرة) عشان أي pipeline
