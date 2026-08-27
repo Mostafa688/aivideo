@@ -41,7 +41,12 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   const fileInputRef = useRef(null);
 
   // ── Continue Video state ──
-  const [continueStep, setContinueStep] = useState(null); // null | 'choose' | 'upload-ai' | 'upload-manual' | 'manual-edit'
+  // ✅ FIX (طلب العميل: "دوس تكملة الفيديو الأول، وبعد كده يخش على التايم لاين"): شاشة
+  // نتيجة بسيطة (فيديو + زرار "كمّل الفيديو") هي الافتراضي بعد أول رندر — التايم لاين
+  // الاحترافي (PremiumTimelineEditor) بيظهر بس لما يدوس الزرار ده (editing=true)، مش
+  // تلقائي بمجرد ما الفيديو يخلص
+  const [editing, setEditing] = useState(false);
+  const [continueStep, setContinueStep] = useState(null); // null | 'choose' | 'upload'
   const [continueMode, setContinueMode] = useState('ai'); // 'ai' | 'manual'
   const [continueFile, setContinueFile] = useState(null);
   const [continueError, setContinueError] = useState('');
@@ -103,7 +108,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
     }
   };
 
-  const reset = () => { setJob(null); setFile(null); setError(''); setContinueStep(null); clearInterval(pollRef.current); };
+  const reset = () => { setJob(null); setFile(null); setError(''); setContinueStep(null); setEditing(false); clearInterval(pollRef.current); };
 
   const pickContinueFile = (f) => {
     if (!f) return;
@@ -137,13 +142,13 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   };
 
   const stepIdx = job ? STEP_ORDER.indexOf(job.status) : -1;
-  // ✅ FIX (طلب العميل: "لما يدوس تكمّل يخش على التايم لاين الأول"): بدل ما يبقى فيه شاشة
-  // نتيجة منفصلة وزرار "كمّل الفيديو" مخبّي جواها، التايم لاين نفسه دلوقتي هو الشاشة
-  // الرئيسية بمجرد ما يبقى فيه عناصر جاهزة للتعديل (done أو elements_ready بعد تكملة
-  // يدوي) — و"+" جوه التايم لاين نفسه (PremiumTimelineEditor) هو اللي بيفتح تدفق التكملة
-  const isEditable = job && ['done', 'elements_ready'].includes(job.status);
-  const isProcessing = job && !isEditable && job.status !== 'failed';
+  // ✅ التايم لاين الاحترافي بيظهر بس بعد ما يدوس "كمّل الفيديو" صراحة (editing=true) —
+  // أو تلقائي لو الحالة elements_ready (يعني لسه في نص تكملة يدوي، واضح إنه محتاج يعدّل)
+  const isEditable = job && (editing || job.status === 'elements_ready');
+  const isSimpleResult = job && job.status === 'done' && !editing;
+  const isProcessing = job && !isEditable && !isSimpleResult && job.status !== 'failed';
   const budgetExhausted = budget && budget.remainingSeconds <= 0;
+  const canContinue = budget && budget.remainingSeconds > 0;
 
   return (
     <div dir={dir} style={{ maxWidth: 720, margin: '0 auto', padding: '32px 16px 60px' }} className="animate-in">
@@ -281,8 +286,26 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
         </div>
       )}
 
-      {/* ✅ الشاشة الرئيسية بعد أول فيديو: التايم لاين نفسه (معاينة + كروت اللقطات)، و"+"
-          جواه هو اللي بيفتح تدفق التكملة (AI/يدوي) — مش زرار منفصل برّه */}
+      {/* ✅ نتيجة أول فيديو: شاشة بسيطة (فيديو + زرار "كمّل الفيديو" صريح) — دوس عليه عشان
+          تدخل التايم لاين الاحترافي (مش تلقائي بمجرد ما الفيديو يخلص) */}
+      {isSimpleResult && (
+        <div className="card animate-in" style={{ marginTop: 8, textAlign: 'center' }}>
+          <div className="wb-video-wrap" style={{ display: 'inline-block', maxWidth: '100%' }}>
+            <video src={job.video_url} controls style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 'var(--r-xl)', background: '#000' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
+            <button className="btn-primary" disabled={!canContinue} onClick={() => setEditing(true)} title={!canContinue ? t('خلص الرصيد المجاني', 'Free budget used up') : ''}>
+              ➕ {t('كمّل الفيديو', 'Continue Video')}
+            </button>
+            <button className="btn-ghost" onClick={reset}>
+              {t('اعمل فيديو جديد', 'Make another video')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ التايم لاين الاحترافي (معاينة + شريط فيلم + "+" مدمج للتكملة) — بعد ما يدوس
+          "كمّل الفيديو" فوق */}
       {job && isEditable && (
         <div className="animate-in" style={{ marginTop: 8 }}>
           <PremiumTimelineEditor
