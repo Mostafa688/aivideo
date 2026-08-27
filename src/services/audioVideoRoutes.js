@@ -8,11 +8,12 @@
 
 import express from 'express';
 import multer from 'multer';
+import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import sharp from 'sharp';
-import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, generateElementImage, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2, uploadBulkStickerToR2, captionImageWithVision, matchStickersToTranscript } from './audioVideoService.js';
+import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, findLibraryIcon, generateElementImage, searchStickerCandidates, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2, uploadBulkStickerToR2, captionImageWithVision, matchStickersToTranscript } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
 import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobById, listAudioVideoJobsForAdmin, upsertReferenceImage, listReferenceImages, getReferenceImagesMap, deleteReferenceImage } from './authService.js';
 
@@ -241,6 +242,21 @@ router.post('/jobs/:id/render', adminAuth, async (req, res) => {
   }
 });
 
+// ✅ NEW: بحث يدوي عن ملصق — الأدمن بيكتب كلمة، بيشوف نتائج حقيقية من كل المصادر (Iconify/
+// Tenor/Giphy/GitHub emoji) مع بعض، ويختار بنفسه بدل ما النظام يختار تلقائي. الأساس اللي
+// عليه واجهة "دور وضيف ملصق" اليدوية في التايم لاين
+router.get('/sticker-search', adminAuth, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.json({ results: [] });
+    const results = await searchStickerCandidates(q, 16);
+    res.json({ results });
+  } catch (err) {
+    console.error('[AudioVideo] Sticker search error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/jobs', adminAuth, async (req, res) => {
   try {
     const jobs = await listAudioVideoJobsForAdmin();
@@ -296,6 +312,27 @@ router.post('/jobs/:id/element-image', adminAuth, upload.single('image'), async 
     res.json({ imageUrl });
   } catch (err) {
     console.error('[AudioVideo] Custom element image upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW: لما الأدمن يختار نتيجة من واجهة البحث اليدوي (/sticker-search)، بنحمّلها من مصدرها
+// الأصلي (CDN بتاع Iconify/Tenor/Giphy/GitHub) ونعيد رفعها على R2 بتاعنا — نفس نمط أي عنصر
+// تاني (مش بنسيب الرابط الخارجي زي ما هو، عشان لو المصدر الأصلي غيّره/شاله يوم بعيد الفيديو
+// المحفوظ يفضل شغال برضو)
+router.post('/jobs/:id/element-from-search', adminAuth, async (req, res) => {
+  try {
+    const job = await getAudioVideoJobById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'not_found' });
+    const sourceUrl = String(req.body?.url || '').trim();
+    if (!sourceUrl) return res.status(400).json({ error: 'url is required' });
+    const srcRes = await fetch(sourceUrl);
+    if (!srcRes.ok) return res.status(502).json({ error: 'Could not download the chosen sticker' });
+    const buffer = Buffer.from(await srcRes.arrayBuffer());
+    const imageUrl = await uploadElementImageToR2(buffer);
+    res.json({ imageUrl });
+  } catch (err) {
+    console.error('[AudioVideo] Element-from-search error:', err);
     res.status(500).json({ error: err.message });
   }
 });
