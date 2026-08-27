@@ -487,6 +487,65 @@ export async function findLibraryIcon(keyword) {
   }
 }
 
+// ✅ NEW (طلب العميل: واجهة بحث يدوي عن ملصق — الأدمن/المستخدم يكتب كلمة ويشوف نتائج حقيقية
+// يختار منها بنفسه، بدل ما النظام يختار تلقائي زي findLibraryIcon فوق): بيرجّع مصفوفة نتائج
+// (لحد limit) من كل المصادر الأربعة مع بعض — كل نتيجة رابط صورة عام (CDN مباشر) تقدر
+// الواجهة تعرضه كـ<img> من غير ما تحتاج تعدي عليه بالسيرفر تاني. الترتيب: Iconify (أكتر
+// مصدر فيه تنوع)، Tenor، Giphy، GitHub emoji — كل مصدر بياخد نصيب من الـlimit عشان النتايج
+// تتنوع مش كلها من مصدر واحد
+export async function searchStickerCandidates(query, limit = 16) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const perSource = Math.max(2, Math.ceil(limit / 4));
+  const results = [];
+
+  try {
+    const icons = await iconifySearch(q);
+    for (const chosen of icons.slice(0, perSource)) {
+      const [prefix, ...nameParts] = chosen.split(':');
+      const name = nameParts.join(':');
+      results.push({ source: 'iconify', label: name.replace(/-/g, ' '), url: `https://api.iconify.design/${prefix}/${name}.svg` });
+    }
+  } catch (e) { console.warn('[AudioVideo] Sticker search (Iconify) failed:', e.message); }
+
+  if (TENOR_API_KEY) {
+    try {
+      const url = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q)}&key=${TENOR_API_KEY}&client_key=erivion_audiovideo&limit=${perSource}&contentfilter=high&searchfilter=sticker&media_filter=png_transparent,webp_transparent,tinygif_transparent,gif_transparent`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        for (const r of (data.results || [])) {
+          const mf = r.media_formats || {};
+          const pick = mf.png_transparent || mf.webp_transparent || mf.tinygif_transparent || mf.gif_transparent;
+          if (pick?.url) results.push({ source: 'tenor', label: q, url: pick.url });
+        }
+      }
+    } catch (e) { console.warn('[AudioVideo] Sticker search (Tenor) failed:', e.message); }
+  }
+
+  if (GIPHY_API_KEY) {
+    try {
+      const url = `https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(q)}&limit=${perSource}&rating=g`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        for (const r of (data.data || [])) {
+          const images = r.images || {};
+          const pick = images.fixed_width_downsampled || images.downsized || images.original;
+          if (pick?.url) results.push({ source: 'giphy', label: q, url: pick.url });
+        }
+      }
+    } catch (e) { console.warn('[AudioVideo] Sticker search (Giphy) failed:', e.message); }
+  }
+
+  try {
+    const ghUrl = await findGithubEmojiUrl(q);
+    if (ghUrl) results.push({ source: 'github', label: q, url: ghUrl });
+  } catch (e) { console.warn('[AudioVideo] Sticker search (GitHub emoji) failed:', e.message); }
+
+  return results.slice(0, limit);
+}
+
 // ✅ NEW (طلب العميل: "لو مفيش ملصق مطابق يعملهولي بالكود، ملوّن و2D Cartoon"): لو مكتبة
 // الأيقونات كلها (Iconify/Tenor/GitHub emoji) مالقتش نتيجة لأي بديل بحث، بدل ما نستسلم
 // ونحوّل اللقطة لنص فورًا، بنجرّب نولّد صورة بالذكاء الاصطناعي (Pollinations.ai — مجاني
