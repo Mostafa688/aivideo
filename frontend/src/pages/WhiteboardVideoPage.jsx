@@ -63,6 +63,26 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   useEffect(() => { fetchBudget(); }, [fetchBudget]);
   useEffect(() => () => clearInterval(pollRef.current), []);
 
+  // ✅ NEW (طلب العميل: "لما العميل يضغط عليه [كمّل الفيديو من الشات] ينتقل الي صفحة time
+  // line"): الايجنت بيحط job id في localStorage قبل ما ينقل المستخدم هنا (بدل ما تفتح
+  // شاشة رفع صوت جديد من الصفر) — هنا بنقراه مرة واحدة عند الدخول ونجيب نفس الـjob
+  useEffect(() => {
+    let resumeId;
+    try { resumeId = localStorage.getItem('erivion_resume_whiteboard_job'); } catch { /* ignore */ }
+    if (!resumeId) return;
+    try { localStorage.removeItem('erivion_resume_whiteboard_job'); } catch { /* ignore */ }
+    (async () => {
+      try {
+        const r = await fetch(`/api/whiteboard-video/jobs/${resumeId}`, { headers: authHeaders() });
+        const d = await r.json();
+        if (!r.ok || !d.job) return;
+        setJob(d.job);
+        if (!['done', 'failed'].includes(d.job.status)) pollJob(d.job.id);
+      } catch { /* ignore, falls back to fresh-upload screen */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const pollJob = (jobId, onDone) => {
     clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {

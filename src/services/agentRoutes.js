@@ -1,9 +1,12 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { getFreshChannelIdea } from './channelSchedulerService.js';
+import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 
 // بيحوّل أي رسالة (عربي/إنجليزي/بأي تشكيل) لنص موحّد بسيط — عشان مقارنة "الشبه" بين
 // طلب جديد وطلبات قديمة محفوظة في ذاكرة الايجنت تبقى مستقرة ومش حساسة لعلامات ترقيم/تشكيل
@@ -373,10 +376,34 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
+    ({ text: reply, payload: whiteboardVideoPayload } = extractTrailingMarker(reply, '###WHITEBOARD_VIDEO###'));
+
+    // ✅ NEW (طلب العميل: "اربط كل ده بالايجنت ... يظهر في شات الايجنت كمّل الفيديو"):
+    // فيديو Whiteboard مجاني (مش بيحتاج كريديت خالص، رصيد 10 دقايق مدى الحياة بس) — الايجنت
+    // بيقرر يستخدمه (marker منفصل عن READY تمامًا، بيشتغل حتى لو userPlan==='free' لأنه
+    // بطبيعته مجاني) لما المستخدم يكون رفع صوت حقيقي في نفس الرسالة (uploadedVoiceUrl) وطلب
+    // فيديو whiteboard/مجاني. بنعيد استخدام نفس ملف الصوت المحفوظ بالفعل (transcribeVoiceForAgent
+    // فوق) بدل ما نطلب من المستخدم يرفعه تاني من الصفحة العامة
+    let whiteboardVideo = null;
+    if (whiteboardVideoPayload && uploadedVoiceUrl) {
+      try {
+        const audioPath = path.join(process.cwd(), uploadedVoiceUrl.replace(/^\//, ''));
+        const audioBuffer = fs.readFileSync(audioPath);
+        const { job, thisVideoSeconds } = await startWhiteboardVideoCreation(userId, audioBuffer, 'mp3', 'agent_voice.mp3');
+        whiteboardVideo = { job, thisVideoSeconds };
+      } catch (e) {
+        if (e.code === 'free_budget_exhausted') {
+          reply += (reply ? '\n\n' : '') + 'للأسف خلصت رصيدك المجاني (10 دقايق) من فيديوهات الـwhiteboard — لازم تشترك عشان تكمل.';
+        } else {
+          console.warn('[Agent] Whiteboard video creation failed:', e.message);
+          reply += (reply ? '\n\n' : '') + 'حصلت مشكلة وأنا بجهز فيديو الـwhiteboard، جرب تاني كمان شوية.';
+        }
+      }
+    }
 
     if (setRegionPayload?.region) {
       setUserRegion(userId, setRegionPayload.region).catch(e => console.warn('[Agent] set_region failed:', e.message));
@@ -390,7 +417,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     res.json({
       reply, transcript, ready, editScene, videoEdit, uploadedVoiceUrl,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
-      subscribe: subscribePayload, showcaseVideos,
+      subscribe: subscribePayload, showcaseVideos, whiteboardVideo,
     });
 
     // ✅ NEW: تسجيل تبادل الشات (رسالة العميل + رد الايجنت) عشان يظهر للأدمن — مش بيوقف
