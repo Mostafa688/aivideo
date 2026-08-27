@@ -263,8 +263,10 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                 ))}
               </div>
 
-              {/* contiguous filmstrip cells */}
-              <div style={{ position: 'relative', height: 74, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border2)' }}>
+              {/* contiguous filmstrip cells — خلفية محايدة غامقة (مش ألوان صريحة ملء
+                  الخلية، كانت حاسّة "موقع أطفال") + مؤشر لون صغير في الزاوية بس بيدل على
+                  النوع، والصورة/الأيقونة هي البطلة الأساسية زي أي فيلم-strip حقيقي */}
+              <div style={{ position: 'relative', height: 104, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border2)' }}>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
                   {segments.map((seg, i) => {
                     const meta = KIND_META[seg.kind] || KIND_META.text;
@@ -277,21 +279,22 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                         title={seg.element}
                         style={{
                           width: w, height: '100%', flexShrink: 0,
-                          background: seg.imageUrl ? `${meta.color}22` : `${meta.color}33`,
-                          borderRight: i < segments.length - 1 ? '1px solid rgba(0,0,0,0.4)' : 'none',
+                          background: seg.imageUrl ? '#0d0d18' : 'var(--bg3)',
+                          borderRight: i < segments.length - 1 ? '1px solid rgba(0,0,0,0.5)' : 'none',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                         }}
                       >
+                        <div style={{ position: 'absolute', top: 5, insetInlineStart: 5, width: 7, height: 7, borderRadius: '50%', background: meta.color, zIndex: 1 }} />
                         {seg.imageUrl ? (
                           <img src={seg.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
-                          <span style={{ fontSize: Math.min(26, w * 0.4) }}>{meta.icon}</span>
+                          <span style={{ fontSize: Math.min(34, w * 0.35), opacity: 0.9 }}>{meta.icon}</span>
                         )}
                         {/* caption scrim */}
                         <div style={{
-                          position: 'absolute', left: 0, right: 0, bottom: 0, padding: '3px 5px',
-                          background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
-                          fontSize: 9.5, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          position: 'absolute', left: 0, right: 0, bottom: 0, padding: '4px 6px',
+                          background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
+                          fontSize: 10, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>
                           {seg.element}
                         </div>
@@ -325,7 +328,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                   className="pte-add-btn"
                   onClick={onRequestExtend}
                   title={t('كمّل الفيديو', 'Continue video')}
-                  style={{ position: 'absolute', top: 18 + 37, left: audioDuration * pxPerSec + 14 }}
+                  style={{ position: 'absolute', top: 18 + 35, left: audioDuration * pxPerSec + 14 }}
                 >
                   +
                 </button>

@@ -156,7 +156,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   // احترافي. العرض بقى واسع بس وإحنا في وضع التعديل (isEditable)، وضيّق زي ما كان لباقي الحالات
   const wide = isEditable;
   return (
-    <div dir={dir} style={{ maxWidth: wide ? 1400 : 720, margin: '0 auto', padding: wide ? '24px 20px 60px' : '32px 16px 60px', transition: 'max-width 0.3s ease' }} className="animate-in">
+    <div dir={dir} style={{ maxWidth: wide ? 'none' : 720, margin: '0 auto', padding: wide ? '24px 24px 60px' : '32px 16px 60px' }} className="animate-in">
       <style>{`
         @keyframes wb-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         @keyframes wb-shimmer { 0% { background-position: -200px 0; } 100% { background-position: calc(200px + 100%) 0; } }
