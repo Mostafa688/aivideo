@@ -24,7 +24,9 @@ const SOURCE_LABEL = { iconify: 'Iconify', tenor: 'Tenor', giphy: 'Giphy', githu
 // ✅ NEW: لوحة بحث/إضافة ملصق يدوي — منفصلة كمكوّن فرعي عشان تفضل مستقلة وسهلة إعادة الاستخدام
 // (مُصدّرة عشان محرر التايم لاين الفاخر بتاع صفحة Whiteboard العامة يقدر يعيد استخدامها
 // بدل ما يكرر نفس الكود)
-export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClose }) {
+export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClose, onDragStart, lang = 'ar' }) {
+  // ✅ إمكانية السحب للتايم لاين اختيارية (بس لو الوالد فعلًا بيستخدمها، زي PremiumTimelineEditor)
+  const showDrag = typeof onDragStart === 'function';
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -84,10 +86,16 @@ export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClos
           {results.map((r, i) => (
             <button
               key={i} onClick={() => pick(r, i)} disabled={adding != null}
-              title={`${r.label} (${SOURCE_LABEL[r.source] || r.source})`}
+              title={`${r.label} (${SOURCE_LABEL[r.source] || r.source}) — ${lang === 'ar' ? 'اسحبه على التايم لاين للمكان اللي عايزه' : 'drag it onto the timeline to place it exactly where you want'}`}
+              // ✅ NEW (طلب العميل: "لما يبحث عن عنصر ويلاقيه ياخد العنصر ويحطه في المكان
+              // الي هو عايز"): بجانب الدوس العادي (بيضيفه بعد اللقطة المختارة تلقائي)،
+              // ممكن كمان يسحب الملصق مباشرة على التايم لاين ويحطه في أي ثانية بالظبط —
+              // بنحط رابط الصورة في dataTransfer عشان الـdrop handler في التايم لاين يلقطه
+              draggable={showDrag}
+              onDragStart={(e) => { if (onDragStart) { e.dataTransfer.setData('text/plain', r.url); e.dataTransfer.effectAllowed = 'copy'; onDragStart(r); } }}
               style={{
                 background: '#fff', border: adding === i ? '2px solid #7c6af7' : '1px solid #2d2d4a', borderRadius: 8,
-                padding: 6, cursor: adding != null ? 'wait' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                padding: 6, cursor: adding != null ? 'wait' : (showDrag ? 'grab' : 'pointer'), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
               }}
             >
               <img src={r.url} alt={r.label} style={{ width: 60, height: 60, objectFit: 'contain' }} />
