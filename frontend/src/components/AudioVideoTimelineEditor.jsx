@@ -103,7 +103,11 @@ function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClose }) {
 
 export default function TimelineEditor({ job, onSaved, apiBase = '/api/admin/audio-video', authHeaders }) {
   const headers = authHeaders || { 'Content-Type': 'application/json', 'x-admin-secret': import.meta.env.VITE_ADMIN_SECRET || 'Sosa6892Midbok' };
-  const fileHeaders = { 'x-admin-secret': headers['x-admin-secret'] };
+  // ✅ FIX: كانت بتاخد 'x-admin-secret' بس بالاسم — أي مصادقة تانية (زي Authorization Bearer
+  // للمستخدم العادي في فيديو Whiteboard) كانت بتتفقد خالص لأي رفع ملف (multipart). دلوقتي
+  // بنسحب أي هيدر مصادقة موجود فعليًا (أيًا كان اسمه) ما عدا Content-Type — الملتيبارت لازم
+  // يحدد Content-Type بنفسه (بالـboundary) عشان يشتغل صح
+  const fileHeaders = Object.fromEntries(Object.entries(headers).filter(([k]) => k.toLowerCase() !== 'content-type'));
 
   const words = job.words_json || [];
   const audioDuration = words.length ? words[words.length - 1].end + 0.3 : 60;
