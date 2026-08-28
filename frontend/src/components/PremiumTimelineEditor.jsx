@@ -206,38 +206,38 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   const togglePlay = () => { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause(); };
   const seekTo = (sec) => { const v = videoRef.current; if (v) v.currentTime = Math.max(0, Math.min(duration || sec, sec)); };
 
-  // ✅ FIX (طلب العميل: "خط التشغيل حركته غريبة، مش عارف احركه، المفروض يتحرك مع معايا
-  // بحركة الماوس... أو باللمس على الموبايل"): الرولر كان بيحدد المكان مرة واحدة بس لحظة
-  // الدوس (onMouseDown)، ولو المستخدم فضل ماسك وسحب من غير ما يرفع إيده، خط التشغيل ماكانش
-  // بيتحرك تاني — دلوقتي بيفضل يتابع الماوس/اللمس باستمرار طول ما لسه ماسك، بالظبط زي باقي
-  // أنواع السحب التانية في المحرر (نقل اللقطات، تقصير/تطويل الحدود)
-  const [draggingPlayhead, setDraggingPlayhead] = useState(false);
-  const startPlayheadDrag = (e) => {
+  // ✅ FIX (طلب العميل — وضّح بالصورة من CapCut: "مش قصدي إني أدوس على مكان أقف فيه، أنا
+  // قصدي إنه يتحرك معايا تلقائي بحركة الماوس، أو بحركة اللمس لو على الموبايل"): مش سحب-وهو-
+  // ماسك (زي أي عنصر تاني في المحرر) — على الكومبيوتر، خط التشغيل لازم يتبع الماوس بمجرد ما
+  // يتحرك فوق الرولر (hover)، من غير أي دوس/مسك خالص. على الموبايل (مفيش مفهوم "hover" باللمس)
+  // اللمس والسحب هو المعادل الطبيعي، فده بيفضل سحب فعلي زي أي محرر فيديو على الموبايل
+  const handleRulerMouseMove = (e) => {
+    if (!job.video_url || !trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    seekTo((e.clientX - rect.left) / pxPerSec);
+  };
+  const [draggingPlayheadTouch, setDraggingPlayheadTouch] = useState(false);
+  const startPlayheadTouchDrag = (e) => {
     if (!job.video_url || !trackRef.current) return;
     const rect = trackRef.current.getBoundingClientRect();
     seekTo((clientXOf(e) - rect.left) / pxPerSec);
-    setDraggingPlayhead(true);
+    setDraggingPlayheadTouch(true);
   };
   useEffect(() => {
-    if (!draggingPlayhead) return;
+    if (!draggingPlayheadTouch) return;
     const handleMove = (e) => {
-      if (e.type === 'mousemove' && e.buttons !== 1) return;
       if (!trackRef.current) return;
       const rect = trackRef.current.getBoundingClientRect();
       seekTo((clientXOf(e) - rect.left) / pxPerSec);
     };
-    const handleEnd = () => setDraggingPlayhead(false);
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleEnd);
+    const handleEnd = () => setDraggingPlayheadTouch(false);
     window.addEventListener('touchmove', handleMove, { passive: true });
     window.addEventListener('touchend', handleEnd);
     return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleEnd);
       window.removeEventListener('touchmove', handleMove);
       window.removeEventListener('touchend', handleEnd);
     };
-  }, [draggingPlayhead, pxPerSec, duration]);
+  }, [draggingPlayheadTouch, pxPerSec, duration]);
 
   const updateElement = (idx, patch) => setElements(els => els.map((el, i) => i === idx ? { ...el, ...patch } : el));
 
@@ -448,6 +448,26 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
           <span style={{ fontSize: 12.5, color: 'var(--text2)', fontVariantNumeric: 'tabular-nums', minWidth: 78 }}>
             {fmtTime(curTime)} / {fmtTime(duration || audioDuration)}
           </span>
+          {/* ✅ NEW (طلب العميل — بالصورة من CapCut: "لازم يكون فيه أزرار زي دول للقص"):
+              أزرار قص/حذف دايمًا ظاهرة فوق التايم لاين (مش بس جوه لوحة التعديل تحت لما تختار
+              لقطة) — نفس المنطق بالظبط (splitAtPlayhead/handleDelete)، بس مكانهم بقى زي أي
+              محرر فيديو احترافي حقيقي */}
+          <div style={{ width: 1, height: 20, background: 'var(--border2)', margin: '0 2px' }} />
+          <button
+            className="pte-transport-btn" onClick={splitAtPlayhead}
+            disabled={!sel || curTime <= sel.segStart + 0.1 || curTime >= sel.segEnd - 0.1}
+            title={t('قص عند خط التشغيل', 'Split at playhead')}
+          >
+            ✂️
+          </button>
+          <button
+            className="pte-transport-btn" onClick={() => handleDelete(selectedIdx)}
+            disabled={selectedIdx == null}
+            title={t('احذف اللقطة المحددة', 'Delete selected scene')}
+            style={{ color: selectedIdx != null ? 'var(--red)' : undefined }}
+          >
+            🗑️
+          </button>
           <div style={{ flex: 1 }} />
           {/* ✅ FIX (طلب العميل: "التعديل يحصل تلقائي علطول"): مؤشر حالة الحفظ التلقائي —
               بيستبدل نص "آخر نسخة محفوظة" الثابت، وبيبقى المستخدم عارف بالظبط إيه اللي
@@ -480,14 +500,14 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
               ref={trackRef} style={{ position: 'relative', width: trackWidth, userSelect: 'none' }}
               onDragOver={handleStripDragOver} onDragLeave={handleStripDragLeave} onDrop={handleStripDrop}
             >
-              {/* ✅ NEW (طلب العميل: "خط نقدر نحدد بيه المكان اللي نقف فيه"): الرولر قابل
-                  للدوس عليه/سحبه عشان يحدد مكان خط التشغيل (playhead) بدقة — ده اللي زرار
-                  "✂️ قص هنا" تحت بيستخدمه كمرجع لتقسيم اللقطة عند نقطة محددة بالظبط.
-                  ✅ FIX: بيفضل يتابع الماوس/اللمس باستمرار طول ما لسه ماسك (مش بس لحظة الدوس) */}
+              {/* ✅ FIX (طلب العميل — بالصورة من CapCut: "مش قصدي أدوس على مكان أقف فيه،
+                  قصدي إنه يتحرك معايا تلقائي"): على الكومبيوتر خط التشغيل بيتبع الماوس بمجرد
+                  ما يتحرك فوق الرولر (hover)، من غير أي دوس خالص — وعلى الموبايل (مفيش hover
+                  باللمس) اللمس والسحب هو المعادل الطبيعي */}
               <div
-                style={{ position: 'relative', height: 18, cursor: job.video_url ? 'grab' : 'default', touchAction: 'none' }}
-                onMouseDown={startPlayheadDrag}
-                onTouchStart={startPlayheadDrag}
+                style={{ position: 'relative', height: 18, cursor: job.video_url ? 'pointer' : 'default', touchAction: 'none' }}
+                onMouseMove={handleRulerMouseMove}
+                onTouchStart={startPlayheadTouchDrag}
               >
                 {ticks.map(tk => (
                   <div key={tk} style={{ position: 'absolute', left: tk * pxPerSec, top: 0, fontSize: 10, color: 'var(--text3)' }}>{tk}s</div>
