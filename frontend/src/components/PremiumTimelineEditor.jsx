@@ -211,7 +211,13 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   // ماسك (زي أي عنصر تاني في المحرر) — على الكومبيوتر، خط التشغيل لازم يتبع الماوس بمجرد ما
   // يتحرك فوق الرولر (hover)، من غير أي دوس/مسك خالص. على الموبايل (مفيش مفهوم "hover" باللمس)
   // اللمس والسحب هو المعادل الطبيعي، فده بيفضل سحب فعلي زي أي محرر فيديو على الموبايل
-  const handleRulerMouseMove = (e) => {
+  // ✅ FIX (طلب العميل: "الخط المفروض يتحرك في أي مكان، انت محدد أماكن"): مكانش شغال غير
+  // فوق الرولر الرفيع (18px) بس — بقى شغال على مساحة التايم لاين كلها (الرولر + شريط الفيلم)
+  // عشان تحس إنه بيتحرك معاك أي حتة تحرّك فيها الماوس. بنستثني اللحظة اللي المستخدم فعليًا
+  // بيسحب فيها عنصر أو بيقصّر/يطوّل حد بين لقطتين، عشان خط التشغيل مايقفزش تحته وهو مركّز
+  // في حركة تانية
+  const handleTimelineHover = (e) => {
+    if (movingIdx != null || dragBoundaryIdx != null) return;
     if (!job.video_url || !trackRef.current) return;
     const rect = trackRef.current.getBoundingClientRect();
     seekTo((e.clientX - rect.left) / pxPerSec);
@@ -405,9 +411,9 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     <div>
       <style>{`
         @keyframes pte-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .pte-cell { transition: box-shadow 0.15s, filter 0.15s; cursor: pointer; position: relative; }
-        .pte-cell:hover { filter: brightness(1.15); }
-        .pte-cell.selected { box-shadow: inset 0 0 0 3px var(--accent), 0 0 16px rgba(124,106,247,0.5); z-index: 2; }
+        .pte-cell { cursor: pointer; position: relative; }
+        .pte-cell-inner { transition: box-shadow 0.15s, transform 0.15s; }
+        .pte-cell:hover .pte-cell-inner { transform: scale(1.03); box-shadow: 0 4px 14px rgba(0,0,0,0.35); z-index: 2; }
         .pte-panel { animation: pte-in 0.2s cubic-bezier(0.16,1,0.3,1); }
         .pte-kind-pill { transition: all 0.15s; cursor: pointer; }
         .pte-kind-pill:hover { transform: translateY(-1px); }
@@ -499,14 +505,14 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
             <div
               ref={trackRef} style={{ position: 'relative', width: trackWidth, userSelect: 'none' }}
               onDragOver={handleStripDragOver} onDragLeave={handleStripDragLeave} onDrop={handleStripDrop}
+              onMouseMove={handleTimelineHover}
             >
               {/* ✅ FIX (طلب العميل — بالصورة من CapCut: "مش قصدي أدوس على مكان أقف فيه،
-                  قصدي إنه يتحرك معايا تلقائي"): على الكومبيوتر خط التشغيل بيتبع الماوس بمجرد
-                  ما يتحرك فوق الرولر (hover)، من غير أي دوس خالص — وعلى الموبايل (مفيش hover
-                  باللمس) اللمس والسحب هو المعادل الطبيعي */}
+                  قصدي إنه يتحرك معايا تلقائي"): على الموبايل (مفيش hover باللمس) اللمس
+                  والسحب هو المعادل الطبيعي — الماوس بقى شغال على المساحة كلها فوق (onMouseMove
+                  على trackRef) مش هنا بس */}
               <div
                 style={{ position: 'relative', height: 18, cursor: job.video_url ? 'pointer' : 'default', touchAction: 'none' }}
-                onMouseMove={handleRulerMouseMove}
                 onTouchStart={startPlayheadTouchDrag}
               >
                 {ticks.map(tk => (
@@ -514,43 +520,55 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                 ))}
               </div>
 
-              {/* contiguous filmstrip cells — خلفية محايدة غامقة (مش ألوان صريحة ملء
-                  الخلية، كانت حاسّة "موقع أطفال") + مؤشر لون صغير في الزاوية بس بيدل على
-                  النوع، والصورة/الأيقونة هي البطلة الأساسية زي أي فيلم-strip حقيقي */}
-              <div style={{ position: 'relative', height: 104, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border2)' }}>
+              {/* ✅ FIX (طلب العميل: "لازين في بعض، المفروض صورة بيضاء زي الوايت بورد تحت
+                  العناصر"): كل عنصر بقى كارت أبيض منفصل بوضوح (نفس خلفية فيديو الـwhiteboard
+                  الحقيقي) بدل خلفية غامقة متلاصقة — بفاصل واضح بين كل عنصر واللي جنبه، عشان
+                  تبان عناصر منفصلة تقدر تحركها/تبدلها، مش شريط واحد متصل. عرض/مكان كل خلية
+                  (w) فضل زي ما هو بالظبط (من غير أي gap في الـflex) عشان خط التشغيل ومقابض
+                  التقصير يفضلوا متزامنين تمامًا مع نفس الحسبة الزمنية — الفاصل البصري بس
+                  padding داخلي حوالين كارت أصغر جوه نفس المساحة، من غير أي تعقيد إضافي في
+                  حساب المواقع */}
+              <div style={{ position: 'relative', height: 104, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border2)', background: 'var(--bg)' }}>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
                   {segments.map((seg, i) => {
                     const meta = KIND_META[seg.kind] || KIND_META.text;
                     const w = Math.max(1, (seg.segEnd - seg.segStart) * pxPerSec);
+                    const isSelected = selectedIdx === i;
                     return (
                       <div
                         key={i}
-                        className={`pte-cell${selectedIdx === i ? ' selected' : ''}`}
+                        className="pte-cell"
                         onMouseDown={(e) => handleCellMouseDown(i, e)}
                         onTouchStart={(e) => handleCellMouseDown(i, e)}
                         title={i === 0 ? seg.element : `${seg.element} — ${t('اسحب عشان تحرّكه لمكان تاني', 'drag to move it elsewhere')}`}
                         style={{
-                          width: w, height: '100%', flexShrink: 0,
-                          background: seg.imageUrl ? '#0d0d18' : 'var(--bg3)',
-                          borderRight: i < segments.length - 1 ? '1px solid rgba(0,0,0,0.5)' : 'none',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                          width: w, height: '100%', flexShrink: 0, boxSizing: 'border-box', padding: 3,
                           cursor: i === 0 ? 'pointer' : (movingIdx === i ? 'grabbing' : 'grab'), touchAction: 'none',
                           opacity: movingIdx === i && moveDragRef.current.moved ? 0.6 : 1,
                         }}
                       >
-                        <div style={{ position: 'absolute', top: 5, insetInlineStart: 5, width: 7, height: 7, borderRadius: '50%', background: meta.color, zIndex: 1 }} />
-                        {seg.imageUrl ? (
-                          <img src={seg.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          <span style={{ fontSize: Math.min(34, w * 0.35), opacity: 0.9 }}>{meta.icon}</span>
-                        )}
-                        {/* caption scrim */}
-                        <div style={{
-                          position: 'absolute', left: 0, right: 0, bottom: 0, padding: '4px 6px',
-                          background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
-                          fontSize: 10, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        }}>
-                          {seg.element}
+                        <div
+                          className="pte-cell-inner"
+                          style={{
+                            position: 'relative', width: '100%', height: '100%', borderRadius: 8, overflow: 'hidden',
+                            background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: isSelected ? 'inset 0 0 0 3px var(--accent), 0 0 16px rgba(124,106,247,0.5)' : 'none',
+                          }}
+                        >
+                          <div style={{ position: 'absolute', top: 5, insetInlineStart: 5, width: 7, height: 7, borderRadius: '50%', background: meta.color, zIndex: 1, boxShadow: '0 0 0 1.5px rgba(0,0,0,0.15)' }} />
+                          {seg.imageUrl ? (
+                            <img src={seg.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 10, boxSizing: 'border-box' }} />
+                          ) : (
+                            <span style={{ fontSize: Math.min(34, w * 0.35), opacity: 0.85 }}>{meta.icon}</span>
+                          )}
+                          {/* caption scrim */}
+                          <div style={{
+                            position: 'absolute', left: 0, right: 0, bottom: 0, padding: '4px 6px',
+                            background: 'linear-gradient(transparent, rgba(0,0,0,0.72))',
+                            fontSize: 10, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {seg.element}
+                          </div>
                         </div>
                       </div>
                     );
