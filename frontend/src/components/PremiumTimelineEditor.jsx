@@ -66,10 +66,27 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   const savingRef = useRef(false);
   const pendingRerenderRef = useRef(false);
+
+  // ✅ NEW (طلب العميل: "ضيف سهم رجوع للسابق عشان لو غلط في تعديل وعايز ارجعه"): مهم بالذات
+  // دلوقتي إن كل تعديل بيتحفظ تلقائي — قبل كده لو المستخدم غلط كان ممكن يسيب الصفحة من غير
+  // حفظ، دلوقتي مفيش شبكة أمان غير التراجع ده. بنسجّل لقطة (snapshot) من العناصر قبل أي
+  // تعديل حقيقي (مش كل حركة ماوس صغيرة أثناء سحب — لقطة واحدة لكل عملية كاملة)، وزرار "↩️"
+  // بيرجّع آخر لقطة ويسيب باقي منطق الحفظ/إعادة البناء التلقائي يتعامل معاها زي أي تعديل تاني
+  const [historyStack, setHistoryStack] = useState([]);
+  const pushHistory = () => setHistoryStack(h => [...h, elementsRef.current].slice(-20));
+  const handleUndo = () => {
+    setHistoryStack(h => {
+      if (!h.length) return h;
+      setElements(h[h.length - 1]);
+      return h.slice(0, -1);
+    });
+  };
+
   useEffect(() => {
     const initial = job.elements_json || [];
     setElements(initial);
     lastSavedJsonRef.current = JSON.stringify(initial);
+    setHistoryStack([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
@@ -135,11 +152,14 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   const [movingIdx, setMovingIdx] = useState(null);
 
   const handleCellMouseDown = (i, e) => {
-    // اللقطة الأولى دايمًا بتاخد وقت 0 بغض النظر عن start بتاعها (أول حاجة في الفيديو) —
-    // سحبها مش هيغيّر حاجة فعليًا، فبنسمح بس بتحديدها
-    if (i === 0) { setSelectedIdx(0); return; }
+    // ✅ FIX (طلب العميل: "عايز مثلا احط العنصر الأول في الآخر"): كنا بنمنع سحب أول لقطة
+    // خالص بحجة إن مكانها ثابت عند 0 — ده كان غلط: سحبها لبعيد بيخلي حاجة تانية تاخد
+    // الأولوية وتبقى هي الأولى بدلها، وده بالظبط اللي العميل عايزه. بنسمح بسحبها زي أي لقطة
+    // تانية، وبنستخدم segStart (المكان الظاهر فعليًا على الشاشة، مش قيمة start الخام اللي
+    // ممكن تكون قديمة/غير دقيقة للقطة الأولى تحديدًا) كنقطة بداية السحب عشان ميحصلش قفزة
+    // مفاجئة في اللحظة اللي تبدأ فيها تسحب
     e.stopPropagation();
-    moveDragRef.current = { x: clientXOf(e), startTime: Number(elements[i].start) || 0, moved: false, idx: i };
+    moveDragRef.current = { x: clientXOf(e), startTime: segments[i].segStart, moved: false, idx: i };
     setMovingIdx(i);
   };
 
@@ -148,7 +168,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     const handleMove = (e) => {
       if (e.type === 'mousemove' && e.buttons !== 1) return;
       const dx = clientXOf(e) - moveDragRef.current.x;
-      if (Math.abs(dx) > 4) moveDragRef.current.moved = true;
+      if (Math.abs(dx) > 4 && !moveDragRef.current.moved) { moveDragRef.current.moved = true; pushHistory(); }
       if (!moveDragRef.current.moved) return;
       const newStart = Math.max(0.05, Math.min(audioDuration - 0.05, moveDragRef.current.startTime + dx / pxPerSec));
       setElements(els => els.map((el, i) => i === moveDragRef.current.idx ? { ...el, start: newStart } : el));
@@ -248,6 +268,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   const updateElement = (idx, patch) => setElements(els => els.map((el, i) => i === idx ? { ...el, ...patch } : el));
 
   const handleKindChange = (idx, newKind) => {
+    pushHistory();
     if (newKind === 'text' || newKind === 'quote') {
       updateElement(idx, { kind: newKind, imageUrl: null, imagePrompt: null, characterKey: null, quoteSource: newKind === 'quote' ? (elements[idx].quoteSource || 'other') : null });
     } else {
@@ -255,9 +276,10 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
     }
   };
 
-  const handleDelete = (idx) => { setElements(els => els.filter((_, i) => i !== idx)); setSelectedIdx(null); };
+  const handleDelete = (idx) => { pushHistory(); setElements(els => els.filter((_, i) => i !== idx)); setSelectedIdx(null); };
 
   const insertNewElement = (patch) => {
+    pushHistory();
     const idx = selectedIdx != null ? selectedIdx : elements.length - 1;
     const seg = segments[idx] || { segStart: 0, segEnd: audioDuration };
     const mid = (seg.segStart + seg.segEnd) / 2;
@@ -270,6 +292,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   // زي insertNewElement فوق، بس بيحسب مكان الإدراج من ثانية مطلقة (مكان الإفلات الفعلي على
   // التايم لاين) مش من اللقطة المختارة حاليًا — ده اللي بيخلي السحب-وإفلات ممكن
   const insertElementAtTime = (timeSec, patch) => {
+    pushHistory();
     const clamped = Math.max(0, Math.min(audioDuration - 0.1, timeSec));
     let idx = segments.findIndex(s => clamped < s.segEnd);
     if (idx === -1) idx = segments.length - 1;
@@ -317,6 +340,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
   const splitAtPlayhead = () => {
     if (selectedIdx == null || !sel) return;
     if (curTime <= sel.segStart + 0.1 || curTime >= sel.segEnd - 0.1) return;
+    pushHistory();
     const orig = elements[selectedIdx];
     const newEl = { ...orig, start: curTime };
     setElements(els => { const next = [...els]; next.splice(selectedIdx + 1, 0, newEl); return next; });
@@ -334,6 +358,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
       const r = await fetch(`${apiBase}/jobs/${job.id}/element-image`, { method: 'POST', headers: fileHeaders, body: form });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Upload failed');
+      pushHistory();
       const curKind = elements[selectedIdx].kind;
       updateElement(selectedIdx, { imageUrl: d.imageUrl, kind: (curKind === 'text' || curKind === 'quote') ? 'object' : curKind });
     } catch (e2) {
@@ -459,6 +484,16 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
               لقطة) — نفس المنطق بالظبط (splitAtPlayhead/handleDelete)، بس مكانهم بقى زي أي
               محرر فيديو احترافي حقيقي */}
           <div style={{ width: 1, height: 20, background: 'var(--border2)', margin: '0 2px' }} />
+          {/* ✅ NEW (طلب العميل: "ضيف سهم رجوع للسابق عشان لو غلط في تعديل وعايز ارجعه"):
+              بيرجع آخر تعديل (نقل/حذف/إضافة/تغيير نوع/رفع صورة/تقصير حد) — نفس التعديل
+              الراجع بيتحفظ ويتبني تلقائي زي أي تعديل عادي */}
+          <button
+            className="pte-transport-btn" onClick={handleUndo}
+            disabled={!historyStack.length}
+            title={t('تراجع عن آخر تعديل', 'Undo last change')}
+          >
+            ↩️
+          </button>
           <button
             className="pte-transport-btn" onClick={splitAtPlayhead}
             disabled={!sel || curTime <= sel.segStart + 0.1 || curTime >= sel.segEnd - 0.1}
@@ -540,10 +575,10 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                         className="pte-cell"
                         onMouseDown={(e) => handleCellMouseDown(i, e)}
                         onTouchStart={(e) => handleCellMouseDown(i, e)}
-                        title={i === 0 ? seg.element : `${seg.element} — ${t('اسحب عشان تحرّكه لمكان تاني', 'drag to move it elsewhere')}`}
+                        title={`${seg.element} — ${t('اسحب عشان تحرّكه لمكان تاني', 'drag to move it elsewhere')}`}
                         style={{
                           width: w, height: '100%', flexShrink: 0, boxSizing: 'border-box', padding: 3,
-                          cursor: i === 0 ? 'pointer' : (movingIdx === i ? 'grabbing' : 'grab'), touchAction: 'none',
+                          cursor: movingIdx === i ? 'grabbing' : 'grab', touchAction: 'none',
                           opacity: movingIdx === i && moveDragRef.current.moved ? 0.6 : 1,
                         }}
                       >
@@ -583,8 +618,8 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
                   <div
                     key={`b${i}`}
                     className="pte-handle"
-                    onMouseDown={(e) => { e.stopPropagation(); setDragBoundaryIdx(i); }}
-                    onTouchStart={(e) => { e.stopPropagation(); setDragBoundaryIdx(i); }}
+                    onMouseDown={(e) => { e.stopPropagation(); pushHistory(); setDragBoundaryIdx(i); }}
+                    onTouchStart={(e) => { e.stopPropagation(); pushHistory(); setDragBoundaryIdx(i); }}
                     title={t('اسحب عشان تقصّر/تطوّل اللقطتين', 'Drag to trim/extend the two scenes')}
                     style={{
                       position: 'absolute', top: 0, left: (Number(el.start) || 0) * pxPerSec - 9, width: 18, height: '100%',
@@ -650,6 +685,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
 
           <textarea
             value={elements[selectedIdx].element}
+            onFocus={pushHistory}
             onChange={e => updateElement(selectedIdx, { element: e.target.value, text: e.target.value })}
             rows={2}
             style={{ width: '100%', padding: 10, fontSize: 14, marginBottom: 14, resize: 'vertical', boxSizing: 'border-box' }}
@@ -666,7 +702,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
               </label>
               <button className="btn-ghost" onClick={() => setShowStickerSearch(true)} style={{ fontSize: 12 }}>🔍 {t('دور ملصق', 'Search sticker')}</button>
               {elements[selectedIdx].imageUrl && (
-                <button className="btn-ghost" onClick={() => updateElement(selectedIdx, { imageUrl: null, kind: 'text' })} style={{ color: 'var(--red)', fontSize: 12 }}>
+                <button className="btn-ghost" onClick={() => { pushHistory(); updateElement(selectedIdx, { imageUrl: null, kind: 'text' }); }} style={{ color: 'var(--red)', fontSize: 12 }}>
                   {t('امسح', 'Remove')}
                 </button>
               )}
