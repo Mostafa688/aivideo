@@ -682,7 +682,7 @@ export default function PremiumTimelineEditor({ job, onSaved, apiBase = '/api/ad
       {showStickerSearch && (
         <StickerSearchPanel
           apiBase={apiBase} authHeaders={headers} jobId={job.id} onPick={handleStickerPicked} onClose={() => setShowStickerSearch(false)}
-          onDragStart={() => {}} lang={lang}
+          onDragStart={() => {}} lang={lang} docked
         />
       )}
     </div>
