@@ -24,7 +24,7 @@ const SOURCE_LABEL = { iconify: 'Iconify', tenor: 'Tenor', giphy: 'Giphy', githu
 // ✅ NEW: لوحة بحث/إضافة ملصق يدوي — منفصلة كمكوّن فرعي عشان تفضل مستقلة وسهلة إعادة الاستخدام
 // (مُصدّرة عشان محرر التايم لاين الفاخر بتاع صفحة Whiteboard العامة يقدر يعيد استخدامها
 // بدل ما يكرر نفس الكود)
-export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClose, onDragStart, lang = 'ar' }) {
+export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClose, onDragStart, lang = 'ar', docked = false }) {
   // ✅ إمكانية السحب للتايم لاين اختيارية (بس لو الوالد فعلًا بيستخدمها، زي PremiumTimelineEditor)
   const showDrag = typeof onDragStart === 'function';
   const [q, setQ] = useState('');
@@ -65,13 +65,34 @@ export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClos
     }
   };
 
+  // ✅ FIX (بلاغ العميل: "سحب الملصق مش عارف اسحبه ومش عارف احطه"): السبب الحقيقي إن اللوحة
+  // دي كانت دايمًا مودال يغطي الشاشة كلها (backdrop شبه شفاف فوق كل حاجة) — يعني التايم لاين
+  // نفسه بيكون مستخبي وراها تمامًا، فمفيش أي مكان ظاهر تقدر تسحب الملصق وتفلته فيه أصلًا!
+  // لما showDrag شغال (يعني إحنا في PremiumTimelineEditor)، اللوحة بقت "docked" — كارت صغير
+  // عائم في ركن الشاشة من غير أي backdrop يغطي حاجة، عشان التايم لاين يفضل ظاهر وقابل للسحب
+  // عليه في نفس الوقت اللي لوحة البحث مفتوحة فيه
+  const docked_ = docked && showDrag;
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+    <div
+      style={docked_
+        ? { position: 'fixed', bottom: 20, insetInlineEnd: 20, zIndex: 1000, width: 'min(340px, calc(100vw - 40px))' }
+        : { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={docked_ ? undefined : onClose}
+    >
       <style>{`
         .avte-sticker-btn { transition: transform 0.15s cubic-bezier(0.16,1,0.3,1), box-shadow 0.15s; }
         .avte-sticker-btn:hover:not(:disabled) { transform: translateY(-2px) scale(1.04); box-shadow: 0 6px 16px rgba(0,0,0,0.35); }
       `}</style>
-      <div className="animate-in" style={{ background: '#12121f', border: '1px solid #2d2d4a', borderRadius: 12, padding: 18, width: 'min(520px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+      <div
+        className="animate-in"
+        style={{
+          background: '#12121f', border: '1px solid #2d2d4a', borderRadius: 12, padding: 18,
+          width: docked_ ? '100%' : 'min(520px, 100%)', maxHeight: docked_ ? '55vh' : '80vh',
+          display: 'flex', flexDirection: 'column',
+          boxShadow: docked_ ? '0 12px 36px rgba(0,0,0,0.55)' : 'none',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontWeight: 700, color: '#fff', fontSize: 14 }}>🔍 دور وضيف ملصق</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 18, cursor: 'pointer' }}>✕</button>
