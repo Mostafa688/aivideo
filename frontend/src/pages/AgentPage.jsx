@@ -1,6 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import RatingPrompt from './RatingPrompt.jsx';
 import { EgPaymentModal, IntlPaymentModal, EG_PACKAGES, ALL_GUMROAD_PACKAGES } from './PricingPage.jsx';
+import {
+  ShoppingBag, Clapperboard, FileText, GraduationCap, ImageIcon, Mic, Film, Sparkles,
+  Camera, Swords, Map as MapIcon, Check, X, Lock, Construction, Video, Send,
+  CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
+} from 'lucide-react';
+import ShimmerLoader from '../components/ShimmerLoader.jsx';
+
+// ✅ FIX (طلب العميل: "احذف اي ايموجي، خليك ذكي وشوف المواقع الكبيرة بتعمل اي واعمل زيهم"):
+// كل الإيموجي في واجهة الشات اتشالت واتبدلت بأيقونات lucide-react حقيقية
 
 // ✅ NEW: نفس الـ 3 فيديوهات مثال بتتعرض داخل الشات (كل واحد رسالة لوحده) لما الايجنت
 // يحس إن العميل مذبذب بخصوص الاشتراك — بيديله دليل فعلي بدل ما يوصفله بس
@@ -37,10 +46,10 @@ const T = {
     heroSub: 'قولّي فكرتك، وأنا هختار الموديل المناسب، أحسبلك الكريديت، وأعمل الفيديو معاك هنا في الشات.',
     placeholder: 'اكتب فكرة الفيديو، أو سكريبت جاهز...',
     chips: [
-      { icon: '🛍️', label: 'إعلان منتج', text: 'عايز أعمل إعلان لمنتجي' },
-      { icon: '🎬', label: 'فيديو قصير', text: 'عايز أعمل فيديو قصير لسوشيال ميديا' },
-      { icon: '📝', label: 'استخدم سكريبتي', text: 'عندي سكريبت جاهز وعايز أحوله لفيديو' },
-      { icon: '🎓', label: 'فيديو تعليمي', text: 'عايز أعمل فيديو تعليمي بأسلوب سينمائي' },
+      { icon: ShoppingBag, label: 'إعلان منتج', text: 'عايز أعمل إعلان لمنتجي' },
+      { icon: Clapperboard, label: 'فيديو قصير', text: 'عايز أعمل فيديو قصير لسوشيال ميديا' },
+      { icon: FileText, label: 'استخدم سكريبتي', text: 'عندي سكريبت جاهز وعايز أحوله لفيديو' },
+      { icon: GraduationCap, label: 'فيديو تعليمي', text: 'عايز أعمل فيديو تعليمي بأسلوب سينمائي' },
     ],
     models: 'الموديلات',
     voiceTitle: (m) => `صوت (حتى ${m} دقيقة)`,
@@ -62,19 +71,19 @@ const T = {
     download: 'تحميل',
     failed: 'حصلت مشكلة أثناء إنشاء الفيديو',
     goToPricing: 'اذهب لصفحة الأسعار →',
-    uploadCharacterFirst: 'ارفع صورة الشخصية من زر 🖼️ تحت، أو اكتب وصف شكلها في رسالتك',
+    uploadCharacterFirst: 'ارفع صورة الشخصية من زر رفع الصورة تحت، أو اكتب وصف شكلها في رسالتك',
     stop: 'إيقاف',
-    stopped: '⏹️ تم الإيقاف — الفيديو مستمر في الخلفية وسيتم خصم الكريديت',
+    stopped: 'تم الإيقاف — الفيديو مستمر في الخلفية وسيتم خصم الكريديت',
   },
   en: {
     heroTitle: 'What video do you have in mind?',
     heroSub: "Tell me your idea — I'll pick the right model, calculate the credits, and make the video right here in chat.",
     placeholder: 'Describe your video idea, or paste a script...',
     chips: [
-      { icon: '🛍️', label: 'Product Ad', text: 'I want to make an ad for my product' },
-      { icon: '🎬', label: 'Short video', text: 'I want a short video for social media' },
-      { icon: '📝', label: 'Use my script', text: 'I have a script ready, turn it into a video' },
-      { icon: '🎓', label: 'Explainer video', text: 'I want a cinematic explainer video' },
+      { icon: ShoppingBag, label: 'Product Ad', text: 'I want to make an ad for my product' },
+      { icon: Clapperboard, label: 'Short video', text: 'I want a short video for social media' },
+      { icon: FileText, label: 'Use my script', text: 'I have a script ready, turn it into a video' },
+      { icon: GraduationCap, label: 'Explainer video', text: 'I want a cinematic explainer video' },
     ],
     models: 'Models',
     voiceTitle: (m) => `Voice (up to ${m} min)`,
@@ -96,9 +105,9 @@ const T = {
     download: 'Download',
     failed: 'Something went wrong generating the video',
     goToPricing: 'Go to Pricing →',
-    uploadCharacterFirst: 'Upload the character photo with the 🖼️ button below, or describe what they look like in your message',
+    uploadCharacterFirst: 'Upload the character photo with the button below, or describe what they look like in your message',
     stop: 'Stop',
-    stopped: '⏹️ Stopped watching — the video keeps rendering in the background and credits will still be deducted',
+    stopped: 'Stopped watching — the video keeps rendering in the background and credits will still be deducted',
   },
 };
 
@@ -136,8 +145,8 @@ function RenderCard({ job, lang, onNavigate }) {
         {showRating && <RatingPrompt modelUsed={`Agent - Model ${job.model || ''}`} onClose={() => setShowRating(false)} lang={lang} />}
         <video src={job.videoUrl} controls autoPlay muted style={{ width: box.w, height: box.h, borderRadius: 14, objectFit: 'cover', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-          <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 700 }}>✅ {t.done} {job.cost || ''} {t.credits}</span>
-          <a href={job.videoUrl} download style={{ fontSize: 11, color: '#a99bff', fontWeight: 700, textDecoration: 'none' }}>⬇️ {t.download}</a>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {t.done} {job.cost || ''} {t.credits}</span>
+          <a href={job.videoUrl} download style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#a99bff', fontWeight: 700, textDecoration: 'none' }}><Download size={13} strokeWidth={2.25} /> {t.download}</a>
         </div>
       </div>
     );
@@ -154,7 +163,7 @@ function RenderCard({ job, lang, onNavigate }) {
   if (job.status === 'failed') {
     return (
       <div style={{ maxWidth: 280, padding: '12px 16px', borderRadius: 14, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
-        <div style={{ fontSize: 13, color: '#ef4444', marginBottom: job.creditError ? 8 : 0 }}>⚠️ {job.error || t.failed}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#ef4444', marginBottom: job.creditError ? 8 : 0 }}><AlertTriangle size={14} strokeWidth={2.25} /> {job.error || t.failed}</div>
         {job.creditError && (
           <button onClick={() => onNavigate && onNavigate('pricing')} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontWeight: 700, textDecoration: 'underline', fontSize: 12, padding: 0 }}>{t.goToPricing}</button>
         )}
@@ -162,25 +171,17 @@ function RenderCard({ job, lang, onNavigate }) {
     );
   }
 
+  const statusLabel = job.status === 'queued' ? t.queued : job.status === 'scenes' ? t.generating : t.rendering;
   return (
     <div style={{ width: box.w + 20 }}>
-      <div style={{
-        width: box.w, height: box.h, borderRadius: 14, position: 'relative', overflow: 'hidden',
-        background: 'linear-gradient(135deg, rgba(124,106,247,0.18), rgba(0,0,0,0.6))',
-        border: '1px solid rgba(124,106,247,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <style>{`
-          @keyframes shimmerMove{0%{background-position:-150px 0}100%{background-position:150px 0}}
-          @keyframes pulseGlow{0%,100%{opacity:0.5}50%{opacity:1}}
-        `}</style>
-        <div style={{ fontSize: 28, animation: 'pulseGlow 1.6s ease infinite' }}>🎬</div>
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, background: 'rgba(255,255,255,0.08)' }}>
-          <div style={{ height: '100%', width: '60%', background: 'linear-gradient(90deg, transparent, #a99bff, transparent)', backgroundSize: '150px 100%', animation: 'shimmerMove 1.2s linear infinite' }} />
-        </div>
-      </div>
+      <ShimmerLoader
+        ratio={job.ratio}
+        label={statusLabel}
+        style={{ width: box.w, height: box.h }}
+      />
       <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>
-        {job.status === 'queued' ? t.queued : job.status === 'scenes' ? t.generating : t.rendering}
-        {job.elapsed > 0 && <span> ⏱ {Math.floor(job.elapsed / 60)}:{String(job.elapsed % 60).padStart(2, '0')}</span>}
+        {statusLabel}
+        {job.elapsed > 0 && <span> · {Math.floor(job.elapsed / 60)}:{String(job.elapsed % 60).padStart(2, '0')}</span>}
       </div>
     </div>
   );
@@ -227,7 +228,7 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
   if (job.status === 'failed') {
     return (
       <div style={{ maxWidth: 280, padding: '12px 16px', borderRadius: 14, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
-        <div style={{ fontSize: 13, color: '#ef4444' }}>⚠️ {job.error || tt.failed}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#ef4444' }}><AlertTriangle size={14} strokeWidth={2.25} /> {job.error || tt.failed}</div>
       </div>
     );
   }
@@ -236,8 +237,8 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
     return (
       <div style={{ width: 240 }}>
         <video src={job.video_url} controls playsInline style={{ width: 240, borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
-        <button onClick={goContinue} className="btn-primary" style={{ marginTop: 8, width: '100%', fontSize: 13, padding: '8px 12px' }}>
-          ➕ {tt.continueLabel} →
+        <button onClick={goContinue} className="btn-primary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8, width: '100%', fontSize: 13, padding: '8px 12px' }}>
+          <Plus size={14} strokeWidth={2.5} /> {tt.continueLabel}
         </button>
       </div>
     );
@@ -247,7 +248,7 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
     <div style={{ width: 240, padding: '14px 16px', borderRadius: 14, background: 'linear-gradient(135deg, rgba(124,106,247,0.18), rgba(0,0,0,0.6))', border: '1px solid rgba(124,106,247,0.3)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span className="spinning" style={{ display: 'inline-block', fontSize: 18 }}>◐</span>
-        <span style={{ fontSize: 13, color: '#fff' }}>📝 {tt[job.status] || tt.transcribing}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#fff' }}><FileText size={14} strokeWidth={2} /> {tt[job.status] || tt.transcribing}</span>
       </div>
     </div>
   );
@@ -332,7 +333,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setMyClonedVoice(data.voice);
-      setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? '✅ اتحفظ صوتك! تقدر تطلب مني أي فيديو بصوتك بدل ما تختار صوت جاهز.' : "✅ Your voice is saved! You can now ask me for any video using your own cloned voice instead of a preset one." }]);
+      setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'اتحفظ صوتك! تقدر تطلب مني أي فيديو بصوتك بدل ما تختار صوت جاهز.' : "Your voice is saved! You can now ask me for any video using your own cloned voice instead of a preset one." }]);
     } catch (e) {
       setError(lang === 'ar' ? `فشل حفظ الصوت: ${e.message}` : `Failed to save voice: ${e.message}`);
     } finally {
@@ -409,11 +410,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     if (loading || activeJobRef.current) return; // ✅ FIX: منع إرسال رسالة تانية لحد ما الحالية تخلص، عشان محدش يبعت "ابدأ" مرتين ويعمل تضارب رندر
     setError('');
     const attachmentLabel = voiceFile
-      ? (lang === 'ar' ? '🎙️ رسالة صوتية' : '🎙️ Voice message')
+      ? (lang === 'ar' ? 'رسالة صوتية' : 'Voice message')
       : imageFiles.length
-      ? (lang === 'ar' ? (imageFiles.length > 1 ? '🖼️ صور مرفوعة' : '🖼️ صورة مرفوعة') : (imageFiles.length > 1 ? '🖼️ Uploaded photos' : '🖼️ Uploaded photo'))
+      ? (lang === 'ar' ? (imageFiles.length > 1 ? 'صور مرفوعة' : 'صورة مرفوعة') : (imageFiles.length > 1 ? 'Uploaded photos' : 'Uploaded photo'))
       : uploadedVideoFile
-      ? (lang === 'ar' ? '🎞️ فيديو مرفوع للتعديل' : '🎞️ Uploaded video to edit')
+      ? (lang === 'ar' ? 'فيديو مرفوع للتعديل' : 'Uploaded video to edit')
       : '';
     const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles };
     const nextMessages = [...messages, userMsg];
@@ -607,7 +608,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           if (renderData.error === 'quota_exceeded') {
             updateJob({ status: 'failed', creditError: true, error: lang === 'ar' ? `محتاج ${renderData.cost} كريديت ومعاك ${renderData.remaining} بس` : `Needs ${renderData.cost} credits, you have ${renderData.remaining}` });
           } else if (renderData.error === 'no_access' || renderData.error === 'under_maintenance') {
-            updateJob({ status: 'failed', creditError: true, error: renderData.message || (lang === 'ar' ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video') });
+            updateJob({ status: 'failed', creditError: true, error: renderData.message || (lang === 'ar' ? 'محتاج خطة فعالة عشان تعمل الفيديو ده' : 'You need an active plan for this video') });
           } else {
             updateJob({ status: 'failed', error: renderData.error || 'Failed' });
           }
@@ -762,7 +763,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         const scenesData = await scenesRes.json();
         if (!scenesRes.ok) throw new Error(
           scenesData.error === 'content_policy_violation' ? (region === 'eg' ? scenesData.message_ar : scenesData.message) :
-          scenesData.error === 'under_maintenance' ? (scenesData.message || (lang === 'ar' ? '🚧 الموديل ده تحت الصيانة حاليًا، هيرجع قريب' : '🚧 This model is under maintenance and will be back soon')) :
+          scenesData.error === 'under_maintenance' ? (scenesData.message || (lang === 'ar' ? 'الموديل ده تحت الصيانة حاليًا، هيرجع قريب' : 'This model is under maintenance and will be back soon')) :
           (scenesData.error || 'Scene generation failed')
         );
         scenes = scenesData.scenes || [];
@@ -859,11 +860,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           return;
         }
         if (renderData.show_upgrade || renderData.error === 'no_access' || renderData.error === 'subscribe_required') {
-          updateJob({ status: 'failed', creditError: true, error: renderData.message ? `🔒 ${renderData.message}` : (lang === 'ar' ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video') });
+          updateJob({ status: 'failed', creditError: true, error: renderData.message || (lang === 'ar' ? 'محتاج خطة فعالة عشان تعمل الفيديو ده' : 'You need an active plan for this video') });
           return;
         }
         if (renderData.error === 'under_maintenance') {
-          updateJob({ status: 'failed', creditError: true, error: renderData.message || (lang === 'ar' ? '🚧 الموديل ده تحت الصيانة حاليًا، هيرجع قريب' : '🚧 This model is under maintenance and will be back soon') });
+          updateJob({ status: 'failed', creditError: true, error: renderData.message || (lang === 'ar' ? 'الموديل ده تحت الصيانة حاليًا، هيرجع قريب' : 'This model is under maintenance and will be back soon') });
           return;
         }
         throw new Error(renderData.error || renderData.message || 'Render failed');
@@ -1048,12 +1049,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const [selectedStyle, setSelectedStyle] = useState(null);
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const STYLE_OPTIONS = [
-    { key: 'anime',      icon: '🎌', label: lang === 'ar' ? 'أنمي' : 'Anime' },
-    { key: '3d_cartoon', icon: '🧸', label: lang === 'ar' ? 'كرتون 3D' : '3D Cartoon' },
-    { key: 'action',     icon: '🥊', label: lang === 'ar' ? 'أكشن' : 'Action' },
-    { key: 'realistic',  icon: '📷', label: lang === 'ar' ? 'واقعي' : 'Realistic' },
-    { key: 'cinematic',  icon: '🎬', label: lang === 'ar' ? 'سينمائي' : 'Cinematic' },
-    { key: 'map_video',  icon: '🗺️', label: lang === 'ar' ? 'فيديو خريطة' : 'Map Video' },
+    { key: 'anime',      icon: Sparkles,     label: lang === 'ar' ? 'أنمي' : 'Anime' },
+    { key: '3d_cartoon', icon: Box,          label: lang === 'ar' ? 'كرتون 3D' : '3D Cartoon' },
+    { key: 'action',     icon: Swords,       label: lang === 'ar' ? 'أكشن' : 'Action' },
+    { key: 'realistic',  icon: Camera,       label: lang === 'ar' ? 'واقعي' : 'Realistic' },
+    { key: 'cinematic',  icon: Clapperboard, label: lang === 'ar' ? 'سينمائي' : 'Cinematic' },
+    { key: 'map_video',  icon: MapIcon,      label: lang === 'ar' ? 'فيديو خريطة' : 'Map Video' },
   ];
 
   const StylePickerButton = () => (
@@ -1064,7 +1065,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           background: selectedStyle ? 'rgba(124,106,247,0.18)' : (styleMenuOpen ? 'rgba(124,106,247,0.1)' : 'rgba(255,255,255,0.05)'),
           border: `1px solid ${selectedStyle || styleMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`,
           color: selectedStyle ? '#a99bff' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 15, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>
-        {selectedStyle ? STYLE_OPTIONS.find(s => s.key === selectedStyle)?.icon : '▾'}
+        {selectedStyle
+          ? (() => { const SelIcon = STYLE_OPTIONS.find(s => s.key === selectedStyle)?.icon; return SelIcon ? <SelIcon size={16} strokeWidth={2} /> : null; })()
+          : '▾'}
       </button>
       {styleMenuOpen && (
         <>
@@ -1078,15 +1081,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
                   color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
                 onMouseLeave={e => e.currentTarget.style.background = selectedStyle === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
-                <span style={{ fontSize: 16 }}>{opt.icon}</span>{opt.label}
-                {selectedStyle === opt.key && <span style={{ marginLeft: 'auto', color: '#a99bff', fontWeight: 800 }}>✓</span>}
+                <opt.icon size={16} strokeWidth={2} />{opt.label}
+                {selectedStyle === opt.key && <Check size={14} strokeWidth={3} style={{ marginLeft: 'auto', color: '#a99bff' }} />}
               </button>
             ))}
             {selectedStyle && (
               <button onClick={() => { setSelectedStyle(null); setStyleMenuOpen(false); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2, paddingTop: 10, color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
-                ✕ {lang === 'ar' ? 'إلغاء الاختيار' : 'Clear selection'}
+                <X size={14} strokeWidth={2.5} /> {lang === 'ar' ? 'إلغاء الاختيار' : 'Clear selection'}
               </button>
             )}
           </div>
@@ -1111,23 +1114,23 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             <button onClick={() => { voiceInputRef.current?.click(); }} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 16 }}>🎙️</span>{t.attachVoice}
+              <Mic size={16} strokeWidth={2} />{t.attachVoice}
             </button>
             <button onClick={() => { imageInputRef.current?.click(); }} title={t.imageTitle}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 16 }}>🖼️</span>{t.attachPhoto}
+              <ImageIcon size={16} strokeWidth={2} />{t.attachPhoto}
             </button>
             <button onClick={() => { videoInputRef.current?.click(); }} title={lang === 'ar' ? `ارفع فيديو للتعديل (أقصى ${MAX_VIDEO_UPLOAD_SEC} ثانية)` : `Upload a video to edit (max ${MAX_VIDEO_UPLOAD_SEC}s)`}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 16 }}>🎞️</span>{lang === 'ar' ? 'ارفع فيديو للتعديل' : 'Upload video to edit'}
+              <Film size={16} strokeWidth={2} />{lang === 'ar' ? 'ارفع فيديو للتعديل' : 'Upload video to edit'}
             </button>
             <button onClick={() => { voiceCloneInputRef.current?.click(); }} disabled={savingVoice}
               title={lang === 'ar' ? `احفظ صوتك مرة واحدة (موصى بيها 10 ثواني، أقصى دقيقة) واستخدمه في أي فيديو جاي` : `Save your voice once (10s recommended, max 1 minute) and use it in any future video`}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: savingVoice ? 'wait' : 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 16 }}>🗣️</span>{savingVoice ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (myClonedVoice ? (lang === 'ar' ? 'تحديث صوتي المحفوظ' : 'Update my saved voice') : (lang === 'ar' ? 'احفظ صوتي' : 'Save my voice'))}
+              <Volume2 size={16} strokeWidth={2} />{savingVoice ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (myClonedVoice ? (lang === 'ar' ? 'تحديث صوتي المحفوظ' : 'Update my saved voice') : (lang === 'ar' ? 'احفظ صوتي' : 'Save my voice'))}
             </button>
           </div>
         </>
@@ -1142,8 +1145,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 60% 45% at 50% -8%, rgba(124,106,247,0.14) 0%, transparent 65%), radial-gradient(ellipse 40% 35% at 85% 90%, rgba(217,167,116,0.05) 0%, transparent 70%)' }} />
         <div style={{ width: '100%', maxWidth: 680, position: 'relative' }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-            <button onClick={onSwitchToModels} style={{ padding: '9px 16px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              🎬 {t.models} →
+            <button onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              <Clapperboard size={15} strokeWidth={2} /> {t.models}
             </button>
           </div>
 
@@ -1176,11 +1179,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             />
             {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce)) && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎙️ {t.voiceAttached} <button onClick={() => setVoiceFile(null)} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>}
+                {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><Mic size={13} strokeWidth={2} /> {t.voiceAttached} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>}
                 {imageFiles.map((_, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>
                 ))}
-                {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎞️ {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}>✕</button></div>}
+                {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
@@ -1188,7 +1191,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
                 onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
                 onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-                style={{ width: 40, height: 40, borderRadius: 12, background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', fontSize: 16, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}>➤</button>
+                style={{ width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}><Send size={16} strokeWidth={2.25} /></button>
             </div>
           </div>
 
@@ -1198,7 +1201,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
                 onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,106,247,0.1)'; e.currentTarget.style.borderColor = 'rgba(124,106,247,0.35)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.75)'; e.currentTarget.style.transform = 'translateY(0)'; }}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.18s ease' }}>
-                <span>{c.icon}</span>{c.label}
+                <c.icon size={14} strokeWidth={2} />{c.label}
               </button>
             ))}
           </div>
@@ -1223,8 +1226,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '0.02em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 1px 0 rgba(255,255,255,0.15), 0 0 20px rgba(124,106,247,0.35)' }}>Erivion</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>Agent</span>
           </div>
-          <button className="agent-models-btn" onClick={onSwitchToModels} style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s ease, border-color 0.15s ease' }}>
-            🎬 {t.models} →
+          <button className="agent-models-btn" onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s ease, border-color 0.15s ease' }}>
+            <Clapperboard size={14} strokeWidth={2} /> {t.models}
           </button>
         </div>
 
@@ -1258,7 +1261,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
                       {m.imagePreviews.map((src, idx) => <img key={idx} src={src} alt="upload" style={{ maxWidth: 140, borderRadius: 10, display: 'block' }} />)}
                     </div>
                   )}
-                  {m.hasVoice && <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>🎙️ {t.voiceAttached}</div>}
+                  {m.hasVoice && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, opacity: 0.8, marginBottom: 6 }}><Mic size={12} strokeWidth={2} /> {t.voiceAttached}</div>}
                   {m.content}
                 </div>
               </div>
@@ -1277,11 +1280,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
         {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce)) && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-            {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎙️ {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>}
+            {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
             {imageFiles.map((_, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🖼️ {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>
             ))}
-            {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}>🎞️ {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}>✕</button></div>}
+            {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
           </div>
         )}
 
@@ -1308,12 +1311,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             <button onClick={stopEverything} title={t.stop}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.24)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
-              style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'background 0.15s ease' }}>⏹️</button>
+              style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s ease' }}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
           ) : (
             <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
               onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
               onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-              style={{ width: 38, height: 38, borderRadius: 10, background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', fontSize: 15, flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}>➤</button>
+              style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}><Send size={15} strokeWidth={2.25} /></button>
           )}
         </div>
         <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
@@ -1324,7 +1327,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           onClose={() => setSubscribeModal(null)}
           onSuccess={() => {
             setSubscribeModal(null);
-            setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? '✅ تم إرسال طلب الاشتراك! هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.' : '✅ Subscription request sent! It will be reviewed and credits added within 24 hours.' }]);
+            setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'تم إرسال طلب الاشتراك! هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.' : 'Subscription request sent! It will be reviewed and credits added within 24 hours.' }]);
           }} />
       )}
       {subscribeModal?.type === 'intl' && (
@@ -1332,7 +1335,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
           onClose={() => setSubscribeModal(null)}
           onSuccess={() => {
             setSubscribeModal(null);
-            setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? '✅ تم إرسال طلب الاشتراك! هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.' : '✅ Subscription request sent! It will be reviewed and credits added within 24 hours.' }]);
+            setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'تم إرسال طلب الاشتراك! هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.' : 'Subscription request sent! It will be reviewed and credits added within 24 hours.' }]);
           }} />
       )}
     </div>
