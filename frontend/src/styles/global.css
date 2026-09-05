@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -55,8 +57,6 @@
   color: var(--text);
   background: var(--bg);
 }
-
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
 
 body {
   min-height: 100vh;
@@ -240,6 +240,21 @@ select option { background: var(--bg3); }
   to   { transform: rotate(360deg); }
 }
 .spinning { animation: spin 1s linear infinite; }
+
+/* ── Generation shimmer (Flow-style skeleton while a render is in progress) ──
+   Slow-drifting gray gradient blur, used by <ShimmerLoader /> — replaces the
+   old assortment of ad-hoc spinners/gradients across model pages */
+@keyframes shimmerDrift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.shimmer-surface {
+  background: linear-gradient(120deg, var(--bg3) 0%, var(--bg4) 35%, var(--bg5) 50%, var(--bg4) 65%, var(--bg3) 100%);
+  background-size: 200% 200%;
+  animation: shimmerDrift 2.4s ease-in-out infinite;
+  filter: blur(0.3px);
+}
 
 /* ── Keyword pill ──────────────────────────────────────────────────────────── */
 .keyword-pill {

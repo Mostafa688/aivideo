@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  ClipboardList, Check, Users, Search, Camera, Music, Play, Sparkles, Globe,
+  GraduationCap, BookOpen, Megaphone, Drama, ImageIcon, Bot, Clapperboard,
+  Gift, Coins, Gem, Target, Map, Mail,
+} from 'lucide-react';
 
 const LOGO = 'https://i.ibb.co/xK4Sq6fP/Chat-GPT-Image-19-2026-09-08-47-Photoroom.png';
 
@@ -133,8 +138,8 @@ function TermsStep({ onAgree }) {
               width: 40, height: 40, borderRadius: 12,
               background: 'linear-gradient(135deg, #7c6af7, #a08ff8)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, boxShadow: '0 4px 14px rgba(124,106,247,0.4)',
-            }}>📋</div>
+              color: '#fff', boxShadow: '0 4px 14px rgba(124,106,247,0.4)',
+            }}><ClipboardList size={18} strokeWidth={1.75} /></div>
             <div>
               <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', margin: 0, letterSpacing: '-0.3px' }}>Terms of Service</h2>
               <p style={{ fontSize: 12, color: 'var(--text3)', margin: 0 }}>Please read and agree before continuing</p>
@@ -189,7 +194,7 @@ function TermsStep({ onAgree }) {
                 boxShadow: agreed ? '0 0 0 4px rgba(124,106,247,0.2)' : 'none',
               }}
             >
-              {agreed && <span style={{ color: '#fff', fontSize: 12, fontWeight: 900 }}>✓</span>}
+              {agreed && <Check size={13} strokeWidth={3} color="#fff" />}
             </div>
             <span style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
               I have read and agree to the <strong style={{ color: 'var(--accent2)' }}>Terms of Service</strong> and <strong style={{ color: 'var(--accent2)' }}>Privacy Policy</strong>. I understand that generating sexually explicit, racist, or violent/harmful content will result in immediate account termination.
@@ -221,13 +226,13 @@ function TermsStep({ onAgree }) {
 
 // ─── Referral Survey Step ─────────────────────────────────────────────────────
 const SOURCES = [
-  { id: 'facebook',  label: 'Facebook',  icon: '👥', color: '#1877f2' },
-  { id: 'google',    label: 'Google',    icon: '🔍', color: '#4285f4' },
-  { id: 'instagram', label: 'Instagram', icon: '📸', color: '#e1306c' },
-  { id: 'tiktok',    label: 'TikTok',    icon: '🎵', color: '#69c9d0' },
-  { id: 'youtube',   label: 'YouTube',   icon: '▶️',  color: '#ff0000' },
-  { id: 'friend',    label: 'A Friend',  icon: '🤝', color: '#22c55e' },
-  { id: 'other',     label: 'Other',     icon: '✨', color: '#9ca3af' },
+  { id: 'facebook',  label: 'Facebook',  icon: Users, color: '#1877f2' },
+  { id: 'google',    label: 'Google',    icon: Search, color: '#4285f4' },
+  { id: 'instagram', label: 'Instagram', icon: Camera, color: '#e1306c' },
+  { id: 'tiktok',    label: 'TikTok',    icon: Music, color: '#69c9d0' },
+  { id: 'youtube',   label: 'YouTube',   icon: Play,  color: '#ff0000' },
+  { id: 'friend',    label: 'A Friend',  icon: Users, color: '#22c55e' },
+  { id: 'other',     label: 'Other',     icon: Sparkles, color: '#9ca3af' },
 ];
 
 function SurveyStep({ onContinue }) {
@@ -276,9 +281,9 @@ function SurveyStep({ onContinue }) {
             background: 'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(160,143,248,0.1))',
             border: '1px solid rgba(124,106,247,0.3)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28,
+            color: '#a99bff',
             animation: 'bounceIn 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards',
-          }}>🌐</div>
+          }}><Globe size={28} strokeWidth={1.5} /></div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: '0 0 8px', letterSpacing: '-0.5px' }}>
             How did you hear about us?
           </h2>
@@ -312,7 +317,7 @@ function SurveyStep({ onContinue }) {
                   gridColumn: isLast ? 'span 2' : 'span 1',
                 }}
               >
-                <span style={{ fontSize: 20 }}>{src.icon}</span>
+                <src.icon size={19} strokeWidth={2} color={src.color} />
                 <span style={{
                   fontSize: 14, fontWeight: isSelected ? 700 : 500,
                   color: isSelected ? 'var(--text)' : 'var(--text2)',
@@ -326,7 +331,7 @@ function SurveyStep({ onContinue }) {
                     animation: 'bounceIn 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards',
                     flexShrink: 0,
                   }}>
-                    <span style={{ color: '#fff', fontSize: 11, fontWeight: 900 }}>✓</span>
+                    <Check size={12} strokeWidth={3} color="#fff" />
                   </div>
                 )}
               </button>
@@ -379,30 +384,30 @@ const RECOMMEND_QUESTIONS = [
     id: 'content_type',
     question: 'ما نوع المحتوى الذي تريد إنشاءه؟ / What content do you create?',
     options: [
-      { id: 'educational', label: '📚 تعليمي / Educational', icon: '📚' },
-      { id: 'storytelling', label: '📖 قصص وروايات / Storytelling', icon: '📖' },
-      { id: 'marketing', label: '📢 تسويق / Marketing', icon: '📢' },
-      { id: 'entertainment', label: '🎭 ترفيه / Entertainment', icon: '🎭' },
+      { id: 'educational', label: 'تعليمي / Educational', icon: GraduationCap },
+      { id: 'storytelling', label: 'قصص وروايات / Storytelling', icon: BookOpen },
+      { id: 'marketing', label: 'تسويق / Marketing', icon: Megaphone },
+      { id: 'entertainment', label: 'ترفيه / Entertainment', icon: Drama },
     ],
   },
   {
     id: 'style',
     question: 'ما الأسلوب المفضل لديك؟ / Preferred visual style?',
     options: [
-      { id: 'realistic', label: '🎥 مقاطع حقيقية / Real footage', icon: '🎥' },
-      { id: 'ai_images', label: '🖼️ صور ذكاء اصطناعي / AI images', icon: '🖼️' },
-      { id: 'ai_video', label: '🤖 فيديو ذكاء اصطناعي / AI video', icon: '🤖' },
-      { id: 'cinematic', label: '🎬 سينمائي / Cinematic', icon: '🎬' },
+      { id: 'realistic', label: 'مقاطع حقيقية / Real footage', icon: Camera },
+      { id: 'ai_images', label: 'صور ذكاء اصطناعي / AI images', icon: ImageIcon },
+      { id: 'ai_video', label: 'فيديو ذكاء اصطناعي / AI video', icon: Bot },
+      { id: 'cinematic', label: 'سينمائي / Cinematic', icon: Clapperboard },
     ],
   },
   {
     id: 'budget',
     question: 'ما ميزانيتك الشهرية تقريباً؟ / Approximate monthly budget?',
     options: [
-      { id: 'free', label: '🆓 مجاناً / Free', icon: '🆓' },
-      { id: 'low', label: '💚 منخفضة / Low (≤100 EGP)', icon: '💚' },
-      { id: 'medium', label: '💛 متوسطة / Medium (≤250 EGP)', icon: '💛' },
-      { id: 'high', label: '💎 عالية / High (250+ EGP)', icon: '💎' },
+      { id: 'free', label: 'مجاناً / Free', icon: Gift },
+      { id: 'low', label: 'منخفضة / Low (≤100 EGP)', icon: Coins },
+      { id: 'medium', label: 'متوسطة / Medium (≤250 EGP)', icon: Coins },
+      { id: 'high', label: 'عالية / High (250+ EGP)', icon: Gem },
     ],
   },
 ];
@@ -423,12 +428,12 @@ const MODEL_RECOMMENDATION = {
 };
 
 const MODEL_INFO = {
-  model1:    { name: 'AI Slices (Model 1)',          icon: '🖼️', color: '#7c6af7', desc: 'صور ذكاء اصطناعي مع Ken Burns — مثالي للمحتوى التعليمي والتوثيقي' },
-  model2:    { name: 'Real Footage (Model 2)',       icon: '🎥', color: '#06b6d4', desc: 'مقاطع حقيقية من Pexels — مثالي للمحتوى الاحترافي' },
-  model3:    { name: 'AI Images (Model 3)',          icon: '✨', color: '#f59e0b', desc: 'صور ذكاء اصطناعي فريدة لكل مشهد — جودة احترافية عالية' },
-  model4:    { name: 'Seedance AI (Model 4)',        icon: '🎬', color: '#a855f7', desc: 'مقاطع فيديو حقيقية بالذكاء الاصطناعي — حركة سينمائية مذهلة' },
-  cinematic: { name: 'Cinematic AI (Model 5)',       icon: '🎭', color: '#e11d48', desc: 'شخصيات متسقة وقصص بصرية سينمائية بدون تعليق صوتي' },
-  atlas:     { name: 'Atlas Map Video (Model 6)',    icon: '🗺️', color: '#22c55e', desc: 'خرائط جغرافية متحركة — مثالي للمحتوى الجغرافي والتاريخي' },
+  model1:    { name: 'AI Slices (Model 1)',          icon: ImageIcon, color: '#7c6af7', desc: 'صور ذكاء اصطناعي مع Ken Burns — مثالي للمحتوى التعليمي والتوثيقي' },
+  model2:    { name: 'Real Footage (Model 2)',       icon: Camera, color: '#06b6d4', desc: 'مقاطع حقيقية من Pexels — مثالي للمحتوى الاحترافي' },
+  model3:    { name: 'AI Images (Model 3)',          icon: Sparkles, color: '#f59e0b', desc: 'صور ذكاء اصطناعي فريدة لكل مشهد — جودة احترافية عالية' },
+  model4:    { name: 'Seedance AI (Model 4)',        icon: Clapperboard, color: '#a855f7', desc: 'مقاطع فيديو حقيقية بالذكاء الاصطناعي — حركة سينمائية مذهلة' },
+  cinematic: { name: 'Cinematic AI (Model 5)',       icon: Drama, color: '#e11d48', desc: 'شخصيات متسقة وقصص بصرية سينمائية بدون تعليق صوتي' },
+  atlas:     { name: 'Atlas Map Video (Model 6)',    icon: Map, color: '#22c55e', desc: 'خرائط جغرافية متحركة — مثالي للمحتوى الجغرافي والتاريخي' },
 };
 
 function getRecommendation(answers) {
@@ -480,7 +485,7 @@ function ModelRecommendStep({ onContinue }) {
               ))}
             </div>
             <div style={{ textAlign:'center', marginBottom:28 }}>
-              <div style={{ width:56, height:56, borderRadius:16, margin:'0 auto 14px', background:'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(160,143,248,0.1))', border:'1px solid rgba(124,106,247,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24 }}>🎯</div>
+              <div style={{ width:56, height:56, borderRadius:16, margin:'0 auto 14px', background:'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(160,143,248,0.1))', border:'1px solid rgba(124,106,247,0.3)', display:'flex', alignItems:'center', justifyContent:'center', color:'#a99bff' }}><Target size={24} strokeWidth={1.75} /></div>
               <h2 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:'0 0 6px' }}>نرشح لك الموديل المناسب</h2>
               <p style={{ fontSize:13, color:'var(--text3)', margin:0 }}>We\'ll recommend the best model for you</p>
             </div>
@@ -490,7 +495,7 @@ function ModelRecommendStep({ onContinue }) {
                 <button key={opt.id} onClick={() => handleAnswer(opt.id)}
                   onMouseEnter={() => setHovered(opt.id)} onMouseLeave={() => setHovered(null)}
                   style={{ padding:'14px 12px', borderRadius:14, border: hovered===opt.id ? '2px solid #7c6af7' : '2px solid var(--border)', background: hovered===opt.id ? 'rgba(124,106,247,0.1)' : 'var(--bg)', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:8, transition:'all 0.2s', transform: hovered===opt.id ? 'scale(1.02)' : 'scale(1)' }}>
-                  <span style={{ fontSize:24 }}>{opt.icon}</span>
+                  <opt.icon size={22} strokeWidth={1.75} color="var(--text2)" />
                   <span style={{ fontSize:12, fontWeight:600, color:'var(--text2)', textAlign:'center' }}>{opt.label}</span>
                 </button>
               ))}
@@ -501,7 +506,7 @@ function ModelRecommendStep({ onContinue }) {
           </>
         ) : (
           <div style={{ textAlign:'center' }}>
-            <div style={{ fontSize:56, marginBottom:12 }}>{modelInfo?.icon}</div>
+            <div style={{ marginBottom:12, display:'flex', justifyContent:'center', color: modelInfo?.color }}>{modelInfo?.icon && <modelInfo.icon size={48} strokeWidth={1.5} />}</div>
             <h2 style={{ fontSize:20, fontWeight:800, color:'#fff', margin:'0 0 8px' }}>الموديل المناسب لك!</h2>
             <p style={{ fontSize:13, color:'#9ca3af', marginBottom:24 }}>Based on your answers, we recommend:</p>
             <div style={{ background:`${modelInfo?.color}15`, border:`1px solid ${modelInfo?.color}40`, borderRadius:16, padding:'20px 24px', marginBottom:28 }}>
@@ -808,7 +813,7 @@ export default function AuthPage({ onAuth, googlePendingData }) {
             {/* Social proof */}
             <div style={{ marginTop: 36, padding: '14px 20px', borderRadius: 12, background: 'rgba(124,106,247,0.08)', border: '1px solid rgba(124,106,247,0.2)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ display: 'flex' }}>
-                {['🟣','🔵','🟢','🟡'].map((c,i) => <div key={i} style={{ width: 28, height: 28, borderRadius: '50%', background: ['#7c6af7','#06b6d4','#22c55e','#f59e0b'][i], border: '2px solid rgba(0,0,0,0.5)', marginLeft: i > 0 ? -8 : 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>😊</div>)}
+                {['#7c6af7','#06b6d4','#22c55e','#f59e0b'].map((c,i) => <div key={i} style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: '2px solid rgba(0,0,0,0.5)', marginLeft: i > 0 ? -8 : 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.85)' }}><Users size={13} strokeWidth={2} /></div>)}
               </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>10,000+ videos created</div>
@@ -827,7 +832,7 @@ export default function AuthPage({ onAuth, googlePendingData }) {
               <>
                 <div style={{ marginBottom: 28 }}>
                   <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 6, color: '#fff', fontFamily: "'Syne', sans-serif", letterSpacing: '-0.5px' }}>
-                    {mode === 'login' ? 'Welcome back 👋' : 'Get started free'}
+                    {mode === 'login' ? 'Welcome back' : 'Get started free'}
                   </h2>
                   <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                     {mode === 'login' ? 'Sign in to your Erivion account' : 'Create your account — no credit card required'}
@@ -871,7 +876,7 @@ export default function AuthPage({ onAuth, googlePendingData }) {
 
                 <button onClick={handleSubmit} disabled={loading} className="submit-btn"
                   style={{ width: '100%', marginTop: 16, padding: '13px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.15s', opacity: loading ? 0.7 : 1, boxShadow: '0 2px 12px rgba(124,106,247,0.3)' }}>
-                  {loading ? '⏳ Please wait...' : mode === 'login' ? 'Sign In →' : 'Create Account →'}
+                  {loading ? 'Please wait...' : mode === 'login' ? 'Sign In →' : 'Create Account →'}
                 </button>
 
                 <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text3)', marginTop: 18, lineHeight: 1.7 }}>
@@ -888,7 +893,7 @@ export default function AuthPage({ onAuth, googlePendingData }) {
             {step === 'verify' && (
               <div style={{ animation: 'fadeUp 0.4s ease forwards' }}>
                 <div style={{ textAlign: 'center', marginBottom: 28 }}>
-                  <div style={{ width: 64, height: 64, borderRadius: 20, margin: '0 auto 16px', background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>📧</div>
+                  <div style={{ width: 64, height: 64, borderRadius: 20, margin: '0 auto 16px', background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent2)' }}><Mail size={28} strokeWidth={1.5} /></div>
                   <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>Check your email</h2>
                   <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.6 }}>We sent a 6-character code to<br /><strong style={{ color: 'var(--accent2)' }}>{email}</strong></p>
                 </div>
@@ -897,7 +902,7 @@ export default function AuthPage({ onAuth, googlePendingData }) {
                 {error && <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.3)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
                 <button onClick={handleVerify} disabled={loading || code.length !== 6} className="submit-btn"
                   style={{ width: '100%', marginTop: 16, padding: '13px', background: code.length === 6 ? 'var(--accent)' : 'var(--bg3)', color: code.length === 6 ? '#fff' : 'var(--text3)', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: (loading || code.length !== 6) ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}>
-                  {loading ? '⏳ Verifying...' : 'Verify & Continue →'}
+                  {loading ? 'Verifying...' : 'Verify & Continue →'}
                 </button>
                 <button onClick={() => { setStep('form'); setError(''); setCode(''); }}
                   style={{ width: '100%', marginTop: 10, padding: '10px', background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 13, cursor: 'pointer' }}>

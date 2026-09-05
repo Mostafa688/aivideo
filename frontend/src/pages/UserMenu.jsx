@@ -1,18 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  Circle, Zap, Rocket, Crown, X, Check, Clapperboard, ImageIcon, Video, Drama, Coins,
+  BookOpen, Tv, HandCoins, Settings as SettingsIcon, Info, FileText, Lock, Wallet, LogOut,
+  Home, Gem, GraduationCap, Globe, MessageCircle, HelpCircle, Sparkles, Mail, Smartphone,
+  PartyPopper, Copy, ArrowRight, ChevronRight, Loader2,
+} from 'lucide-react';
 
+// ✅ FIX (طلب العميل: "احذف اي ايموجي، خليك ذكي وشوف المواقع الكبيرة بتعمل اي واعمل زيهم"):
+// كل الإيموجي في الملف ده اتشالت واتبدلت بأيقونات حقيقية من lucide-react (مكتبة أيقونات
+// SVG خفيفة) — نفس النمط اللي منصات احترافية زي Google/Notion/Linear بتستخدمه بدل الإيموجي
 const PLAN_META = {
-  free:  { color: '#6b7280', glow: 'rgba(107,114,128,0.3)',  icon: '○',  label: 'Free',  ring: '#374151' },
-  pro:   { color: '#7c6af7', glow: 'rgba(124,106,247,0.35)', icon: '⚡', label: 'Pro',   ring: '#4c3d99' },
-  plus:  { color: '#06b6d4', glow: 'rgba(6,182,212,0.35)',   icon: '🚀', label: 'Plus',  ring: '#0e5f7a' },
-  max:   { color: '#f59e0b', glow: 'rgba(245,158,11,0.35)',  icon: '♛',  label: 'Max',   ring: '#92400e' },
+  free:  { color: '#6b7280', Icon: Circle, label: 'Free',  ring: '#374151' },
+  pro:   { color: '#7c6af7', Icon: Zap,    label: 'Pro',   ring: '#4c3d99' },
+  plus:  { color: '#06b6d4', Icon: Rocket, label: 'Plus',  ring: '#0e5f7a' },
+  max:   { color: '#f59e0b', Icon: Crown,  label: 'Max',   ring: '#92400e' },
 };
+Object.values(PLAN_META).forEach(m => { m.glow = `${m.color}55`; });
 
 export function HowToModal({ onClose }) {
   const [activeTab, setActiveTab] = useState(0);
 
   const TABS = [
     {
-      icon: '🎬', title: 'Video Plans (Model 1 & 2)',
+      Icon: Clapperboard, title: 'Video Plans (Model 1 & 2)',
       steps: [
         { step: '1', title: 'Enter your idea', desc: 'Type a topic or paste a script. Erivion\'s AI will write the scenes, voiceover, and captions automatically.' },
         { step: '2', title: 'Choose duration & style', desc: 'Pick from 30s up to 10 minutes. Select aspect ratio (9:16, 16:9, 1:1) and video style.' },
@@ -21,7 +31,7 @@ export function HowToModal({ onClose }) {
       ],
     },
     {
-      icon: '🖼️', title: 'AI Image Videos (Model 3)',
+      Icon: ImageIcon, title: 'AI Image Videos (Model 3)',
       steps: [
         { step: '1', title: 'Describe your video', desc: 'Enter an idea or script. AI generates unique images for every scene using Stability AI.' },
         { step: '2', title: 'Select duration', desc: 'Choose 30s, 1min, 3min, or 5min depending on your plan.' },
@@ -30,7 +40,7 @@ export function HowToModal({ onClose }) {
       ],
     },
     {
-      icon: '🎥', title: 'Real AI Video (Model 4)',
+      Icon: Video, title: 'Real AI Video (Model 4)',
       steps: [
         { step: '1', title: 'Write your script', desc: 'Describe your scenes. Each scene becomes a real AI-generated video clip powered by Seedance v1 Pro.' },
         { step: '2', title: 'Choose clip duration', desc: 'Pick 30s, 1min, or 3min videos. Each scene is ~7 seconds of real motion video.' },
@@ -39,7 +49,7 @@ export function HowToModal({ onClose }) {
       ],
     },
     {
-      icon: '🎭', title: 'Cinematic AI (Model 5)',
+      Icon: Drama, title: 'Cinematic AI (Model 5)',
       steps: [
         { step: '1', title: 'Describe characters', desc: 'Define up to 5 characters with detailed descriptions for consistent appearance across all scenes.' },
         { step: '2', title: 'Write the story', desc: 'Describe your cinematic scene or story. No voiceover — pure visual storytelling.' },
@@ -48,12 +58,12 @@ export function HowToModal({ onClose }) {
       ],
     },
     {
-      icon: '💰', title: 'Credits System',
+      Icon: Coins, title: 'Credits System',
       steps: [
-        { step: '✦', title: 'What are credits?', desc: 'One credit balance works across every model (1, 2, 3, 4, 5, 7) — no separate plan per model.' },
-        { step: '✦', title: 'Pay once, no expiry', desc: 'Top up your credit balance once — it never expires or resets. Use it whenever you want, top up again anytime you need more.' },
-        { step: '✦', title: 'Free plan', desc: 'Limited free credits to try Model 2 (Real Footage). Other models need a paid credit balance.' },
-        { step: '✦', title: 'Credit costs', desc: 'Shorter/simpler videos use fewer credits; longer or more complex ones (more scenes, extra reference photos) use more.' },
+        { step: '', title: 'What are credits?', desc: 'One credit balance works across every model (1, 2, 3, 4, 5, 7) — no separate plan per model.' },
+        { step: '', title: 'Pay once, no expiry', desc: 'Top up your credit balance once — it never expires or resets. Use it whenever you want, top up again anytime you need more.' },
+        { step: '', title: 'Free plan', desc: 'Limited free credits to try Model 2 (Real Footage). Other models need a paid credit balance.' },
+        { step: '', title: 'Credit costs', desc: 'Shorter/simpler videos use fewer credits; longer or more complex ones (more scenes, extra reference photos) use more.' },
       ],
     },
   ];
@@ -72,7 +82,7 @@ export function HowToModal({ onClose }) {
             <h2 style={{ fontSize:22, fontWeight:800, color:'#fff', margin:0 }}>How to Use Erivion</h2>
             <p style={{ fontSize:13, color:'#4b5563', margin:'4px 0 0' }}>Everything you need to create amazing AI videos</p>
           </div>
-          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#6b7280', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>✕</button>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#6b7280', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><X size={16} /></button>
         </div>
 
         {/* Tabs */}
@@ -80,7 +90,7 @@ export function HowToModal({ onClose }) {
           {TABS.map((t, i) => (
             <button key={i} onClick={() => setActiveTab(i)}
               style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:20, border:`1px solid ${activeTab===i ? 'rgba(6,182,212,0.5)' : 'rgba(255,255,255,0.07)'}`, background: activeTab===i ? 'rgba(6,182,212,0.1)' : 'transparent', color: activeTab===i ? '#06b6d4' : '#6b7280', cursor:'pointer', fontSize:12, fontWeight: activeTab===i ? 700 : 500, whiteSpace:'nowrap', flexShrink:0 }}>
-              <span>{t.icon}</span> {t.title.split(' ')[0]} {t.title.split(' ')[1] || ''}
+              <t.Icon size={14} strokeWidth={2} /> {t.title.split(' ')[0]} {t.title.split(' ')[1] || ''}
             </button>
           ))}
         </div>
@@ -88,12 +98,12 @@ export function HowToModal({ onClose }) {
         {/* Content */}
         <div style={{ padding:24 }}>
           <div style={{ fontSize:15, fontWeight:700, color:'#fff', marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
-            <span>{tab.icon}</span> {tab.title}
+            <tab.Icon size={18} strokeWidth={2} /> {tab.title}
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
             {tab.steps.map((s, i) => (
               <div key={i} style={{ display:'flex', gap:14, padding:'14px 16px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:12 }}>
-                <div style={{ width:28, height:28, borderRadius:8, background:'rgba(6,182,212,0.12)', border:'1px solid rgba(6,182,212,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'#06b6d4', flexShrink:0 }}>{s.step}</div>
+                <div style={{ width:28, height:28, borderRadius:8, background:'rgba(6,182,212,0.12)', border:'1px solid rgba(6,182,212,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'#06b6d4', flexShrink:0 }}>{s.step || <Sparkles size={13} />}</div>
                 <div>
                   <div style={{ fontSize:14, fontWeight:700, color:'#fff', marginBottom:3 }}>{s.title}</div>
                   <div style={{ fontSize:13, color:'#6b7280', lineHeight:1.6 }}>{s.desc}</div>
@@ -107,18 +117,18 @@ export function HowToModal({ onClose }) {
             {activeTab > 0 && (
               <button onClick={() => setActiveTab(activeTab - 1)}
                 style={{ flex:1, padding:'11px', borderRadius:10, border:'1px solid rgba(255,255,255,0.08)', background:'transparent', color:'#9ca3af', cursor:'pointer', fontSize:13, fontWeight:600 }}>
-                ← Previous
+                Previous
               </button>
             )}
             {activeTab < TABS.length - 1 ? (
               <button onClick={() => setActiveTab(activeTab + 1)}
-                style={{ flex:1, padding:'11px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#06b6d4,#0891b2)', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-                Next →
+                style={{ flex:1, padding:'11px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#06b6d4,#0891b2)', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                Next <ArrowRight size={14} />
               </button>
             ) : (
               <button onClick={onClose}
-                style={{ flex:1, padding:'11px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-                ✅ Got it! Start Creating
+                style={{ flex:1, padding:'11px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                <Check size={15} /> Got it! Start Creating
               </button>
             )}
           </div>
@@ -164,7 +174,7 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
             <div style={{ fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.5px' }}>Earn with Erivion</div>
             <div style={{ fontSize:13, color:'#4b5563', marginTop:4 }}>20% of every credit pack your referrals buy</div>
           </div>
-          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#6b7280', fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#6b7280', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><X size={16} /></button>
         </div>
 
         {step === 'form' && (
@@ -179,9 +189,9 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
             </div>
 
             <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:20 }}>
-              {[['📧 Email','email','your@email.com',email,setEmail],['📱 InstaPay','text','رقم التليفون',instapay,setInstapay]].map(([label,type,ph,val,setter]) => (
+              {[[Mail,'Email','email','your@email.com',email,setEmail],[Smartphone,'InstaPay','text','رقم التليفون',instapay,setInstapay]].map(([Ico,label,type,ph,val,setter]) => (
                 <div key={label}>
-                  <div style={{ fontSize:11, color:'#4b5563', fontWeight:600, marginBottom:6 }}>{label}</div>
+                  <div style={{ fontSize:11, color:'#4b5563', fontWeight:600, marginBottom:6, display:'flex', alignItems:'center', gap:6 }}><Ico size={13} /> {label}</div>
                   <input type={type} value={val} onChange={e=>setter(e.target.value)} placeholder={ph}
                     style={{ width:'100%', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'11px 14px', color:'#fff', fontSize:14, outline:'none', boxSizing:'border-box', fontFamily:'inherit', transition:'border-color 0.2s' }}
                     onFocus={e=>e.target.style.borderColor='rgba(124,106,247,0.4)'}
@@ -193,8 +203,8 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
             {error && <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:8, padding:'10px 14px', color:'#ef4444', fontSize:13, marginBottom:16 }}>{error}</div>}
 
             <button onClick={handleSubmit} disabled={loading}
-              style={{ width:'100%', background:loading?'#1f1f2e':'linear-gradient(135deg,#7c6af7,#6d28d9)', border:'none', borderRadius:12, padding:'14px', color:'#fff', fontWeight:700, fontSize:15, cursor:loading?'not-allowed':'pointer', transition:'all 0.2s', boxShadow:loading?'none':'0 4px 20px rgba(124,106,247,0.3)' }}>
-              {loading ? '⏳ Registering...' : '🚀 Get My Referral Link →'}
+              style={{ width:'100%', background:loading?'#1f1f2e':'linear-gradient(135deg,#7c6af7,#6d28d9)', border:'none', borderRadius:12, padding:'14px', color:'#fff', fontWeight:700, fontSize:15, cursor:loading?'not-allowed':'pointer', transition:'all 0.2s', boxShadow:loading?'none':'0 4px 20px rgba(124,106,247,0.3)', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+              {loading ? <><Loader2 size={16} className="spinning" /> Registering...</> : <>Get My Referral Link <ArrowRight size={15} /></>}
             </button>
           </>
         )}
@@ -202,24 +212,24 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
         {step === 'success' && result && (
           <div>
             <div style={{ textAlign:'center', marginBottom:24 }}>
-              <div style={{ width:64, height:64, borderRadius:20, background:'rgba(34,197,94,0.1)', border:'1px solid rgba(34,197,94,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, margin:'0 auto 16px' }}>🎉</div>
+              <div style={{ width:64, height:64, borderRadius:20, background:'rgba(34,197,94,0.1)', border:'1px solid rgba(34,197,94,0.2)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px', color:'#22c55e' }}><PartyPopper size={28} /></div>
               <div style={{ fontSize:18, fontWeight:800, color:'#fff', marginBottom:4 }}>{result.already_exists?'Welcome back!':'You\'re in!'}</div>
               <div style={{ fontSize:13, color:'#4b5563' }}>Share your link and start earning</div>
             </div>
             <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12, padding:'14px 16px', marginBottom:12 }}>
               <div style={{ fontSize:10, color:'#4b5563', fontWeight:700, letterSpacing:'0.08em', marginBottom:8 }}>YOUR REFERRAL LINK</div>
               <div style={{ fontSize:12, color:'#7c6af7', fontFamily:'monospace', wordBreak:'break-all', marginBottom:12 }}>{result.ref_link}</div>
-              <button onClick={copyLink} style={{ width:'100%', background:'rgba(124,106,247,0.1)', border:'1px solid rgba(124,106,247,0.2)', borderRadius:8, padding:'9px', color:'#a78bfa', fontWeight:600, fontSize:13, cursor:'pointer' }}>📋 Copy Link</button>
+              <button onClick={copyLink} style={{ width:'100%', background:'rgba(124,106,247,0.1)', border:'1px solid rgba(124,106,247,0.2)', borderRadius:8, padding:'9px', color:'#a78bfa', fontWeight:600, fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><Copy size={14} /> Copy Link</button>
             </div>
             <div style={{ textAlign:'center', marginBottom:20 }}>
               <div style={{ fontSize:11, color:'#4b5563', marginBottom:4 }}>YOUR CODE</div>
               <div style={{ fontSize:24, fontWeight:800, color:'#f59e0b', fontFamily:'monospace', letterSpacing:'0.15em' }}>{result.ref_code}</div>
             </div>
-            <button onClick={onClose} style={{ width:'100%', background:'linear-gradient(135deg,#22c55e,#16a34a)', border:'none', borderRadius:12, padding:'12px', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer' }}>
-              ✅ Start Marketing!
+            <button onClick={onClose} style={{ width:'100%', background:'linear-gradient(135deg,#22c55e,#16a34a)', border:'none', borderRadius:12, padding:'12px', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+              <Check size={16} /> Start Marketing!
             </button>
-            <button onClick={() => { onClose(); onNavigateAffiliate?.(); }} style={{ width:'100%', marginTop:8, background:'transparent', border:'1px solid rgba(34,197,94,0.3)', borderRadius:12, padding:'10px', color:'#22c55e', fontWeight:600, fontSize:13, cursor:'pointer' }}>
-              📊 View Full Dashboard →
+            <button onClick={() => { onClose(); onNavigateAffiliate?.(); }} style={{ width:'100%', marginTop:8, background:'transparent', border:'1px solid rgba(34,197,94,0.3)', borderRadius:12, padding:'10px', color:'#22c55e', fontWeight:600, fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              View Full Dashboard <ArrowRight size={14} />
             </button>
           </div>
         )}
@@ -228,9 +238,8 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
   );
 }
 
-export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '', onShowHowTo, onShowAffiliate }) {
+export default function UserMenu({ user, plan = 'free', credits = null, onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '', onShowHowTo, onShowAffiliate }) {
   const [open, setOpen] = useState(false);
-  const [hovered, setHovered] = useState(null);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -245,21 +254,28 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
   const groups = [
     {
       items: [
-        { icon: '📖', label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
-        { icon: '📺', label: 'My Channels', sub: 'Daily auto-video via VidIQ', key: 'channels', accent: '#7c6af7', badge: 'BETA' },
-        { icon: '💰', label: 'Earn with Erivion', sub: 'Affiliate — 20% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
-        ...(model3Access ? [{ icon: '🖼️', label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
+        { Icon: BookOpen, label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
+        { Icon: Tv, label: 'My Channels', sub: 'Daily auto-video via VidIQ', key: 'channels', accent: '#7c6af7', badge: 'BETA' },
+        { Icon: HandCoins, label: 'Earn with Erivion', sub: 'Affiliate — 20% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
+        ...(model3Access ? [{ Icon: ImageIcon, label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
       ]
     },
     {
       items: [
-        { icon: '⚙️', label: 'Settings', key: 'settings' },
-        { icon: 'ℹ️', label: 'About Us', key: 'about' },
-        { icon: '📄', label: 'Terms of Service', key: 'terms' },
-        { icon: '🔒', label: 'Privacy Policy', key: 'privacy' },
-        { icon: '💸', label: 'Refund Policy', key: 'refund' },
+        { Icon: SettingsIcon, label: 'Settings', key: 'settings' },
+        { Icon: Info, label: 'About Us', key: 'about' },
+        { Icon: FileText, label: 'Terms of Service', key: 'terms' },
+        { Icon: Lock, label: 'Privacy Policy', key: 'privacy' },
+        { Icon: Wallet, label: 'Refund Policy', key: 'refund' },
       ]
     },
+  ];
+
+  const MOBILE_NAV = [
+    { key:'home', Icon: Home, label:'Home' }, { key:'pricing', Icon: Gem, label:'Pricing' },
+    { key:'templates', Icon: Clapperboard, label:'Templates' }, { key:'courses', Icon: GraduationCap, label:'Courses' },
+    { key:'community', Icon: Globe, label:'Community' }, { key:'support', Icon: MessageCircle, label:'Support' },
+    { key:'faq', Icon: HelpCircle, label:'FAQ' }, { key:'affiliate', Icon: HandCoins, label:'Affiliate' },
   ];
 
   const handleItemClick = (key) => {
@@ -281,6 +297,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
         .um-item-accent:hover { background: rgba(34,197,94,0.08) !important; }
         .um-avatar { transition: all 0.2s ease; }
         .um-avatar:hover { transform: scale(1.08); }
+        .um-upgrade:hover { background: rgba(124,106,247,0.16) !important; }
       `}</style>
 
       <div ref={menuRef} style={{ position:'relative' }}>
@@ -300,8 +317,8 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
             : firstLetter
           }
           {/* Plan indicator dot */}
-          <div style={{ position:'absolute', bottom:-1, right:-1, width:12, height:12, borderRadius:'50%', background:meta.color, border:'2px solid var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:6 }}>
-            {plan !== 'free' && <span style={{ color:'#fff' }}>✓</span>}
+          <div style={{ position:'absolute', bottom:-1, right:-1, width:12, height:12, borderRadius:'50%', background:meta.color, border:'2px solid var(--bg)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            {plan !== 'free' && <Check size={7} strokeWidth={4} color="#fff" />}
           </div>
         </button>
 
@@ -312,7 +329,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
             background:'#09090f',
             border:'1px solid rgba(255,255,255,0.08)',
             borderRadius:18, overflow:'hidden',
-            width:256,
+            width:264,
             maxHeight:'calc(100vh - 70px)',
             overflowY:'auto',
             boxShadow:'0 24px 64px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04)',
@@ -328,23 +345,45 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, color:'#fff', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
                   <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}>
-                    <div style={{ width:6, height:6, borderRadius:'50%', background:meta.color, boxShadow:`0 0 6px ${meta.color}` }} />
+                    <meta.Icon size={11} color={meta.color} strokeWidth={2.5} />
                     <span style={{ fontSize:11, color:meta.color, fontWeight:700, letterSpacing:'0.04em' }}>{meta.label} Plan</span>
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* ✅ NEW (طلب العميل — بالصورة المرجعية): رصيد الكريديت + زرار ترقية واضح جوه
+                المنيو نفسه، مش بس في الهيدر — بيظهر بس لو الرصيد اتحمّل فعليًا */}
+            {credits && (
+              <button
+                className="um-item um-upgrade"
+                onClick={() => handleItemClick('pricing')}
+                style={{
+                  width:'calc(100% - 12px)', margin:'8px 6px 2px', display:'flex', alignItems:'center', gap:10,
+                  padding:'10px 12px', borderRadius:12, border:'1px solid rgba(124,106,247,0.25)',
+                  background:'rgba(124,106,247,0.08)', cursor:'pointer', textAlign:'left',
+                }}>
+                <Coins size={16} color="#a08ff8" />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:12.5, fontWeight:700, color:'#fff' }}>
+                    {(credits.credits_balance ?? 0).toLocaleString()} credits
+                  </div>
+                </div>
+                <span style={{ fontSize:11.5, fontWeight:700, color:'#a08ff8', display:'flex', alignItems:'center', gap:3 }}>
+                  Upgrade <ChevronRight size={13} />
+                </span>
+              </button>
+            )}
+
             {/* Mobile Nav — only on small screens */}
-            {/* Nav Links - mobile only */}
             <div style={{ padding:'6px 6px 0' }}>
               <style>{`@media(min-width:641px){.um-nav-mobile{display:none!important}}`}</style>
               <div className="um-nav-mobile">
                 <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
-                {[{key:'home',icon:'🏠',label:'Home'},{key:'pricing',icon:'💎',label:'Pricing'},{key:'templates',icon:'🎬',label:'Templates'},{key:'courses',icon:'🎓',label:'Courses'},{key:'community',icon:'🌍',label:'Community'},{key:'support',icon:'💬',label:'Support'},{key:'faq',icon:'❓',label:'FAQ'},{key:'affiliate',icon:'💰',label:'Affiliate'}].map(item=>(
-                  <button key={item.key} onClick={()=>{setOpen(false); if(item.key==='affiliate'){onShowAffiliate?.();}else if(item.key==='howto'){onShowHowTo?.();}else{onNavigate?.(item.key);}}} className="um-item"
+                {MOBILE_NAV.map(item=>(
+                  <button key={item.key} onClick={()=>{setOpen(false); if(item.key==='affiliate'){onShowAffiliate?.();}else{onNavigate?.(item.key);}}} className="um-item"
                     style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:item.key==='affiliate'?'#22c55e':currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key||item.key==='affiliate'?700:500,textAlign:'left'}}>
-                    <span style={{fontSize:15,width:22,textAlign:'center'}}>{item.icon}</span>
+                    <item.Icon size={15} strokeWidth={2} />
                     <span>{item.label}</span>
                     {currentPage===item.key&&<div style={{marginLeft:'auto',width:5,height:5,borderRadius:'50%',background:'#a78bfa'}}/>}
                   </button>
@@ -361,8 +400,6 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                   {group.items.map(item => (
                     <button key={item.key}
                       className={item.accent ? 'um-item um-item-accent' : 'um-item'}
-                      onMouseEnter={() => setHovered(item.key)}
-                      onMouseLeave={() => setHovered(null)}
                       onClick={() => handleItemClick(item.key)}
                       style={{
                         width:'100%', display:'flex', alignItems:'center', gap:10,
@@ -372,7 +409,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                         cursor:'pointer', fontSize:13, fontWeight: item.accent ? 600 : 500,
                         textAlign:'left',
                       }}>
-                      <span style={{ fontSize:15, width:22, textAlign:'center', flexShrink:0 }}>{item.icon}</span>
+                      <item.Icon size={15} strokeWidth={2} style={{ flexShrink:0 }} />
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:13, fontWeight: item.accent ? 600 : 500, color: item.accent ? item.accent : '#d1d5db', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.label}</div>
                         {item.sub && <div style={{ fontSize:10, color: item.accent ? `${item.accent}99` : '#4b5563', marginTop:1 }}>{item.sub}</div>}
@@ -399,7 +436,7 @@ export default function UserMenu({ user, plan = 'free', onLogout, onNavigate, mo
                 style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 10px', borderRadius:10, border:'none', background:'transparent', color:'#6b7280', cursor:'pointer', fontSize:13, fontWeight:500, textAlign:'left', transition:'all 0.15s' }}
                 onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.08)'; e.currentTarget.style.color='#ef4444'; }}
                 onMouseLeave={e => { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#6b7280'; }}>
-                <span style={{ fontSize:15, width:22, textAlign:'center' }}>→</span>
+                <LogOut size={15} strokeWidth={2} />
                 Sign Out
               </button>
             </div>

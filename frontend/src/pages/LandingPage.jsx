@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SubPage from './SubPage.jsx';
+import {
+  CheckCircle2, Clapperboard, ImageIcon, Film, Drama, Map, Brain, Mic,
+  Smartphone, Scissors, Zap, Star,
+} from 'lucide-react';
 
 // ─── Support Page ─────────────────────────────────────────────────────────────
 function SupportPage({ onBack }) {
@@ -23,7 +27,7 @@ function SupportPage({ onBack }) {
         <p style={{ color:'#6b7280', marginBottom:32 }}>Reach us at <a href="mailto:digidelight33@gmail.com" style={{ color:'#7c6af7' }}>digidelight33@gmail.com</a></p>
         {status === 'sent' ? (
           <div style={{ textAlign:'center', padding:'60px 0' }}>
-            <div style={{ fontSize:48, marginBottom:16 }}>✅</div>
+            <div style={{ marginBottom:16, display:'flex', justifyContent:'center', color:'#34d399' }}><CheckCircle2 size={44} strokeWidth={1.75} /></div>
             <h3 style={{ fontSize:20, fontWeight:700, color:'#34d399' }}>Message Sent!</h3>
             <p style={{ color:'#6b7280', marginTop:8 }}>We'll get back to you within 24 hours.</p>
           </div>
@@ -79,7 +83,7 @@ export function AppFooter({ onNavigate, onGetStarted }) {
         </div>
         <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', paddingTop:24, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
           <span style={{ fontSize:12, color:'#374151' }}>© 2026 Erivion. All rights reserved.</span>
-          <span style={{ fontSize:12, color:'#374151' }}>Made with ❤️ for creators worldwide</span>
+          <span style={{ fontSize:12, color:'#374151' }}>Built for creators worldwide</span>
         </div>
       </div>
     </footer>
@@ -240,20 +244,20 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
   ];
 
   const MODELS = [
-    { key:'model2', tag:'MODEL 2', name:'Real Footage', icon:'🎬', desc:'HD stock footage matched to your script. Documentary-quality output instantly.', color:'#818cf8', tags:['Real HD clips','8+ languages','Captions & Music','Fast render'] },
-    { key:'model3', tag:'MODEL 3', name:'AI Images', icon:'🖼️', desc:'Unique AI-generated image per scene with cinematic Ken Burns effects.', color:'#f59e0b', tags:['Stable Diffusion','6 visual styles','Ken Burns zoom','Premium quality'] },
-    { key:'model4', tag:'MODEL 4', name:'Seedance Video', icon:'🎞️', desc:'Real AI-generated video clips. Not images — true cinematic motion.', color:'#a855f7', tags:['Seedance v1 Pro','Real AI video','Any idea or script','Captions & Music'] },
-    { key:'model5', tag:'CINEMATIC', name:'Character AI', icon:'🎭', desc:'Upload your character photos. AI keeps them consistent across every scene.', color:'#e11d48', tags:['Photo reference','5 characters','Seedance 2.0','No voiceover'] },
-    { key:'model6', tag:'ATLAS', name:'Map Videos', icon:'🗺️', desc:'Animated geographic maps — countries highlight and zoom with your story.', color:'#a78bfa', tags:['170+ countries','Auto zoom','Dynamic colors','Free to use'] },
+    { key:'model2', tag:'MODEL 2', name:'Real Footage', icon:Clapperboard, desc:'HD stock footage matched to your script. Documentary-quality output instantly.', color:'#818cf8', tags:['Real HD clips','8+ languages','Captions & Music','Fast render'] },
+    { key:'model3', tag:'MODEL 3', name:'AI Images', icon:ImageIcon, desc:'Unique AI-generated image per scene with cinematic Ken Burns effects.', color:'#f59e0b', tags:['Stable Diffusion','6 visual styles','Ken Burns zoom','Premium quality'] },
+    { key:'model4', tag:'MODEL 4', name:'Seedance Video', icon:Film, desc:'Real AI-generated video clips. Not images — true cinematic motion.', color:'#a855f7', tags:['Seedance v1 Pro','Real AI video','Any idea or script','Captions & Music'] },
+    { key:'model5', tag:'CINEMATIC', name:'Character AI', icon:Drama, desc:'Upload your character photos. AI keeps them consistent across every scene.', color:'#e11d48', tags:['Photo reference','5 characters','Seedance 2.0','No voiceover'] },
+    { key:'model6', tag:'ATLAS', name:'Map Videos', icon:Map, desc:'Animated geographic maps — countries highlight and zoom with your story.', color:'#a78bfa', tags:['170+ countries','Auto zoom','Dynamic colors','Free to use'] },
   ];
 
   const FEATURES = [
-    { icon:'🧠', title:'Idea to Video in Minutes', desc:'Type any topic and watch AI transform it into a fully produced video — script, visuals, voice, music, captions.' },
-    { icon:'🎙️', title:'8+ Languages & Voices', desc:'Generate videos in English, Arabic (Egyptian/Gulf/Formal), French, German, Spanish, Russian, Japanese, and more.' },
-    { icon:'🎬', title:'5 Powerful AI Models', desc:'Real footage, AI images, Seedance video, character consistency, and animated maps — all in one platform.' },
-    { icon:'📱', title:'Any Format, Any Platform', desc:'9:16 for TikTok & Reels, 16:9 for YouTube, 1:1 for Instagram. Export-ready for every platform.' },
-    { icon:'✂️', title:'Scene-by-Scene Control', desc:'Review and edit every scene before rendering. Full creative control with AI doing the heavy lifting.' },
-    { icon:'⚡', title:'Production-Ready Output', desc:'Auto-synced captions, background music, sound effects, video transitions, and cinematic color grading.' },
+    { icon:Brain, title:'Idea to Video in Minutes', desc:'Type any topic and watch AI transform it into a fully produced video — script, visuals, voice, music, captions.' },
+    { icon:Mic, title:'8+ Languages & Voices', desc:'Generate videos in English, Arabic (Egyptian/Gulf/Formal), French, German, Spanish, Russian, Japanese, and more.' },
+    { icon:Clapperboard, title:'5 Powerful AI Models', desc:'Real footage, AI images, Seedance video, character consistency, and animated maps — all in one platform.' },
+    { icon:Smartphone, title:'Any Format, Any Platform', desc:'9:16 for TikTok & Reels, 16:9 for YouTube, 1:1 for Instagram. Export-ready for every platform.' },
+    { icon:Scissors, title:'Scene-by-Scene Control', desc:'Review and edit every scene before rendering. Full creative control with AI doing the heavy lifting.' },
+    { icon:Zap, title:'Production-Ready Output', desc:'Auto-synced captions, background music, sound effects, video transitions, and cinematic color grading.' },
   ];
 
   const STEPS = [
@@ -351,7 +355,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
           <span style={{ fontSize:18, fontWeight:800, letterSpacing:'-0.5px', color:'#fff' }}>Erivion</span>
         </div>
         <div className="ev-nav-links" style={{ display:'flex', alignItems:'center', gap:28 }}>
-          {[['home','Home'],['templates','Templates'],['pricing','Pricing'],['community','🌍 Community'],['faq','FAQ'],['support','Support']].map(([k,l]) => (
+          {[['home','Home'],['templates','Templates'],['pricing','Pricing'],['community','Community'],['faq','FAQ'],['support','Support']].map(([k,l]) => (
             <button key={k} className="ev-nav-link" onClick={() => {
               if (k === 'support') { onNavigate?.(k); return; }
               if (k === 'community') { onNavigate?.(k); return; }
@@ -436,7 +440,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
             <span style={{ fontSize:13, color:'#6b7280' }}>Loved by <strong style={{ color:'#9ca3af' }}>10,000+</strong> creators</span>
           </div>
           <div style={{ display:'flex', gap:2 }}>
-            {[1,2,3,4,5].map(i => <span key={i} style={{ color:'#f59e0b', fontSize:16 }}>★</span>)}
+            {[1,2,3,4,5].map(i => <Star key={i} size={16} fill="#f59e0b" color="#f59e0b" />)}
           </div>
           <span style={{ fontSize:13, color:'#6b7280' }}>4.9/5 rating</span>
         </div>
@@ -518,7 +522,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
               style={{ borderRadius:20, border:`1px solid ${hovModel===m.key?m.color+'44':'rgba(255,255,255,0.06)'}`, background: hovModel===m.key?`linear-gradient(160deg,${m.color}0d,rgba(5,5,8,0.95))`:'rgba(255,255,255,0.02)', padding:'28px 24px', position:'relative', overflow:'hidden', boxShadow:hovModel===m.key?`0 20px 48px ${m.color}18`:'none' }}>
               <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:`radial-gradient(circle,${m.color}18,transparent 70%)`, pointerEvents:'none' }} />
               <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
-                <div style={{ width:44, height:44, borderRadius:12, background:`linear-gradient(135deg,${m.color}cc,${m.color}66)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, boxShadow:`0 4px 16px ${m.color}40` }}>{m.icon}</div>
+                <div style={{ width:44, height:44, borderRadius:12, background:`linear-gradient(135deg,${m.color}cc,${m.color}66)`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', boxShadow:`0 4px 16px ${m.color}40` }}><m.icon size={20} strokeWidth={2} /></div>
                 <div>
                   <div style={{ fontSize:9, fontWeight:700, color:m.color, letterSpacing:'0.12em', opacity:0.8 }}>{m.tag}</div>
                   <div style={{ fontSize:17, fontWeight:800, color:'#fff', fontFamily:"'Bricolage Grotesque', sans-serif", letterSpacing:'-0.3px' }}>{m.name}</div>
@@ -560,7 +564,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
           {FEATURES.map((f,i) => (
             <div key={i} className="ev-reveal ev-feature-card" data-delay={i*80}
               style={{ padding:'28px 24px', borderRadius:18, border:'1px solid rgba(255,255,255,0.06)', background:'rgba(255,255,255,0.02)', transition:'all 0.3s ease' }}>
-              <div style={{ fontSize:32, marginBottom:16 }}>{f.icon}</div>
+              <div style={{ marginBottom:16, color:'#a99bff' }}><f.icon size={28} strokeWidth={1.75} /></div>
               <h3 style={{ fontSize:16, fontWeight:800, marginBottom:10, fontFamily:"'Bricolage Grotesque', sans-serif" }}>{f.title}</h3>
               <p style={{ fontSize:13, color:'#6b7280', lineHeight:1.7 }}>{f.desc}</p>
             </div>
@@ -586,7 +590,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
             <div key={i} className="ev-reveal" data-delay={i*100}
               style={{ padding:'28px 24px', borderRadius:18, border:'1px solid rgba(255,255,255,0.06)', background:'rgba(255,255,255,0.02)' }}>
               <div style={{ display:'flex', gap:2, marginBottom:16 }}>
-                {[1,2,3,4,5].map(s=><span key={s} style={{ color:'#f59e0b', fontSize:14 }}>★</span>)}
+                {[1,2,3,4,5].map(s=><Star key={s} size={14} fill="#f59e0b" color="#f59e0b" />)}
               </div>
               <p style={{ fontSize:14, color:'#d1d5db', lineHeight:1.8, marginBottom:20, fontStyle:'italic' }}>"{t.text}"</p>
               <div style={{ display:'flex', alignItems:'center', gap:12 }}>

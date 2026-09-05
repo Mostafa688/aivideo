@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ImageIcon, Video, Cookie, GraduationCap, Globe, HandCoins, Bot } from 'lucide-react';
 import InputPage from './pages/InputPage.jsx';
 import MapVideoPage from './pages/MapVideoPage.jsx';
 import ScenesPage from './pages/ScenesPage.jsx';
@@ -42,13 +43,13 @@ function ModelWelcomeModal({ modelKey, userRegion, onContinue }) {
     model1: {
       ar: {
         title: 'موديل 1 — AI Slices',
-        icon: '🖼️',
+        icon: ImageIcon,
         body: 'عميلنا العزيز! قبل أن تدخل على استخدام الموديل نحب أن نعرفك على كيفية استخدامه. بعد أن تقوم بكتابة الفكرة أو السكريبت وتتبع الخطوات، وعندما تصل إلى صفحة الريندر يجب أن تضغط أولاً «Generate Voice» ثم «Render» كي يصدر الفيديو بطريقة جيدة وبصوت احترافي.',
         btn: 'حسناً، سأبدأ الآن ←',
       },
       en: {
         title: 'Model 1 — AI Slices',
-        icon: '🖼️',
+        icon: ImageIcon,
         body: 'Dear user! Before entering the model, we want you to know how to use it correctly. After writing your idea or script and following the steps, when you reach the Render page you must first press «Generate Voice» then «Render» so your video exports with great quality and a professional voice.',
         btn: 'Got it, let\'s start →',
       },
@@ -56,13 +57,13 @@ function ModelWelcomeModal({ modelKey, userRegion, onContinue }) {
     model2: {
       ar: {
         title: 'موديل 2 — Real Footage',
-        icon: '🎥',
+        icon: Video,
         body: 'عميلنا العزيز! قبل أن تدخل على استخدام الموديل نحب أن نعرفك على كيفية استخدامه. بعد أن تقوم بكتابة الفكرة أو السكريبت وتتبع الخطوات، وعندما تصل إلى صفحة الريندر يجب أن تضغط أولاً «Generate Voice» ثم «Render» كي يصدر الفيديو بطريقة جيدة وبصوت احترافي.',
         btn: 'حسناً، سأبدأ الآن ←',
       },
       en: {
         title: 'Model 2 — Real Footage',
-        icon: '🎥',
+        icon: Video,
         body: 'Dear user! Before entering the model, we want you to know how to use it correctly. After writing your idea or script and following the steps, when you reach the Render page you must first press «Generate Voice» then «Render» so your video exports with great quality and a professional voice.',
         btn: 'Got it, let\'s start →',
       },
@@ -76,7 +77,7 @@ function ModelWelcomeModal({ modelKey, userRegion, onContinue }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, backdropFilter: 'blur(8px)', opacity: visible ? 1 : 0, transition: 'opacity 0.3s' }}>
       <div style={{ background: '#09090f', border: '1px solid rgba(124,106,247,0.3)', borderRadius: 24, padding: '36px 32px', width: '100%', maxWidth: 480, boxShadow: '0 32px 80px rgba(0,0,0,0.8)', transform: visible ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(16px)', transition: 'all 0.4s cubic-bezier(0.34,1.56,0.64,1)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>{c.icon}</div>
+          <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center', color: 'var(--accent2)' }}><c.icon size={44} strokeWidth={1.5} /></div>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: '#fff', margin: '0 0 8px' }}>{c.title}</h2>
         </div>
         <div style={{ background: 'rgba(124,106,247,0.08)', border: '1px solid rgba(124,106,247,0.2)', borderRadius: 14, padding: '18px 20px', marginBottom: 24, fontSize: 14, color: '#d1d5db', lineHeight: 1.8, direction: isAr ? 'rtl' : 'ltr', textAlign: isAr ? 'right' : 'left' }}>
@@ -128,10 +129,11 @@ function CookieConsentBanner() {
 
   return (
     <div style={{ position: 'fixed', bottom: 16, insetInlineStart: 16, insetInlineEnd: 16, maxWidth: 460, margin: '0 auto', zIndex: 9998, background: '#0f0f1a', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 16, padding: '18px 20px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: 12, direction: isAr ? 'rtl' : 'ltr' }}>
-      <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.7 }}>
-        {isAr
-          ? '🍪 بنستخدم كوكيز أساسية وتحليلية عشان نحسّن تجربتك ونفهم استخدام الموقع. استمرارك في الاستخدام يعني موافقتك.'
-          : '🍪 We use essential and analytics cookies to improve your experience and understand site usage. By continuing, you agree to this.'}
+      <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.7, display: 'flex', gap: 8 }}>
+        <Cookie size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+        <span>{isAr
+          ? 'بنستخدم كوكيز أساسية وتحليلية عشان نحسّن تجربتك ونفهم استخدام الموقع. استمرارك في الاستخدام يعني موافقتك.'
+          : 'We use essential and analytics cookies to improve your experience and understand site usage. By continuing, you agree to this.'}</span>
       </p>
       <div style={{ display: 'flex', gap: 10 }}>
         <button onClick={accept} style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
@@ -140,6 +142,34 @@ function CookieConsentBanner() {
         <a href="/privacy" style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)', fontSize: 13, textDecoration: 'none', textAlign: 'center' }}>
           {isAr ? 'التفاصيل' : 'Learn more'}
         </a>
+      </div>
+    </div>
+  );
+}
+
+// ✅ NEW (طلب العميل: "بعد الاسئلة وقبل الدخول على صفحة الاسعار يكون شعار erivion موجود
+// ويعمل حركة انيميشن حلوة وبعد كده يفتح صفحة الاسعار"): شاشة انتقال قصيرة بشعار متحرك بين
+// نهاية أسئلة الـonboarding في AuthPage وفتح PricingPage — كانت قبل كده قفزة فورية من غير
+// أي انتقال خالص
+function LogoTransition({ onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 1700);
+    return () => clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100000 }}>
+      <style>{`
+        @keyframes logoTransIn { 0% { opacity: 0; transform: scale(0.6) rotate(-8deg); } 60% { opacity: 1; transform: scale(1.1) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(0deg); } }
+        @keyframes logoTransGlow { 0%, 100% { box-shadow: 0 0 30px rgba(124,106,247,0.35); } 50% { box-shadow: 0 0 60px rgba(124,106,247,0.65); } }
+        @keyframes logoTransFade { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
+        .logo-trans-badge { animation: logoTransIn 0.55s cubic-bezier(0.34,1.56,0.64,1) forwards, logoTransGlow 1.5s ease-in-out infinite 0.55s; }
+        .logo-trans-text { animation: logoTransFade 0.4s ease forwards; animation-delay: 0.5s; opacity: 0; }
+      `}</style>
+      <div style={{ textAlign: 'center' }}>
+        <div className="logo-trans-badge" style={{ width: 76, height: 76, borderRadius: 22, background: 'linear-gradient(135deg,#7c6af7,#a08ff8)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+          <img src={LOGO} alt="Erivion" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+        </div>
+        <div className="logo-trans-text" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text2)', letterSpacing: '0.02em' }}>Erivion</div>
       </div>
     </div>
   );
@@ -154,6 +184,7 @@ export default function App() {
   const [showVideos, setShowVideos] = useState(false);
   const [credits, setCredits] = useState(null);
   const [showPricing, setShowPricing] = useState(false);
+  const [showLogoTransition, setShowLogoTransition] = useState(false);
   const [userPlan, setUserPlan] = useState('free');
   const [planSelected, setPlanSelected] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
@@ -397,7 +428,7 @@ export default function App() {
       localStorage.setItem('token', data.token); localStorage.setItem('email', data.email); localStorage.setItem('plan', data.plan || 'free');
       setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false); setGooglePendingData(null);
       const planChosenBefore = localStorage.getItem('planSelected') === 'true';
-      if (!planChosenBefore) setShowPricing(true);
+      if (!planChosenBefore) setShowLogoTransition(true);
     }} />;
     if (blogPostId) return <BlogPostPage postId={blogPostId} onBack={() => setBlogPostId(null)} />;
     if (page === 'community') return <CommunityPage onBack={() => setPage('input')} user={null} onNavigate={(k) => { if(k==='auth') setShowAuth(true); else if(k==='community') {} else setShowAuth(true); }} />;
@@ -412,8 +443,10 @@ export default function App() {
     localStorage.setItem('token', data.token); localStorage.setItem('email', data.email); localStorage.setItem('plan', data.plan || 'free');
     setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false);
     const planChosenBefore = localStorage.getItem('planSelected') === 'true';
-    if (!planChosenBefore) setShowPricing(true);
+    if (!planChosenBefore) setShowLogoTransition(true);
   }} />;
+
+  if (showLogoTransition) return <LogoTransition onDone={() => { setShowLogoTransition(false); setShowPricing(true); }} />;
 
   if (showPricing) return <PricingPage
     currentPlan={userPlan}
@@ -445,11 +478,11 @@ export default function App() {
     { key: 'home', label: 'Home' },
     { key: 'pricing', label: 'Pricing' },
     { key: 'templates', label: 'Templates' },
-    { key: 'courses', label: '🎓 Courses' },
-    { key: 'community', label: '🌍 Community' },
+    { key: 'courses', label: 'Courses' },
+    { key: 'community', label: 'Community' },
     { key: 'about', label: 'About Us' },
     { key: 'support', label: 'Support' },
-    { key: 'affiliate', label: '💰 Affiliate' },
+    { key: 'affiliate', label: 'Affiliate' },
   ];
 
   const Header = () => (
@@ -497,7 +530,7 @@ export default function App() {
 
         {user?.token && <NotificationBell token={user.token} />}
 
-        <UserMenu user={user} plan={userPlan} onLogout={handleLogout} onNavigate={handleNavigate}
+        <UserMenu user={user} plan={userPlan} credits={credits} onLogout={handleLogout} onNavigate={handleNavigate}
           model3Access={model3Access} model4Access={model4Access} model5Access={model5Access} model6Access={model6Access}
           avatar={userAvatar} currentPage={page}
           onShowHowTo={() => setShowHowToModal(true)}
@@ -519,8 +552,9 @@ export default function App() {
           padding: '9px 16px', borderRadius: 10, background: 'rgba(124,106,247,0.12)',
           border: '1px solid rgba(124,106,247,0.35)', color: '#a99bff', fontSize: 13, fontWeight: 700,
           cursor: 'pointer', boxShadow: '0 4px 16px rgba(124,106,247,0.25)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', gap: 7,
         }}>
-          🤖 Agent →
+          <Bot size={15} strokeWidth={2} /> Agent
         </button>
       )}
 
