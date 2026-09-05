@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Clapperboard, Star, Trophy, Users, Building2, Check, X, HandHeart, Globe, Loader2 } from 'lucide-react';
 
 const INSTAPAY_NUMBER = import.meta.env.VITE_INSTAPAY_NUMBER || '01091917832';
 const EGP_PER_CREDIT = 0.7;
@@ -7,13 +8,13 @@ const SLIDER_MAX = 10000;
 
 // ── الباقات الدولية الثابتة (مرتبطة بمنتجات Gumroad حقيقية — دفعة واحدة) ──
 export const GUMROAD_PACKAGES = [
-  { key: 'credits_starter', name: 'Starter', tagline: 'Getting started', credits: 600,   usd: 15,  url: 'https://digiwhirl23.gumroad.com/l/ukgdl',  color: '#7c6af7', icon: '🎬' },
-  { key: 'credits_creator', name: 'Creator', tagline: 'For regular creators', credits: 1400,  usd: 35,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: '⭐', popular: true },
-  { key: 'credits_studio',  name: 'Studio',  tagline: 'For heavy usage', credits: 3000,  usd: 84,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: '🏆' },
+  { key: 'credits_starter', name: 'Starter', tagline: 'Getting started', credits: 600,   usd: 15,  url: 'https://digiwhirl23.gumroad.com/l/ukgdl',  color: '#7c6af7', icon: Clapperboard },
+  { key: 'credits_creator', name: 'Creator', tagline: 'For regular creators', credits: 1400,  usd: 35,  url: 'https://digiwhirl23.gumroad.com/l/gohhdt', color: '#a855f7', icon: Star, popular: true },
+  { key: 'credits_studio',  name: 'Studio',  tagline: 'For heavy usage', credits: 3000,  usd: 84,  url: 'https://digiwhirl23.gumroad.com/l/dnkam',  color: '#e11d48', icon: Trophy },
 ];
 export const GUMROAD_MORE_PACKAGES = [
-  { key: 'credits_team',    name: 'Team',    tagline: 'For teams and bulk usage', credits: 6000,  usd: 168, url: 'https://digiwhirl23.gumroad.com/l/vmzubx', color: '#0891b2', icon: '👥' },
-  { key: 'credits_agency',  name: 'Agency',  tagline: 'For agencies at scale', credits: 12000, usd: 336, url: 'https://digiwhirl23.gumroad.com/l/ckvlgo', color: '#f59e0b', icon: '🏢' },
+  { key: 'credits_team',    name: 'Team',    tagline: 'For teams and bulk usage', credits: 6000,  usd: 168, url: 'https://digiwhirl23.gumroad.com/l/vmzubx', color: '#0891b2', icon: Users },
+  { key: 'credits_agency',  name: 'Agency',  tagline: 'For agencies at scale', credits: 12000, usd: 336, url: 'https://digiwhirl23.gumroad.com/l/ckvlgo', color: '#f59e0b', icon: Building2 },
 ];
 export const ALL_GUMROAD_PACKAGES = [...GUMROAD_PACKAGES, ...GUMROAD_MORE_PACKAGES];
 
@@ -59,7 +60,7 @@ function FeatureList({ color }) {
     <ul style={{ listStyle: 'none', padding: 0, margin: '18px 0 0', display: 'flex', flexDirection: 'column', gap: 9 }}>
       {FEATURE_LIST.map((f, i) => (
         <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#9ca3af' }}>
-          <span style={{ color, fontSize: 13, flexShrink: 0 }}>✓</span>{f}
+          <Check size={13} strokeWidth={2.5} color={color} style={{ flexShrink: 0 }} />{f}
         </li>
       ))}
     </ul>
@@ -127,7 +128,7 @@ export function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
             <h3 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0 }}>شحن {credits.toLocaleString()} كريديت</h3>
             <p style={{ fontSize: 15, color: '#7c6af7', margin: '4px 0 0', fontWeight: 700 }}>{amountEgp.toLocaleString()} جنيه</p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex' }}><X size={20} strokeWidth={2} /></button>
         </div>
 
         <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 18, marginBottom: 18 }}>
@@ -187,10 +188,10 @@ export function IntlPaymentModal({ pkg, onClose, onSuccess }) {
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <div>
-                <h3 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0 }}>{pkg.icon} {pkg.name}</h3>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><pkg.icon size={17} strokeWidth={1.75} color={pkg.color} /> {pkg.name}</h3>
                 <p style={{ fontSize: 13, color: pkg.color, margin: '4px 0 0', fontWeight: 700 }}>${pkg.usd} — {pkg.credits.toLocaleString()} credits</p>
               </div>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex' }}><X size={20} strokeWidth={2} /></button>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 18, marginBottom: 20 }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: '#d1d5db', margin: '0 0 14px' }}>How to purchase:</p>
@@ -230,10 +231,10 @@ function EgPendingScreen({ onNavigate, onSkip, info }) {
         <div style={{ position: 'relative', width: 96, height: 96, margin: '0 auto 28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(124,106,247,0.4)', animation: 'pendingPulseRing 2s ease-out infinite' }} />
           <div style={{ position: 'absolute', inset: 10, borderRadius: '50%', border: '2px dashed rgba(124,106,247,0.5)', animation: 'pendingSpin 8s linear infinite' }} />
-          <div style={{ fontSize: 40 }}>⏳</div>
+          <Loader2 size={36} className="spinning" color="#7c6af7" />
         </div>
         <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 10, lineHeight: 1.5 }}>سيقوم فريق Erivion بمراجعة طلب الاشتراك خلال 24 ساعة</h2>
-        <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: info ? 20 : 32 }}>شكرًا لانتظاركم 🙏</p>
+        <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: info ? 20 : 32, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><HandHeart size={15} strokeWidth={2} /> شكرًا لانتظاركم</p>
 
         {info && (
           <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '14px 18px', marginBottom: 28, textAlign: 'right' }}>
@@ -294,14 +295,14 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
               style={{ flex: '1 1 190px', maxWidth: 220, padding: '28px 20px', borderRadius: 16, background: '#0e0e16', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', textAlign: 'center', transition: 'border-color 0.2s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(124,106,247,0.5)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 6 }}>🇪🇬 Egypt</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 6 }}>Egypt</div>
               <div style={{ fontSize: 12, color: '#8b8b96' }}>Prices in EGP · InstaPay</div>
             </button>
             <button onClick={() => { setRegion('intl'); if (onRegionSelect) onRegionSelect('intl'); localStorage.setItem('erivion_region', 'intl'); }}
               style={{ flex: '1 1 190px', maxWidth: 220, padding: '28px 20px', borderRadius: 16, background: '#0e0e16', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', textAlign: 'center', transition: 'border-color 0.2s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(34,197,94,0.5)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 6 }}>🌐 International</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Globe size={14} strokeWidth={2} /> International</div>
               <div style={{ fontSize: 12, color: '#8b8b96' }}>Prices in USD · Card</div>
             </button>
           </div>

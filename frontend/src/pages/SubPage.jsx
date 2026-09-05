@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import { AppFooter } from './LandingPage.jsx';
+import {
+  Target, PenLine, Settings as SettingsIcon, Clapperboard, Sparkles, Flame,
+  Smartphone, Lightbulb, Palette, Zap, Gem, CheckCircle2, FileText, Lock,
+  DollarSign, Info, LifeBuoy, BookOpen, Clock,
+} from 'lucide-react';
 
 // ✅ NEW: كل Section بقى كارت واضح بحدود خفيفة، ورقم دائري لو العنوان مبدوء بـ "N. " —
 // بيتقرا تلقائي من نص العنوان نفسه (زي "1. Acceptance of Terms") من غير ما نلمس أي مكان
@@ -140,7 +145,7 @@ function RefundContent() {
 function HowToUseContent() {
   const steps = [
     {
-      icon: '🎯',
+      icon: Target,
       title: 'اختر الموديل المناسب',
       color: '#7c6af7',
       content: 'الموقع عنده 7 موديلات مختلفة، كل واحد ليه مميزاته:',
@@ -155,21 +160,21 @@ function HowToUseContent() {
       ]
     },
     {
-      icon: '✍️',
+      icon: PenLine,
       title: 'اكتب فكرتك بشكل صح',
       color: '#06b6d4',
       content: 'أهم خطوة - كيف تكتب فكرة قوية تطلع فيديو احترافي:',
       items: [
-        { name: '✅ مثال ممتاز', desc: '"فيديو تحفيزي عن رحلة رائد أعمال مصري بدأ بـ500 جنيه وبنى إمبراطورية تجارية في 5 سنين"' },
-        { name: '✅ مثال ممتاز', desc: '"قصة اكتشاف كنز في مقبرة فرعونية - من منظور عالم آثار مصري"' },
-        { name: '❌ مثال ضعيف', desc: '"فيديو عن النجاح" - مبهم جداً' },
-        { name: '❌ مثال ضعيف', desc: '"اعمل فيديو جميل" - مفيش تفاصيل' },
-        { name: '💡 نصيحة', desc: 'كلما كانت الفكرة محددة وفيها تفاصيل، كلما طلع الفيديو أحسن وأكثر احترافية' },
-        { name: '💡 نصيحة', desc: 'اذكر: الشخصية الرئيسية + الحدث + المكان + النتيجة' },
+        { name: 'مثال ممتاز', desc: '"فيديو تحفيزي عن رحلة رائد أعمال مصري بدأ بـ500 جنيه وبنى إمبراطورية تجارية في 5 سنين"' },
+        { name: 'مثال ممتاز', desc: '"قصة اكتشاف كنز في مقبرة فرعونية - من منظور عالم آثار مصري"' },
+        { name: 'مثال ضعيف', desc: '"فيديو عن النجاح" - مبهم جداً' },
+        { name: 'مثال ضعيف', desc: '"اعمل فيديو جميل" - مفيش تفاصيل' },
+        { name: 'نصيحة', desc: 'كلما كانت الفكرة محددة وفيها تفاصيل، كلما طلع الفيديو أحسن وأكثر احترافية' },
+        { name: 'نصيحة', desc: 'اذكر: الشخصية الرئيسية + الحدث + المكان + النتيجة' },
       ]
     },
     {
-      icon: '⚙️',
+      icon: SettingsIcon,
       title: 'اضبط الإعدادات',
       color: '#f59e0b',
       content: 'الإعدادات بتأثر على جودة الفيديو:',
@@ -183,7 +188,7 @@ function HowToUseContent() {
       ]
     },
     {
-      icon: '🎬',
+      icon: Clapperboard,
       title: 'راجع المشاهد وعدّل',
       color: '#22c55e',
       content: 'بعد توليد المشاهد، عندك صلاحيات:',
@@ -197,7 +202,7 @@ function HowToUseContent() {
       ]
     },
     {
-      icon: '✨',
+      icon: Sparkles,
       title: 'Edit بعد الرندر',
       color: '#e11d48',
       content: 'بعد ما الفيديو يطلع عندك خيارين:',
@@ -211,12 +216,12 @@ function HowToUseContent() {
   ];
 
   const tips = [
-    { icon: '🔥', text: 'جرب أكثر من فكرة - Model 1 و2 هما الأرخص لو عايز تجرب بأقل تكلفة' },
-    { icon: '📱', text: 'للتيك توك والرييلز دايماً استخدم 9:16 مع كابشن مفعّل' },
-    { icon: '🎯', text: 'أفضل مدة للمحتوى العربي على السوشيال ميديا: 30 ثانية - دقيقة' },
-    { icon: '💡', text: 'لو الكلمات بتبحث عنها في Pexels مش بتطلع نتائج كويسة، جرب كلمات إنجليزية مختلفة' },
-    { icon: '🎨', text: 'Model 3 أحسن جودة للمحتوى التاريخي والقصصي المتخيل' },
-    { icon: '⚡', text: 'الكريديت بتاعك ميتصفرش ولا بيتجدد أسبوعيًا - بيفضل معاك لحد ما تستخدمه' },
+    { icon: Flame, text: 'جرب أكثر من فكرة - Model 1 و2 هما الأرخص لو عايز تجرب بأقل تكلفة' },
+    { icon: Smartphone, text: 'للتيك توك والرييلز دايماً استخدم 9:16 مع كابشن مفعّل' },
+    { icon: Target, text: 'أفضل مدة للمحتوى العربي على السوشيال ميديا: 30 ثانية - دقيقة' },
+    { icon: Lightbulb, text: 'لو الكلمات بتبحث عنها في Pexels مش بتطلع نتائج كويسة، جرب كلمات إنجليزية مختلفة' },
+    { icon: Palette, text: 'Model 3 أحسن جودة للمحتوى التاريخي والقصصي المتخيل' },
+    { icon: Zap, text: 'الكريديت بتاعك ميتصفرش ولا بيتجدد أسبوعيًا - بيفضل معاك لحد ما تستخدمه' },
   ];
 
   return (
@@ -235,8 +240,8 @@ function HowToUseContent() {
       {steps.map((step, i) => (
         <div key={i} className="guide-step" style={{ marginBottom:32, animationDelay:`${i*0.08}s` }}>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
-            <div style={{ width:40, height:40, borderRadius:12, background:`${step.color}18`, border:`1px solid ${step.color}33`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
-              {step.icon}
+            <div style={{ width:40, height:40, borderRadius:12, background:`${step.color}18`, border:`1px solid ${step.color}33`, display:'flex', alignItems:'center', justifyContent:'center', color: step.color, flexShrink:0 }}>
+              <step.icon size={19} strokeWidth={1.75} />
             </div>
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -261,11 +266,11 @@ function HowToUseContent() {
 
       {/* Tips */}
       <div style={{ background:`rgba(124,106,247,0.06)`, border:'1px solid rgba(124,106,247,0.15)', borderRadius:16, padding:20, marginTop:8 }}>
-        <h3 style={{ fontSize:15, fontWeight:700, color:'#a78bfa', marginBottom:14 }}>💎 نصائح من فريق Erivion</h3>
+        <h3 style={{ fontSize:15, fontWeight:700, color:'#a78bfa', marginBottom:14, display:'flex', alignItems:'center', gap:8 }}><Gem size={16} strokeWidth={1.75} /> نصائح من فريق Erivion</h3>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           {tips.map((tip, i) => (
             <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-              <span style={{ fontSize:16, flexShrink:0 }}>{tip.icon}</span>
+              <tip.icon size={16} strokeWidth={1.75} style={{ flexShrink:0, color:'#a78bfa', marginTop:1 }} />
               <p style={{ fontSize:13, color:'var(--text2)', lineHeight:1.6, margin:0 }}>{tip.text}</p>
             </div>
           ))}
@@ -307,7 +312,7 @@ function SupportContent() {
 
   if (status === 'sent') return (
     <div style={{ textAlign: 'center', padding: '40px 0' }}>
-      <div style={{ fontSize: 52, marginBottom: 16 }}>✅</div>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', color: 'var(--green)' }}><CheckCircle2 size={44} strokeWidth={1.75} /></div>
       <h3 style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)', marginBottom: 8 }}>Message Sent!</h3>
       <p style={{ color: 'var(--text3)' }}>We'll get back to you within 24 hours.</p>
     </div>
@@ -316,7 +321,7 @@ function SupportContent() {
   return (
     <div>
       <div style={{ background: 'rgba(124,106,247,0.08)', border: '1px solid rgba(124,106,247,0.2)', borderRadius: 12, padding: '14px 18px', marginBottom: 24 }}>
-        <p style={{ color: '#7c6af7', fontWeight: 600, fontSize: 14, margin: '0 0 6px' }}>💡 Refund & Cancellation Requests</p>
+        <p style={{ color: '#7c6af7', fontWeight: 600, fontSize: 14, margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 6 }}><Lightbulb size={15} strokeWidth={2} /> Refund & Cancellation Requests</p>
         <p style={{ color: 'var(--text2)', fontSize: 13, margin: 0, lineHeight: 1.6 }}>
           If you'd like to cancel your subscription or request a refund, please use this form. Refund requests are only accepted within 4 hours of activation.
         </p>
@@ -335,7 +340,7 @@ function SupportContent() {
         {status === 'error' && <p style={{ color: 'var(--red)', fontSize: 13 }}>Something went wrong. Please email us directly.</p>}
         <button onClick={handleSend} disabled={!email || !message || status === 'loading'}
           style={{ padding: '12px 24px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: (!email || !message) ? 'not-allowed' : 'pointer', opacity: (!email || !message) ? 0.6 : 1, alignSelf: 'flex-start' }}>
-          {status === 'loading' ? '⏳ Sending...' : 'Send Message →'}
+          {status === 'loading' ? 'Sending...' : 'Send Message →'}
         </button>
       </div>
     </div>
@@ -343,16 +348,16 @@ function SupportContent() {
 }
 
 const PAGE_CONFIG = {
-  terms:      { title: 'Terms of Service',        icon: '📄', lastUpdated: 'August 2026' },
-  privacy:    { title: 'Privacy Policy',           icon: '🔒', lastUpdated: 'August 2026' },
-  refund:     { title: 'Refund & Cancellation',    icon: '💰' },
-  about:      { title: 'About Erivion',            icon: 'ℹ️' },
-  support:    { title: 'Support',                  icon: '🛟' },
-  howto:      { title: 'كيفية الاستخدام',          icon: '📖' },
+  terms:      { title: 'Terms of Service',        icon: FileText, lastUpdated: 'August 2026' },
+  privacy:    { title: 'Privacy Policy',           icon: Lock, lastUpdated: 'August 2026' },
+  refund:     { title: 'Refund & Cancellation',    icon: DollarSign },
+  about:      { title: 'About Erivion',            icon: Info },
+  support:    { title: 'Support',                  icon: LifeBuoy },
+  howto:      { title: 'كيفية الاستخدام',          icon: BookOpen },
 };
 
 export default function SubPage({ page, onBack }) {
-  const config = PAGE_CONFIG[page] || { title: page, icon: '📄' };
+  const config = PAGE_CONFIG[page] || { title: page, icon: FileText };
   const toc = page === 'terms' ? TERMS_TOC : page === 'privacy' ? PRIVACY_TOC : null;
 
   return (
@@ -362,8 +367,8 @@ export default function SubPage({ page, onBack }) {
           ← Back
         </button>
         <div style={{ marginBottom: config.lastUpdated ? 12 : 36 }}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 0, letterSpacing: '-0.5px', color: 'var(--text)' }}>
-            {config.icon} {config.title}
+          <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 0, letterSpacing: '-0.5px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <config.icon size={26} strokeWidth={1.75} /> {config.title}
           </h1>
         </div>
         {config.lastUpdated && (
@@ -373,7 +378,7 @@ export default function SubPage({ page, onBack }) {
             background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)',
             color: 'var(--accent2)', fontSize: 12, fontWeight: 600,
           }}>
-            🕒 Last updated: {config.lastUpdated}
+            <Clock size={13} strokeWidth={2} /> Last updated: {config.lastUpdated}
           </div>
         )}
         {toc && <TableOfContents items={toc} />}

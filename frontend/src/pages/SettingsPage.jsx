@@ -1,4 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import {
+  User, Bell, Lock, Plug, AlertTriangle, Settings as SettingsIcon, CreditCard,
+  Globe, Mail, Monitor, LogOut, Key, Package, Trash2, Check, X, Copy, Film,
+  Loader2,
+} from 'lucide-react';
 
 function authHeaders() {
   return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') };
@@ -42,11 +47,11 @@ function Toggle({ value, onChange }) {
 
 export default function SettingsPage({ onBack, user, onNavigate }) {
   const NAV = [
-    { key: 'profile',       icon: '👤', label: 'Profile' },
-    { key: 'notifications', icon: '🔔', label: 'Notifications' },
-    { key: 'security',      icon: '🔒', label: 'Security' },
-    { key: 'developer',     icon: '🔌', label: 'API & MCP' },
-    { key: 'danger',        icon: '⚠️',  label: 'Danger Zone' },
+    { key: 'profile',       icon: User, label: 'Profile' },
+    { key: 'notifications', icon: Bell, label: 'Notifications' },
+    { key: 'security',      icon: Lock, label: 'Security' },
+    { key: 'developer',     icon: Plug, label: 'API & MCP' },
+    { key: 'danger',        icon: AlertTriangle, label: 'Danger Zone' },
   ];
 
   const [active, setActive]               = useState('profile');
@@ -246,7 +251,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
           ← Back
         </button>
         <div>
-          <h1 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0 }}>⚙️ Settings</h1>
+          <h1 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><SettingsIcon size={16} strokeWidth={2} /> Settings</h1>
           <p style={{ fontSize: 12, color: 'var(--text3)', margin: 0 }}>Manage your account & preferences</p>
         </div>
       </div>
@@ -267,7 +272,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                   color: active === item.key ? 'var(--accent)' : 'var(--text3)',
                   cursor: 'pointer', fontSize: 13, fontWeight: active === item.key ? 700 : 500, textAlign: 'left',
                 }}>
-                <span style={{ fontSize: 15 }}>{item.icon}</span> {item.label}
+                <item.icon size={15} strokeWidth={2} /> {item.label}
               </button>
             ))}
           </div>
@@ -279,7 +284,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
           {/* ── PROFILE ── */}
           {active === 'profile' && (
             <div>
-              <Section title="Profile Information" icon="👤">
+              <Section title="Profile Information" icon={<User size={14} strokeWidth={2} />}>
                 {/* Avatar + info */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, paddingBottom: 20, borderBottom: '1px solid var(--border)' }}>
                   <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'var(--accent-bg)', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>
@@ -304,7 +309,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                       style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 14, outline: 'none' }} />
                     <button onClick={handleSaveName} disabled={nameStatus === 'loading' || !displayName.trim()}
                       style={{ ...btnStyle(nameStatus === 'success' ? '#22c55e' : nameStatus === 'error' ? '#ef4444' : 'var(--accent)'), opacity: !displayName.trim() ? 0.5 : 1, minWidth: 80 }}>
-                      {nameStatus === 'loading' ? '⏳' : nameStatus === 'success' ? '✅ Saved' : nameStatus === 'error' ? '❌ Failed' : 'Save'}
+                      {nameStatus === 'loading' ? <Loader2 size={14} className="spinning" /> : nameStatus === 'success' ? 'Saved' : nameStatus === 'error' ? 'Failed' : 'Save'}
                     </button>
                   </div>
                   <p style={{ fontSize: 12, color: 'var(--text3)', margin: '6px 0 0' }}>This name will appear on your profile across Erivion.</p>
@@ -321,7 +326,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
               </Section>
 
               {/* Subscription */}
-              <Section title="Subscription" icon="💳">
+              <Section title="Subscription" icon={<CreditCard size={14} strokeWidth={2} />}>
                 <div className="s-sub-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
@@ -334,16 +339,16 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                     </div>
                   </div>
                   <button onClick={() => onNavigate && onNavigate('pricing')} style={btnStyle()}>
-                    {user?.plan && user.plan !== 'free' ? 'Manage Plan' : 'Upgrade ✨'}
+                    {user?.plan && user.plan !== 'free' ? 'Manage Plan' : 'Upgrade'}
                   </button>
                 </div>
               </Section>
 
               {/* Pricing Region */}
-              <Section title="Pricing Region" icon="🌍">
+              <Section title="Pricing Region" icon={<Globe size={14} strokeWidth={2} />}>
                 <Row label="Your Region" desc="Affects which currency is shown on pricing pages" last>
                   <div className="s-region-btns" style={{ display: 'flex', gap: 8 }}>
-                    {[{ key: 'eg', label: '🇪🇬 Egypt (EGP)' }, { key: 'intl', label: '🌐 International (USD)' }].map(r => (
+                    {[{ key: 'eg', label: 'Egypt (EGP)' }, { key: 'intl', label: 'International (USD)' }].map(r => (
                       <button key={r.key} onClick={() => setRegion(r.key)}
                         style={{ padding: '8px 14px', borderRadius: 8, border: `2px solid ${region === r.key ? 'var(--accent)' : 'var(--border)'}`, background: region === r.key ? 'var(--accent-bg)' : 'var(--bg3)', color: region === r.key ? 'var(--accent)' : 'var(--text3)', cursor: 'pointer', fontSize: 12, fontWeight: region === r.key ? 700 : 500 }}>
                         {r.label}
@@ -357,7 +362,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
 
           {/* ── NOTIFICATIONS ── */}
           {active === 'notifications' && (
-            <Section title="Notifications" icon="🔔">
+            <Section title="Notifications" icon={<Bell size={14} strokeWidth={2} />}>
               <Row label="Email Notifications" desc="Receive important account updates and alerts by email">
                 <Toggle value={emailNotif} onChange={setEmailNotif} />
               </Row>
@@ -368,8 +373,8 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                 <Toggle value={newsletter} onChange={setNewsletter} />
               </Row>
               <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.15)', borderRadius: 10 }}>
-                <p style={{ fontSize: 12, color: 'var(--text3)', margin: 0, lineHeight: 1.6 }}>
-                  📧 Notifications are sent to <strong style={{ color: 'var(--text)' }}>{user?.email}</strong>. Changes are saved automatically.
+                <p style={{ fontSize: 12, color: 'var(--text3)', margin: 0, lineHeight: 1.6, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                  <Mail size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: 1 }} /> Notifications are sent to <strong style={{ color: 'var(--text)' }}>{user?.email}</strong>. Changes are saved automatically.
                 </p>
               </div>
             </Section>
@@ -378,7 +383,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
           {/* ── SECURITY ── */}
           {active === 'security' && (
             <div>
-              <Section title="Change Password" icon="🔒">
+              <Section title="Change Password" icon={<Lock size={14} strokeWidth={2} />}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
                     <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', display: 'block', marginBottom: 6 }}>New Password</label>
@@ -390,26 +395,26 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                     <input type="password" placeholder="Repeat new password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
                       style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
                   </div>
-                  {pwStatus.startsWith('error:') && <p style={{ color: '#f87171', fontSize: 13, margin: 0 }}>❌ {pwStatus.slice(6)}</p>}
-                  {pwStatus === 'success' && <p style={{ color: '#22c55e', fontSize: 13, margin: 0 }}>✅ Password updated successfully!</p>}
+                  {pwStatus.startsWith('error:') && <p style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{pwStatus.slice(6)}</p>}
+                  {pwStatus === 'success' && <p style={{ color: '#22c55e', fontSize: 13, margin: 0 }}>Password updated successfully!</p>}
                   <button onClick={handleChangePw} disabled={!newPw || !confirmPw || pwStatus === 'loading'}
                     style={{ ...btnStyle(), opacity: !newPw || !confirmPw ? 0.5 : 1 }}>
-                    {pwStatus === 'loading' ? '⏳ Updating...' : '🔒 Update Password'}
+                    {pwStatus === 'loading' ? 'Updating...' : 'Update Password'}
                   </button>
                 </div>
               </Section>
 
-              <Section title="Active Session" icon="🖥️">
+              <Section title="Active Session" icon={<Monitor size={14} strokeWidth={2} />}>
                 <div style={{ padding: '14px 16px', background: 'var(--bg3)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>🟢 Current Session</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} /> Current Session</div>
                     <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>Browser — {new Date().toLocaleDateString('en-GB')}</div>
                   </div>
                   <span style={{ fontSize: 11, color: '#22c55e', background: 'rgba(34,197,94,0.1)', padding: '3px 10px', borderRadius: 999, fontWeight: 700 }}>Active</span>
                 </div>
                 <button onClick={() => { localStorage.removeItem('token'); window.location.reload(); }}
-                  style={{ width: '100%', padding: '11px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
-                  🚪 Sign Out
+                  style={{ width: '100%', padding: '11px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <LogOut size={14} strokeWidth={2} /> Sign Out
                 </button>
               </Section>
             </div>
@@ -417,7 +422,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
 
           {active === 'developer' && (
             <div>
-              <Section title="Connect via MCP (Claude, etc.)" icon="🔌">
+              <Section title="Connect via MCP (Claude, etc.)" icon={<Plug size={14} strokeWidth={2} />}>
                 <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
                   Add Erivion as an MCP connector in Claude.ai, Claude Desktop, or Claude Code to generate videos directly from your conversations. Paste this URL when adding a custom connector, and use one of your API keys below for authentication.
                 </p>
@@ -425,60 +430,60 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                   <input readOnly value={MCP_URL}
                     style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 13, fontFamily: 'monospace', outline: 'none' }} />
                   <button onClick={() => copyToClipboard(MCP_URL, setCopiedUrl)}
-                    style={{ padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', cursor: 'pointer', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
-                    {copiedUrl ? '✅ Copied' : '📋 Copy'}
+                    style={{ padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', cursor: 'pointer', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {copiedUrl ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} strokeWidth={2} />} {copiedUrl ? 'Copied' : 'Copy'}
                   </button>
                 </div>
               </Section>
 
-              <Section title="Upload video, get link" icon="🎞️">
+              <Section title="Upload video, get link" icon={<Film size={14} strokeWidth={2} />}>
                 <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
                   MCP tools (like in Claude) can't accept an uploaded file directly — they can only work with a public link. Upload your video here (max 15 seconds) to get a direct link, then paste that link when asking Claude to edit your video.
                 </p>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                  {videoLinkUploading ? '⏳ Uploading...' : '🎞️ Choose video file'}
+                  {videoLinkUploading ? <Loader2 size={14} className="spinning" /> : <Film size={14} strokeWidth={2} />} {videoLinkUploading ? 'Uploading...' : 'Choose video file'}
                   <input type="file" accept="video/*" onChange={handleVideoLinkUpload} disabled={videoLinkUploading} style={{ display: 'none' }} />
                 </label>
 
                 {videoLinkError && (
-                  <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, color: '#f87171', fontSize: 12.5 }}>
-                    ⚠️ {videoLinkError}
+                  <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, color: '#f87171', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={14} strokeWidth={2} /> {videoLinkError}
                   </div>
                 )}
 
                 {videoLinkResult && (
                   <div style={{ marginTop: 14, padding: '14px 16px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#22c55e', marginBottom: 8 }}>
-                      ✅ Uploaded ({videoLinkResult.durationSec}s) — copy this link
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#22c55e', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Check size={14} strokeWidth={2.5} /> Uploaded ({videoLinkResult.durationSec}s) — copy this link
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <input readOnly value={videoLinkResult.videoUrl}
                         style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 12, fontFamily: 'monospace', outline: 'none' }} />
                       <button onClick={() => copyToClipboard(videoLinkResult.videoUrl, setCopiedVideoLink)}
-                        style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>
-                        {copiedVideoLink ? '✅ Copied' : '📋 Copy'}
+                        style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {copiedVideoLink ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} strokeWidth={2} />} {copiedVideoLink ? 'Copied' : 'Copy'}
                       </button>
                     </div>
                   </div>
                 )}
               </Section>
 
-              <Section title="API Keys" icon="🔑">
+              <Section title="API Keys" icon={<Key size={14} strokeWidth={2} />}>
                 <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
                   API keys let external tools (like the MCP connector above) act on your Erivion account — generating videos and spending your credits. Treat them like passwords.
                 </p>
 
                 {freshKey && (
                   <div style={{ padding: '14px 16px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, marginBottom: 16 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#22c55e', marginBottom: 8 }}>
-                      ✅ Key created — copy it now, you won't see it again
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#22c55e', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Check size={14} strokeWidth={2.5} /> Key created — copy it now, you won't see it again
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <input readOnly value={freshKey}
                         style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 12.5, fontFamily: 'monospace', outline: 'none' }} />
                       <button onClick={() => copyToClipboard(freshKey, setCopiedKey)}
-                        style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap' }}>
-                        {copiedKey ? '✅ Copied' : '📋 Copy'}
+                        style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {copiedKey ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} strokeWidth={2} />} {copiedKey ? 'Copied' : 'Copy'}
                       </button>
                     </div>
                   </div>
@@ -488,7 +493,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                   <input placeholder="Key name (e.g. Claude Desktop)" value={newKeyName} onChange={e => setNewKeyName(e.target.value)}
                     style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
                   <button onClick={handleGenerateKey} disabled={generatingKey} style={{ ...btnStyle(), whiteSpace: 'nowrap' }}>
-                    {generatingKey ? '⏳ Generating...' : '+ Generate Key'}
+                    {generatingKey ? 'Generating...' : '+ Generate Key'}
                   </button>
                 </div>
 
@@ -518,12 +523,12 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
 
           {/* ── DANGER ZONE ── */}
           {active === 'danger' && (
-            <Section title="Danger Zone" icon="⚠️" danger>
+            <Section title="Danger Zone" icon={<AlertTriangle size={14} strokeWidth={2} />} danger>
 
               {/* Delete account — done state */}
               {deleteStep === 'done' ? (
                 <div style={{ textAlign: 'center', padding: '32px 0' }}>
-                  <div style={{ fontSize: 56, marginBottom: 16 }}>👋</div>
+                  <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', color: 'var(--text3)' }}><Check size={48} strokeWidth={1.5} /></div>
                   <h3 style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginBottom: 8 }}>Account Deleted</h3>
                   <p style={{ color: 'var(--text3)', fontSize: 14 }}>Your account has been permanently deleted. Redirecting...</p>
                 </div>
@@ -533,7 +538,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                   {/* Export data */}
                   <div className="s-export-row" style={{ padding: 16, background: 'var(--bg2)', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>📦 Export My Data</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}><Package size={14} strokeWidth={2} /> Export My Data</div>
                       <div style={{ fontSize: 12, color: 'var(--text3)' }}>Request a copy of all your account data</div>
                     </div>
                     <button onClick={() => window.location.href = `mailto:digidelight33@gmail.com?subject=Data Export Request&body=Email: ${user?.email}`}
@@ -544,7 +549,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
 
                   {/* Delete account */}
                   <div style={{ padding: 16, background: 'rgba(248,113,113,0.05)', borderRadius: 12, border: '1px solid rgba(248,113,113,0.2)' }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#f87171', marginBottom: 4 }}>🗑️ Delete Account</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#f87171', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}><Trash2 size={14} strokeWidth={2} /> Delete Account</div>
                     <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 16, lineHeight: 1.6 }}>
                       This will permanently delete your account, all your videos, and all data. <strong style={{ color: '#f87171' }}>This cannot be undone.</strong>
                     </div>
@@ -559,7 +564,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                     {deleteStep === 'confirm' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         <div style={{ padding: '12px 16px', background: 'rgba(248,113,113,0.08)', borderRadius: 10, border: '1px solid rgba(248,113,113,0.2)' }}>
-                          <p style={{ fontSize: 13, color: '#f87171', margin: '0 0 4px', fontWeight: 700 }}>⚠️ Are you absolutely sure?</p>
+                          <p style={{ fontSize: 13, color: '#f87171', margin: '0 0 4px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} strokeWidth={2} /> Are you absolutely sure?</p>
                           <p style={{ fontSize: 12, color: 'var(--text3)', margin: 0 }}>Type <strong style={{ color: '#fff' }}>DELETE</strong> below to confirm permanently deleting your account.</p>
                         </div>
                         <input
@@ -577,7 +582,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                             disabled={deleteInput !== 'DELETE' || deleteStep === 'loading'}
                             onClick={handleDeleteAccount}
                             style={{ flex: 1, padding: '11px', borderRadius: 9, border: 'none', background: deleteInput === 'DELETE' ? '#ef4444' : 'rgba(248,113,113,0.15)', color: deleteInput === 'DELETE' ? '#fff' : '#6b7280', cursor: deleteInput === 'DELETE' ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: 13, transition: 'all 0.2s' }}>
-                            {deleteStep === 'loading' ? '⏳ Deleting...' : '🗑️ Yes, Delete Forever'}
+                            {deleteStep === 'loading' ? 'Deleting...' : 'Yes, Delete Forever'}
                           </button>
                         </div>
                       </div>
