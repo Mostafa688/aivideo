@@ -9,6 +9,8 @@ import {
   CREDITS_PACKAGES,
 } from './authService.js';
 import { WEB_SEARCH_AVAILABLE } from './webSearchService.js';
+import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
+import { getImageCreditCost, REPLICATE_MODEL_COSTS } from './creditPricingEngine.js';
 
 // باقات مصر الثابتة — نفس أرقام EG_PACKAGES في PricingPage.jsx (مصدر الحقيقة الوحيد للواجهة)
 const EG_CREDIT_PACKAGES = {
@@ -48,6 +50,17 @@ const ADS_SCENE_COUNTS = [3, 4, 5, 6];
 function fmtAdsCosts(hasVoice) {
   const table = hasVoice ? ADS_CREDIT_COSTS_VOICE : ADS_CREDIT_COSTS_NO_VOICE;
   return ADS_SCENE_COUNTS.map(n => `${n * 5}s=${table[n]}cr`).join(', ');
+}
+
+// ── قائمة موديلات توليد الصور الجديدة (منفصلة تمامًا عن موديلات الفيديو فوق) — مصدر
+// واحد للحقيقة (نفس المفاتيح والأسعار المستخدمة فعليًا في newImageModelsService.js /
+// creditPricingEngine.js عند التوليد الحقيقي)
+function fmtImageModels() {
+  return Object.keys(NEW_IMAGE_MODELS).map(key => {
+    const label = REPLICATE_MODEL_COSTS[key]?.label || key;
+    const cost = getImageCreditCost(key, 1);
+    return `${key} ("${label}", ${cost}cr/image)`;
+  }).join(', ');
 }
 
 function buildModelCatalog(userPlan = 'free', isAdminUser = false) {
@@ -92,6 +105,14 @@ ${model8Block}
   → Optional extras you can offer: captions (burns the voiceover script as on-screen text — only works with AI voiceover, not with no-voice or uploaded-voice modes), and a product link (a URL/store link shown as an elegant banner in the last 3 seconds of the video). Ask if the user wants either, include them in the READY marker as "captions" (bool) and "productLink" (string, empty if none).
   → Scenes are automatically joined with smooth cinematic crossfade transitions (fade in video + audio) — this already happens for every ad, you never need to ask about it or offer it as an option.
   → SPECIAL CASE: if the user wants an ad for a WEBSITE or a PLACE/LOCATION (not a physical product they can photograph), this normally uses Model 5 instead.
+
+STANDALONE IMAGE GENERATION (completely separate from every video model above — no video is produced, just image file(s)): available real models: ${fmtImageModels()}. Trigger this whenever the user clearly wants IMAGE(S), not a video — e.g. "اعملي صورة"/"عايز صور لمنتجي"/"generate an image"/"make me 5 images of X"/"ولّدلي صورة بروفايل".
+- CRITICAL — NEVER ask the user which image model to use, ever, under any circumstance. Pick the best one yourself from the list above based on what they're asking for: nano_banana_2 is the sensible general-purpose default; prefer nano_banana_pro for a single hero/flagship-quality image when quality matters most; prefer gpt_image or seedream_5 when the request needs accurate text/lettering rendered inside the image; prefer seedream_4 or grok_image for a quick cheap batch. Only deviate from your own pick if the user explicitly names a specific model by name themselves (e.g. "pro"/"nano banana pro"/"grok"/"seedream") — then use exactly that one.
+- Ask how many images only if it's genuinely unclear whether they want one or a set — otherwise default to 1. Batches of up to 20 images in one request are supported (mention this if the user seems to want several).
+- If the user attached reference photo(s) in this same message, they're used automatically as visual reference for the generation — mention once that you're using the attached photo(s), never ask them to re-upload.
+- Ask aspect ratio only if unclear (sensible defaults: 9:16 for social/portrait requests, 1:1 for product/profile images, 16:9 for wide/banner requests).
+- Always state the exact total credit cost (count × the per-image credit price shown above for the model you picked) before confirming.
+- READY marker for this — a SEPARATE marker from the video ###READY### marker above, NEVER combine the two in one reply: end your reply with ###GENERATE_IMAGE###{"model":"<one of the exact keys listed above>","prompt":"a detailed, vivid English image-generation prompt reflecting exactly what the user described","aspectRatio":"9:16"|"16:9"|"1:1","count":<integer 1-20>}.
 
 ${premiumNote}
 `.trim();

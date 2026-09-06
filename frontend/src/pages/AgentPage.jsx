@@ -254,6 +254,51 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
   );
 }
 
+// ✅ NEW (Phase 3 — new image-generation models): كارت توليد صور مستقل جوه شات الايجنت
+// (مش فيديو) — بيعرض شبكة الصور بمجرد ما توليدها يخلص، مفيش poll هنا لأن الطلب نفسه
+// بيستنى الرد كامل (backend بيستخدم Prefer: wait + polling داخلي)
+function ImageBatchCard({ job, lang }) {
+  const tt = lang === 'ar'
+    ? { generating: 'بيولّد الصور...', done: 'تم! تم خصم', credits: 'كريديت', download: 'تحميل', failed: 'حصلت مشكلة أثناء توليد الصور' }
+    : { generating: 'Generating images...', done: 'Done! Deducted', credits: 'credits', download: 'Download', failed: 'Something went wrong generating the images' };
+
+  if (job.status === 'failed') {
+    return (
+      <div style={{ maxWidth: 280, padding: '12px 16px', borderRadius: 14, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#ef4444' }}><AlertTriangle size={14} strokeWidth={2.25} /> {job.error || tt.failed}</div>
+      </div>
+    );
+  }
+
+  if (job.status === 'done') {
+    const cols = job.images.length > 4 ? 4 : job.images.length > 1 ? 2 : 1;
+    return (
+      <div style={{ width: Math.min(cols * 150 + (cols - 1) * 8, 616) }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
+          {job.images.map((url, i) => (
+            <div key={i} style={{ position: 'relative' }}>
+              <img src={url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
+              <a href={url} download target="_blank" rel="noreferrer" style={{ position: 'absolute', bottom: 6, right: 6, width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', textDecoration: 'none' }}>
+                <Download size={13} strokeWidth={2.25} />
+              </a>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700, marginTop: 8 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {tt.done} {job.cost || ''} {tt.credits}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: 240, padding: '14px 16px', borderRadius: 14, background: 'linear-gradient(135deg, rgba(124,106,247,0.18), rgba(0,0,0,0.6))', border: '1px solid rgba(124,106,247,0.3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="spinning" style={{ display: 'inline-block', fontSize: 18 }}>◐</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#fff' }}><ImageIcon size={14} strokeWidth={2} /> {tt.generating}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentPage({ onNavigate, onSwitchToModels }) {
   const region = localStorage.getItem('erivion_region') || 'eg';
   const lang = region === 'eg' ? 'ar' : 'en';
@@ -495,6 +540,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         } else {
           setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'معنديش فيديو مرفوع في المحادثة دي أقدر أعدّله — ارفع الفيديو الأول.' : "I don't have an uploaded video in this chat to edit — please upload one first." }]);
         }
+      } else if (data.generateImage) {
+        startImageGeneration(data.generateImage);
       }
 
       // ✅ NEW (طلب العميل: "اربط ده بالايجنت... يظهر في شات الايجنت كمّل الفيديو"): فيديو
@@ -527,6 +574,39 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       activeJobRef.current = null;
     }
     setLoading(false);
+  };
+
+  // ✅ NEW (Phase 3 — new image-generation models): توليد صور مستقل، مش فيديو — مفيش
+  // job طويل بيحتاج poll، الطلب نفسه بيستنى الصور جاهزة (backend بيعمل Prefer: wait)
+  const startImageGeneration = async (gen) => {
+    const jobUid = `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const job = { uid: jobUid, status: 'generating' };
+    setMessages(m => [...m, { role: 'assistant', type: 'imageBatch', job }]);
+    const updateJob = (patch) => {
+      setMessages(m => {
+        const copy = [...m];
+        const idx = copy.findIndex(x => x.type === 'imageBatch' && x.job?.uid === jobUid);
+        if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
+        return copy;
+      });
+    };
+    try {
+      const res = await fetch('/api/images/generate', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({
+          model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '9:16', count: gen.count || 1,
+          referenceImageUrls: Array.isArray(gen.referenceImageUrls) ? gen.referenceImageUrls : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        updateJob({ status: 'failed', error: data.message || data.error });
+      } else {
+        updateJob({ status: 'done', images: data.images, cost: data.creditCost });
+      }
+    } catch (e) {
+      updateJob({ status: 'failed', error: e.message });
+    }
   };
 
   const startGeneration = async (ready) => {
@@ -1245,6 +1325,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             }
             if (m.type === 'whiteboard') {
               return <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}><WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} /></div>;
+            }
+            if (m.type === 'imageBatch') {
+              return <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}><ImageBatchCard job={m.job} lang={lang} /></div>;
             }
             const ar = isArabic(m.content);
             return (

@@ -7,6 +7,7 @@ import { getUserById, logAgentConversation, setUserRegion, updateUserName, findS
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { getFreshChannelIdea } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
+import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 
 // بيحوّل أي رسالة (عربي/إنجليزي/بأي تشكيل) لنص موحّد بسيط — عشان مقارنة "الشبه" بين
 // طلب جديد وطلبات قديمة محفوظة في ذاكرة الايجنت تبقى مستقرة ومش حساسة لعلامات ترقيم/تشكيل
@@ -299,9 +300,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
     let ready = null;
     let editScene = null;
     let videoEdit = null;
+    let generateImage = null;
     const isEditMarker = rawReply.includes('###EDIT_SCENE###');
     const isVideoEditMarker = !isEditMarker && rawReply.includes('###VIDEO_EDIT###');
-    const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : '###READY###';
+    const isImageGenMarker = !isEditMarker && !isVideoEditMarker && rawReply.includes('###GENERATE_IMAGE###');
+    const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : isImageGenMarker ? '###GENERATE_IMAGE###' : '###READY###';
     const markerIdx = rawReply.indexOf(markerName);
     if (markerIdx !== -1) {
       const afterMarker = rawReply.slice(markerIdx + markerName.length).trimStart();
@@ -315,6 +318,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
           if (Number.isInteger(parsed.sceneIndex) && typeof parsed.description === 'string') editScene = parsed;
         } else if (isVideoEditMarker) {
           if (typeof parsed.editPrompt === 'string' && parsed.editPrompt.trim()) videoEdit = parsed;
+        } else if (isImageGenMarker) {
+          if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) generateImage = parsed;
         } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
           ready = parsed;
         }
@@ -335,6 +340,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
               videoEdit = repaired;
               console.warn('[Agent] ✅ Repaired truncated VIDEO_EDIT JSON successfully');
             }
+          } else if (isImageGenMarker) {
+            if (typeof repaired.model === 'string' && NEW_IMAGE_MODELS[repaired.model] && typeof repaired.prompt === 'string' && repaired.prompt.trim()) {
+              generateImage = repaired;
+              console.warn('[Agent] ✅ Repaired truncated GENERATE_IMAGE JSON successfully');
+            }
           } else if ([1, 2, 3, 4, 5, 7, 8].includes(repaired.model)) {
             ready = repaired;
             console.warn('[Agent] ✅ Repaired truncated JSON successfully');
@@ -352,21 +362,27 @@ router.post('/chat', authMiddleware, async (req, res) => {
       ready.uploadedVoiceUrl = uploadedVoiceUrl;
     }
 
-    // ✅ لو نجحنا نطلع "ready"/"editScene"/"videoEdit" بس النص البشري اللي المفروض ييجي بعد
-    // الـ JSON اتقطع بالكامل (نادر، بس ممكن لو حد التوكنز وقف بالظبط عند آخر قوس)، منسيبش
-    // فقاعة فاضية للعميل
-    if ((ready || editScene || videoEdit) && !reply) {
-      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو 🎬' : videoEdit ? 'تمام، هبدأ أعدّل الفيديو دلوقتي 🎬' : 'جاهز، هبدأ التوليد دلوقتي 🎬';
+    // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة
+    if (generateImage && images.length) {
+      generateImage.referenceImageUrls = images;
+    }
+
+    // ✅ لو نجحنا نطلع "ready"/"editScene"/"videoEdit"/"generateImage" بس النص البشري اللي
+    // المفروض ييجي بعد الـ JSON اتقطع بالكامل (نادر، بس ممكن لو حد التوكنز وقف بالظبط عند
+    // آخر قوس)، منسيبش فقاعة فاضية للعميل
+    if ((ready || editScene || videoEdit || generateImage) && !reply) {
+      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو.' : videoEdit ? 'تمام، هبدأ أعدّل الفيديو دلوقتي.' : generateImage ? 'تمام، هبدأ أولّد الصور دلوقتي.' : 'جاهز، هبدأ التوليد دلوقتي.';
     }
 
     // ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين): مفيش رصيد حقيقي أبدًا للعميل على خطة "free"
-    // (بيبدأ بـ 0 كريديت دايمًا)، فأي READY/EDIT_SCENE/VIDEO_EDIT ليه كان هيفشل في السيرفر
-    // بعد ما البوت يكون قال للعميل "جاهز، هبدأ التوليد الآن" — يسيب العميل مستني فيديو مش
-    // هيتعمل ("وين الفيديو؟"). البرومبت بقى بيمنع الموديل من عمل ده أصلاً، بس ده حاجز إضافي
-    // في الكود نفسه يضمن إن العميل محدش هيتقال له كلام مضلل حتى لو الموديل تجاهل التعليمات
-    if ((ready || editScene || videoEdit) && userPlan === 'free') {
-      ready = null; editScene = null; videoEdit = null;
-      reply = 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ التوليد قبل ما تشترك. تحب أوريك باقات الاشتراك، ولا أوريك أمثلة فيديوهات حقيقية عملناها الأول؟ 🎬';
+    // (بيبدأ بـ 0 كريديت دايمًا)، فأي READY/EDIT_SCENE/VIDEO_EDIT/GENERATE_IMAGE ليه كان
+    // هيفشل في السيرفر بعد ما البوت يكون قال للعميل "جاهز، هبدأ التوليد الآن" — يسيب العميل
+    // مستني فيديو/صورة مش هيتعمل ("وين الفيديو؟"). البرومبت بقى بيمنع الموديل من عمل ده
+    // أصلاً، بس ده حاجز إضافي في الكود نفسه يضمن إن العميل محدش هيتقال له كلام مضلل حتى لو
+    // الموديل تجاهل التعليمات
+    if ((ready || editScene || videoEdit || generateImage) && userPlan === 'free') {
+      ready = null; editScene = null; videoEdit = null; generateImage = null;
+      reply = 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ التوليد قبل ما تشترك. تحب أوريك باقات الاشتراك، ولا أوريك أمثلة فيديوهات حقيقية عملناها الأول؟';
     }
 
     // ── ماركرز ثانوية (مش بتوقف التوليد العادي فوق) — منطقة، اشتراك، أو إجراء على الحساب.
@@ -415,7 +431,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
 
     res.json({
-      reply, transcript, ready, editScene, videoEdit, uploadedVoiceUrl,
+      reply, transcript, ready, editScene, videoEdit, generateImage, uploadedVoiceUrl,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
       subscribe: subscribePayload, showcaseVideos, whiteboardVideo,
     });
