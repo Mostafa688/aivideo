@@ -65,17 +65,23 @@ export const NEW_IMAGE_MODELS = {
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 14) } : {}),
     }),
   },
+  // ✅ FIX (باج حقيقي: "جودة الصور وحشة" — سبب منفصل تمامًا عن باج النسبة فوق): نانو بنانا 2
+  // وبرو بيدعموا حقل "resolution" منفصل عن "aspect_ratio" (القيم: 512px/1K/2K/4K) — الكود
+  // القديم ماكانش بيبعته خالص، يعني الموديل كان بيرجع لأقل دقة افتراضية بتاعته لوحده. دلوقتي
+  // بيتبعت صراحة "1K" — توازن معقول بين الجودة والتكلفة (السعر المحسوب في creditPricingEngine.js
+  // مبني على تقدير بلوحدة "صورة" عامة، مش لكل دقة، فلو العميل عايز 2K/4K كخيار سعري منفصل ده
+  // يحتاج توسيع نظام الأسعار زي ما اتعمل للفيديو لاحقًا)
   nano_banana_2: {
     slug: 'google/nano-banana-2',
     buildInput: ({ prompt, referenceImageUrls, aspectRatio }) => ({
-      prompt, aspect_ratio: aspectRatio || '9:16', output_format: 'jpg',
+      prompt, aspect_ratio: aspectRatio || '9:16', resolution: '1K', output_format: 'jpg',
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 14) } : {}),
     }),
   },
   nano_banana_pro: {
     slug: 'google/nano-banana-pro',
     buildInput: ({ prompt, referenceImageUrls, aspectRatio }) => ({
-      prompt, aspect_ratio: aspectRatio || '9:16', output_format: 'jpg',
+      prompt, aspect_ratio: aspectRatio || '9:16', resolution: '2K', output_format: 'jpg',
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 14) } : {}),
     }),
   },
@@ -103,8 +109,10 @@ export const NEW_IMAGE_MODELS = {
     slug: 'bytedance/seedream-4',
     nativeBatchParam: 'max_images',
     maxNativeBatch: 6,
+    // ✅ FIX: نفس فكرة الدقة فوق — Seedream بيدعم حقل "size" منفصل (small=512px/regular=1
+    // ميجابكسل/big=2048px) مكانش بيتبعت خالص، فكان بيرجع لأقل حجم افتراضي. "regular" توازن معقول.
     buildInput: ({ prompt, referenceImageUrls, aspectRatio, count }) => ({
-      prompt, aspect_ratio: aspectRatio || '9:16',
+      prompt, aspect_ratio: aspectRatio || '9:16', size: 'regular',
       max_images: Math.min(Math.max(1, count || 1), 6),
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 10) } : {}),
     }),
@@ -114,7 +122,7 @@ export const NEW_IMAGE_MODELS = {
     nativeBatchParam: 'max_images',
     maxNativeBatch: 6,
     buildInput: ({ prompt, referenceImageUrls, aspectRatio, count }) => ({
-      prompt, aspect_ratio: aspectRatio || '9:16',
+      prompt, aspect_ratio: aspectRatio || '9:16', size: 'regular',
       max_images: Math.min(Math.max(1, count || 1), 6),
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 10) } : {}),
     }),
@@ -124,7 +132,7 @@ export const NEW_IMAGE_MODELS = {
     nativeBatchParam: 'max_images',
     maxNativeBatch: 6,
     buildInput: ({ prompt, referenceImageUrls, aspectRatio, count }) => ({
-      prompt, aspect_ratio: aspectRatio || '9:16',
+      prompt, aspect_ratio: aspectRatio || '9:16', size: 'regular',
       max_images: Math.min(Math.max(1, count || 1), 6),
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 10) } : {}),
     }),
