@@ -108,7 +108,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice } = req.body;
+    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
     // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual
@@ -149,7 +149,16 @@ router.post('/chat', authMiddleware, async (req, res) => {
           ? `The user selected "Map Video" from the style picker — this means they specifically want Model 5's Map Video mode (historical/geopolitical map documentary, 15s, isMapVideo:true) for this next video, unless the topic they describe clearly can't work as a map video, in which case briefly clarify with them.`
           : `The user selected the "${styleHint.replace('_', ' ')}" visual style from the style picker before describing their idea — reflect this style genuinely in whichever model you end up using (e.g. in "videoStyle"/"styleSuffix" for Models 1-4, in the idea/prompt wording for Model 5, or in the "style" field for Model 7/Ads if it maps to action/cinematic/calm). This is optional context they chose to make their intent clearer, not a separate request — don't mention the picker itself, just naturally apply the style.`)
       : null;
-    let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote].filter(Boolean).join(' ') || null;
+    // ✅ NEW (طلب العميل: زرار سهم يدوي لاختيار موديل الصورة/الفيديو بنفسه — زي Google Flow):
+    // المستخدم اختار موديل معيّن يدويًا من قائمة قبل ما يبعت الرسالة — لازم الايجنت يستخدمه
+    // بالظبط بدل ما يختار هو، ويقول السعر الصح المرتبط بيه (بعده كمان في الكود فيه حاجز إضافي
+    // بيفرض نفس الاختيار حتى لو الموديل تجاهل التعليمة دي)
+    const forcedModelNote = forcedImageModel && NEW_IMAGE_MODELS[forcedImageModel]
+      ? `The user manually selected the image engine "${forcedImageModel}" from a picker before sending this message — you MUST use exactly this model for any image generation in this turn (do not pick a different one, do not ask which model), and state its real credit cost from the price list above.`
+      : forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]
+      ? `The user manually selected the video engine "${forcedVideoModel}" from a picker before sending this message — you MUST use exactly this engine for any standalone video generation in this turn (do not pick a different one, do not ask which engine), and state its real credit cost from the price list above.`
+      : null;
+    let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote, forcedModelNote].filter(Boolean).join(' ') || null;
     let transcript = null;
     let uploadedVoiceUrl = null;
 
@@ -382,6 +391,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة
     if (generateImage && images.length) {
       generateImage.referenceImageUrls = images;
+    }
+    // ✅ حاجز إضافي في الكود نفسه: لو المستخدم فرض موديل يدويًا، نضمن استخدامه بالظبط حتى
+    // لو الايجنت (الموديل نفسه) تجاهل التعليمة اللي فوق لأي سبب
+    if (generateImage && forcedImageModel && NEW_IMAGE_MODELS[forcedImageModel]) {
+      generateImage.model = forcedImageModel;
+    }
+    if (generateVideo && forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]) {
+      generateVideo.model = forcedVideoModel;
     }
 
     // ✅ NEW: توليد فيديو مستقل (Veo/Kling/Seedance/Luma) بيستخدم أول صورة مرفقة في نفس
