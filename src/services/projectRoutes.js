@@ -40,12 +40,54 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejec
 
 const router = express.Router();
 
+// ✅ NEW (طلب العميل: "لازم المشاريع تكون من بار عليها صورة او فيديو من الي اتعمل فيها"):
+// بيدوّر في رسايل المشروع (نفس الـ JSON المحفوظ في project_chat_state) من الآخر لقدام، وبيرجع
+// أول ميديا حقيقية (صورة أو فيديو) لقاها — دي بقى بتتعرض كغلاف الكارت في الداشبورد
+function findCoverFromMessages(messages) {
+  if (!Array.isArray(messages)) return null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    const job = m?.job;
+    if (!job) continue;
+    if (m.type === 'imageBatch' && job.status === 'done' && job.images?.length) {
+      return { url: job.images[0], type: 'image' };
+    }
+    if (m.type === 'videoModel' && job.status === 'done' && job.videoUrl) {
+      return { url: job.videoUrl, type: 'video' };
+    }
+    if (m.type === 'render' && job.status === 'done' && job.videoUrl) {
+      return { url: job.videoUrl, type: 'video' };
+    }
+    if (m.type === 'whiteboard' && job.status === 'done' && job.video_url) {
+      return { url: job.video_url, type: 'video' };
+    }
+  }
+  return null;
+}
+
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT id, name, created_at, updated_at FROM projects WHERE user_id = $1 ORDER BY updated_at DESC',
       [req.user.userId]
     );
+    if (rows.length) {
+      const ids = rows.map(r => r.id);
+      const { rows: stateRows } = await pool.query(
+        'SELECT project_id, messages FROM project_chat_state WHERE project_id = ANY($1)',
+        [ids]
+      );
+      const coverByProject = new Map();
+      for (const sr of stateRows) {
+        const cover = findCoverFromMessages(sr.messages);
+        if (cover) coverByProject.set(sr.project_id, cover);
+      }
+      for (const p of rows) {
+        const cover = coverByProject.get(p.id);
+        p.cover_url = cover?.url || null;
+        p.cover_type = cover?.type || null;
+      }
+    }
     res.json({ projects: rows });
   } catch (e) {
     res.status(500).json({ error: e.message });
