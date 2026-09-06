@@ -765,8 +765,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const historyContentFor = (m) => {
     if (m.content) return m.content;
     if (m.type === 'render') {
+      // ✅ FIX (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد" — الايجنت مش عارف
+      // يعمل ده لفيديوهات الموديلات القديمة 1-8 لأن رابطها مكنش موجود في الـ history خالص،
+      // بعكس videoModel اللي بالفعل بيبعت رابطه): بنبعت الرابط الحقيقي هنا كمان
       return m.job?.status === 'done'
-        ? `[${lang === 'ar' ? 'تم إنشاء فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''}]`
+        ? `[${lang === 'ar' ? 'تم إنشاء فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''} — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}]`
         : `[${lang === 'ar' ? 'فيديو قيد الإنشاء' : 'A video is currently being generated'}]`;
     }
     if (m.type === 'whiteboard') {
@@ -887,6 +890,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         startImageGeneration(data.generateImage);
       } else if (data.generateVideo) {
         startVideoModelGeneration(data.generateVideo);
+      } else if (data.mergeVideos) {
+        startVideoMerge(data.mergeVideos);
       }
 
       // ✅ NEW (طلب العميل: "اربط ده بالايجنت... يظهر في شات الايجنت كمّل الفيديو"): فيديو
@@ -1102,6 +1107,37 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           sourceVideoUrl: gen.sourceVideoUrl || undefined,
           aspectRatio: gen.aspectRatio || '16:9', durationSec: gen.durationSec || 5, tier: gen.tier || undefined,
         }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        updateJob({ status: 'failed', error: data.message || data.error });
+      } else {
+        updateJob({ status: 'done', videoUrl: data.videoUrl, cost: data.creditCost });
+      }
+    } catch (e) {
+      updateJob({ status: 'failed', error: e.message });
+    }
+  };
+
+  // ✅ NEW (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد"): بيعيد استخدام نفس كارت
+  // عرض الفيديو (VideoModelCard) اللي بيعرض أي job فيه videoUrl/prompt/cost، بغض النظر إن
+  // ده فيديو متولد بموديل ولا فيديو مدموج بـ ffmpeg
+  const startVideoMerge = async (merge) => {
+    const jobUid = `merge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const job = { uid: jobUid, status: 'generating', model: 'merged', prompt: lang === 'ar' ? `دمج ${merge.videoUrls.length} فيديو` : `Merged ${merge.videoUrls.length} videos` };
+    setMessages(m => [...m, { role: 'assistant', type: 'videoModel', job }]);
+    const updateJob = (patch) => {
+      setMessages(m => {
+        const copy = [...m];
+        const idx = copy.findIndex(x => x.type === 'videoModel' && x.job?.uid === jobUid);
+        if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
+        return copy;
+      });
+    };
+    try {
+      const res = await fetch('/api/videos/merge', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ videoUrls: merge.videoUrls }),
       });
       const data = await res.json();
       if (!res.ok) {

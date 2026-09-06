@@ -331,11 +331,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
     let videoEdit = null;
     let generateImage = null;
     let generateVideo = null;
+    let mergeVideosPayload = null;
     const isEditMarker = rawReply.includes('###EDIT_SCENE###');
     const isVideoEditMarker = !isEditMarker && rawReply.includes('###VIDEO_EDIT###');
     const isImageGenMarker = !isEditMarker && !isVideoEditMarker && rawReply.includes('###GENERATE_IMAGE###');
     const isVideoGenMarker = !isEditMarker && !isVideoEditMarker && !isImageGenMarker && rawReply.includes('###GENERATE_VIDEO###');
-    const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : isImageGenMarker ? '###GENERATE_IMAGE###' : isVideoGenMarker ? '###GENERATE_VIDEO###' : '###READY###';
+    const isMergeVideosMarker = !isEditMarker && !isVideoEditMarker && !isImageGenMarker && !isVideoGenMarker && rawReply.includes('###MERGE_VIDEOS###');
+    const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : isImageGenMarker ? '###GENERATE_IMAGE###' : isVideoGenMarker ? '###GENERATE_VIDEO###' : isMergeVideosMarker ? '###MERGE_VIDEOS###' : '###READY###';
     const markerIdx = rawReply.indexOf(markerName);
     if (markerIdx !== -1) {
       const afterMarker = rawReply.slice(markerIdx + markerName.length).trimStart();
@@ -356,6 +358,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
             const maxSec = getMaxClipSeconds(parsed.model);
             if (maxSec && (!Number.isFinite(parsed.durationSec) || parsed.durationSec > maxSec)) parsed.durationSec = maxSec;
             generateVideo = parsed;
+          }
+        } else if (isMergeVideosMarker) {
+          if (Array.isArray(parsed.videoUrls) && parsed.videoUrls.length >= 2 && parsed.videoUrls.every(u => typeof u === 'string' && u.trim())) {
+            mergeVideosPayload = { videoUrls: parsed.videoUrls.slice(0, 10) };
           }
         } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
           ready = parsed;
@@ -388,6 +394,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
               if (maxSec && (!Number.isFinite(repaired.durationSec) || repaired.durationSec > maxSec)) repaired.durationSec = maxSec;
               generateVideo = repaired;
               console.warn('[Agent] ✅ Repaired truncated GENERATE_VIDEO JSON successfully');
+            }
+          } else if (isMergeVideosMarker) {
+            if (Array.isArray(repaired.videoUrls) && repaired.videoUrls.length >= 2 && repaired.videoUrls.every(u => typeof u === 'string' && u.trim())) {
+              mergeVideosPayload = { videoUrls: repaired.videoUrls.slice(0, 10) };
+              console.warn('[Agent] ✅ Repaired truncated MERGE_VIDEOS JSON successfully');
             }
           } else if ([1, 2, 3, 4, 5, 7, 8].includes(repaired.model)) {
             ready = repaired;
@@ -435,8 +446,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ لو نجحنا نطلع "ready"/"editScene"/"videoEdit"/"generateImage"/"generateVideo" بس
     // النص البشري اللي المفروض ييجي بعد الـ JSON اتقطع بالكامل (نادر، بس ممكن لو حد
     // التوكنز وقف بالظبط عند آخر قوس)، منسيبش فقاعة فاضية للعميل
-    if ((ready || editScene || videoEdit || generateImage || generateVideo) && !reply) {
-      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو.' : videoEdit ? 'تمام، هبدأ أعدّل الفيديو دلوقتي.' : generateImage ? 'تمام، هبدأ أولّد الصور دلوقتي.' : generateVideo ? 'تمام، هبدأ أولّد الفيديو دلوقتي.' : 'جاهز، هبدأ التوليد دلوقتي.';
+    if ((ready || editScene || videoEdit || generateImage || generateVideo || mergeVideosPayload) && !reply) {
+      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو.' : videoEdit ? 'تمام، هبدأ أعدّل الفيديو دلوقتي.' : generateImage ? 'تمام، هبدأ أولّد الصور دلوقتي.' : generateVideo ? 'تمام، هبدأ أولّد الفيديو دلوقتي.' : mergeVideosPayload ? 'تمام، هبدأ أدمج الفيديوهات دلوقتي.' : 'جاهز، هبدأ التوليد دلوقتي.';
     }
 
     // ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين): مفيش رصيد حقيقي أبدًا للعميل على خطة "free"
@@ -445,8 +456,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // مستني فيديو/صورة مش هيتعمل ("وين الفيديو؟"). البرومبت بقى بيمنع الموديل من عمل ده
     // أصلاً، بس ده حاجز إضافي في الكود نفسه يضمن إن العميل محدش هيتقال له كلام مضلل حتى لو
     // الموديل تجاهل التعليمات
-    if ((ready || editScene || videoEdit || generateImage || generateVideo) && userPlan === 'free') {
-      ready = null; editScene = null; videoEdit = null; generateImage = null; generateVideo = null;
+    if ((ready || editScene || videoEdit || generateImage || generateVideo || mergeVideosPayload) && userPlan === 'free') {
+      ready = null; editScene = null; videoEdit = null; generateImage = null; generateVideo = null; mergeVideosPayload = null;
       reply = 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ التوليد قبل ما تشترك. تحب أوريك باقات الاشتراك، ولا أوريك أمثلة فيديوهات حقيقية عملناها الأول؟';
     }
 
@@ -496,7 +507,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
 
     res.json({
-      reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, uploadedVoiceUrl,
+      reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
       subscribe: subscribePayload, showcaseVideos, whiteboardVideo,
     });
