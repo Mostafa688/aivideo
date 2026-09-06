@@ -23,17 +23,16 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 // نفس الموديل المستخدم في scriptService.js (توليد سكريبتات موديل 1/2) — الموديل الأساسي في الموقع كله
 const AGENT_MODEL = 'openai/gpt-oss-120b';
 
-// ✅ NEW: للمشتركين المدفوعين، الايجنت بيتكلم عن طريق Claude Sonnet 5 بدل Groq — مش محتاج
-// حساب/مفتاح Anthropic منفصل خالص، لأن Claude متاح على Replicate نفسه (نفس REPLICATE_API_TOKEN
-// المستخدم فعليًا في كل موديلات الفيديو/الصور التانية). الخطة المجانية فضلت على Groq (مجاني/سريع)
-// بدون تغيير. لاحظ: واجهة Replicate لـ Claude مبسّطة (prompt واحد + system_prompt)، مش الـ
-// Messages API الأصلية بتاعة Anthropic (اللي بتاخد مصفوفة messages منفصلة) — schema اتأكد منه
-// عن طريق بحث ويب (WebFetch على replicate.com كان محجوب في بيئة التطوير دي)، لسه محتاج تأكيد
-// نهائي من صفحة الموديل الحقيقية (replicate.com/anthropic/claude-sonnet-5/api/schema) قبل
-// الاعتماد الكامل عليه — فيه fallback تلقائي لـ Groq لو الطلب فشل لأي سبب (schema غلط، rate
-// limit، إلخ) عشان مستخدم مدفوع محدش يتعطل الشات بتاعه بالكامل.
-const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
-const CLAUDE_MODEL_SLUG = 'anthropic/claude-sonnet-5';
+// ✅ NEW: للمشتركين المدفوعين، الايجنت بيتكلم عن طريق Claude Sonnet 5 مباشرة (Anthropic
+// Messages API الحقيقية، مش تخمين شكل مبسّط زي أول محاولة عن طريق Replicate) — العميل جاب
+// مفتاح API حقيقي من console.anthropic.com. المفتاح ده لازم يتحط في متغيرات البيئة
+// (ANTHROPIC_API_KEY) على Railway، وبيحتاج رصيد/billing مفعّل على حساب Anthropic نفسه قبل
+// ما يشتغل (اتأكد بتجربة حقيقية: المفتاح صحيح، بس هيرجع "credit balance too low" لحد ما
+// يتشحن رصيد فعلي). الخطة المجانية فضلت على Groq من غير تغيير. لو مكالمة Claude فشلت لأي
+// سبب (مفيش رصيد، rate limit، إلخ)، بيرجع لـ Groq تلقائيًا عشان مستخدم مدفوع محدش يتعطل
+// الشات بتاعه بالكامل.
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const CLAUDE_MODEL_ID = 'claude-sonnet-5';
 const MAX_HISTORY_MESSAGES = 16; // ✅ FIX: كانت 6 (3 تبادلات بس) — بتخلي الايجنت ينسى تفاصيل زي الموديل/المدة/إن صورة اترفعت في أي محادثة أطول من كده. 16 بتغطي محادثة طبيعية من الفكرة لحد التأكيد.
 const MAX_REPLY_TOKENS = 3200;  // ✅ FIX: كانت 1600 ثم 2600. لما العميل بيلزق سكريبت كامل أو مقسّم بمشاهد (structuredScenes)، الايجنت لازم يرجّع النص حرفيًا بالكامل (سردية كل مشهد + وصفه البصري) جوه الـ READY marker — ده بياخد توكنز أكتر بكتير من رد عادي، خصوصًا مع سكريبتات طويلة بعدد مشاهد كبير.
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
@@ -302,43 +301,31 @@ function authHeaders() {
   };
 }
 
-async function pollClaudePrediction(predictionId, timeoutMs = 60000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    await new Promise(r => setTimeout(r, 2000));
-    const res = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-      headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` },
-    });
-    if (!res.ok) continue;
-    const data = await res.json();
-    if (data.status === 'succeeded') return data.output;
-    if (data.status === 'failed' || data.status === 'canceled') throw new Error(`Claude prediction failed: ${data.error}`);
-  }
-  throw new Error('Claude prediction timed out');
-}
-
-// بيحوّل تاريخ المحادثة (مصفوفة {role, content}) لنص واحد متسلسل — واجهة Claude على Replicate
-// بسيطة (prompt نصي واحد + system_prompt منفصل)، مش الـ Messages API الأصلية اللي بتاخد
-// مصفوفة رسايل منفصلة، فبنعمل التسلسل يدويًا هنا بدل ما نعتمد على شكل مختلف
-async function callClaudeViaReplicate(systemPrompt, historyMessages, userContent) {
-  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
-  const transcript = historyMessages
-    .map(m => `${m.role === 'assistant' ? 'Assistant' : 'Human'}: ${m.content}`)
-    .join('\n\n');
-  const prompt = (transcript ? transcript + '\n\n' : '') + `Human: ${userContent}\n\nAssistant:`;
-
-  const res = await fetch(`https://api.replicate.com/v1/models/${CLAUDE_MODEL_SLUG}/predictions`, {
+// Anthropic Messages API الحقيقية — نفس الـ API اللي شغال عليه Claude Code نفسه، schema
+// مؤكد 100% (مش تخمين). history بييجي كمصفوفة {role, content} زي ما هي، والـ system prompt
+// بيتبعت منفصل في حقل "system" الرسمي، مش مدموج جوه الرسايل
+async function callClaudeDirectAPI(systemPrompt, historyMessages, userContent) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
+  const messages = [...historyMessages, { role: 'user', content: userContent }];
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' },
-    body: JSON.stringify({ input: { prompt, system_prompt: systemPrompt, max_tokens: MAX_REPLY_TOKENS } }),
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL_ID,
+      max_tokens: MAX_REPLY_TOKENS,
+      system: systemPrompt,
+      messages,
+    }),
   });
-  if (!res.ok) throw new Error(`Claude (Replicate) error ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  let data = await res.json();
-  if (data.error) throw new Error(`Claude (Replicate): ${data.error}`);
-  let output = data.status === 'succeeded' ? data.output : null;
-  if (!output && data.id) output = await pollClaudePrediction(data.id);
-  if (!output) throw new Error('Claude (Replicate) returned no output');
-  return (Array.isArray(output) ? output.join('') : String(output)).trim();
+  if (!res.ok) throw new Error(`Claude API error ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const data = await res.json();
+  const reply = data.content?.map(block => block.text || '').join('').trim();
+  if (!reply) throw new Error('Claude API returned no text content');
+  return reply;
 }
 
 // ── الشات نفسه ──────────────────────────────────────────────────────────
@@ -365,14 +352,14 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
   const trimmedUserContent = String(userContent || '').slice(0, 6000); // ✅ FIX: كانت 1200 (وقبلها 800) — كانت بتقطع أي سكريبت كامل أو تقسيم مشاهد طويل العميل بيلزقه في الشات نص الطريق قبل ما الايجنت حتى يشوفه
   const systemPrompt = buildSystemPrompt(userPlan, isAdminUser, userRegion, memoryNote, userChannels, hasClonedVoice);
 
-  // ✅ NEW: المشتركين المدفوعين (أي حاجة غير "free") بيتكلموا مع Claude Sonnet 5 عن طريق
-  // Replicate بدل Groq. لو الطلب فشل لأي سبب (schema، rate limit، إلخ) بنرجع لـ Groq تلقائيًا
+  // ✅ NEW: المشتركين المدفوعين (أي حاجة غير "free") بيتكلموا مع Claude Sonnet 5 مباشرة.
+  // لو الطلب فشل لأي سبب (مفيش رصيد Anthropic لسه، rate limit، إلخ) بنرجع لـ Groq تلقائيًا
   // بدل ما نعطّل الشات بالكامل لمستخدم دافع فلوس
-  if (userPlan !== 'free' && REPLICATE_API_TOKEN) {
+  if (userPlan !== 'free' && ANTHROPIC_API_KEY) {
     try {
-      return await callClaudeViaReplicate(systemPrompt, trimmedHistory, trimmedUserContent);
+      return await callClaudeDirectAPI(systemPrompt, trimmedHistory, trimmedUserContent);
     } catch (e) {
-      console.warn('[Agent] Claude (Replicate) call failed, falling back to Groq:', e.message);
+      console.warn('[Agent] Claude API call failed, falling back to Groq:', e.message);
     }
   }
 
