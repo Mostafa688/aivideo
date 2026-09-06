@@ -198,8 +198,13 @@ ${premiumNote}
 `.trim();
 }
 
-function buildSystemPrompt(userPlan, isAdminUser = false, userRegion = null, memoryNote = null, userChannels = [], hasClonedVoice = false) {
+function buildSystemPrompt(userPlan, isAdminUser = false, userRegion = null, memoryNote = null, userChannels = [], hasClonedVoice = false, userCredits = null) {
   const catalog = buildModelCatalog(userPlan, isAdminUser);
+  // ✅ FIX (باج حقيقي: عميل سأل "أنا على أي خطة؟" ورد الايجنت "معنديش وصول لتفاصيل حسابك" —
+  // بينما ده معلومة موجودة عندنا فعليًا كل رسالة، بس الايجنت مكانش عنده رصيد الكريديت خالص
+  // وماكانش متأكد لو مسموحله يقولها للعميل، فحوّل السؤال لصفحة الإعدادات غلط): سطر واضح
+  // في أول البرومبت بحالة الحساب الحقيقية، ومباشرة بعده تعليمة صريحة إنه يجاوب بيه بثقة
+  const accountStatusLine = `ACCOUNT STATUS (real, current, from the database right now — CRITICAL, read this carefully): this customer's plan is "${userPlan === 'free' ? 'Free' : 'Premium (paid)'}"${userCredits != null ? `, with a current credit balance of ${userCredits} credits` : ''}. If they ask "what plan am I on"/"انا على اي خطة"/"how many credits do I have"/"معايا كام كريديت", answer directly and confidently using these exact real numbers — never say you don't have access to their account/plan info, and never deflect this specific question to Settings/Billing/Support (that deflection is only for things genuinely outside this prompt, like exact billing dates, payment method details, or a dispute over a specific past charge).`;
   const regionLine = userRegion === 'eg' ? 'This user\'s region is already known: Egypt (InstaPay). Never ask again.'
     : userRegion === 'intl' ? 'This user\'s region is already known: International (Gumroad). Never ask again.'
     : 'This user\'s region is NOT known yet — ask if a subscribe/payment intent comes up (see rule 9).';
@@ -211,6 +216,7 @@ function buildSystemPrompt(userPlan, isAdminUser = false, userRegion = null, mem
     : 'This user has NOT saved a cloned voice yet. See rule 14 below for what to say if they want a specific/custom voice rather than a preset one.';
   return `You are the Erivion video-creation assistant, embedded directly in the app. Erivion is an AI video generation platform, Egyptian-founded but built for a global/international audience — not a local-only or Egypt-only product. You don't just recommend — you actually kick off real video generation once the user confirms.
 
+${accountStatusLine}
 USER REGION: ${regionLine}
 CONNECTED CHANNELS: ${channelsLine}
 VOICE CLONE: ${voiceCloneLine}
@@ -397,7 +403,7 @@ async function callClaudeDirectAPI(systemPrompt, historyMessages, userContent) {
 // ✅ FIX: hasPhoto/hasVoice بيوصلوا من الراوت كـ "حالة دائمة" مش بس ملاحظة لحظية —
 // لو العميل رفع صورة/صوت قبل كده في المحادثة (حتى لو خرجت بره نافذة الـ history)،
 // بنفضل نذكّر الموديل بيها في كل رسالة جاية عشان ميطلبش رفعها تاني أبدًا.
-export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', isAdminUser = false, hasPhoto = false, hasVoice = false, hasVideo = false, videoDurationSec = null, hasStructuredScript = false, hasAdsScenePlan = false, userRegion = null, memoryNote = null, userChannels = [], hasClonedVoice = false }) {
+export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', isAdminUser = false, hasPhoto = false, hasVoice = false, hasVideo = false, videoDurationSec = null, hasStructuredScript = false, hasAdsScenePlan = false, userRegion = null, memoryNote = null, userChannels = [], hasClonedVoice = false, userCredits = null }) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
   const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES).map(m => ({
@@ -415,7 +421,7 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
   const userContent = [message, attachmentNote ? `[${attachmentNote}]` : '', persistentNote ? `[${persistentNote.trim()}]` : '']
     .filter(Boolean).join('\n\n');
   const trimmedUserContent = String(userContent || '').slice(0, 6000); // ✅ FIX: كانت 1200 (وقبلها 800) — كانت بتقطع أي سكريبت كامل أو تقسيم مشاهد طويل العميل بيلزقه في الشات نص الطريق قبل ما الايجنت حتى يشوفه
-  const systemPrompt = buildSystemPrompt(userPlan, isAdminUser, userRegion, memoryNote, userChannels, hasClonedVoice);
+  const systemPrompt = buildSystemPrompt(userPlan, isAdminUser, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits);
 
   // ✅ NEW: المشتركين المدفوعين (أي حاجة غير "free") بيتكلموا مع Claude Sonnet 5 مباشرة.
   // لو الطلب فشل لأي سبب (مفيش رصيد Anthropic لسه، rate limit، إلخ) بنرجع لـ Groq تلقائيًا

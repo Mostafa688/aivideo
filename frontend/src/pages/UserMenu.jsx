@@ -9,8 +9,13 @@ import {
 // ✅ FIX (طلب العميل: "احذف اي ايموجي، خليك ذكي وشوف المواقع الكبيرة بتعمل اي واعمل زيهم"):
 // كل الإيموجي في الملف ده اتشالت واتبدلت بأيقونات حقيقية من lucide-react (مكتبة أيقونات
 // SVG خفيفة) — نفس النمط اللي منصات احترافية زي Google/Notion/Linear بتستخدمه بدل الإيموجي
-const PLAN_META = {
-  free:  { color: '#6b7280', Icon: Circle, label: 'Free',  ring: '#374151' },
+// ✅ FIX (باج حقيقي: عميل مشترك فعليًا كان شايف "Free Plan" رمادي في المنيو بتاعه — الباك
+// إند مبيخزنش غير "free" أو "paid" بالظبط (مفيش خطط Pro/Plus/Max حقيقية دلوقتي)، بس المفتاح
+// "paid" ماكانش موجود خالص في الجدول ده، فـ`PLAN_META[plan] || PLAN_META.free` كان بيرجع
+// لـ"Free" تلقائيًا لأي مشترك حقيقي — أضفنا مفتاح "paid" الحقيقي عشان يتحل الباج ده تمامًا)
+export const PLAN_META = {
+  free:  { color: '#6b7280', Icon: Circle, label: 'Free',    ring: '#374151' },
+  paid:  { color: '#7c6af7', Icon: Zap,    label: 'Premium', ring: '#4c3d99' },
   pro:   { color: '#7c6af7', Icon: Zap,    label: 'Pro',   ring: '#4c3d99' },
   plus:  { color: '#06b6d4', Icon: Rocket, label: 'Plus',  ring: '#0e5f7a' },
   max:   { color: '#f59e0b', Icon: Crown,  label: 'Max',   ring: '#92400e' },
@@ -319,9 +324,11 @@ export default function UserMenu({ user, plan = 'free', credits = null, onLogout
             ? <img src={avatar} alt="avatar" style={{ width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover' }} onError={e => { e.target.style.display='none'; }} />
             : firstLetter
           }
-          {/* Plan indicator dot */}
-          <div style={{ position:'absolute', bottom:-1, right:-1, width:12, height:12, borderRadius:'50%', background:meta.color, border:'2px solid var(--bg)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-            {plan !== 'free' && <Check size={7} strokeWidth={4} color="#fff" />}
+          {/* ✅ FIX (طلب العميل: "لازم يكون في علامة على صورة البروفايل بتقول انا على خطة اي"):
+              كانت مجرد نقطة صغيرة بعلامة صح مبهمة — دلوقتي أيقونة الخطة نفسها (meta.Icon) ظاهرة
+              في نفس المكان، فأي خطة (Free/Premium) بتديك إشارة واضحة من غير ما تفتح المنيو */}
+          <div title={`${meta.label} Plan`} style={{ position:'absolute', bottom:-2, right:-2, width:16, height:16, borderRadius:'50%', background:meta.color, border:'2px solid var(--bg)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <meta.Icon size={9} strokeWidth={2.75} color="#fff" />
           </div>
         </button>
 

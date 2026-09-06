@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
-import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById } from './authService.js';
+import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { getFreshChannelIdea } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
@@ -240,6 +240,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const user = await getUserById(userId).catch(() => null);
     const userPlan = user?.plan || 'free';
     const userRegion = user?.region || null;
+    // ✅ FIX (باج حقيقي: عميل سأل الايجنت "أنا على أي خطة؟" ورد "معنديش وصول لتفاصيل حسابك،
+    // روح صفحة الإعدادات" — بينما الايجنت أصلاً بيعرف الخطة، بس مكانش عنده رصيد الكريديت
+    // خالص عشان يجاوب بثقة على سؤال زي ده). بنجيب الرصيد الحقيقي هنا ونبعته للـ system prompt
+    const userCredits = await getCreditsBalance(userId).catch(() => null);
     // ⚠️ Model 8 تحت الصيانة — بس الأدمن يقدر يستخدمه من خلال الايجنت كمان
     const isAdminUser = (user?.email || '').toLowerCase() === (process.env.ADMIN_EMAIL || 'digidelight33@gmail.com').toLowerCase();
     // ✅ NEW: القنوات اللي العميل ربطها بـ VidIQ (My Channels) — الايجنت لازم يكون عارفها
@@ -268,6 +272,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       memoryNote,
       userChannels,
       hasClonedVoice,
+      userCredits,
     });
 
     // ── RESEARCH: لو الايجنت طلب تحقق حقيقي من معلومة (حدث تاريخي/حقيقي) قبل ما يرد،
@@ -289,14 +294,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
             hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded,
             videoDurationSec: videoDurationSec || null,
-            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits,
           });
         } else if (query) {
           rawReply = await agentChat({
             message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + 'You asked to research this but web search is not configured on this deployment — answer using your own knowledge and honestly tell the user you cannot verify it live right now.', userPlan, isAdminUser,
             hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
-            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits,
           });
         }
       } catch (e) {
@@ -324,7 +329,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + channelNote, userPlan, isAdminUser,
           hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
           hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
-          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice,
+          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits,
         });
       } catch (e) {
         console.warn('[Agent] CHANNEL_IDEA marker failed:', e.message);
