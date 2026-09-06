@@ -7,7 +7,7 @@ import RenderPage from './pages/RenderPage.jsx';
 import AuthPage from './pages/AuthPage.jsx';
 import VideosPage from './pages/VideosPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
-import UserMenu, { HowToModal, AffiliateModal } from './pages/UserMenu.jsx';
+import UserMenu, { HowToModal, AffiliateModal, PLAN_META } from './pages/UserMenu.jsx';
 import NotificationBell from './pages/NotificationBell.jsx';
 import LandingPage from './pages/LandingPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
@@ -507,6 +507,20 @@ export default function App() {
 
       {/* Right side */}
       <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, marginLeft:'auto' }}>
+
+        {/* ✅ FIX (طلب العميل: "لازم يكون في علامة تقول انا على خطة اي" — مكانتش ظاهرة غير جوه
+            المنيو بعد فتحها): بادچ صغير باسم الخطة الحقيقي، ظاهر دايمًا في الهيدر نفسه من غير
+            ما يفتح حد المنيو أصلاً — نفس ألوان/تسميات PLAN_META المستخدمة في المنيو بالظبط */}
+        {(() => {
+          const headerPlanMeta = PLAN_META[userPlan] || PLAN_META.free;
+          return (
+            <div title={`${headerPlanMeta.label} Plan`}
+              style={{ display:'flex', alignItems:'center', gap:5, background:`${headerPlanMeta.color}18`, border:`1px solid ${headerPlanMeta.color}44`, borderRadius:8, padding:'5px 10px' }}>
+              <headerPlanMeta.Icon size={11} color={headerPlanMeta.color} strokeWidth={2.5} />
+              <span style={{ fontSize:11, fontWeight:700, color:headerPlanMeta.color }}>{headerPlanMeta.label}</span>
+            </div>
+          );
+        })()}
 
         {/* رصيد الكريديت الموحد — عداد واحد بس. مبيظهرش للمستخدمين "free" خالص (اتلغى الفري
             تريال) — بيظهر بس للمشتركين (plan !== 'free') عشان يشوفوا رصيدهم. */}
