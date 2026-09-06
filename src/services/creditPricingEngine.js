@@ -81,10 +81,10 @@ export const REPLICATE_MODEL_COSTS = {
                        tiers: { '480p': 0.08, '720p': 0.18, '1080p': 0.45, '4k': 1.00 } },
   seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30,
                        tiers: { '480p': 0.1028, '720p': 0.2312 } }, // مؤكد من Replicate مباشرة (non_video_in). 1080p/4K مش native output حقيقي (upscale بس)، متضافين هنا
-  // ⚠ مراجعة العميل الحية: 540p ($0.10/s) طلعت أعلى من 720p ($0.075/s) الحالية — تناقض منطقي
-  // (دقة أقل بسعر أعلى)، فالعميل يحتاج يتأكد من صفحة luma/ray-2-720p كمان قبل ما نثبّت الاتنين
+  // ✅ FIX: الاتنين مؤكدين من صفحة الموديل مباشرة دلوقتي (540p=$0.10/s، 720p=$0.18/s) — الترتيب
+  // المنطقي اتظبط (دقة أعلى = سعر أعلى)، التناقض القديم كان بسبب رقم 720p القديم غير المؤكد
   luma_ray2_540p:   { label: 'Luma Ray 2 (540p)',   unit: 'second', usdCost: 0.10, maxClipSec: 9 },
-  luma_ray2_720p:   { label: 'Luma Ray 2 (720p)',   unit: 'second', usdCost: 0.075, maxClipSec: 9 }, // ⚠ محتاج تأكيد حي زي 540p فوق — مش متأكد إنه لسه صح بعد تصحيح 540p
+  luma_ray2_720p:   { label: 'Luma Ray 2 (720p)',   unit: 'second', usdCost: 0.18, maxClipSec: 9 },
   // ✅ FIX (مؤكد من صفحة الموديل مباشرة، أعلى من التقدير القديم): سعر كل دقة، بدون تقسيم صوت/فيديو مدخل
   omni_flash_1_1:   { label: 'Gemini Omni 1.1 Flash', unit: 'second', usdCost: 0.15, maxClipSec: 10,
                        tiers: { '360p': 0.05, '720p': 0.15, '1080p': 0.23, '4k': 0.45 } },
