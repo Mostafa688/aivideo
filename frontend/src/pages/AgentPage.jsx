@@ -301,7 +301,7 @@ function ImageBatchCard({ job, lang }) {
   );
 }
 
-export default function AgentPage({ onNavigate, onSwitchToModels }) {
+export default function AgentPage({ onNavigate, onSwitchToModels, activeProject }) {
   const region = localStorage.getItem('erivion_region') || 'eg';
   const lang = region === 'eg' ? 'ar' : 'en';
   const t = T[lang];
@@ -1305,10 +1305,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       <div style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', flex: 1 }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <img src={LOGO} alt="Erivion" style={{ width: 22, height: 22, objectFit: 'contain' }} />
-            <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.4px', fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Erivion</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Agent</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <img src={LOGO} alt="Erivion" style={{ width: 22, height: 22, objectFit: 'contain', flexShrink: 0 }} />
+            {activeProject ? (
+              <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.2px', fontFamily: 'var(--font-display)', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeProject.name}</span>
+            ) : (
+              <>
+                <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.4px', fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Erivion</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Agent</span>
+              </>
+            )}
           </div>
           <button className="agent-models-btn" onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', color: 'var(--accent2)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s ease, border-color 0.15s ease' }}>
             <Clapperboard size={14} strokeWidth={2} /> {t.models}

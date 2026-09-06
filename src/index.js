@@ -65,6 +65,7 @@ const MODEL8_RATE_CINEMATIC = 6; // صوت متولّد مع الفيديو نف
 const MODEL8_EDIT_SCENE_COST = 15; // تعديل نصي لمشهد واحد (أرخص من موديل 4 لأن التوليد نفسه أرخص)
 import adminRouter from './services/adminRoutes.js';
 import supportRouter from './services/supportRoutes.js';
+import projectRouter from './services/projectRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
 import affiliateRouter from './services/affiliateRoutes.js';
 import mapVideoRouter from './services/mapVideoRoutes.js';
@@ -236,6 +237,7 @@ app.use('/api/admin', adminRouter);
 // اتشالت النسخ القديمة المكررة دي، وهنسيب نسخة واحدة كاملة بس في الآخر.
 
 app.use('/api/support', supportRouter);
+app.use('/api/projects', projectRouter);
 
 
 app.use('/api/affiliate', affiliateRouter);
