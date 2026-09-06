@@ -8,6 +8,7 @@ import {
   ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
+import { downloadRemoteFile } from '../utils/download.js';
 
 const LOGO = '/logo.png';
 
@@ -165,7 +166,7 @@ function RenderCard({ job, lang, onNavigate }) {
         <video src={job.videoUrl} controls autoPlay muted style={{ width: box.w, height: box.h, borderRadius: 14, objectFit: 'cover', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {t.done} {job.cost || ''} {t.credits}</span>
-          <a href={job.videoUrl} download style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent2)', fontWeight: 700, textDecoration: 'none' }}><Download size={13} strokeWidth={2.25} /> {t.download}</a>
+          <button onClick={() => downloadRemoteFile(job.videoUrl, `erivion-video-${job.uid || Date.now()}.mp4`)} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent2)', fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}><Download size={13} strokeWidth={2.25} /> {t.download}</button>
         </div>
       </div>
     );
@@ -302,9 +303,9 @@ function ImageBatchCard({ job, lang }) {
           {job.images.map((url, i) => (
             <div key={i} style={{ position: 'relative' }}>
               <img src={url} alt="" style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
-              <a href={url} download target="_blank" rel="noreferrer" style={{ position: 'absolute', bottom: 6, right: 6, width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', textDecoration: 'none' }}>
+              <button onClick={() => downloadRemoteFile(url, `erivion-image-${i + 1}.jpg`)} style={{ position: 'absolute', bottom: 6, right: 6, width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}>
                 <Download size={13} strokeWidth={2.25} />
-              </a>
+              </button>
             </div>
           ))}
         </div>
@@ -344,7 +345,10 @@ function VideoModelCard({ job, lang }) {
     return (
       <div style={{ width: 280 }}>
         <video src={job.videoUrl} controls style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700, marginTop: 8 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {tt.done} {job.cost || ''} {tt.credits}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {tt.done} {job.cost || ''} {tt.credits}</span>
+          <button onClick={() => downloadRemoteFile(job.videoUrl, `erivion-video-${job.model || 'clip'}.mp4`)} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent2)', fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}><Download size={13} strokeWidth={2.25} /></button>
+        </div>
       </div>
     );
   }

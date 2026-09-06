@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import VoiceUpload from './VoiceUpload.jsx';
+import { downloadRemoteFile } from '../utils/download.js';
 import {
   Mic, VolumeX, Clapperboard, Video, Sparkles, Landmark, Leaf, Moon, Wand2,
   Palette, Gamepad2, Lightbulb, FileText, CreditCard, ImageIcon, Lock, Coins,
@@ -535,7 +536,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           </div>
         )}
         <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-          {videoUrl && <a href={videoUrl} download style={{ padding:'13px 28px', borderRadius:12, background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#fff', fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(34,197,94,0.35)', display:'flex', alignItems:'center', gap:8 }}><Download size={15} strokeWidth={2} /> Download</a>}
+          {videoUrl && <button onClick={() => downloadRemoteFile(videoUrl, 'erivion-video.mp4')} style={{ padding:'13px 28px', borderRadius:12, background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#fff', fontWeight:700, fontSize:14, border:'none', cursor:'pointer', fontFamily:'inherit', boxShadow:'0 4px 20px rgba(34,197,94,0.35)', display:'flex', alignItems:'center', gap:8 }}><Download size={15} strokeWidth={2} /> Download</button>}
           <button onClick={() => { setStep('setup'); setIdea(''); setScript(''); setScenes([]); setVideoUrl(null); setVoiceAudioUrl(null); }} style={{ padding:'13px 28px', borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'rgba(255,255,255,0.7)', fontWeight:600, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}><RefreshCw size={14} strokeWidth={2} /> New Video</button>
         </div>
       </div>

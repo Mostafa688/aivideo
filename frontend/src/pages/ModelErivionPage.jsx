@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { downloadRemoteFile } from '../utils/download.js';
 import {
   PartyPopper, X, Check, Loader2, XCircle, Square, CreditCard, Paperclip,
   Mic, Lightbulb, FileText, Clapperboard, User, Settings as SettingsIcon,
@@ -668,9 +669,9 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
             <h2 style={{ color: '#22c55e', marginBottom: 8 }}>{isAr ? 'الفيديو جاهز!' : 'Your video is ready!'}</h2>
             <video key={finalVideoUrl} src={finalVideoUrl} controls style={{ width: '100%', maxWidth: 600, borderRadius: 16, marginBottom: 20, boxShadow: '0 0 40px rgba(168,85,247,0.3)' }} playsInline autoPlay />
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <a href={finalVideoUrl} download style={{ padding: '12px 28px', borderRadius: 12, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={() => downloadRemoteFile(finalVideoUrl, 'erivion-video.mp4')} style={{ padding: '12px 28px', borderRadius: 12, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Download size={16} strokeWidth={2} /> {isAr ? 'تحميل' : 'Download'}
-              </a>
+              </button>
               <button onClick={() => { setStep('setup'); setMode(null); setScenes([]); setFinalVideoUrl(null); setProgress(0); }}
                 style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <RefreshCw size={15} strokeWidth={2} /> {isAr ? 'فيديو جديد' : 'New Video'}

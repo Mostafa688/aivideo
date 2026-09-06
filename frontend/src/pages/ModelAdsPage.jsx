@@ -1,6 +1,7 @@
 // ── ModelAdsPage.jsx ─────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect } from 'react';
 import RatingPrompt from './RatingPrompt.jsx';
+import { downloadRemoteFile } from '../utils/download.js';
 import {
   Mic, Megaphone, PartyPopper, Download, AlertTriangle, Package, X, Bot,
   Music, MessageSquare, Link2, CreditCard, Check,
@@ -278,9 +279,9 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
             {showRating && <RatingPrompt modelUsed="Model 7 - Ads Creator" onClose={() => setShowRating(false)} lang={isAr ? 'ar' : 'en'} />}
             <SectionLabel><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PartyPopper size={13} strokeWidth={2} /> {isAr ? 'إعلانك جاهز!' : 'Your Ad is Ready!'}</span></SectionLabel>
             <video src={videoUrl} controls style={{ width: '100%', borderRadius: 12, maxHeight: 400, background: '#000' }} />
-            <a href={videoUrl} download style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, padding: '12px', borderRadius: 12, background: ACCENT, color: '#fff', fontWeight: 700, fontSize: 14, textAlign: 'center', textDecoration: 'none', fontFamily: "'DM Sans', sans-serif", boxShadow: `0 4px 20px ${ACCENT_GLOW}` }}>
+            <button onClick={() => downloadRemoteFile(videoUrl, 'erivion-ad.mp4')} style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, padding: '12px', borderRadius: 12, background: ACCENT, color: '#fff', fontWeight: 700, fontSize: 14, textAlign: 'center', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", boxShadow: `0 4px 20px ${ACCENT_GLOW}` }}>
               <Download size={15} strokeWidth={2} /> {isAr ? 'تحميل الإعلان' : 'Download Ad'}
-            </a>
+            </button>
           </Section>
         )}
 

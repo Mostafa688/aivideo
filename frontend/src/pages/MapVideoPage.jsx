@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { downloadRemoteFile } from '../utils/download.js';
 
 const STYLE_COLORS = {
   dark:     { bg: '#1a1a2e', land: '#2d3561', border: '#1a1a2e', highlight: '#e11d48', secondary: '#f59e0b', ocean: '#0f0f1f' },
@@ -173,9 +174,9 @@ export default function MapVideoPage({ formData, onBack }) {
             <video controls style={{ width:'100%', maxHeight:420, display:'block' }} src={videoUrl} />
           </div>
           <div style={{ display:'flex', gap:10 }}>
-            <a href={videoUrl} download style={{ flex:1, padding:'14px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer', textAlign:'center', textDecoration:'none', boxShadow:'0 4px 20px rgba(16,185,129,0.4)' }}>
+            <button onClick={() => downloadRemoteFile(videoUrl, 'erivion-map-video.mp4')} style={{ flex:1, padding:'14px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer', textAlign:'center', fontFamily:'inherit', boxShadow:'0 4px 20px rgba(16,185,129,0.4)' }}>
               ⬇️ Download
-            </a>
+            </button>
             <button onClick={onBack} style={{ flex:1, padding:'14px', background:'rgba(255,255,255,0.04)', color:'rgba(255,255,255,0.6)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:12, fontWeight:600, fontSize:15, cursor:'pointer' }}>
               🔄 Make Another
             </button>
