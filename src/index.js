@@ -24,7 +24,9 @@ import voiceCloneRouter from './services/voiceCloneRoutes.js';
 import audioVideoRouter from './services/audioVideoRoutes.js';
 import whiteboardVideoRouter from './services/whiteboardVideoRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
-import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
+import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
+import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
+import { getImageCreditCost, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
 // عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
 const MODEL3_STANDARD_SCENE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
@@ -2838,6 +2840,71 @@ app.get('/api/model5/usage', authMiddleware, async (req, res) => {
     res.json({ access: true, credits_balance: balance, costs: MODEL5_CREDIT_COSTS, costs_with_photo: MODEL5_CREDIT_COSTS_WITH_PHOTO, extra_credits_per_photo: 25 });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ── New Image Models Routes (Phase 3) ─────────────────────────────────────
+app.get('/api/images/models', authMiddleware, (req, res) => {
+  const models = Object.keys(NEW_IMAGE_MODELS).map(key => ({
+    key,
+    label: REPLICATE_MODEL_COSTS[key]?.label || key,
+    creditCostPerImage: getImageCreditCost(key, 1),
+  }));
+  res.json({ models });
+});
+
+app.get('/api/images/credit-cost', authMiddleware, (req, res) => {
+  const { model, count } = req.query;
+  if (!model || !NEW_IMAGE_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
+  const n = Math.min(Math.max(1, parseInt(count, 10) || 1), 20);
+  try {
+    res.json({ model, count: n, creditCost: getImageCreditCost(model, n) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res) => {
+  const { model, prompt, referenceImageUrls, aspectRatio, count } = req.body;
+  if (!model || !NEW_IMAGE_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
+  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  const imgUser = await getUserById(req.user.userId);
+  if ((imgUser?.plan || 'free') === 'free') {
+    return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock image generation.', show_upgrade: true });
+  }
+  // ✅ فحص أمان المحتوى قبل أي توليد — نفس الفحص المستخدم في كل الموديلات التانية
+  const modCheck = await checkContentSafety(prompt);
+  if (modCheck.unsafe) {
+    return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
+  }
+  const n = Math.min(Math.max(1, parseInt(count, 10) || 1), 20);
+  let imgCreditCost;
+  try {
+    imgCreditCost = getImageCreditCost(model, n);
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  const imgBalance = await getCreditsBalance(req.user.userId);
+  if (imgBalance < imgCreditCost) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This generation needs ${imgCreditCost} credits, you have ${imgBalance}.`, cost: imgCreditCost, remaining: imgBalance });
+  }
+  const imgCharge = await chargeCredits(req.user.userId, imgCreditCost);
+  if (!imgCharge.success) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This generation needs ${imgCreditCost} credits, you have ${imgCharge.remaining}.`, cost: imgCreditCost, remaining: imgCharge.remaining });
+  }
+  try {
+    const images = await generateNewModelImages({
+      modelKey: model,
+      prompt,
+      referenceImageUrls: Array.isArray(referenceImageUrls) ? referenceImageUrls.slice(0, 14) : [],
+      aspectRatio: aspectRatio || '9:16',
+      count: n,
+    });
+    res.json({ images, creditCost: imgCreditCost, remaining: imgCharge.remaining });
+  } catch (genErr) {
+    console.error('[NewImageModels] generation failed:', genErr.message);
+    await addCreditsBalance(req.user.userId, imgCreditCost);
+    res.status(500).json({ error: 'generation_failed', message: 'Image generation failed, your credits were refunded.' });
   }
 });
 

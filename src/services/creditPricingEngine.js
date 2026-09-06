@@ -52,7 +52,7 @@ export const REPLICATE_MODEL_COSTS = {
   kling_2_5:        { label: 'Kling 2.5',          unit: 'second', usdCost: 0.062, maxClipSec: 10 },
   seedance_1_5:     { label: 'Seedance 1.5',       unit: 'second', usdCost: 0.070, maxClipSec: 12 }, // estimated, older tier
   seedance_2_0:     { label: 'Seedance 2.0',       unit: 'second', usdCost: 0.150, maxClipSec: 12 }, // blended 480p/720p
-  seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 12 }, // blended 480p/720p
+  seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30 }, // confirmed: native single-pass generation from 4-30s
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   gemini_flash_tts: { label: 'Gemini Flash TTS',   unit: 'second', usdCost: 0.00025 },
