@@ -46,13 +46,22 @@ export const REPLICATE_MODEL_COSTS = {
   seedream_5_lite:  { label: 'Seedream 5 Lite',    unit: 'image', usdCost: 0.035 },
 
   // ── Video generation (per second of output) ──────────────────────────────
-  veo3_fast:        { label: 'Veo 3 Fast',         unit: 'second', usdCost: 0.15, maxClipSec: 8 },
-  veo3_standard:    { label: 'Veo 3',              unit: 'second', usdCost: 0.65, maxClipSec: 8 },
-  kling_2_1:        { label: 'Kling 2.1',          unit: 'second', usdCost: 0.045, maxClipSec: 10 }, // estimated, older tier
-  kling_2_5:        { label: 'Kling 2.5',          unit: 'second', usdCost: 0.062, maxClipSec: 10 },
+  // ✅ NEW: موديلات الفيديو دلوقتي بتدعم "tiers" (جودة/دقة مختلفة بسعر مختلف فعليًا، مش رقم
+  // واحد متوسط زي الأول) — usdCost فضل موجود كـ fallback (متوسط الـ tiers) لأي كود قديم لسه
+  // بيستخدم getPerSecondCreditCost بمفتاح الموديل لوحده من غير تحديد جودة. الأرقام دي من
+  // Replicate نفسها/aggregator sites وقت الكتابة (Sept 2026) — تتأكد قبل الإطلاق الحقيقي،
+  // خصوصًا Seedance 2.0 اللي مصادره اتضاربت (رقمين مختلفين ظهروا لنفس الموديل)
+  veo3_fast:        { label: 'Veo 3 Fast',         unit: 'second', usdCost: 0.15, maxClipSec: 8,
+                       tiers: { '720p': 0.15, '1080p': 0.15 } }, // ✅ نفس السعر للاتنين فعليًا (مؤكد من Google direct API)
+  veo3_standard:    { label: 'Veo 3',              unit: 'second', usdCost: 0.40, maxClipSec: 8,
+                       tiers: { '720p': 0.40, '1080p': 0.40 } }, // نفس السعر للاتنين فعليًا
+  kling_2_1:        { label: 'Kling 2.1',          unit: 'second', usdCost: 0.045, maxClipSec: 10 }, // estimated, older tier — مفيش بيانات دقيقة لكل دقة لقيتها
+  kling_2_5:        { label: 'Kling 2.5',          unit: 'second', usdCost: 0.07, maxClipSec: 10 }, // مؤكد: $0.35/5s = $0.70/10s = $0.07/sec ثابت، مفيش فرق سعر لكل دقة لقيته
   seedance_1_5:     { label: 'Seedance 1.5',       unit: 'second', usdCost: 0.070, maxClipSec: 12 }, // estimated, older tier
-  seedance_2_0:     { label: 'Seedance 2.0',       unit: 'second', usdCost: 0.150, maxClipSec: 12 }, // blended 480p/720p
-  seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30 }, // confirmed: native single-pass generation from 4-30s
+  seedance_2_0:     { label: 'Seedance 2.0',       unit: 'second', usdCost: 0.180, maxClipSec: 15,
+                       tiers: { '480p': 0.0673, '720p': 0.151, '1080p': 0.35, '4k': 0.7776 } }, // ⚠ مصادر متضاربة — 480p و4K مؤكدين، 720p/1080p متوسط تقديري بينهم، يحتاج تأكيد نهائي
+  seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30,
+                       tiers: { '480p': 0.1028, '720p': 0.2312 } }, // مؤكد من Replicate مباشرة. 1080p/4K مش native output حقيقي (upscale بس)، متضافين هنا
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   gemini_flash_tts: { label: 'Gemini Flash TTS',   unit: 'second', usdCost: 0.00025 },
@@ -73,11 +82,18 @@ export function getImageCreditCost(modelKey, count = 1) {
   return usdToCredits(model.usdCost) * Math.max(1, count);
 }
 
-/** Credit cost for generating `durationSec` seconds of video/audio with the given model key. */
-export function getPerSecondCreditCost(modelKey, durationSec) {
+/**
+ * Credit cost for generating `durationSec` seconds of video/audio with the given
+ * model key. Pass `tier` (e.g. "480p"/"720p"/"1080p"/"4k") for models that have
+ * real per-resolution pricing (see REPLICATE_MODEL_COSTS[key].tiers) — falls
+ * back to the model's blended/default usdCost if no tier given or the model
+ * has no separate tiers.
+ */
+export function getPerSecondCreditCost(modelKey, durationSec, tier = null) {
   const model = REPLICATE_MODEL_COSTS[modelKey];
   if (!model || model.unit !== 'second') throw new Error(`Unknown per-second model: ${modelKey}`);
-  return usdToCredits(model.usdCost * Math.max(1, durationSec));
+  const perSecondUsd = (tier && model.tiers?.[tier]) ?? model.usdCost;
+  return usdToCredits(perSecondUsd * Math.max(1, durationSec));
 }
 
 /** Real max seconds per single clip for a video model (Replicate/provider limit), or null if not capped. */
@@ -85,10 +101,18 @@ export function getMaxClipSeconds(modelKey) {
   return REPLICATE_MODEL_COSTS[modelKey]?.maxClipSec ?? null;
 }
 
+/** List of real quality tiers (e.g. ["480p","720p"]) a video model supports, or null if it only has one flat rate. */
+export function getQualityTiers(modelKey) {
+  const tiers = REPLICATE_MODEL_COSTS[modelKey]?.tiers;
+  return tiers ? Object.keys(tiers) : null;
+}
+
 /**
  * Builds the full pricing table — every model, its real USD cost, and the
  * computed in-app credit price — for client review and for use across the
- * new image/video generation endpoints being added in later phases.
+ * new image/video generation endpoints being added in later phases. When a
+ * model has real per-resolution tiers, each tier is listed with its own
+ * credit cost alongside the blended default.
  */
 export function buildFullPricingTable() {
   return Object.entries(REPLICATE_MODEL_COSTS).map(([key, model]) => ({
@@ -98,5 +122,8 @@ export function buildFullPricingTable() {
     usdCost: model.usdCost,
     creditCost: usdToCredits(model.usdCost),
     maxClipSec: model.maxClipSec ?? null,
+    tiers: model.tiers
+      ? Object.fromEntries(Object.entries(model.tiers).map(([tier, usd]) => [tier, { usdCost: usd, creditCost: usdToCredits(usd) }]))
+      : null,
   }));
 }
