@@ -88,7 +88,13 @@ function fmtVideoModels() {
     const perSec = getPerSecondCreditCost(key, 1);
     const maxSec = getMaxClipSeconds(key);
     const tiers = getQualityTiers(key);
-    const tierNote = tiers ? `, tiers: ${tiers.join('/')}` : '';
+    // ✅ FIX (طلب العميل: "لو جودة الفيديو 480 هتبقى كذا لو 720 كذا لو 1080 هتاخد كذا كريديت"):
+    // كانت بتعرض أسماء الجودات بس (480p/720p/...) من غير سعرها الحقيقي، فالايجنت مكانش
+    // يقدر يقول للعميل سعر كل جودة بالظبط — دلوقتي بتعرض السعر الحقيقي لكل جودة لكل ثانية،
+    // بنفس الأسلوب المستخدم فعلاً لموديلات الصور
+    const tierNote = tiers
+      ? `, resolutions: ${tiers.map(t => `${t}=${getPerSecondCreditCost(key, 1, t)}cr/sec`).join('/')}`
+      : '';
     const imgNote = NEW_VIDEO_MODELS[key].supportsImageInput ? ', supports image-to-video' : '';
     return `${key} ("${label}", ${perSec}cr/sec, max ${maxSec}s per clip${tierNote}${imgNote})`;
   }).join('; ');
@@ -172,7 +178,7 @@ STANDALONE NEW VIDEO MODELS (completely separate from Models 1-8 above and from 
 - CRITICAL — NEVER ask the user which engine/model to use, ever, under any circumstance (same rule as image generation above) — silently pick the best one yourself from the list based on what they're asking for: veo3_standard for the highest overall cinematic quality, veo3_fast for a faster/cheaper alternative with very similar quality, kling_2_5 for strong general-purpose motion at a good price, seedance_2_5 for the longest clips (up to its max) or best value, luma_ray2_720p for dreamy/stylized motion. Only deviate from your own pick if the user explicitly names a specific engine by name (e.g. "veo"/"kling"/"seedance"/"luma") — then use exactly that one.
 - Trigger this whenever the user wants ONE standalone premium AI video clip generated directly — e.g. "اعملي فيديو بالذكاء الاصطناعي"/"video from this image"/"عايز كليب سينمائي واحد" — not the multi-scene Model 1-8 pipelines above, and not "animate the image I just generated" (that's always Model 5, see the rule right above this one).
 - If the user attached a photo in this same message, pass it through as image-to-video; otherwise it's pure text-to-video from your written prompt.
-- QUALITY TIER: only ask about resolution/quality if the engine you picked actually has tiers listed above (e.g. "tiers: 480p/720p/1080p/4k") AND the user hasn't already stated a preference — default to "720p" when unclear. Engines with no tiers listed have one fixed quality — never ask about quality for those, and always send "tier":null for them.
+- QUALITY TIER: only ask about resolution/quality if the engine you picked actually has "resolutions:" listed above (e.g. "resolutions: 480p=Xcr/sec/720p=Ycr/sec/1080p=Zcr/sec") AND the user hasn't already stated a preference — default to "720p" when unclear. Engines with no "resolutions:" listed have one fixed quality — never ask about quality for those, and always send "tier":null for them. WHEN YOU DO ASK OR PRESENT THE OPTIONS — CRITICAL, the customer must see real numbers, not vague quality talk: state each resolution's actual per-second credit price from the list above (e.g. "480p هتبقى X كريديت/ثانية، 720p Y كريديت/ثانية، 1080p Z كريديت/ثانية") so they're choosing based on real cost, exactly like you already do for image resolution — never say "higher quality costs a bit more" without the real numbers, and never invent/round/blend a price across tiers.
 - DURATION: ask only if unclear, and always respect that engine's own "max Xs per clip" limit shown above — never promise a duration longer than that. Default to a short, sensible duration within the limit (5s is a safe default for most engines) if the user doesn't care.
 - Ask aspect ratio only if unclear (16:9 default for cinematic/YouTube-style requests, 9:16 for social/reels).
 - Always state the exact total credit cost (the per-second credit price shown above for the engine you picked × the duration you agreed on) before confirming — never guess or invent a different figure.
