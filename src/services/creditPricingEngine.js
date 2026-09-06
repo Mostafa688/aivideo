@@ -98,7 +98,13 @@ export const REPLICATE_MODEL_COSTS = {
  * applying the standard profit multiplier. Always at least 1 credit.
  */
 export function usdToCredits(usdCost, { multiplier = PROFIT_MULTIPLIER } = {}) {
-  return Math.max(1, Math.ceil((usdCost * multiplier) / USD_PER_CREDIT));
+  // ✅ FIX (باج حقيقي: العميل شاف "Veo 3" بـ49cr/s بدل 48، و"Kling 2.1" بـ7cr بدل 6، و"Luma
+  // Ray 2 540p" بـ13cr بدل 12): أخطاء floating-point كلاسيكية في JS — مثلاً 0.40*3/0.025
+  // بيطلع 48.00000000000001 مش 48 بالظبط، فـMath.ceil كان بيرفعها غلط لكريديت زيادة على
+  // العميل. تقريب لـ6 خانات عشرية قبل الـceil بيشيل الضوضاء دي من غير ما يأثر على أي كسر حقيقي
+  const raw = (usdCost * multiplier) / USD_PER_CREDIT;
+  const rounded = Math.round(raw * 1e6) / 1e6;
+  return Math.max(1, Math.ceil(rounded));
 }
 
 /**
