@@ -1166,10 +1166,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     // ومن غير وصف شخصية نصي بيجرّب يستخدم آخر صورة اتولدت تلقائيًا، بصرف النظر عن الماركر
     let resolvedAnimatePhoto = null;
     if (ready.model === 5 && ready.promptMode === 'image' && !lastUploadedPhotos.length && !ready.characterDescriptions?.length) {
-      const lastImageMsg = [...messages].reverse().find(m => m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length);
-      if (lastImageMsg) {
+      // ✅ FIX (طلب العميل: "لازم يكون عارف هيختار انهي صورة يحركها عشان لو العميل عامل صور
+      // كتير مش يحرم اي صورة"): لو الايجنت حدد "animateImageUrl" بنفسه (رابط دقيق نسخه من
+      // الـ history نفسه)، ده بيبقى المصدر الوحيد — مش أي heuristic تاني. ده بيحل مشكلة إن
+      // "آخر صورة اتولدت" كانت دايمًا هي اللي بتتحرك حتى لو العميل قصد صورة تانية من دفعة سابقة
+      const targetUrl = ready.animateImageUrl || [...messages].reverse().find(m => m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length)?.job.images[0];
+      if (targetUrl) {
         try {
-          const blob = await fetchRemoteBlob(lastImageMsg.job.images[0]);
+          const blob = await fetchRemoteBlob(targetUrl);
           resolvedAnimatePhoto = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result);
@@ -1177,7 +1181,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             reader.readAsDataURL(blob);
           });
         } catch (e) {
-          console.warn('[Agent] Failed to fetch last generated image for animate:', e.message);
+          console.warn('[Agent] Failed to fetch image to animate:', e.message);
         }
       }
       if (!resolvedAnimatePhoto) {
