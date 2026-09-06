@@ -2853,6 +2853,11 @@ export default function AdminPage() {
               <div style={s.title}>💬 Support Chats ({supportChats.length})</div>
               <div style={{ display:'flex', gap:8 }}>
                 <button style={s.btn('#374151')} onClick={async () => { await fetch('/api/support/cleanup', {method:'POST'}); loadSupport(); }}>🗑️ Cleanup Expired</button>
+                <button style={s.btn('#7c6af7')} onClick={async () => {
+                  const r = await fetch(`/api/support/notify-status?secret=${ADMIN_SECRET}`, { headers: { 'x-admin-secret': ADMIN_SECRET } });
+                  const d = await r.json();
+                  alert(d.message + (d.resendError ? '\n\n' + JSON.stringify(d.resendError) : ''));
+                }}>✉️ Test Email Notifications</button>
                 <button style={s.btn()} onClick={loadSupport}>🔄 Refresh</button>
               </div>
             </div>

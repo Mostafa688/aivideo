@@ -379,4 +379,44 @@ router.post('/cleanup', async (req, res) => {
   }
 });
 
+// ✅ NEW (طلب العميل: إشعارات الإيميل — سواء للأدمن على رسالة عميل جديدة، أو للعميل على رد
+// الأدمن — مش بتوصل خالص): مفيش أي طريقة نتأكد من هنا (sandbox من غير أي مفاتيح حقيقية) هل
+// RESEND_API_KEY متظبط على Railway فعلاً، وهل نطاق الإرسال (erivion.net) متأكد (verified) في
+// حساب Resend نفسه — من غير الاتنين دول Resend بيرفض أي إيميل بصمت. الكود بتاع الإرسال نفسه
+// اتراجع وهو مطابق تمامًا لصيغة Resend API الحقيقية، فمفيش باج كود هنا. الروت ده تشخيصي فقط:
+// بيرجع هل المفتاح موجود، وبيبعت إيميل اختبار حقيقي ويرجّع رد Resend الفعلي (بما فيه رسالة
+// الخطأ الحقيقية لو فشل) عشان تعرف السبب الحقيقي بدل ما يفضل صامت في console.warn على Railway
+router.get('/notify-status', async (req, res) => {
+  const secret = req.headers['x-admin-secret'] || req.query.secret;
+  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+  const hasKey = !!process.env.RESEND_API_KEY;
+  const adminEmail = process.env.ADMIN_EMAIL || 'digidelight33@gmail.com';
+  if (!hasKey) {
+    return res.json({ resendKeyConfigured: false, adminEmail, message: 'RESEND_API_KEY مش متظبط على Railway خالص — ده سبب كافي لوحده إن مفيش أي إيميل بيتبعت أبدًا. ضيفه في Railway → Variables.' });
+  }
+  try {
+    const testRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion Support <support@erivion.net>',
+        to: [adminEmail],
+        subject: '✅ Erivion — Test email notification',
+        html: '<p>لو وصلك الإيميل ده، يبقى الإرسال شغال تمام والمشكلة كانت حاجة تانية.</p>',
+      }),
+    });
+    const testData = await testRes.json().catch(() => ({}));
+    if (!testRes.ok) {
+      return res.json({
+        resendKeyConfigured: true, adminEmail, sendSucceeded: false,
+        resendStatus: testRes.status, resendError: testData,
+        message: 'المفتاح موجود بس الإرسال فشل — الرد الحقيقي من Resend فوق (غالبًا سبب شائع: نطاق erivion.net مش verified في حساب Resend نفسه).',
+      });
+    }
+    res.json({ resendKeyConfigured: true, adminEmail, sendSucceeded: true, resendId: testData.id, message: `اتبعت إيميل اختبار حقيقي لـ ${adminEmail} — لو وصل تمام، الإشعارات المفروض تبقى شغالة.` });
+  } catch (e) {
+    res.json({ resendKeyConfigured: true, adminEmail, sendSucceeded: false, error: e.message });
+  }
+});
+
 export default router;

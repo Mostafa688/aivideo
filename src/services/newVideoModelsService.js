@@ -158,6 +158,27 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image_url: imageUrl } : {}),
     }),
   },
+  // ✅ NEW (طلب العميل): Gemini Omni 1.1 Flash — أول موديل حقيقي عندنا بيعمل video-to-video
+  // فعلي (تعديل فيديو موجود بتعليمات نصية عادية)، غير كل موديلات الفيديو التانية اللي بتعمل
+  // text/image-to-video بس. بيدعم كمان image-to-video عادي (reference_images) لو مفيش فيديو مصدر.
+  // ⚠ اسم حقل الفيديو المصدر بالظبط في schema الحقيقي على Replicate (video_url/video/input_video)
+  // لسه محتاج تأكيد حي — استخدمنا "video" كأرجح تخمين بناءً على تسمية الموديلات المشابهة، لازم
+  // يتأكد قبل الاعتماد عليه في الإنتاج الحقيقي. السعر ~$0.10/ثانية عند 720p (مؤكد من حساب
+  // التوكنز الحقيقي: 5792 توكن/ثانية × $17.50/مليون)، الدقات التانية (360p/1080p/4K) سعرها
+  // مش مؤكد فبنستخدم نفس السعر كتقدير موحد لحد التأكيد الحي
+  omni_flash_1_1: {
+    slug: 'google/gemini-omni-1.1',
+    supportsImageInput: true,
+    supportsVideoEdit: true,
+    allowedDurations: [3, 4, 5, 6, 7, 8, 9, 10],
+    buildInput: ({ prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      resolution: tier || '720p',
+      aspect_ratio: aspectRatio || '16:9',
+      duration: Math.min(Math.max(durationSec || 5, 3), 10),
+      ...(sourceVideoUrl ? { video: sourceVideoUrl } : imageUrl ? { reference_images: [imageUrl] } : {}),
+    }),
+  },
 };
 
 async function withRetry429(fn, maxRetries = 4) {
@@ -196,14 +217,15 @@ async function pollPrediction(predictionId, label) {
  * permanent (R2-persisted) URL. `tier` is a resolution string ("720p" etc.)
  * for models that support it — ignored otherwise.
  */
-export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null, aspectRatio = '16:9', durationSec = 5, tier = null }) {
+export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null, sourceVideoUrl = null, aspectRatio = '16:9', durationSec = 5, tier = null }) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const model = NEW_VIDEO_MODELS[modelKey];
   if (!model) throw new Error(`Unknown video model: ${modelKey}`);
   if (!prompt?.trim()) throw new Error('prompt is required');
+  if (sourceVideoUrl && !model.supportsVideoEdit) throw new Error(`${modelKey} does not support video-to-video editing`);
   const label = `${modelKey} video generation`;
 
-  const input = model.buildInput({ prompt, imageUrl, aspectRatio, durationSec, tier });
+  const input = model.buildInput({ prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier });
   const output = await withRetry429(async () => {
     const res = await fetch(`https://api.replicate.com/v1/models/${model.slug}/predictions`, {
       method: 'POST', headers: authHeaders(), body: JSON.stringify({ input }),

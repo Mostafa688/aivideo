@@ -466,9 +466,11 @@ function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onRep
 // بمعاينة كبيرة برضو
 function MediaDetailModal({ lang, kind, job, imgIndex, onChangeIndex, editingImage, onClose, onUpdateJob, onRemoveImage, onRemove, onReport, onEditSubmit, onToast }) {
   const tt = lang === 'ar'
-    ? { done: 'تم', download: 'تحميل', deleteLabel: 'حذف', share: 'مشاركة', editPlaceholder: 'ما هي التغييرات المطلوبة؟', editHint: 'تعديل الصورة بالذكاء الاصطناعي' }
-    : { done: 'Done', download: 'Download', deleteLabel: 'Delete', share: 'Share', editPlaceholder: 'What changes do you want?', editHint: 'AI edit this image' };
+    ? { done: 'تم', download: 'تحميل', deleteLabel: 'حذف', share: 'مشاركة', editPlaceholder: 'ما هي التغييرات المطلوبة؟', editHintImage: 'تعديل الصورة بالذكاء الاصطناعي', editHintVideo: 'تعديل الفيديو بالذكاء الاصطناعي' }
+    : { done: 'Done', download: 'Download', deleteLabel: 'Delete', share: 'Share', editPlaceholder: 'What changes do you want?', editHintImage: 'AI edit this image', editHintVideo: 'AI edit this video' };
   const isImage = kind === 'imageBatch';
+  const isVideo = kind === 'videoModel';
+  const canEdit = isImage || isVideo;
   const images = isImage ? (job.images || []) : null;
   const activeIdx = isImage ? Math.min(imgIndex || 0, images.length - 1) : 0;
   const currentUrl = isImage ? images[activeIdx] : job.videoUrl;
@@ -486,7 +488,7 @@ function MediaDetailModal({ lang, kind, job, imgIndex, onChangeIndex, editingIma
   };
 
   const submitEdit = () => {
-    if (!editText.trim() || editingImage) return;
+    if (!editText.trim() || editingImage || !canEdit) return;
     onEditSubmit?.(editText.trim(), currentUrl);
     setEditText('');
   };
@@ -523,10 +525,10 @@ function MediaDetailModal({ lang, kind, job, imgIndex, onChangeIndex, editingIma
 
       <div style={{ padding: '16px 20px 22px', flexShrink: 0 }}>
         {job.prompt && <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.45)', marginBottom: 12, maxWidth: 640, marginInline: 'auto', textAlign: 'center' }}>{job.prompt}</div>}
-        {isImage && (
+        {canEdit && (
           <div style={{ display: 'flex', gap: 8, maxWidth: 640, marginInline: 'auto', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 7 }}>
             <input value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitEdit()}
-              placeholder={tt.editPlaceholder} disabled={editingImage} title={tt.editHint}
+              placeholder={tt.editPlaceholder} disabled={editingImage} title={isVideo ? tt.editHintVideo : tt.editHintImage}
               style={{ flex: 1, background: 'none', border: 'none', color: '#fff', fontSize: 14, padding: '8px 10px', outline: 'none' }} />
             <button onClick={submitEdit} disabled={!editText.trim() || editingImage}
               style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--accent)', border: 'none', color: '#fff', cursor: editText.trim() && !editingImage ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: editText.trim() && !editingImage ? 1 : 0.5 }}>
@@ -1014,6 +1016,36 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     }
   };
 
+  // ✅ NEW (Gemini Omni 1.1 Flash — أول موديل video-to-video حقيقي عندنا): تعديل فيديو موجود
+  // مباشرة من نافذة التفاصيل، بنفس فكرة تعديل الصور فوق — بيستبدل رابط الفيديو في نفس الـ
+  // job (مفيش "تاريخ نسخ" للفيديو زي الصور، النسخة الجديدة بس هي اللي بتفضل)
+  const submitVideoEdit = async (editPrompt, referenceUrl) => {
+    if (!detailView || detailView.kind !== 'videoModel' || editingImageJob) return;
+    const msg = messages.find(m => m.job?.uid === detailView.jobUid);
+    if (!msg) return;
+    setEditingImageJob(true);
+    try {
+      const res = await fetch('/api/videos/generate', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({
+          model: 'omni_flash_1_1', prompt: editPrompt, aspectRatio: msg.job.aspectRatio || '16:9',
+          durationSec: 5, tier: '720p', sourceVideoUrl: referenceUrl,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || data.error || 'Failed'); return; }
+      updateJobByUid(detailView.jobUid, { videoUrl: data.videoUrl, cost: (msg.job.cost || 0) + (data.creditCost || 0) });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setEditingImageJob(false);
+    }
+  };
+  const submitMediaEdit = (editPrompt, referenceUrl) => {
+    if (detailView?.kind === 'videoModel') return submitVideoEdit(editPrompt, referenceUrl);
+    return submitImageEdit(editPrompt, referenceUrl);
+  };
+
   // ✅ NEW (Phase 3 — new image-generation models): توليد صور مستقل، مش فيديو — مفيش
   // job طويل بيحتاج poll، الطلب نفسه بيستنى الصور جاهزة (backend بيعمل Prefer: wait)
   const startImageGeneration = async (gen) => {
@@ -1067,6 +1099,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({
           model: gen.model, prompt: gen.prompt, imageUrl: gen.imageUrl || undefined,
+          sourceVideoUrl: gen.sourceVideoUrl || undefined,
           aspectRatio: gen.aspectRatio || '16:9', durationSec: gen.durationSec || 5, tier: gen.tier || undefined,
         }),
       });
@@ -2063,7 +2096,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             onRemoveImage={(idx) => removeImageFromBatch(detailView.jobUid, idx)}
             onRemove={() => removeMessageByJobUid(detailView.jobUid)}
             onReport={reportMedia}
-            onEditSubmit={submitImageEdit}
+            onEditSubmit={submitMediaEdit}
             onToast={showToast}
           />
         );

@@ -68,6 +68,11 @@ export const REPLICATE_MODEL_COSTS = {
                        tiers: { '480p': 0.1028, '720p': 0.2312 } }, // مؤكد من Replicate مباشرة. 1080p/4K مش native output حقيقي (upscale بس)، متضافين هنا
   luma_ray2_540p:   { label: 'Luma Ray 2 (540p)',   unit: 'second', usdCost: 0.035, maxClipSec: 9 }, // مؤكد: $0.15/5s=$0.03/s .. $0.45/10s=$0.045/s (استخدمنا متوسط)، أقصى مدة موثقة 9s
   luma_ray2_720p:   { label: 'Luma Ray 2 (720p)',   unit: 'second', usdCost: 0.075, maxClipSec: 9 }, // مؤكد: $0.30/5s=$0.06/s .. $0.90/10s=$0.09/s (استخدمنا متوسط)، أقصى مدة موثقة 9s
+  // ✅ NEW: Gemini Omni 1.1 Flash — أول موديل حقيقي فينا بيعمل video-to-video (تعديل فيديو
+  // موجود بتعليمات نصية)، مش بس text/image-to-video زي الباقي. سعر 720p مؤكد من حساب التوكنز
+  // الحقيقي بتاع Google ($17.50/مليون توكن output، 5792 توكن/ثانية عند 720p = ~$0.10/ثانية) —
+  // 360p/1080p/4K سعرهم مش مؤكد، بنستخدم نفس الرقم كتقدير موحد لحد التأكيد الحي
+  omni_flash_1_1:   { label: 'Gemini Omni 1.1 Flash', unit: 'second', usdCost: 0.10, maxClipSec: 10 },
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   gemini_flash_tts: { label: 'Gemini Flash TTS',   unit: 'second', usdCost: 0.00025 },
