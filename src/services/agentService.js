@@ -167,6 +167,13 @@ STANDALONE NEW VIDEO MODELS (completely separate from Models 1-8 above and from 
 - READY marker for this — a SEPARATE marker, NEVER combine with ###READY###/###GENERATE_IMAGE### in the same reply: end your reply with ###GENERATE_VIDEO###{"model":"<one of the exact keys listed above>","prompt":"a detailed, vivid English video-generation prompt reflecting exactly what the user described","aspectRatio":"9:16"|"16:9","durationSec":<integer, within that engine's max>,"tier":"480p"|"720p"|"1080p"|"4k"|null,"sourceVideoUrl":"exact video URL copied from an earlier '[...video URL: ...]' note in this conversation, ONLY when doing a real video-to-video edit with omni_flash_1_1 — omit entirely otherwise"}.
 - MEMORY — same rule as generated images: a note like "[Successfully generated a video with model X — video URL: ...]" earlier in the conversation is real, confirmed proof — never forget or ignore it.
 
+MERGE VIDEOS INTO ONE (real capability — plain ffmpeg concatenation on the server, not an AI model): if the user asks to combine/merge/join videos already generated in this conversation into a single file (e.g. "جمع الفيديوهات اللي عملناها في فيديو واحد"/"ضم الفيديوهات دي مع بعض"/"combine all my videos into one"), you can do this directly.
+- Look back through the conversation for every "[...video URL: ...]" note (from any model — Model 1-8 renders, standalone engines, all of them count) and collect the real URLs, in the order the user means (default: the order they were generated, i.e. the order they appear in this conversation, unless the user states a different order themselves).
+- If the user says "all the videos" without specifying which ones, use every video URL found in this conversation, oldest first. If they name specific ones ("الفيديو الأول والتالت" / "the first and third one"), match their description to the right URLs from history — never guess or merge the wrong ones.
+- Needs at least 2 videos to merge, max 10 in one request.
+- Cost is a flat 15 credits PER VIDEO being merged (not a Replicate/API cost — this is real ffmpeg server processing) — e.g. merging 3 videos = 45 credits. State this exact cost before confirming.
+- READY marker for this — a SEPARATE marker, never combine with any other marker in the same reply: end your reply with ###MERGE_VIDEOS###{"videoUrls":["<url1>","<url2>", "..."]}  — the array order is the exact order they'll appear in the merged output.
+
 ${premiumNote}
 `.trim();
 }

@@ -27,6 +27,7 @@ import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
 import { generateNewModelVideo, NEW_VIDEO_MODELS } from './services/newVideoModelsService.js';
+import { mergeVideos } from './services/videoMergeService.js';
 import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
 // عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
@@ -2980,6 +2981,38 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
     console.error('[NewVideoModels] generation failed:', genErr.message);
     await addCreditsBalance(req.user.userId, vidCreditCost);
     res.status(500).json({ error: 'generation_failed', message: 'Video generation failed, your credits were refunded.' });
+  }
+});
+
+// ✅ NEW (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد بـ ffmpeg"): دمج أي مجموعة
+// فيديوهات اتعملت بالفعل (أي موديل) في فيديو واحد بالترتيب المطلوب. ده مش توليد AI جديد —
+// معالجة على السيرفر نفسه بـ ffmpeg، فمفيش تكلفة API حقيقية زي باقي الموديلات، فسعره سعر ثابت
+// (مش مبني على usdCost×3) بيغطي وقت المعالجة والتخزين بس: 15 كريديت لكل فيديو بيتم دمجه
+const MERGE_CREDIT_PER_VIDEO = 15;
+app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) => {
+  const { videoUrls } = req.body;
+  if (!Array.isArray(videoUrls) || videoUrls.length < 2) return res.status(400).json({ error: 'at least 2 videoUrls are required' });
+  if (videoUrls.length > 10) return res.status(400).json({ error: 'max 10 videos per merge' });
+  const mergeUser = await getUserById(req.user.userId);
+  if ((mergeUser?.plan || 'free') === 'free') {
+    return res.status(403).json({ error: 'no_access', message: 'Top up credits to merge videos.', show_upgrade: true });
+  }
+  const mergeCreditCost = MERGE_CREDIT_PER_VIDEO * videoUrls.length;
+  const mergeBalance = await getCreditsBalance(req.user.userId);
+  if (mergeBalance < mergeCreditCost) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This merge needs ${mergeCreditCost} credits, you have ${mergeBalance}.`, cost: mergeCreditCost, remaining: mergeBalance });
+  }
+  const mergeCharge = await chargeCredits(req.user.userId, mergeCreditCost);
+  if (!mergeCharge.success) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This merge needs ${mergeCreditCost} credits, you have ${mergeCharge.remaining}.`, cost: mergeCreditCost, remaining: mergeCharge.remaining });
+  }
+  try {
+    const videoUrl = await mergeVideos(videoUrls);
+    res.json({ videoUrl, creditCost: mergeCreditCost, remaining: mergeCharge.remaining });
+  } catch (genErr) {
+    console.error('[VideoMerge] merge failed:', genErr.message);
+    await addCreditsBalance(req.user.userId, mergeCreditCost);
+    res.status(500).json({ error: 'merge_failed', message: 'Video merge failed, your credits were refunded.' });
   }
 });
 
