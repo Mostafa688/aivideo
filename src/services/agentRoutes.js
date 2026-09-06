@@ -546,4 +546,36 @@ router.post('/report-content', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ FIX (باج حقيقي حصل مع عميل حقيقي: زرار "تحميل" في قائمة النقط كان بيوداك للينك الخام
+// بدل ما ينزّل، وزرار "تحريك" مكنش بيعمل حاجة خالص): السبب الحقيقي كان إن الفرونت إند بيعمل
+// fetch() من المتصفح مباشرة على رابط R2 العام — وده رابط من نطاق (origin) مختلف تمامًا عن
+// الموقع، وسيرفرات R2 مش بتضيف CORS headers تسمح لموقع خارجي يعمل fetch عليها افتراضيًا، فطلب
+// المتصفح كان بيفشل صامت (CORS error) قبل ما يوصل حتى لكود التحميل الفعلي. الحل الحقيقي: بروكسي
+// من نفس السيرفر بتاعنا (يجيب الملف من R2 بنفسه — مفيش CORS بين سيرفرين، الفحص ده بس بين متصفح
+// وسيرفر تاني) ويرجّعه من نفس نطاق الموقع، فطلب المتصفح بقى "نفس المصدر" (same-origin) ومفيش
+// مشكلة CORS خالص. بيتحقق إن الرابط فعلاً من R2 بتاعنا أو replicate.delivery المؤقت، مش أي رابط
+// عشوائي (منعًا لاستخدامه كـ open proxy)
+router.get('/media-proxy', authMiddleware, async (req, res) => {
+  try {
+    const { url, mode } = req.query;
+    if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
+    const r2Base = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
+    const isAllowed = (r2Base && url.startsWith(r2Base)) || /^https:\/\/[a-z0-9.-]+\.replicate\.delivery\//i.test(url);
+    if (!isAllowed) return res.status(403).json({ error: 'url not allowed' });
+    const upstream = await fetch(url);
+    if (!upstream.ok) return res.status(502).json({ error: `upstream fetch failed: ${upstream.status}` });
+    const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    if (mode === 'download') {
+      const filename = (url.split('/').pop() || 'download').split('?')[0];
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    }
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    res.send(buffer);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
