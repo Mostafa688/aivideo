@@ -1,26 +1,30 @@
 // ── ModelAdsPage.jsx ─────────────────────────────────────────────────────────
 import React, { useState, useRef, useEffect } from 'react';
 import RatingPrompt from './RatingPrompt.jsx';
+import {
+  Mic, Megaphone, PartyPopper, Download, AlertTriangle, Package, X, Bot,
+  Music, MessageSquare, Link2, CreditCard, Check,
+} from 'lucide-react';
 
 const ACCENT = '#f97316'; // orange — ads theme
 const ACCENT_BG = 'rgba(249,115,22,0.10)';
 const ACCENT_GLOW = 'rgba(249,115,22,0.35)';
 
 const VOICE_OPTIONS = [
-  { key: 'male_wise',       label: 'Wise Man',       emoji: '🧙', desc: 'Deep, authoritative' },
-  { key: 'male_young',      label: 'Young Man',       emoji: '🧑', desc: 'Energetic, modern' },
-  { key: 'male_american',   label: 'American Man',    emoji: '🇺🇸', desc: 'Clear, professional' },
-  { key: 'male_arabic',     label: 'Arabic Man',      emoji: '🇸🇦', desc: 'Native Arabic voice' },
-  { key: 'female_wise',     label: 'Wise Woman',      emoji: '👩‍🏫', desc: 'Calm, trustworthy' },
-  { key: 'female_young',    label: 'Young Woman',     emoji: '👩', desc: 'Warm, expressive' },
-  { key: 'female_american', label: 'American Woman',  emoji: '🇺🇸', desc: 'Clear, professional' },
-  { key: 'female_arabic',   label: 'Arabic Woman',    emoji: '🇸🇦', desc: 'Native Arabic voice' },
+  { key: 'male_wise',       label: 'Wise Man',       icon: Mic, desc: 'Deep, authoritative' },
+  { key: 'male_young',      label: 'Young Man',       icon: Mic, desc: 'Energetic, modern' },
+  { key: 'male_american',   label: 'American Man',    icon: Mic, desc: 'Clear, professional' },
+  { key: 'male_arabic',     label: 'Arabic Man',      icon: Mic, desc: 'Native Arabic voice' },
+  { key: 'female_wise',     label: 'Wise Woman',      icon: Mic, desc: 'Calm, trustworthy' },
+  { key: 'female_young',    label: 'Young Woman',     icon: Mic, desc: 'Warm, expressive' },
+  { key: 'female_american', label: 'American Woman',  icon: Mic, desc: 'Clear, professional' },
+  { key: 'female_arabic',   label: 'Arabic Woman',    icon: Mic, desc: 'Native Arabic voice' },
 ];
 
 const AD_LANGUAGES = [
-  { code: 'ar',   label: 'عربي', flag: '🇸🇦' },
-  { code: 'ar_eg',label: 'مصري', flag: '🇪🇬' },
-  { code: 'en',   label: 'English', flag: '🇺🇸' },
+  { code: 'ar',   label: 'عربي' },
+  { code: 'ar_eg',label: 'مصري' },
+  { code: 'en',   label: 'English' },
 ];
 
 const AD_RATIOS = ['16:9', '9:16'];
@@ -31,7 +35,7 @@ const STEP_LABELS = {
   voice:     { ar: 'جاري توليد الصوت...', en: 'Generating voiceover...' },
   animate:   { ar: 'جاري تحريك المشاهد...', en: 'Animating scenes...' },
   compose:   { ar: 'جاري تجميع الفيديو...', en: 'Composing final video...' },
-  done:      { ar: 'الإعلان جاهز! 🎉', en: 'Ad video ready! 🎉' },
+  done:      { ar: 'الإعلان جاهز!', en: 'Ad video ready!' },
   error:     { ar: 'حدث خطأ', en: 'Error occurred' },
 };
 
@@ -47,7 +51,7 @@ function Pill({ options, value, onChange }) {
               background: isActive ? ACCENT_BG : 'transparent',
               color: isActive ? ACCENT : 'rgba(255,255,255,0.45)',
             }}>
-            {opt.flag ? `${opt.flag} ${opt.label}` : opt}
+            {opt.label || opt}
           </span>
         );
       })}
@@ -200,10 +204,10 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
       const data = await res.json();
       if (!res.ok) {
         if (data.error === 'quota_exceeded') {
-          throw new Error(isAr ? `🪙 محتاج ${data.cost} كريدت ومعاك ${data.remaining} بس. اشحن رصيدك من صفحة الأسعار.` : `🪙 This video needs ${data.cost} credits, you have ${data.remaining}. Top up from Pricing.`);
+          throw new Error(isAr ? `محتاج ${data.cost} كريدت ومعاك ${data.remaining} بس. اشحن رصيدك من صفحة الأسعار.` : `This video needs ${data.cost} credits, you have ${data.remaining}. Top up from Pricing.`);
         }
         if (data.error === 'no_access' || data.error === 'under_maintenance') {
-          throw new Error(data.message || (isAr ? '🔒 محتاج خطة فعالة عشان تعمل الفيديو ده' : '🔒 You need an active plan for this video'));
+          throw new Error(data.message || (isAr ? 'محتاج خطة فعالة عشان تعمل الفيديو ده' : 'You need an active plan for this video'));
         }
         if (data.error === 'content_policy_violation') {
           throw new Error((localStorage.getItem('erivion_region') || 'eg') === 'eg' ? (data.message_ar || data.message) : data.message);
@@ -249,8 +253,8 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
       {/* Header */}
       <div style={{ width: '100%', maxWidth: 640, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32, animation: 'fadeUp 0.4s ease' }}>
         <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 13, padding: 0, fontFamily: "'DM Sans', sans-serif" }}>← {isAr ? 'رجوع' : 'Change model'}</button>
-        <div style={{ padding: '5px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: `${ACCENT_BG}`, border: `1px solid ${ACCENT}44`, color: ACCENT, fontFamily: "'DM Sans', sans-serif" }}>
-          📢 {isAr ? 'موديل الإعلانات' : 'Ads Model'}
+        <div style={{ padding: '5px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: `${ACCENT_BG}`, border: `1px solid ${ACCENT}44`, color: ACCENT, fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Megaphone size={13} strokeWidth={2} /> {isAr ? 'موديل الإعلانات' : 'Ads Model'}
         </div>
       </div>
 
@@ -258,8 +262,8 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
 
         {/* Title */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <h1 style={{ fontSize: 'clamp(24px,5vw,36px)', fontWeight: 900, color: '#fff', fontFamily: "'Bricolage Grotesque', sans-serif", letterSpacing: '-0.5px', marginBottom: 8 }}>
-            {isAr ? '🎬 أنشئ إعلانك الاحترافي' : '🎬 Create Your Pro Ad'}
+          <h1 style={{ fontSize: 'clamp(24px,5vw,36px)', fontWeight: 900, color: '#fff', fontFamily: "'Bricolage Grotesque', sans-serif", letterSpacing: '-0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <Megaphone size={30} strokeWidth={1.75} /> {isAr ? 'أنشئ إعلانك الاحترافي' : 'Create Your Pro Ad'}
           </h1>
           <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', fontFamily: "'DM Sans', sans-serif", lineHeight: 1.7 }}>
             {isAr
@@ -272,10 +276,10 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
         {videoUrl && (
           <Section style={{ border: `1px solid ${ACCENT}44`, background: `${ACCENT_BG}` }}>
             {showRating && <RatingPrompt modelUsed="Model 7 - Ads Creator" onClose={() => setShowRating(false)} lang={isAr ? 'ar' : 'en'} />}
-            <SectionLabel>{isAr ? 'إعلانك جاهز! 🎉' : 'Your Ad is Ready! 🎉'}</SectionLabel>
+            <SectionLabel><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PartyPopper size={13} strokeWidth={2} /> {isAr ? 'إعلانك جاهز!' : 'Your Ad is Ready!'}</span></SectionLabel>
             <video src={videoUrl} controls style={{ width: '100%', borderRadius: 12, maxHeight: 400, background: '#000' }} />
-            <a href={videoUrl} download style={{ display: 'block', marginTop: 14, padding: '12px', borderRadius: 12, background: ACCENT, color: '#fff', fontWeight: 700, fontSize: 14, textAlign: 'center', textDecoration: 'none', fontFamily: "'DM Sans', sans-serif", boxShadow: `0 4px 20px ${ACCENT_GLOW}` }}>
-              ⬇️ {isAr ? 'تحميل الإعلان' : 'Download Ad'}
+            <a href={videoUrl} download style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, padding: '12px', borderRadius: 12, background: ACCENT, color: '#fff', fontWeight: 700, fontSize: 14, textAlign: 'center', textDecoration: 'none', fontFamily: "'DM Sans', sans-serif", boxShadow: `0 4px 20px ${ACCENT_GLOW}` }}>
+              <Download size={15} strokeWidth={2} /> {isAr ? 'تحميل الإعلان' : 'Download Ad'}
             </a>
           </Section>
         )}
@@ -298,7 +302,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
                 return (
                   <React.Fragment key={step}>
                     <div className="progress-step" style={{ background: done ? ACCENT : active ? ACCENT_BG : 'rgba(255,255,255,0.06)', border: `2px solid ${done || active ? ACCENT : 'rgba(255,255,255,0.1)'}`, color: done || active ? (done ? '#fff' : ACCENT) : 'rgba(255,255,255,0.3)', animation: active ? 'pulse 1.5s ease-in-out infinite' : 'none' }}>
-                      {done ? '✓' : i + 1}
+                      {done ? <Check size={13} strokeWidth={2.5} /> : i + 1}
                     </div>
                     {i < 3 && <div style={{ flex: 1, height: 2, background: done ? ACCENT : 'rgba(255,255,255,0.07)', maxWidth: 40, borderRadius: 2, transition: 'background 0.3s' }} />}
                   </React.Fragment>
@@ -311,7 +315,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
         {/* ── ERROR ───────────────────────────────────────────────────────── */}
         {error && (
           <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', marginBottom: 16 }}>
-            <p style={{ fontSize: 13, color: '#f87171', margin: 0, fontFamily: "'DM Sans', sans-serif" }}>⚠️ {error}</p>
+            <p style={{ fontSize: 13, color: '#f87171', margin: 0, fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} strokeWidth={2} /> {error}</p>
           </div>
         )}
 
@@ -323,7 +327,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
 
               {/* Warning */}
               <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.25)', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+                <span style={{ flexShrink: 0, color: '#fdba74', display: 'flex' }}><AlertTriangle size={15} strokeWidth={2} /></span>
                 <p style={{ fontSize: 12, color: '#fdba74', margin: 0, lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}>
                   {isAr
                     ? 'لازم صورة المنتج تكون على خلفية بيضاء نظيفة عشان الذكاء الاصطناعي يقدر يعمل reference صح للمنتج في المشاهد المختلفة.'
@@ -335,11 +339,11 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
                 <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
                   <img src={productImagePreview} alt="product" style={{ width: '100%', maxHeight: 240, objectFit: 'contain', borderRadius: 12, background: '#fff', border: '1px solid rgba(255,255,255,0.08)' }} />
                   <button onClick={() => { setProductImage(null); setProductImagePreview(null); }}
-                    style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: '50%', width: 28, height: 28, color: '#fff', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                    style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: '50%', width: 28, height: 28, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} strokeWidth={2.5} /></button>
                 </div>
               ) : (
                 <div className="ads-drop" onClick={() => imageInputRef.current?.click()}>
-                  <div style={{ fontSize: 40, marginBottom: 10 }}>📦</div>
+                  <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: ACCENT }}><Package size={34} strokeWidth={1.5} /></div>
                   <p style={{ fontSize: 14, fontWeight: 600, color: ACCENT, margin: '0 0 4px', fontFamily: "'DM Sans', sans-serif" }}>{isAr ? 'اضغط لرفع صورة المنتج' : 'Click to upload product image'}</p>
                   <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', margin: 0, fontFamily: "'DM Sans', sans-serif" }}>JPEG, PNG, WebP — Max 20MB</p>
                 </div>
@@ -368,8 +372,8 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
 
               <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', opacity: audioMode === 'ai_voice' ? 1 : 0.4 }}>
                 <div>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: "'DM Sans', sans-serif" }}>
-                    {isAr ? '💬 إضافة كابشن' : '💬 Add captions'}
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <MessageSquare size={14} strokeWidth={1.75} /> {isAr ? 'إضافة كابشن' : 'Add captions'}
                   </p>
                   <p style={{ margin: 0, fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: "'DM Sans', sans-serif", marginTop: 3 }}>
                     {audioMode === 'ai_voice'
@@ -384,8 +388,8 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 8, display: 'block', fontFamily: "'DM Sans', sans-serif" }}>
-                  {isAr ? '🔗 لينك المنتج (اختياري)' : '🔗 Product link (optional)'}
+                <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'DM Sans', sans-serif" }}>
+                  <Link2 size={12} strokeWidth={2} /> {isAr ? 'لينك المنتج (اختياري)' : 'Product link (optional)'}
                 </label>
                 <input className="ads-input" value={productLink} onChange={e => setProductLink(e.target.value)}
                   placeholder={isAr ? 'مثال: yourstore.com/product' : 'e.g. yourstore.com/product'} />
@@ -400,13 +404,13 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
               <SectionLabel>{isAr ? 'الصوت' : 'Audio'}</SectionLabel>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                 {[
-                  { key: 'ai_voice', icon: '🤖', label: isAr ? 'صوت AI تلقائي' : 'AI Voiceover', desc: isAr ? 'الذكاء الاصطناعي يكتب ويقرأ السكريبت' : 'AI writes and reads the ad script' },
-                  { key: 'upload',   icon: '🎙️', label: isAr ? 'ارفع صوتك' : 'Upload Your Voice', desc: isAr ? 'ارفع ملف صوتي MP3/WAV' : 'Upload MP3/WAV audio file' },
-                  { key: 'none',     icon: '🎵', label: isAr ? 'بدون فويس أوفر' : 'No Voiceover', desc: isAr ? 'فيديو بمؤثرات صوتية طبيعية بس' : 'Video with natural ambient sounds only' },
+                  { key: 'ai_voice', icon: Bot, label: isAr ? 'صوت AI تلقائي' : 'AI Voiceover', desc: isAr ? 'الذكاء الاصطناعي يكتب ويقرأ السكريبت' : 'AI writes and reads the ad script' },
+                  { key: 'upload',   icon: Mic, label: isAr ? 'ارفع صوتك' : 'Upload Your Voice', desc: isAr ? 'ارفع ملف صوتي MP3/WAV' : 'Upload MP3/WAV audio file' },
+                  { key: 'none',     icon: Music, label: isAr ? 'بدون فويس أوفر' : 'No Voiceover', desc: isAr ? 'فيديو بمؤثرات صوتية طبيعية بس' : 'Video with natural ambient sounds only' },
                 ].map(opt => (
                   <div key={opt.key} onClick={() => setAudioMode(opt.key)}
                     style={{ padding: '14px 16px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${audioMode === opt.key ? ACCENT : 'rgba(255,255,255,0.07)'}`, background: audioMode === opt.key ? ACCENT_BG : 'rgba(255,255,255,0.015)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 22 }}>{opt.icon}</span>
+                    <opt.icon size={20} strokeWidth={1.75} color={audioMode === opt.key ? ACCENT : '#9ca3af'} />
                     <div>
                       <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: audioMode === opt.key ? ACCENT : '#fff', fontFamily: "'DM Sans', sans-serif" }}>{opt.label}</p>
                       <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.35)', fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{opt.desc}</p>
@@ -422,7 +426,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
                     {VOICE_OPTIONS.map(v => (
                       <div key={v.key} className={`voice-card${aiVoiceKey === v.key ? ' active' : ''}`} onClick={() => setAiVoiceKey(v.key)}>
-                        <div style={{ fontSize: 20, marginBottom: 4 }}>{v.emoji}</div>
+                        <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center', color: aiVoiceKey === v.key ? ACCENT : '#9ca3af' }}><v.icon size={17} strokeWidth={1.75} /></div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: aiVoiceKey === v.key ? ACCENT : '#fff', fontFamily: "'DM Sans', sans-serif" }}>{v.label}</div>
                         <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: "'DM Sans', sans-serif", marginTop: 2 }}>{v.desc}</div>
                       </div>
@@ -437,12 +441,12 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
                   <SectionLabel>{isAr ? 'ارفع ملف الصوت' : 'Upload Audio File'}</SectionLabel>
                   {uploadedAudioName ? (
                     <div style={{ padding: '12px 16px', borderRadius: 12, background: ACCENT_BG, border: `1px solid ${ACCENT}44`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 13, color: ACCENT, fontFamily: "'DM Sans', sans-serif" }}>🎵 {uploadedAudioName}</span>
-                      <button onClick={() => { setUploadedAudio(null); setUploadedAudioName(''); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                      <span style={{ fontSize: 13, color: ACCENT, fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}><Music size={14} strokeWidth={1.75} /> {uploadedAudioName}</span>
+                      <button onClick={() => { setUploadedAudio(null); setUploadedAudioName(''); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex' }}><X size={15} strokeWidth={2} /></button>
                     </div>
                   ) : (
                     <div className="ads-drop" onClick={() => audioInputRef.current?.click()}>
-                      <div style={{ fontSize: 36, marginBottom: 8 }}>🎙️</div>
+                      <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center', color: ACCENT }}><Mic size={30} strokeWidth={1.5} /></div>
                       <p style={{ fontSize: 13, fontWeight: 600, color: ACCENT, margin: '0 0 4px', fontFamily: "'DM Sans', sans-serif" }}>{isAr ? 'اضغط لرفع الصوت' : 'Click to upload audio'}</p>
                       <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', margin: 0, fontFamily: "'DM Sans', sans-serif" }}>MP3, WAV, M4A — Max 50MB</p>
                     </div>
@@ -483,8 +487,8 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
 
             {/* ── Cost info ─────────────────────────────────────────────── */}
             <div style={{ padding: '12px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', fontFamily: "'DM Sans', sans-serif" }}>
-                {isAr ? `💳 رصيدك: ${(credits?.credits_balance ?? credits ?? 0).toLocaleString()} كريدت` : `💳 Credits: ${(credits?.credits_balance ?? credits ?? 0).toLocaleString()}`}
+              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}>
+                <CreditCard size={14} strokeWidth={1.75} /> {isAr ? `رصيدك: ${(credits?.credits_balance ?? credits ?? 0).toLocaleString()} كريدت` : `Credits: ${(credits?.credits_balance ?? credits ?? 0).toLocaleString()}`}
               </span>
               <span style={{ fontSize: 13, fontWeight: 700, color: ACCENT, fontFamily: "'DM Sans', sans-serif" }}>
                 {(() => {
@@ -499,7 +503,7 @@ export default function ModelAdsPage({ onBack, userLanguage = 'ar', credits = 0 
             <button onClick={handleSubmit} disabled={!canSubmit}
               style={{ width: '100%', padding: '16px', borderRadius: 14, border: 'none', fontWeight: 800, fontSize: 16, cursor: canSubmit ? 'pointer' : 'not-allowed', color: '#fff', fontFamily: "'DM Sans', sans-serif", transition: 'all 0.3s cubic-bezier(0.16,1,0.3,1)', background: canSubmit ? `linear-gradient(135deg, ${ACCENT}, #ea580c)` : 'rgba(255,255,255,0.07)', opacity: canSubmit ? 1 : 0.5, boxShadow: canSubmit ? `0 6px 28px ${ACCENT_GLOW}` : 'none' }}>
               {canSubmit
-                ? (isAr ? '📢 أنشئ الإعلان ← 10 كريدت' : '📢 Generate Ad ← 10 Credits')
+                ? (isAr ? 'أنشئ الإعلان ← 10 كريدت' : 'Generate Ad ← 10 Credits')
                 : (isAr ? 'ارفع صورة المنتج واكتب الاسم والوصف' : 'Upload image, name, and description')}
             </button>
             <p style={{ textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.18)', marginTop: 12, fontFamily: "'DM Sans', sans-serif" }}>

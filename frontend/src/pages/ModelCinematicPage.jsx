@@ -1,13 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import RatingPrompt from './RatingPrompt.jsx';
+import {
+  Clapperboard, Camera, Wand2, Palette, Gamepad2, Zap, PartyPopper, Download,
+  RefreshCw, Drama, Lock, Gem, Compass, Lightbulb, PenLine, ImageIcon, Check,
+  X, Proportions, Coins,
+} from 'lucide-react';
 
 const VIDEO_STYLES = [
-  { key:'cinematic',  label:'Cinematic',  emoji:'🎬', desc:'Dramatic · Film-like',   suffix:'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading' },
-  { key:'realistic',  label:'Realistic',  emoji:'📸', desc:'Real · Photographic',    suffix:'photorealistic, natural lighting, high detail, documentary style, authentic' },
-  { key:'anime',      label:'Anime',      emoji:'🌸', desc:'Japanese · Illustrated', suffix:'anime style, vibrant colors, detailed illustration, studio ghibli inspired, cel shading' },
-  { key:'cartoon',    label:'Cartoon',    emoji:'🎨', desc:'Animated · Colorful',    suffix:'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired' },
-  { key:'3d_cartoon', label:'3D Cartoon', emoji:'✨', desc:'3D · Rendered',          suffix:'3D rendered, cartoon style, smooth surfaces, colorful, pixar style 3D animation' },
-  { key:'action',     label:'Action',     emoji:'⚡', desc:'Dynamic · Epic',         suffix:'action scene, dynamic motion blur, explosive energy, dramatic angles, high contrast' },
+  { key:'cinematic',  label:'Cinematic',  icon:Clapperboard, desc:'Dramatic · Film-like',   suffix:'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading' },
+  { key:'realistic',  label:'Realistic',  icon:Camera,       desc:'Real · Photographic',    suffix:'photorealistic, natural lighting, high detail, documentary style, authentic' },
+  { key:'anime',      label:'Anime',      icon:Wand2,        desc:'Japanese · Illustrated', suffix:'anime style, vibrant colors, detailed illustration, studio ghibli inspired, cel shading' },
+  { key:'cartoon',    label:'Cartoon',    icon:Palette,      desc:'Animated · Colorful',    suffix:'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired' },
+  { key:'3d_cartoon', label:'3D Cartoon', icon:Gamepad2,     desc:'3D · Rendered',          suffix:'3D rendered, cartoon style, smooth surfaces, colorful, pixar style 3D animation' },
+  { key:'action',     label:'Action',     icon:Zap,          desc:'Dynamic · Epic',         suffix:'action scene, dynamic motion blur, explosive energy, dramatic angles, high contrast' },
 ];
 
 function authHeaders() {
@@ -27,7 +32,7 @@ function SceneCard({ scene, index, onChange }) {
       </div>
       {scene.text && <p style={{ fontSize:13, color:'#9ca3af', margin:'0 0 10px', lineHeight:1.5, fontStyle:'italic' }}>"{scene.text}"</p>}
       <div style={{ background:'rgba(0,0,0,0.3)', borderRadius:8, padding:'10px 12px', display:'flex', gap:8, alignItems:'flex-start' }}>
-        <span style={{ fontSize:11, color:'#374151', flexShrink:0, marginTop:2 }}>🎬</span>
+        <span style={{ color:'#374151', flexShrink:0, marginTop:2, display:'flex' }}><Clapperboard size={13} strokeWidth={2} /></span>
         {editing ? (
           <textarea value={local} onChange={e=>setLocal(e.target.value)} onBlur={save} autoFocus rows={3} style={{ flex:1, padding:'6px 8px', borderRadius:6, border:'1px solid rgba(225,29,72,0.3)', background:'rgba(225,29,72,0.05)', color:'#9ca3af', fontSize:11, fontFamily:'monospace', lineHeight:1.5, resize:'none', outline:'none' }} />
         ) : (
@@ -149,11 +154,11 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
           const COST = { '5s':60, '10s':120, '15s':180, '30s':360, '1min':720 };
           const need = data.cost || COST[duration] || 15;
           const have = data.remaining ?? 0;
-          setError(`🪙 This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
+          setError(`This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
           setLoading(false); return;
         }
         if (data.show_upgrade||data.error==='no_access') {
-          setError('🔒 You need an active plan to generate this video. Go to Pricing to subscribe.');
+          setError('You need an active plan to generate this video. Go to Pricing to subscribe.');
           setLoading(false); return;
         }
         throw new Error(data.message||data.error||'Render failed');
@@ -176,18 +181,18 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
       {showRating && <RatingPrompt modelUsed="Model 5 - Cinematic" onClose={()=>setShowRating(false)} />}
       <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}} @keyframes pop{0%{transform:scale(0.8);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
       <div style={{ maxWidth:600, width:'100%', textAlign:'center', animation:'fadeUp 0.5s ease' }}>
-        <div style={{ fontSize:60, marginBottom:14, animation:'pop 0.5s ease' }}>🎬</div>
+        <div style={{ marginBottom:14, display:'flex', justifyContent:'center', color:'#e11d48', animation:'pop 0.5s ease' }}><PartyPopper size={48} strokeWidth={1.5} /></div>
         <h2 style={{ fontSize:30, fontWeight:900, color:'#fff', marginBottom:6, letterSpacing:'-0.5px' }}>Cinematic Video Ready!</h2>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:20 }}>
-          <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.25)', fontSize:12, color:'#fb7185', fontWeight:700 }}>{selectedStyle?.emoji} {selectedStyle?.label}</span>
+          <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.25)', fontSize:12, color:'#fb7185', fontWeight:700, display:'flex', alignItems:'center', gap:5 }}>{selectedStyle && <selectedStyle.icon size={12} strokeWidth={2} />} {selectedStyle?.label}</span>
           <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', fontSize:12, color:'rgba(255,255,255,0.5)', fontWeight:600 }}>{duration} · {sceneCount} scenes</span>
         </div>
         <div style={{ borderRadius:20, overflow:'hidden', border:'1px solid rgba(225,29,72,0.2)', marginBottom:20, background:'#000', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
           <video src={videoUrl} controls style={{ width:'100%', maxHeight:420, display:'block' }} />
         </div>
         <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-          <a href={videoUrl} download style={{ background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', padding:'13px 28px', borderRadius:12, fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(225,29,72,0.4)' }}>⬇️ Download</a>
-          <button onClick={()=>{ setStep('input'); setScenes([]); setVideoUrl(null); setIdea(''); setRawPrompt(''); }} style={{ background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.1)', padding:'13px 28px', borderRadius:12, fontWeight:600, fontSize:14, cursor:'pointer' }}>🔄 New Video</button>
+          <a href={videoUrl} download style={{ background:'linear-gradient(135deg,#e11d48,#9f1239)', color:'#fff', padding:'13px 28px', borderRadius:12, fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(225,29,72,0.4)', display:'flex', alignItems:'center', gap:8 }}><Download size={15} strokeWidth={2} /> Download</a>
+          <button onClick={()=>{ setStep('input'); setScenes([]); setVideoUrl(null); setIdea(''); setRawPrompt(''); }} style={{ background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.1)', padding:'13px 28px', borderRadius:12, fontWeight:600, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}><RefreshCw size={14} strokeWidth={2} /> New Video</button>
         </div>
       </div>
     </div>
@@ -203,16 +208,16 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
             <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'2px solid rgba(225,29,72,0.1)' }} />
             <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'#e11d48', animation:'spin 0.9s linear infinite' }} />
             <div style={{ position:'absolute', inset:8, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'rgba(225,29,72,0.4)', animation:'spin 1.5s linear infinite reverse' }} />
-            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:30 }}>🎭</div>
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', color:'#e11d48' }}><Drama size={28} strokeWidth={1.75} /></div>
           </div>
           <h2 style={{ fontSize:26, fontWeight:900, color:'#fff', marginBottom:8, letterSpacing:'-0.5px' }}>Creating Cinematic Video</h2>
-          <p style={{ color:'rgba(255,255,255,0.35)', fontSize:14, marginBottom:6 }}>Seedance AI — {sceneCount} scenes · {selectedStyle?.emoji} {selectedStyle?.label}</p>
+          <p style={{ color:'rgba(255,255,255,0.35)', fontSize:14, marginBottom:6, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>Seedance AI — {sceneCount} scenes · {selectedStyle && <selectedStyle.icon size={13} strokeWidth={2} />} {selectedStyle?.label}</p>
           <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 16px', borderRadius:999, background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.25)', marginBottom:24 }}>
             <div style={{ width:6, height:6, borderRadius:'50%', background:'#e11d48', animation:'pulse 1s ease infinite' }} />
             <span style={{ color:'#fb7185', fontSize:13, fontWeight:700, fontFamily:'monospace' }}>{mins>0?`${mins}m `:''}{secs}s</span>
           </div>
           <div style={{ background:'rgba(225,29,72,0.05)', border:'1px solid rgba(225,29,72,0.15)', borderRadius:14, padding:'14px 20px', fontSize:13, color:'rgba(255,255,255,0.3)', lineHeight:1.8 }}>
-            <div>⏱ ~60 seconds per scene</div>
+            <div>~60 seconds per scene</div>
             <div>Character consistency across all {sceneCount} clips</div>
           </div>
           <p style={{ fontSize:12, color:'rgba(255,255,255,0.15)', marginTop:18, animation:'pulse 2s ease infinite' }}>Do not close this tab</p>
@@ -228,7 +233,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:28 }}>
           <button onClick={()=>setStep('input')} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, padding:'8px 14px' }}>← Back</button>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <span style={{ background:'rgba(225,29,72,0.1)', color:'#fb7185', borderRadius:999, padding:'5px 14px', fontSize:11, fontWeight:700, border:'1px solid rgba(225,29,72,0.25)' }}>{scenes.length} scenes · {selectedStyle?.emoji} {selectedStyle?.label}</span>
+            <span style={{ background:'rgba(225,29,72,0.1)', color:'#fb7185', borderRadius:999, padding:'5px 14px', fontSize:11, fontWeight:700, border:'1px solid rgba(225,29,72,0.25)', display:'flex', alignItems:'center', gap:5 }}>{scenes.length} scenes · {selectedStyle && <selectedStyle.icon size={12} strokeWidth={2} />} {selectedStyle?.label}</span>
           </div>
         </div>
         <div style={{ marginBottom:20 }}>
@@ -247,7 +252,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
           </div>
         )}
         <button onClick={handleRender} disabled={loading} style={{ width:'100%', background:loading?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:loading?'#4b5563':'#fff', border:'none', borderRadius:14, padding:'16px', fontWeight:800, fontSize:16, cursor:loading?'not-allowed':'pointer', boxShadow:!loading?'0 6px 24px rgba(225,29,72,0.4)':'none', transition:'all 0.2s' }}>
-          {loading?'⏳ Starting...':'🎬 Generate Cinematic Video →'}
+          {loading?'Starting...':'Generate Cinematic Video →'}
         </button>
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:10 }}>Seedance v1 Pro · Character consistency · No voiceover</p>
       </div>
@@ -282,7 +287,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
             {usage?.access && <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ fontSize:11, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.08)', border:'1px solid rgba(225,29,72,0.25)', borderRadius:8, padding:'6px 14px', cursor:'pointer' }}>+ Get More Videos</button>}
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-            <div style={{ width:56, height:56, borderRadius:18, background:'linear-gradient(135deg,#e11d48,#9f1239)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0, boxShadow:'0 8px 32px rgba(225,29,72,0.5)' }}>🎭</div>
+            <div style={{ width:56, height:56, borderRadius:18, background:'linear-gradient(135deg,#e11d48,#9f1239)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', flexShrink:0, boxShadow:'0 8px 32px rgba(225,29,72,0.5)' }}><Drama size={26} strokeWidth={1.75} /></div>
             <div>
               <div style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'3px 12px', borderRadius:999, background:'rgba(225,29,72,0.15)', border:'1px solid rgba(225,29,72,0.3)', marginBottom:8 }}>
                 <span style={{ width:5, height:5, borderRadius:'50%', background:'#e11d48', animation:'pulse 2s ease infinite' }} />
@@ -297,7 +302,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
 
           {usage?.access && usage.credits_balance != null && (
             <div style={{ marginTop:16, background:'rgba(0,0,0,0.3)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:12, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span style={{ fontSize:12, color:'#9ca3af' }}>💎 Credits balance: <strong style={{ color:'#fb7185' }}>{usage.credits_balance.toLocaleString()}</strong></span>
+              <span style={{ fontSize:12, color:'#9ca3af', display:'flex', alignItems:'center', gap:6 }}><Gem size={13} strokeWidth={2} /> Credits balance: <strong style={{ color:'#fb7185' }}>{usage.credits_balance.toLocaleString()}</strong></span>
               <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ fontSize:11, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.1)', border:'1px solid rgba(225,29,72,0.3)', borderRadius:8, padding:'5px 12px', cursor:'pointer' }}>+ Top Up</button>
             </div>
           )}
@@ -309,25 +314,25 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         {/* Pricing → dedicated Pricing page */}
         <div style={{ marginBottom:24 }}>
           <button onClick={()=>(onNavigate && onNavigate('pricing'))} style={{ width:'100%', background:'rgba(225,29,72,0.06)', border:'1px solid rgba(225,29,72,0.2)', borderRadius:14, padding:'14px 20px', color:'#fb7185', fontWeight:700, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span>💎 View Plans & Pricing</span>
+            <span style={{ display:'flex', alignItems:'center', gap:8 }}><Gem size={14} strokeWidth={2} /> View Plans & Pricing</span>
             <span>→</span>
           </button>
         </div>
 
         {/* Mode toggle: Idea to Video vs Prompt to Video */}
         <div style={{ marginBottom:22 }}>
-          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>🧭 Generation Mode</label>
+          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}><Compass size={13} strokeWidth={2} /> Generation Mode</label>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
             <div onClick={()=>switchMode('idea')} style={{ borderRadius:12, padding:'14px 12px', textAlign:'center', cursor:'pointer', border:`2px solid ${genMode==='idea'?'#e11d48':'rgba(255,255,255,0.07)'}`, background:genMode==='idea'?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)' }}>
-              <div style={{ fontSize:13, fontWeight:800, color:genMode==='idea'?'#fb7185':'#fff', marginBottom:3 }}>💡 Idea to Video</div>
+              <div style={{ fontSize:13, fontWeight:800, color:genMode==='idea'?'#fb7185':'#fff', marginBottom:3, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><Lightbulb size={14} strokeWidth={2} /> Idea to Video</div>
               <div style={{ fontSize:10.5, color:'#4b5563' }}>Describe a topic — AI writes the scene prompts</div>
             </div>
             <div onClick={()=>switchMode('prompt')} style={{ borderRadius:12, padding:'14px 12px', textAlign:'center', cursor:'pointer', border:`2px solid ${genMode==='prompt'?'#e11d48':'rgba(255,255,255,0.07)'}`, background:genMode==='prompt'?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)' }}>
-              <div style={{ fontSize:13, fontWeight:800, color:genMode==='prompt'?'#fb7185':'#fff', marginBottom:3 }}>✍️ Prompt to Video</div>
+              <div style={{ fontSize:13, fontWeight:800, color:genMode==='prompt'?'#fb7185':'#fff', marginBottom:3, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><PenLine size={14} strokeWidth={2} /> Prompt to Video</div>
               <div style={{ fontSize:10.5, color:'#4b5563' }}>Write the exact prompt yourself — renders as one 5-15s scene</div>
             </div>
             <div onClick={()=>switchMode('image')} style={{ borderRadius:12, padding:'14px 12px', textAlign:'center', cursor:'pointer', border:`2px solid ${genMode==='image'?'#e11d48':'rgba(255,255,255,0.07)'}`, background:genMode==='image'?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)' }}>
-              <div style={{ fontSize:13, fontWeight:800, color:genMode==='image'?'#fb7185':'#fff', marginBottom:3 }}>🖼️ Image to Video</div>
+              <div style={{ fontSize:13, fontWeight:800, color:genMode==='image'?'#fb7185':'#fff', marginBottom:3, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><ImageIcon size={14} strokeWidth={2} /> Image to Video</div>
               <div style={{ fontSize:10.5, color:'#4b5563' }}>Upload a photo — it comes to life directly, no prompt needed</div>
             </div>
           </div>
@@ -336,21 +341,21 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         {/* Image to Video: single photo upload, no idea/prompt needed */}
         {genMode === 'image' && (
           <div style={{ marginBottom:22 }}>
-            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>🖼️ Photo to Animate</label>
+            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}><ImageIcon size={13} strokeWidth={2} /> Photo to Animate</label>
             <p style={{ fontSize:12, color:'#4b5563', marginBottom:12 }}>Upload any photo — it'll be locked as the video's first frame and animated forward with natural, subtle motion. No prompt or description needed.</p>
             <label style={{ cursor:'pointer', display:'block' }}>
               <div style={{ width:'100%', minHeight:180, borderRadius:16, border:`2px dashed ${characters[0]?.photo ? '#22c55e' : 'rgba(225,29,72,0.3)'}`, background: characters[0]?.photo ? 'none' : 'rgba(225,29,72,0.04)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
                 {characters[0]?.photoPreview
                   ? <img src={characters[0].photoPreview} alt="to animate" style={{ width:'100%', maxHeight:320, objectFit:'contain', borderRadius:14 }} />
-                  : <div style={{ textAlign:'center' }}><div style={{ fontSize:32 }}>📷</div><div style={{ fontSize:12, color:'#6b7280', marginTop:8 }}>Tap to upload photo</div></div>
+                  : <div style={{ textAlign:'center' }}><div style={{ display:'flex', justifyContent:'center', color:'#6b7280' }}><Camera size={28} strokeWidth={1.5} /></div><div style={{ fontSize:12, color:'#6b7280', marginTop:8 }}>Tap to upload photo</div></div>
                 }
               </div>
               <input type="file" accept="image/*" onChange={e=>updateCharacterPhoto(characters[0].id, e.target.files[0])} style={{ display:'none' }} />
             </label>
-            {characters[0]?.photo && <div style={{ marginTop:8, fontSize:12, color:'#22c55e', fontWeight:600 }}>✓ Photo ready — will be animated as-is</div>}
+            {characters[0]?.photo && <div style={{ marginTop:8, fontSize:12, color:'#22c55e', fontWeight:600, display:'flex', alignItems:'center', gap:5 }}><Check size={13} strokeWidth={2.5} /> Photo ready — will be animated as-is</div>}
 
             <div style={{ marginTop:18 }}>
-              <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8, display:'block' }}>✍️ Motion Description <span style={{ color:'#374151', fontWeight:400, textTransform:'none', letterSpacing:0 }}>(Optional)</span></label>
+              <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}><PenLine size={13} strokeWidth={2} /> Motion Description <span style={{ color:'#374151', fontWeight:400, textTransform:'none', letterSpacing:0 }}>(Optional)</span></label>
               <p style={{ fontSize:11.5, color:'#4b5563', marginBottom:8 }}>Leave empty for natural, subtle motion — or describe exactly what should happen (e.g. "the character waves and smiles").</p>
               <textarea value={rawPrompt} onChange={e=>setRawPrompt(e.target.value)} className="char-input"
                 placeholder="e.g. the character turns their head and waves at the camera..." rows={2}
@@ -362,21 +367,21 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         {/* Idea or Prompt */}
         {genMode === 'image' ? null : genMode === 'idea' ? (
           <div style={{ marginBottom:22 }}>
-            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>🎬 Video Idea / Story</label>
+            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}><Clapperboard size={13} strokeWidth={2} /> Video Idea / Story</label>
             <textarea value={idea} onChange={e=>setIdea(e.target.value)} className="char-input"
               placeholder="A lone samurai walks through a misty bamboo forest at dawn, searching for his lost honor..." rows={4}
               style={{ width:'100%', padding:'14px 16px', borderRadius:14, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:14, resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.7, transition:'all 0.2s' }} />
             <p style={{ fontSize:11, color:'#374151', marginTop:6 }}>{idea.length} characters</p>
             {isStickmanRequest && (
               <div style={{ marginTop:14, padding:14, borderRadius:12, background:'rgba(225,29,72,0.05)', border:'1px solid rgba(225,29,72,0.15)' }}>
-                <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, display:'block' }}>🖍️ Stickman Style</label>
+                <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}><PenLine size={12} strokeWidth={2} /> Stickman Style</label>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
                   <div onClick={()=>setStickmanStyle('bw')} style={{ padding:'10px', borderRadius:10, textAlign:'center', cursor:'pointer', border:`2px solid ${stickmanStyle==='bw'?'#e11d48':'rgba(255,255,255,0.08)'}`, background:stickmanStyle==='bw'?'rgba(225,29,72,0.1)':'transparent' }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:stickmanStyle==='bw'?'#fb7185':'#fff' }}>⚫⚪ Classic B&W</div>
+                    <div style={{ fontSize:12, fontWeight:700, color:stickmanStyle==='bw'?'#fb7185':'#fff' }}>Classic B&W</div>
                     <div style={{ fontSize:10, color:'#4b5563', marginTop:2 }}>Black lines, plain background</div>
                   </div>
                   <div onClick={()=>setStickmanStyle('2d')} style={{ padding:'10px', borderRadius:10, textAlign:'center', cursor:'pointer', border:`2px solid ${stickmanStyle==='2d'?'#e11d48':'rgba(255,255,255,0.08)'}`, background:stickmanStyle==='2d'?'rgba(225,29,72,0.1)':'transparent' }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:stickmanStyle==='2d'?'#fb7185':'#fff' }}>🎨 Full-Color 2D</div>
+                    <div style={{ fontSize:12, fontWeight:700, color:stickmanStyle==='2d'?'#fb7185':'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}><Palette size={12} strokeWidth={2} /> Full-Color 2D</div>
                     <div style={{ fontSize:10, color:'#4b5563', marginTop:2 }}>Colored flat cartoon style</div>
                   </div>
                 </div>
@@ -385,7 +390,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
           </div>
         ) : (
           <div style={{ marginBottom:22 }}>
-            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>✍️ Exact Video Prompt</label>
+            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}><PenLine size={13} strokeWidth={2} /> Exact Video Prompt</label>
             <p style={{ fontSize:12, color:'#4b5563', marginBottom:10 }}>Write the precise visual/motion description yourself — we'll only lightly polish grammar, never change your meaning.</p>
             <textarea value={rawPrompt} onChange={e=>setRawPrompt(e.target.value)} className="char-input"
               placeholder="[Image1] is the first frame. A red sports car parked on a cliff road at golden hour, camera slowly pulls back revealing the ocean below, cinematic lighting, gentle wind moving through nearby grass..." rows={4}
@@ -398,11 +403,11 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         {genMode !== 'image' && (
         <div style={{ marginBottom:22 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em' }}>🎭 Characters <span style={{ color:'#374151', fontWeight:400, textTransform:'none', letterSpacing:0 }}>(Optional · Max 5)</span></label>
+            <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', display:'flex', alignItems:'center', gap:6 }}><Drama size={13} strokeWidth={2} /> Characters <span style={{ color:'#374151', fontWeight:400, textTransform:'none', letterSpacing:0 }}>(Optional · Max 5)</span></label>
             {characters.length<5 && <button onClick={addCharacter} style={{ fontSize:12, fontWeight:700, color:'#e11d48', background:'rgba(225,29,72,0.08)', border:'1px solid rgba(225,29,72,0.25)', borderRadius:8, padding:'5px 12px', cursor:'pointer' }}>+ Add Character</button>}
           </div>
-          <p style={{ fontSize:12, color:'#4b5563', marginBottom:12 }}>
-            📸 <strong style={{ color:'#fb7185' }}>New:</strong> Upload a photo of each character — AI will keep their face/look consistent in every scene using image reference (FLUX Kontext).
+          <p style={{ fontSize:12, color:'#4b5563', marginBottom:12, display:'flex', alignItems:'flex-start', gap:6 }}>
+            <Camera size={13} strokeWidth={2} style={{ flexShrink:0, marginTop:1 }} /> <span><strong style={{ color:'#fb7185' }}>New:</strong> Upload a photo of each character — AI will keep their face/look consistent in every scene using image reference (FLUX Kontext).</span>
           </p>
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {characters.map((char,i) => (
@@ -410,7 +415,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
                 <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
                   <div style={{ flexShrink:0, width:26, height:26, borderRadius:8, background:'linear-gradient(135deg,rgba(225,29,72,0.2),rgba(159,18,57,0.2))', border:'1px solid rgba(225,29,72,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'#fb7185' }}>{i+1}</div>
                   <span style={{ fontSize:12, fontWeight:700, color:'#fb7185' }}>Character {i+1}</span>
-                  {characters.length>1 && <button onClick={()=>removeCharacter(char.id)} style={{ marginLeft:'auto', background:'none', border:'none', color:'#374151', cursor:'pointer', fontSize:16 }}>✕</button>}
+                  {characters.length>1 && <button onClick={()=>removeCharacter(char.id)} style={{ marginLeft:'auto', background:'none', border:'none', color:'#374151', cursor:'pointer', display:'flex' }}><X size={15} strokeWidth={2} /></button>}
                 </div>
                 <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
                   {/* Photo upload */}
@@ -418,7 +423,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
                     <div style={{ width:64, height:64, borderRadius:12, border:`2px dashed ${char.photo ? '#22c55e' : 'rgba(225,29,72,0.3)'}`, background: char.photo ? 'none' : 'rgba(225,29,72,0.04)', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', position:'relative' }}>
                       {char.photoPreview
                         ? <img src={char.photoPreview} alt="ref" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:10 }} />
-                        : <div style={{ textAlign:'center' }}><div style={{ fontSize:20 }}>📷</div><div style={{ fontSize:9, color:'#6b7280', marginTop:2 }}>Photo</div></div>
+                        : <div style={{ textAlign:'center' }}><div style={{ display:'flex', justifyContent:'center', color:'#6b7280' }}><Camera size={16} strokeWidth={1.5} /></div><div style={{ fontSize:9, color:'#6b7280', marginTop:2 }}>Photo</div></div>
                       }
                     </div>
                     <input type="file" accept="image/*" onChange={e=>updateCharacterPhoto(char.id, e.target.files[0])} style={{ display:'none' }} />
@@ -428,7 +433,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
                     placeholder={`Describe Character ${i+1} (or upload photo above):\ne.g. "A tall warrior with dark hair, silver armor, serious expression"`}
                     rows={3} style={{ flex:1, padding:'10px 12px', borderRadius:12, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', color:'#fff', fontSize:13, resize:'none', fontFamily:'inherit', boxSizing:'border-box', transition:'all 0.2s' }} />
                 </div>
-                {char.photo && <div style={{ marginTop:6, fontSize:11, color:'#22c55e', fontWeight:600 }}>✓ Photo uploaded — AI will reference this face in every scene</div>}
+                {char.photo && <div style={{ marginTop:6, fontSize:11, color:'#22c55e', fontWeight:600, display:'flex', alignItems:'center', gap:5 }}><Check size={12} strokeWidth={2.5} /> Photo uploaded — AI will reference this face in every scene</div>}
               </div>
             ))}
           </div>
@@ -438,12 +443,12 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
         {/* Video Style */}
         {genMode !== 'image' && (
         <div style={{ marginBottom:22 }}>
-          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>🎨 Video Style</label>
+          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}><Palette size={13} strokeWidth={2} /> Video Style</label>
           <div className="mc-style-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
             {VIDEO_STYLES.map(s => (
               <div key={s.key} onClick={()=>setVideoStyle(s.key)} className="style-card"
                 style={{ padding:'14px 10px', borderRadius:12, cursor:'pointer', textAlign:'center', border:`1px solid ${videoStyle===s.key?'rgba(225,29,72,0.6)':'rgba(255,255,255,0.07)'}`, background:videoStyle===s.key?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', transition:'all 0.15s', boxShadow:videoStyle===s.key?'0 0 16px rgba(225,29,72,0.2)':'none' }}>
-                <div style={{ fontSize:22, marginBottom:6 }}>{s.emoji}</div>
+                <div style={{ marginBottom:6, display:'flex', justifyContent:'center', color: videoStyle===s.key?'#fb7185':'#9ca3af' }}><s.icon size={20} strokeWidth={1.75} /></div>
                 <div style={{ fontSize:12, fontWeight:700, color:videoStyle===s.key?'#fb7185':'#fff', marginBottom:3 }}>{s.label}</div>
                 <div style={{ fontSize:10, color:'#4b5563', lineHeight:1.3 }}>{s.desc}</div>
               </div>
@@ -454,7 +459,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
 
         {/* Duration */}
         <div style={{ marginBottom:22 }}>
-          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'block' }}>⏱ Duration</label>
+          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>Duration</label>
           <div className="mc-dur-grid" style={{ display:'grid', gridTemplateColumns: (genMode==='prompt'||genMode==='image') ? '1fr 1fr 1fr' : '1fr 1fr', gap:12 }}>
             {((genMode==='prompt'||genMode==='image')
               ? [{value:'5s',label:'5 Seconds',scenes:1},{value:'10s',label:'10 Seconds',scenes:1},{value:'15s',label:'15 Seconds',scenes:1}]
@@ -464,7 +469,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
               return (
                 <div key={d.value} onClick={()=>allowed ? setDuration(d.value) : (onNavigate && onNavigate('pricing'))}
                   style={{ borderRadius:14, padding:'18px 16px', textAlign:'center', cursor:'pointer', border:`2px solid ${duration===d.value&&allowed?'#e11d48':'rgba(255,255,255,0.07)'}`, background:duration===d.value&&allowed?'rgba(225,29,72,0.1)':'rgba(255,255,255,0.02)', opacity: allowed ? 1 : 0.4, transition:'all 0.15s', position:'relative', boxShadow:duration===d.value&&allowed?'0 0 20px rgba(225,29,72,0.2)':'none' }}>
-                  {!allowed && <div style={{ position:'absolute', top:8, right:10, fontSize:12 }}>🔒</div>}
+                  {!allowed && <div style={{ position:'absolute', top:8, right:10, color:'rgba(255,255,255,0.4)' }}><Lock size={12} strokeWidth={2} /></div>}
                   <p style={{ margin:'0 0 4px', fontSize:18, fontWeight:900, color:duration===d.value&&allowed?'#fb7185':'#fff' }}>{d.label}</p>
                   <p style={{ margin:0, fontSize:11, color:'#4b5563' }}>{(genMode==='prompt'||genMode==='image') ? 'single scene' : `${d.scenes} cinematic scenes`}</p>
                   {!allowed && <p style={{ margin:'4px 0 0', fontSize:9, color:'#ef4444', fontWeight:700 }}>Subscribe to unlock</p>}
@@ -476,7 +481,7 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
 
         {/* Ratio */}
         <div style={{ marginBottom:28 }}>
-          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'block' }}>📐 Aspect Ratio</label>
+          <label style={{ fontSize:11, fontWeight:800, color:'#fb7185', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}><Proportions size={13} strokeWidth={2} /> Aspect Ratio</label>
           <div style={{ display:'flex', gap:10 }}>
             {['9:16','16:9','1:1'].map(r => (
               <button key={r} onClick={()=>setRatio(r)} style={{ flex:1, padding:'10px', borderRadius:10, border:`1px solid ${ratio===r?'#e11d48':'rgba(255,255,255,0.07)'}`, background:ratio===r?'rgba(225,29,72,0.15)':'transparent', color:ratio===r?'#fb7185':'#4b5563', fontSize:12, fontWeight:700, cursor:'pointer', transition:'all 0.15s' }}>{r}</button>
@@ -488,14 +493,14 @@ export default function ModelCinematicPage({ onBack, model5Access, model5Plan, u
 
         {userPlan !== 'free' && (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:16 }}>
-            <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(225,29,72,0.12)', border:'1px solid rgba(225,29,72,0.3)', fontSize:12, fontWeight:700, color:'#fb7185' }}>
-              🪙 {creditCost} credits per video
+            <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(225,29,72,0.12)', border:'1px solid rgba(225,29,72,0.3)', fontSize:12, fontWeight:700, color:'#fb7185', display:'flex', alignItems:'center', gap:6 }}>
+              <Coins size={13} strokeWidth={2} /> {creditCost} credits per video
             </div>
           </div>
         )}
 
         <button onClick={handleGenerate} disabled={userPlan !== 'free' && (loading||(genMode==='image'?!characters[0]?.photo:genMode==='prompt'?!rawPrompt.trim():!idea.trim()))} style={{ width:'100%', background:(userPlan !== 'free' && (loading||(genMode==='image'?!characters[0]?.photo:genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#e11d48,#9f1239)', color:(userPlan !== 'free' && (loading||(genMode==='image'?!characters[0]?.photo:genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'#374151':'#fff', border:'none', borderRadius:14, padding:'17px', fontWeight:900, fontSize:17, cursor:(userPlan !== 'free' && (loading||(genMode==='image'?!characters[0]?.photo:genMode==='prompt'?!rawPrompt.trim():!idea.trim())))?'not-allowed':'pointer', boxShadow:(genMode==='image'?characters[0]?.photo:genMode==='prompt'?rawPrompt.trim():idea.trim())?'0 6px 32px rgba(225,29,72,0.45)':'none', transition:'all 0.2s' }}>
-          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : loading?'⏳ Generating...':(genMode==='image' ? `🖼️ Animate Photo (${duration}) — ${creditCost} Credits →` : genMode==='prompt' ? `🎬 Generate ${duration} Video — ${creditCost} Credits →` : `🎬 Generate ${sceneCount} Cinematic Scenes — ${creditCost} Credits →`)}
+          {userPlan === 'free' ? 'Subscribe to Generate →' : loading?'Generating...':(genMode==='image' ? `Animate Photo (${duration}) — ${creditCost} Credits →` : genMode==='prompt' ? `Generate ${duration} Video — ${creditCost} Credits →` : `Generate ${sceneCount} Cinematic Scenes — ${creditCost} Credits →`)}
         </button>
 
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.15)', marginTop:14 }}>Seedance v1 Pro · Groq AI · Character consistency · No voiceover</p>

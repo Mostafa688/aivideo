@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  Lightbulb, FileText, Mic, Palette, Lock, Sparkles, MessageSquare, Music,
+  Download, RefreshCw, PartyPopper, Clapperboard, Camera, Landmark, Wand2,
+  Gamepad2, Zap, Video, Film, Coins,
+} from 'lucide-react';
 
 const DURATION_CONFIG = {
   '30s':  { scenes: 4,  label: '30 seconds', sublabel: '4 AI video clips' },
@@ -7,14 +12,14 @@ const DURATION_CONFIG = {
 };
 
 const VIDEO_STYLES_M4 = [
-  { key: 'cinematic',   label: 'Cinematic',   emoji: '🎬', desc: 'Dramatic · Film-like',    suffix: 'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading' },
-  { key: 'realistic',   label: 'Realistic',   emoji: '📸', desc: 'Real · Photographic',     suffix: 'photorealistic, natural lighting, high detail, documentary style, authentic' },
-  { key: 'historical',  label: 'Historical',  emoji: '🏛️', desc: 'Ancient · Epic',           suffix: 'historical epic, ancient world, dramatic atmosphere, oil painting style, cinematic, period-accurate' },
-  { key: 'anime',       label: 'Anime',       emoji: '🌸', desc: 'Japanese · Animated',     suffix: 'anime style, vibrant colors, detailed illustration, studio ghibli inspired, cel shading' },
-  { key: 'cartoon',     label: 'Cartoon',     emoji: '🎨', desc: 'Animated · Colorful',     suffix: 'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired' },
-  { key: '3d_cartoon',  label: '3D Cartoon',  emoji: '🎮', desc: '3D · Rendered',            suffix: '3D rendered cartoon style, smooth colorful surfaces, pixar style 3D animation' },
-  { key: 'action',      label: 'Action',      emoji: '⚡', desc: 'Dynamic · Epic',           suffix: 'action scene, dynamic motion blur, explosive energy, dramatic angles, high contrast' },
-  { key: 'documentary', label: 'Documentary', emoji: '📹', desc: 'Real · Journalistic',      suffix: 'documentary style, natural lighting, photorealistic, journalistic photography, authentic atmosphere' },
+  { key: 'cinematic',   label: 'Cinematic',   icon: Clapperboard, desc: 'Dramatic · Film-like',    suffix: 'cinematic photography, dramatic lighting, film grain, shallow depth of field, professional color grading' },
+  { key: 'realistic',   label: 'Realistic',   icon: Camera,       desc: 'Real · Photographic',     suffix: 'photorealistic, natural lighting, high detail, documentary style, authentic' },
+  { key: 'historical',  label: 'Historical',  icon: Landmark,     desc: 'Ancient · Epic',           suffix: 'historical epic, ancient world, dramatic atmosphere, oil painting style, cinematic, period-accurate' },
+  { key: 'anime',       label: 'Anime',       icon: Wand2,        desc: 'Japanese · Animated',     suffix: 'anime style, vibrant colors, detailed illustration, studio ghibli inspired, cel shading' },
+  { key: 'cartoon',     label: 'Cartoon',     icon: Palette,      desc: 'Animated · Colorful',     suffix: 'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired' },
+  { key: '3d_cartoon',  label: '3D Cartoon',  icon: Gamepad2,     desc: '3D · Rendered',            suffix: '3D rendered cartoon style, smooth colorful surfaces, pixar style 3D animation' },
+  { key: 'action',      label: 'Action',      icon: Zap,          desc: 'Dynamic · Epic',           suffix: 'action scene, dynamic motion blur, explosive energy, dramatic angles, high contrast' },
+  { key: 'documentary', label: 'Documentary', icon: Video,        desc: 'Real · Journalistic',      suffix: 'documentary style, natural lighting, photorealistic, journalistic photography, authentic atmosphere' },
 ];
 
 // ── Usage Bar ──────────────────────────────────────────────────────────────
@@ -79,7 +84,7 @@ function EditableSceneCard({ scene, index, onChange }) {
         </button>
       </div>
       <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-        <span style={{ fontSize: 11, color: '#4b5563', flexShrink: 0, marginTop: 2 }}>🎬</span>
+        <span style={{ color: '#4b5563', flexShrink: 0, marginTop: 2, display: 'flex' }}><Clapperboard size={13} strokeWidth={2} /></span>
         {editingPrompt ? (
           <textarea
             value={localPrompt}
@@ -215,11 +220,11 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
         if (data.error === 'quota_exceeded') {
           const need = data.cost || creditCost;
           const have = data.remaining ?? 0;
-          setError(`🪙 This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
+          setError(`This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
           setLoading(false); return;
         }
         if (data.show_upgrade || data.error === 'subscribe_required' || data.error === 'no_access') {
-          setError(data.message || '🔒 You need an active plan to generate this video. Go to Pricing to subscribe.');
+          setError(data.message || 'You need an active plan to generate this video. Go to Pricing to subscribe.');
           setLoading(false); return;
         }
         if (data.error === 'trial_idea_only') {
@@ -256,16 +261,16 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
       <div style={{ minHeight:'100vh', background:'radial-gradient(ellipse at top, rgba(168,85,247,0.07) 0%, #080810 55%)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
         <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}} @keyframes pop{0%{transform:scale(0.8);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
         <div style={{ maxWidth:580, width:'100%', textAlign:'center', animation:'fadeUp 0.5s ease' }}>
-          <div style={{ fontSize:60, marginBottom:14, animation:'pop 0.5s ease' }}>🎉</div>
+          <div style={{ marginBottom:14, display:'flex', justifyContent:'center', color:'#22c55e', animation:'pop 0.5s ease' }}><PartyPopper size={48} strokeWidth={1.5} /></div>
           <h2 style={{ fontSize:28, fontWeight:800, color:'#fff', marginBottom:6, letterSpacing:'-0.5px' }}>Video Ready!</h2>
           <p style={{ color:'rgba(255,255,255,0.35)', fontSize:14, marginBottom:20 }}>Seedance AI · {durConfig.scenes} clips · {durConfig.label}</p>
           <div style={{ borderRadius:18, overflow:'hidden', border:'1px solid rgba(168,85,247,0.2)', marginBottom:20, background:'#000', boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }}>
             <video src={videoUrl} controls style={{ width:'100%', maxHeight:420, display:'block' }} />
           </div>
           <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-            <a href={videoUrl} download style={{ background:'linear-gradient(135deg,#a855f7,#7c3aed)', color:'#fff', padding:'13px 28px', borderRadius:12, fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(168,85,247,0.4)' }}>⬇️ Download</a>
+            <a href={videoUrl} download style={{ background:'linear-gradient(135deg,#a855f7,#7c3aed)', color:'#fff', padding:'13px 28px', borderRadius:12, fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(168,85,247,0.4)', display:'flex', alignItems:'center', gap:8 }}><Download size={15} strokeWidth={2} /> Download</a>
             <button onClick={() => { setStep('input'); setScenes([]); setVideoUrl(null); setIdea(''); setScript(''); }}
-              style={{ background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.1)', padding:'13px 28px', borderRadius:12, fontWeight:600, fontSize:14, cursor:'pointer' }}>🔄 New Video</button>
+              style={{ background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.1)', padding:'13px 28px', borderRadius:12, fontWeight:600, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}><RefreshCw size={14} strokeWidth={2} /> New Video</button>
           </div>
         </div>
       </div>
@@ -283,7 +288,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
             <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'2px solid rgba(168,85,247,0.1)' }} />
             <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'#a855f7', animation:'spin 0.9s linear infinite' }} />
             <div style={{ position:'absolute', inset:8, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'rgba(168,85,247,0.4)', animation:'spin 1.5s linear infinite reverse' }} />
-            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:30 }}>🎞️</div>
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', color:'#a855f7' }}><Film size={28} strokeWidth={1.75} /></div>
           </div>
           <h2 style={{ fontSize:26, fontWeight:800, color:'#fff', marginBottom:8, letterSpacing:'-0.5px' }}>Generating Your Video</h2>
           <p style={{ color:'rgba(255,255,255,0.35)', fontSize:14, marginBottom:6 }}>Seedance AI is rendering {durConfig.scenes} video clips</p>
@@ -292,7 +297,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
             <span style={{ color:'#c084fc', fontSize:13, fontWeight:700 }}>{mins > 0 ? `${mins}m ` : ''}{secs}s elapsed</span>
           </div>
           <div style={{ background:'rgba(168,85,247,0.05)', border:'1px solid rgba(168,85,247,0.15)', borderRadius:14, padding:'16px 20px', fontSize:13, color:'rgba(255,255,255,0.35)', lineHeight:1.8 }}>
-            <div>⏱ ~60 seconds per scene</div>
+            <div>~60 seconds per scene</div>
             <div style={{ color:'rgba(255,255,255,0.2)' }}>Estimated: {durConfig.scenes} minutes total</div>
           </div>
           <p style={{ fontSize:12, color:'rgba(255,255,255,0.15)', marginTop:20, animation:'pulse 2s ease infinite' }}>Do not close this tab</p>
@@ -329,7 +334,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
           {error && <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: 12, marginBottom: 16, color: '#ef4444', fontSize: 13 }}>{error}</div>}
           <button onClick={handleRender} disabled={loading}
             style={{ width:'100%', background:loading?'rgba(255,255,255,0.04)':'linear-gradient(135deg,#a855f7,#7c3aed)', color:loading?'#4b5563':'#fff', border:'none', borderRadius:14, padding:'15px', fontWeight:800, fontSize:16, cursor:loading?'not-allowed':'pointer', boxShadow:!loading?'0 6px 24px rgba(168,85,247,0.4)':'none', transition:'all 0.2s' }}>
-            {loading ? '⏳ Starting...' : `🎬 Generate ${durConfig.scenes} Video Clips →`}
+            {loading ? 'Starting...' : `Generate ${durConfig.scenes} Video Clips →`}
           </button>
         </div>
       </div>
@@ -383,7 +388,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
             <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, padding:'8px 14px' }}>← Models</button>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-            <div style={{ width:56, height:56, borderRadius:18, background:'linear-gradient(135deg,#a855f7,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0, boxShadow:'0 6px 24px rgba(168,85,247,0.45)' }}>🎞️</div>
+            <div style={{ width:56, height:56, borderRadius:18, background:'linear-gradient(135deg,#a855f7,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', flexShrink:0, boxShadow:'0 6px 24px rgba(168,85,247,0.45)' }}><Film size={26} strokeWidth={1.75} /></div>
             <div>
               <div style={{ fontSize:10, fontWeight:700, color:'#c084fc', letterSpacing:'0.1em', marginBottom:4 }}>MODEL 4 · SEEDANCE AI</div>
               <h1 style={{ fontSize:'clamp(20px,4vw,26px)', fontWeight:900, color:'#fff', margin:0, letterSpacing:'-0.5px', lineHeight:1.1 }}>
@@ -399,10 +404,10 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
 
         {/* Mode Tabs */}
         <div style={{ display: 'flex', gap: 0, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 4, marginBottom: 24 }}>
-          {[{ key: 'idea', icon: '💡', label: 'Idea' }, { key: 'script', icon: '📝', label: 'Script' }, { key: 'voice', icon: '🎙️', label: 'Voice' }].map(m => (
+          {[{ key: 'idea', icon: Lightbulb, label: 'Idea' }, { key: 'script', icon: FileText, label: 'Script' }, { key: 'voice', icon: Mic, label: 'Voice' }].map(m => (
             <button key={m.key} onClick={() => setMode(m.key)} className="m4-tab"
-              style={{ flex: 1, padding: '11px 8px', borderRadius: 10, border: 'none', background: mode === m.key ? 'linear-gradient(135deg,#a855f7,#7c3aed)' : 'transparent', color: mode === m.key ? '#fff' : '#4b5563', fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s', boxShadow: mode === m.key ? '0 2px 12px rgba(168,85,247,0.4)' : 'none' }}>
-              {m.icon} {m.label}
+              style={{ flex: 1, padding: '11px 8px', borderRadius: 10, border: 'none', background: mode === m.key ? 'linear-gradient(135deg,#a855f7,#7c3aed)' : 'transparent', color: mode === m.key ? '#fff' : '#4b5563', fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s', boxShadow: mode === m.key ? '0 2px 12px rgba(168,85,247,0.4)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <m.icon size={14} strokeWidth={2} /> {m.label}
             </button>
           ))}
         </div>
@@ -431,9 +436,9 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
           {mode === 'voice' && (
             <div>
               <div onClick={() => voiceRef.current?.click()} style={{ border: `2px dashed ${voiceFile ? '#a855f7' : 'rgba(255,255,255,0.08)'}`, borderRadius: 12, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: 'rgba(168,85,247,0.03)', marginBottom: 12 }}>
-                {transcribing ? <p style={{ color: '#a855f7', fontWeight: 700, margin: 0 }}>⏳ Transcribing...</p>
-                  : voiceFile ? <><div style={{ fontSize: 28, marginBottom: 6 }}>🎙️</div><p style={{ color: '#a855f7', fontWeight: 700, margin: 0 }}>{voiceFile.name}</p></>
-                  : <><div style={{ fontSize: 36, marginBottom: 10 }}>🎙️</div><p style={{ color: '#6b7280', fontSize: 14, margin: 0, fontWeight: 600 }}>Upload voice recording</p><p style={{ color: '#374151', fontSize: 12, margin: '4px 0 0' }}>MP3, WAV, M4A — max 2:30</p></>}
+                {transcribing ? <p style={{ color: '#a855f7', fontWeight: 700, margin: 0 }}>Transcribing...</p>
+                  : voiceFile ? <><div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center', color: '#a855f7' }}><Mic size={24} strokeWidth={1.75} /></div><p style={{ color: '#a855f7', fontWeight: 700, margin: 0 }}>{voiceFile.name}</p></>
+                  : <><div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: '#6b7280' }}><Mic size={30} strokeWidth={1.5} /></div><p style={{ color: '#6b7280', fontSize: 14, margin: 0, fontWeight: 600 }}>Upload voice recording</p><p style={{ color: '#374151', fontSize: 12, margin: '4px 0 0' }}>MP3, WAV, M4A — max 2:30</p></>}
                 <input ref={voiceRef} type="file" accept="audio/*" onChange={e => handleVoiceUpload(e.target.files[0])} style={{ display: 'none' }} />
               </div>
               {voiceTranscript && (
@@ -448,12 +453,12 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
 
         {/* Video Style */}
         <div style={{ marginBottom: 20 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>🎨 VIDEO STYLE</p>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Palette size={12} strokeWidth={2} /> VIDEO STYLE</p>
           <div className="m4-style-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
             {VIDEO_STYLES_M4.map(s => (
               <div key={s.key} onClick={() => setVideoStyle(s.key)}
                 style={{ padding: '10px 8px', borderRadius: 12, cursor: 'pointer', textAlign: 'center', border: `1px solid ${videoStyle===s.key ? '#a855f7' : 'rgba(255,255,255,0.07)'}`, background: videoStyle===s.key ? 'rgba(168,85,247,0.12)' : 'rgba(255,255,255,0.02)', transition: 'all 0.15s' }}>
-                <div style={{ fontSize: 18, marginBottom: 4 }}>{s.emoji}</div>
+                <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center', color: videoStyle===s.key ? '#c084fc' : '#9ca3af' }}><s.icon size={17} strokeWidth={1.75} /></div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: videoStyle===s.key ? '#c084fc' : '#fff' }}>{s.label}</div>
                 <div style={{ fontSize: 9, color: '#374151', marginTop: 2 }}>{s.desc}</div>
               </div>
@@ -465,8 +470,8 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>DURATION & SCENES</p>
           {(mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) && (
-            <div style={{ padding:'10px 16px', borderRadius:10, background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.3)', fontSize:13, color:'#c084fc', marginBottom:12, fontWeight:600 }}>
-              ✨ Auto-detected: <strong>{getSmartDuration()}</strong> based on script length
+            <div style={{ padding:'10px 16px', borderRadius:10, background:'rgba(168,85,247,0.1)', border:'1px solid rgba(168,85,247,0.3)', fontSize:13, color:'#c084fc', marginBottom:12, fontWeight:600, display:'flex', alignItems:'center', gap:6 }}>
+              <Sparkles size={14} strokeWidth={2} /> Auto-detected: <strong>{getSmartDuration()}</strong> based on script length
             </div>
           )}
           <div className="m4-dur-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, opacity: (mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) ? 0.4 : 1, pointerEvents: (mode === 'script' || mode === 'voice') && (mode === 'script' ? script.length > 20 : voiceTranscript.length > 20) ? 'none' : 'auto' }}>
@@ -475,7 +480,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
               return (
                 <div key={d} onClick={() => allowed ? setDuration(d) : (onNavigate && onNavigate('pricing'))} className={allowed ? 'm4-dur' : ''}
                   style={{ borderRadius: 14, padding: '16px 12px', textAlign: 'center', cursor: 'pointer', border: `2px solid ${duration === d && allowed ? '#a855f7' : 'rgba(255,255,255,0.07)'}`, background: duration === d && allowed ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.02)', opacity: allowed ? 1 : 0.35, transition: 'all 0.15s', position: 'relative' }}>
-                  {!allowed && <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10 }}>🔒</div>}
+                  {!allowed && <div style={{ position: 'absolute', top: 8, right: 8, color: 'rgba(255,255,255,0.4)' }}><Lock size={11} strokeWidth={2} /></div>}
                   <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, color: duration === d && allowed ? '#c084fc' : '#fff' }}>{cfg.label}</p>
                   <p style={{ margin: 0, fontSize: 11, color: '#4b5563' }}>{cfg.sublabel}</p>
 
@@ -498,7 +503,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>LANGUAGE</p>
             <div style={{ display: 'flex', gap: 6 }}>
-              {[{ v: 'en', l: '🇺🇸 EN' }, { v: 'ar', l: '🇸🇦 AR' }, { v: 'ar_eg', l: '🇪🇬 مصري' }, { v: 'ar_gulf', l: '🇦🇪 خليجي' }].map(lang => (
+              {[{ v: 'en', l: 'EN' }, { v: 'ar', l: 'AR' }, { v: 'ar_eg', l: 'مصري' }, { v: 'ar_gulf', l: 'خليجي' }].map(lang => (
                 <button key={lang.v} onClick={() => setVideoLanguage(lang.v)} style={{ flex: 1, padding: '9px 4px', borderRadius: 8, border: `1px solid ${videoLanguage === lang.v ? '#a855f7' : 'rgba(255,255,255,0.07)'}`, background: videoLanguage === lang.v ? 'rgba(168,85,247,0.15)' : 'transparent', color: videoLanguage === lang.v ? '#c084fc' : '#4b5563', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{lang.l}</button>
               ))}
             </div>
@@ -507,10 +512,10 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
 
         {/* Toggles */}
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 16, marginBottom: 20 }}>
-          {[{ val: captions, set: setCaptions, icon: '💬', label: 'Captions', desc: 'Auto-synced subtitles' }, { val: music, set: setMusic, icon: '🎵', label: 'Background Music', desc: 'Ambient music mixed in' }].map(item => (
+          {[{ val: captions, set: setCaptions, icon: MessageSquare, label: 'Captions', desc: 'Auto-synced subtitles' }, { val: music, set: setMusic, icon: Music, label: 'Background Music', desc: 'Ambient music mixed in' }].map(item => (
             <div key={item.label} onClick={() => item.set(!item.val)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 4px', cursor: 'pointer', borderBottom: item.label === 'Captions' ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 18 }}>{item.icon}</span>
+                <item.icon size={16} strokeWidth={1.75} color="#9ca3af" />
                 <div>
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#d1d5db' }}>{item.label}</p>
                   <p style={{ margin: 0, fontSize: 11, color: '#4b5563' }}>{item.desc}</p>
@@ -540,8 +545,8 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
 
         {/* Credit cost badge */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:10 }}>
-          <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(168,85,247,0.12)', border:'1px solid rgba(168,85,247,0.3)', fontSize:12, fontWeight:700, color:'#c084fc' }}>
-            🪙 {creditCost} credits per video
+          <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(168,85,247,0.12)', border:'1px solid rgba(168,85,247,0.3)', fontSize:12, fontWeight:700, color:'#c084fc', display:'flex', alignItems:'center', gap:6 }}>
+            <Coins size={13} strokeWidth={2} /> {creditCost} credits per video
           </div>
           <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', fontSize:11, color:'rgba(255,255,255,0.4)', fontWeight:600 }}>
             Model 4 · Seedance AI
@@ -550,7 +555,7 @@ export default function Model4Page({ onBack, model4Plan, model4Access, userPlan 
 
         {/* CTA */}
         <button onClick={() => userPlan === 'free' ? (onNavigate && onNavigate('pricing')) : handleGenerateScenes()} disabled={userPlan !== 'free' && !canGenerate} style={{ width: '100%', background: (userPlan !== 'free' && !canGenerate) ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg,#a855f7,#7c3aed)', color: (userPlan !== 'free' && !canGenerate) ? '#374151' : '#fff', border: 'none', borderRadius: 12, padding: '15px', fontWeight: 800, fontSize: 16, cursor: (userPlan !== 'free' && !canGenerate) ? 'not-allowed' : 'pointer', boxShadow: canGenerate ? '0 4px 24px rgba(168,85,247,0.4)' : 'none', transition: 'all 0.2s' }}>
-          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : loading ? '⏳ Generating...' : `✨ Generate Scenes — ${creditCost} Credits →`}
+          {userPlan === 'free' ? 'Subscribe to Generate →' : loading ? 'Generating...' : `Generate Scenes — ${creditCost} Credits →`}
         </button>
 
         <p style={{ textAlign: 'center', fontSize: 11, color: '#1f2937', marginTop: 12 }}>Powered by Seedance v1 Pro · Replicate API · FFmpeg</p>

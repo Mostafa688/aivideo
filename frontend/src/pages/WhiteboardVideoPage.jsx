@@ -12,6 +12,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import PremiumTimelineEditor from '../components/PremiumTimelineEditor.jsx';
 import { EgPaymentModal, IntlPaymentModal, EG_PACKAGES, GUMROAD_PACKAGES } from './PricingPage.jsx';
+import {
+  PenLine, Sparkles, Gift, Check, Music, UploadCloud, Loader2, Plus, Frown,
+  Bot, CheckCircle2, PartyPopper,
+} from 'lucide-react';
 
 function authHeaders() { return { Authorization: 'Bearer ' + localStorage.getItem('token') }; }
 function jsonAuthHeaders() { return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') }; }
@@ -39,7 +43,7 @@ function PaywallPanel({ lang, region, onPick }) {
     : ['Access to every AI video model', 'No watermark on any video', 'Credits never expire', 'HD export on every model'];
   return (
     <div className="card animate-in" style={{ textAlign: 'center', borderColor: 'var(--accent)', padding: '32px 22px' }}>
-      <div style={{ fontSize: 40, marginBottom: 10 }}>🎉</div>
+      <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: 'var(--accent)' }}><PartyPopper size={36} strokeWidth={1.5} /></div>
       <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 21, color: 'var(--text)', marginBottom: 8 }}>
         {t('استخدمت رصيدك المجاني بالكامل!', "You've used your full free budget!")}
       </div>
@@ -52,7 +56,7 @@ function PaywallPanel({ lang, region, onPick }) {
       <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 26px', display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 320, marginInline: 'auto', textAlign: lang === 'ar' ? 'right' : 'left' }}>
         {features.map((f, i) => (
           <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)' }}>
-            <span style={{ color: 'var(--accent)', flexShrink: 0 }}>✓</span>{f}
+            <Check size={14} strokeWidth={2.5} color="var(--accent)" style={{ flexShrink: 0 }} />{f}
           </li>
         ))}
       </ul>
@@ -290,7 +294,11 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
       {/* Hero — مختصر أثناء التعديل (isEditable) عشان المحرر ياخد أكبر مساحة ممكنة فوق
           الصفحة، زي أي أداة تحرير حقيقية (مش صفحة تسويقية) */}
       <div style={{ textAlign: 'center', marginBottom: wide ? 14 : 28 }}>
-        {!wide && <div className="wb-hero-icon" style={{ fontSize: 44, marginBottom: 10 }}>📝✨</div>}
+        {!wide && (
+          <div className="wb-hero-icon" style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', gap: 6, color: 'var(--accent)' }}>
+            <PenLine size={34} strokeWidth={1.5} /><Sparkles size={28} strokeWidth={1.5} />
+          </div>
+        )}
         {!wide && (
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 26, color: 'var(--text)', marginBottom: 6 }}>
             {t('فيديو Whiteboard مجاني', 'Free Whiteboard Video')}
@@ -302,8 +310,8 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
           </div>
         )}
         {budget && (
-          <div className="pill" style={{ marginTop: 14, cursor: 'default' }}>
-            🎁 {t(
+          <div className="pill" style={{ marginTop: 14, cursor: 'default', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Gift size={13} strokeWidth={2} /> {t(
               `${formatMin(budget.remainingSeconds)} متبقية من ${formatMin(budget.limitSeconds)} مجانية`,
               `${formatMin(budget.remainingSeconds)} left of ${formatMin(budget.limitSeconds)} free`
             )}
@@ -316,7 +324,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
       {budgetExhausted && !job && (
         paywallSuccess ? (
           <div className="card animate-in" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+            <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: 'var(--green)' }}><CheckCircle2 size={28} strokeWidth={1.75} /></div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{t('تم إرسال طلب الاشتراك!', 'Subscription request sent!')}</div>
             <div style={{ color: 'var(--text2)', fontSize: 13, marginTop: 6 }}>
               {t('هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.', 'It will be reviewed and credits added within 24 hours.')}
@@ -339,7 +347,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
             onDrop={(e) => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files[0]); }}
           >
             <input ref={fileInputRef} type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files[0])} />
-            <div style={{ fontSize: 36, marginBottom: 10 }}>{file ? '🎵' : '⬆️'}</div>
+            <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: 'var(--accent)' }}>{file ? <Music size={30} strokeWidth={1.5} /> : <UploadCloud size={30} strokeWidth={1.5} />}</div>
             {file ? (
               <div style={{ fontWeight: 600, color: 'var(--text)' }}>{file.name}</div>
             ) : (
@@ -355,8 +363,8 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
           {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12, textAlign: 'center' }}>{error}</div>}
 
           <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 20 }}>
-            <button className="btn-primary" disabled={!file || starting} onClick={handleStart} style={{ minWidth: 180 }}>
-              {starting ? t('⏳ بيبدأ...', '⏳ Starting...') : t('✨ اعمل الفيديو', '✨ Create Video')}
+            <button className="btn-primary" disabled={!file || starting} onClick={handleStart} style={{ minWidth: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              {starting ? <><Loader2 size={15} className="spinning" /> {t('بيبدأ...', 'Starting...')}</> : <><Sparkles size={15} strokeWidth={2} /> {t('اعمل الفيديو', 'Create Video')}</>}
             </button>
           </div>
         </div>
@@ -380,7 +388,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
                   transform: i === stepIdx ? 'scale(1.1)' : 'scale(1)',
                 }}>
                   <span key={i < stepIdx ? 'done' : i === stepIdx ? 'active' : 'pending'} className="wb-step-pop">
-                    {i < stepIdx ? '✓' : i === stepIdx ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : (i + 1)}
+                    {i < stepIdx ? <Check size={12} strokeWidth={2.5} /> : i === stepIdx ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : (i + 1)}
                   </span>
                 </div>
                 <span style={{ fontSize: 13.5, color: i <= stepIdx ? 'var(--text)' : 'var(--text3)' }}>
@@ -397,7 +405,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
 
       {job && job.status === 'failed' && (
         <div className="card animate-in" style={{ marginTop: 8, textAlign: 'center' }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>😕</div>
+          <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center', color: 'var(--text3)' }}><Frown size={26} strokeWidth={1.5} /></div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('حصل خطأ في بناء الفيديو', 'Something went wrong building the video')}</div>
           <div style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 16 }}>{job.error}</div>
           <button className="btn-ghost" onClick={reset}>{t('حاول تاني', 'Try again')}</button>
@@ -412,8 +420,8 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
             <video src={job.video_url} controls style={{ maxWidth: '100%', maxHeight: 480, borderRadius: 'var(--r-xl)', background: '#000' }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
-            <button className="btn-primary" disabled={!canContinue} onClick={() => setEditing(true)} title={!canContinue ? t('خلص الرصيد المجاني', 'Free budget used up') : ''}>
-              ➕ {t('كمّل الفيديو', 'Continue Video')}
+            <button className="btn-primary" disabled={!canContinue} onClick={() => setEditing(true)} title={!canContinue ? t('خلص الرصيد المجاني', 'Free budget used up') : ''} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Plus size={15} strokeWidth={2.5} /> {t('كمّل الفيديو', 'Continue Video')}
             </button>
             <button className="btn-ghost" onClick={reset}>
               {t('اعمل فيديو جديد', 'Make another video')}
@@ -456,7 +464,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
       {showContinuePaywall && paywallSuccess && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => { setShowContinuePaywall(false); setPaywallSuccess(false); }}>
           <div className="card wb-modal-pop" style={{ width: 'min(420px, 100%)', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+            <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: 'var(--green)' }}><CheckCircle2 size={28} strokeWidth={1.75} /></div>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{t('تم إرسال طلب الاشتراك!', 'Subscription request sent!')}</div>
             <div style={{ color: 'var(--text2)', fontSize: 13, marginTop: 6 }}>
               {t('هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.', 'It will be reviewed and credits added within 24 hours.')}
@@ -478,12 +486,12 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className={`card wb-choice-card${continueMode === 'ai' ? ' selected' : ''}`} onClick={() => setContinueMode('ai')} style={{ padding: 18 }}>
-                <div style={{ fontSize: 28, marginBottom: 6 }}>🤖</div>
+                <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center', color: 'var(--accent)' }}><Bot size={24} strokeWidth={1.75} /></div>
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t('بالذكاء الاصطناعي', 'With AI')}</div>
                 <div style={{ color: 'var(--text3)', fontSize: 11.5, marginTop: 4 }}>{t('يحط الملصقات والنصوص لوحده', 'Auto-places stickers & text')}</div>
               </div>
               <div className={`card wb-choice-card${continueMode === 'manual' ? ' selected' : ''}`} onClick={() => setContinueMode('manual')} style={{ padding: 18 }}>
-                <div style={{ fontSize: 28, marginBottom: 6 }}>✍️</div>
+                <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center', color: 'var(--accent)' }}><PenLine size={24} strokeWidth={1.75} /></div>
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t('يدوي', 'Manual')}</div>
                 <div style={{ color: 'var(--text3)', fontSize: 11.5, marginTop: 4 }}>{t('تختار وتحط كل حاجة بنفسك', 'You pick and place everything yourself')}</div>
               </div>
@@ -509,13 +517,13 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
               onClick={() => continueFileInputRef.current?.click()}
             >
               <input ref={continueFileInputRef} type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => pickContinueFile(e.target.files[0])} />
-              <div style={{ fontSize: 28, marginBottom: 6 }}>{continueFile ? '🎵' : '⬆️'}</div>
+              <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center', color: 'var(--accent)' }}>{continueFile ? <Music size={24} strokeWidth={1.5} /> : <UploadCloud size={24} strokeWidth={1.5} />}</div>
               <div style={{ fontWeight: 600, fontSize: 13 }}>{continueFile ? continueFile.name : t('دوس للاختيار', 'Click to choose')}</div>
             </div>
             {continueError && <div style={{ color: 'var(--red)', fontSize: 12.5, marginTop: 10, textAlign: 'center' }}>{continueError}</div>}
             <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 18 }}>
-              <button className="btn-primary" disabled={!continueFile || continuing} onClick={handleExtend}>
-                {continuing ? t('⏳ بيرفع...', '⏳ Uploading...') : t('كمّل', 'Continue')}
+              <button className="btn-primary" disabled={!continueFile || continuing} onClick={handleExtend} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {continuing ? <><Loader2 size={14} className="spinning" /> {t('بيرفع...', 'Uploading...')}</> : t('كمّل', 'Continue')}
               </button>
               <button className="btn-ghost" disabled={continuing} onClick={() => setContinueStep(null)}>{t('إلغاء', 'Cancel')}</button>
             </div>
