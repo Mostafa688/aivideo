@@ -2912,11 +2912,18 @@ app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res)
       count: n,
       tier: tier || null,
     });
+    // ✅ NEW: نفس حماية "الاتصال اتقطع بس التوليد نجح فعلاً" المستخدمة في /api/videos/generate
+    if (req.aborted || res.writableEnded || res.destroyed) {
+      console.error(`[NewImageModels] ⚠️ Client disconnected before response could be sent — user ${req.user.userId}, model ${model}, cost ${imgCreditCost}cr, image URLs (NOT lost, saved on R2): ${images.join(', ')}`);
+      return;
+    }
     res.json({ images, creditCost: imgCreditCost, remaining: imgCharge.remaining });
   } catch (genErr) {
     console.error('[NewImageModels] generation failed:', genErr.message);
     await addCreditsBalance(req.user.userId, imgCreditCost);
-    res.status(500).json({ error: 'generation_failed', message: 'Image generation failed, your credits were refunded.' });
+    if (!req.aborted && !res.writableEnded) {
+      res.status(500).json({ error: 'generation_failed', message: 'Image generation failed, your credits were refunded.' });
+    }
   }
 });
 
@@ -2982,11 +2989,21 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       durationSec: sec,
       tier: tier || null,
     });
+    // ✅ NEW (باج حقيقي: توليد طال دقايق، البروكسي/الاتصال قطع قبل ما الرد يوصل للعميل رغم
+    // إن التوليد نجح فعلاً وترفع على R2 — العميل اتخصم منه كريديت ومكسبش أي حاجة، والرابط
+    // كان بيضيع من غير أي أثر). لو الاتصال اتقطع، نسجل الرابط بوضوح عشان يتلقى يدويًا بدل
+    // ما يضيع خالص
+    if (req.aborted || res.writableEnded || res.destroyed) {
+      console.error(`[NewVideoModels] ⚠️ Client disconnected before response could be sent — user ${req.user.userId}, model ${model}, cost ${vidCreditCost}cr, video URL (NOT lost, saved on R2): ${videoUrl}`);
+      return;
+    }
     res.json({ videoUrl, creditCost: vidCreditCost, remaining: vidCharge.remaining });
   } catch (genErr) {
     console.error('[NewVideoModels] generation failed:', genErr.message);
     await addCreditsBalance(req.user.userId, vidCreditCost);
-    res.status(500).json({ error: 'generation_failed', message: 'Video generation failed, your credits were refunded.' });
+    if (!req.aborted && !res.writableEnded) {
+      res.status(500).json({ error: 'generation_failed', message: 'Video generation failed, your credits were refunded.' });
+    }
   }
 });
 
@@ -3014,11 +3031,17 @@ app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) =>
   }
   try {
     const videoUrl = await mergeVideos(videoUrls);
+    if (req.aborted || res.writableEnded || res.destroyed) {
+      console.error(`[VideoMerge] ⚠️ Client disconnected before response could be sent — user ${req.user.userId}, cost ${mergeCreditCost}cr, merged video URL (NOT lost, saved on R2): ${videoUrl}`);
+      return;
+    }
     res.json({ videoUrl, creditCost: mergeCreditCost, remaining: mergeCharge.remaining });
   } catch (genErr) {
     console.error('[VideoMerge] merge failed:', genErr.message);
     await addCreditsBalance(req.user.userId, mergeCreditCost);
-    res.status(500).json({ error: 'merge_failed', message: 'Video merge failed, your credits were refunded.' });
+    if (!req.aborted && !res.writableEnded) {
+      res.status(500).json({ error: 'merge_failed', message: 'Video merge failed, your credits were refunded.' });
+    }
   }
 });
 

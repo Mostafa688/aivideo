@@ -61,7 +61,12 @@ export const REPLICATE_MODEL_COSTS = {
                        tiers: { '720p': 0.40, '1080p': 0.40 } }, // نفس السعر للاتنين فعليًا
   kling_2_1:        { label: 'Kling 2.1',          unit: 'second', usdCost: 0.045, maxClipSec: 10 }, // confirmed real model (kwaivgi/kling-v2.1, 720p/1080p, 5s/10s) — exact per-tier cost not found, using blended estimate
   kling_2_5:        { label: 'Kling 2.5',          unit: 'second', usdCost: 0.07, maxClipSec: 10 }, // مؤكد: $0.35/5s = $0.70/10s = $0.07/sec ثابت، مفيش فرق سعر لكل دقة لقيته
-  seedance_1_5:     { label: 'Seedance 1.5',       unit: 'second', usdCost: 0.070, maxClipSec: 12 }, // confirmed real model (bytedance/seedance-1.5-pro) — exact pricing not found, using estimate
+  // ✅ FIX (طلب العميل بعد ما شاف الـ Replicate dashboard الحقيقي بنفسه): توليد واحد بـ
+  // bytedance/seedance-1.5-pro كلّف $0.26 فعليًا (compute استغرق 2m3.6s — الموديل ده بطيء
+  // جدًا مقارنة بغيره)، أعلى من الـ 0.070/ثانية اللي كنا مقدّرينها (بتدي $0.35 لمقطع 5 ثواني،
+  // قريبة من الرقم الحقيقي بس مش كافية هامش أمان لموديل تكلفته متقلبة زي ده). رفعناها لـ 0.095
+  // عشان تدّي هامش ربح أعلى وأأمن فوق التكلفة الحقيقية المرصودة
+  seedance_1_5:     { label: 'Seedance 1.5',       unit: 'second', usdCost: 0.095, maxClipSec: 12 },
   seedance_2_0:     { label: 'Seedance 2.0',       unit: 'second', usdCost: 0.180, maxClipSec: 15,
                        tiers: { '480p': 0.0673, '720p': 0.151, '1080p': 0.35, '4k': 0.7776 } }, // ⚠ مصادر متضاربة — 480p و4K مؤكدين، 720p/1080p متوسط تقديري بينهم، يحتاج تأكيد نهائي
   seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30,
