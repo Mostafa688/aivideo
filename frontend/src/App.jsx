@@ -25,6 +25,7 @@ import FAQPage from './pages/FAQPage.jsx';
 import SupportPage from './pages/SupportPage.jsx';
 import CommunityPage from './pages/CommunityPage.jsx';
 import AgentPage from './pages/AgentPage.jsx';
+import ProjectsDashboardPage from './pages/ProjectsDashboardPage.jsx';
 import CoursesPage from './pages/CoursesPage.jsx';
 import ChannelsPage from './pages/ChannelsPage.jsx';
 import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
@@ -176,7 +177,10 @@ function LogoTransition({ onDone }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState('agent');
+  // ✅ NEW (Projects workspace redesign): الداشبورد بقت أول حاجة تظهر بعد تسجيل الدخول
+  // بدل الشات مباشرة — كل مشروع هيبقى مساحة عمل مستقلة، والايجنت بيتفتح جوه مشروع مختار
+  const [page, setPage] = useState('dashboard');
+  const [activeProject, setActiveProject] = useState(null);
   const [formData, setFormData] = useState(null);
   const [scenes, setScenes] = useState([]);
   const [user, setUser] = useState(null);
@@ -382,6 +386,7 @@ export default function App() {
   const handleNavigate = (key) => {
     switch (key) {
       case 'community': setPage('community'); break;
+      case 'dashboard': setPage('dashboard'); break;
       case 'agent':      setPage('agent'); break;
       case 'models':     setPage('input'); break;
       case 'affiliate':  setPage('affiliate'); break;
@@ -580,7 +585,8 @@ export default function App() {
       <div id="app-main" style={{ paddingTop: 54, paddingBottom: 20 }}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
-        {page === 'agent' && <AgentPage onNavigate={handleNavigate} onSwitchToModels={() => setPage('input')} />}
+        {page === 'dashboard' && <ProjectsDashboardPage lang={(userRegion || localStorage.getItem('erivion_region') || 'eg') === 'eg' ? 'ar' : 'en'} onOpenProject={(project) => { setActiveProject(project); setPage('agent'); }} />}
+        {page === 'agent' && <AgentPage onNavigate={handleNavigate} onSwitchToModels={() => setPage('input')} activeProject={activeProject} />}
         {page === 'input' && <InputPage
           onSubmit={(data) => {
             if (data.videoType === 'model3') { setPage('model3'); return; }
