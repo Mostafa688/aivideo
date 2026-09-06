@@ -352,7 +352,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
         } else if (isVideoEditMarker) {
           if (typeof parsed.editPrompt === 'string' && parsed.editPrompt.trim()) videoEdit = parsed;
         } else if (isImageGenMarker) {
-          if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) generateImage = parsed;
+          const hasDistinctPrompts = Array.isArray(parsed.prompts) && parsed.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
+          if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && ((typeof parsed.prompt === 'string' && parsed.prompt.trim()) || hasDistinctPrompts)) generateImage = parsed;
         } else if (isVideoGenMarker) {
           if (typeof parsed.model === 'string' && NEW_VIDEO_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) {
             const maxSec = getMaxClipSeconds(parsed.model);
@@ -384,7 +385,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
               console.warn('[Agent] ✅ Repaired truncated VIDEO_EDIT JSON successfully');
             }
           } else if (isImageGenMarker) {
-            if (typeof repaired.model === 'string' && NEW_IMAGE_MODELS[repaired.model] && typeof repaired.prompt === 'string' && repaired.prompt.trim()) {
+            const hasDistinctPrompts = Array.isArray(repaired.prompts) && repaired.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
+            if (typeof repaired.model === 'string' && NEW_IMAGE_MODELS[repaired.model] && ((typeof repaired.prompt === 'string' && repaired.prompt.trim()) || hasDistinctPrompts)) {
               generateImage = repaired;
               console.warn('[Agent] ✅ Repaired truncated GENERATE_IMAGE JSON successfully');
             }
@@ -425,6 +427,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
       const fromHistory = Array.isArray(generateImage.referenceImageUrls) ? generateImage.referenceImageUrls.filter(u => typeof u === 'string' && u.trim()) : [];
       const combined = [...fromHistory, ...images];
       if (combined.length) generateImage.referenceImageUrls = combined.slice(0, 14);
+      // ✅ NEW: تنضيف "prompts" (مشاهد مختلفة في نفس الماركر) قبل ما توصل للراوت — لو مش
+      // مصفوفة صحيحة (أقل من برومبتين مختلفين)، بنشيلها عشان ترجع للمسار العادي (prompt+count)
+      const distinctPrompts = Array.isArray(generateImage.prompts) ? generateImage.prompts.filter(p => typeof p === 'string' && p.trim()).slice(0, 20) : [];
+      if (distinctPrompts.length >= 2) generateImage.prompts = distinctPrompts;
+      else delete generateImage.prompts;
     }
     // ✅ حاجز إضافي في الكود نفسه: لو المستخدم فرض موديل يدويًا، نضمن استخدامه بالظبط حتى
     // لو الايجنت (الموديل نفسه) تجاهل التعليمة اللي فوق لأي سبب

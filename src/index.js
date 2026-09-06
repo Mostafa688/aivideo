@@ -2870,19 +2870,24 @@ app.get('/api/images/credit-cost', authMiddleware, (req, res) => {
 });
 
 app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res) => {
-  const { model, prompt, referenceImageUrls, aspectRatio, count, tier } = req.body;
+  const { model, prompt, prompts, referenceImageUrls, aspectRatio, count, tier } = req.body;
   if (!model || !NEW_IMAGE_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
-  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  // ✅ NEW: "prompts" (مصفوفة برومبتات مختلفة لمشاهد مختلفة) بديل عن prompt+count لما العميل
+  // يطلب صور مختلفة "مرة واحدة" — لو موجودة ومظبوطة بنستخدمها بدل الفحص العادي لـ prompt
+  const distinctPrompts = Array.isArray(prompts) ? prompts.filter(p => typeof p === 'string' && p.trim()).slice(0, 20) : [];
+  const usingPrompts = distinctPrompts.length >= 2;
+  if (!usingPrompts && !prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
   const imgUser = await getUserById(req.user.userId);
   if ((imgUser?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock image generation.', show_upgrade: true });
   }
   // ✅ فحص أمان المحتوى قبل أي توليد — نفس الفحص المستخدم في كل الموديلات التانية
-  const modCheck = await checkContentSafety(prompt);
+  const contentToCheck = usingPrompts ? distinctPrompts.join(' \n ') : prompt;
+  const modCheck = await checkContentSafety(contentToCheck);
   if (modCheck.unsafe) {
     return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
   }
-  const n = Math.min(Math.max(1, parseInt(count, 10) || 1), 20);
+  const n = usingPrompts ? distinctPrompts.length : Math.min(Math.max(1, parseInt(count, 10) || 1), 20);
   let imgCreditCost;
   try {
     imgCreditCost = getImageCreditCost(model, n, tier || null);
@@ -2901,6 +2906,7 @@ app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res)
     const images = await generateNewModelImages({
       modelKey: model,
       prompt,
+      prompts: usingPrompts ? distinctPrompts : null,
       referenceImageUrls: Array.isArray(referenceImageUrls) ? referenceImageUrls.slice(0, 14) : [],
       aspectRatio: aspectRatio || '9:16',
       count: n,
