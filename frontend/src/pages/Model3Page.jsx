@@ -1,22 +1,28 @@
 import React, { useState, useRef, useEffect } from 'react';
 import VoiceUpload from './VoiceUpload.jsx';
+import {
+  Mic, VolumeX, Clapperboard, Video, Sparkles, Landmark, Leaf, Moon, Wand2,
+  Palette, Gamepad2, Lightbulb, FileText, CreditCard, ImageIcon, Lock, Coins,
+  Clock, Settings as SettingsIcon, MessageSquare, Music, Check, Rocket,
+  PartyPopper, Download, RefreshCw,
+} from 'lucide-react';
 
 const VOICE_OPTIONS = [
-  { key: 'male_american',   label: 'American Man',  emoji: '🇺🇸', gender: 'male' },
-  { key: 'male_arabic',     label: 'Arabic Man',    emoji: '🇸🇦', gender: 'male' },
-  { key: 'male_wise',       label: 'Wise Man',      emoji: '🧙',  gender: 'male' },
-  { key: 'female_american', label: 'American Woman',emoji: '🇺🇸', gender: 'female' },
-  { key: 'female_arabic',   label: 'Arabic Woman',  emoji: '🇸🇦', gender: 'female' },
-  { key: 'none',            label: 'No Voice',      emoji: '🔇',  gender: 'none' },
+  { key: 'male_american',   label: 'American Man',  icon: Mic,     gender: 'male' },
+  { key: 'male_arabic',     label: 'Arabic Man',    icon: Mic,     gender: 'male' },
+  { key: 'male_wise',       label: 'Wise Man',      icon: Mic,     gender: 'male' },
+  { key: 'female_american', label: 'American Woman',icon: Mic,     gender: 'female' },
+  { key: 'female_arabic',   label: 'Arabic Woman',  icon: Mic,     gender: 'female' },
+  { key: 'none',            label: 'No Voice',      icon: VolumeX, gender: 'none' },
 ];
 
 const VIDEO_LANGUAGES = [
-  { code: 'en',      label: 'English',         flag: '🇺🇸' },
-  { code: 'ar',      label: 'Arabic (Formal)',  flag: '🇸🇦' },
-  { code: 'ar_eg',   label: 'Arabic (Egyptian)',flag: '🇪🇬' },
-  { code: 'ar_gulf', label: 'Arabic (Gulf)',    flag: '🇦🇪' },
-  { code: 'de',      label: 'German',           flag: '🇩🇪' },
-  { code: 'fr',      label: 'French',           flag: '🇫🇷' },
+  { code: 'en',      label: 'English',         short: 'EN' },
+  { code: 'ar',      label: 'Arabic (Formal)',  short: 'AR' },
+  { code: 'ar_eg',   label: 'Arabic (Egyptian)',short: 'AR-EG' },
+  { code: 'ar_gulf', label: 'Arabic (Gulf)',    short: 'AR-GLF' },
+  { code: 'de',      label: 'German',           short: 'DE' },
+  { code: 'fr',      label: 'French',           short: 'FR' },
 ];
 
 const RATIOS = ['9:16', '16:9', '1:1'];
@@ -29,15 +35,15 @@ const ALL_DURATIONS = [
 ];
 
 const VIDEO_STYLES = [
-  { key: 'cinematic',   label: 'Cinematic',   emoji: '🎬', desc: 'Dramatic lighting, film grain',    suffix: 'cinematic photography, dramatic lighting, shallow depth of field, film grain, professional color grading' },
-  { key: 'documentary', label: 'Documentary', emoji: '📹', desc: 'Real, natural, journalistic',       suffix: 'documentary style, natural lighting, photorealistic, journalistic photography, authentic atmosphere' },
-  { key: 'fantasy',     label: 'Fantasy',     emoji: '✨', desc: 'Magical, ethereal, dreamlike',      suffix: 'fantasy art, magical atmosphere, ethereal lighting, mystical, highly detailed digital art' },
-  { key: 'historical',  label: 'Historical',  emoji: '🏛️', desc: 'Ancient civilizations, epic',       suffix: 'historical epic, ancient world, dramatic atmosphere, oil painting style, cinematic' },
-  { key: 'nature',      label: 'Nature',      emoji: '🌿', desc: 'Landscapes, wildlife',              suffix: 'nature photography, golden hour lighting, breathtaking landscape, National Geographic style' },
-  { key: 'islamic',     label: 'Islamic',     emoji: '🕌', desc: 'Islamic architecture, spiritual',   suffix: 'Islamic architecture, golden light, spiritual atmosphere, detailed geometric patterns, cinematic' },
-  { key: 'anime',       label: 'Anime',       emoji: '🌸', desc: 'Japanese animation style',          suffix: 'anime style, vibrant colors, detailed illustration, studio ghibli inspired, beautiful cel shading' },
-  { key: 'cartoon',     label: 'Cartoon',     emoji: '🎨', desc: 'Animated, colorful, fun',           suffix: 'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired illustration' },
-  { key: '3d_cartoon',  label: '3D Cartoon',  emoji: '🎮', desc: '3D rendered, Pixar style',          suffix: '3D rendered cartoon style, smooth colorful surfaces, pixar style 3D animation, high detail render' },
+  { key: 'cinematic',   label: 'Cinematic',   icon: Clapperboard, desc: 'Dramatic lighting, film grain',    suffix: 'cinematic photography, dramatic lighting, shallow depth of field, film grain, professional color grading' },
+  { key: 'documentary', label: 'Documentary', icon: Video,        desc: 'Real, natural, journalistic',       suffix: 'documentary style, natural lighting, photorealistic, journalistic photography, authentic atmosphere' },
+  { key: 'fantasy',     label: 'Fantasy',     icon: Sparkles,     desc: 'Magical, ethereal, dreamlike',      suffix: 'fantasy art, magical atmosphere, ethereal lighting, mystical, highly detailed digital art' },
+  { key: 'historical',  label: 'Historical',  icon: Landmark,     desc: 'Ancient civilizations, epic',       suffix: 'historical epic, ancient world, dramatic atmosphere, oil painting style, cinematic' },
+  { key: 'nature',      label: 'Nature',      icon: Leaf,         desc: 'Landscapes, wildlife',              suffix: 'nature photography, golden hour lighting, breathtaking landscape, National Geographic style' },
+  { key: 'islamic',     label: 'Islamic',     icon: Moon,         desc: 'Islamic architecture, spiritual',   suffix: 'Islamic architecture, golden light, spiritual atmosphere, detailed geometric patterns, cinematic' },
+  { key: 'anime',       label: 'Anime',       icon: Wand2,        desc: 'Japanese animation style',          suffix: 'anime style, vibrant colors, detailed illustration, studio ghibli inspired, beautiful cel shading' },
+  { key: 'cartoon',     label: 'Cartoon',     icon: Palette,      desc: 'Animated, colorful, fun',           suffix: 'cartoon style, bright vivid colors, 2D animation, fun and expressive, pixar inspired illustration' },
+  { key: '3d_cartoon',  label: '3D Cartoon',  icon: Gamepad2,     desc: '3D rendered, Pixar style',          suffix: '3D rendered cartoon style, smooth colorful surfaces, pixar style 3D animation, high detail render' },
 ];
 
 function authHeaders() {
@@ -167,14 +173,14 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
       if (!renderRes.ok) {
         if (renderData.show_upgrade || renderData.error === 'subscribe_required' || renderData.error === 'no_access') {
           setStep('setup');
-          setError('🔒 You need an active plan to generate this video. Go to Pricing to subscribe.');
+          setError('You need an active plan to generate this video. Go to Pricing to subscribe.');
           return;
         }
         if (renderData.reason === 'quota_exceeded' || renderData.error === 'quota_exceeded') {
           setStep('setup');
           const need = renderData.cost || creditCost;
           const have = renderData.remaining ?? 0;
-          setError(`🪙 This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
+          setError(`This video needs ${need} credits, but you only have ${have} left. Top up your credits from the Pricing page.`);
           return;
         }
         throw new Error(renderData.error || 'Render failed');
@@ -188,7 +194,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           const statusData = await statusRes.json();
           if (statusData.status === 'done') { clearInterval(pollRef.current); setVideoUrl(statusData.videoUrl); setStep('done'); }
           else if (statusData.status === 'failed') { clearInterval(pollRef.current); setError(statusData.error || 'Render failed'); setStep('scenes'); }
-          else { const e = statusData.elapsedSeconds || 0; setRenderStatus(`Generating ${imageCount} AI images... ⏱ ${Math.floor(e/60)}m ${e%60}s`); }
+          else { const e = statusData.elapsedSeconds || 0; setRenderStatus(`Generating ${imageCount} AI images... ${Math.floor(e/60)}m ${e%60}s`); }
         } catch {}
       }, 5000);
     } catch (e) { setError(e.message); setStep('scenes'); }
@@ -225,8 +231,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, padding:'8px 14px', fontWeight:500 }}>← Models</button>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ padding:'6px 14px', borderRadius:999, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', fontSize:10, color:'#f59e0b', fontWeight:700, letterSpacing:'0.1em' }}>MODEL 3 · AI IMAGES</div>
-            <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ padding:'8px 14px', borderRadius:10, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-              💳 Pricing
+            <button onClick={() => (onNavigate && onNavigate('pricing'))} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:10, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+              <CreditCard size={13} strokeWidth={2} /> Pricing
             </button>
           </div>
         </div>
@@ -234,7 +240,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         {/* Hero */}
         <div style={{ marginBottom:32 }}>
           <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:12 }}>
-            <div style={{ width:52, height:52, borderRadius:16, background:'linear-gradient(135deg,#f59e0b,#ef4444)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, boxShadow:'0 4px 20px rgba(245,158,11,0.35)', flexShrink:0 }}>🖼️</div>
+            <div style={{ width:52, height:52, borderRadius:16, background:'linear-gradient(135deg,#f59e0b,#ef4444)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', boxShadow:'0 4px 20px rgba(245,158,11,0.35)', flexShrink:0 }}><ImageIcon size={26} strokeWidth={1.75} /></div>
             <div>
               <h1 style={{ fontSize:'clamp(22px,4vw,30px)', fontWeight:800, color:'#fff', letterSpacing:'-0.5px', margin:0, lineHeight:1.1 }}>AI Image Video</h1>
               <p style={{ fontSize:13, color:'rgba(255,255,255,0.4)', margin:'4px 0 0', lineHeight:1.5 }}>Each scene = unique AI image + Ken Burns zoom. Highest quality output.</p>
@@ -244,12 +250,12 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
 
         {/* Mode Tabs */}
         <div style={{ display:'flex', gap:6, marginBottom:16 }}>
-          {[['idea','💡','Idea'],['script','📝','Script'],['voice','🎙️','Voice']].map(([m,ic,label]) => {
+          {[['idea',Lightbulb,'Idea'],['script',FileText,'Script'],['voice',Mic,'Voice']].map(([m,Ic,label]) => {
             const active = inputMode === m;
             return (
               <button key={m} onClick={() => setInputMode(m)}
                 style={{ flex:1, padding:'11px 8px', borderRadius:12, border:`1px solid ${active?'#f59e0b':'rgba(255,255,255,0.08)'}`, fontWeight:600, fontSize:13, cursor:'pointer', transition:'all 0.2s', background: active ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)', color: active ? '#f59e0b' : 'rgba(255,255,255,0.5)', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                <span style={{ fontSize:16 }}>{ic}</span>
+                <Ic size={16} strokeWidth={2} />
                 <span style={{ fontSize:11 }}>{label}</span>
               </button>
             );
@@ -258,8 +264,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
 
         {/* Input */}
         <div className="m3-card" style={{ marginBottom:14 }}>
-          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>
-            {inputMode === 'idea' ? '💡 Your Idea' : inputMode === 'voice' ? '🎙️ Voice Recording' : '📝 Your Script'}
+          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
+            {inputMode === 'idea' ? <><Lightbulb size={12} strokeWidth={2} /> Your Idea</> : inputMode === 'voice' ? <><Mic size={12} strokeWidth={2} /> Voice Recording</> : <><FileText size={12} strokeWidth={2} /> Your Script</>}
           </p>
 
           {inputMode === 'idea' && (
@@ -320,10 +326,10 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
 
         {/* Duration */}
         <div className="m3-card">
-          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:14 }}>⏱ Duration</p>
+          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}><Clock size={12} strokeWidth={2} /> Duration</p>
           {(inputMode === 'script' || inputMode === 'voice') && script.length > 20 && (
-            <div style={{ padding:'10px 16px', borderRadius:10, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', fontSize:13, color:'#f59e0b', marginBottom:14, fontWeight:600 }}>
-              ✨ Auto-detected: <strong>{getSmartDuration()}</strong> based on script length
+            <div style={{ padding:'10px 16px', borderRadius:10, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', fontSize:13, color:'#f59e0b', marginBottom:14, fontWeight:600, display:'flex', alignItems:'center', gap:6 }}>
+              <Sparkles size={14} strokeWidth={2} /> Auto-detected: <strong>{getSmartDuration()}</strong> based on script length
             </div>
           )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, opacity: (inputMode === 'script' || inputMode === 'voice') && script.length > 20 ? 0.4 : 1, pointerEvents: (inputMode === 'script' || inputMode === 'voice') && script.length > 20 ? 'none' : 'auto' }}>
@@ -332,10 +338,10 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
               return (
                 <div key={d.value} onClick={() => allowed ? setDuration(d.value) : (onNavigate && onNavigate('pricing'))}
                   style={{ padding:'16px', borderRadius:12, cursor:'pointer', textAlign:'center', border:'1px solid ' + (duration === d.value && allowed ? '#f59e0b' : 'var(--border)'), background: duration === d.value && allowed ? 'rgba(245,158,11,0.08)' : 'var(--bg3)', opacity: allowed ? 1 : 0.5, position:'relative' }}>
-                  {!allowed && <div style={{ position:'absolute', top:8, right:8, fontSize:12 }}>🔒</div>}
+                  {!allowed && <div style={{ position:'absolute', top:8, right:8, color:'rgba(255,255,255,0.4)' }}><Lock size={12} strokeWidth={2} /></div>}
                   <div style={{ fontSize:16, fontWeight:800, color: duration === d.value && allowed ? '#f59e0b' : allowed ? 'var(--text)' : 'var(--text3)', marginBottom:2 }}>{d.label}</div>
                   <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{d.images} AI images</div>
-                  {allowed ? <div style={{ fontSize:10, color:'#a99bff', fontWeight:700 }}>🪙 {d.credits} credits</div> : <div style={{ fontSize:9, color:'#ef4444', fontWeight:700 }}>Subscribe to unlock</div>}
+                  {allowed ? <div style={{ fontSize:10, color:'#a99bff', fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}><Coins size={11} strokeWidth={2} /> {d.credits} credits</div> : <div style={{ fontSize:9, color:'#ef4444', fontWeight:700 }}>Subscribe to unlock</div>}
                 </div>
               );
             })}
@@ -344,11 +350,11 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
 
         {/* Video Style */}
         <div className="m3-card">
-          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:14 }}>🎨 Visual Style</p>
+          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}><Palette size={12} strokeWidth={2} /> Visual Style</p>
           <div className="m3-style-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
             {VIDEO_STYLES.map(s => (
               <div key={s.key} onClick={() => setVideoStyle(s.key)} style={{ padding:'14px 10px', borderRadius:12, cursor:'pointer', textAlign:'center', border:'1px solid ' + (videoStyle===s.key ? '#f59e0b' : 'var(--border)'), background: videoStyle===s.key ? 'rgba(245,158,11,0.08)' : 'var(--bg3)', transition:'all 0.15s' }}>
-                <div style={{ fontSize:24, marginBottom:6 }}>{s.emoji}</div>
+                <div style={{ marginBottom:6, display:'flex', justifyContent:'center', color: videoStyle===s.key ? '#f59e0b' : 'var(--text3)' }}><s.icon size={21} strokeWidth={1.75} /></div>
                 <div style={{ fontSize:12, fontWeight:700, color: videoStyle===s.key ? '#f59e0b' : 'var(--text)', marginBottom:3 }}>{s.label}</div>
                 <div style={{ fontSize:10, color:'var(--text3)', lineHeight:1.3 }}>{s.desc}</div>
               </div>
@@ -358,14 +364,14 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
 
         {/* Settings */}
         <div className="m3-card">
-          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:18 }}>⚙️ Settings</p>
+          <p style={{ fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:18, display:'flex', alignItems:'center', gap:6 }}><SettingsIcon size={12} strokeWidth={2} /> Settings</p>
 
           <div style={{ marginBottom:18 }}>
             <p style={{ fontSize:11, color:'var(--text3)', marginBottom:8, fontWeight:600 }}>Language</p>
             <div style={{ display:'flex', gap:8 }}>
               {VIDEO_LANGUAGES.map(lang => (
                 <div key={lang.code} onClick={() => setLang(lang.code)} style={{ flex:1, padding:'8px 4px', borderRadius:10, cursor:'pointer', textAlign:'center', border:'1px solid ' + (videoLanguage===lang.code ? '#f59e0b' : 'var(--border)'), background: videoLanguage===lang.code ? 'rgba(245,158,11,0.08)' : 'var(--bg3)', transition:'all 0.15s' }}>
-                  <div style={{ fontSize:18, marginBottom:2 }}>{lang.flag}</div>
+                  <div style={{ fontSize:10.5, fontWeight:800, letterSpacing:'0.02em', marginBottom:2, color: videoLanguage===lang.code ? '#f59e0b' : 'rgba(255,255,255,0.5)' }}>{lang.short}</div>
                   <div style={{ fontSize:10, color: videoLanguage===lang.code ? '#f59e0b' : 'var(--text3)', fontWeight:600 }}>{lang.label}</div>
                 </div>
               ))}
@@ -387,7 +393,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
               <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
                 {VOICE_OPTIONS.map(v => (
                   <div key={v.key} onClick={() => setVoice(v.key)} style={{ padding:'10px 8px', borderRadius:10, cursor:'pointer', textAlign:'center', border:'1px solid ' + (voice===v.key ? '#f59e0b' : 'var(--border)'), background: voice===v.key ? 'rgba(245,158,11,0.08)' : 'var(--bg3)', transition:'all 0.15s' }}>
-                    <div style={{ fontSize:18, marginBottom:3 }}>{v.emoji}</div>
+                    <div style={{ marginBottom:3, display:'flex', justifyContent:'center', color: voice===v.key ? '#f59e0b' : 'var(--text3)' }}><v.icon size={16} strokeWidth={1.75} /></div>
                     <div style={{ fontSize:10, fontWeight:600, color: voice===v.key ? '#f59e0b' : 'var(--text3)' }}>{v.label}</div>
                   </div>
                 ))}
@@ -396,17 +402,17 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           )}
 
           {inputMode === 'voice' && voiceAudioUrl && (
-            <div style={{ marginBottom:18, padding:'10px 14px', borderRadius:10, background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', fontSize:12, color:'#86efac' }}>
-              🎙️ Your uploaded voice will be used as the video's audio track
+            <div style={{ marginBottom:18, padding:'10px 14px', borderRadius:10, background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)', fontSize:12, color:'#86efac', display:'flex', alignItems:'center', gap:6 }}>
+              <Mic size={13} strokeWidth={2} /> Your uploaded voice will be used as the video's audio track
             </div>
           )}
 
           {[
-            { label:'💬 Captions', value:captions, onChange:setCaptions },
-            { label:'🎵 Background Music', value:music, onChange:setMusic },
-          ].map(({ label, value, onChange }) => (
+            { label:'Captions', icon: MessageSquare, value:captions, onChange:setCaptions },
+            { label:'Background Music', icon: Music, value:music, onChange:setMusic },
+          ].map(({ label, icon: ItemIcon, value, onChange }) => (
             <div key={label} onClick={() => onChange(!value)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'11px 14px', background:'var(--bg3)', borderRadius:10, marginBottom:8, cursor:'pointer', border:'1px solid ' + (value ? 'rgba(245,158,11,0.2)' : 'transparent') }}>
-              <span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{label}</span>
+              <span style={{ fontSize:13, fontWeight:500, color:'var(--text)', display:'flex', alignItems:'center', gap:8 }}><ItemIcon size={15} strokeWidth={1.75} /> {label}</span>
               <div style={{ width:42, height:23, borderRadius:999, background: value ? '#f59e0b' : 'var(--bg4)', position:'relative', transition:'background 0.2s' }}>
                 <div style={{ position:'absolute', top:2.5, left: value ? 21 : 2.5, width:18, height:18, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.3)' }} />
               </div>
@@ -425,8 +431,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
 
         {/* Credit cost badge */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:16 }}>
-          <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(245,158,11,0.12)', border:'1px solid rgba(245,158,11,0.3)', fontSize:12, fontWeight:700, color:'#f59e0b' }}>
-            🪙 {creditCost} credits per video
+          <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(245,158,11,0.12)', border:'1px solid rgba(245,158,11,0.3)', fontSize:12, fontWeight:700, color:'#f59e0b', display:'flex', alignItems:'center', gap:6 }}>
+            <Coins size={13} strokeWidth={2} /> {creditCost} credits per video
           </div>
           <div style={{ padding:'5px 14px', borderRadius:999, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', fontSize:11, color:'rgba(255,255,255,0.4)', fontWeight:600 }}>
             Model 3 · AI Images
@@ -436,11 +442,11 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         {/* CTA */}
         <button onClick={() => userPlan === 'free' ? (onNavigate && onNavigate('pricing')) : generateScenes()} disabled={userPlan !== 'free' && (generating || !canSubmit || inputMode === 'voice')}
           style={{ width:'100%', padding:'16px', borderRadius:12, border:'none', background: (userPlan !== 'free' && (generating || !canSubmit)) ? 'var(--bg3)' : 'linear-gradient(135deg, #f59e0b, #ef4444)', color: (userPlan !== 'free' && (generating || !canSubmit)) ? 'var(--text3)' : '#fff', fontWeight:700, fontSize:15, cursor: (userPlan !== 'free' && (generating || !canSubmit)) ? 'not-allowed' : 'pointer', boxShadow: canSubmit ? '0 4px 20px rgba(245,158,11,0.3)' : 'none', transition:'all 0.15s' }}>
-          {userPlan === 'free' ? '🔒 Subscribe to Generate →' : generating ? '⏳ Generating scenes...' : `✨ Generate ${imageCount} Scenes — ${creditCost} Credits →`}
+          {userPlan === 'free' ? 'Subscribe to Generate →' : generating ? 'Generating scenes...' : `Generate ${imageCount} Scenes — ${creditCost} Credits →`}
         </button>
 
-        <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:12 }}>
-          Grok Imagine · {selectedStyle?.emoji} {selectedStyle?.label} · Ken Burns zoom · FFmpeg render
+        <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.2)', marginTop:12, display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+          Grok Imagine · {selectedStyle && <selectedStyle.icon size={12} strokeWidth={2} />} {selectedStyle?.label} · Ken Burns zoom · FFmpeg render
         </p>
       </div>
     </div>
@@ -453,7 +459,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:28 }}>
           <button onClick={() => setStep('setup')} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, padding:'8px 14px' }}>← Back</button>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <span style={{ padding:'5px 12px', borderRadius:999, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', fontSize:11, color:'#f59e0b', fontWeight:700 }}>{selectedStyle?.emoji} {selectedStyle?.label}</span>
+            <span style={{ padding:'5px 12px', borderRadius:999, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', fontSize:11, color:'#f59e0b', fontWeight:700, display:'flex', alignItems:'center', gap:5 }}>{selectedStyle && <selectedStyle.icon size={12} strokeWidth={2} />} {selectedStyle?.label}</span>
             <span style={{ padding:'5px 12px', borderRadius:999, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', fontSize:11, color:'rgba(255,255,255,0.5)', fontWeight:600 }}>{scenes.length} scenes · {selectedDuration?.label}</span>
           </div>
         </div>
@@ -463,8 +469,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         </div>
         <SceneEditor scenes={scenes} onChange={setScenes} />
         {error && <div style={{ padding:'12px 16px', borderRadius:12, background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.25)', color:'#ef4444', fontSize:13, margin:'16px 0' }}>{error}</div>}
-        <button onClick={startRender} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', marginTop:24, background:'linear-gradient(135deg,#f59e0b,#ef4444)', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 8px 24px rgba(245,158,11,0.35)', transition:'all 0.2s' }}>
-          🚀 Generate Video →
+        <button onClick={startRender} style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', marginTop:24, background:'linear-gradient(135deg,#f59e0b,#ef4444)', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 8px 24px rgba(245,158,11,0.35)', transition:'all 0.2s', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          <Rocket size={16} strokeWidth={2} /> Generate Video →
         </button>
         <p style={{ textAlign:'center', fontSize:11, color:'rgba(255,255,255,0.25)', marginTop:10 }}>
           Generating {scenes.length} unique AI images · Ken Burns zoom · FFmpeg render
@@ -484,7 +490,7 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'2px solid rgba(245,158,11,0.1)' }} />
           <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'#f59e0b', animation:'spin 0.9s linear infinite' }} />
           <div style={{ position:'absolute', inset:8, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'rgba(245,158,11,0.4)', animation:'spin 1.4s linear infinite reverse' }} />
-          <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:28 }}>🖼️</div>
+          <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', color:'#f59e0b' }}><ImageIcon size={28} strokeWidth={1.75} /></div>
         </div>
         <h2 style={{ fontSize:26, fontWeight:800, color:'#fff', marginBottom:8, letterSpacing:'-0.5px' }}>Generating Your Video</h2>
         <p style={{ fontSize:14, color:'rgba(255,255,255,0.4)', marginBottom:24 }}>AI is crafting each scene — please keep this tab open</p>
@@ -494,13 +500,13 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
         <div style={{ display:'flex', flexDirection:'column', gap:8, textAlign:'left' }}>
           {[
             { label: voiceAudioUrl ? 'Voice Recording (uploaded)' : 'Voiceover generation', done:true },
-            { label: `AI Images × ${imageCount} — ${selectedStyle?.emoji} ${selectedStyle?.label}`, done:false, active:true },
+            { label: `AI Images × ${imageCount} — ${selectedStyle?.label}`, done:false, active:true },
             { label: 'Ken Burns zoom & transitions', done:false },
             { label: 'Audio mix & captions', done:false },
           ].map((item, i) => (
             <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 16px', borderRadius:12, background: item.active ? 'rgba(245,158,11,0.07)' : 'rgba(255,255,255,0.03)', border:`1px solid ${item.active ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.06)'}` }}>
               <div style={{ width:20, height:20, borderRadius:'50%', background: item.done ? 'rgba(34,197,94,0.2)' : item.active ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.06)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:10 }}>
-                {item.done ? '✓' : item.active ? <div style={{ width:8,height:8,borderRadius:'50%',background:'#f59e0b',animation:'pulse 1s ease infinite' }} /> : ''}
+                {item.done ? <Check size={11} strokeWidth={2.5} color="#22c55e" /> : item.active ? <div style={{ width:8,height:8,borderRadius:'50%',background:'#f59e0b',animation:'pulse 1s ease infinite' }} /> : ''}
               </div>
               <span style={{ fontSize:13, color: item.done ? '#22c55e' : item.active ? '#f59e0b' : 'rgba(255,255,255,0.3)', fontWeight: item.active ? 600 : 400 }}>{item.label}</span>
             </div>
@@ -516,10 +522,10 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
     <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'40px 16px', background:'radial-gradient(ellipse at top, rgba(34,197,94,0.06) 0%, transparent 55%)' }}>
       <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}} @keyframes pop{0%{transform:scale(0.8);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}`}</style>
       <div style={{ textAlign:'center', maxWidth:560, width:'100%', animation:'fadeUp 0.5s ease' }}>
-        <div style={{ fontSize:64, marginBottom:16, animation:'pop 0.5s ease' }}>🎉</div>
+        <div style={{ marginBottom:16, display:'flex', justifyContent:'center', color:'#22c55e', animation:'pop 0.5s ease' }}><PartyPopper size={52} strokeWidth={1.5} /></div>
         <h2 style={{ fontSize:30, fontWeight:800, color:'#fff', marginBottom:6, letterSpacing:'-1px' }}>Video Ready!</h2>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:20 }}>
-          <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', fontSize:12, color:'#f59e0b', fontWeight:600 }}>{selectedStyle?.emoji} {selectedStyle?.label}</span>
+          <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.25)', fontSize:12, color:'#f59e0b', fontWeight:600, display:'flex', alignItems:'center', gap:5 }}>{selectedStyle && <selectedStyle.icon size={12} strokeWidth={2} />} {selectedStyle?.label}</span>
           <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', fontSize:12, color:'rgba(255,255,255,0.5)', fontWeight:600 }}>{selectedDuration?.label}</span>
           <span style={{ padding:'4px 12px', borderRadius:999, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', fontSize:12, color:'rgba(255,255,255,0.5)', fontWeight:600 }}>{scenes.length} images</span>
         </div>
@@ -529,8 +535,8 @@ export default function Model3Page({ onBack, model3Plan = 'm3_starter', model3Ac
           </div>
         )}
         <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-          {videoUrl && <a href={videoUrl} download style={{ padding:'13px 28px', borderRadius:12, background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#fff', fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(34,197,94,0.35)', display:'flex', alignItems:'center', gap:8 }}>⬇️ Download</a>}
-          <button onClick={() => { setStep('setup'); setIdea(''); setScript(''); setScenes([]); setVideoUrl(null); setVoiceAudioUrl(null); }} style={{ padding:'13px 28px', borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'rgba(255,255,255,0.7)', fontWeight:600, fontSize:14, cursor:'pointer' }}>🔄 New Video</button>
+          {videoUrl && <a href={videoUrl} download style={{ padding:'13px 28px', borderRadius:12, background:'linear-gradient(135deg,#22c55e,#16a34a)', color:'#fff', fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(34,197,94,0.35)', display:'flex', alignItems:'center', gap:8 }}><Download size={15} strokeWidth={2} /> Download</a>}
+          <button onClick={() => { setStep('setup'); setIdea(''); setScript(''); setScenes([]); setVideoUrl(null); setVoiceAudioUrl(null); }} style={{ padding:'13px 28px', borderRadius:12, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'rgba(255,255,255,0.7)', fontWeight:600, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}><RefreshCw size={14} strokeWidth={2} /> New Video</button>
         </div>
       </div>
     </div>

@@ -1,4 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
+import {
+  PartyPopper, X, Check, Loader2, XCircle, Square, CreditCard, Paperclip,
+  Mic, Lightbulb, FileText, Clapperboard, User, Settings as SettingsIcon,
+  Clock, Proportions, Globe, AlertTriangle, Download, RefreshCw, Edit3,
+  Sparkles,
+} from 'lucide-react';
 
 // ── Plans ──────────────────────────────────────────────────────────────────
 const ERIVION_PLANS = {
@@ -79,7 +85,7 @@ function PaymentModal({ onClose, userRegion }) {
       <div style={{ background: '#0d0d1a', border: '1px solid rgba(168,85,247,0.25)', borderRadius: 20, width: '100%', maxWidth: 480, maxHeight: '92vh', overflowY: 'auto', padding: 28 }}>
         {step === 'done' ? (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', color: '#22c55e' }}><PartyPopper size={52} strokeWidth={1.5} /></div>
             <h3 style={{ fontSize: 22, fontWeight: 800, color: '#22c55e', marginBottom: 8 }}>Request Submitted!</h3>
             <p style={{ color: '#9ca3af', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>We'll activate your plan within a few hours.</p>
             <button onClick={onClose} style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 32px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Got it!</button>
@@ -91,12 +97,12 @@ function PaymentModal({ onClose, userRegion }) {
                 <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: '#fff' }}>Choose Your Plan</h2>
                 <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0' }}>Erivion AI Video</p>
               </div>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 22 }}>✕</button>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex' }}><X size={20} strokeWidth={2} /></button>
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               {['eg', 'intl'].map(r => (
                 <button key={r} style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${userRegion === r ? '#a855f7' : 'rgba(255,255,255,0.1)'}`, background: userRegion === r ? 'rgba(168,85,247,0.1)' : 'transparent', color: userRegion === r ? '#c084fc' : '#6b7280', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                  {r === 'eg' ? '🇪🇬 EGP' : '🌍 USD'}
+                  {r === 'eg' ? 'EGP' : 'USD'}
                 </button>
               ))}
             </div>
@@ -113,11 +119,11 @@ function PaymentModal({ onClose, userRegion }) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {plan.videos_5s > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>🎬 {plan.videos_5s}×5s</span>}
-                    {plan.videos_30s > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>🎬 {plan.videos_30s}×30s</span>}
-                    {plan.videos_1min > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>🎬 {plan.videos_1min}×1min</span>}
-                    {plan.videos_5min > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>🎬 {plan.videos_5min}×5min</span>}
-                    {plan.videos_8min > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>🎬 {plan.videos_8min}×8min</span>}
+                    {plan.videos_5s > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>{plan.videos_5s}×5s</span>}
+                    {plan.videos_30s > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>{plan.videos_30s}×30s</span>}
+                    {plan.videos_1min > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>{plan.videos_1min}×1min</span>}
+                    {plan.videos_5min > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>{plan.videos_5min}×5min</span>}
+                    {plan.videos_8min > 0 && <span style={{ fontSize: 11, color: '#9ca3af', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 20 }}>{plan.videos_8min}×8min</span>}
                   </div>
                 </div>
               ))}
@@ -137,8 +143,8 @@ function PaymentModal({ onClose, userRegion }) {
             </div>
             {isAr ? (
               <div style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#c084fc', margin: '0 0 12px' }}>💳 خطوات الدفع</p>
-                {['افتح تطبيق InstaPay', `حول ${selected.price} جنيه إلى:`, 'خذ screenshot للتحويل', 'ارفعه أدناه ⬇️'].map((s, i) => (
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#c084fc', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={14} strokeWidth={2} /> خطوات الدفع</p>
+                {['افتح تطبيق InstaPay', `حول ${selected.price} جنيه إلى:`, 'خذ screenshot للتحويل', 'ارفعه أدناه'].map((s, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                     <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#c084fc', flexShrink: 0 }}>{i + 1}</div>
                     <span style={{ fontSize: 13, color: '#d1d5db' }}>{s}</span>
@@ -146,14 +152,14 @@ function PaymentModal({ onClose, userRegion }) {
                 ))}
                 <div style={{ margin: '12px 0 0', padding: '12px 16px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: 1 }}>01091917832</span>
-                  <button onClick={handleCopy} style={{ padding: '6px 14px', borderRadius: 8, background: copied ? 'rgba(34,197,94,0.2)' : 'rgba(168,85,247,0.2)', border: `1px solid ${copied ? 'rgba(34,197,94,0.4)' : 'rgba(168,85,247,0.4)'}`, color: copied ? '#22c55e' : '#c084fc', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                    {copied ? '✓ Copied' : 'Copy'}
+                  <button onClick={handleCopy} style={{ padding: '6px 14px', borderRadius: 8, background: copied ? 'rgba(34,197,94,0.2)' : 'rgba(168,85,247,0.2)', border: `1px solid ${copied ? 'rgba(34,197,94,0.4)' : 'rgba(168,85,247,0.4)'}`, color: copied ? '#22c55e' : '#c084fc', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {copied ? <Check size={13} strokeWidth={2.5} /> : null} {copied ? 'Copied' : 'Copy'}
                   </button>
                 </div>
               </div>
             ) : (
               <div style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#c084fc', margin: '0 0 8px' }}>💳 Pay via Gumroad</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#c084fc', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={14} strokeWidth={2} /> Pay via Gumroad</p>
                 <a href="https://erivion.gumroad.com" target="_blank" rel="noreferrer"
                   style={{ display: 'block', width: '100%', textAlign: 'center', background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', borderRadius: 10, padding: '12px', fontWeight: 700, fontSize: 14, textDecoration: 'none', marginBottom: 8 }}>
                   Pay ${selected.price_usd} on Gumroad →
@@ -168,14 +174,14 @@ function PaymentModal({ onClose, userRegion }) {
                 style={{ border: `2px dashed ${screenshotPreview ? '#22c55e' : 'rgba(168,85,247,0.3)'}`, borderRadius: 12, padding: 24, textAlign: 'center', cursor: 'pointer' }}>
                 {screenshotPreview
                   ? <img src={screenshotPreview} alt="receipt" style={{ maxHeight: 120, borderRadius: 8, maxWidth: '100%' }} />
-                  : <><div style={{ fontSize: 32, marginBottom: 8 }}>📎</div><p style={{ color: '#6b7280', fontSize: 13, margin: 0 }}>Click to upload payment screenshot</p></>}
+                  : <><div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center', color: '#a855f7' }}><Paperclip size={28} strokeWidth={1.5} /></div><p style={{ color: '#6b7280', fontSize: 13, margin: 0 }}>Click to upload payment screenshot</p></>}
                 <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
               </div>
             </div>
             {error && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>{error}</p>}
             <button onClick={handleSubmit} disabled={loading || !screenshot || !email}
               style={{ width: '100%', background: loading || !screenshot || !email ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #a855f7, #7c3aed)', color: loading || !screenshot || !email ? '#4b5563' : '#fff', border: 'none', borderRadius: 12, padding: '14px', fontWeight: 700, fontSize: 15, cursor: loading || !screenshot || !email ? 'not-allowed' : 'pointer' }}>
-              {loading ? '⏳ Submitting...' : '✅ Submit Payment Request'}
+              {loading ? 'Submitting...' : 'Submit Payment Request'}
             </button>
           </>
         )}
@@ -195,15 +201,15 @@ function SceneCard({ scene, index, onChange }) {
     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: 16, marginBottom: 10 }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
         <span style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 700 }}>#{index + 1}</span>
-        {scene.status === 'done' && <span style={{ fontSize: 11, color: '#22c55e' }}>✓ Done</span>}
-        {scene.status === 'generating' && <span style={{ fontSize: 11, color: '#f59e0b' }}>⏳ Generating...</span>}
-        {scene.status === 'error' && <span style={{ fontSize: 11, color: '#ef4444' }}>✗ Failed</span>}
+        {scene.status === 'done' && <span style={{ fontSize: 11, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}><Check size={12} strokeWidth={2.5} /> Done</span>}
+        {scene.status === 'generating' && <span style={{ fontSize: 11, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 4 }}><Loader2 size={12} className="spinning" /> Generating...</span>}
+        {scene.status === 'error' && <span style={{ fontSize: 11, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4 }}><XCircle size={12} strokeWidth={2} /> Failed</span>}
       </div>
 
       {/* Voiceover text */}
       {localText && (
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>📝 Voiceover text</div>
+          <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}><FileText size={11} strokeWidth={2} /> Voiceover text</div>
           {editText ? (
             <textarea value={localText} onChange={e => setLocalText(e.target.value)}
               onBlur={() => { setEditText(false); onChange({ ...scene, text: localText }); }}
@@ -218,9 +224,9 @@ function SceneCard({ scene, index, onChange }) {
       {/* Video prompt */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <span style={{ fontSize: 11, color: '#6b7280' }}>🎬 Video prompt</span>
-          <button onClick={() => setEditPrompt(!editPrompt)} style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: 11 }}>
-            {editPrompt ? 'Save' : '✏️ Edit'}
+          <span style={{ fontSize: 11, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 5 }}><Clapperboard size={11} strokeWidth={2} /> Video prompt</span>
+          <button onClick={() => setEditPrompt(!editPrompt)} style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {editPrompt ? 'Save' : <><Edit3 size={11} strokeWidth={2} /> Edit</>}
           </button>
         </div>
         {editPrompt ? (
@@ -408,7 +414,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
           <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 14px', color: '#9ca3af', cursor: 'pointer', fontSize: 13 }}>← Back</button>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 22 }}>🎬</span>
+              <Clapperboard size={20} strokeWidth={1.75} color="#c084fc" />
               <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff' }}>Erivion <span style={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>AI</span></h1>
               <span style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', fontSize: 11, color: '#c084fc', fontWeight: 700 }}>Model 7</span>
             </div>
@@ -429,12 +435,12 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
               <p style={{ ...labelStyle, fontSize: 13, marginBottom: 14 }}>Choose your input method</p>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {[
-                  { key: 'idea', icon: '💡', label: 'Idea to Video', labelAr: 'فكرة إلى فيديو' },
-                  { key: 'script', icon: '📝', label: 'Script to Video', labelAr: 'سكريبت إلى فيديو' },
-                  { key: 'voice', icon: '🎙️', label: 'Voice to Video', labelAr: 'صوت إلى فيديو' },
+                  { key: 'idea', icon: Lightbulb, label: 'Idea to Video', labelAr: 'فكرة إلى فيديو' },
+                  { key: 'script', icon: FileText, label: 'Script to Video', labelAr: 'سكريبت إلى فيديو' },
+                  { key: 'voice', icon: Mic, label: 'Voice to Video', labelAr: 'صوت إلى فيديو' },
                 ].map(m => (
-                  <button key={m.key} className={`ev-tab${mode === m.key ? ' active' : ''}`} onClick={() => setMode(m.key)}>
-                    {m.icon} {isAr ? m.labelAr : m.label}
+                  <button key={m.key} className={`ev-tab${mode === m.key ? ' active' : ''}`} onClick={() => setMode(m.key)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <m.icon size={13} strokeWidth={2} /> {isAr ? m.labelAr : m.label}
                   </button>
                 ))}
               </div>
@@ -446,24 +452,24 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
                 <div style={{ ...sectionStyle, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
                   {mode === 'idea' && (
                     <>
-                      <label style={labelStyle}>💡 {isAr ? 'اكتب فكرتك' : 'Describe your video idea'}</label>
+                      <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}><Lightbulb size={12} strokeWidth={2} /> {isAr ? 'اكتب فكرتك' : 'Describe your video idea'}</label>
                       <textarea value={idea} onChange={e => setIdea(e.target.value)} rows={4} placeholder={isAr ? 'مثال: فيديو عن رحلة استكشافية في الصحراء...' : 'Example: A cinematic journey through the desert at sunset...'}
                         style={{ ...inputStyle, resize: 'vertical' }} />
                     </>
                   )}
                   {mode === 'script' && (
                     <>
-                      <label style={labelStyle}>📝 {isAr ? 'اكتب السكريبت كاملاً' : 'Write your full script'}</label>
+                      <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={12} strokeWidth={2} /> {isAr ? 'اكتب السكريبت كاملاً' : 'Write your full script'}</label>
                       <textarea value={script} onChange={e => setScript(e.target.value)} rows={8} placeholder={isAr ? 'اكتب السكريبت هنا...' : 'Write your script here...'}
                         style={{ ...inputStyle, resize: 'vertical' }} />
                     </>
                   )}
                   {mode === 'voice' && (
                     <>
-                      <label style={labelStyle}>🎙️ {isAr ? 'ارفع ملف الصوت' : 'Upload your voice file'}</label>
+                      <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}><Mic size={12} strokeWidth={2} /> {isAr ? 'ارفع ملف الصوت' : 'Upload your voice file'}</label>
                       <div onClick={() => voiceFileRef.current?.click()} style={{ border: `2px dashed ${voiceFile ? '#22c55e' : 'rgba(168,85,247,0.3)'}`, borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer' }}>
-                        {voiceFile ? <p style={{ color: '#22c55e', margin: 0 }}>✓ {voiceFile.name}</p> : <>
-                          <div style={{ fontSize: 36, marginBottom: 8 }}>🎙️</div>
+                        {voiceFile ? <p style={{ color: '#22c55e', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Check size={14} strokeWidth={2.5} /> {voiceFile.name}</p> : <>
+                          <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center', color: '#a855f7' }}><Mic size={30} strokeWidth={1.5} /></div>
                           <p style={{ color: '#6b7280', margin: 0, fontSize: 13 }}>MP3, WAV, M4A (max 25MB)</p>
                         </>}
                         <input ref={voiceFileRef} type="file" accept="audio/*" onChange={e => setVoiceFile(e.target.files[0])} style={{ display: 'none' }} />
@@ -475,7 +481,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
                 {/* Characters */}
                 <div style={{ ...sectionStyle, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                    <label style={{ ...labelStyle, margin: 0 }}>👤 {isAr ? 'الشخصيات (اختياري، حتى 5)' : 'Characters (optional, up to 5)'}</label>
+                    <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}><User size={12} strokeWidth={2} /> {isAr ? 'الشخصيات (اختياري، حتى 5)' : 'Characters (optional, up to 5)'}</label>
                     {characters.length < 5 && (
                       <button onClick={addCharacter} style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8, padding: '4px 12px', color: '#c084fc', cursor: 'pointer', fontSize: 12 }}>+ Add</button>
                     )}
@@ -491,7 +497,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
                           rows={2} style={{ ...inputStyle, resize: 'none' }} />
                       </div>
                       {characters.length > 1 && (
-                        <button onClick={() => removeCharacter(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, padding: '8px', marginTop: 2 }}>✕</button>
+                        <button onClick={() => removeCharacter(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '8px', marginTop: 2, display: 'flex' }}><X size={16} strokeWidth={2} /></button>
                       )}
                     </div>
                   ))}
@@ -499,11 +505,11 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
 
                 {/* Settings */}
                 <div style={{ ...sectionStyle, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: 20 }}>
-                  <p style={{ ...labelStyle, fontSize: 13, marginBottom: 16 }}>⚙️ {isAr ? 'إعدادات الفيديو' : 'Video Settings'}</p>
+                  <p style={{ ...labelStyle, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}><SettingsIcon size={13} strokeWidth={2} /> {isAr ? 'إعدادات الفيديو' : 'Video Settings'}</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                     {/* Duration */}
                     <div>
-                      <label style={labelStyle}>⏱️ {isAr ? 'المدة' : 'Duration'}</label>
+                      <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={12} strokeWidth={2} /> {isAr ? 'المدة' : 'Duration'}</label>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {Object.entries(DURATION_CONFIG).map(([key, cfg]) => (
                           <button key={key} onClick={() => setDuration(key)}
@@ -518,7 +524,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
                     {/* Aspect Ratio + Language */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                       <div>
-                        <label style={labelStyle}>📐 {isAr ? 'نسبة العرض' : 'Aspect Ratio'}</label>
+                        <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}><Proportions size={12} strokeWidth={2} /> {isAr ? 'نسبة العرض' : 'Aspect Ratio'}</label>
                         <div style={{ display: 'flex', gap: 8 }}>
                           {Object.keys(ASPECT_RATIOS).map(r => (
                             <button key={r} onClick={() => setAspectRatio(r)}
@@ -530,7 +536,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
                       </div>
 
                       <div>
-                        <label style={labelStyle}>🌐 {isAr ? 'اللغة' : 'Language'}</label>
+                        <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}><Globe size={12} strokeWidth={2} /> {isAr ? 'اللغة' : 'Language'}</label>
                         <div style={{ display: 'flex', gap: 8 }}>
                           {[{ key: 'ar', label: 'عربي' }, { key: 'en', label: 'English' }].map(l => (
                             <button key={l.key} onClick={() => setLanguage(l.key)}
@@ -544,7 +550,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
                       {/* Voice */}
                       {duration !== '5s' && (
                         <div>
-                          <label style={labelStyle}>🎙️ {isAr ? 'الصوت' : 'Voice'}</label>
+                          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}><Mic size={12} strokeWidth={2} /> {isAr ? 'الصوت' : 'Voice'}</label>
                           <select value={voice} onChange={e => setVoice(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
                             {voices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
                           </select>
@@ -576,7 +582,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
 
                 <button onClick={generateScenes} disabled={generatingScenes}
                   style={{ width: '100%', padding: '16px', borderRadius: 14, background: generatingScenes ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #a855f7, #7c3aed)', border: 'none', color: generatingScenes ? '#4b5563' : '#fff', fontSize: 16, fontWeight: 800, cursor: generatingScenes ? 'not-allowed' : 'pointer', boxShadow: generatingScenes ? 'none' : '0 4px 20px rgba(168,85,247,0.4)' }}>
-                  {generatingScenes ? '⏳ Generating scenes...' : `✨ ${isAr ? 'توليد المشاهد' : 'Generate Scenes'} (${durationConfig.scenes} scenes)`}
+                  {generatingScenes ? 'Generating scenes...' : `${isAr ? 'توليد المشاهد' : 'Generate Scenes'} (${durationConfig.scenes} scenes)`}
                 </button>
               </>
             )}
@@ -586,7 +592,7 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
         {/* Step: Generating */}
         {step === 'generating' && (
           <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>✨</div>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', color: '#a855f7' }}><Sparkles size={48} strokeWidth={1.5} /></div>
             <h2 style={{ color: '#fff', marginBottom: 8 }}>{isAr ? 'جاري توليد المشاهد...' : 'Generating scenes...'}</h2>
             <p style={{ color: '#6b7280', fontSize: 14 }}>{isAr ? 'Groq AI يكتب السكريبت والـ prompts' : 'Groq AI is writing your script and prompts'}</p>
           </div>
@@ -616,8 +622,8 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
             {error && <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, color: '#ef4444', fontSize: 13, marginBottom: 16 }}>{error}</div>}
 
             <button onClick={renderVideo} disabled={generatingVideo}
-              style={{ width: '100%', padding: '16px', borderRadius: 14, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', border: 'none', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 20px rgba(168,85,247,0.4)' }}>
-              🎬 {isAr ? 'ابدأ الريندر' : 'Start Rendering'}
+              style={{ width: '100%', padding: '16px', borderRadius: 14, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', border: 'none', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 20px rgba(168,85,247,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Clapperboard size={16} strokeWidth={2} /> {isAr ? 'ابدأ الريندر' : 'Start Rendering'}
             </button>
           </>
         )}
@@ -625,12 +631,12 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
         {/* Step: Rendering */}
         {step === 'rendering' && (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>🎬</div>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', color: '#a855f7' }}><Clapperboard size={48} strokeWidth={1.5} /></div>
             <h2 style={{ color: '#fff', marginBottom: 8 }}>{isAr ? 'جاري إنشاء الفيديو...' : 'Rendering your video...'}</h2>
             <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 24 }}>{statusMsg || (isAr ? 'Erivion AI يولد المشاهد واحداً تلو الآخر' : 'Erivion AI is generating scenes one by one')}</p>
             <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '10px 16px', maxWidth: 420, margin: '0 auto 20px' }}>
-              <p style={{ color: '#f59e0b', fontSize: 13, margin: 0 }}>
-                {isAr ? '⚠️ المشهد الأول قد يأخذ من 10 إلى 15 دقيقة لتحميل الذكاء الاصطناعي — المشاهد التالية ستكون أسرع بكثير' : '⚠️ The first scene may take 10–15 minutes to load the AI model — following scenes will be much faster'}
+              <p style={{ color: '#f59e0b', fontSize: 13, margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                <AlertTriangle size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: 1 }} /> <span>{isAr ? 'المشهد الأول قد يأخذ من 10 إلى 15 دقيقة لتحميل الذكاء الاصطناعي — المشاهد التالية ستكون أسرع بكثير' : 'The first scene may take 10–15 minutes to load the AI model — following scenes will be much faster'}</span>
               </p>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 99, height: 8, overflow: 'hidden', maxWidth: 400, margin: '0 auto 12px' }}>
@@ -643,7 +649,9 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
               <div style={{ maxWidth: 500, margin: '24px auto 0', textAlign: 'left' }}>
                 {scenes.slice(0, 6).map((s, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <span style={{ fontSize: 14 }}>{s.status === 'done' ? '✅' : s.status === 'generating' ? '⏳' : s.status === 'error' ? '❌' : '⬜'}</span>
+                    <span style={{ display: 'flex', color: s.status === 'done' ? '#22c55e' : s.status === 'generating' ? '#f59e0b' : s.status === 'error' ? '#ef4444' : '#4b5563' }}>
+                      {s.status === 'done' ? <Check size={14} strokeWidth={2.5} /> : s.status === 'generating' ? <Loader2 size={14} className="spinning" /> : s.status === 'error' ? <XCircle size={14} strokeWidth={2} /> : <Square size={12} strokeWidth={2} />}
+                    </span>
                     <span style={{ fontSize: 12, color: '#9ca3af' }}>Scene {i + 1}</span>
                   </div>
                 ))}
@@ -656,16 +664,16 @@ export default function ModelErivionPage({ onBack, erivionPlan, erivionAccess, o
         {/* Step: Done */}
         {step === 'done' && finalVideoUrl && (
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', color: '#22c55e' }}><PartyPopper size={48} strokeWidth={1.5} /></div>
             <h2 style={{ color: '#22c55e', marginBottom: 8 }}>{isAr ? 'الفيديو جاهز!' : 'Your video is ready!'}</h2>
             <video key={finalVideoUrl} src={finalVideoUrl} controls style={{ width: '100%', maxWidth: 600, borderRadius: 16, marginBottom: 20, boxShadow: '0 0 40px rgba(168,85,247,0.3)' }} playsInline autoPlay />
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <a href={finalVideoUrl} download style={{ padding: '12px 28px', borderRadius: 12, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 15 }}>
-                ⬇️ {isAr ? 'تحميل' : 'Download'}
+              <a href={finalVideoUrl} download style={{ padding: '12px 28px', borderRadius: 12, background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Download size={16} strokeWidth={2} /> {isAr ? 'تحميل' : 'Download'}
               </a>
               <button onClick={() => { setStep('setup'); setMode(null); setScenes([]); setFinalVideoUrl(null); setProgress(0); }}
-                style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
-                🔄 {isAr ? 'فيديو جديد' : 'New Video'}
+                style={{ padding: '12px 28px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <RefreshCw size={15} strokeWidth={2} /> {isAr ? 'فيديو جديد' : 'New Video'}
               </button>
             </div>
           </div>
