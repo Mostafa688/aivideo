@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import TimelineEditor from '../components/AudioVideoTimelineEditor.jsx';
+import { downloadRemoteFile } from '../utils/download.js';
 
 const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET || 'Sosa6892Midbok';
 
@@ -1622,7 +1623,7 @@ function StudioTab({ s }) {
             <div style={{ ...s.card, border: '1px solid #166534' }}>
               <div style={{ fontSize: 13, color: '#22c55e', fontWeight: 700, marginBottom: 12 }}>✅ الفيديو جاهز! ({result.scenes} مشاهد)</div>
               <video src={result.url} controls style={{ width: '100%', borderRadius: 8, background: '#000', marginBottom: 12 }} />
-              <a href={result.url} download={result.filename} style={{ ...s.btn('#22c55e'), display: 'block', textAlign: 'center', textDecoration: 'none', padding: '10px' }}>⬇️ تحميل الفيديو</a>
+              <button onClick={() => downloadRemoteFile(result.url, result.filename)} style={{ ...s.btn('#22c55e'), display: 'block', width: '100%', textAlign: 'center', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '10px' }}>⬇️ تحميل الفيديو</button>
               <div style={{ fontSize: 11, color: '#4b5563', marginTop: 8, fontFamily: 'monospace' }}>{result.filename}</div>
             </div>
           )}

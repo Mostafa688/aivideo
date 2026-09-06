@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { downloadRemoteFile } from '../utils/download.js';
 
 const VIDEO_EFFECTS = [
   { key: 'none',       label: 'None',      icon: '🎬' },
@@ -276,9 +277,9 @@ function ManualEditorModal({ videoUrl, onClose }) {
         </div>
 
         {/* Download */}
-        <a href={videoUrl} download style={{ display: 'block', textAlign: 'center', background: 'var(--accent)', color: '#fff', padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, textDecoration: 'none' }}>
+        <button onClick={() => downloadRemoteFile(videoUrl, 'erivion-video.mp4')} style={{ display: 'block', width: '100%', textAlign: 'center', background: 'var(--accent)', color: '#fff', padding: '13px', borderRadius: 10, fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
           ⬇️ Download Video
-        </a>
+        </button>
       </div>
     </div>
   );
@@ -579,7 +580,7 @@ export default function RenderPage({ scenes: initialScenes, formData, user, onBa
                     <source src={videoUrl} type="video/mp4" />
                   </video>
                 </div>
-                <a href={videoUrl} download style={{ display: 'block', textAlign: 'center', marginTop: 12, background: 'var(--accent)', color: '#fff', padding: 12, borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>⬇️ Download Video</a>
+                <button onClick={() => downloadRemoteFile(videoUrl, 'erivion-video.mp4')} style={{ display: 'block', width: '100%', textAlign: 'center', marginTop: 12, background: 'var(--accent)', color: '#fff', padding: 12, borderRadius: 8, fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>⬇️ Download Video</button>
               </>
             ) : (
               <div className="preview-placeholder">

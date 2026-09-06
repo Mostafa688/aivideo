@@ -55,18 +55,6 @@ async function persistImagesToR2(urls, modelKey) {
   }));
 }
 
-// Seedream uses named size enums instead of an "aspect_ratio" field — mapping
-// is best-effort from the model's documented options, verify against the live
-// schema (replicate.com/bytedance/seedream-4/api/schema) before relying on it.
-function aspectRatioToSeedreamSize(aspectRatio) {
-  const map = {
-    '1:1': 'square', '9:16': 'portrait_16_9', '16:9': 'landscape_16_9',
-    '3:4': 'portrait_4_3', '4:3': 'landscape_4_3',
-    '2:3': 'portrait_3_2', '3:2': 'landscape_3_2', '21:9': 'landscape_21_9',
-  };
-  return map[aspectRatio] || 'square';
-}
-
 // Each entry: real Replicate slug, how to build its input object from our
 // common params, and whether the model can generate a batch in one call.
 export const NEW_IMAGE_MODELS = {
@@ -100,17 +88,23 @@ export const NEW_IMAGE_MODELS = {
     nativeBatchParam: 'number_of_images',
     maxNativeBatch: 10,
     buildInput: ({ prompt, referenceImageUrls, aspectRatio, count }) => ({
-      prompt, aspect_ratio: aspectRatio || '1:1', quality: 'standard',
+      prompt, aspect_ratio: aspectRatio || '9:16', quality: 'standard',
       number_of_images: Math.min(Math.max(1, count || 1), 10),
       ...(referenceImageUrls?.length ? { input_images: referenceImageUrls } : {}),
     }),
   },
+  // ✅ FIX (باج حقيقي حصل مع عميل حقيقي: طلب صورة 16:9 وطلعت 1:1 دايمًا بصرف النظر عن أي نسبة
+  // مطلوبة): الكود القديم كان بيبعت "image_size" بقيم زي "portrait_16_9"/"landscape_16_9" —
+  // ده أسلوب تسمية fal.ai مش Replicate. الـ schema الحقيقي لموديلات Seedream على Replicate
+  // نفسها بيقبل حقل "aspect_ratio" مباشر بنفس قيم باقي الموديلات فوق (زي "16:9"/"9:16"/"1:1") —
+  // القيمة القديمة "portrait_16_9" مكنتش حقل معروف للموديل فكان بيتجاهله ويرجع لنسبته الافتراضية
+  // (مربع) دايمًا. لازم يتأكد بعد التوليد الحي إن ده اتحل فعليًا.
   seedream_4: {
     slug: 'bytedance/seedream-4',
     nativeBatchParam: 'max_images',
     maxNativeBatch: 6,
     buildInput: ({ prompt, referenceImageUrls, aspectRatio, count }) => ({
-      prompt, image_size: aspectRatioToSeedreamSize(aspectRatio),
+      prompt, aspect_ratio: aspectRatio || '9:16',
       max_images: Math.min(Math.max(1, count || 1), 6),
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 10) } : {}),
     }),
@@ -120,7 +114,7 @@ export const NEW_IMAGE_MODELS = {
     nativeBatchParam: 'max_images',
     maxNativeBatch: 6,
     buildInput: ({ prompt, referenceImageUrls, aspectRatio, count }) => ({
-      prompt, image_size: aspectRatioToSeedreamSize(aspectRatio),
+      prompt, aspect_ratio: aspectRatio || '9:16',
       max_images: Math.min(Math.max(1, count || 1), 6),
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 10) } : {}),
     }),
@@ -130,7 +124,7 @@ export const NEW_IMAGE_MODELS = {
     nativeBatchParam: 'max_images',
     maxNativeBatch: 6,
     buildInput: ({ prompt, referenceImageUrls, aspectRatio, count }) => ({
-      prompt, image_size: aspectRatioToSeedreamSize(aspectRatio),
+      prompt, aspect_ratio: aspectRatio || '9:16',
       max_images: Math.min(Math.max(1, count || 1), 6),
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 10) } : {}),
     }),

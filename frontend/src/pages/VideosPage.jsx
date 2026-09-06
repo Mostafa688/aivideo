@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { downloadRemoteFile } from '../utils/download.js';
 
 const RATIO_STYLE = {
   '16:9': { maxWidth: 560, aspectRatio: '16/9' },
@@ -178,18 +179,16 @@ export default function VideosPage({ onClose }) {
                           onClick={e => e.stopPropagation()}
                         />
                       </div>
-                      <a
-                        href={getVideoUrl(video.filename)}
-                        download
-                        onClick={e => e.stopPropagation()}
+                      <button
+                        onClick={e => { e.stopPropagation(); downloadRemoteFile(getVideoUrl(video.filename), video.filename || 'erivion-video.mp4'); }}
                         style={{
-                          display: 'block', textAlign: 'center', marginTop: 10,
-                          background: 'var(--accent)', color: '#fff',
+                          display: 'block', width: '100%', textAlign: 'center', marginTop: 10,
+                          background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                           padding: '10px', borderRadius: 8, fontWeight: 600,
-                          fontSize: 13, textDecoration: 'none',
+                          fontSize: 13,
                         }}>
                         ⬇️ Download Video
-                      </a>
+                      </button>
                     </div>
                   )}
                 </div>

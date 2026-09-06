@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { downloadRemoteFile } from '../utils/download.js';
 
 export default function HistoryPage({ onBack }) {
   const [videos, setVideos] = useState([]);
@@ -37,7 +38,7 @@ export default function HistoryPage({ onBack }) {
                 <p style={{ fontSize: 12, color: 'var(--text3)' }}>{new Date(video.date).toLocaleDateString()}</p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <a href={video.url} download style={{ padding: '8px 14px', background: 'var(--accent)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 500, textDecoration: 'none' }}>Download</a>
+                <button onClick={() => downloadRemoteFile(video.url, 'erivion-video.mp4')} style={{ padding: '8px 14px', background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 8, fontSize: 13, fontWeight: 500 }}>Download</button>
                 <button onClick={() => deleteVideo(i)} style={{ padding: '8px 14px', background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.2)', color: 'var(--red)', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Delete</button>
               </div>
             </div>

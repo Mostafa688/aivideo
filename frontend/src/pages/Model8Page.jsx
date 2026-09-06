@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { downloadRemoteFile } from '../utils/download.js';
 import {
   Clapperboard, Camera, Landmark, Wand2, Palette, Gamepad2, Zap, Video,
   VolumeX, Mic, Volume2, Lightbulb, FileText, Wallet, User, MessageSquare,
@@ -195,7 +196,7 @@ export default function Model8Page({ onBack, userPlan = 'free', onNavigate }) {
             <video src={videoUrl} controls style={{ width:'100%', maxHeight:420, display:'block' }} />
           </div>
           <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-            <a href={videoUrl} download style={{ background:'linear-gradient(135deg,#22c55e,#15803d)', color:'#fff', padding:'13px 28px', borderRadius:12, fontWeight:700, fontSize:14, textDecoration:'none', boxShadow:'0 4px 20px rgba(34,197,94,0.4)', display:'flex', alignItems:'center', gap:8 }}><Download size={15} strokeWidth={2} /> Download</a>
+            <button onClick={() => downloadRemoteFile(videoUrl, 'erivion-video.mp4')} style={{ background:'linear-gradient(135deg,#22c55e,#15803d)', color:'#fff', padding:'13px 28px', borderRadius:12, fontWeight:700, fontSize:14, border:'none', cursor:'pointer', fontFamily:'inherit', boxShadow:'0 4px 20px rgba(34,197,94,0.4)', display:'flex', alignItems:'center', gap:8 }}><Download size={15} strokeWidth={2} /> Download</button>
             <button onClick={() => { setStep('input'); setScenes([]); setVideoUrl(null); setIdea(''); setScript(''); }}
               style={{ background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.1)', padding:'13px 28px', borderRadius:12, fontWeight:600, fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}><RefreshCw size={14} strokeWidth={2} /> New Video</button>
           </div>
