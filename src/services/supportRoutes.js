@@ -141,6 +141,26 @@ router.post('/message', async (req, res) => {
         [chatId, autoAnswer]
       );
     }
+    // ✅ FIX (باج حقيقي — رسالة عميل وصلت للداتابيز بس الأدمن معرفش خالص): الإشعار بالإيميل
+    // كان بيحصل بس أول ما الشات يتفتح (/start) — أي رسالة عميل تانية بعد كده في نفس الشات
+    // كانت بتتحفظ من غير أي إشعار للأدمن خالص، فكان ممكن تفضل من غير رد لحد ما الأدمن يفتح
+    // لوحة التحكم بنفسه بالصدفة ويلاقيها
+    if (role === 'user' && !autoAnswer && process.env.RESEND_API_KEY) {
+      pool.query(`SELECT name, email, language FROM support_chats WHERE id = $1`, [chatId]).then(({ rows: chatRows }) => {
+        if (!chatRows[0]) return;
+        const appUrl = process.env.APP_URL || 'https://erivion.net';
+        fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Erivion Support <support@erivion.net>',
+            to: [process.env.ADMIN_EMAIL || 'digidelight33@gmail.com'],
+            subject: `New message from ${chatRows[0].name || 'a customer'} — Erivion Support`,
+            html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#a78bfa;margin:0 0 16px">New Support Message</h2><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr><td style="color:#888;padding:8px 0;width:100px">From</td><td style="color:#fff;font-weight:600">${chatRows[0].name || ''}</td></tr><tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff">${chatRows[0].email || ''}</td></tr><tr><td style="color:#888;padding:8px 0">Chat ID</td><td style="color:#7c6af7;font-family:monospace;font-size:12px">${chatId}</td></tr></table><div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:16px;margin:16px 0;color:#e5e7eb;line-height:1.7;white-space:pre-line">${(text || '').trim() || '(attachment)'}</div><p style="color:#888;font-size:13px">Reply from Admin Panel → Support tab.</p></div>`,
+          }),
+        }).catch(e => console.warn('[Support] Admin notify email failed:', e.message));
+      }).catch(() => {});
+    }
     res.json({ success: true, id: rows[0]?.id, mediaUrl });
   } catch (e) {
     res.status(500).json({ error: e.message });

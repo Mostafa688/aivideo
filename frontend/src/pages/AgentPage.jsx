@@ -291,12 +291,17 @@ function ImageBatchCard({ job, lang }) {
 
   if (job.status === 'done') {
     const cols = job.images.length > 4 ? 4 : job.images.length > 1 ? 2 : 1;
+    // ✅ FIX (باج حقيقي: الصورة كانت بتتعرض مربّعة دايمًا بصرف النظر عن النسبة الحقيقية
+    // اللي اتولدت بيها — لما العميل يطلب 16:9 مثلاً، الملف المنزّل كان صح بس المعاينة
+    // في الشات كانت مقصوصة مربّع، حاجة تلخبط وتوهم إن في مشكلة): بنستخدم نسبة العرض
+    // للارتفاع الحقيقية اللي اتطلبت بدل ما نفرض مربع دايمًا
+    const cssAspectRatio = (job.aspectRatio || '9:16').replace(':', ' / ');
     return (
       <div style={{ width: Math.min(cols * 150 + (cols - 1) * 8, 616) }}>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
           {job.images.map((url, i) => (
             <div key={i} style={{ position: 'relative' }}>
-              <img src={url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
+              <img src={url} alt="" style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
               <a href={url} download target="_blank" rel="noreferrer" style={{ position: 'absolute', bottom: 6, right: 6, width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', textDecoration: 'none' }}>
                 <Download size={13} strokeWidth={2.25} />
               </a>
@@ -628,7 +633,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // job طويل بيحتاج poll، الطلب نفسه بيستنى الصور جاهزة (backend بيعمل Prefer: wait)
   const startImageGeneration = async (gen) => {
     const jobUid = `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: gen.prompt };
+    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '9:16' };
     setMessages(m => [...m, { role: 'assistant', type: 'imageBatch', job }]);
     const updateJob = (patch) => {
       setMessages(m => {
@@ -666,8 +671,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     // يحرك الصورة المتولدة فعليًا): لو الايجنت قرر إن العميل عايز يحرك صورة اتولدت قبل كده في
     // نفس المحادثة (مش صورة رفعها العميل بنفسه)، نجيب رابط آخر صورة اتولدت بنجاح ونحولها
     // base64 عشان نستخدمها بنفس مسار "صورة مرفوعة" الشغال فعليًا (Model 5 image-to-video / directAnimate)
+    // ✅ FIX: كان شرط تفعيل ده معلّق بالكامل على إن الأجنت (نموذج LLM) ينجح يحط
+    // "animateLastGeneratedImage":true في الماركر بتاعه — ده مش مضمون مع كل نموذج/كل مرة
+    // (باج حقيقي شوفناه: الماركر مكنش بيتحط، فكان بيوصل للباك إند من غير صورة خالص ويفشل
+    // بـ"photo required"). دلوقتي مش شرط أساسي — أي طلب image-to-video من غير صورة مرفوعة
+    // ومن غير وصف شخصية نصي بيجرّب يستخدم آخر صورة اتولدت تلقائيًا، بصرف النظر عن الماركر
     let resolvedAnimatePhoto = null;
-    if (ready.model === 5 && ready.promptMode === 'image' && ready.animateLastGeneratedImage && !lastUploadedPhotos.length) {
+    if (ready.model === 5 && ready.promptMode === 'image' && !lastUploadedPhotos.length && !ready.characterDescriptions?.length) {
       const lastImageMsg = [...messages].reverse().find(m => m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length);
       if (lastImageMsg) {
         try {

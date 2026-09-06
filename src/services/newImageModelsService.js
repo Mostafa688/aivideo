@@ -15,6 +15,46 @@ function authHeaders() {
   return { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' };
 }
 
+// ✅ NEW (باج حقيقي: الصور مكنتش بتتخزن على R2 خالص، فرابط التحميل كان بيوداك لـ replicate.delivery
+// مباشرة — روابط مؤقتة ممكن تنتهي، ومش المفروض تبقى مصدر الحقيقة للميديا بتاعة العميل): نفس نمط
+// الرفع المستخدم فعليًا في audioVideoService.js — نفس متغيرات البيئة بالظبط
+const S3_ENDPOINT_URL = process.env.S3_ENDPOINT_URL;
+const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY;
+const S3_SECRET_KEY = process.env.S3_SECRET_KEY;
+const S3_BUCKET = process.env.S3_BUCKET || 'erivion-videos';
+const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
+
+async function uploadBufferToR2(buffer, key, contentType) {
+  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+  const s3 = new S3Client({
+    region: 'auto',
+    endpoint: S3_ENDPOINT_URL,
+    credentials: { accessKeyId: S3_ACCESS_KEY, secretAccessKey: S3_SECRET_KEY },
+  });
+  await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: buffer, ContentType: contentType }));
+  return `${R2_PUBLIC_URL}/${key}`;
+}
+
+// بتنزل كل صورة من الرابط المؤقت بتاع Replicate وترفعها على R2، وترجع الرابط الدائم بدلها.
+// لو الرفع فشل لأي سبب (مفيش مفاتيح R2 مثلاً)، بترجع الرابط الأصلي بدل ما تفشّل التوليد كله
+async function persistImagesToR2(urls, modelKey) {
+  if (!S3_ENDPOINT_URL || !S3_ACCESS_KEY || !S3_SECRET_KEY) return urls;
+  return Promise.all(urls.map(async (url) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return url;
+      const contentType = res.headers.get('content-type') || 'image/jpeg';
+      const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const key = `generated-images/${modelKey}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      return await uploadBufferToR2(buffer, key, contentType);
+    } catch (e) {
+      console.warn('[NewImageModels] R2 persist failed, falling back to source URL:', e.message);
+      return url;
+    }
+  }));
+}
+
 // Seedream uses named size enums instead of an "aspect_ratio" field — mapping
 // is best-effort from the model's documented options, verify against the live
 // schema (replicate.com/bytedance/seedream-4/api/schema) before relying on it.
@@ -183,12 +223,12 @@ export async function generateNewModelImages({ modelKey, prompt, referenceImageU
       chunks.map(chunkSize => () => runPrediction(model.slug, model.buildInput({ prompt, referenceImageUrls, aspectRatio, count: chunkSize }), label)),
       3
     );
-    return results.flat();
+    return persistImagesToR2(results.flat(), modelKey);
   }
 
   const results = await runWithConcurrency(
     Array.from({ length: total }, () => () => runPrediction(model.slug, model.buildInput({ prompt, referenceImageUrls, aspectRatio }), label)),
     4
   );
-  return results.flat();
+  return persistImagesToR2(results.flat(), modelKey);
 }
