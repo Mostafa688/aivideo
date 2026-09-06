@@ -57,14 +57,17 @@ export default function SupportPage({ onBack, onNavigate, embedded = false }) {
     const params = new URLSearchParams(window.location.search);
     const openChat = params.get('openSupportChat');
     if (!openChat) return;
-    setChatId(openChat);
-    setChatStarted(true);
-    setView('chat');
-    localStorage.setItem('erivion_support_chat_id', openChat); // ✅ يتحفظ عشان يرجع له تلقائي المرة الجاية
     (async () => {
       try {
         const r = await fetch(`/api/support/messages/${openChat}`);
+        // ✅ FIX: الشات في اللينك ممكن يكون انتهت صلاحيته (بعد 24 ساعة) — من غير الفحص ده
+        // كان بيدخل على شاشة شات فاضية تمامًا (مفيش حتى رسالة ترحيب) بدل ما يوديه لفورم البداية
+        if (!r.ok) return;
         const d = await r.json();
+        setChatId(openChat);
+        setChatStarted(true);
+        setView('chat');
+        localStorage.setItem('erivion_support_chat_id', openChat); // ✅ يتحفظ عشان يرجع له تلقائي المرة الجاية
         if (d.messages) setMessages(d.messages);
       } catch {}
     })();
@@ -172,8 +175,9 @@ export default function SupportPage({ onBack, onNavigate, embedded = false }) {
 
   const sendMessage = async () => {
     if ((!input.trim() && !attachment) || !chatId) return;
+    const textToSend = input.trim();
     const msg = {
-      role: 'user', text: input.trim(), time: new Date().toISOString(),
+      role: 'user', text: textToSend, time: new Date().toISOString(),
       media_url: attachment?.preview || null, media_type: attachment?.type || null,
       reply_to_id: replyTo?.id || null, reply_to_text: replyTo?.text || null, reply_to_role: replyTo?.role || null,
     };
@@ -182,11 +186,23 @@ export default function SupportPage({ onBack, onNavigate, embedded = false }) {
     setAttachment(null); setReplyTo(null);
     setSending(true);
     try {
-      await fetch('/api/support/message', {
+      const postRes = await fetch('/api/support/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chatId, text: msg.text, role: 'user', mediaBase64: att?.base64 || null, mediaType: att?.type || null, replyToId: rt?.id || null }),
       });
+      // ✅ FIX (باج حقيقي: "بعت رساله للدعم ومش بتتبعت واختفت"): الشات القديم كان ممكن يكون
+      // منتهي الصلاحية (بعد 24 ساعة) أو اتمسح، فالإرسال كان بيفشل بصمت (foreign key) والكود
+      // كان بيكمل عادي كأنه نجح، فبيعيد جلب الرسايل ويلاقيها فاضية — رسالة العميل تختفي من
+      // غير أي تفسير. دلوقتي لو الشات مش موجود، بنرجّعه لفورم البداية بدل ما نسيب الرسالة تضيع
+      if (postRes.status === 404) {
+        localStorage.removeItem('erivion_support_chat_id');
+        setChatId(null); setChatStarted(false); setMessages([]);
+        setInput(textToSend); setAttachment(att); setReplyTo(rt);
+        alert(isAr ? 'انتهت صلاحية هذه المحادثة — من فضلك أدخل بياناتك لبدء محادثة جديدة، رسالتك محفوظة' : 'This conversation has expired — please enter your details to start a new one, your message is saved');
+        return;
+      }
+      if (!postRes.ok) throw new Error('send failed');
       // refresh right away so the real media URL / id come back from the server
       const r = await fetch(`/api/support/messages/${chatId}`);
       const d = await r.json();

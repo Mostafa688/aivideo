@@ -125,6 +125,14 @@ router.post('/message', async (req, res) => {
   if (!chatId || !role) return res.status(400).json({ error: 'chatId and role required' });
   if (!text?.trim() && !mediaBase64) return res.status(400).json({ error: 'text or media required' });
   try {
+    // ✅ FIX (باج حقيقي: العميل بعت رسالة واختفت من غير أي تفسير): الشاتات بتنتهي صلاحيتها
+    // بعد 24 ساعة وبتتمسح (CASCADE بيمسح رسايلها كمان)، لكن الـ chatId فاضل محفوظ في
+    // localStorage المتصفح للأبد. لو العميل رجع بعد ما الشات انتهت، كان الإدراج بيفشل بصمت
+    // بسبب foreign key، والفرونت إند كان بيتعامل مع الفشل ده وكأنه نجح (catch فاضي) فبيعيد
+    // جلب الرسايل ويلاقيها فاضية — تظهر الرسالة للحظة ثم تختفي. دلوقتي بنتحقق الشات لسه
+    // موجود قبل أي حاجة، ونرجّع 404 واضح بدل فشل صامت
+    const chatCheck = await pool.query('SELECT id FROM support_chats WHERE id = $1', [chatId]);
+    if (!chatCheck.rows.length) return res.status(404).json({ error: 'chat_not_found' });
     let mediaUrl = null;
     if (mediaBase64) {
       try { mediaUrl = saveSupportMedia(mediaBase64, mediaType); }
@@ -171,6 +179,12 @@ router.post('/message', async (req, res) => {
 router.get('/messages/:chatId', async (req, res) => {
   const { chatId } = req.params;
   try {
+    // ✅ FIX: نفس باج الشات المنتهي فوق — كان بيرجع {messages:[]} بنجاح (200) لأي chatId مش
+    // موجود أصلاً، فالفرونت إند مكنش يقدر يفرّق بين "شات حقيقي لسه فاضي" و"شات اتمسح خالص"،
+    // فكان بيعتبره شات صالح ويعرض شاشة شات فاضية تمامًا (مفيش حتى رسالة الترحيب) بدل ما
+    // يرجّع العميل لفورم البداية
+    const chatCheck = await pool.query('SELECT id FROM support_chats WHERE id = $1', [chatId]);
+    if (!chatCheck.rows.length) return res.status(404).json({ error: 'chat_not_found' });
     // ✅ NEW: بنرجع كمان الميديا وبيانات الرسالة اللي بيترد عليها (لو موجودة) عشان الواجهة
     // تعرض quote preview فوق الرسالة الرادة
     const { rows } = await pool.query(
