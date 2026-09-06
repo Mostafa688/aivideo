@@ -1804,7 +1804,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   ];
 
   return (
-    <div style={{ height: 'calc(100vh - 74px)', display: 'flex', overflow: 'hidden' }}>
+    <div className="agent-3col" style={{ height: 'calc(100vh - 74px)', display: 'flex', overflow: 'hidden' }}>
       <style>{`
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
@@ -1813,10 +1813,22 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         .agent-models-btn:hover{background:rgba(124,106,247,0.16) !important;border-color:rgba(124,106,247,0.45) !important;}
         .agent-icon-btn:hover{background:var(--bg3) !important;color:var(--text) !important;}
         .agent-tab-btn:hover{background:var(--bg3) !important;}
+        .agent-mobile-tabs{display:none;}
+        /* ✅ FIX (طلب العميل: "ظبط شكل الموقع على الهاتف"): الشكل بتاع 3 أعمدة (شات + كانفاس +
+           تنظيم) كان عرضه ثابت بالبكسل من غير أي تعديل للهاتف خالص — على شاشة صغيرة ده كان
+           بيطلع مقصوص/متلخبط. دلوقتي على الهاتف الأعمدة بتترتب فوق بعض (شات فوق، كانفاس تحت)،
+           عمود "التنظيم" الجانبي بيختفي ومكانه شريط تابات أفقي بسيط فوق الكانفاس نفسه */
+        @media (max-width: 860px) {
+          .agent-3col{flex-direction:column;height:auto !important;min-height:calc(100vh - 74px);overflow:visible !important;}
+          .agent-panel-chat{width:100% !important;height:62vh !important;border-inline-end:none !important;border-bottom:1px solid var(--border);}
+          .agent-panel-canvas{width:100% !important;}
+          .agent-panel-organize{display:none !important;}
+          .agent-mobile-tabs{display:flex !important;}
+        }
       `}</style>
 
       {/* ── Left: Agent chat sidebar ─────────────────────────────────────────── */}
-      <div style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', borderInlineEnd: '1px solid var(--border)', position: 'relative' }}>
+      <div className="agent-panel-chat" style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', borderInlineEnd: '1px solid var(--border)', position: 'relative' }}>
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 100% 30% at 50% -10%, rgba(124,106,247,0.08) 0%, transparent 70%)' }} />
 
         <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--border)', position: 'relative', flexShrink: 0 }}>
@@ -1946,11 +1958,21 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       </div>
 
       {/* ── Center: Media canvas ──────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div className="agent-panel-canvas" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <span style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--text)', letterSpacing: '-0.2px' }}>
             {activeProject?.name || t.backToProjects}
           </span>
+        </div>
+        {/* ✅ NEW: نفس تابات "التنظيم" الجانبية بالظبط، بس شريط أفقي — بيظهر بس على الهاتف
+            (العمود الجانبي بيختفي هناك) عشان يفضل ممكن تفلتر الكانفاس بين الكل/صور/فيديوهات */}
+        <div className="agent-mobile-tabs" style={{ padding: '10px 16px 0', gap: 8 }}>
+          {RIGHT_TABS.map(tabItem => (
+            <button key={tabItem.key} onClick={() => setRightTab(tabItem.key)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 20, background: rightTab === tabItem.key ? 'var(--accent-bg)' : 'var(--bg2)', color: rightTab === tabItem.key ? 'var(--accent2)' : 'var(--text2)', fontSize: 12.5, fontWeight: 600, border: '1px solid var(--border2)', whiteSpace: 'nowrap' }}>
+              <tabItem.icon size={13} strokeWidth={2} /> {tabItem.label}
+            </button>
+          ))}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {visibleMedia.length === 0 ? (
@@ -1992,7 +2014,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       </div>
 
       {/* ── Right: Organize panel ─────────────────────────────────────────────── */}
-      <div style={{ width: rightPanelCollapsed ? 56 : 176, flexShrink: 0, borderInlineStart: '1px solid var(--border)', display: 'flex', flexDirection: 'column', transition: 'width 0.15s ease', overflow: 'hidden' }}>
+      <div className="agent-panel-organize" style={{ width: rightPanelCollapsed ? 56 : 176, flexShrink: 0, borderInlineStart: '1px solid var(--border)', display: 'flex', flexDirection: 'column', transition: 'width 0.15s ease', overflow: 'hidden' }}>
         <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
           {RIGHT_TABS.map(tabItem => (
             <button key={tabItem.key} className="agent-tab-btn" onClick={() => setRightTab(tabItem.key)}
