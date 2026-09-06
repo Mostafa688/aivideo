@@ -11,6 +11,24 @@ import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 import { getMaxClipSeconds } from './creditPricingEngine.js';
 
+// ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين على أكتر من موديل صور، مش موديل واحد بس): تأكد إن
+// كل موديلات الصور فعليًا بتقبل حقل "aspect_ratio" بشكل صحيح (راجعنا الـ schema الحقيقي لكل
+// واحد) — يبقى السبب الحقيقي مش اسم حقل غلط، لكن إن الايجنت (نموذج الذكاء الاصطناعي نفسه)
+// أحيانًا مش بيحط قيمة "aspectRatio" صح في الماركر رغم طلب العميل الواضح — مشكلة التزام
+// بالتعليمات (LLM compliance)، مش كود. الحل الحقيقي: حاجز إضافي في الكود نفسه بيقرأ رسالة
+// العميل الخام (مش رد الايجنت) ولو فيها طلب نسبة/اتجاه صريح، يفرضه بغض النظر عمّا قاله
+// الايجنت في الماركر — نفس مبدأ forcedImageModel/forcedVideoModel فوق بالظبط
+function detectExplicitAspectRatio(message) {
+  if (!message) return null;
+  const text = String(message).toLowerCase();
+  const ratioMatch = /\b(21:9|16:9|9:16|4:3|3:4|3:2|2:3|1:1)\b/.exec(text);
+  if (ratioMatch) return ratioMatch[1];
+  if (/مربع|square/.test(text)) return '1:1';
+  if (/طولي|عمودي|بورتريه|portrait|vertical|story|ريلز|reels/.test(text)) return '9:16';
+  if (/عرضي|أفقي|افقي|widescreen|landscape|horizontal/.test(text)) return '16:9';
+  return null;
+}
+
 // بيحوّل أي رسالة (عربي/إنجليزي/بأي تشكيل) لنص موحّد بسيط — عشان مقارنة "الشبه" بين
 // طلب جديد وطلبات قديمة محفوظة في ذاكرة الايجنت تبقى مستقرة ومش حساسة لعلامات ترقيم/تشكيل
 function normalizeFingerprint(text) {
@@ -399,6 +417,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     if (generateVideo && forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]) {
       generateVideo.model = forcedVideoModel;
+    }
+    // ✅ FIX: العميل صريح في رسالته عن النسبة اللي عايزها — نفرضها بغض النظر عمّا حطّه
+    // الايجنت في الماركر، بدل ما نعتمد بالكامل على التزامه بالتعليمات
+    const explicitRatio = detectExplicitAspectRatio(message);
+    if (explicitRatio) {
+      if (generateImage) generateImage.aspectRatio = explicitRatio;
+      if (generateVideo && explicitRatio !== '1:1') generateVideo.aspectRatio = explicitRatio;
     }
 
     // ✅ NEW: توليد فيديو مستقل (Veo/Kling/Seedance/Luma) بيستخدم أول صورة مرفقة في نفس
