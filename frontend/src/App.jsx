@@ -25,6 +25,7 @@ import FAQPage from './pages/FAQPage.jsx';
 import SupportPage from './pages/SupportPage.jsx';
 import CommunityPage from './pages/CommunityPage.jsx';
 import AgentPage from './pages/AgentPage.jsx';
+import SidePanel from './components/SidePanel.jsx';
 import ProjectsDashboardPage from './pages/ProjectsDashboardPage.jsx';
 import CoursesPage from './pages/CoursesPage.jsx';
 import ChannelsPage from './pages/ChannelsPage.jsx';
@@ -181,6 +182,8 @@ export default function App() {
   // بدل الشات مباشرة — كل مشروع هيبقى مساحة عمل مستقلة، والايجنت بيتفتح جوه مشروع مختار
   const [page, setPage] = useState('dashboard');
   const [activeProject, setActiveProject] = useState(null);
+  // ✅ NEW (طلب العميل: "صفحة الدعم لازم تبقى نافذة جانبية"): الدعم بقى panel جانبي بدل صفحة كاملة
+  const [showSupportPanel, setShowSupportPanel] = useState(false);
   const [formData, setFormData] = useState(null);
   const [scenes, setScenes] = useState([]);
   const [user, setUser] = useState(null);
@@ -399,7 +402,7 @@ export default function App() {
       case 'terms':      setPage('terms'); break;
       case 'privacy':    setPage('privacy'); break;
       case 'refund':     setPage('refund'); break;
-      case 'support':    setPage('support'); break;
+      case 'support':    setShowSupportPanel(true); break;
       case 'about':      setPage('about'); break;
       case 'faq':        setPage('faq'); break;
       case 'howto':      setPage('howto'); break;
@@ -479,22 +482,14 @@ export default function App() {
   const PLAN_COLORS = { free: '#6b7280', pro: '#7c6af7', plus: '#06b6d4', max: '#f59e0b' };
   const planColor = PLAN_COLORS[userPlan] || '#6b7280';
 
-  const NAV_ITEMS = [
-    { key: 'home', label: 'Home' },
-    { key: 'pricing', label: 'Pricing' },
-    { key: 'templates', label: 'Templates' },
-    { key: 'courses', label: 'Courses' },
-    { key: 'community', label: 'Community' },
-    { key: 'about', label: 'About Us' },
-    { key: 'support', label: 'Support' },
-    { key: 'affiliate', label: 'Affiliate' },
-  ];
-
   const Header = () => (
     <header className="app-header" style={{ gap:8, zIndex:10000 }}>
+      {/* ✅ NEW (طلب العميل: حذف الشريط العلوي بالكامل ونقل كل حاجة لليوز منيو): الشريط
+          العلوي بقى شعار بس + كريديت/إشعارات/يوز منيو — كل روابط التنقل (Home/Pricing/
+          Templates/Courses/Community/About/Support/Affiliate) بقت جوه اليوز منيو نفسه
+          (قسم "NAVIGATE") على كل أحجام الشاشات، مش الموبايل بس زي ما كانت */}
       <style>{`
         @media(max-width:640px){
-          .header-nav-desktop{display:none!important}
           .header-credits-full{display:none!important}
           .header-plan-badge{display:none!important}
           .header-model-badge{display:none!important}
@@ -509,14 +504,6 @@ export default function App() {
         <img src={LOGO} alt="Erivion" style={{ width:26, height:26, objectFit:'contain' }} />
         <span style={{ fontSize:16, fontWeight:800, color:'#fff', letterSpacing:'-0.4px', fontFamily:"'Bricolage Grotesque', sans-serif" }}>Erivion</span>
       </div>
-
-      {/* Center Nav — desktop only */}
-      <nav className="header-nav-desktop" style={{ display:'flex', alignItems:'center', gap:2, flex:1, justifyContent:'center' }}>
-        {NAV_ITEMS.map(item => (
-          <button key={item.key} className={`nav-link${page === item.key || (item.key === 'pricing' && showPricing) || (item.key === 'home' && page === 'agent') ? ' active' : ''}`}
-            onClick={() => handleNavigate(item.key)}>{item.label}</button>
-        ))}
-      </nav>
 
       {/* Right side */}
       <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, marginLeft:'auto' }}>
@@ -565,6 +552,9 @@ export default function App() {
 
       {/* App-level modals — rendered outside header to avoid overflow issues */}
       {showHowToModal && <HowToModal onClose={() => setShowHowToModal(false)} />}
+      <SidePanel open={showSupportPanel} onClose={() => setShowSupportPanel(false)} title="Support">
+        <SupportPage embedded onNavigate={(k) => { setShowSupportPanel(false); handleNavigate(k); }} />
+      </SidePanel>
       {showAffiliateModal && <AffiliateModal user={user} onClose={() => setShowAffiliateModal(false)} onNavigateAffiliate={() => { setShowAffiliateModal(false); handleNavigate('affiliate'); }} />}
 
       {/* Model Welcome Modal */}
@@ -617,7 +607,6 @@ export default function App() {
         {page === 'channels' && <ChannelsPage onBack={() => setPage('input')} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
         {page === 'community' && <CommunityPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
-        {page === 'support' && <SupportPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
         {page === 'faq' && <FAQPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
         {page === 'notfound' && <NotFoundPage onNavigate={handleNavigate} />}
       </div>

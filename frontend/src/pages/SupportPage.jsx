@@ -24,7 +24,7 @@ const FAQ_EN = [
 ];
 
 // ─── Support Page ─────────────────────────────────────────────────────────────
-export default function SupportPage({ onBack, onNavigate }) {
+export default function SupportPage({ onBack, onNavigate, embedded = false }) {
   const region = localStorage.getItem('erivion_region') || 'eg';
   const isAr = region !== 'intl';
   const dir = isAr ? 'rtl' : 'ltr';
@@ -244,13 +244,13 @@ export default function SupportPage({ onBack, onNavigate }) {
 
   // ── HOME ──────────────────────────────────────────────────────────────────
   if (view === 'home') return (
-    <div style={{ minHeight:'100vh', background:'#050508', color:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'40px 20px', fontFamily:"'DM Sans',sans-serif", direction:dir }}>
+    <div style={{ ...(embedded ? { height:'100%', overflowY:'auto' } : { minHeight:'100vh' }), background:'#050508', color:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: embedded ? '40px 20px' : '40px 20px', fontFamily:"'DM Sans',sans-serif", direction:dir }}>
       <style>{`
         @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
         .sp-card { transition:all 0.25s cubic-bezier(0.16,1,0.3,1); cursor:pointer; }
         .sp-card:hover { transform:translateY(-6px); border-color:rgba(124,106,247,0.4) !important; }
       `}</style>
-      {onBack && <button onClick={onBack} style={{ position:'absolute', top:80, [isAr?'right':'left']:24, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, padding:'7px 14px', color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13 }}>{T.back}</button>}
+      {!embedded && onBack && <button onClick={onBack} style={{ position:'absolute', top:80, [isAr?'right':'left']:24, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, padding:'7px 14px', color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13 }}>{T.back}</button>}
 
       <div style={{ textAlign:'center', marginBottom:48, animation:'fadeUp 0.5s ease both' }}>
         <div style={{ width:64, height:64, borderRadius:20, background:'linear-gradient(135deg,#7c6af7,#a855f7)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, margin:'0 auto 20px', boxShadow:'0 8px 32px rgba(124,106,247,0.4)' }}>💬</div>
@@ -294,7 +294,7 @@ export default function SupportPage({ onBack, onNavigate }) {
 
   // ── FAQ ───────────────────────────────────────────────────────────────────
   if (view === 'faq') return (
-    <div style={{ minHeight:'100vh', background:'#050508', color:'#fff', padding:'80px 20px 40px', fontFamily:"'DM Sans',sans-serif", direction:dir }}>
+    <div style={{ ...(embedded ? { height:'100%', overflowY:'auto' } : { minHeight:'100vh' }), background:'#050508', color:'#fff', padding: embedded ? '20px 20px 40px' : '80px 20px 40px', fontFamily:"'DM Sans',sans-serif", direction:dir }}>
       <div style={{ maxWidth:680, margin:'0 auto' }}>
         <button onClick={() => setView('home')} style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, padding:'7px 14px', color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:13, marginBottom:28 }}>{T.back}</button>
 
@@ -335,9 +335,9 @@ export default function SupportPage({ onBack, onNavigate }) {
 
   // ── CHAT ──────────────────────────────────────────────────────────────────
   if (view === 'chat') return (
-    <div style={{ minHeight:'100vh', background:'#050508', color:'#fff', display:'flex', flexDirection:'column', fontFamily:"'DM Sans',sans-serif", direction:dir }}>
+    <div style={{ ...(embedded ? { height:'100%', overflowY:'auto' } : { minHeight:'100vh' }), background:'#050508', color:'#fff', display:'flex', flexDirection:'column', fontFamily:"'DM Sans',sans-serif", direction:dir }}>
       {/* Header */}
-      <div style={{ position:'sticky', top:56, zIndex:10, background:'rgba(5,5,8,0.95)', backdropFilter:'blur(20px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'16px 20px', display:'flex', alignItems:'center', gap:12 }}>
+      <div style={{ position:'sticky', top: embedded ? 0 : 56, zIndex:10, background:'rgba(5,5,8,0.95)', backdropFilter:'blur(20px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'16px 20px', display:'flex', alignItems:'center', gap:12 }}>
         <button onClick={() => setView('home')} style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, padding:'6px 12px', color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:12 }}>{T.back}</button>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:12, background:'linear-gradient(135deg,#7c6af7,#a855f7)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>💬</div>

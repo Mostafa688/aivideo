@@ -468,6 +468,35 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     reader.readAsDataURL(file);
   });
 
+  // ✅ FIX (باج حقيقي — "الايجنت غبي"): رسايل الميديا (render/whiteboard/imageBatch) مالهاش
+  // "content" نصي خالص — كانت بتوصل للـ history اللي بيتبعت للأجنت كـ undefined، يعني الأجنت
+  // فعليًا كان بينسى إن أي فيديو أو صورة اتولدت أصلاً. أي طلب متابعة زي "حرك الصورة اللي عملناها"
+  // كان مفيش قدامه أي دليل إن صورة اتعملت، فكان بيبدأ فيديو جديد من الصفر بدل ما يحرك الصورة الحقيقية.
+  // الدالة دي بتبني وصف نصي حقيقي بديل لأي رسالة ميديا (يشمل روابط الصور لو اتولدت) عشان الـ
+  // history يبقى فيه ذاكرة حقيقية لكل حاجة اتولدت في المحادثة دي
+  const historyContentFor = (m) => {
+    if (m.content) return m.content;
+    if (m.type === 'render') {
+      return m.job?.status === 'done'
+        ? `[${lang === 'ar' ? 'تم إنشاء فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''}]`
+        : `[${lang === 'ar' ? 'فيديو قيد الإنشاء' : 'A video is currently being generated'}]`;
+    }
+    if (m.type === 'whiteboard') {
+      return `[${lang === 'ar' ? 'تم إنشاء فيديو whiteboard' : 'A whiteboard video was generated'}]`;
+    }
+    if (m.type === 'imageBatch') {
+      if (m.job?.status === 'done') {
+        const urls = (m.job.images || []).join(', ');
+        return lang === 'ar'
+          ? `[تم توليد ${m.job.images?.length || 0} صورة بنجاح بموديل ${m.job.model || ''} — روابط الصور: ${urls}]`
+          : `[Successfully generated ${m.job.images?.length || 0} image(s) with model ${m.job.model || ''} — image URLs: ${urls}]`;
+      }
+      return `[${lang === 'ar' ? 'صور قيد التوليد' : 'Image(s) are currently being generated'}]`;
+    }
+    if (m.type === 'video') return `[${lang === 'ar' ? 'فيديو مثال' : 'Example video'}]`;
+    return '';
+  };
+
   const sendMessage = async (overrideText) => {
     const textToSend = overrideText !== undefined ? overrideText : input;
     if (!textToSend.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) return;
@@ -492,7 +521,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       const body = {
         message: textToSend.trim() || (lang === 'ar' ? 'من الصوت/الصورة المرفوعة' : 'from the attached voice/image'),
         // ✅ FIX: كانت -6 (3 تبادلات بس) وده كان بيخلي الايجنت ينسى تفاصيل قديمة في المحادثة — رفعناها لـ 16 لتغطي محادثة كاملة
-        history: nextMessages.slice(0, -1).slice(-16).map(m => ({ role: m.role, content: m.content })),
+        history: nextMessages.slice(0, -1).slice(-16).map(m => ({ role: m.role, content: historyContentFor(m) })),
         // ✅ FIX: نفضل نفكّر الباك إند إن صورة/صوت اترفعوا قبل كده في الجلسة دي حتى لو خرجوا بره الـ history،
         // عشان الايجنت مايطلبش رفعهم تاني بعد كام رسالة
         photoAlreadyUploaded: !!lastUploadedPhotos.length,
@@ -599,7 +628,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // job طويل بيحتاج poll، الطلب نفسه بيستنى الصور جاهزة (backend بيعمل Prefer: wait)
   const startImageGeneration = async (gen) => {
     const jobUid = `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const job = { uid: jobUid, status: 'generating' };
+    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: gen.prompt };
     setMessages(m => [...m, { role: 'assistant', type: 'imageBatch', job }]);
     const updateJob = (patch) => {
       setMessages(m => {
@@ -632,6 +661,33 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     // ✅ FIX: منع بدء رندر جديد لو فيه واحد شغال بالفعل — كان بيحصل تضارب لو الأجنت
     // حاول يبدأ مرتين قريبين من بعض، وكل جوب كان بيحدّث آخر كارت في الشات بغض النظر عن صاحبه
     if (activeJobRef.current) return;
+
+    // ✅ NEW (fix "حرك الصورة اللي عملناها" — الايجنت كان بيبدأ فيديو جديد من الصفر بدل ما
+    // يحرك الصورة المتولدة فعليًا): لو الايجنت قرر إن العميل عايز يحرك صورة اتولدت قبل كده في
+    // نفس المحادثة (مش صورة رفعها العميل بنفسه)، نجيب رابط آخر صورة اتولدت بنجاح ونحولها
+    // base64 عشان نستخدمها بنفس مسار "صورة مرفوعة" الشغال فعليًا (Model 5 image-to-video / directAnimate)
+    let resolvedAnimatePhoto = null;
+    if (ready.model === 5 && ready.promptMode === 'image' && ready.animateLastGeneratedImage && !lastUploadedPhotos.length) {
+      const lastImageMsg = [...messages].reverse().find(m => m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length);
+      if (lastImageMsg) {
+        try {
+          const imgRes = await fetch(lastImageMsg.job.images[0]);
+          const blob = await imgRes.blob();
+          resolvedAnimatePhoto = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          console.warn('[Agent] Failed to fetch last generated image for animate:', e.message);
+        }
+      }
+      if (!resolvedAnimatePhoto) {
+        setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'معنديش صورة سابقة أقدر أحركها دلوقتي — جرب تولّد صورة الأول أو ترفعها يدوي.' : "I don't have a previous generated image to animate right now — try generating one first or upload a photo." }]);
+        return;
+      }
+    }
 
     const jobUid = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const job = { uid: jobUid, status: 'scenes', ratio: ready.ratio || '9:16', elapsed: 0, model: ready.model };
@@ -851,7 +907,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             ? lastUploadedPhotos.map(p => ({ prompt: '', photo: p }))
             : (ready.characterDescriptions || []).map(desc => ({ prompt: desc, photo: null }));
           scenesBody = ready.promptMode === 'image'
-            ? { promptMode: 'image', characters: lastUploadedPhotos.length ? [{ prompt: '', photo: lastUploadedPhotos[0] }] : characters, duration: ready.duration, rawPrompt: ready.rawPrompt || undefined }
+            ? { promptMode: 'image', characters: lastUploadedPhotos.length ? [{ prompt: '', photo: lastUploadedPhotos[0] }] : resolvedAnimatePhoto ? [{ prompt: '', photo: resolvedAnimatePhoto }] : characters, duration: ready.duration, rawPrompt: ready.rawPrompt || undefined }
             : ready.promptMode === 'prompt'
             ? { promptMode: 'prompt', rawPrompt: ready.rawPrompt || ready.idea, characters, duration: ready.duration, styleSuffix: styleSuffixFor(style) }
             : { idea: ready.idea, characters, duration: ready.duration, videoStyle: style, styleSuffix: styleSuffixFor(style), stickmanStyle: ready.stickmanStyle || undefined };
