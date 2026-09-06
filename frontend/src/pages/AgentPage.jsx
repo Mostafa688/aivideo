@@ -5,6 +5,7 @@ import {
   ShoppingBag, Clapperboard, FileText, GraduationCap, ImageIcon, Mic, Film, Sparkles,
   Camera, Swords, Map as MapIcon, Check, X, Lock, Construction, Video, Send,
   CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
+  ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 
@@ -76,6 +77,14 @@ const T = {
     uploadCharacterFirst: 'ارفع صورة الشخصية من زر رفع الصورة تحت، أو اكتب وصف شكلها في رسالتك',
     stop: 'إيقاف',
     stopped: 'تم الإيقاف — الفيديو مستمر في الخلفية وسيتم خصم الكريديت',
+    backToProjects: 'المشاريع',
+    canvasEmptyTitle: 'ابدأ إنشاء الوسائط',
+    canvasEmptySub: 'كل صورة وفيديو تولّده مع الايجنت هيظهر هنا.',
+    allMedia: 'كل الوسائط',
+    imagesTab: 'صور',
+    videosTab: 'فيديوهات',
+    collapse: 'تصغير',
+    expand: 'توسيع',
   },
   en: {
     heroTitle: 'What video do you have in mind?',
@@ -110,6 +119,14 @@ const T = {
     uploadCharacterFirst: 'Upload the character photo with the button below, or describe what they look like in your message',
     stop: 'Stop',
     stopped: 'Stopped watching — the video keeps rendering in the background and credits will still be deducted',
+    backToProjects: 'Projects',
+    canvasEmptyTitle: 'Start creating media',
+    canvasEmptySub: 'Every image and video you generate with the Agent will show up here.',
+    allMedia: 'All Media',
+    imagesTab: 'Images',
+    videosTab: 'Videos',
+    collapse: 'Collapse',
+    expand: 'Expand',
   },
 };
 
@@ -1124,6 +1141,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
+  // ✅ NEW (Workspace redesign, Phase 2): تبويب فلترة الوسائط في اللوحة اليمين + طي/فرد اللوحة
+  const [rightTab, setRightTab] = useState('all');
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   // ✅ NEW: زرار اختيار ستايل اختياري جنب زرار الإرفاق — بيدّي الإيجنت تلميح عن الستايل
   // البصري المطلوب (anime/3D cartoon/action/realistic/cinematic/map video) قبل ما يكتب البرومبت،
@@ -1220,146 +1241,105 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     </div>
   );
 
-  if (!started) {
-    return (
-      <div style={{ minHeight: 'calc(100vh - 74px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 16px', position: 'relative', overflow: 'hidden' }}>
-        {/* ✅ خلفية طبقتين هادية بدل تدرّج واحد مسطح — عمق أكتر من غير ما تلفت النظر */}
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 60% 45% at 50% -8%, rgba(124,106,247,0.10) 0%, transparent 65%), radial-gradient(ellipse 40% 35% at 85% 90%, rgba(217,167,116,0.05) 0%, transparent 70%)' }} />
-        <div style={{ width: '100%', maxWidth: 680, position: 'relative' }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-            <button onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', color: 'var(--accent2)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              <Clapperboard size={15} strokeWidth={2} /> {t.models}
-            </button>
-          </div>
+  // ✅ NEW (Workspace redesign, Phase 2): الشات بقى شريط جانبي نص فقط — أي ميديا متولدة
+  // (فيديو/whiteboard/دفعة صور) بتتشال من قائمة رسائل الشات وتتعرض في canvas النص بدل كده
+  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch'];
+  const mediaItems = messages
+    .map((m, i) => ({ ...m, _i: i }))
+    .filter(m => MEDIA_TYPES.includes(m.type));
+  const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
+    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard')
+    : mediaItems;
 
-          <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 22 }}>
-              <img src={LOGO} alt="Erivion" style={{ width: 24, height: 24, objectFit: 'contain' }} />
-              <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-0.4px', fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Erivion</span>
-            </div>
-            <h1 style={{ fontSize: 30, fontWeight: 900, color: 'var(--text)', margin: '0 0 10px', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)', direction: isArabic(t.heroTitle) ? 'rtl' : 'ltr' }}>{t.heroTitle}</h1>
-            <p style={{ fontSize: 14, color: 'var(--text2)', margin: 0, maxWidth: 460, marginInline: 'auto', lineHeight: 1.7, direction: isArabic(t.heroSub) ? 'rtl' : 'ltr' }}>{t.heroSub}</p>
-          </div>
-
-          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 14 }}>{error}</div>}
-
-          <div style={{
-            background: 'rgba(255,255,255,0.035)',
-            border: `1px solid ${inputFocused ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.1)'}`,
-            borderRadius: 20, padding: 16,
-            transition: 'border-color 0.2s ease',
-          }}>
-            <textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              placeholder={t.placeholder}
-              rows={3}
-              autoFocus
-              style={{ width: '100%', resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 15, fontFamily: 'inherit', direction: isArabic(input) ? 'rtl' : 'ltr' }}
-            />
-            {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce)) && (
-              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {t.voiceAttached} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>}
-                {imageFiles.map((_, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>
-                ))}
-                {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>}
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-              <div style={{ display: 'flex', gap: 8 }}><AttachBar /><StylePickerButton /></div>
-              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
-                onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
-                onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-                style={{ width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}><Send size={16} strokeWidth={2.25} /></button>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 18 }}>
-            {t.chips.map((c, i) => (
-              <button key={i} onClick={() => { setInput(c.text); }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.borderColor = 'rgba(124,106,247,0.35)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.75)'; e.currentTarget.style.transform = 'translateY(0)'; }}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.18s ease' }}>
-                <c.icon size={14} strokeWidth={2} />{c.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const RIGHT_TABS = [
+    { key: 'all', label: t.allMedia, icon: LayoutGrid },
+    { key: 'images', label: t.imagesTab, icon: Images },
+    { key: 'videos', label: t.videosTab, icon: Video },
+  ];
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 74px)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 16px 90px' }}>
+    <div style={{ height: 'calc(100vh - 74px)', display: 'flex', overflow: 'hidden' }}>
       <style>{`
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
         .agent-bubble{animation:fadeUp 0.25s ease}
         .agent-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;animation:bounce 1s ease infinite}
         .agent-models-btn:hover{background:rgba(124,106,247,0.16) !important;border-color:rgba(124,106,247,0.45) !important;}
+        .agent-icon-btn:hover{background:var(--bg3) !important;color:var(--text) !important;}
+        .agent-tab-btn:hover{background:var(--bg3) !important;}
       `}</style>
-      <div style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', flex: 1 }}>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <img src={LOGO} alt="Erivion" style={{ width: 22, height: 22, objectFit: 'contain', flexShrink: 0 }} />
+      {/* ── Left: Agent chat sidebar ─────────────────────────────────────────── */}
+      <div style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', borderInlineEnd: '1px solid var(--border)', position: 'relative' }}>
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 100% 30% at 50% -10%, rgba(124,106,247,0.08) 0%, transparent 70%)' }} />
+
+        <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--border)', position: 'relative', flexShrink: 0 }}>
+          <button className="agent-icon-btn" onClick={() => onNavigate?.('dashboard')} title={t.backToProjects}
+            style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg2)', color: 'var(--text2)', flexShrink: 0, transition: 'all 0.15s' }}>
+            <ArrowLeft size={15} strokeWidth={2} />
+          </button>
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
             {activeProject ? (
-              <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.2px', fontFamily: 'var(--font-display)', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeProject.name}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{activeProject.name}</span>
             ) : (
-              <>
-                <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.4px', fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Erivion</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Agent</span>
-              </>
+              <span style={{ fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Erivion Agent</span>
             )}
           </div>
-          <button className="agent-models-btn" onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', color: 'var(--accent2)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s ease, border-color 0.15s ease' }}>
-            <Clapperboard size={14} strokeWidth={2} /> {t.models}
+          <button className="agent-icon-btn" onClick={onSwitchToModels} title={t.models}
+            style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent2)', flexShrink: 0, transition: 'all 0.15s' }}>
+            <Clapperboard size={15} strokeWidth={2} />
           </button>
         </div>
 
-        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14, minHeight: 320 }}>
-          {messages.map((m, i) => {
-            if (m.type === 'render') {
-              return <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}><RenderCard job={m.job} lang={lang} onNavigate={onNavigate} /></div>;
-            }
-            if (m.type === 'video') {
+        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
+          {!started ? (
+            <div style={{ margin: 'auto 0', textAlign: 'center' }}>
+              <img src={LOGO} alt="Erivion" style={{ width: 34, height: 34, objectFit: 'contain', marginBottom: 14 }} />
+              <h1 style={{ fontSize: 19, fontWeight: 800, color: 'var(--text)', margin: '0 0 8px', letterSpacing: '-0.01em', fontFamily: 'var(--font-display)', direction: isArabic(t.heroTitle) ? 'rtl' : 'ltr' }}>{t.heroTitle}</h1>
+              <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 20px', lineHeight: 1.7, direction: isArabic(t.heroSub) ? 'rtl' : 'ltr' }}>{t.heroSub}</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {t.chips.map((c, i) => (
+                  <button key={i} onClick={() => { setInput(c.text); }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.borderColor = 'rgba(124,106,247,0.35)'; e.currentTarget.style.color = 'var(--text)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text2)'; }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'var(--bg2)', border: '1px solid var(--border2)', color: 'var(--text2)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.18s ease', textAlign: isArabic(c.label) ? 'right' : 'left' }}>
+                    <c.icon size={14} strokeWidth={2} />{c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            messages.map((m, i) => {
+              if (MEDIA_TYPES.includes(m.type)) return null;
+              if (m.type === 'video') {
+                return (
+                  <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}>
+                    <video src={m.videoUrl} controls playsInline style={{ width: 200, maxWidth: '100%', borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  </div>
+                );
+              }
+              const ar = isArabic(m.content);
               return (
-                <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}>
-                  <video src={m.videoUrl} controls playsInline style={{ width: 200, maxWidth: '70vw', borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+                <div key={i} className="agent-bubble" style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                  <div style={{
+                    maxWidth: '92%', padding: '12px 16px', borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                    background: m.role === 'user' ? 'linear-gradient(135deg,#7c6af7,#9d4edd)' : 'rgba(255,255,255,0.045)',
+                    border: m.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.09)',
+                    boxShadow: m.role === 'user' ? '0 4px 16px rgba(124,106,247,0.25)' : '0 2px 10px rgba(0,0,0,0.15)',
+                    color: '#fff', fontSize: 13.5, lineHeight: 1.7, direction: ar ? 'rtl' : 'ltr', textAlign: ar ? 'right' : 'left',
+                  }}>
+                    {m.imagePreviews?.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                        {m.imagePreviews.map((src, idx) => <img key={idx} src={src} alt="upload" style={{ maxWidth: 120, borderRadius: 10, display: 'block' }} />)}
+                      </div>
+                    )}
+                    {m.hasVoice && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, opacity: 0.8, marginBottom: 6 }}><Mic size={12} strokeWidth={2} /> {t.voiceAttached}</div>}
+                    {m.content}
+                  </div>
                 </div>
               );
-            }
-            if (m.type === 'whiteboard') {
-              return <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}><WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} /></div>;
-            }
-            if (m.type === 'imageBatch') {
-              return <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}><ImageBatchCard job={m.job} lang={lang} /></div>;
-            }
-            const ar = isArabic(m.content);
-            return (
-              <div key={i} className="agent-bubble" style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{
-                  maxWidth: '82%', padding: '12px 16px', borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  background: m.role === 'user' ? 'linear-gradient(135deg,#7c6af7,#9d4edd)' : 'rgba(255,255,255,0.045)',
-                  border: m.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.09)',
-                  boxShadow: m.role === 'user' ? '0 4px 16px rgba(124,106,247,0.25)' : '0 2px 10px rgba(0,0,0,0.15)',
-                  color: '#fff', fontSize: 14, lineHeight: 1.7, direction: ar ? 'rtl' : 'ltr', textAlign: ar ? 'right' : 'left',
-                }}>
-                  {m.imagePreviews?.length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-                      {m.imagePreviews.map((src, idx) => <img key={idx} src={src} alt="upload" style={{ maxWidth: 140, borderRadius: 10, display: 'block' }} />)}
-                    </div>
-                  )}
-                  {m.hasVoice && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, opacity: 0.8, marginBottom: 6 }}><Mic size={12} strokeWidth={2} /> {t.voiceAttached}</div>}
-                  {m.content}
-                </div>
-              </div>
-            );
-          })}
+            })
+          )}
           {loading && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 16px', borderRadius: '16px 16px 16px 4px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', alignSelf: 'flex-start' }}>
               <span className="agent-dot" style={{ animationDelay: '0s' }} />
@@ -1369,50 +1349,103 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           )}
         </div>
 
-        {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
+        <div style={{ padding: '10px 14px 14px', flexShrink: 0, position: 'relative' }}>
+          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
-        {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce)) && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-            {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
-            {imageFiles.map((_, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>
-            ))}
-            {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
+          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce)) && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
+              {imageFiles.map((_, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>
+              ))}
+              {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
+            </div>
+          )}
+
+          <div style={{
+            display: 'flex', alignItems: 'flex-end', gap: 8,
+            background: 'rgba(255,255,255,0.035)',
+            border: `1px solid ${inputFocused ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 16, padding: 8,
+            transition: 'border-color 0.2s ease',
+          }}>
+            <AttachBar />
+            <StylePickerButton />
+            <textarea
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              placeholder={t.placeholder}
+              rows={1}
+              style={{ flex: 1, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 14, fontFamily: 'inherit', padding: '9px 6px', direction: isArabic(input) ? 'rtl' : 'ltr', maxHeight: 100 }}
+            />
+            {(loading || activeJobRef.current) ? (
+              <button onClick={stopEverything} title={t.stop}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.24)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
+                style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s ease' }}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
+            ) : (
+              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
+                onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
+                onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
+                style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}><Send size={15} strokeWidth={2.25} /></button>
+            )}
           </div>
-        )}
+          <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
+        </div>
+      </div>
 
-        <div style={{
-          display: 'flex', alignItems: 'flex-end', gap: 8,
-          background: 'rgba(255,255,255,0.035)',
-          border: `1px solid ${inputFocused ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.1)'}`,
-          borderRadius: 16, padding: 8,
-          transition: 'border-color 0.2s ease',
-        }}>
-          <AttachBar />
-          <StylePickerButton />
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={() => setInputFocused(true)}
-            onBlur={() => setInputFocused(false)}
-            placeholder={t.placeholder}
-            rows={1}
-            style={{ flex: 1, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 14, fontFamily: 'inherit', padding: '9px 6px', direction: isArabic(input) ? 'rtl' : 'ltr', maxHeight: 100 }}
-          />
-          {(loading || activeJobRef.current) ? (
-            <button onClick={stopEverything} title={t.stop}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.24)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
-              style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s ease' }}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
+      {/* ── Center: Media canvas ──────────────────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <span style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--text)', letterSpacing: '-0.2px' }}>
+            {activeProject?.name || t.backToProjects}
+          </span>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+          {visibleMedia.length === 0 ? (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+              <div style={{ width: 64, height: 64, borderRadius: 18, background: 'var(--bg2)', border: '1px solid var(--border2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+                <Images size={28} strokeWidth={1.5} color="var(--text3)" />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{t.canvasEmptyTitle}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 320, lineHeight: 1.7 }}>{t.canvasEmptySub}</div>
+            </div>
           ) : (
-            <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
-              onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
-              onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-              style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}><Send size={15} strokeWidth={2.25} /></button>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 18 }}>
+              {visibleMedia.map(m => (
+                <div key={m._i} className="agent-bubble">
+                  {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+                  {m.type === 'whiteboard' && <WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+                  {m.type === 'imageBatch' && <ImageBatchCard job={m.job} lang={lang} />}
+                </div>
+              ))}
+            </div>
           )}
         </div>
-        <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
+      </div>
+
+      {/* ── Right: Organize panel ─────────────────────────────────────────────── */}
+      <div style={{ width: rightPanelCollapsed ? 56 : 176, flexShrink: 0, borderInlineStart: '1px solid var(--border)', display: 'flex', flexDirection: 'column', transition: 'width 0.15s ease', overflow: 'hidden' }}>
+        <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+          {RIGHT_TABS.map(tabItem => (
+            <button key={tabItem.key} className="agent-tab-btn" onClick={() => setRightTab(tabItem.key)}
+              title={tabItem.label}
+              style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', borderRadius: 9, background: rightTab === tabItem.key ? 'var(--accent-bg)' : 'transparent', color: rightTab === tabItem.key ? 'var(--accent2)' : 'var(--text2)', fontSize: 12.5, fontWeight: 600, justifyContent: rightPanelCollapsed ? 'center' : 'flex-start', transition: 'background 0.15s ease', whiteSpace: 'nowrap' }}>
+              <tabItem.icon size={15} strokeWidth={2} style={{ flexShrink: 0 }} />
+              {!rightPanelCollapsed && tabItem.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ padding: 10, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+          <button className="agent-tab-btn" onClick={() => setRightPanelCollapsed(v => !v)} title={rightPanelCollapsed ? t.expand : t.collapse}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: rightPanelCollapsed ? 'center' : 'flex-start', gap: 9, padding: '9px 10px', borderRadius: 9, background: 'transparent', color: 'var(--text2)', fontSize: 12.5, fontWeight: 600, transition: 'background 0.15s ease' }}>
+            {rightPanelCollapsed ? <PanelRightOpen size={15} strokeWidth={2} /> : <PanelRightClose size={15} strokeWidth={2} />}
+            {!rightPanelCollapsed && t.collapse}
+          </button>
+        </div>
       </div>
 
       {subscribeModal?.type === 'eg' && (
