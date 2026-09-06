@@ -9,7 +9,7 @@ import {
   MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2, Maximize2,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
-import { downloadRemoteFile } from '../utils/download.js';
+import { downloadRemoteFile, fetchRemoteBlob } from '../utils/download.js';
 
 const LOGO = '/logo.png';
 
@@ -282,13 +282,13 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
 // للمفضلة، إعادة استخدام البرومبت، تحريك (صور بس)، تحميل، نسخ البرومبت، إعادة تسمية،
 // مشاركة، إبلاغ، ونقل للمهملات. "ضبط غلاف المشروع" مش موجودة هنا — محتاجة تعديل جدول
 // المشاريع نفسه (عمود cover_url) ولسه معمولة، فبقت مؤجلة لمرحلة تانية
-function MediaActionsMenu({ lang, isFavorited, onToggleFavorite, onReusePrompt, onAnimate, onDownload, onCopyPrompt, onRename, onShare, onReport, onTrash }) {
+function MediaActionsMenu({ lang, isFavorited, onToggleFavorite, onReusePrompt, onAnimate, onDownload, onCopyPrompt, onRename, onShare, onReport, onTrash, onToast }) {
   const [open, setOpen] = useState(false);
   const tt = lang === 'ar'
     ? { favorite: 'إضافة إلى المفضّلة', unfavorite: 'إزالة من المفضّلة', reuse: 'إعادة استخدام الطلب', animate: 'تحريك', download: 'تحميل', copy: 'نسخ البرومبت', rename: 'إعادة تسمية', share: 'مشاركة', report: 'الإبلاغ عن الناتج', trash: 'نقل إلى المهملات' }
     : { favorite: 'Add to Favorites', unfavorite: 'Remove from Favorites', reuse: 'Reuse prompt', animate: 'Animate', download: 'Download', copy: 'Copy prompt', rename: 'Rename', share: 'Share', report: 'Report content', trash: 'Move to trash' };
-  const item = (icon, label, onClick, danger) => (
-    <button onClick={() => { onClick(); setOpen(false); }}
+  const item = (icon, label, onClick, danger, toastMsg) => (
+    <button onClick={() => { onClick(); if (toastMsg) onToast?.(toastMsg); setOpen(false); }}
       style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '8px 11px', borderRadius: 8, background: 'none', border: 'none', color: danger ? '#f87171' : '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
       onMouseLeave={e => e.currentTarget.style.background = 'none'}>
@@ -308,10 +308,10 @@ function MediaActionsMenu({ lang, isFavorited, onToggleFavorite, onReusePrompt, 
             {onReusePrompt && item(<RotateCcw size={14} strokeWidth={2} />, tt.reuse, onReusePrompt)}
             {onAnimate && item(<Film size={14} strokeWidth={2} />, tt.animate, onAnimate)}
             {item(<Download size={14} strokeWidth={2} />, tt.download, onDownload)}
-            {onCopyPrompt && item(<Copy size={14} strokeWidth={2} />, tt.copy, onCopyPrompt)}
+            {onCopyPrompt && item(<Copy size={14} strokeWidth={2} />, tt.copy, onCopyPrompt, false, lang === 'ar' ? 'تم نسخ البرومبت' : 'Prompt copied')}
             {onRename && item(<Pencil size={14} strokeWidth={2} />, tt.rename, onRename)}
-            {onShare && item(<Share2 size={14} strokeWidth={2} />, tt.share, onShare)}
-            {onReport && item(<Flag size={14} strokeWidth={2} />, tt.report, onReport)}
+            {onShare && item(<Share2 size={14} strokeWidth={2} />, tt.share, onShare, false, lang === 'ar' ? 'تم نسخ الرابط' : 'Link copied')}
+            {onReport && item(<Flag size={14} strokeWidth={2} />, tt.report, onReport, false, lang === 'ar' ? 'تم إرسال البلاغ' : 'Report sent')}
             {onTrash && item(<Trash2 size={14} strokeWidth={2} />, tt.trash, onTrash, true)}
           </div>
         </>
@@ -323,7 +323,7 @@ function MediaActionsMenu({ lang, isFavorited, onToggleFavorite, onReusePrompt, 
 // ✅ NEW (Phase 3 — new image-generation models): كارت توليد صور مستقل جوه شات الايجنت
 // (مش فيديو) — بيعرض شبكة الصور بمجرد ما توليدها يخلص، مفيش poll هنا لأن الطلب نفسه
 // بيستنى الرد كامل (backend بيستخدم Prefer: wait + polling داخلي)
-function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, onAnimate, onReport, onOpenDetail }) {
+function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, onAnimate, onReport, onOpenDetail, onToast }) {
   const tt = lang === 'ar'
     ? { generating: 'بيولّد الصور...', done: 'تم! تم خصم', credits: 'كريديت', download: 'تحميل', failed: 'حصلت مشكلة أثناء توليد الصور' }
     : { generating: 'Generating images...', done: 'Done! Deducted', credits: 'credits', download: 'Download', failed: 'Something went wrong generating the images' };
@@ -375,6 +375,7 @@ function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, 
                     onShare={() => navigator.clipboard?.writeText(url)}
                     onReport={() => onReport?.(url, job.prompt)}
                     onTrash={() => onRemoveImage?.(i)}
+                    onToast={onToast}
                   />
                 </div>
               </div>
@@ -399,7 +400,7 @@ function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, 
 // ✅ NEW (new standalone video-generation models — Veo/Kling/Seedance/Luma): كارت واحد بيعرض
 // فيديو مولّد بموديل مستقل — نفس منطق ImageBatchCard فوق (مفيش poll، الطلب نفسه بيستنى
 // الفيديو جاهز لأن backend بيستخدم Prefer: wait + polling داخلي في newVideoModelsService.js)
-function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onReport, onOpenDetail }) {
+function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onReport, onOpenDetail, onToast }) {
   const tt = lang === 'ar'
     ? { generating: 'بيولّد الفيديو...', done: 'تم! تم خصم', credits: 'كريديت', failed: 'حصلت مشكلة أثناء توليد الفيديو' }
     : { generating: 'Generating video...', done: 'Done! Deducted', credits: 'credits', failed: 'Something went wrong generating the video' };
@@ -436,6 +437,7 @@ function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onRep
             onShare={() => navigator.clipboard?.writeText(job.videoUrl)}
             onReport={() => onReport?.(job.videoUrl, job.prompt)}
             onTrash={() => onRemove?.()}
+            onToast={onToast}
           />
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
@@ -462,7 +464,7 @@ function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onRep
 // نفس الدفعة (job.images) — مفيش موديل بيانات جديد، ومفيش رسم منفصل، فقط نفس التوليد العادي
 // بسعره الحقيقي. الفيديو مش بيدعم تعديل حاليًا (مفيش موديل video-to-video متوصل)، بس بيتفتح
 // بمعاينة كبيرة برضو
-function MediaDetailModal({ lang, kind, job, imgIndex, onChangeIndex, editingImage, onClose, onUpdateJob, onRemoveImage, onRemove, onReport, onEditSubmit }) {
+function MediaDetailModal({ lang, kind, job, imgIndex, onChangeIndex, editingImage, onClose, onUpdateJob, onRemoveImage, onRemove, onReport, onEditSubmit, onToast }) {
   const tt = lang === 'ar'
     ? { done: 'تم', download: 'تحميل', deleteLabel: 'حذف', share: 'مشاركة', editPlaceholder: 'ما هي التغييرات المطلوبة؟', editHint: 'تعديل الصورة بالذكاء الاصطناعي' }
     : { done: 'Done', download: 'Download', deleteLabel: 'Delete', share: 'Share', editPlaceholder: 'What changes do you want?', editHint: 'AI edit this image' };
@@ -498,7 +500,7 @@ function MediaDetailModal({ lang, kind, job, imgIndex, onChangeIndex, editingIma
         <div style={{ flex: 1 }} />
         <button onClick={() => downloadRemoteFile(currentUrl, `erivion-${kind}-${activeIdx + 1}.${isImage ? 'jpg' : 'mp4'}`)} title={tt.download} style={iconBtn}><Download size={16} strokeWidth={2} /></button>
         <button onClick={() => { if (isImage) onRemoveImage?.(activeIdx); else onRemove?.(); onClose(); }} title={tt.deleteLabel} style={iconBtn}><Trash2 size={16} strokeWidth={2} /></button>
-        <button onClick={() => navigator.clipboard?.writeText(currentUrl)} title={tt.share} style={iconBtn}><Share2 size={16} strokeWidth={2} /></button>
+        <button onClick={() => { navigator.clipboard?.writeText(currentUrl); onToast?.(lang === 'ar' ? 'تم نسخ الرابط' : 'Link copied'); }} title={tt.share} style={iconBtn}><Share2 size={16} strokeWidth={2} /></button>
         <button onClick={() => setMeta({ favorited: !meta.favorited })} title="Favorite" style={iconBtn}><Heart size={16} strokeWidth={2} fill={meta.favorited ? 'currentColor' : 'none'} color={meta.favorited ? '#f472b6' : '#fff'} /></button>
       </div>
 
@@ -552,6 +554,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // ✅ NEW: عرض تفاصيل/تعديل صورة أو فيديو بملء الشاشة — { jobUid, kind, imgIndex } | null
   const [detailView, setDetailView] = useState(null);
   const [editingImageJob, setEditingImageJob] = useState(false);
+  // ✅ FIX (باج حقيقي: أزرار زي "نسخ البرومبت"/"مشاركة"/"الإبلاغ" كانت بتنفّذ فعليًا بس من
+  // غير أي تأكيد مرئي، فالعميل كان حاسس إنها "مش شغالة" رغم إنها بتشتغل فعلاً): توست بسيط
+  // بيظهر تأكيد مرئي واضح بعد أي إجراء من قائمة النقط
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  const showToast = (msg) => {
+    setToast(msg);
+    clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2200);
+  };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [voiceFile, setVoiceFile] = useState(null);
@@ -942,8 +954,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // لأنه شايف صورة مرفقة) بدل ما نكرر منطق التوليد بتاع موديل 5 من الصفر هنا
   const attachImageUrlToComposer = async (url) => {
     try {
-      const res = await fetch(url);
-      const blob = await res.blob();
+      const blob = await fetchRemoteBlob(url);
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result);
@@ -1089,8 +1100,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       const lastImageMsg = [...messages].reverse().find(m => m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length);
       if (lastImageMsg) {
         try {
-          const imgRes = await fetch(lastImageMsg.job.images[0]);
-          const blob = await imgRes.blob();
+          const blob = await fetchRemoteBlob(lastImageMsg.job.images[0]);
           resolvedAnimatePhoto = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result);
@@ -1964,6 +1974,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     onAnimate={animateImageFromMenu}
                     onReport={reportMedia}
                     onOpenDetail={(idx) => setDetailView({ jobUid: m.job.uid, kind: 'imageBatch', imgIndex: idx })}
+                    onToast={showToast}
                   />}
                   {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang}
                     onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
@@ -1971,6 +1982,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     onReusePrompt={reusePromptIntoComposer}
                     onReport={reportMedia}
                     onOpenDetail={() => setDetailView({ jobUid: m.job.uid, kind: 'videoModel' })}
+                    onToast={showToast}
                   />}
                 </div>
               ))}
@@ -2030,9 +2042,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             onRemove={() => removeMessageByJobUid(detailView.jobUid)}
             onReport={reportMedia}
             onEditSubmit={submitImageEdit}
+            onToast={showToast}
           />
         );
       })()}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 96, left: '50%', transform: 'translateX(-50%)', padding: '10px 20px', borderRadius: 24, background: 'rgba(20,20,26,0.95)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CheckCircle2 size={15} strokeWidth={2.25} color="#22c55e" /> {toast}
+        </div>
+      )}
     </div>
   );
 }
