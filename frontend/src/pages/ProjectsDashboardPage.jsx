@@ -22,6 +22,9 @@ const T = {
     yes: 'أيوه احذف',
     cancel: 'إلغاء',
     updated: 'آخر تحديث',
+    newProjectTitle: 'مشروع جديد',
+    namePlaceholder: 'اسم المشروع...',
+    create: 'إنشاء',
   },
   en: {
     title: 'Projects',
@@ -37,6 +40,9 @@ const T = {
     yes: 'Yes, delete',
     cancel: 'Cancel',
     updated: 'Updated',
+    newProjectTitle: 'New Project',
+    namePlaceholder: 'Project name...',
+    create: 'Create',
   },
 };
 
@@ -136,10 +142,35 @@ function ProjectCard({ project, lang, onOpen, onRename, onDelete }) {
   );
 }
 
+// ✅ NEW (طلب العميل: "لما حد يعمل مشروع جديد يظهر له نافذة تطلب منه يكتب اسم المشروع"):
+// نافذة بسيطة بتاخد اسم المشروع قبل الإنشاء الفعلي، بدل ما يتعمل المشروع فورًا باسم افتراضي
+function NewProjectModal({ lang, onCreate, onCancel, creating }) {
+  const t = T[lang];
+  const [name, setName] = useState('');
+  const submit = () => { const trimmed = name.trim(); if (trimmed && !creating) onCreate(trimmed); };
+  return (
+    <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(400px, 90vw)', background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--r-xl)', padding: 22, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', fontFamily: 'var(--font-display)', marginBottom: 14 }}>{t.newProjectTitle}</div>
+        <input
+          autoFocus value={name} onChange={e => setName(e.target.value)} placeholder={t.namePlaceholder}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onCancel(); }}
+          style={{ width: '100%', fontSize: 14, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border2)', background: 'var(--bg)', color: 'var(--text)', marginBottom: 16 }}
+        />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} style={{ padding: '9px 16px', borderRadius: 9, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 13, fontWeight: 600 }}>{t.cancel}</button>
+          <button className="btn-primary" onClick={submit} disabled={!name.trim() || creating} style={{ padding: '9px 16px', fontSize: 13 }}>{t.create}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject }) {
   const t = T[lang];
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [showNewModal, setShowNewModal] = useState(false);
 
   const load = async () => {
     try {
@@ -151,14 +182,15 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject }) {
 
   useEffect(() => { load(); }, []);
 
-  const createProject = async () => {
+  const createProject = async (name) => {
     if (creating) return;
     setCreating(true);
     try {
-      const res = await fetch('/api/projects', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ name: t.untitled }) });
+      const res = await fetch('/api/projects', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ name: name || t.untitled }) });
       const data = await res.json();
       if (res.ok && data.project) {
         setProjects(p => [data.project, ...(p || [])]);
+        setShowNewModal(false);
         onOpenProject?.(data.project);
       }
     } catch { /* ignore */ } finally { setCreating(false); }
@@ -187,7 +219,7 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject }) {
           </div>
         </div>
         {projects.length > 0 && (
-          <button className="btn-primary" onClick={createProject} disabled={creating} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-primary" onClick={() => setShowNewModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Plus size={16} strokeWidth={2.5} /> {t.newProject}
           </button>
         )}
@@ -200,7 +232,7 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject }) {
           </div>
           <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{t.empty}</div>
           <div style={{ fontSize: 13.5, color: 'var(--text2)', maxWidth: 380, margin: '0 auto 20px', lineHeight: 1.7 }}>{t.emptySub}</div>
-          <button className="btn-primary" onClick={createProject} disabled={creating} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-primary" onClick={() => setShowNewModal(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <Plus size={16} strokeWidth={2.5} /> {t.createFirst}
           </button>
         </div>
@@ -210,6 +242,10 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject }) {
             <ProjectCard key={p.id} project={p} lang={lang} onOpen={onOpenProject} onRename={renameProject} onDelete={deleteProject} />
           ))}
         </div>
+      )}
+
+      {showNewModal && (
+        <NewProjectModal lang={lang} creating={creating} onCreate={createProject} onCancel={() => setShowNewModal(false)} />
       )}
     </div>
   );

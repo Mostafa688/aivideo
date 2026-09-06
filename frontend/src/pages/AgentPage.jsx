@@ -413,6 +413,49 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, loading]);
 
+  // ✅ FIX (باج حقيقي: العميل بيخرج من المشروع ويرجع يلاقي الشات والصور والفيديوهات كلها
+  // اختفت): محادثة الايجنت كانت state في الفرونت إند بس، تتمسح لما الكومبوننت يتشال من
+  // الشاشة (تنقل لصفحة تانية). دلوقتي بتتحمل من الداتابيز لما مشروع يتفتح، وبتتحفظ
+  // (debounced) كل ما تتغيّر — أي جوب لسه شغال (لسه بيولّد) وقت الحفظ بيتحول لحالة "توقف"
+  // بدل ما يفضل سبينر واهم بيدور للأبد بعد إعادة التحميل (مفيش آلية استئناف بولينج حقيقية له)
+  const messagesHydratedRef = useRef(false);
+  const saveDebounceRef = useRef(null);
+
+  useEffect(() => {
+    messagesHydratedRef.current = false;
+    if (!activeProject?.id) { setMessages([]); messagesHydratedRef.current = true; return; }
+    fetch(`/api/projects/${activeProject.id}/messages`, { headers: tokenHeader() })
+      .then(r => r.json())
+      .then(d => { setMessages(Array.isArray(d.messages) ? d.messages : []); })
+      .catch(() => setMessages([]))
+      .finally(() => { messagesHydratedRef.current = true; });
+  }, [activeProject?.id]);
+
+  useEffect(() => {
+    if (!activeProject?.id || !messagesHydratedRef.current) return;
+    clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = setTimeout(() => {
+      const toSave = messages.map(m => {
+        // ✅ الصور المرفوعة (base64) تقيلة ومش محتاجة تتخزن — النص والميديا المتولدة كفاية
+        const { imagePreview, imagePreviews, ...rest } = m;
+        if (rest.job && ['render', 'imageBatch', 'videoModel'].includes(rest.type)) {
+          const nonTerminal = rest.type === 'render'
+            ? ['scenes', 'rendering'].includes(rest.job.status)
+            : rest.job.status === 'generating';
+          if (nonTerminal) {
+            const frozenStatus = rest.type === 'render' ? 'stopped' : 'failed';
+            return { ...rest, job: { ...rest.job, status: frozenStatus, error: lang === 'ar' ? 'اتقفل قبل ما يخلص — جرب تاني' : 'Closed before finishing — try again' } };
+          }
+        }
+        return rest;
+      });
+      fetch(`/api/projects/${activeProject.id}/messages`, {
+        method: 'PUT', headers: authHeaders(), body: JSON.stringify({ messages: toSave }),
+      }).catch(() => {});
+    }, 900);
+    return () => clearTimeout(saveDebounceRef.current);
+  }, [messages, activeProject?.id, lang]);
+
   const handleVoiceFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;

@@ -575,8 +575,8 @@ export default function App() {
       <div id="app-main" style={{ paddingTop: 54, paddingBottom: 20 }}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
-        {page === 'dashboard' && <ProjectsDashboardPage lang={(userRegion || localStorage.getItem('erivion_region') || 'eg') === 'eg' ? 'ar' : 'en'} onOpenProject={(project) => { setActiveProject(project); setPage('agent'); }} />}
-        {page === 'agent' && <AgentPage onNavigate={handleNavigate} onSwitchToModels={() => setPage('input')} activeProject={activeProject} />}
+        {page === 'dashboard' && <div key="dashboard" className="workspace-transition"><ProjectsDashboardPage lang={(userRegion || localStorage.getItem('erivion_region') || 'eg') === 'eg' ? 'ar' : 'en'} onOpenProject={(project) => { setActiveProject(project); setPage('agent'); }} /></div>}
+        {page === 'agent' && <div key={`agent-${activeProject?.id || 'none'}`} className="workspace-transition"><AgentPage onNavigate={handleNavigate} onSwitchToModels={() => setPage('input')} activeProject={activeProject} /></div>}
         {page === 'input' && <InputPage
           onSubmit={(data) => {
             if (data.videoType === 'model3') { setPage('model3'); return; }
