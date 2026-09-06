@@ -476,7 +476,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
     const toIndex   = Math.min(fromIndex + SCENES_PER_CHUNK - 1, sceneCount);
 
     send('status', {
-      message: `✍️ Generating scenes ${fromIndex}–${toIndex} of ${sceneCount}...`
+      message: `Generating scenes ${fromIndex}–${toIndex} of ${sceneCount}...`
     });
 
     try {
@@ -588,7 +588,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
 
     } catch (err) {
       console.error(`[Script] Chunk ${chunkIndex + 1} failed:`, err.message);
-      send('status', { message: `⚠️ Chunk ${chunkIndex + 1} failed, skipping...` });
+      send('status', { message: `Chunk ${chunkIndex + 1} failed, skipping...` });
 
       // ✅ للـ script mode، لو الـ chunk فشل خالص، نعمل fallback من الـ segments
       if (mode === 'script' && scriptSegments) {
@@ -604,7 +604,7 @@ export async function generateScenesStream({ idea, script, tone, duration, mode,
     }
 
     if (chunkIndex < totalChunks - 1) {
-      send('status', { message: `⏳ Waiting to respect rate limits... (${totalEmitted}/${sceneCount} scenes ready)` });
+      send('status', { message: `Waiting to respect rate limits... (${totalEmitted}/${sceneCount} scenes ready)` });
       await sleep(DELAY_BETWEEN_CHUNKS_MS);
     }
   }
