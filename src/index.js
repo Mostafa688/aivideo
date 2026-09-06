@@ -2921,6 +2921,7 @@ app.get('/api/videos/models', authMiddleware, (req, res) => {
     tiers: getQualityTiers(key),
     maxClipSec: getMaxClipSeconds(key),
     supportsImageInput: !!NEW_VIDEO_MODELS[key].supportsImageInput,
+    supportsVideoEdit: !!NEW_VIDEO_MODELS[key].supportsVideoEdit,
     creditCostPerSecond: getPerSecondCreditCost(key, 1),
   }));
   res.json({ models });
@@ -2938,7 +2939,7 @@ app.get('/api/videos/credit-cost', authMiddleware, (req, res) => {
 });
 
 app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res) => {
-  const { model, prompt, imageUrl, aspectRatio, durationSec, tier } = req.body;
+  const { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier } = req.body;
   if (!model || !NEW_VIDEO_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
   if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
   const vidUser = await getUserById(req.user.userId);
@@ -2969,6 +2970,7 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       modelKey: model,
       prompt,
       imageUrl: imageUrl || null,
+      sourceVideoUrl: sourceVideoUrl || null,
       aspectRatio: aspectRatio || '16:9',
       durationSec: sec,
       tier: tier || null,
