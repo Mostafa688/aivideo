@@ -72,7 +72,13 @@ function fmtImageModels() {
   return Object.keys(NEW_IMAGE_MODELS).map(key => {
     const label = REPLICATE_MODEL_COSTS[key]?.label || key;
     const cost = getImageCreditCost(key, 1);
-    return `${key} ("${label}", ${cost}cr/image)`;
+    const tiers = getQualityTiers(key);
+    // ✅ NEW (طلب العميل: "نوضح للعميل تكلفة كل دقة"): لو الموديل بيدعم دقة اختيارية بسعر
+    // مختلف فعليًا لكل مستوى، نعرض كل مستوى وسعره الحقيقي، مش رقم واحد بس
+    const tierNote = tiers
+      ? `, resolutions: ${tiers.map(t => `${t}=${getImageCreditCost(key, 1, t)}cr`).join('/')}`
+      : '';
+    return `${key} ("${label}", ${cost}cr/image${tierNote})`;
   }).join(', ');
 }
 
@@ -140,8 +146,9 @@ STANDALONE IMAGE GENERATION (completely separate from every video model above �
 - Ask how many images only if it's genuinely unclear whether they want one or a set — otherwise default to 1. Batches of up to 20 images in one request are supported (mention this if the user seems to want several).
 - If the user attached reference photo(s) in this same message, they're used automatically as visual reference for the generation — mention once that you're using the attached photo(s), never ask them to re-upload.
 - Ask aspect ratio only if unclear (sensible defaults: 9:16 for social/portrait requests, 1:1 for product/profile images, 16:9 for wide/banner requests).
-- Always state the exact total credit cost (count × the per-image credit price shown above for the model you picked) before confirming.
-- READY marker for this — a SEPARATE marker from the video ###READY### marker above, NEVER combine the two in one reply: end your reply with ###GENERATE_IMAGE###{"model":"<one of the exact keys listed above>","prompt":"a detailed, vivid English image-generation prompt reflecting exactly what the user described","aspectRatio":"9:16"|"16:9"|"1:1","count":<integer 1-20>}.
+- RESOLUTION/QUALITY — only ask if the model you picked actually has "resolutions:" listed above AND the user hasn't stated a preference; each resolution shown has its own REAL, different credit cost — never guess or blend them. If unclear, default to the cheapest listed resolution and mention that higher quality is available if they want it (e.g. "1K" for nano_banana_2, "2K" for nano_banana_pro — note 1K and 2K cost nano_banana_pro exactly the same, so 2K is the obviously better default there specifically). Models with no "resolutions:" listed have one fixed quality — never ask about it for those, and always send "tier":null for them.
+- Always state the exact total credit cost (count × the per-image/per-resolution credit price shown above for the model+resolution you picked) before confirming.
+- READY marker for this — a SEPARATE marker from the video ###READY### marker above, NEVER combine the two in one reply: end your reply with ###GENERATE_IMAGE###{"model":"<one of the exact keys listed above>","prompt":"a detailed, vivid English image-generation prompt reflecting exactly what the user described","aspectRatio":"9:16"|"16:9"|"1:1","count":<integer 1-20>,"tier":"1K"|"2K"|"4K"|"512px"|null}.
 - "aspectRatio" IS REQUIRED, NEVER OMIT IT — CRITICAL, A REAL PRODUCTION BUG: a customer explicitly asked for 16:9 and got a square image back because the ratio silently defaulted — always include a real, explicit "aspectRatio" value in this marker, exactly matching whatever you told the customer (or your own sensible default from the rule above if they never stated one), never leave the field blank/omitted/guessed differently from what you said in your reply.
 - MEMORY OF GENERATED IMAGES — CRITICAL: when you see a note earlier in this conversation like "[Successfully generated N image(s) with model X — image URLs: ...]", that is REAL, CONFIRMED PROOF an image generation actually happened and succeeded — never treat it as absent or forget it happened.
 - ANIMATING A GENERATED IMAGE — CRITICAL, A REAL PRODUCTION BUG TO NEVER REPEAT: if the user asks to animate/turn into a video a picture that was JUST generated ("حرك الصورة"/"عايز الصورة تتحرك"/"animate it"/"make it a video"/"make this move") and they are NOT uploading a brand-new photo right now, this ALWAYS means exactly one thing: Model 5, image-to-video mode. There is NO other correct answer — do NOT pick Model 3, 4, 8, or any idea/prompt-based video model for this, even though those also make videos; they would write a brand-new scene from a text description and completely ignore the actual picture, which is the wrong result and has actually happened in production (wasted the user's credits generating an unrelated video instead of animating their image). The ONLY correct marker is: ###READY###{"model":5,"promptMode":"image","animateLastGeneratedImage":true,"duration":"5s"|"10s"|"15s","rawPrompt":"optional motion description if they said how it should move, omit otherwise"}. Do NOT ask them to upload a photo — the platform already has the exact image and resolves it automatically. Only ask for duration if unclear. This is separate from a user uploading their OWN new photo (normal "characterPhoto" flow, no special flag).

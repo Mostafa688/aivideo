@@ -36,8 +36,12 @@ export const PROFIT_MULTIPLIER = 3;
 export const REPLICATE_MODEL_COSTS = {
   // ── Image generation ──────────────────────────────────────────────────────
   nano_banana:      { label: 'Nano Banana',        unit: 'image', usdCost: 0.039 },
-  nano_banana_2:    { label: 'Nano Banana 2',      unit: 'image', usdCost: 0.100 },
-  nano_banana_pro:  { label: 'Nano Banana Pro',    unit: 'image', usdCost: 0.180 }, // avg of 2K/4K tiers
+  // ✅ NEW (طلب العميل: "هل حسبت التكلفة ونوضح للعميل تكلفة كل دقة؟"): نانو بنانا 2 وبرو بيدعموا
+  // دقة اختيارية (resolution) بسعر حقيقي مختلف لكل مستوى — مؤكد من Replicate/aggregators مباشرة
+  nano_banana_2:    { label: 'Nano Banana 2',      unit: 'image', usdCost: 0.067, // = تكلفة 1K الافتراضية
+                       tiers: { '512px': 0.045, '1K': 0.067, '2K': 0.101, '4K': 0.150 } },
+  nano_banana_pro:  { label: 'Nano Banana Pro',    unit: 'image', usdCost: 0.150, // = تكلفة 1K/2K (نفس السعر للاتنين فعليًا)
+                       tiers: { '1K': 0.150, '2K': 0.150, '4K': 0.300 } },
   nano_banana_lite: { label: 'Nano Banana Lite',   unit: 'image', usdCost: 0.045 },
   grok_image:       { label: 'Grok Image',         unit: 'image', usdCost: 0.060 }, // avg of 1K/2K tiers
   gpt_image:        { label: 'GPT-Image',          unit: 'image', usdCost: 0.042 }, // "medium" quality tier
@@ -77,11 +81,17 @@ export function usdToCredits(usdCost, { multiplier = PROFIT_MULTIPLIER } = {}) {
   return Math.max(1, Math.ceil((usdCost * multiplier) / USD_PER_CREDIT));
 }
 
-/** Credit cost for generating `count` images with the given model key. */
-export function getImageCreditCost(modelKey, count = 1) {
+/**
+ * Credit cost for generating `count` images with the given model key. Pass
+ * `tier` (e.g. "1K"/"2K"/"4K") for models with real per-resolution pricing
+ * (see REPLICATE_MODEL_COSTS[key].tiers) — falls back to the model's
+ * blended/default usdCost if no tier given or the model has no tiers.
+ */
+export function getImageCreditCost(modelKey, count = 1, tier = null) {
   const model = REPLICATE_MODEL_COSTS[modelKey];
   if (!model || model.unit !== 'image') throw new Error(`Unknown image model: ${modelKey}`);
-  return usdToCredits(model.usdCost) * Math.max(1, count);
+  const perImageUsd = (tier && model.tiers?.[tier]) ?? model.usdCost;
+  return usdToCredits(perImageUsd) * Math.max(1, count);
 }
 
 /**
