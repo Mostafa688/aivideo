@@ -83,10 +83,18 @@ function ProjectCard({ project, lang, onOpen, onRename, onDelete }) {
     >
       <div style={{
         width: '100%', aspectRatio: '16/10', borderRadius: 'var(--r-lg)', marginBottom: 14,
-        background: 'linear-gradient(135deg, var(--bg3), var(--bg4))',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: project.cover_url ? '#000' : 'linear-gradient(135deg, var(--bg3), var(--bg4))',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
       }}>
-        <FolderKanban size={28} strokeWidth={1.5} color="var(--text3)" />
+        {project.cover_url ? (
+          project.cover_type === 'video' ? (
+            <video src={project.cover_url} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <img src={project.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          )
+        ) : (
+          <FolderKanban size={28} strokeWidth={1.5} color="var(--text3)" />
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
