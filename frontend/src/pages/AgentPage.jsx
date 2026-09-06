@@ -323,6 +323,42 @@ function ImageBatchCard({ job, lang }) {
   );
 }
 
+// ✅ NEW (new standalone video-generation models — Veo/Kling/Seedance/Luma): كارت واحد بيعرض
+// فيديو مولّد بموديل مستقل — نفس منطق ImageBatchCard فوق (مفيش poll، الطلب نفسه بيستنى
+// الفيديو جاهز لأن backend بيستخدم Prefer: wait + polling داخلي في newVideoModelsService.js)
+function VideoModelCard({ job, lang }) {
+  const tt = lang === 'ar'
+    ? { generating: 'بيولّد الفيديو...', done: 'تم! تم خصم', credits: 'كريديت', failed: 'حصلت مشكلة أثناء توليد الفيديو' }
+    : { generating: 'Generating video...', done: 'Done! Deducted', credits: 'credits', failed: 'Something went wrong generating the video' };
+
+  if (job.status === 'failed') {
+    return (
+      <div style={{ maxWidth: 280, padding: '12px 16px', borderRadius: 14, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#ef4444' }}><AlertTriangle size={14} strokeWidth={2.25} /> {job.error || tt.failed}</div>
+      </div>
+    );
+  }
+
+  if (job.status === 'done') {
+    const cssAspectRatio = (job.aspectRatio || '16:9').replace(':', ' / ');
+    return (
+      <div style={{ width: 280 }}>
+        <video src={job.videoUrl} controls style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700, marginTop: 8 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {tt.done} {job.cost || ''} {tt.credits}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: 240, padding: '14px 16px', borderRadius: 14, background: 'linear-gradient(135deg, rgba(124,106,247,0.18), rgba(0,0,0,0.6))', border: '1px solid rgba(124,106,247,0.3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="spinning" style={{ display: 'inline-block', fontSize: 18 }}>◐</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#fff' }}><Film size={14} strokeWidth={2} /> {tt.generating}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentPage({ onNavigate, onSwitchToModels, activeProject }) {
   const region = localStorage.getItem('erivion_region') || 'eg';
   const lang = region === 'eg' ? 'ar' : 'en';
@@ -498,6 +534,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       }
       return `[${lang === 'ar' ? 'صور قيد التوليد' : 'Image(s) are currently being generated'}]`;
     }
+    if (m.type === 'videoModel') {
+      return m.job?.status === 'done'
+        ? `[${lang === 'ar' ? 'تم توليد فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''} — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}]`
+        : `[${lang === 'ar' ? 'فيديو قيد التوليد' : 'A video is currently being generated'}]`;
+    }
     if (m.type === 'video') return `[${lang === 'ar' ? 'فيديو مثال' : 'Example video'}]`;
     return '';
   };
@@ -595,6 +636,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         }
       } else if (data.generateImage) {
         startImageGeneration(data.generateImage);
+      } else if (data.generateVideo) {
+        startVideoModelGeneration(data.generateVideo);
       }
 
       // ✅ NEW (طلب العميل: "اربط ده بالايجنت... يظهر في شات الايجنت كمّل الفيديو"): فيديو
@@ -656,6 +699,39 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
         updateJob({ status: 'done', images: data.images, cost: data.creditCost });
+      }
+    } catch (e) {
+      updateJob({ status: 'failed', error: e.message });
+    }
+  };
+
+  // ✅ NEW (new standalone video-generation models — Veo/Kling/Seedance/Luma): نفس نمط
+  // startImageGeneration بالظبط — طلب واحد بيستنى الفيديو جاهز (backend بيعمل Prefer: wait)
+  const startVideoModelGeneration = async (gen) => {
+    const jobUid = `vid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '16:9' };
+    setMessages(m => [...m, { role: 'assistant', type: 'videoModel', job }]);
+    const updateJob = (patch) => {
+      setMessages(m => {
+        const copy = [...m];
+        const idx = copy.findIndex(x => x.type === 'videoModel' && x.job?.uid === jobUid);
+        if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
+        return copy;
+      });
+    };
+    try {
+      const res = await fetch('/api/videos/generate', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({
+          model: gen.model, prompt: gen.prompt, imageUrl: gen.imageUrl || undefined,
+          aspectRatio: gen.aspectRatio || '16:9', durationSec: gen.durationSec || 5, tier: gen.tier || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        updateJob({ status: 'failed', error: data.message || data.error });
+      } else {
+        updateJob({ status: 'done', videoUrl: data.videoUrl, cost: data.creditCost });
       }
     } catch (e) {
       updateJob({ status: 'failed', error: e.message });
@@ -1309,12 +1385,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
   // ✅ NEW (Workspace redesign, Phase 2): الشات بقى شريط جانبي نص فقط — أي ميديا متولدة
   // (فيديو/whiteboard/دفعة صور) بتتشال من قائمة رسائل الشات وتتعرض في canvas النص بدل كده
-  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch'];
+  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel'];
   const mediaItems = messages
     .map((m, i) => ({ ...m, _i: i }))
     .filter(m => MEDIA_TYPES.includes(m.type));
   const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
-    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard')
+    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel')
     : mediaItems;
 
   const RIGHT_TABS = [
@@ -1486,6 +1562,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                   {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}
                   {m.type === 'whiteboard' && <WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} />}
                   {m.type === 'imageBatch' && <ImageBatchCard job={m.job} lang={lang} />}
+                  {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang} />}
                 </div>
               ))}
             </div>

@@ -26,7 +26,8 @@ import whiteboardVideoRouter from './services/whiteboardVideoRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
-import { getImageCreditCost, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
+import { generateNewModelVideo, NEW_VIDEO_MODELS } from './services/newVideoModelsService.js';
+import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
 // عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
 const MODEL3_STANDARD_SCENE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
@@ -2907,6 +2908,74 @@ app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res)
     console.error('[NewImageModels] generation failed:', genErr.message);
     await addCreditsBalance(req.user.userId, imgCreditCost);
     res.status(500).json({ error: 'generation_failed', message: 'Image generation failed, your credits were refunded.' });
+  }
+});
+
+// ── New Video Models Routes ────────────────────────────────────────────────
+app.get('/api/videos/models', authMiddleware, (req, res) => {
+  const models = Object.keys(NEW_VIDEO_MODELS).map(key => ({
+    key,
+    label: REPLICATE_MODEL_COSTS[key]?.label || key,
+    tiers: getQualityTiers(key),
+    maxClipSec: getMaxClipSeconds(key),
+    supportsImageInput: !!NEW_VIDEO_MODELS[key].supportsImageInput,
+    creditCostPerSecond: getPerSecondCreditCost(key, 1),
+  }));
+  res.json({ models });
+});
+
+app.get('/api/videos/credit-cost', authMiddleware, (req, res) => {
+  const { model, durationSec, tier } = req.query;
+  if (!model || !NEW_VIDEO_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
+  const sec = Math.max(1, parseInt(durationSec, 10) || 5);
+  try {
+    res.json({ model, durationSec: sec, tier: tier || null, creditCost: getPerSecondCreditCost(model, sec, tier || null) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res) => {
+  const { model, prompt, imageUrl, aspectRatio, durationSec, tier } = req.body;
+  if (!model || !NEW_VIDEO_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
+  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  const vidUser = await getUserById(req.user.userId);
+  if ((vidUser?.plan || 'free') === 'free') {
+    return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock this video model.', show_upgrade: true });
+  }
+  const modCheck = await checkContentSafety(prompt);
+  if (modCheck.unsafe) {
+    return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
+  }
+  const sec = Math.min(Math.max(1, parseInt(durationSec, 10) || 5), getMaxClipSeconds(model) || 30);
+  let vidCreditCost;
+  try {
+    vidCreditCost = getPerSecondCreditCost(model, sec, tier || null);
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  const vidBalance = await getCreditsBalance(req.user.userId);
+  if (vidBalance < vidCreditCost) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${vidCreditCost} credits, you have ${vidBalance}.`, cost: vidCreditCost, remaining: vidBalance });
+  }
+  const vidCharge = await chargeCredits(req.user.userId, vidCreditCost);
+  if (!vidCharge.success) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${vidCreditCost} credits, you have ${vidCharge.remaining}.`, cost: vidCreditCost, remaining: vidCharge.remaining });
+  }
+  try {
+    const videoUrl = await generateNewModelVideo({
+      modelKey: model,
+      prompt,
+      imageUrl: imageUrl || null,
+      aspectRatio: aspectRatio || '16:9',
+      durationSec: sec,
+      tier: tier || null,
+    });
+    res.json({ videoUrl, creditCost: vidCreditCost, remaining: vidCharge.remaining });
+  } catch (genErr) {
+    console.error('[NewVideoModels] generation failed:', genErr.message);
+    await addCreditsBalance(req.user.userId, vidCreditCost);
+    res.status(500).json({ error: 'generation_failed', message: 'Video generation failed, your credits were refunded.' });
   }
 });
 

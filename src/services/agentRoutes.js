@@ -8,6 +8,8 @@ import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { getFreshChannelIdea } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
+import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
+import { getMaxClipSeconds } from './creditPricingEngine.js';
 
 // بيحوّل أي رسالة (عربي/إنجليزي/بأي تشكيل) لنص موحّد بسيط — عشان مقارنة "الشبه" بين
 // طلب جديد وطلبات قديمة محفوظة في ذاكرة الايجنت تبقى مستقرة ومش حساسة لعلامات ترقيم/تشكيل
@@ -301,10 +303,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
     let editScene = null;
     let videoEdit = null;
     let generateImage = null;
+    let generateVideo = null;
     const isEditMarker = rawReply.includes('###EDIT_SCENE###');
     const isVideoEditMarker = !isEditMarker && rawReply.includes('###VIDEO_EDIT###');
     const isImageGenMarker = !isEditMarker && !isVideoEditMarker && rawReply.includes('###GENERATE_IMAGE###');
-    const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : isImageGenMarker ? '###GENERATE_IMAGE###' : '###READY###';
+    const isVideoGenMarker = !isEditMarker && !isVideoEditMarker && !isImageGenMarker && rawReply.includes('###GENERATE_VIDEO###');
+    const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : isImageGenMarker ? '###GENERATE_IMAGE###' : isVideoGenMarker ? '###GENERATE_VIDEO###' : '###READY###';
     const markerIdx = rawReply.indexOf(markerName);
     if (markerIdx !== -1) {
       const afterMarker = rawReply.slice(markerIdx + markerName.length).trimStart();
@@ -320,6 +324,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
           if (typeof parsed.editPrompt === 'string' && parsed.editPrompt.trim()) videoEdit = parsed;
         } else if (isImageGenMarker) {
           if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) generateImage = parsed;
+        } else if (isVideoGenMarker) {
+          if (typeof parsed.model === 'string' && NEW_VIDEO_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) {
+            const maxSec = getMaxClipSeconds(parsed.model);
+            if (maxSec && (!Number.isFinite(parsed.durationSec) || parsed.durationSec > maxSec)) parsed.durationSec = maxSec;
+            generateVideo = parsed;
+          }
         } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
           ready = parsed;
         }
@@ -345,6 +355,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
               generateImage = repaired;
               console.warn('[Agent] ✅ Repaired truncated GENERATE_IMAGE JSON successfully');
             }
+          } else if (isVideoGenMarker) {
+            if (typeof repaired.model === 'string' && NEW_VIDEO_MODELS[repaired.model] && typeof repaired.prompt === 'string' && repaired.prompt.trim()) {
+              const maxSec = getMaxClipSeconds(repaired.model);
+              if (maxSec && (!Number.isFinite(repaired.durationSec) || repaired.durationSec > maxSec)) repaired.durationSec = maxSec;
+              generateVideo = repaired;
+              console.warn('[Agent] ✅ Repaired truncated GENERATE_VIDEO JSON successfully');
+            }
           } else if ([1, 2, 3, 4, 5, 7, 8].includes(repaired.model)) {
             ready = repaired;
             console.warn('[Agent] ✅ Repaired truncated JSON successfully');
@@ -367,11 +384,17 @@ router.post('/chat', authMiddleware, async (req, res) => {
       generateImage.referenceImageUrls = images;
     }
 
-    // ✅ لو نجحنا نطلع "ready"/"editScene"/"videoEdit"/"generateImage" بس النص البشري اللي
-    // المفروض ييجي بعد الـ JSON اتقطع بالكامل (نادر، بس ممكن لو حد التوكنز وقف بالظبط عند
-    // آخر قوس)، منسيبش فقاعة فاضية للعميل
-    if ((ready || editScene || videoEdit || generateImage) && !reply) {
-      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو.' : videoEdit ? 'تمام، هبدأ أعدّل الفيديو دلوقتي.' : generateImage ? 'تمام، هبدأ أولّد الصور دلوقتي.' : 'جاهز، هبدأ التوليد دلوقتي.';
+    // ✅ NEW: توليد فيديو مستقل (Veo/Kling/Seedance/Luma) بيستخدم أول صورة مرفقة في نفس
+    // الرسالة كـ image-to-video لو الموديل بيدعم كده — نفس نمط generateImage فوق بالظبط
+    if (generateVideo && images.length && NEW_VIDEO_MODELS[generateVideo.model]?.supportsImageInput) {
+      generateVideo.imageUrl = images[0];
+    }
+
+    // ✅ لو نجحنا نطلع "ready"/"editScene"/"videoEdit"/"generateImage"/"generateVideo" بس
+    // النص البشري اللي المفروض ييجي بعد الـ JSON اتقطع بالكامل (نادر، بس ممكن لو حد
+    // التوكنز وقف بالظبط عند آخر قوس)، منسيبش فقاعة فاضية للعميل
+    if ((ready || editScene || videoEdit || generateImage || generateVideo) && !reply) {
+      reply = editScene ? 'تمام، هعدّل المشهد وأدمجه مع باقي الفيديو.' : videoEdit ? 'تمام، هبدأ أعدّل الفيديو دلوقتي.' : generateImage ? 'تمام، هبدأ أولّد الصور دلوقتي.' : generateVideo ? 'تمام، هبدأ أولّد الفيديو دلوقتي.' : 'جاهز، هبدأ التوليد دلوقتي.';
     }
 
     // ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين): مفيش رصيد حقيقي أبدًا للعميل على خطة "free"
@@ -380,8 +403,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // مستني فيديو/صورة مش هيتعمل ("وين الفيديو؟"). البرومبت بقى بيمنع الموديل من عمل ده
     // أصلاً، بس ده حاجز إضافي في الكود نفسه يضمن إن العميل محدش هيتقال له كلام مضلل حتى لو
     // الموديل تجاهل التعليمات
-    if ((ready || editScene || videoEdit || generateImage) && userPlan === 'free') {
-      ready = null; editScene = null; videoEdit = null; generateImage = null;
+    if ((ready || editScene || videoEdit || generateImage || generateVideo) && userPlan === 'free') {
+      ready = null; editScene = null; videoEdit = null; generateImage = null; generateVideo = null;
       reply = 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ التوليد قبل ما تشترك. تحب أوريك باقات الاشتراك، ولا أوريك أمثلة فيديوهات حقيقية عملناها الأول؟';
     }
 
@@ -431,7 +454,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
 
     res.json({
-      reply, transcript, ready, editScene, videoEdit, generateImage, uploadedVoiceUrl,
+      reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, uploadedVoiceUrl,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
       subscribe: subscribePayload, showcaseVideos, whiteboardVideo,
     });
