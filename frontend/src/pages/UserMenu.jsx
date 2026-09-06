@@ -263,7 +263,6 @@ export default function UserMenu({ user, plan = 'free', credits = null, onLogout
     {
       items: [
         { Icon: SettingsIcon, label: 'Settings', key: 'settings' },
-        { Icon: Info, label: 'About Us', key: 'about' },
         { Icon: FileText, label: 'Terms of Service', key: 'terms' },
         { Icon: Lock, label: 'Privacy Policy', key: 'privacy' },
         { Icon: Wallet, label: 'Refund Policy', key: 'refund' },
@@ -271,11 +270,15 @@ export default function UserMenu({ user, plan = 'free', credits = null, onLogout
     },
   ];
 
-  const MOBILE_NAV = [
+  // ✅ NEW (طلب العميل: حذف الشريط العلوي بالكامل ونقل كل حاجة فيه لليوز منيو): القائمة دي
+  // كانت خاصة بالموبايل بس (الشريط العلوي كان بيغطيها على الديسكتوب) — دلوقتي هي المكان
+  // الوحيد لكل روابط التنقل الرئيسية، على كل أحجام الشاشات
+  const SITE_NAV = [
     { key:'home', Icon: Home, label:'Home' }, { key:'pricing', Icon: Gem, label:'Pricing' },
     { key:'templates', Icon: Clapperboard, label:'Templates' }, { key:'courses', Icon: GraduationCap, label:'Courses' },
-    { key:'community', Icon: Globe, label:'Community' }, { key:'support', Icon: MessageCircle, label:'Support' },
-    { key:'faq', Icon: HelpCircle, label:'FAQ' }, { key:'affiliate', Icon: HandCoins, label:'Affiliate' },
+    { key:'community', Icon: Globe, label:'Community' }, { key:'about', Icon: Info, label:'About Us' },
+    { key:'support', Icon: MessageCircle, label:'Support' }, { key:'faq', Icon: HelpCircle, label:'FAQ' },
+    { key:'affiliate', Icon: HandCoins, label:'Affiliate' },
   ];
 
   const handleItemClick = (key) => {
@@ -375,12 +378,11 @@ export default function UserMenu({ user, plan = 'free', credits = null, onLogout
               </button>
             )}
 
-            {/* Mobile Nav — only on small screens */}
+            {/* ✅ روابط التنقل الرئيسية — كانت قبل كده في شريط علوي منفصل على الديسكتوب، دلوقتي هنا بس */}
             <div style={{ padding:'6px 6px 0' }}>
-              <style>{`@media(min-width:641px){.um-nav-mobile{display:none!important}}`}</style>
-              <div className="um-nav-mobile">
+              <div>
                 <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
-                {MOBILE_NAV.map(item=>(
+                {SITE_NAV.map(item=>(
                   <button key={item.key} onClick={()=>{setOpen(false); if(item.key==='affiliate'){onShowAffiliate?.();}else{onNavigate?.(item.key);}}} className="um-item"
                     style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:item.key==='affiliate'?'#22c55e':currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key||item.key==='affiliate'?700:500,textAlign:'left'}}>
                     <item.Icon size={15} strokeWidth={2} />
