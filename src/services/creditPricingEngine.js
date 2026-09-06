@@ -33,69 +33,61 @@ export const PROFIT_MULTIPLIER = 3;
 
 // Every model here charges per generated unit — most images are "per image",
 // most video/audio models are "per second of output".
+// ✅ FIX (مراجعة أسعار نهائية — العميل نفسه دخل صفحة كل موديل على Replicate وبعتلي
+// أرقام حقيقية مباشرة من صفحة الـ Pricing بتاعت كل موديل، مش بحث/تقدير): كل الأرقام
+// تحت دلوقتي مؤكدة 100% من المصدر الأساسي نفسه، Sept 2026
 export const REPLICATE_MODEL_COSTS = {
   // ── Image generation ──────────────────────────────────────────────────────
   nano_banana:      { label: 'Nano Banana',        unit: 'image', usdCost: 0.039 },
-  // ✅ NEW (طلب العميل: "هل حسبت التكلفة ونوضح للعميل تكلفة كل دقة؟"): نانو بنانا 2 وبرو بيدعموا
-  // دقة اختيارية (resolution) بسعر حقيقي مختلف لكل مستوى — مؤكد من Replicate/aggregators مباشرة
   nano_banana_2:    { label: 'Nano Banana 2',      unit: 'image', usdCost: 0.067, // = تكلفة 1K الافتراضية
-                       tiers: { '512px': 0.045, '1K': 0.067, '2K': 0.101, '4K': 0.150 } },
+                       tiers: { '512px': 0.045, '1K': 0.067, '2K': 0.101, '4K': 0.151 } },
+  // ⚠ صفحة الموديل بتعرض كمان "$0.035 لحاجة اسمها FALLBACK" — مش دقة قابلة للاختيار من
+  // العميل عندنا (تصنيف داخلي في Replicate لما الموديل يرجع لجودة أقل تلقائيًا)، مش مضافة كـtier
   nano_banana_pro:  { label: 'Nano Banana Pro',    unit: 'image', usdCost: 0.150, // = تكلفة 1K/2K (نفس السعر للاتنين فعليًا)
                        tiers: { '1K': 0.150, '2K': 0.150, '4K': 0.300 } },
   nano_banana_lite: { label: 'Nano Banana Lite',   unit: 'image', usdCost: 0.045 }, // ⚠ مش موصول فعليًا (متاح على fal.ai مش Replicate) — رقم مرجعي بس، مش قابل للاختيار
-  // ✅ FIX (مراجعة أسعار كاملة، Sept 2026): كان مفروض على أساس تقدير "متوسط 1K/2K" غلط —
-  // الموديل الحقيقي xai/grok-imagine-image ملوش تدرجات دقة أصلاً على الأغلب، وسعره الحقيقي
-  // أقرب لـ$0.02/صورة (مصادر متعددة) — نزّلناه لـ0.03 (هامش أمان فوق الرقم المرصود)
-  grok_image:       { label: 'Grok Image',         unit: 'image', usdCost: 0.030 },
+  grok_image:       { label: 'Grok Image',         unit: 'image', usdCost: 0.020 },
   // ❌ REMOVED من NEW_IMAGE_MODELS (newImageModelsService.js) — openai/gpt-image-1 على Replicate
   // "bring-your-own-key" فقط (لازم مفتاح OpenAI حقيقي بتاعنا إحنا، مش عن طريق كريديت Replicate
   // العادي) — الموديل كان معطّل فعليًا من غير ما نلاحظ. رقم مرجعي بس لحد ما يتحل ده كقرار بزنس
   // (سعر OpenAI الحقيقي المؤكد: low=$0.02, medium=$0.07, high=$0.19 لصورة 1024×1024)
   gpt_image:        { label: 'GPT-Image',          unit: 'image', usdCost: 0.07, tiers: { low: 0.02, medium: 0.07, high: 0.19 } },
-  // ✅ FIX: مؤكد من إعلان Replicate الرسمي نفسه وقت الإطلاق ($0.03/صورة بالظبط)
   seedream_4:       { label: 'Seedream 4',         unit: 'image', usdCost: 0.030 },
-  seedream_5:       { label: 'Seedream 5',         unit: 'image', usdCost: 0.065 }, // avg of low/high-res tiers — تأكد بحث إضافي إن التسعير الحقيقي حسب عدد البكسل ($0.045 لحد 2.36MP، $0.09 فوق كده) مش تدرجات دقة مسماة، فسيبناه رقم واحد متوسط
+  // ✅ FIX: تدرجات حقيقية حسب دقة الصورة، مؤكدة من صفحة الموديل مباشرة — مش رقم متوسط تقديري تاني
+  seedream_5:       { label: 'Seedream 5',         unit: 'image', usdCost: 0.045, tiers: { '1K': 0.045, '2K': 0.090 } },
   seedream_5_lite:  { label: 'Seedream 5 Lite',    unit: 'image', usdCost: 0.035 },
 
   // ── Video generation (per second of output) ──────────────────────────────
-  // ✅ NEW: موديلات الفيديو دلوقتي بتدعم "tiers" (جودة/دقة مختلفة بسعر مختلف فعليًا، مش رقم
-  // واحد متوسط زي الأول) — usdCost فضل موجود كـ fallback (متوسط الـ tiers) لأي كود قديم لسه
-  // بيستخدم getPerSecondCreditCost بمفتاح الموديل لوحده من غير تحديد جودة. الأرقام دي من
-  // Replicate نفسها/aggregator sites وقت الكتابة (Sept 2026) — تتأكد قبل الإطلاق الحقيقي،
-  // خصوصًا Seedance 2.0 اللي مصادره اتضاربت (رقمين مختلفين ظهروا لنفس الموديل)
+  // كل موديل فيديو هنا بيسعّر حسب الدقة (وأحيانًا حسب معايير تانية زي وجود صوت أو صورة/فيديو
+  // مدخل) — بنستخدم دايمًا السيناريو المطابق لاستخدامنا الفعلي (مثلاً: مفيش صوت اختياري
+  // للعميل يقفله، فبنسعّر بسعر "مع صوت"؛ ومفيش فيديو-لفيديو غير في omni_flash_1_1 تحديدًا،
+  // فباقي الموديلات بتتسعّر بسعر "من غير فيديو مدخل")
   veo3_fast:        { label: 'Veo 3 Fast',         unit: 'second', usdCost: 0.15, maxClipSec: 8,
-                       tiers: { '720p': 0.15, '1080p': 0.15 } }, // ✅ نفس السعر للاتنين فعليًا (مؤكد من Google direct API)
-  // ⚠ مراجعة أسعار ثانية: مصدر واحد ذكر $0.75/ثانية على Replicate تحديدًا (ممكن يكون سعر
-  // قديم لـVeo 3 الأصلي مش 3.1، أو تعريفة "Full" مختلفة) — سبناها زي ما هي (سعر Google
-  // المباشر الرسمي) لحد ما حد يتأكد من صفحة Replicate الحقيقية بنفسه
+                       tiers: { '720p': 0.15, '1080p': 0.15 } }, // مؤكد: with_audio=$0.15/s (without_audio=$0.10/s، مش مستخدم عندنا لأننا دايمًا بنولّد بصوت)
   veo3_standard:    { label: 'Veo 3',              unit: 'second', usdCost: 0.40, maxClipSec: 8,
-                       tiers: { '720p': 0.40, '1080p': 0.40 } },
-  // ✅ FIX (مراجعة أسعار): $0.045 كان أقل من اللازم بشكل مريب لموديل أقدم من Kling 2.5
-  // ($0.07/ثانية) — رفعناها لـ0.06 (لسه أقل من 2.5 بشكل منطقي، بس هامش أمان أعلى) لحد ما
-  // نتأكد من السعر الحقيقي بالظبط لنفس الـslug ده تحديدًا (kwaivgi/kling-v2.1)
-  kling_2_1:        { label: 'Kling 2.1',          unit: 'second', usdCost: 0.06, maxClipSec: 10 },
+                       tiers: { '720p': 0.40, '1080p': 0.40 } }, // مؤكد: with_audio=$0.40/s (without_audio=$0.20/s)
+  // ✅ FIX: مؤكد من صفحة الموديل — kwaivgi/kling-v2.1 بيسعّر بـ"standard"=$0.05/s أو
+  // "pro"=$0.09/s؛ إحنا مستخدمين النسخة العادية (standard)
+  kling_2_1:        { label: 'Kling 2.1',          unit: 'second', usdCost: 0.05, maxClipSec: 10 },
   kling_2_5:        { label: 'Kling 2.5',          unit: 'second', usdCost: 0.07, maxClipSec: 10 }, // مؤكد: $0.35/5s = $0.70/10s = $0.07/sec ثابت، مفيش فرق سعر لكل دقة لقيته
-  // ✅ FIX (طلب العميل بعد ما شاف الـ Replicate dashboard الحقيقي بنفسه): توليد واحد بـ
-  // bytedance/seedance-1.5-pro كلّف $0.26 فعليًا (compute استغرق 2m3.6s — الموديل ده بطيء
-  // جدًا مقارنة بغيره)، أعلى من الـ 0.070/ثانية اللي كنا مقدّرينها (بتدي $0.35 لمقطع 5 ثواني،
-  // قريبة من الرقم الحقيقي بس مش كافية هامش أمان لموديل تكلفته متقلبة زي ده). رفعناها لـ 0.095
-  // عشان تدّي هامش ربح أعلى وأأمن فوق التكلفة الحقيقية المرصودة
-  seedance_1_5:     { label: 'Seedance 1.5',       unit: 'second', usdCost: 0.095, maxClipSec: 12 },
-  // ⚠ مراجعة أسعار ثانية: المصادر لسه بتتضارب مع نفسها — بعضها بينسخ أرقام Seedance 2.5 بالظبط
-  // على 2.0 غلط، وبعضها بيديها أرقام مختلفة تمامًا (0.14/0.30/0.59/1.70 بدل الأرقام تحت). سبناها
-  // زي ما هي (أقل من 2.5 بشكل منطقي، موديل أقدم) لحد ما نلاقي مصدر موثوق يفصل الاتنين بوضوح
-  seedance_2_0:     { label: 'Seedance 2.0',       unit: 'second', usdCost: 0.180, maxClipSec: 15,
-                       tiers: { '480p': 0.0673, '720p': 0.151, '1080p': 0.35, '4k': 0.7776 } },
+  // ✅ FIX (مؤكد من صفحة الموديل مباشرة): تدرجات حقيقية حسب الدقة، بسعر "مع صوت" (with_audio) —
+  // إحنا هنولّد بصوت (اتضاف generate_audio:true في newVideoModelsService.js بنفس نمط 2.0)،
+  // فده السعر الصح المطابق فعليًا. الموديل مبيوصلش لـ4K (أقصى دقة معروضة 1080p)
+  seedance_1_5:     { label: 'Seedance 1.5',       unit: 'second', usdCost: 0.052, maxClipSec: 12,
+                       tiers: { '480p': 0.025, '720p': 0.052, '1080p': 0.12 } },
+  // ✅ FIX (مؤكد من صفحة الموديل مباشرة، أعلى بكتير من التقدير القديم): بسعر "non_video_in"
+  // (من غير فيديو مدخل — إحنا بنستخدمه لتوليد من نص/صورة بس زي كل الموديلات التانية)
+  seedance_2_0:     { label: 'Seedance 2.0',       unit: 'second', usdCost: 0.18, maxClipSec: 15,
+                       tiers: { '480p': 0.08, '720p': 0.18, '1080p': 0.45, '4k': 1.00 } },
   seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30,
-                       tiers: { '480p': 0.1028, '720p': 0.2312 } }, // مؤكد من Replicate مباشرة. 1080p/4K مش native output حقيقي (upscale بس)، متضافين هنا
-  luma_ray2_540p:   { label: 'Luma Ray 2 (540p)',   unit: 'second', usdCost: 0.035, maxClipSec: 9 }, // مؤكد: $0.15/5s=$0.03/s .. $0.45/10s=$0.045/s (استخدمنا متوسط)، أقصى مدة موثقة 9s
-  luma_ray2_720p:   { label: 'Luma Ray 2 (720p)',   unit: 'second', usdCost: 0.075, maxClipSec: 9 }, // مؤكد: $0.30/5s=$0.06/s .. $0.90/10s=$0.09/s (استخدمنا متوسط)، أقصى مدة موثقة 9s
-  // ✅ NEW: Gemini Omni 1.1 Flash — أول موديل حقيقي فينا بيعمل video-to-video (تعديل فيديو
-  // موجود بتعليمات نصية)، مش بس text/image-to-video زي الباقي. سعر كل دقة محسوب من توكنز
-  // Google الحقيقية المنشورة (output tokens/sec لكل دقة × $17.50/مليون توكن output) — 720p
-  // مؤكد بالحساب المباشر، الباقي (360p/1080p/4K) نسبة تقديرية بناءً على نفس المنطق لحد التأكيد الحي
-  omni_flash_1_1:   { label: 'Gemini Omni 1.1 Flash', unit: 'second', usdCost: 0.10, maxClipSec: 10,
-                       tiers: { '360p': 0.03, '720p': 0.10, '1080p': 0.15, '4k': 0.30 } },
+                       tiers: { '480p': 0.1028, '720p': 0.2312 } }, // مؤكد من Replicate مباشرة (non_video_in). 1080p/4K مش native output حقيقي (upscale بس)، متضافين هنا
+  // ⚠ مراجعة العميل الحية: 540p ($0.10/s) طلعت أعلى من 720p ($0.075/s) الحالية — تناقض منطقي
+  // (دقة أقل بسعر أعلى)، فالعميل يحتاج يتأكد من صفحة luma/ray-2-720p كمان قبل ما نثبّت الاتنين
+  luma_ray2_540p:   { label: 'Luma Ray 2 (540p)',   unit: 'second', usdCost: 0.10, maxClipSec: 9 },
+  luma_ray2_720p:   { label: 'Luma Ray 2 (720p)',   unit: 'second', usdCost: 0.075, maxClipSec: 9 }, // ⚠ محتاج تأكيد حي زي 540p فوق — مش متأكد إنه لسه صح بعد تصحيح 540p
+  // ✅ FIX (مؤكد من صفحة الموديل مباشرة، أعلى من التقدير القديم): سعر كل دقة، بدون تقسيم صوت/فيديو مدخل
+  omni_flash_1_1:   { label: 'Gemini Omni 1.1 Flash', unit: 'second', usdCost: 0.15, maxClipSec: 10,
+                       tiers: { '360p': 0.05, '720p': 0.15, '1080p': 0.23, '4k': 0.45 } },
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   gemini_flash_tts: { label: 'Gemini Flash TTS',   unit: 'second', usdCost: 0.00025 },

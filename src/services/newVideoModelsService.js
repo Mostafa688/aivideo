@@ -103,13 +103,20 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
+  // ✅ FIX (مراجعة أسعار: العميل أكد من صفحة الموديل إن السعر بيتقسم with_audio/without_audio
+  // وكمان حسب الدقة 480p/720p/1080p، وسعرنا المحدث دلوقتي مبني على with_audio) — أضفنا
+  // generate_audio:true هنا زي seedance_2_0 بالظبط، عشان الفيديو الفعلي يتولّد بصوت ويطابق
+  // السعر الحقيقي اللي بنتقاضاه. حقل "resolution" مش مؤكد 100% لنفس الموديل ده تحديدًا (قياسًا
+  // على seedance_2_0/2_5 اللي من نفس العيلة وبيقبلوا نفس الاسم) — يحتاج تأكيد حي بعد الإطلاق
   seedance_1_5: {
     slug: 'bytedance/seedance-1.5-pro',
     supportsImageInput: true,
-    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec }) => ({
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
       prompt,
+      resolution: tier || '720p',
       aspect_ratio: aspectRatio || '16:9',
       duration: Math.min(Math.max(durationSec || 5, 1), 12),
+      generate_audio: true,
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
