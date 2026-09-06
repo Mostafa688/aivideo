@@ -10,7 +10,8 @@ import {
 } from './authService.js';
 import { WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
-import { getImageCreditCost, REPLICATE_MODEL_COSTS } from './creditPricingEngine.js';
+import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
+import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getQualityTiers, REPLICATE_MODEL_COSTS } from './creditPricingEngine.js';
 
 // باقات مصر الثابتة — نفس أرقام EG_PACKAGES في PricingPage.jsx (مصدر الحقيقة الوحيد للواجهة)
 const EG_CREDIT_PACKAGES = {
@@ -20,15 +21,13 @@ const EG_CREDIT_PACKAGES = {
 };
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-// ✅ FIX (طلب العميل — Claude غالي بالنسبة للاستخدام الفعلي المتوقع): كان gpt-oss-120b، رخيص
-// وسريع جدًا بس أضعف الموديلات المتاحة على Groq في الالتزام بتعليمات معقدة (Intelligence Index
-// ~24) — ده سبب حقيقي جزء كبير من شكاوى "الايجنت غبي". qwen/qwen3.8-27b أحدث وأذكى بكتير
-// (Index ~52، بيكسب في 9 من 10 اختبارات مباشرة قدام qwen3.6) وبرضو على Groq (نفس السرعة/التكلفة
-// المنخفضة النسبية اللي العميل عايزها)، لسه أرخص من Claude بمراحل (~$0.60 إدخال/$3 إخراج لكل
-// مليون توكن، مقابل $2/$10+ عند Claude). بطيء شوية وبياخد توكنز أكتر من gpt-oss-120b بس الفرق
-// في الجودة يستاهل — سعره اتأكد من مصادر خارجية (aggregator sites)، محتاج تأكيد أخير من
-// console.groq.com/docs/models (كان محجوب من بيئة التطوير دي وقت الكتابة)
-const AGENT_MODEL = 'qwen/qwen3.8-27b';
+// ✅ FIX (طلب العميل): qwen/qwen3.8-27b أذكى بكتير من gpt-oss-120b (Intelligence Index ~52
+// مقابل ~24) بس أغلى شوية على Groq (~$0.60 إدخال/$3 إخراج لكل مليون توكن، مقابل ~$0.15/$0.60
+// لـ gpt-oss-120b) — العميل قرر يخصص الموديل الأقوى للمشتركين المدفوعين بس، وترجع الخطة
+// المجانية لـ gpt-oss-120b القديم (رخيص جدًا، مناسب لحجم استخدام أكبر من غير تكلفة). الفرق ده
+// كله لسه على Groq نفسها، مفيش أي تكلفة زي Claude خالص في الحالتين.
+const AGENT_MODEL_FREE = 'openai/gpt-oss-120b';
+const AGENT_MODEL_PAID = 'qwen/qwen3.8-27b';
 
 // ✅ FIX: العميل قرر إن Claude غالي أوي بالنسبة للاستخدام المتوقع (شافه بيتكلف $0.06 لرد واحد
 // بسيط على Replicate) — رجّعنا الايجنت بالكامل (كل الخطط، مش بس المجانية) لـ Groq (بالموديل
@@ -75,6 +74,18 @@ function fmtImageModels() {
     const cost = getImageCreditCost(key, 1);
     return `${key} ("${label}", ${cost}cr/image)`;
   }).join(', ');
+}
+
+function fmtVideoModels() {
+  return Object.keys(NEW_VIDEO_MODELS).map(key => {
+    const label = REPLICATE_MODEL_COSTS[key]?.label || key;
+    const perSec = getPerSecondCreditCost(key, 1);
+    const maxSec = getMaxClipSeconds(key);
+    const tiers = getQualityTiers(key);
+    const tierNote = tiers ? `, tiers: ${tiers.join('/')}` : '';
+    const imgNote = NEW_VIDEO_MODELS[key].supportsImageInput ? ', supports image-to-video' : '';
+    return `${key} ("${label}", ${perSec}cr/sec, max ${maxSec}s per clip${tierNote}${imgNote})`;
+  }).join('; ');
 }
 
 function buildModelCatalog(userPlan = 'free', isAdminUser = false) {
@@ -131,6 +142,17 @@ STANDALONE IMAGE GENERATION (completely separate from every video model above �
 - READY marker for this — a SEPARATE marker from the video ###READY### marker above, NEVER combine the two in one reply: end your reply with ###GENERATE_IMAGE###{"model":"<one of the exact keys listed above>","prompt":"a detailed, vivid English image-generation prompt reflecting exactly what the user described","aspectRatio":"9:16"|"16:9"|"1:1","count":<integer 1-20>}.
 - MEMORY OF GENERATED IMAGES — CRITICAL: when you see a note earlier in this conversation like "[Successfully generated N image(s) with model X — image URLs: ...]", that is REAL, CONFIRMED PROOF an image generation actually happened and succeeded — never treat it as absent or forget it happened.
 - ANIMATING A GENERATED IMAGE — CRITICAL, A REAL PRODUCTION BUG TO NEVER REPEAT: if the user asks to animate/turn into a video a picture that was JUST generated ("حرك الصورة"/"عايز الصورة تتحرك"/"animate it"/"make it a video"/"make this move") and they are NOT uploading a brand-new photo right now, this ALWAYS means exactly one thing: Model 5, image-to-video mode. There is NO other correct answer — do NOT pick Model 3, 4, 8, or any idea/prompt-based video model for this, even though those also make videos; they would write a brand-new scene from a text description and completely ignore the actual picture, which is the wrong result and has actually happened in production (wasted the user's credits generating an unrelated video instead of animating their image). The ONLY correct marker is: ###READY###{"model":5,"promptMode":"image","animateLastGeneratedImage":true,"duration":"5s"|"10s"|"15s","rawPrompt":"optional motion description if they said how it should move, omit otherwise"}. Do NOT ask them to upload a photo — the platform already has the exact image and resolves it automatically. Only ask for duration if unclear. This is separate from a user uploading their OWN new photo (normal "characterPhoto" flow, no special flag).
+
+STANDALONE NEW VIDEO MODELS (completely separate from Models 1-8 above and from Model 5's image-to-video mode — these are premium single-clip AI video engines for a standalone clip, not a multi-scene video project): available real engines: ${fmtVideoModels()}.
+- CRITICAL — NEVER ask the user which engine/model to use, ever, under any circumstance (same rule as image generation above) — silently pick the best one yourself from the list based on what they're asking for: veo3_standard for the highest overall cinematic quality, veo3_fast for a faster/cheaper alternative with very similar quality, kling_2_5 for strong general-purpose motion at a good price, seedance_2_5 for the longest clips (up to its max) or best value, luma_ray2_720p for dreamy/stylized motion. Only deviate from your own pick if the user explicitly names a specific engine by name (e.g. "veo"/"kling"/"seedance"/"luma") — then use exactly that one.
+- Trigger this whenever the user wants ONE standalone premium AI video clip generated directly — e.g. "اعملي فيديو بالذكاء الاصطناعي"/"video from this image"/"عايز كليب سينمائي واحد" — not the multi-scene Model 1-8 pipelines above, and not "animate the image I just generated" (that's always Model 5, see the rule right above this one).
+- If the user attached a photo in this same message, pass it through as image-to-video; otherwise it's pure text-to-video from your written prompt.
+- QUALITY TIER: only ask about resolution/quality if the engine you picked actually has tiers listed above (e.g. "tiers: 480p/720p/1080p/4k") AND the user hasn't already stated a preference — default to "720p" when unclear. Engines with no tiers listed have one fixed quality — never ask about quality for those, and always send "tier":null for them.
+- DURATION: ask only if unclear, and always respect that engine's own "max Xs per clip" limit shown above — never promise a duration longer than that. Default to a short, sensible duration within the limit (5s is a safe default for most engines) if the user doesn't care.
+- Ask aspect ratio only if unclear (16:9 default for cinematic/YouTube-style requests, 9:16 for social/reels).
+- Always state the exact total credit cost (the per-second credit price shown above for the engine you picked × the duration you agreed on) before confirming — never guess or invent a different figure.
+- READY marker for this — a SEPARATE marker, NEVER combine with ###READY###/###GENERATE_IMAGE### in the same reply: end your reply with ###GENERATE_VIDEO###{"model":"<one of the exact keys listed above>","prompt":"a detailed, vivid English video-generation prompt reflecting exactly what the user described","aspectRatio":"9:16"|"16:9","durationSec":<integer, within that engine's max>,"tier":"480p"|"720p"|"1080p"|"4k"|null}.
+- MEMORY — same rule as generated images: a note like "[Successfully generated a video with model X — video URL: ...]" earlier in the conversation is real, confirmed proof — never forget or ignore it.
 
 ${premiumNote}
 `.trim();
@@ -372,16 +394,20 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
     { role: 'user', content: trimmedUserContent },
   ];
 
+  // ✅ NEW: قوين للمشتركين المدفوعين بس، gpt-oss-120b (رخيص جدًا) للخطة المجانية
+  const isPaidPlan = userPlan !== 'free';
+  const groqModel = isPaidPlan ? AGENT_MODEL_PAID : AGENT_MODEL_FREE;
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
-      model: AGENT_MODEL,
+      model: groqModel,
       messages,
       max_tokens: MAX_REPLY_TOKENS,
       temperature: 0.4,
-      // ✅ FIX: "reasoning_effort" كان خاص بـ gpt-oss تحديدًا (مش مؤكد إنه مدعوم لـ qwen3.8-27b
-      // بنفس الاسم) — شلناه بدل ما نخاطر بأي رفض/تجاهل غريب للطلب كله بعد تغيير الموديل
+      // ✅ "reasoning_effort" خاص بـ gpt-oss تحديدًا (مش مؤكد إنه مدعوم لـ qwen3.8-27b بنفس
+      // الاسم) — بيتبعت بس لما الموديل يبقى gpt-oss (الخطة المجانية)
+      ...(isPaidPlan ? {} : { reasoning_effort: 'low' }),
     }),
   });
 
