@@ -67,21 +67,20 @@ export const NEW_IMAGE_MODELS = {
   },
   // ✅ FIX (باج حقيقي: "جودة الصور وحشة" — سبب منفصل تمامًا عن باج النسبة فوق): نانو بنانا 2
   // وبرو بيدعموا حقل "resolution" منفصل عن "aspect_ratio" (القيم: 512px/1K/2K/4K) — الكود
-  // القديم ماكانش بيبعته خالص، يعني الموديل كان بيرجع لأقل دقة افتراضية بتاعته لوحده. دلوقتي
-  // بيتبعت صراحة "1K" — توازن معقول بين الجودة والتكلفة (السعر المحسوب في creditPricingEngine.js
-  // مبني على تقدير بلوحدة "صورة" عامة، مش لكل دقة، فلو العميل عايز 2K/4K كخيار سعري منفصل ده
-  // يحتاج توسيع نظام الأسعار زي ما اتعمل للفيديو لاحقًا)
+  // القديم ماكانش بيبعته خالص، يعني الموديل كان بيرجع لأقل دقة افتراضية بتاعته لوحده.
+  // ✅ NEW: دلوقتي "tier" بقى باراميتر حقيقي بسعر خاص بيه (زي موديلات الفيديو بالظبط) —
+  // شايفه creditPricingEngine.js's REPLICATE_MODEL_COSTS[key].tiers — مش هاردكودد تاني
   nano_banana_2: {
     slug: 'google/nano-banana-2',
-    buildInput: ({ prompt, referenceImageUrls, aspectRatio }) => ({
-      prompt, aspect_ratio: aspectRatio || '9:16', resolution: '1K', output_format: 'jpg',
+    buildInput: ({ prompt, referenceImageUrls, aspectRatio, tier }) => ({
+      prompt, aspect_ratio: aspectRatio || '9:16', resolution: tier || '1K', output_format: 'jpg',
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 14) } : {}),
     }),
   },
   nano_banana_pro: {
     slug: 'google/nano-banana-pro',
-    buildInput: ({ prompt, referenceImageUrls, aspectRatio }) => ({
-      prompt, aspect_ratio: aspectRatio || '9:16', resolution: '2K', output_format: 'jpg',
+    buildInput: ({ prompt, referenceImageUrls, aspectRatio, tier }) => ({
+      prompt, aspect_ratio: aspectRatio || '9:16', resolution: tier || '2K', output_format: 'jpg',
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 14) } : {}),
     }),
   },
@@ -205,7 +204,7 @@ async function runWithConcurrency(tasks, limit = 4) {
  * one (GPT-Image, Seedream family); otherwise runs one prediction per image
  * with limited concurrency.
  */
-export async function generateNewModelImages({ modelKey, prompt, referenceImageUrls = [], aspectRatio = '9:16', count = 1 }) {
+export async function generateNewModelImages({ modelKey, prompt, referenceImageUrls = [], aspectRatio = '9:16', count = 1, tier = null }) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const model = NEW_IMAGE_MODELS[modelKey];
   if (!model) throw new Error(`Unknown image model: ${modelKey}`);
@@ -222,14 +221,14 @@ export async function generateNewModelImages({ modelKey, prompt, referenceImageU
       remaining -= chunkSize;
     }
     const results = await runWithConcurrency(
-      chunks.map(chunkSize => () => runPrediction(model.slug, model.buildInput({ prompt, referenceImageUrls, aspectRatio, count: chunkSize }), label)),
+      chunks.map(chunkSize => () => runPrediction(model.slug, model.buildInput({ prompt, referenceImageUrls, aspectRatio, count: chunkSize, tier }), label)),
       3
     );
     return persistImagesToR2(results.flat(), modelKey);
   }
 
   const results = await runWithConcurrency(
-    Array.from({ length: total }, () => () => runPrediction(model.slug, model.buildInput({ prompt, referenceImageUrls, aspectRatio }), label)),
+    Array.from({ length: total }, () => () => runPrediction(model.slug, model.buildInput({ prompt, referenceImageUrls, aspectRatio, tier }), label)),
     4
   );
   return persistImagesToR2(results.flat(), modelKey);

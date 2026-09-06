@@ -132,7 +132,6 @@ const T = {
   },
 };
 
-const RATIO_BOX = { '9:16': { w: 152, h: 270 }, '16:9': { w: 270, h: 152 }, '1:1': { w: 200, h: 200 } };
 const MODEL_STYLE_DEFAULTS = { 3: 'cinematic', 4: 'cinematic', 5: 'cinematic', 8: 'cinematic' };
 // ✅ FIX: كانت styleSuffix بتتبعت فاضية للباك إند في كل مكان في الملف ده — يعني الستايل
 // اللي الإيجنت أو العميل بيختاره (videoStyle) كان بيوصل كـ اسم بس من غير أي وصف فعلي، فالسيرفر
@@ -156,15 +155,19 @@ const MODEL4_SCENE_COUNT = { '30s': 4, '1min': 8, '3min': 24 };
 const VIDEO_TYPE_BY_MODEL = { 1: 'ai_slices', 2: 'pexels_clips' };
 
 function RenderCard({ job, lang, onNavigate }) {
-  const box = RATIO_BOX[job.ratio] || RATIO_BOX['9:16'];
+  // ✅ FIX (طلب العميل: "ليه الصور والفيديوهات بتطلع في المديا ضغيره كده") — كانت الكروت
+  // بتاخد عرض بكسل ثابت صغير (RATIO_BOX) بدل ما تملا مساحة الـ grid cell المتاحة (اللي
+  // بقت أكبر دلوقتي بعد تكبير الـ minmax)، فكانت الصورة/الفيديو دايمًا صغيرة بصرف النظر عن
+  // حجم الشاشة. دلوقتي بتاخد 100% من عرض الكارت وترتفع/تعرض حسب aspect-ratio الحقيقي
+  const cssAspectRatio = (job.ratio || '9:16').replace(':', ' / ');
   const t = T[lang];
   const [showRating, setShowRating] = useState(true);
 
   if (job.status === 'done') {
     return (
-      <div style={{ width: box.w + 20 }}>
+      <div style={{ width: '100%' }}>
         {showRating && <RatingPrompt modelUsed={`Agent - Model ${job.model || ''}`} onClose={() => setShowRating(false)} lang={lang} />}
-        <video src={job.videoUrl} controls autoPlay muted style={{ width: box.w, height: box.h, borderRadius: 14, objectFit: 'cover', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+        <video src={job.videoUrl} controls autoPlay muted style={{ width: '100%', aspectRatio: cssAspectRatio, borderRadius: 14, objectFit: 'cover', background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {t.done} {job.cost || ''} {t.credits}</span>
           <button onClick={() => downloadRemoteFile(job.videoUrl, `erivion-video-${job.uid || Date.now()}.mp4`)} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent2)', fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}><Download size={13} strokeWidth={2.25} /> {t.download}</button>
@@ -194,11 +197,10 @@ function RenderCard({ job, lang, onNavigate }) {
 
   const statusLabel = job.status === 'queued' ? t.queued : job.status === 'scenes' ? t.generating : t.rendering;
   return (
-    <div style={{ width: box.w + 20 }}>
+    <div style={{ width: '100%' }}>
       <ShimmerLoader
         ratio={job.ratio}
         label={statusLabel}
-        style={{ width: box.w, height: box.h }}
       />
       <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>
         {statusLabel}
@@ -341,8 +343,11 @@ function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, 
     // في الشات كانت مقصوصة مربّع، حاجة تلخبط وتوهم إن في مشكلة): بنستخدم نسبة العرض
     // للارتفاع الحقيقية اللي اتطلبت بدل ما نفرض مربع دايمًا
     const cssAspectRatio = (job.aspectRatio || '9:16').replace(':', ' / ');
+    // ✅ FIX (طلب العميل: "ليه الصور بتطلع في المديا ضغيره كده") — كان عرض الكارت ثابت
+    // بالبكسل (150px/عمود) بدل ما يملا مساحة الـ grid cell المتاحة، فكان دايمًا أصغر بكتير
+    // من الشاشة المتاحة فعليًا. دلوقتي 100% من عرض الكارت
     return (
-      <div style={{ width: Math.min(cols * 150 + (cols - 1) * 8, 616) }}>
+      <div style={{ width: '100%' }}>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
           {job.images.map((url, i) => {
             const meta = job.imageMeta?.[i] || {};
@@ -410,7 +415,7 @@ function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onRep
   if (job.status === 'done') {
     const cssAspectRatio = (job.aspectRatio || '16:9').replace(':', ' / ');
     return (
-      <div style={{ width: 280, position: 'relative' }}>
+      <div style={{ width: '100%', position: 'relative' }}>
         <video src={job.videoUrl} controls style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
         {job.title && (
           <div style={{ position: 'absolute', top: 6, left: 6, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11 }}>{job.title}</div>
@@ -876,7 +881,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // job طويل بيحتاج poll، الطلب نفسه بيستنى الصور جاهزة (backend بيعمل Prefer: wait)
   const startImageGeneration = async (gen) => {
     const jobUid = `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '9:16' };
+    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '9:16', tier: gen.tier || null };
     setMessages(m => [...m, { role: 'assistant', type: 'imageBatch', job }]);
     const updateJob = (patch) => {
       setMessages(m => {
@@ -892,6 +897,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         body: JSON.stringify({
           model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '9:16', count: gen.count || 1,
           referenceImageUrls: Array.isArray(gen.referenceImageUrls) ? gen.referenceImageUrls : undefined,
+          tier: gen.tier || undefined,
         }),
       });
       const data = await res.json();
@@ -1820,7 +1826,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
               <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 320, lineHeight: 1.7 }}>{t.canvasEmptySub}</div>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
               {visibleMedia.map(m => (
                 <div key={m._i} className="agent-bubble">
                   {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}

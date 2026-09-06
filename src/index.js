@@ -2852,23 +2852,24 @@ app.get('/api/images/models', authMiddleware, (req, res) => {
     key,
     label: REPLICATE_MODEL_COSTS[key]?.label || key,
     creditCostPerImage: getImageCreditCost(key, 1),
+    tiers: getQualityTiers(key),
   }));
   res.json({ models });
 });
 
 app.get('/api/images/credit-cost', authMiddleware, (req, res) => {
-  const { model, count } = req.query;
+  const { model, count, tier } = req.query;
   if (!model || !NEW_IMAGE_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
   const n = Math.min(Math.max(1, parseInt(count, 10) || 1), 20);
   try {
-    res.json({ model, count: n, creditCost: getImageCreditCost(model, n) });
+    res.json({ model, count: n, tier: tier || null, creditCost: getImageCreditCost(model, n, tier || null) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
 app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res) => {
-  const { model, prompt, referenceImageUrls, aspectRatio, count } = req.body;
+  const { model, prompt, referenceImageUrls, aspectRatio, count, tier } = req.body;
   if (!model || !NEW_IMAGE_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
   if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
   const imgUser = await getUserById(req.user.userId);
@@ -2883,7 +2884,7 @@ app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res)
   const n = Math.min(Math.max(1, parseInt(count, 10) || 1), 20);
   let imgCreditCost;
   try {
-    imgCreditCost = getImageCreditCost(model, n);
+    imgCreditCost = getImageCreditCost(model, n, tier || null);
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
@@ -2902,6 +2903,7 @@ app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res)
       referenceImageUrls: Array.isArray(referenceImageUrls) ? referenceImageUrls.slice(0, 14) : [],
       aspectRatio: aspectRatio || '9:16',
       count: n,
+      tier: tier || null,
     });
     res.json({ images, creditCost: imgCreditCost, remaining: imgCharge.remaining });
   } catch (genErr) {
