@@ -174,7 +174,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const forcedModelNote = forcedImageModel && NEW_IMAGE_MODELS[forcedImageModel]
       ? `The user manually selected the image engine "${forcedImageModel}" from a picker before sending this message — you MUST use exactly this model for any image generation in this turn (do not pick a different one, do not ask which model), and state its real credit cost from the price list above.`
       : forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]
-      ? `The user manually selected the video engine "${forcedVideoModel}" from a picker before sending this message — you MUST use exactly this engine for any standalone video generation in this turn (do not pick a different one, do not ask which engine), and state its real credit cost from the price list above.`
+      ? `The user manually selected the video engine "${forcedVideoModel}" from a picker before sending this message — you MUST use exactly this engine for ANY video generation in this turn, INCLUDING animating a generated image (if they ask to animate/move a picture right now, use the ###GENERATE_VIDEO### marker with model:"${forcedVideoModel}" and "imageUrl" set to the exact image URL from history — do NOT fall back to Model 5 for this turn, that would ignore their explicit choice). Do not pick a different engine, do not ask which one, and state its real credit cost from the price list above.`
       : null;
     let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote, forcedModelNote].filter(Boolean).join(' ') || null;
     let transcript = null;
