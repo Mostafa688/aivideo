@@ -6,6 +6,7 @@ import {
   Camera, Swords, Map as MapIcon, Check, X, Lock, Construction, Video, Send,
   CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
   ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
+  MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 import { downloadRemoteFile } from '../utils/download.js';
@@ -274,10 +275,53 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
   );
 }
 
+// ✅ NEW (Flow-style context menu — طلب العميل: "ضيف موضوع النقط الي كان في flow"): قائمة
+// نقط (⋮) عامة تتستخدم فوق أي عنصر ميديا (صورة مفردة جوه دفعة، أو كارت فيديو) — إضافة
+// للمفضلة، إعادة استخدام البرومبت، تحريك (صور بس)، تحميل، نسخ البرومبت، إعادة تسمية،
+// مشاركة، إبلاغ، ونقل للمهملات. "ضبط غلاف المشروع" مش موجودة هنا — محتاجة تعديل جدول
+// المشاريع نفسه (عمود cover_url) ولسه معمولة، فبقت مؤجلة لمرحلة تانية
+function MediaActionsMenu({ lang, isFavorited, onToggleFavorite, onReusePrompt, onAnimate, onDownload, onCopyPrompt, onRename, onShare, onReport, onTrash }) {
+  const [open, setOpen] = useState(false);
+  const tt = lang === 'ar'
+    ? { favorite: 'إضافة إلى المفضّلة', unfavorite: 'إزالة من المفضّلة', reuse: 'إعادة استخدام الطلب', animate: 'تحريك', download: 'تحميل', copy: 'نسخ البرومبت', rename: 'إعادة تسمية', share: 'مشاركة', report: 'الإبلاغ عن الناتج', trash: 'نقل إلى المهملات' }
+    : { favorite: 'Add to Favorites', unfavorite: 'Remove from Favorites', reuse: 'Reuse prompt', animate: 'Animate', download: 'Download', copy: 'Copy prompt', rename: 'Rename', share: 'Share', report: 'Report content', trash: 'Move to trash' };
+  const item = (icon, label, onClick, danger) => (
+    <button onClick={() => { onClick(); setOpen(false); }}
+      style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '8px 11px', borderRadius: 8, background: 'none', border: 'none', color: danger ? '#f87171' : '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
+      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+      {icon}{label}
+    </button>
+  );
+  return (
+    <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+      <button onClick={() => setOpen(v => !v)} style={{ width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}>
+        <MoreVertical size={14} strokeWidth={2.25} />
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+          <div style={{ position: 'absolute', top: 30, insetInlineEnd: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 70, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {item(<Heart size={14} strokeWidth={2} fill={isFavorited ? 'currentColor' : 'none'} style={{ color: isFavorited ? '#f472b6' : undefined }} />, isFavorited ? tt.unfavorite : tt.favorite, onToggleFavorite)}
+            {onReusePrompt && item(<RotateCcw size={14} strokeWidth={2} />, tt.reuse, onReusePrompt)}
+            {onAnimate && item(<Film size={14} strokeWidth={2} />, tt.animate, onAnimate)}
+            {item(<Download size={14} strokeWidth={2} />, tt.download, onDownload)}
+            {onCopyPrompt && item(<Copy size={14} strokeWidth={2} />, tt.copy, onCopyPrompt)}
+            {onRename && item(<Pencil size={14} strokeWidth={2} />, tt.rename, onRename)}
+            {onShare && item(<Share2 size={14} strokeWidth={2} />, tt.share, onShare)}
+            {onReport && item(<Flag size={14} strokeWidth={2} />, tt.report, onReport)}
+            {onTrash && item(<Trash2 size={14} strokeWidth={2} />, tt.trash, onTrash, true)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ✅ NEW (Phase 3 — new image-generation models): كارت توليد صور مستقل جوه شات الايجنت
 // (مش فيديو) — بيعرض شبكة الصور بمجرد ما توليدها يخلص، مفيش poll هنا لأن الطلب نفسه
 // بيستنى الرد كامل (backend بيستخدم Prefer: wait + polling داخلي)
-function ImageBatchCard({ job, lang }) {
+function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, onAnimate, onReport }) {
   const tt = lang === 'ar'
     ? { generating: 'بيولّد الصور...', done: 'تم! تم خصم', credits: 'كريديت', download: 'تحميل', failed: 'حصلت مشكلة أثناء توليد الصور' }
     : { generating: 'Generating images...', done: 'Done! Deducted', credits: 'credits', download: 'Download', failed: 'Something went wrong generating the images' };
@@ -300,14 +344,37 @@ function ImageBatchCard({ job, lang }) {
     return (
       <div style={{ width: Math.min(cols * 150 + (cols - 1) * 8, 616) }}>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
-          {job.images.map((url, i) => (
-            <div key={i} style={{ position: 'relative' }}>
-              <img src={url} alt="" style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
-              <button onClick={() => downloadRemoteFile(url, `erivion-image-${i + 1}.jpg`)} style={{ position: 'absolute', bottom: 6, right: 6, width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}>
-                <Download size={13} strokeWidth={2.25} />
-              </button>
-            </div>
-          ))}
+          {job.images.map((url, i) => {
+            const meta = job.imageMeta?.[i] || {};
+            const setMeta = (patch) => {
+              const imageMeta = [...(job.imageMeta || [])];
+              imageMeta[i] = { ...imageMeta[i], ...patch };
+              onUpdateJob?.({ imageMeta });
+            };
+            return (
+              <div key={i} style={{ position: 'relative' }}>
+                <img src={url} alt="" style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
+                {meta.title && (
+                  <div style={{ position: 'absolute', bottom: 6, left: 6, insetInlineEnd: 36, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta.title}</div>
+                )}
+                <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
+                  <MediaActionsMenu
+                    lang={lang}
+                    isFavorited={!!meta.favorited}
+                    onToggleFavorite={() => setMeta({ favorited: !meta.favorited })}
+                    onReusePrompt={() => onReusePrompt?.(job.prompt)}
+                    onAnimate={() => onAnimate?.(url)}
+                    onDownload={() => downloadRemoteFile(url, `erivion-image-${i + 1}.jpg`)}
+                    onCopyPrompt={() => navigator.clipboard?.writeText(job.prompt || '')}
+                    onRename={() => { const v = window.prompt(lang === 'ar' ? 'اسم الصورة:' : 'Image name:', meta.title || ''); if (v !== null) setMeta({ title: v.trim() || null }); }}
+                    onShare={() => navigator.clipboard?.writeText(url)}
+                    onReport={() => onReport?.(url, job.prompt)}
+                    onTrash={() => onRemoveImage?.(i)}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700, marginTop: 8 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {tt.done} {job.cost || ''} {tt.credits}</div>
       </div>
@@ -327,7 +394,7 @@ function ImageBatchCard({ job, lang }) {
 // ✅ NEW (new standalone video-generation models — Veo/Kling/Seedance/Luma): كارت واحد بيعرض
 // فيديو مولّد بموديل مستقل — نفس منطق ImageBatchCard فوق (مفيش poll، الطلب نفسه بيستنى
 // الفيديو جاهز لأن backend بيستخدم Prefer: wait + polling داخلي في newVideoModelsService.js)
-function VideoModelCard({ job, lang }) {
+function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onReport }) {
   const tt = lang === 'ar'
     ? { generating: 'بيولّد الفيديو...', done: 'تم! تم خصم', credits: 'كريديت', failed: 'حصلت مشكلة أثناء توليد الفيديو' }
     : { generating: 'Generating video...', done: 'Done! Deducted', credits: 'credits', failed: 'Something went wrong generating the video' };
@@ -343,11 +410,27 @@ function VideoModelCard({ job, lang }) {
   if (job.status === 'done') {
     const cssAspectRatio = (job.aspectRatio || '16:9').replace(':', ' / ');
     return (
-      <div style={{ width: 280 }}>
+      <div style={{ width: 280, position: 'relative' }}>
         <video src={job.videoUrl} controls style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
+        {job.title && (
+          <div style={{ position: 'absolute', top: 6, left: 6, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11 }}>{job.title}</div>
+        )}
+        <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
+          <MediaActionsMenu
+            lang={lang}
+            isFavorited={!!job.favorited}
+            onToggleFavorite={() => onUpdateJob?.({ favorited: !job.favorited })}
+            onReusePrompt={() => onReusePrompt?.(job.prompt)}
+            onDownload={() => downloadRemoteFile(job.videoUrl, `erivion-video-${job.model || 'clip'}.mp4`)}
+            onCopyPrompt={() => navigator.clipboard?.writeText(job.prompt || '')}
+            onRename={() => { const v = window.prompt(lang === 'ar' ? 'اسم الفيديو:' : 'Video name:', job.title || ''); if (v !== null) onUpdateJob?.({ title: v.trim() || null }); }}
+            onShare={() => navigator.clipboard?.writeText(job.videoUrl)}
+            onReport={() => onReport?.(job.videoUrl, job.prompt)}
+            onTrash={() => onRemove?.()}
+          />
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {tt.done} {job.cost || ''} {tt.credits}</span>
-          <button onClick={() => downloadRemoteFile(job.videoUrl, `erivion-video-${job.model || 'clip'}.mp4`)} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent2)', fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}><Download size={13} strokeWidth={2.25} /></button>
         </div>
       </div>
     );
@@ -728,6 +811,65 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       activeJobRef.current = null;
     }
     setLoading(false);
+  };
+
+  // ✅ NEW (Flow-style context menu — طلب العميل: "ضيف موضوع النقط الي كان في flow"): دوال
+  // عامة تستخدمها MediaActionsMenu من أي كارت ميديا (صورة/فيديو) — بتحدّث/تمسح الرسالة في
+  // نفس الـ messages state اللي بيتحفظ فعليًا في المشروع (نفس آلية الحفظ الموجودة بالفعل)
+  const updateJobByUid = (uid, patch) => {
+    setMessages(m => {
+      const copy = [...m];
+      const idx = copy.findIndex(x => x.job?.uid === uid);
+      if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
+      return copy;
+    });
+  };
+  const removeMessageByJobUid = (uid) => {
+    setMessages(m => m.filter(x => x.job?.uid !== uid));
+  };
+  // ✅ صورة واحدة جوه دفعة (batch) — لو دي آخر صورة في الدفعة، نمسح الرسالة كلها بدل ما نسيبها فاضية
+  const removeImageFromBatch = (uid, idx) => {
+    setMessages(m => {
+      const copy = [...m];
+      const i = copy.findIndex(x => x.job?.uid === uid);
+      if (i === -1) return m;
+      const images = (copy[i].job.images || []).filter((_, ii) => ii !== idx);
+      const imageMeta = (copy[i].job.imageMeta || []).filter((_, ii) => ii !== idx);
+      if (!images.length) return copy.filter((_, ii) => ii !== i);
+      copy[i] = { ...copy[i], job: { ...copy[i].job, images, imageMeta } };
+      return copy;
+    });
+  };
+  const reusePromptIntoComposer = (promptText) => {
+    if (promptText) setInput(promptText);
+  };
+  // ✅ "تحريك الصورة" من قائمة النقط — بيعيد استخدام بالظبط نفس مسار "صورة مرفوعة" العادي
+  // (يحوّل الرابط لـ base64 ويحطه في imageFiles، والايجنت بيقرر موديل 5 image-to-video تلقائيًا
+  // لأنه شايف صورة مرفقة) بدل ما نكرر منطق التوليد بتاع موديل 5 من الصفر هنا
+  const attachImageUrlToComposer = async (url) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      setImageFiles(prev => (prev.length >= 2 ? prev : [...prev, base64]));
+      setLastUploadedPhotos(prev => (prev.length >= 2 ? prev : [...prev, base64]));
+      return true;
+    } catch (e) {
+      console.warn('[Agent] Failed to attach image for reuse:', e.message);
+      return false;
+    }
+  };
+  const animateImageFromMenu = async (url) => {
+    const ok = await attachImageUrlToComposer(url);
+    if (ok) { setInput(lang === 'ar' ? 'حرك الصورة دي' : 'Animate this image'); setTimeout(() => sendMessage(lang === 'ar' ? 'حرك الصورة دي' : 'Animate this image'), 50); }
+  };
+  const reportMedia = (mediaUrl, prompt) => {
+    fetch('/api/agent/report-content', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ mediaUrl, prompt, reason: 'user_reported' }) }).catch(() => {});
   };
 
   // ✅ NEW (Phase 3 — new image-generation models): توليد صور مستقل، مش فيديو — مفيش
@@ -1683,8 +1825,19 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 <div key={m._i} className="agent-bubble">
                   {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}
                   {m.type === 'whiteboard' && <WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} />}
-                  {m.type === 'imageBatch' && <ImageBatchCard job={m.job} lang={lang} />}
-                  {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang} />}
+                  {m.type === 'imageBatch' && <ImageBatchCard job={m.job} lang={lang}
+                    onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
+                    onRemoveImage={(idx) => removeImageFromBatch(m.job.uid, idx)}
+                    onReusePrompt={reusePromptIntoComposer}
+                    onAnimate={animateImageFromMenu}
+                    onReport={reportMedia}
+                  />}
+                  {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang}
+                    onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
+                    onRemove={() => removeMessageByJobUid(m.job.uid)}
+                    onReusePrompt={reusePromptIntoComposer}
+                    onReport={reportMedia}
+                  />}
                 </div>
               ))}
             </div>

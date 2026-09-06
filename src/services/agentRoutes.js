@@ -520,4 +520,30 @@ router.get('/limits', authMiddleware, (req, res) => {
   res.json(AGENT_LIMITS);
 });
 
+// ✅ NEW (Flow-style context menu — "الإبلاغ عن الناتج"): إبلاغ خفيف عن صورة/فيديو متولد،
+// بيبعت إيميل للأدمن بس (مفيش جدول جديد في الداتابيز) — نفس نمط تنبيه الأدمن المستخدم فعليًا
+// في supportRoutes.js لإشعارات الشات
+router.post('/report-content', authMiddleware, async (req, res) => {
+  try {
+    const { mediaUrl, prompt, reason } = req.body || {};
+    if (!mediaUrl) return res.status(400).json({ error: 'mediaUrl is required' });
+    const user = await getUserById(req.user.userId);
+    if (process.env.RESEND_API_KEY) {
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion Support <support@erivion.net>',
+          to: [process.env.ADMIN_EMAIL || 'digidelight33@gmail.com'],
+          subject: `🚩 Content reported — ${user?.email || req.user.userId}`,
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:12px"><h2 style="color:#f87171;margin:0 0 16px">🚩 Generated content reported</h2><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr><td style="color:#888;padding:8px 0;width:110px">User</td><td style="color:#fff">${user?.email || req.user.userId}</td></tr><tr><td style="color:#888;padding:8px 0">Reason</td><td style="color:#fff">${(reason || 'not specified').toString().slice(0, 300)}</td></tr><tr><td style="color:#888;padding:8px 0">Prompt</td><td style="color:#fff">${(prompt || '').toString().slice(0, 400)}</td></tr></table><a href="${mediaUrl}" style="color:#7c6af7;word-break:break-all">${mediaUrl}</a></div>`,
+        }),
+      }).catch(e => console.warn('[Agent] report-content email failed:', e.message));
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
