@@ -87,6 +87,27 @@ function extractJsonAndRest(text) {
 // ✅ NEW: تصليح بسيط لـ JSON مقطوع (نص متسرب أو منقوص) — بيقفل أي string مفتوح وأي قوس مفتوح
 // بالترتيب الصح. مش هيصلح كل حالة، بس بيحول جزء كبير من حالات القطع الشائعة لفيديو ناجح
 // بدل ما يفشل الطلب كله من غير أي فيديو.
+// ✅ NEW (باج حقيقي شفناه في الإنتاج): لما رد الموديل يتقطع (max_tokens) وسط كتابة رابط
+// طويل (زي رابط R2 لصورة مرجعية)، الـ repairTruncatedJson فوق بتقفل الـ JSON صح نحويًا،
+// بس الرابط نفسه بيفضل مبتور (مثلاً ينتهي بـ "grok_image_178" من غير باقي الاسم/الامتداد) —
+// ده كان بيوصل زي ما هو لـ Replicate كصورة مرجعية فيفشل التوليد بـ 404، ويحرق كريديت العميل
+// على طلب مضمون الفشل. أي حقل بيطلب من الايجنت "ينسخ رابط حقيقي من الـ history" (referenceImageUrls،
+// animateImageUrl، sourceVideoUrl، imageUrl، videoUrls) عرضة لنفس المشكلة — الحل: نجمع كل رابط
+// حقيقي فعلاً ظهر في الـ history (اللي إحنا كتبناه بنفسنا في notes زي "[...image URLs: ...]")
+// في مجموعة، ونتحقق إن أي رابط الايجنت "نسخه" فعلاً موجود بالظبط في المجموعة دي — لو مش موجود
+// (يبقى غالبًا مبتور أو مختلق)، نرفضه بدل ما نبعته لـ API مدفوع مضمون يفشل
+function extractKnownUrls(history) {
+  const set = new Set();
+  if (!Array.isArray(history)) return set;
+  const urlRegex = /https?:\/\/[^\s\]"',]+/g;
+  for (const m of history) {
+    const content = typeof m?.content === 'string' ? m.content : '';
+    const matches = content.match(urlRegex);
+    if (matches) matches.forEach(u => set.add(u.replace(/[.,;)\]]+$/, '')));
+  }
+  return set;
+}
+
 function repairTruncatedJson(text) {
   let inString = false, escape = false;
   const stack = [];
@@ -419,12 +440,17 @@ router.post('/chat', authMiddleware, async (req, res) => {
       ready.uploadedVoiceUrl = uploadedVoiceUrl;
     }
 
+    // ✅ NEW: أي رابط الايجنت "نسخه" بنفسه من الـ history (مش رابط جينا إحنا بيه من السيرفر)
+    // لازم يتأكد إنه رابط حقيقي فعلاً ظهر قبل كده، دفاعًا ضد رابط مبتور بسبب انقطاع الرد
+    const knownUrls = extractKnownUrls(history);
+    const isKnownUrl = (u) => typeof u === 'string' && knownUrls.has(u.trim());
+
     // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة — لو
     // الايجنت نفسه حط "referenceImageUrls" في الماركر (روابط صور اتولدت قبل كده في المحادثة،
     // مثلاً صورة شخصية عشان يستخدمها كمرجع لمشاهد جديدة)، بنسيبها زي ما هي ونضيفلها أي صور
     // مرفقة في نفس الرسالة كمان (مش نستبدلها)
     if (generateImage) {
-      const fromHistory = Array.isArray(generateImage.referenceImageUrls) ? generateImage.referenceImageUrls.filter(u => typeof u === 'string' && u.trim()) : [];
+      const fromHistory = Array.isArray(generateImage.referenceImageUrls) ? generateImage.referenceImageUrls.filter(u => typeof u === 'string' && u.trim() && isKnownUrl(u)) : [];
       const combined = [...fromHistory, ...images];
       if (combined.length) generateImage.referenceImageUrls = combined.slice(0, 14);
       // ✅ NEW: تنضيف "prompts" (مشاهد مختلفة في نفس الماركر) قبل ما توصل للراوت — لو مش
@@ -440,6 +466,28 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     if (generateVideo && forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]) {
       generateVideo.model = forcedVideoModel;
+    }
+    // ✅ NEW: باقي الحقول اللي الايجنت بينسخها من الـ history حرفيًا (مش السيرفر هو اللي جابها) —
+    // نفس التحقق: لو الرابط مش موجود بالظبط في الـ history، نرفضه بدل ما نبعته لـ API مضمون يفشل
+    if (ready?.animateImageUrl && !isKnownUrl(ready.animateImageUrl)) {
+      console.warn('[Agent] Rejected unknown/corrupted animateImageUrl (not found in history), falling back to most recent image');
+      delete ready.animateImageUrl;
+    }
+    if (generateVideo?.sourceVideoUrl && !isKnownUrl(generateVideo.sourceVideoUrl)) {
+      console.warn('[Agent] Rejected unknown/corrupted sourceVideoUrl (not found in history)');
+      delete generateVideo.sourceVideoUrl;
+    }
+    if (generateVideo?.imageUrl && !isKnownUrl(generateVideo.imageUrl)) {
+      console.warn('[Agent] Rejected unknown/corrupted imageUrl (not found in history)');
+      delete generateVideo.imageUrl;
+    }
+    if (mergeVideosPayload) {
+      const validUrls = mergeVideosPayload.videoUrls.filter(isKnownUrl);
+      if (validUrls.length >= 2) mergeVideosPayload.videoUrls = validUrls;
+      else {
+        console.warn('[Agent] Rejected MERGE_VIDEOS marker — fewer than 2 valid known video URLs after validation');
+        mergeVideosPayload = null;
+      }
     }
     // ✅ FIX: العميل صريح في رسالته عن النسبة اللي عايزها — نفرضها بغض النظر عمّا حطّه
     // الايجنت في الماركر، بدل ما نعتمد بالكامل على التزامه بالتعليمات
