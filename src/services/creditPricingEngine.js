@@ -9,26 +9,31 @@
 //   1. REPLICATE_MODEL_COSTS holds the real USD cost per unit (per image, or
 //      per second of video/audio) for each model, sourced from Replicate's own
 //      pricing pages and provider docs as of Sept 2026.
-//   2. USD_PER_CREDIT is the actual revenue per credit the business already
-//      gets today, derived from the cheapest real package: $15 for 600 credits
-//      (see CREDITS_PACKAGES.credits_starter in authService.js) = $0.025/credit.
-//      This is deliberately NOT a live USD→EGP conversion — Replicate bills in
-//      USD regardless of which region the customer is in, and Egyptian pricing
-//      is an intentional PPP discount (420 EGP for the same 600 credits an
-//      international customer pays $15 for) that must stay untouched. Anchoring
-//      to the international USD price keeps margins correct in both currencies.
+//   2. USD_PER_CREDIT is the REAL revenue per credit, in the WORST case (lowest)
+//      currency the business actually collects it in. ✅ FIX (باج تسعير جوهري
+//      رصده العميل): كان هنا مبني على السعر الدولي بس ($15/600 كريديت = $0.025/كريديت)
+//      وبيتطبّق على كل العملاء بما فيهم المصريين اللي بيدفعوا 420 جنيه بس مقابل نفس الـ600
+//      كريديت (خصم PPP مقصود) — وده مش $15 حقيقي؛ بسعر الصرف الحقيقي وقت الكتابة (~52.6
+//      ج.م/$1، Sept 2026)، الـ420 جنيه = ~$8 بس، يعني السعر الحقيقي للكريديت من عميل مصري
+//      ~$0.0133 (أقل بحوالي النص من $0.025!). كنا بنحسب تكلفة كل توليد على أساس هامش 3x
+//      فوق سعر Replicate بس مبني على سعر كريديت أعلى من الحقيقي، فالهامش الفعلي مع عميل
+//      مصري كان أقل بكتير من 3x المقصودة (ممكن يوصل لخسارة فعلية لو حسبنا تكلفة LLM/Groq
+//      والتخزين كمان، اللي مش محسوبة في تكلفة Replicate نفسها أصلاً). الحل: نحسب تكلفة كل
+//      حاجة على أساس أسوأ سيناريو (أقل سعر كريديت حقيقي)، ده بيضمن هامش ربح حقيقي مهما كانت
+//      عملة/منطقة العميل — العميل الدولي هيبقى عنده هامش أعلى من 3x بالفعل، وده مكسب زيادة
+//      مش مشكلة. المشتقة من: EGP_PER_CREDIT (authService.js) = 0.7 ج.م/كريديت × ~$0.019/ج.م
+//      (سعر الصرف الحقيقي وقت الكتابة)
 //   3. PROFIT_MULTIPLIER (3x) is applied on top of raw API cost before
 //      converting to credits — it covers R2 storage, LLM script-writing calls,
-//      payment-processor fees (InstaPay/Gumroad take a cut), and margin. 3x is
-//      close to the ~2.8x already implied by Model 3's existing tuned price
-//      (6.67 credits/image × $0.025 ÷ ~$0.06 real Grok Imagine cost), so new
-//      models line up with how the rest of the app is already priced.
+//      payment-processor fees (InstaPay/Gumroad take a cut), and margin.
 //
 // IMPORTANT: third-party pricing aggregators drift constantly. Before wiring
 // any model below into an actual generation endpoint, re-confirm its exact
-// per-unit cost against Replicate's own model page for that exact slug.
+// per-unit cost against Replicate's own model page for that exact slug. Also
+// re-check USD_PER_CREDIT if EGP_PER_CREDIT or the real EGP/USD rate moves
+// meaningfully — this anchor is only as accurate as that exchange rate.
 
-export const USD_PER_CREDIT = 0.025;
+export const USD_PER_CREDIT = 0.0133;
 export const PROFIT_MULTIPLIER = 3;
 
 // Every model here charges per generated unit — most images are "per image",
