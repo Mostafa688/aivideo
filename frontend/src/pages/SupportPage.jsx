@@ -46,6 +46,26 @@ export default function SupportPage({ onBack, onNavigate, embedded = false }) {
   const messagesEndRef = useRef(null);
   const pollRef = useRef(null);
   const fileInputRef = useRef(null);
+  // ✅ FIX (باج حقيقي: "بعت رساله والرساله اختفت من الشات في نفس اللحظة، ومش بتوصل للأدمن"):
+  // فيه سباق حقيقي بين البولينج الخلفي (كل 5 ثواني) وبين إعادة الجلب اللي بتحصل فورًا بعد
+  // إرسال أي رسالة — لو طلب البولينج كان بدأ (قبل ما الرسالة تتحفظ فعليًا على السيرفر) لكن
+  // اترد بعد ما إعادة الجلب بتاعة الإرسال خلصت، كان بيجيب نسخة قديمة (من غير الرسالة الجديدة)
+  // ويكتب فوق الحالة الأحدث ويمسح الرسالة اللي لسه العميل بعتها. الحل: نتتبع ترتيب الطلبات
+  // (sequence) ونتجاهل أي رد وصل متأخر لطلب أقدم من آخر رد اتطبق فعلاً — بغض النظر عن ترتيب
+  // الوصول، الرد الوحيد اللي بيتطبق هو دايمًا رد الطلب الأحدث اللي اتبدأ
+  const fetchSeqRef = useRef(0);
+  const appliedSeqRef = useRef(0);
+  const refreshMessages = async (id) => {
+    const mySeq = ++fetchSeqRef.current;
+    try {
+      const r = await fetch(`/api/support/messages/${id}`);
+      const d = await r.json();
+      if (mySeq <= appliedSeqRef.current) return; // رد متأخر لطلب أقدم — اتجاهله
+      if (!r.ok) return;
+      appliedSeqRef.current = mySeq;
+      if (d.messages) setMessages(d.messages);
+    } catch {}
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -131,13 +151,7 @@ export default function SupportPage({ onBack, onNavigate, embedded = false }) {
   // Poll for admin replies
   useEffect(() => {
     if (!chatId) return;
-    pollRef.current = setInterval(async () => {
-      try {
-        const r = await fetch(`/api/support/messages/${chatId}`);
-        const d = await r.json();
-        if (d.messages) setMessages(d.messages);
-      } catch {}
-    }, 5000);
+    pollRef.current = setInterval(() => refreshMessages(chatId), 5000);
     return () => clearInterval(pollRef.current);
   }, [chatId]);
 
@@ -203,10 +217,9 @@ export default function SupportPage({ onBack, onNavigate, embedded = false }) {
         return;
       }
       if (!postRes.ok) throw new Error('send failed');
-      // refresh right away so the real media URL / id come back from the server
-      const r = await fetch(`/api/support/messages/${chatId}`);
-      const d = await r.json();
-      if (d.messages) setMessages(d.messages);
+      // refresh right away so the real media URL / id come back from the server — بيعدي على
+      // نفس آلية الـ sequence-guard فوق عشان مايتلغيش برد متأخر من البولينج الخلفي
+      await refreshMessages(chatId);
     } catch {}
     setSending(false);
   };
