@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 
+const LOGO = '/logo.png';
+
 // ✅ FIX (طلب العميل: "احذف اي ايموجي، خليك ذكي وشوف المواقع الكبيرة بتعمل اي واعمل زيهم"):
 // كل الإيموجي في واجهة الشات اتشالت واتبدلت بأيقونات lucide-react حقيقية
 
@@ -146,7 +148,7 @@ function RenderCard({ job, lang, onNavigate }) {
         <video src={job.videoUrl} controls autoPlay muted style={{ width: box.w, height: box.h, borderRadius: 14, objectFit: 'cover', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#22c55e', fontWeight: 700 }}><CheckCircle2 size={13} strokeWidth={2.25} /> {t.done} {job.cost || ''} {t.credits}</span>
-          <a href={job.videoUrl} download style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#a99bff', fontWeight: 700, textDecoration: 'none' }}><Download size={13} strokeWidth={2.25} /> {t.download}</a>
+          <a href={job.videoUrl} download style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent2)', fontWeight: 700, textDecoration: 'none' }}><Download size={13} strokeWidth={2.25} /> {t.download}</a>
         </div>
       </div>
     );
@@ -1142,9 +1144,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       <button onClick={() => setStyleMenuOpen(v => !v)}
         title={lang === 'ar' ? 'اختر ستايل بصري (اختياري)' : 'Pick a visual style (optional)'}
         style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: selectedStyle ? 'rgba(124,106,247,0.18)' : (styleMenuOpen ? 'rgba(124,106,247,0.1)' : 'rgba(255,255,255,0.05)'),
+          background: selectedStyle ? 'rgba(124,106,247,0.18)' : (styleMenuOpen ? 'var(--accent-bg)' : 'rgba(255,255,255,0.05)'),
           border: `1px solid ${selectedStyle || styleMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`,
-          color: selectedStyle ? '#a99bff' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 15, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>
+          color: selectedStyle ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 15, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>
         {selectedStyle
           ? (() => { const SelIcon = STYLE_OPTIONS.find(s => s.key === selectedStyle)?.icon; return SelIcon ? <SelIcon size={16} strokeWidth={2} /> : null; })()
           : '▾'}
@@ -1152,7 +1154,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       {styleMenuOpen && (
         <>
           <div onClick={() => setStyleMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', bottom: 46, left: 0, background: '#141420', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
             {STYLE_OPTIONS.map(opt => (
               <button key={opt.key}
                 onClick={() => { setSelectedStyle(v => v === opt.key ? null : opt.key); setStyleMenuOpen(false); }}
@@ -1162,7 +1164,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
                 onMouseLeave={e => e.currentTarget.style.background = selectedStyle === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
                 <opt.icon size={16} strokeWidth={2} />{opt.label}
-                {selectedStyle === opt.key && <Check size={14} strokeWidth={3} style={{ marginLeft: 'auto', color: '#a99bff' }} />}
+                {selectedStyle === opt.key && <Check size={14} strokeWidth={3} style={{ marginLeft: 'auto', color: 'var(--accent2)' }} />}
               </button>
             ))}
             {selectedStyle && (
@@ -1185,12 +1187,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
       <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
       <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => { handleVideoFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
       <button onClick={() => setAttachMenuOpen(v => !v)} title={t.attachTitle}
-        style={{ width: 38, height: 38, borderRadius: 10, background: attachMenuOpen ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${attachMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: attachMenuOpen ? '#a99bff' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
+        style={{ width: 38, height: 38, borderRadius: 10, background: attachMenuOpen ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${attachMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: attachMenuOpen ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
 
       {attachMenuOpen && (
         <>
           <div onClick={() => setAttachMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', bottom: 46, left: 0, background: '#141420', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <button onClick={() => { voiceInputRef.current?.click(); }} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
@@ -1222,20 +1224,21 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
     return (
       <div style={{ minHeight: 'calc(100vh - 74px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 16px', position: 'relative', overflow: 'hidden' }}>
         {/* ✅ خلفية طبقتين هادية بدل تدرّج واحد مسطح — عمق أكتر من غير ما تلفت النظر */}
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 60% 45% at 50% -8%, rgba(124,106,247,0.14) 0%, transparent 65%), radial-gradient(ellipse 40% 35% at 85% 90%, rgba(217,167,116,0.05) 0%, transparent 70%)' }} />
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 60% 45% at 50% -8%, rgba(124,106,247,0.10) 0%, transparent 65%), radial-gradient(ellipse 40% 35% at 85% 90%, rgba(217,167,116,0.05) 0%, transparent 70%)' }} />
         <div style={{ width: '100%', maxWidth: 680, position: 'relative' }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-            <button onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            <button onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', color: 'var(--accent2)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               <Clapperboard size={15} strokeWidth={2} /> {t.models}
             </button>
           </div>
 
           <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            <div style={{ marginBottom: 18 }}>
-              <span style={{ fontSize: 36, fontWeight: 900, letterSpacing: '0.02em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 1px 0 rgba(255,255,255,0.15), 0 0 32px rgba(124,106,247,0.4)' }}>Erivion</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 22 }}>
+              <img src={LOGO} alt="Erivion" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+              <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-0.4px', fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Erivion</span>
             </div>
-            <h1 style={{ fontSize: 30, fontWeight: 800, color: '#fff', margin: '0 0 10px', letterSpacing: '-0.01em', direction: isArabic(t.heroTitle) ? 'rtl' : 'ltr' }}>{t.heroTitle}</h1>
-            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0, maxWidth: 460, marginInline: 'auto', lineHeight: 1.7, direction: isArabic(t.heroSub) ? 'rtl' : 'ltr' }}>{t.heroSub}</p>
+            <h1 style={{ fontSize: 30, fontWeight: 900, color: 'var(--text)', margin: '0 0 10px', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)', direction: isArabic(t.heroTitle) ? 'rtl' : 'ltr' }}>{t.heroTitle}</h1>
+            <p style={{ fontSize: 14, color: 'var(--text2)', margin: 0, maxWidth: 460, marginInline: 'auto', lineHeight: 1.7, direction: isArabic(t.heroSub) ? 'rtl' : 'ltr' }}>{t.heroSub}</p>
           </div>
 
           {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 14 }}>{error}</div>}
@@ -1259,11 +1262,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             />
             {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce)) && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><Mic size={13} strokeWidth={2} /> {t.voiceAttached} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>}
+                {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {t.voiceAttached} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>}
                 {imageFiles.map((_, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>
                 ))}
-                {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>}
+                {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer' }}><X size={13} strokeWidth={2.5} /></button></div>}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
@@ -1271,14 +1274,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
                 onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
                 onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-                style={{ width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}><Send size={16} strokeWidth={2.25} /></button>
+                style={{ width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 4px 14px rgba(124,106,247,0.35)' }}><Send size={16} strokeWidth={2.25} /></button>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 18 }}>
             {t.chips.map((c, i) => (
               <button key={i} onClick={() => { setInput(c.text); }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,106,247,0.1)'; e.currentTarget.style.borderColor = 'rgba(124,106,247,0.35)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.borderColor = 'rgba(124,106,247,0.35)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.75)'; e.currentTarget.style.transform = 'translateY(0)'; }}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.18s ease' }}>
                 <c.icon size={14} strokeWidth={2} />{c.label}
@@ -1296,17 +1299,18 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
         .agent-bubble{animation:fadeUp 0.25s ease}
-        .agent-dot{width:6px;height:6px;border-radius:50%;background:#7c6af7;display:inline-block;animation:bounce 1s ease infinite}
+        .agent-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;animation:bounce 1s ease infinite}
         .agent-models-btn:hover{background:rgba(124,106,247,0.16) !important;border-color:rgba(124,106,247,0.45) !important;}
       `}</style>
       <div style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', flex: 1 }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span style={{ fontSize: 21, fontWeight: 900, letterSpacing: '0.02em', fontFamily: "'Georgia', 'Times New Roman', serif", color: '#fff', textShadow: '0 1px 0 rgba(255,255,255,0.15), 0 0 20px rgba(124,106,247,0.35)' }}>Erivion</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>Agent</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <img src={LOGO} alt="Erivion" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+            <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.4px', fontFamily: 'var(--font-display)', color: 'var(--text)' }}>Erivion</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>Agent</span>
           </div>
-          <button className="agent-models-btn" onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', color: '#a99bff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s ease, border-color 0.15s ease' }}>
+          <button className="agent-models-btn" onClick={onSwitchToModels} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', color: 'var(--accent2)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s ease, border-color 0.15s ease' }}>
             <Clapperboard size={14} strokeWidth={2} /> {t.models}
           </button>
         </div>
@@ -1334,7 +1338,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
               <div key={i} className="agent-bubble" style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
                 <div style={{
                   maxWidth: '82%', padding: '12px 16px', borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  background: m.role === 'user' ? 'linear-gradient(135deg,#7c6af7,#6d28d9)' : 'rgba(255,255,255,0.045)',
+                  background: m.role === 'user' ? 'linear-gradient(135deg,#7c6af7,#9d4edd)' : 'rgba(255,255,255,0.045)',
                   border: m.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.09)',
                   boxShadow: m.role === 'user' ? '0 4px 16px rgba(124,106,247,0.25)' : '0 2px 10px rgba(0,0,0,0.15)',
                   color: '#fff', fontSize: 14, lineHeight: 1.7, direction: ar ? 'rtl' : 'ltr', textAlign: ar ? 'right' : 'left',
@@ -1363,11 +1367,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
 
         {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce)) && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-            {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
+            {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
             {imageFiles.map((_, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>
             ))}
-            {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: '#a99bff' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: '#a99bff', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
+            {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
           </div>
         )}
 
@@ -1399,7 +1403,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels }) {
             <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
               onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
               onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-              style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}><Send size={15} strokeWidth={2.25} /></button>
+              style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}><Send size={15} strokeWidth={2.25} /></button>
           )}
         </div>
         <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
