@@ -367,13 +367,13 @@ function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, 
                     lang={lang}
                     isFavorited={!!meta.favorited}
                     onToggleFavorite={() => setMeta({ favorited: !meta.favorited })}
-                    onReusePrompt={() => onReusePrompt?.(job.prompt)}
+                    onReusePrompt={() => onReusePrompt?.(job.prompts?.[i] || job.prompt)}
                     onAnimate={() => onAnimate?.(url)}
                     onDownload={() => downloadRemoteFile(url, `erivion-image-${i + 1}.jpg`)}
-                    onCopyPrompt={() => navigator.clipboard?.writeText(job.prompt || '')}
+                    onCopyPrompt={() => navigator.clipboard?.writeText(job.prompts?.[i] || job.prompt || '')}
                     onRename={() => { const v = window.prompt(lang === 'ar' ? 'اسم الصورة:' : 'Image name:', meta.title || ''); if (v !== null) setMeta({ title: v.trim() || null }); }}
                     onShare={() => navigator.clipboard?.writeText(url)}
-                    onReport={() => onReport?.(url, job.prompt)}
+                    onReport={() => onReport?.(url, job.prompts?.[i] || job.prompt)}
                     onTrash={() => onRemoveImage?.(i)}
                     onToast={onToast}
                   />
@@ -524,7 +524,7 @@ function MediaDetailModal({ lang, kind, job, imgIndex, onChangeIndex, editingIma
       </div>
 
       <div style={{ padding: '16px 20px 22px', flexShrink: 0 }}>
-        {job.prompt && <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.45)', marginBottom: 12, maxWidth: 640, marginInline: 'auto', textAlign: 'center' }}>{job.prompt}</div>}
+        {(isImage ? (job.prompts?.[activeIdx] || job.prompt) : job.prompt) && <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.45)', marginBottom: 12, maxWidth: 640, marginInline: 'auto', textAlign: 'center' }}>{isImage ? (job.prompts?.[activeIdx] || job.prompt) : job.prompt}</div>}
         {canEdit && (
           <div style={{ display: 'flex', gap: 8, maxWidth: 640, marginInline: 'auto', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 7 }}>
             <input value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitEdit()}
@@ -777,6 +777,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     }
     if (m.type === 'imageBatch') {
       if (m.job?.status === 'done') {
+        // ✅ NEW: لو كانت دفعة مشاهد مختلفة (job.prompts)، بنسيب كل صورة مربوطة بالبرومبت
+        // بتاعها في نفس النص — ده اللي بيخلي الايجنت يقدر يفرق "صورة السيف" عن "صورة القلعة"
+        // لما العميل يطلب يحرك واحدة بعينها لاحقًا
+        if (Array.isArray(m.job.prompts) && m.job.prompts.length >= 2) {
+          const pairs = (m.job.images || []).map((u, i) => `"${m.job.prompts[i] || ''}" → ${u}`).join(' | ');
+          return lang === 'ar'
+            ? `[تم توليد ${m.job.images?.length || 0} صورة مشاهد مختلفة بنجاح بموديل ${m.job.model || ''} — كل مشهد وصورته: ${pairs}]`
+            : `[Successfully generated ${m.job.images?.length || 0} distinct-scene image(s) with model ${m.job.model || ''} — each scene and its image: ${pairs}]`;
+        }
         const urls = (m.job.images || []).join(', ');
         return lang === 'ar'
           ? `[تم توليد ${m.job.images?.length || 0} صورة بنجاح بموديل ${m.job.model || ''} — روابط الصور: ${urls}]`
@@ -1055,7 +1064,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // job طويل بيحتاج poll، الطلب نفسه بيستنى الصور جاهزة (backend بيعمل Prefer: wait)
   const startImageGeneration = async (gen) => {
     const jobUid = `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '9:16', tier: gen.tier || null };
+    // ✅ NEW: لو الايجنت طلب مشاهد مختلفة دفعة واحدة (gen.prompts)، بنعرض أول برومبت كنص
+    // الوصف تحت الكارت، وبنسيب job.prompts عشان "إعادة الاستخدام/نسخ" لكل صورة تاخد
+    // البرومبت بتاعها هي مش برومبت صورة تانية
+    const distinctPrompts = Array.isArray(gen.prompts) ? gen.prompts.filter(p => typeof p === 'string' && p.trim()) : [];
+    const usingPrompts = distinctPrompts.length >= 2;
+    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: usingPrompts ? distinctPrompts[0] : gen.prompt, prompts: usingPrompts ? distinctPrompts : null, aspectRatio: gen.aspectRatio || '9:16', tier: gen.tier || null };
     setMessages(m => [...m, { role: 'assistant', type: 'imageBatch', job }]);
     const updateJob = (patch) => {
       setMessages(m => {
@@ -1069,7 +1083,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       const res = await fetch('/api/images/generate', {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({
-          model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '9:16', count: gen.count || 1,
+          model: gen.model, prompt: gen.prompt, prompts: usingPrompts ? distinctPrompts : undefined, aspectRatio: gen.aspectRatio || '9:16', count: gen.count || 1,
           referenceImageUrls: Array.isArray(gen.referenceImageUrls) ? gen.referenceImageUrls : undefined,
           tier: gen.tier || undefined,
         }),

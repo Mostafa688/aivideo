@@ -203,14 +203,32 @@ async function runWithConcurrency(tasks, limit = 4) {
  * array of image URLs. Uses the model's native batch parameter when it has
  * one (GPT-Image, Seedream family); otherwise runs one prediction per image
  * with limited concurrency.
+ *
+ * ✅ NEW (طلب العميل، وباج حقيقي: "اعمل الاربع صور مرة واحدة" لأربع مشاهد مختلفة
+ * كان مفيش طريقة يوصفها للايجينت — الماركر كان بيقبل prompt واحد + count بس، يعني
+ * نسخ متطابقة من نفس البرومبت، لا مشاهد مختلفة. لو `prompts` (مصفوفة برومبتات مختلفة)
+ * اتبعتت، كل واحد فيهم بيتعمله prediction منفصل بصورة واحدة بالظبط (حتى لو الموديل
+ * عنده native batch param، عشان ده بيولّد N نسخة من نفس البرومبت مش N برومبت مختلف)،
+ * والنتيجة بترجع بنفس ترتيب الـ prompts.
  */
-export async function generateNewModelImages({ modelKey, prompt, referenceImageUrls = [], aspectRatio = '9:16', count = 1, tier = null }) {
+export async function generateNewModelImages({ modelKey, prompt, prompts = null, referenceImageUrls = [], aspectRatio = '9:16', count = 1, tier = null }) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const model = NEW_IMAGE_MODELS[modelKey];
   if (!model) throw new Error(`Unknown image model: ${modelKey}`);
+  const label = `${modelKey} image generation`;
+
+  const distinctPrompts = Array.isArray(prompts) ? prompts.filter(p => typeof p === 'string' && p.trim()) : [];
+  if (distinctPrompts.length >= 2) {
+    const capped = distinctPrompts.slice(0, MAX_BATCH);
+    const results = await runWithConcurrency(
+      capped.map(p => () => runPrediction(model.slug, model.buildInput({ prompt: p, referenceImageUrls, aspectRatio, count: 1, tier }), label)),
+      4
+    );
+    return persistImagesToR2(results.flat(), modelKey);
+  }
+
   if (!prompt?.trim()) throw new Error('prompt is required');
   const total = Math.min(Math.max(1, count || 1), MAX_BATCH);
-  const label = `${modelKey} image generation`;
 
   if (model.nativeBatchParam) {
     const chunks = [];
