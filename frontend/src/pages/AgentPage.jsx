@@ -370,6 +370,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  // ✅ NEW: اختيار يدوي (اختياري) لموديل الصورة/الفيديو — فاضل زي ما هو (auto) لحد ما
+  // العميل يختار بنفسه، وبيفضل مختار (persistent) لحد ما يغيّره أو يلغيه، زي selectedStyle
+  const [imageModelOptions, setImageModelOptions] = useState([]);
+  const [videoModelOptions, setVideoModelOptions] = useState([]);
+  const [forcedModel, setForcedModel] = useState(null); // { type: 'image'|'video', key, label } | null
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [voiceFile, setVoiceFile] = useState(null);
@@ -406,6 +411,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   useEffect(() => {
     fetch('/api/agent/limits', { headers: tokenHeader() }).then(r => r.json()).then(setLimits).catch(() => {});
     fetch('/api/voice-clone/mine', { headers: tokenHeader() }).then(r => r.json()).then(d => setMyClonedVoice(d.voice || null)).catch(() => {});
+    // ✅ NEW (طلب العميل: سهم زي Google Flow لاختيار موديل الصورة/الفيديو يدويًا): قايمة
+    // الموديلات الحقيقية بسعرها — بتتحمل مرة واحدة هنا، مش هاردكودد في الفرونت إند
+    fetch('/api/images/models', { headers: tokenHeader() }).then(r => r.json()).then(d => setImageModelOptions(d.models || [])).catch(() => {});
+    fetch('/api/videos/models', { headers: tokenHeader() }).then(r => r.json()).then(d => setVideoModelOptions(d.models || [])).catch(() => {});
     return () => { clearInterval(pollRef.current); clearInterval(timerRef.current); };
   }, []);
 
@@ -624,6 +633,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         hasStructuredScript: !!lastParsedStructuredScenes,
         hasAdsScenePlan: !!lastParsedAdsScenePlan,
         styleHint: selectedStyle || undefined,
+        forcedImageModel: forcedModel?.type === 'image' ? forcedModel.key : undefined,
+        forcedVideoModel: forcedModel?.type === 'video' ? forcedModel.key : undefined,
         hasClonedVoice: !!myClonedVoice,
       };
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
@@ -1390,6 +1401,68 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     </div>
   );
 
+  // ✅ NEW (طلب العميل: زرار سهم زي Google Flow لاختيار موديل الصورة أو الفيديو يدويًا بدل ما
+  // الايجنت يختار لوحده): قايمة منسدلة فيها "تلقائي" (الافتراضي — الايجنت يختار) + كل موديلات
+  // الصور وكل موديلات الفيديو الحقيقية بسعرها. لو المستخدم اختار واحد، بيتبعت مع كل رسالة
+  // جاية لحد ما يلغيه أو يختار غيره، ونفس نمط StylePickerButton فوق بالظبط
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const ModelPickerButton = () => (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setModelMenuOpen(v => !v)}
+        title={lang === 'ar' ? 'اختار موديل معيّن يدويًا (اختياري)' : 'Manually pick a specific engine (optional)'}
+        style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: forcedModel ? 'rgba(124,106,247,0.18)' : (modelMenuOpen ? 'var(--accent-bg)' : 'rgba(255,255,255,0.05)'),
+          border: `1px solid ${forcedModel || modelMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`,
+          color: forcedModel ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 15, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>
+        {forcedModel ? (forcedModel.type === 'image' ? <ImageIcon size={16} strokeWidth={2} /> : <Film size={16} strokeWidth={2} />) : '▾'}
+      </button>
+      {modelMenuOpen && (
+        <>
+          <div onClick={() => setModelMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 240, maxHeight: 340, overflowY: 'auto', boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ padding: '6px 10px 2px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>{lang === 'ar' ? 'موديلات الصور' : 'Image Engines'}</div>
+            {imageModelOptions.map(opt => (
+              <button key={opt.key}
+                onClick={() => { setForcedModel({ type: 'image', key: opt.key, label: opt.label }); setModelMenuOpen(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8,
+                  background: forcedModel?.type === 'image' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none', border: 'none',
+                  color: '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.currentTarget.style.background = forcedModel?.type === 'image' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
+                <ImageIcon size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{opt.creditCostPerImage}cr</span>
+                {forcedModel?.type === 'image' && forcedModel.key === opt.key && <Check size={13} strokeWidth={3} style={{ color: 'var(--accent2)', flexShrink: 0 }} />}
+              </button>
+            ))}
+            <div style={{ padding: '10px 10px 2px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2 }}>{lang === 'ar' ? 'موديلات الفيديو' : 'Video Engines'}</div>
+            {videoModelOptions.map(opt => (
+              <button key={opt.key}
+                onClick={() => { setForcedModel({ type: 'video', key: opt.key, label: opt.label }); setModelMenuOpen(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8,
+                  background: forcedModel?.type === 'video' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none', border: 'none',
+                  color: '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.currentTarget.style.background = forcedModel?.type === 'video' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
+                <Film size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{opt.creditCostPerSecond}cr/s</span>
+                {forcedModel?.type === 'video' && forcedModel.key === opt.key && <Check size={13} strokeWidth={3} style={{ color: 'var(--accent2)', flexShrink: 0 }} />}
+              </button>
+            ))}
+            {forcedModel && (
+              <button onClick={() => { setForcedModel(null); setModelMenuOpen(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4, paddingTop: 10, color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
+                onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
+                <X size={14} strokeWidth={2.5} /> {lang === 'ar' ? 'رجّع للاختيار التلقائي' : 'Back to auto'}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   const AttachBar = () => (
     <div style={{ position: 'relative' }}>
       <input ref={voiceInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
@@ -1541,8 +1614,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         <div style={{ padding: '10px 14px 14px', flexShrink: 0, position: 'relative' }}>
           {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
-          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce)) && (
+          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce) || forcedModel) && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              {forcedModel && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}>{forcedModel.type === 'image' ? <ImageIcon size={13} strokeWidth={2} /> : <Film size={13} strokeWidth={2} />} {forcedModel.label} <button onClick={() => setForcedModel(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
               {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
               {imageFiles.map((_, idx) => (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>
@@ -1560,6 +1634,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           }}>
             <AttachBar />
             <StylePickerButton />
+            <ModelPickerButton />
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
