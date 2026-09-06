@@ -42,11 +42,19 @@ export const REPLICATE_MODEL_COSTS = {
                        tiers: { '512px': 0.045, '1K': 0.067, '2K': 0.101, '4K': 0.150 } },
   nano_banana_pro:  { label: 'Nano Banana Pro',    unit: 'image', usdCost: 0.150, // = تكلفة 1K/2K (نفس السعر للاتنين فعليًا)
                        tiers: { '1K': 0.150, '2K': 0.150, '4K': 0.300 } },
-  nano_banana_lite: { label: 'Nano Banana Lite',   unit: 'image', usdCost: 0.045 },
-  grok_image:       { label: 'Grok Image',         unit: 'image', usdCost: 0.060 }, // avg of 1K/2K tiers
-  gpt_image:        { label: 'GPT-Image',          unit: 'image', usdCost: 0.042 }, // "medium" quality tier
-  seedream_4:       { label: 'Seedream 4',         unit: 'image', usdCost: 0.035 },
-  seedream_5:       { label: 'Seedream 5',         unit: 'image', usdCost: 0.065 }, // avg of low/high-res tiers
+  nano_banana_lite: { label: 'Nano Banana Lite',   unit: 'image', usdCost: 0.045 }, // ⚠ مش موصول فعليًا (متاح على fal.ai مش Replicate) — رقم مرجعي بس، مش قابل للاختيار
+  // ✅ FIX (مراجعة أسعار كاملة، Sept 2026): كان مفروض على أساس تقدير "متوسط 1K/2K" غلط —
+  // الموديل الحقيقي xai/grok-imagine-image ملوش تدرجات دقة أصلاً على الأغلب، وسعره الحقيقي
+  // أقرب لـ$0.02/صورة (مصادر متعددة) — نزّلناه لـ0.03 (هامش أمان فوق الرقم المرصود)
+  grok_image:       { label: 'Grok Image',         unit: 'image', usdCost: 0.030 },
+  // ❌ REMOVED من NEW_IMAGE_MODELS (newImageModelsService.js) — openai/gpt-image-1 على Replicate
+  // "bring-your-own-key" فقط (لازم مفتاح OpenAI حقيقي بتاعنا إحنا، مش عن طريق كريديت Replicate
+  // العادي) — الموديل كان معطّل فعليًا من غير ما نلاحظ. رقم مرجعي بس لحد ما يتحل ده كقرار بزنس
+  // (سعر OpenAI الحقيقي المؤكد: low=$0.02, medium=$0.07, high=$0.19 لصورة 1024×1024)
+  gpt_image:        { label: 'GPT-Image',          unit: 'image', usdCost: 0.07, tiers: { low: 0.02, medium: 0.07, high: 0.19 } },
+  // ✅ FIX: مؤكد من إعلان Replicate الرسمي نفسه وقت الإطلاق ($0.03/صورة بالظبط)
+  seedream_4:       { label: 'Seedream 4',         unit: 'image', usdCost: 0.030 },
+  seedream_5:       { label: 'Seedream 5',         unit: 'image', usdCost: 0.065 }, // avg of low/high-res tiers — تأكد بحث إضافي إن التسعير الحقيقي حسب عدد البكسل ($0.045 لحد 2.36MP، $0.09 فوق كده) مش تدرجات دقة مسماة، فسيبناه رقم واحد متوسط
   seedream_5_lite:  { label: 'Seedream 5 Lite',    unit: 'image', usdCost: 0.035 },
 
   // ── Video generation (per second of output) ──────────────────────────────
@@ -57,9 +65,15 @@ export const REPLICATE_MODEL_COSTS = {
   // خصوصًا Seedance 2.0 اللي مصادره اتضاربت (رقمين مختلفين ظهروا لنفس الموديل)
   veo3_fast:        { label: 'Veo 3 Fast',         unit: 'second', usdCost: 0.15, maxClipSec: 8,
                        tiers: { '720p': 0.15, '1080p': 0.15 } }, // ✅ نفس السعر للاتنين فعليًا (مؤكد من Google direct API)
+  // ⚠ مراجعة أسعار ثانية: مصدر واحد ذكر $0.75/ثانية على Replicate تحديدًا (ممكن يكون سعر
+  // قديم لـVeo 3 الأصلي مش 3.1، أو تعريفة "Full" مختلفة) — سبناها زي ما هي (سعر Google
+  // المباشر الرسمي) لحد ما حد يتأكد من صفحة Replicate الحقيقية بنفسه
   veo3_standard:    { label: 'Veo 3',              unit: 'second', usdCost: 0.40, maxClipSec: 8,
-                       tiers: { '720p': 0.40, '1080p': 0.40 } }, // نفس السعر للاتنين فعليًا
-  kling_2_1:        { label: 'Kling 2.1',          unit: 'second', usdCost: 0.045, maxClipSec: 10 }, // confirmed real model (kwaivgi/kling-v2.1, 720p/1080p, 5s/10s) — exact per-tier cost not found, using blended estimate
+                       tiers: { '720p': 0.40, '1080p': 0.40 } },
+  // ✅ FIX (مراجعة أسعار): $0.045 كان أقل من اللازم بشكل مريب لموديل أقدم من Kling 2.5
+  // ($0.07/ثانية) — رفعناها لـ0.06 (لسه أقل من 2.5 بشكل منطقي، بس هامش أمان أعلى) لحد ما
+  // نتأكد من السعر الحقيقي بالظبط لنفس الـslug ده تحديدًا (kwaivgi/kling-v2.1)
+  kling_2_1:        { label: 'Kling 2.1',          unit: 'second', usdCost: 0.06, maxClipSec: 10 },
   kling_2_5:        { label: 'Kling 2.5',          unit: 'second', usdCost: 0.07, maxClipSec: 10 }, // مؤكد: $0.35/5s = $0.70/10s = $0.07/sec ثابت، مفيش فرق سعر لكل دقة لقيته
   // ✅ FIX (طلب العميل بعد ما شاف الـ Replicate dashboard الحقيقي بنفسه): توليد واحد بـ
   // bytedance/seedance-1.5-pro كلّف $0.26 فعليًا (compute استغرق 2m3.6s — الموديل ده بطيء
@@ -67,17 +81,21 @@ export const REPLICATE_MODEL_COSTS = {
   // قريبة من الرقم الحقيقي بس مش كافية هامش أمان لموديل تكلفته متقلبة زي ده). رفعناها لـ 0.095
   // عشان تدّي هامش ربح أعلى وأأمن فوق التكلفة الحقيقية المرصودة
   seedance_1_5:     { label: 'Seedance 1.5',       unit: 'second', usdCost: 0.095, maxClipSec: 12 },
+  // ⚠ مراجعة أسعار ثانية: المصادر لسه بتتضارب مع نفسها — بعضها بينسخ أرقام Seedance 2.5 بالظبط
+  // على 2.0 غلط، وبعضها بيديها أرقام مختلفة تمامًا (0.14/0.30/0.59/1.70 بدل الأرقام تحت). سبناها
+  // زي ما هي (أقل من 2.5 بشكل منطقي، موديل أقدم) لحد ما نلاقي مصدر موثوق يفصل الاتنين بوضوح
   seedance_2_0:     { label: 'Seedance 2.0',       unit: 'second', usdCost: 0.180, maxClipSec: 15,
-                       tiers: { '480p': 0.0673, '720p': 0.151, '1080p': 0.35, '4k': 0.7776 } }, // ⚠ مصادر متضاربة — 480p و4K مؤكدين، 720p/1080p متوسط تقديري بينهم، يحتاج تأكيد نهائي
+                       tiers: { '480p': 0.0673, '720p': 0.151, '1080p': 0.35, '4k': 0.7776 } },
   seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30,
                        tiers: { '480p': 0.1028, '720p': 0.2312 } }, // مؤكد من Replicate مباشرة. 1080p/4K مش native output حقيقي (upscale بس)، متضافين هنا
   luma_ray2_540p:   { label: 'Luma Ray 2 (540p)',   unit: 'second', usdCost: 0.035, maxClipSec: 9 }, // مؤكد: $0.15/5s=$0.03/s .. $0.45/10s=$0.045/s (استخدمنا متوسط)، أقصى مدة موثقة 9s
   luma_ray2_720p:   { label: 'Luma Ray 2 (720p)',   unit: 'second', usdCost: 0.075, maxClipSec: 9 }, // مؤكد: $0.30/5s=$0.06/s .. $0.90/10s=$0.09/s (استخدمنا متوسط)، أقصى مدة موثقة 9s
   // ✅ NEW: Gemini Omni 1.1 Flash — أول موديل حقيقي فينا بيعمل video-to-video (تعديل فيديو
-  // موجود بتعليمات نصية)، مش بس text/image-to-video زي الباقي. سعر 720p مؤكد من حساب التوكنز
-  // الحقيقي بتاع Google ($17.50/مليون توكن output، 5792 توكن/ثانية عند 720p = ~$0.10/ثانية) —
-  // 360p/1080p/4K سعرهم مش مؤكد، بنستخدم نفس الرقم كتقدير موحد لحد التأكيد الحي
-  omni_flash_1_1:   { label: 'Gemini Omni 1.1 Flash', unit: 'second', usdCost: 0.10, maxClipSec: 10 },
+  // موجود بتعليمات نصية)، مش بس text/image-to-video زي الباقي. سعر كل دقة محسوب من توكنز
+  // Google الحقيقية المنشورة (output tokens/sec لكل دقة × $17.50/مليون توكن output) — 720p
+  // مؤكد بالحساب المباشر، الباقي (360p/1080p/4K) نسبة تقديرية بناءً على نفس المنطق لحد التأكيد الحي
+  omni_flash_1_1:   { label: 'Gemini Omni 1.1 Flash', unit: 'second', usdCost: 0.10, maxClipSec: 10,
+                       tiers: { '360p': 0.03, '720p': 0.10, '1080p': 0.15, '4k': 0.30 } },
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   gemini_flash_tts: { label: 'Gemini Flash TTS',   unit: 'second', usdCost: 0.00025 },

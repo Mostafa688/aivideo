@@ -88,16 +88,16 @@ export const NEW_IMAGE_MODELS = {
     slug: 'xai/grok-imagine-image',
     buildInput: ({ prompt, aspectRatio }) => ({ prompt, aspect_ratio: aspectRatio || '9:16' }),
   },
-  gpt_image: {
-    slug: 'openai/gpt-image-1',
-    nativeBatchParam: 'number_of_images',
-    maxNativeBatch: 10,
-    buildInput: ({ prompt, referenceImageUrls, aspectRatio, count }) => ({
-      prompt, aspect_ratio: aspectRatio || '9:16', quality: 'standard',
-      number_of_images: Math.min(Math.max(1, count || 1), 10),
-      ...(referenceImageUrls?.length ? { input_images: referenceImageUrls } : {}),
-    }),
-  },
+  // ❌ REMOVED (gpt_image / openai/gpt-image-1) — باج حقيقي مكتشف أثناء مراجعة الأسعار: الموديل
+  // ده على Replicate شغال "bring-your-own-key" فقط — لازم العميل (يعني إحنا) نبعت مفتاح OpenAI
+  // حقيقي خاص بنا جوه الـ input نفسه ("openai_api_key")، وبعدين حساب OpenAI بتاعنا هو اللي
+  // بيتحاسب مباشرة (مش عن طريق كريديت Replicate العادي زي كل الموديلات التانية). الكود القديم
+  // فوق ماكانش بيبعت أي مفتاح خالص، يعني أي طلب فعلي كان لازم يفشل من Replicate (رفض التوثيق)
+  // فيترفق الكريديت تلقائيًا — يعني الموديل ده كان معطّل فعليًا لأي عميل اختاره أو الايجنت رشحه
+  // (كان بيترشّح تحديدًا لطلبات فيها نص/كتابة في الصورة). "quality":"standard" كان كمان قيمة
+  // غير صحيحة أصلاً لموديل OpenAI ده (القيم الحقيقية: low/medium/high/auto). اتشال تمامًا لحد
+  // ما يتحط مفتاح OpenAI حقيقي في env (OPENAI_API_KEY) ويتصلح الـ buildInput فعليًا — قرار
+  // بزنس محتاج موافقة صاحب المشروع (فتح حساب OpenAI منفصل ودفع مباشر بدل ما يعدي على Replicate).
   // ✅ FIX (باج حقيقي حصل مع عميل حقيقي: طلب صورة 16:9 وطلعت 1:1 دايمًا بصرف النظر عن أي نسبة
   // مطلوبة): الكود القديم كان بيبعت "image_size" بقيم زي "portrait_16_9"/"landscape_16_9" —
   // ده أسلوب تسمية fal.ai مش Replicate. الـ schema الحقيقي لموديلات Seedream على Replicate
