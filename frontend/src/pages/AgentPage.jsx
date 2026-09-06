@@ -31,6 +31,20 @@ function tokenHeader() {
   return { Authorization: 'Bearer ' + localStorage.getItem('token') };
 }
 
+// ✅ FIX (باج حقيقي: توليد فيديو طويل بيرجع "Unexpected token '<', "<!DOCTYPE "... is not
+// valid JSON" للعميل بدل رسالة مفهومة — الفيديو كان فعلاً بينعمل صح على Replicate، بس
+// اتصال الـ HTTP الطويل (دقايق) بيتقطع من بروكسي/gateway في النص فيرجع صفحة HTML بدل JSON):
+// أي حاجة مش JSON حقيقي بترجع رسالة عربي/إنجليزي مفهومة بدل ما تفشل بخطأ JS خام
+async function safeJson(res, lang) {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(lang === 'ar'
+      ? 'الاتصال انقطع أثناء التوليد (استغرق وقت طويل) — جرّب تاني بعد شوية، ولو اتخصم كريديت من غير نتيجة كلم الدعم.'
+      : 'The connection dropped during generation (it took too long) — please try again, and contact support if credits were charged with no result.');
+  }
+  return res.json();
+}
+
 const isArabic = (text) => /[\u0600-\u06FF]/.test(text || '');
 
 // ✅ FIX: fetch() على data: URI ممكن يفشل بـ"Failed to fetch" تحت بعض إعدادات
@@ -1009,7 +1023,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           count: 1, tier: '2K', referenceImageUrls: [referenceUrl],
         }),
       });
-      const data = await res.json();
+      const data = await safeJson(res, lang);
       if (!res.ok) { setError(data.message || data.error || 'Failed'); return; }
       let newIdx = 0;
       setMessages(m => {
@@ -1046,7 +1060,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           durationSec: 5, tier: '720p', sourceVideoUrl: referenceUrl,
         }),
       });
-      const data = await res.json();
+      const data = await safeJson(res, lang);
       if (!res.ok) { setError(data.message || data.error || 'Failed'); return; }
       updateJobByUid(detailView.jobUid, { videoUrl: data.videoUrl, cost: (msg.job.cost || 0) + (data.creditCost || 0) });
     } catch (e) {
@@ -1088,7 +1102,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           tier: gen.tier || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await safeJson(res, lang);
       if (!res.ok) {
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
@@ -1122,7 +1136,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           aspectRatio: gen.aspectRatio || '16:9', durationSec: gen.durationSec || 5, tier: gen.tier || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await safeJson(res, lang);
       if (!res.ok) {
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
@@ -1153,7 +1167,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({ videoUrls: merge.videoUrls }),
       });
-      const data = await res.json();
+      const data = await safeJson(res, lang);
       if (!res.ok) {
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
