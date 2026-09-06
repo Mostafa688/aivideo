@@ -417,9 +417,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
       ready.uploadedVoiceUrl = uploadedVoiceUrl;
     }
 
-    // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة
-    if (generateImage && images.length) {
-      generateImage.referenceImageUrls = images;
+    // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة — لو
+    // الايجنت نفسه حط "referenceImageUrls" في الماركر (روابط صور اتولدت قبل كده في المحادثة،
+    // مثلاً صورة شخصية عشان يستخدمها كمرجع لمشاهد جديدة)، بنسيبها زي ما هي ونضيفلها أي صور
+    // مرفقة في نفس الرسالة كمان (مش نستبدلها)
+    if (generateImage) {
+      const fromHistory = Array.isArray(generateImage.referenceImageUrls) ? generateImage.referenceImageUrls.filter(u => typeof u === 'string' && u.trim()) : [];
+      const combined = [...fromHistory, ...images];
+      if (combined.length) generateImage.referenceImageUrls = combined.slice(0, 14);
     }
     // ✅ حاجز إضافي في الكود نفسه: لو المستخدم فرض موديل يدويًا، نضمن استخدامه بالظبط حتى
     // لو الايجنت (الموديل نفسه) تجاهل التعليمة اللي فوق لأي سبب
