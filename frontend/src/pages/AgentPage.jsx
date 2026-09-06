@@ -6,7 +6,7 @@ import {
   Camera, Swords, Map as MapIcon, Check, X, Lock, Construction, Video, Send,
   CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
   ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
-  MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2,
+  MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2, Maximize2,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 import { downloadRemoteFile } from '../utils/download.js';
@@ -323,7 +323,7 @@ function MediaActionsMenu({ lang, isFavorited, onToggleFavorite, onReusePrompt, 
 // ✅ NEW (Phase 3 — new image-generation models): كارت توليد صور مستقل جوه شات الايجنت
 // (مش فيديو) — بيعرض شبكة الصور بمجرد ما توليدها يخلص، مفيش poll هنا لأن الطلب نفسه
 // بيستنى الرد كامل (backend بيستخدم Prefer: wait + polling داخلي)
-function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, onAnimate, onReport }) {
+function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, onAnimate, onReport, onOpenDetail }) {
   const tt = lang === 'ar'
     ? { generating: 'بيولّد الصور...', done: 'تم! تم خصم', credits: 'كريديت', download: 'تحميل', failed: 'حصلت مشكلة أثناء توليد الصور' }
     : { generating: 'Generating images...', done: 'Done! Deducted', credits: 'credits', download: 'Download', failed: 'Something went wrong generating the images' };
@@ -358,7 +358,7 @@ function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, 
             };
             return (
               <div key={i} style={{ position: 'relative' }}>
-                <img src={url} alt="" style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
+                <img src={url} alt="" onClick={() => onOpenDetail?.(i)} style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block', cursor: 'pointer' }} />
                 {meta.title && (
                   <div style={{ position: 'absolute', bottom: 6, left: 6, insetInlineEnd: 36, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta.title}</div>
                 )}
@@ -399,7 +399,7 @@ function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, 
 // ✅ NEW (new standalone video-generation models — Veo/Kling/Seedance/Luma): كارت واحد بيعرض
 // فيديو مولّد بموديل مستقل — نفس منطق ImageBatchCard فوق (مفيش poll، الطلب نفسه بيستنى
 // الفيديو جاهز لأن backend بيستخدم Prefer: wait + polling داخلي في newVideoModelsService.js)
-function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onReport }) {
+function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onReport, onOpenDetail }) {
   const tt = lang === 'ar'
     ? { generating: 'بيولّد الفيديو...', done: 'تم! تم خصم', credits: 'كريديت', failed: 'حصلت مشكلة أثناء توليد الفيديو' }
     : { generating: 'Generating video...', done: 'Done! Deducted', credits: 'credits', failed: 'Something went wrong generating the video' };
@@ -417,6 +417,10 @@ function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onRep
     return (
       <div style={{ width: '100%', position: 'relative' }}>
         <video src={job.videoUrl} controls style={{ width: '100%', aspectRatio: cssAspectRatio, objectFit: 'cover', borderRadius: 12, background: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'block' }} />
+        {/* ✅ زرار تكبير منفصل عن الفيديو نفسه — عشان مايتعارضش مع أزرار التشغيل الأصلية بتاعته */}
+        <button onClick={() => onOpenDetail?.()} title={lang === 'ar' ? 'تكبير' : 'Expand'} style={{ position: 'absolute', top: 6, insetInlineStart: 6, width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', padding: 0 }}>
+          <Maximize2 size={13} strokeWidth={2.25} />
+        </button>
         {job.title && (
           <div style={{ position: 'absolute', top: 6, left: 6, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11 }}>{job.title}</div>
         )}
@@ -451,6 +455,88 @@ function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onRep
   );
 }
 
+// ✅ NEW (طلب العميل: "لازم يقدر يدوس على الصورة/الفيديو ويخش صفحة زي الي في الصورة دي
+// ويكتب التغييرات الي هو عايزها"): عرض كبير لصورة/فيديو معين بملء الشاشة — للصور بيدعم تعديل
+// حقيقي (image-to-image): بتكتب التغيير المطلوب، وبتتولد نسخة جديدة باستخدام الصورة الحالية
+// كمرجع بصري (نفس آلية referenceImageUrls المستخدمة أصلاً للشخصيات)، وبتتضاف كصورة جديدة في
+// نفس الدفعة (job.images) — مفيش موديل بيانات جديد، ومفيش رسم منفصل، فقط نفس التوليد العادي
+// بسعره الحقيقي. الفيديو مش بيدعم تعديل حاليًا (مفيش موديل video-to-video متوصل)، بس بيتفتح
+// بمعاينة كبيرة برضو
+function MediaDetailModal({ lang, kind, job, imgIndex, onChangeIndex, editingImage, onClose, onUpdateJob, onRemoveImage, onRemove, onReport, onEditSubmit }) {
+  const tt = lang === 'ar'
+    ? { done: 'تم', download: 'تحميل', deleteLabel: 'حذف', share: 'مشاركة', editPlaceholder: 'ما هي التغييرات المطلوبة؟', editHint: 'تعديل الصورة بالذكاء الاصطناعي' }
+    : { done: 'Done', download: 'Download', deleteLabel: 'Delete', share: 'Share', editPlaceholder: 'What changes do you want?', editHint: 'AI edit this image' };
+  const isImage = kind === 'imageBatch';
+  const images = isImage ? (job.images || []) : null;
+  const activeIdx = isImage ? Math.min(imgIndex || 0, images.length - 1) : 0;
+  const currentUrl = isImage ? images[activeIdx] : job.videoUrl;
+  const meta = isImage ? (job.imageMeta?.[activeIdx] || {}) : job;
+  const [editText, setEditText] = useState('');
+
+  const setMeta = (patch) => {
+    if (isImage) {
+      const imageMeta = [...(job.imageMeta || [])];
+      imageMeta[activeIdx] = { ...imageMeta[activeIdx], ...patch };
+      onUpdateJob?.({ imageMeta });
+    } else {
+      onUpdateJob?.(patch);
+    }
+  };
+
+  const submitEdit = () => {
+    if (!editText.trim() || editingImage) return;
+    onEditSubmit?.(editText.trim(), currentUrl);
+    setEditText('');
+  };
+
+  const iconBtn = { width: 34, height: 34, borderRadius: 9, background: 'rgba(255,255,255,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,5,8,0.96)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 20px', flexShrink: 0 }}>
+        <button onClick={onClose} style={{ padding: '9px 20px', borderRadius: 20, background: '#fff', color: '#000', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{tt.done}</button>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => downloadRemoteFile(currentUrl, `erivion-${kind}-${activeIdx + 1}.${isImage ? 'jpg' : 'mp4'}`)} title={tt.download} style={iconBtn}><Download size={16} strokeWidth={2} /></button>
+        <button onClick={() => { if (isImage) onRemoveImage?.(activeIdx); else onRemove?.(); onClose(); }} title={tt.deleteLabel} style={iconBtn}><Trash2 size={16} strokeWidth={2} /></button>
+        <button onClick={() => navigator.clipboard?.writeText(currentUrl)} title={tt.share} style={iconBtn}><Share2 size={16} strokeWidth={2} /></button>
+        <button onClick={() => setMeta({ favorited: !meta.favorited })} title="Favorite" style={iconBtn}><Heart size={16} strokeWidth={2} fill={meta.favorited ? 'currentColor' : 'none'} color={meta.favorited ? '#f472b6' : '#fff'} /></button>
+      </div>
+
+      {isImage && images.length > 1 && (
+        <div style={{ display: 'flex', gap: 8, padding: '0 20px 14px', overflowX: 'auto', flexShrink: 0 }}>
+          {images.map((url, i) => (
+            <img key={i} src={url} alt="" onClick={() => onChangeIndex?.(i)}
+              style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', flexShrink: 0, border: i === activeIdx ? '2px solid var(--accent2)' : '2px solid transparent', opacity: i === activeIdx ? 1 : 0.55 }} />
+          ))}
+        </div>
+      )}
+
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px', minHeight: 0 }}>
+        {isImage ? (
+          <img src={currentUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 12 }} />
+        ) : (
+          <video src={currentUrl} controls autoPlay style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 12 }} />
+        )}
+      </div>
+
+      <div style={{ padding: '16px 20px 22px', flexShrink: 0 }}>
+        {job.prompt && <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.45)', marginBottom: 12, maxWidth: 640, marginInline: 'auto', textAlign: 'center' }}>{job.prompt}</div>}
+        {isImage && (
+          <div style={{ display: 'flex', gap: 8, maxWidth: 640, marginInline: 'auto', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 7 }}>
+            <input value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitEdit()}
+              placeholder={tt.editPlaceholder} disabled={editingImage} title={tt.editHint}
+              style={{ flex: 1, background: 'none', border: 'none', color: '#fff', fontSize: 14, padding: '8px 10px', outline: 'none' }} />
+            <button onClick={submitEdit} disabled={!editText.trim() || editingImage}
+              style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--accent)', border: 'none', color: '#fff', cursor: editText.trim() && !editingImage ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: editText.trim() && !editingImage ? 1 : 0.5 }}>
+              {editingImage ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : <Send size={16} strokeWidth={2} />}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AgentPage({ onNavigate, onSwitchToModels, activeProject }) {
   const region = localStorage.getItem('erivion_region') || 'eg';
   const lang = region === 'eg' ? 'ar' : 'en';
@@ -463,6 +549,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const [imageModelOptions, setImageModelOptions] = useState([]);
   const [videoModelOptions, setVideoModelOptions] = useState([]);
   const [forcedModel, setForcedModel] = useState(null); // { type: 'image'|'video', key, label } | null
+  // ✅ NEW: عرض تفاصيل/تعديل صورة أو فيديو بملء الشاشة — { jobUid, kind, imgIndex } | null
+  const [detailView, setDetailView] = useState(null);
+  const [editingImageJob, setEditingImageJob] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [voiceFile, setVoiceFile] = useState(null);
@@ -875,6 +964,43 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   };
   const reportMedia = (mediaUrl, prompt) => {
     fetch('/api/agent/report-content', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ mediaUrl, prompt, reason: 'user_reported' }) }).catch(() => {});
+  };
+
+  // ✅ NEW (media detail view — image editing): بتولّد صورة جديدة باستخدام الصورة الحالية
+  // كمرجع بصري + التعديل المطلوب كبرومبت، وبتضيفها في نفس دفعة الصور (job.images) — نفس
+  // مسار /api/images/generate العادي بسعره وخصمه الحقيقي، مفيش موديل بيانات جديد
+  const submitImageEdit = async (editPrompt, referenceUrl) => {
+    if (!detailView || detailView.kind !== 'imageBatch' || editingImageJob) return;
+    const msg = messages.find(m => m.job?.uid === detailView.jobUid);
+    if (!msg) return;
+    setEditingImageJob(true);
+    try {
+      const res = await fetch('/api/images/generate', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({
+          model: 'nano_banana_pro', prompt: editPrompt, aspectRatio: msg.job.aspectRatio || '9:16',
+          count: 1, tier: '2K', referenceImageUrls: [referenceUrl],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || data.error || 'Failed'); return; }
+      let newIdx = 0;
+      setMessages(m => {
+        const copy = [...m];
+        const idx = copy.findIndex(x => x.job?.uid === detailView.jobUid);
+        if (idx !== -1) {
+          const images = [...(copy[idx].job.images || []), ...data.images];
+          newIdx = images.length - 1;
+          copy[idx] = { ...copy[idx], job: { ...copy[idx].job, images } };
+        }
+        return copy;
+      });
+      setDetailView(v => (v ? { ...v, imgIndex: newIdx } : v));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setEditingImageJob(false);
+    }
   };
 
   // ✅ NEW (Phase 3 — new image-generation models): توليد صور مستقل، مش فيديو — مفيش
@@ -1837,12 +1963,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     onReusePrompt={reusePromptIntoComposer}
                     onAnimate={animateImageFromMenu}
                     onReport={reportMedia}
+                    onOpenDetail={(idx) => setDetailView({ jobUid: m.job.uid, kind: 'imageBatch', imgIndex: idx })}
                   />}
                   {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang}
                     onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
                     onRemove={() => removeMessageByJobUid(m.job.uid)}
                     onReusePrompt={reusePromptIntoComposer}
                     onReport={reportMedia}
+                    onOpenDetail={() => setDetailView({ jobUid: m.job.uid, kind: 'videoModel' })}
                   />}
                 </div>
               ))}
@@ -1888,6 +2016,23 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'تم إرسال طلب الاشتراك! هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.' : 'Subscription request sent! It will be reviewed and credits added within 24 hours.' }]);
           }} />
       )}
+      {detailView && (() => {
+        const msg = messages.find(x => x.job?.uid === detailView.jobUid);
+        if (!msg) return null;
+        return (
+          <MediaDetailModal
+            lang={lang} kind={detailView.kind} job={msg.job} imgIndex={detailView.imgIndex}
+            onChangeIndex={(i) => setDetailView(v => (v ? { ...v, imgIndex: i } : v))}
+            editingImage={editingImageJob}
+            onClose={() => setDetailView(null)}
+            onUpdateJob={(patch) => updateJobByUid(detailView.jobUid, patch)}
+            onRemoveImage={(idx) => removeImageFromBatch(detailView.jobUid, idx)}
+            onRemove={() => removeMessageByJobUid(detailView.jobUid)}
+            onReport={reportMedia}
+            onEditSubmit={submitImageEdit}
+          />
+        );
+      })()}
     </div>
   );
 }
