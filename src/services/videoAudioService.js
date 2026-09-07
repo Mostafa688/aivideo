@@ -9,14 +9,16 @@
 //      حقيقي بتوقيتات دقيقة (مش تخمين Replicate)، وبعدين نبعت الفيديو + الـSRT لموديل
 //      fictions-ai/autocaption على Replicate اللي بيحرق الكابشن على الفيديو فعليًا.
 //   3. موسيقى خلفية: "ستايل يوتيوب" بياخد ملف عشوائي من assets/music/ (مكتبة يوتيوب أصلية
-//      حطها العميل بنفسه)؛ الستايل العادي بيجيب مقطوعة حقيقية من Jamendo API (مجاني).
+//      حطها العميل بنفسه)؛ الستايل العادي بيجيب مقطوعة CC0 حقيقية من Freesound API (مجاني،
+//      استخدام تجاري كامل بدون أي attribution — استبدلنا Jamendo بيه لأن الـfree tier بتاعه
+//      كان "non-commercial use" بس، خطر ترخيصي حقيقي لمنتج تجاري زي ده).
 //
 // ⚠ حقول الـinput الدقيقة لـgemini-3.1-flash-tts وfictions-ai/autocaption تحت أفضل تخمين
 // مبني على بحث عام (Replicate نفسه محجوب من الـsandbox ده) — يحتاج تأكيد حي قبل الاعتماد
 // عليه بالكامل في الإنتاج، زي باقي الموديلات الجديدة في الملفات التانية.
-// ⚠ ترخيص Jamendo: الـfree tier بتاعهم رسميًا لـ"non-commercial use" فقط — ده منتج تجاري
-// (SaaS مدفوع)، فده خطر ترخيصي حقيقي لازم صاحب المشروع يعرفه ويقرر (يتواصل مع Jamendo
-// لترخيص تجاري، أو يستبدلها بمصدر تاني مؤكد للاستخدام التجاري) قبل الاعتماد عليها بكتافة.
+// ⚠ Freesound مكتبة مؤثرات صوتية/تسجيلات مجتمعية بالأساس، مش مكتبة أغاني مُلحّنة زي Jamendo —
+// فلترنا بالمدة والكلمة المفتاحية "music" عشان نقلل مؤثرات قصيرة، بس جودة/تنوع "موسيقى خلفية"
+// حقيقية فيها أقل من مكتبة موسيقى مُلحّنة بالكامل. يستاهل مراجعة حية بعد الإطلاق.
 
 import fetch from 'node-fetch';
 import fs from 'fs';
@@ -26,7 +28,7 @@ import { execSync } from 'child_process';
 
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const JAMENDO_CLIENT_ID = process.env.JAMENDO_CLIENT_ID;
+const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY;
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const LOCAL_MUSIC_DIR = path.join(process.cwd(), 'assets', 'music');
 
@@ -184,12 +186,21 @@ export async function burnCaptions(videoUrl, segments) {
   return captionedUrl;
 }
 
-// ── 4. موسيقى خلفية (ملفات يوتيوب المحلية أو Jamendo API) ────────────────────
+// ── 4. موسيقى خلفية (ملفات يوتيوب المحلية أو Freesound API) ──────────────────
+// ❌ استبدلنا Jamendo (طلب العميل: "شوف حاجة تانية غير ده") — الـfree tier بتاعهم موثق رسميًا
+// إنه "non-commercial use" بس، وده منتج تجاري مدفوع، فكان خطر ترخيصي حقيقي.
+// ✅ Freesound بديل حقيقي: API مجاني فعليًا (مفتاح فوري من freesound.org/apiv2/apply)، وأهم
+// حاجة بيسمح تفلتر بالترخيص — فلترنا هنا على "Creative Commons 0" (CC0) بالظبط، يعني المقطوعة
+// ملهاش أي حقوق محفوظة خالص، استخدام تجاري كامل بدون أي attribution مطلوب — صفر خطر ترخيصي.
+// ⚠ الفرق الوحيد: Freesound مكتبة مؤثرات صوتية/تسجيلات مجتمعية بالأساس، مش مكتبة أغاني مُلحّنة
+// زي Jamendo، فجودة/كثافة "موسيقى خلفية" حقيقية فيها أقل — بنفلتر على مدة أطول (30-400 ثانية)
+// وكلمة "music" في التاج عشان نستبعد المؤثرات القصيرة قدر الإمكان، بس النتيجة مش مضمونة نفس
+// جودة موسيقى Jamendo المُلحّنة بالكامل
 /**
  * "ستايل يوتيوب" (musicStyle === 'youtube'): بيختار ملف عشوائي من assets/music/
  * (مكتبة يوتيوب حقيقية العميل حاططها بنفسه) — من غير أي API خارجي.
- * غير كده: بيجيب مقطوعة حقيقية مجانية من Jamendo عن طريق الـAPI بتاعهم (يحتاج
- * JAMENDO_CLIENT_ID في env — سجل مجاني على developer.jamendo.com).
+ * غير كده: بيجيب مقطوعة CC0 حقيقية من Freesound (يحتاج FREESOUND_API_KEY في env —
+ * مفتاح فوري ومجاني من freesound.org/apiv2/apply).
  */
 export async function getBackgroundMusicBuffer(musicStyle = 'general', mood = null) {
   if (musicStyle === 'youtube') {
@@ -199,19 +210,21 @@ export async function getBackgroundMusicBuffer(musicStyle = 'general', mood = nu
     const pick = files[Math.floor(Math.random() * files.length)];
     return fs.readFileSync(path.join(LOCAL_MUSIC_DIR, pick));
   }
-  if (!JAMENDO_CLIENT_ID) throw new Error('JAMENDO_CLIENT_ID not set');
+  if (!FREESOUND_API_KEY) throw new Error('FREESOUND_API_KEY not set');
+  const query = mood ? `${mood} music` : 'background music';
   const params = new URLSearchParams({
-    client_id: JAMENDO_CLIENT_ID, format: 'json', limit: '20', audioformat: 'mp32',
-    order: 'popularity_total', ...(mood ? { tags: mood } : {}),
+    query, token: FREESOUND_API_KEY, page_size: '20', sort: 'rating_desc',
+    fields: 'id,name,previews,duration,license',
+    filter: 'license:"Creative Commons 0" duration:[25 TO 400]',
   });
-  const res = await fetch(`https://api.jamendo.com/v3.0/tracks/?${params}`);
-  if (!res.ok) throw new Error(`Jamendo API error ${res.status}`);
+  const res = await fetch(`https://freesound.org/apiv2/search/text/?${params}`);
+  if (!res.ok) throw new Error(`Freesound API error ${res.status}`);
   const data = await res.json();
-  const tracks = (data.results || []).filter(t => t.audio);
-  if (!tracks.length) throw new Error('Jamendo returned no tracks');
+  const tracks = (data.results || []).filter(t => t.previews?.['preview-hq-mp3']);
+  if (!tracks.length) throw new Error('Freesound returned no CC0 tracks for this mood');
   const pick = tracks[Math.floor(Math.random() * tracks.length)];
-  const audioRes = await fetch(pick.audio);
-  if (!audioRes.ok) throw new Error(`failed to download Jamendo track: ${audioRes.status}`);
+  const audioRes = await fetch(pick.previews['preview-hq-mp3']);
+  if (!audioRes.ok) throw new Error(`failed to download Freesound track: ${audioRes.status}`);
   return Buffer.from(await audioRes.arrayBuffer());
 }
 
