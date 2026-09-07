@@ -108,6 +108,28 @@ function extractKnownUrls(history) {
   return set;
 }
 
+// ✅ FIX (باج حقيقي: العميل شاف رسالة غريبة في الشات بتبدأ بـ"###GENERATE_VIDEO###" متبوعة
+// بـJSON خام): بيحصل لما رد الموديل يحتوي على أكتر من ماركر تقني واحد في نفس الرد (مثلاً
+// ###GENERATE_IMAGE###{...} ملي ###GENERATE_VIDEO###{...} في نفس الرسالة، رغم إن البرومبت
+// بيمنع ده صراحة — الموديل مش دايمًا بيلتزم). الكود فوق بيعالج الماركر الأول بس، وأي ماركر
+// تاني كان بيفضل موجود حرفيًا (JSON خام وكله) جوه "reply" النهائي اللي بيوصل للعميل زي ما هو.
+// الدالة دي بتشيل أي بقايا ماركر+JSON تاني (بنفس منطق عدّ الأقواس/الاقتباسات اللي بيفصل
+// JSON عن نص عادي) قبل ما الرد يوصل للعميل خالص — حماية إضافية بصرف النظر عن التزام الموديل
+const ALL_MARKER_NAMES = ['###READY###', '###EDIT_SCENE###', '###VIDEO_EDIT###', '###GENERATE_IMAGE###', '###GENERATE_VIDEO###', '###MERGE_VIDEOS###'];
+function stripStrayMarkers(text) {
+  let out = text;
+  for (const marker of ALL_MARKER_NAMES) {
+    let idx;
+    while ((idx = out.indexOf(marker)) !== -1) {
+      const before = out.slice(0, idx);
+      const after = out.slice(idx + marker.length).trimStart();
+      const { restText } = extractJsonAndRest(after);
+      out = `${before.trim()} ${restText.trim()}`.trim();
+    }
+  }
+  return out;
+}
+
 function repairTruncatedJson(text) {
   let inString = false, escape = false;
   const stack = [];
@@ -438,6 +460,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
         }
       }
     }
+    // ✅ حماية إضافية: أي ماركر تاني ظل موجود جوه reply (الموديل حط أكتر من ماركر في نفس
+    // الرد) بيتشال هنا قبل ما نكمل — راجع تعليق stripStrayMarkers فوق
+    reply = stripStrayMarkers(reply);
 
     // ✅ لو المستخدم رفع صوت في نفس الرسالة اللي وصلنا فيها READY، نرفق رابط الصوت الحقيقي
     // عشان الفرونت إند يستخدمه كـ narration فعلي بدل ما يولّد صوت صناعي جديد
