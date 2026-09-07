@@ -2957,7 +2957,7 @@ app.get('/api/videos/credit-cost', authMiddleware, (req, res) => {
 // القديمة 1-8 كان فيها built-in). طبقة post-processing كاملة فوق أي فيديو بالنظام الجديد:
 // narrationScript (Gemini TTS + مدة الفيديو بتتحدد حسب مدة السرد نفسه، مش العكس) →
 // addCaptions (Whisper حقيقي + fictions-ai/autocaption لحرق الكابشن) → musicStyle
-// ('youtube' = ملف حقيقي من assets/music/، غير كده = Jamendo API). كل خطوة اختيارية،
+// ('youtube' = ملف حقيقي من assets/music/، غير كده = Freesound API، مقاطع CC0 فقط). كل خطوة اختيارية،
 // وبتتحسب في التكلفة بس لو اتطلبت فعليًا.
 const CAPTION_CREDIT_FLAT = getFlatCreditCost('autocaption');
 const MUSIC_CREDIT_FLAT = 10; // معالجة سيرفر حقيقية (ffmpeg mix) + مصدر موسيقى — مش سعر Replicate
