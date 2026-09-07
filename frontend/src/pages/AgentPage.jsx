@@ -795,15 +795,26 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // كان مفيش قدامه أي دليل إن صورة اتعملت، فكان بيبدأ فيديو جديد من الصفر بدل ما يحرك الصورة الحقيقية.
   // الدالة دي بتبني وصف نصي حقيقي بديل لأي رسالة ميديا (يشمل روابط الصور لو اتولدت) عشان الـ
   // history يبقى فيه ذاكرة حقيقية لكل حاجة اتولدت في المحادثة دي
+  // ✅ FIX (باج حقيقي: العميل رجع لنفس المشروع بعد ما فيديو فشل وحاول يطلب من الايجنت يعمله
+  // تاني — الايجنت كان بيرفض/بيتجاهل الطلب وكأن فيه توليد شغال بالفعل): كل أنواع الجوب هنا
+  // كانت بترجع "قيد التوليد/قيد الإنشاء" لأي status غير 'done' — يعني حتى لو الجوب فشل
+  // فعليًا (status:'failed') أو اتقفل قبل ما يخلص، الايجنت كان شايف نفس النص الموحي إن
+  // التوليد "لسه شغال" في كل رسالة جايه بعد كده، فيرفض يبدأ توليد جديد لنفس الطلب حتى لو
+  // العميل قاله "ابدأ"/"جرب تاني" صراحة. دلوقتي كل نوع بيميّز 'failed' عن 'generating' بوضوح
+  const failedNote = (label) => `[${label} — ${lang === 'ar' ? 'مفيش أي نتيجة اتعملت، لو العميل طلب يعيد المحاولة ابدأ توليد جديد فورًا (ماركر جديد)، متقولش إن فيه توليد شغال بالفعل.' : 'nothing was produced — if the customer asks to retry, start a fresh generation immediately (a new marker), never say one is already in progress.'}]`;
   const historyContentFor = (m) => {
     if (m.content) return m.content;
     if (m.type === 'render') {
       // ✅ FIX (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد" — الايجنت مش عارف
       // يعمل ده لفيديوهات الموديلات القديمة 1-8 لأن رابطها مكنش موجود في الـ history خالص،
       // بعكس videoModel اللي بالفعل بيبعت رابطه): بنبعت الرابط الحقيقي هنا كمان
-      return m.job?.status === 'done'
-        ? `[${lang === 'ar' ? 'تم إنشاء فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''} — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}]`
-        : `[${lang === 'ar' ? 'فيديو قيد الإنشاء' : 'A video is currently being generated'}]`;
+      if (m.job?.status === 'done') {
+        return `[${lang === 'ar' ? 'تم إنشاء فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''} — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}]`;
+      }
+      if (['failed', 'stopped'].includes(m.job?.status)) {
+        return failedNote(lang === 'ar' ? 'فيديو سابق فشل في التوليد ولم يكتمل' : 'A previous video generation FAILED and did not complete');
+      }
+      return `[${lang === 'ar' ? 'فيديو قيد الإنشاء' : 'A video is currently being generated'}]`;
     }
     if (m.type === 'whiteboard') {
       return `[${lang === 'ar' ? 'تم إنشاء فيديو whiteboard' : 'A whiteboard video was generated'}]`;
@@ -824,12 +835,19 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           ? `[تم توليد ${m.job.images?.length || 0} صورة بنجاح بموديل ${m.job.model || ''} — روابط الصور: ${urls}]`
           : `[Successfully generated ${m.job.images?.length || 0} image(s) with model ${m.job.model || ''} — image URLs: ${urls}]`;
       }
+      if (m.job?.status === 'failed') {
+        return failedNote(lang === 'ar' ? 'دفعة صور سابقة فشلت في التوليد ولم تكتمل' : 'A previous image batch FAILED and did not complete');
+      }
       return `[${lang === 'ar' ? 'صور قيد التوليد' : 'Image(s) are currently being generated'}]`;
     }
     if (m.type === 'videoModel') {
-      return m.job?.status === 'done'
-        ? `[${lang === 'ar' ? 'تم توليد فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''} — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}]`
-        : `[${lang === 'ar' ? 'فيديو قيد التوليد' : 'A video is currently being generated'}]`;
+      if (m.job?.status === 'done') {
+        return `[${lang === 'ar' ? 'تم توليد فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''} — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}]`;
+      }
+      if (m.job?.status === 'failed') {
+        return failedNote(lang === 'ar' ? 'فيديو سابق فشل في التوليد ولم يكتمل' : 'A previous video generation FAILED and did not complete');
+      }
+      return `[${lang === 'ar' ? 'فيديو قيد التوليد' : 'A video is currently being generated'}]`;
     }
     if (m.type === 'video') return `[${lang === 'ar' ? 'فيديو مثال' : 'Example video'}]`;
     return '';
