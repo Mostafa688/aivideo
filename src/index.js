@@ -2903,29 +2903,43 @@ app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res)
   if (!imgCharge.success) {
     return res.status(403).json({ error: 'quota_exceeded', message: `This generation needs ${imgCreditCost} credits, you have ${imgCharge.remaining}.`, cost: imgCreditCost, remaining: imgCharge.remaining });
   }
-  try {
-    const images = await generateNewModelImages({
-      modelKey: model,
-      prompt,
-      prompts: usingPrompts ? distinctPrompts : null,
-      referenceImageUrls: Array.isArray(referenceImageUrls) ? referenceImageUrls.slice(0, 14) : [],
-      aspectRatio: aspectRatio || '9:16',
-      count: n,
-      tier: tier || null,
-    });
-    // ✅ NEW: نفس حماية "الاتصال اتقطع بس التوليد نجح فعلاً" المستخدمة في /api/videos/generate
-    if (req.aborted || res.writableEnded || res.destroyed) {
-      console.error(`[NewImageModels] ⚠️ Client disconnected before response could be sent — user ${req.user.userId}, model ${model}, cost ${imgCreditCost}cr, image URLs (NOT lost, saved on R2): ${images.join(', ')}`);
-      return;
+  // ✅ FIX (باج حقيقي متكرر: "الاتصال انقطع أثناء التوليد" — بروكسي/gateway بيقطع الاتصال
+  // لو طال، بصرف النظر عن أي timeout إحنا حاطينه في الكود نفسه): بدل ما نستنى التوليد كامل
+  // على نفس الاتصال (ممكن ياخد دقايق مع batch كبير)، بنرد فورًا بـjobId والفرونت إند بيستعلم
+  // (poll) على الحالة — نفس النمط المستخدم فعليًا في /api/render القديم (setRenderJob/
+  // getRenderJob)، ده بيمنع أي بروكسي من قطع الاتصال لأن مفيش اتصال طويل أصلاً
+  const jobId = `newimg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  setRenderJob(jobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now() });
+  res.status(202).json({ jobId, status: 'processing', creditCost: imgCreditCost, remaining: imgCharge.remaining });
+
+  (async () => {
+    try {
+      const images = await generateNewModelImages({
+        modelKey: model,
+        prompt,
+        prompts: usingPrompts ? distinctPrompts : null,
+        referenceImageUrls: Array.isArray(referenceImageUrls) ? referenceImageUrls.slice(0, 14) : [],
+        aspectRatio: aspectRatio || '9:16',
+        count: n,
+        tier: tier || null,
+      });
+      setRenderJob(jobId, { status: 'done', images, creditCost: imgCreditCost, completedAt: Date.now() });
+    } catch (genErr) {
+      console.error('[NewImageModels] generation failed:', genErr.message);
+      await addCreditsBalance(req.user.userId, imgCreditCost);
+      setRenderJob(jobId, { status: 'failed', error: 'Image generation failed, your credits were refunded.', completedAt: Date.now() });
+    } finally {
+      scheduleRenderJobCleanup(jobId);
     }
-    res.json({ images, creditCost: imgCreditCost, remaining: imgCharge.remaining });
-  } catch (genErr) {
-    console.error('[NewImageModels] generation failed:', genErr.message);
-    await addCreditsBalance(req.user.userId, imgCreditCost);
-    if (!req.aborted && !res.writableEnded) {
-      res.status(500).json({ error: 'generation_failed', message: 'Image generation failed, your credits were refunded.' });
-    }
-  }
+  })();
+});
+
+app.get('/api/images/generate-status/:jobId', authMiddleware, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const job = getRenderJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job_not_found' });
+  if (job.userId && job.userId !== req.user.userId) return res.status(404).json({ error: 'job_not_found' });
+  res.json(job);
 });
 
 // ── New Video Models Routes ────────────────────────────────────────────────
@@ -3016,49 +3030,60 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
     if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${vidCreditCost} credits, you have ${vidCharge.remaining}.`, cost: vidCreditCost, remaining: vidCharge.remaining });
   }
-  try {
-    let videoUrl = await generateNewModelVideo({
-      modelKey: model,
-      prompt,
-      imageUrl: imageUrl || null,
-      sourceVideoUrl: sourceVideoUrl || null,
-      aspectRatio: aspectRatio || '16:9',
-      durationSec: sec,
-      tier: tier || null,
-    });
+  // ✅ FIX (باج حقيقي متكرر — العميل واجهه أكتر من مرة، آخرها مع seedance 1.5 pro البطيء):
+  // "الاتصال انقطع أثناء التوليد" — بروكسي/gateway (Railway/Cloudflare) بيقطع أي اتصال HTTP
+  // طال كتير، بصرف النظر عن أي timeout إحنا حاطينه في كودنا إحنا. الحل الحقيقي (مش مجرد
+  // زيادة رقم timeout محلي، ده مش هيأثر على قطع من طبقة تانية بره تحكمنا): نفس نمط /api/render
+  // القديم بالظبط — نرد فورًا بـjobId (202)، والفرونت إند يستعلم (poll) على الحالة، فمفيش
+  // اتصال طويل يتقطع من الأساس مهما طال التوليد الفعلي
+  const jobId = `newvid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  setRenderJob(jobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now() });
+  res.status(202).json({ jobId, status: 'processing', creditCost: vidCreditCost, remaining: vidCharge.remaining });
 
-    let captionWords = null;
-    if (narration) {
-      videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: model });
-      if (addCaptions) captionWords = await transcribeWithTimestamps(narration.audioPath);
-      fs.rmSync(narration.workDir, { recursive: true, force: true });
-    }
-    if (captionWords) {
-      const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(narrationLanguage);
-      videoUrl = await burnCaptions(videoUrl, captionWords, { rightToLeft: isRtl });
-    }
-    if (musicStyle) {
-      const musicBuffer = await getBackgroundMusicBuffer(musicStyle, musicMood || null);
-      videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: model });
-    }
+  (async () => {
+    try {
+      let videoUrl = await generateNewModelVideo({
+        modelKey: model,
+        prompt,
+        imageUrl: imageUrl || null,
+        sourceVideoUrl: sourceVideoUrl || null,
+        aspectRatio: aspectRatio || '16:9',
+        durationSec: sec,
+        tier: tier || null,
+      });
 
-    // ✅ NEW (باج حقيقي: توليد طال دقايق، البروكسي/الاتصال قطع قبل ما الرد يوصل للعميل رغم
-    // إن التوليد نجح فعلاً وترفع على R2 — العميل اتخصم منه كريديت ومكسبش أي حاجة، والرابط
-    // كان بيضيع من غير أي أثر). لو الاتصال اتقطع، نسجل الرابط بوضوح عشان يتلقى يدويًا بدل
-    // ما يضيع خالص
-    if (req.aborted || res.writableEnded || res.destroyed) {
-      console.error(`[NewVideoModels] ⚠️ Client disconnected before response could be sent — user ${req.user.userId}, model ${model}, cost ${vidCreditCost}cr, video URL (NOT lost, saved on R2): ${videoUrl}`);
-      return;
+      let captionWords = null;
+      if (narration) {
+        videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: model });
+        if (addCaptions) captionWords = await transcribeWithTimestamps(narration.audioPath);
+        fs.rmSync(narration.workDir, { recursive: true, force: true });
+      }
+      if (captionWords) {
+        const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(narrationLanguage);
+        videoUrl = await burnCaptions(videoUrl, captionWords, { rightToLeft: isRtl });
+      }
+      if (musicStyle) {
+        const musicBuffer = await getBackgroundMusicBuffer(musicStyle, musicMood || null);
+        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: model });
+      }
+      setRenderJob(jobId, { status: 'done', videoUrl, creditCost: vidCreditCost, completedAt: Date.now() });
+    } catch (genErr) {
+      console.error('[NewVideoModels] generation failed:', genErr.message);
+      if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
+      await addCreditsBalance(req.user.userId, vidCreditCost);
+      setRenderJob(jobId, { status: 'failed', error: 'Video generation failed, your credits were refunded.', completedAt: Date.now() });
+    } finally {
+      scheduleRenderJobCleanup(jobId);
     }
-    res.json({ videoUrl, creditCost: vidCreditCost, remaining: vidCharge.remaining });
-  } catch (genErr) {
-    console.error('[NewVideoModels] generation failed:', genErr.message);
-    if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
-    await addCreditsBalance(req.user.userId, vidCreditCost);
-    if (!req.aborted && !res.writableEnded) {
-      res.status(500).json({ error: 'generation_failed', message: 'Video generation failed, your credits were refunded.' });
-    }
-  }
+  })();
+});
+
+app.get('/api/videos/generate-status/:jobId', authMiddleware, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const job = getRenderJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job_not_found' });
+  if (job.userId && job.userId !== req.user.userId) return res.status(404).json({ error: 'job_not_found' });
+  res.json(job);
 });
 
 // ✅ NEW (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد بـ ffmpeg"): دمج أي مجموعة
