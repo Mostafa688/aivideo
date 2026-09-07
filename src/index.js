@@ -3027,14 +3027,15 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       tier: tier || null,
     });
 
-    let captionSegments = null;
+    let captionWords = null;
     if (narration) {
       videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: model });
-      if (addCaptions) captionSegments = await transcribeWithTimestamps(narration.audioPath);
+      if (addCaptions) captionWords = await transcribeWithTimestamps(narration.audioPath);
       fs.rmSync(narration.workDir, { recursive: true, force: true });
     }
-    if (captionSegments) {
-      videoUrl = await burnCaptions(videoUrl, captionSegments);
+    if (captionWords) {
+      const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(narrationLanguage);
+      videoUrl = await burnCaptions(videoUrl, captionWords, { rightToLeft: isRtl });
     }
     if (musicStyle) {
       const musicBuffer = await getBackgroundMusicBuffer(musicStyle, musicMood || null);

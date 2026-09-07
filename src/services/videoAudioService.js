@@ -16,8 +16,12 @@
 // ✅ حقول gemini-3.1-flash-tts مؤكدة 100% دلوقتي (العميل بعت سكرين شوت لصفحة الـInput schema
 // الحقيقية على Replicate: text/voice/prompt/language_code) — مش تخمين تاني. أسماء الأصوات
 // التفصيلية لسه غير موثقة بالكامل (Kore مؤكدة كافتراضي، الباقي أفضل تخمين).
-// ⚠ fictions-ai/autocaption لسه تحت أفضل تخمين مبني على بحث عام (Replicate نفسه محجوب من
-// الـsandbox ده) — يحتاج تأكيد حي قبل الاعتماد عليه بالكامل.
+// ✅ حقول fictions-ai/autocaption الأساسية مؤكدة 100% دلوقتي كمان (سكرين شوت تاني من العميل
+// لصفحة الـInput schema الحقيقية: font/color/kerning/opacity/MaxChars/fontsize/translate/
+// output_video/stroke_color/stroke_width/right_to_left/subs_position/highlight_color/
+// video_file_input/output_transcript/transcript_file_input). الحاجة الوحيدة المتبقية أفضل
+// تخمين: شكل محتوى transcript_file_input بالظبط (uri لملف JSON بصيغة [{word,start,end}] —
+// مبني على كود المصدر المفتوح للموديل على GitHub، مش قراءة مباشرة من الـwrapper الحقيقي).
 // ⚠ Freesound مكتبة مؤثرات صوتية/تسجيلات مجتمعية بالأساس، مش مكتبة أغاني مُلحّنة زي Jamendo —
 // فلترنا بالمدة والكلمة المفتاحية "music" عشان نقلل مؤثرات قصيرة، بس جودة/تنوع "موسيقى خلفية"
 // حقيقية فيها أقل من مكتبة موسيقى مُلحّنة بالكامل. يستاهل مراجعة حية بعد الإطلاق.
@@ -138,11 +142,13 @@ export async function synthesizeNarration(script, { voiceKey = 'male_wise', lang
   return { audioPath, durationSec, workDir };
 }
 
-// ── 2. تفريغ صوت السرد بتوقيتات (Whisper عبر Groq — سريع وموجود بالفعل) ──────
+// ── 2. تفريغ صوت السرد بتوقيتات لكل كلمة (Whisper عبر Groq — سريع وموجود بالفعل) ──
 /**
- * يفرّغ ملف صوت لمقاطع نصية بتوقيتات حقيقية (start/end) عن طريق Groq Whisper —
- * أسرع وأرخص بكتير من موديل Whisper منفصل على Replicate، ومتاح في المتغيرات
- * البيئية بتاعتنا بالفعل. بيرجع مصفوفة segments جاهزة لبناء SRT.
+ * يفرّغ ملف صوت لكلمات بتوقيتات حقيقية (start/end لكل كلمة، مش كل جملة) عن طريق
+ * Groq Whisper — أسرع وأرخص بكتير من موديل Whisper منفصل على Replicate. بيرجع
+ * مصفوفة {word,start,end} — نفس الشكل اللي fictions-ai/autocaption بيستخدمه
+ * داخليًا (شفناه في الكود المصدري المفتوح بتاعه على GitHub: wordlevel_info =
+ * [{word, start, end}, ...]) — ده أفضل أساس متاح لبناء transcript_file_input.
  */
 export async function transcribeWithTimestamps(audioPath) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
@@ -151,50 +157,51 @@ export async function transcribeWithTimestamps(audioPath) {
   form.append('file', fs.createReadStream(audioPath), { filename: 'narration.mp3', contentType: 'audio/mpeg' });
   form.append('model', 'whisper-large-v3');
   form.append('response_format', 'verbose_json');
-  form.append('timestamp_granularities[]', 'segment');
+  form.append('timestamp_granularities[]', 'word');
 
   const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST', headers: { Authorization: 'Bearer ' + GROQ_API_KEY, ...form.getHeaders() }, body: form,
   });
   if (!res.ok) throw new Error(`Whisper transcription error ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
-  const segments = (data.segments || []).map(s => ({ start: s.start, end: s.end, text: (s.text || '').trim() })).filter(s => s.text);
-  if (!segments.length) throw new Error('Whisper returned no segments');
-  return segments;
-}
-
-function srtTimestamp(sec) {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.floor(sec % 60);
-  const ms = Math.round((sec - Math.floor(sec)) * 1000);
-  const pad = (n, len = 2) => String(n).padStart(len, '0');
-  return `${pad(h)}:${pad(m)}:${pad(s)},${pad(ms, 3)}`;
-}
-
-function buildSrt(segments) {
-  return segments.map((s, i) => `${i + 1}\n${srtTimestamp(s.start)} --> ${srtTimestamp(s.end)}\n${s.text}\n`).join('\n');
+  const words = (data.words || []).map(w => ({ word: (w.word || '').trim().toUpperCase(), start: w.start, end: w.end })).filter(w => w.word);
+  if (!words.length) throw new Error('Whisper returned no word-level timestamps');
+  return words;
 }
 
 // ── 3. حرق الكابشن على الفيديو (fictions-ai/autocaption عبر Replicate) ───────
 /**
- * يحرق كابشن حقيقي (كاريوكي، كلمة بكلمة) على فيديو، باستخدام الـSRT اللي احنا
- * بنينه من Whisper (نص مؤكد 100% مش تخمين الموديل) — بيرجع رابط الفيديو المكبتن.
- * ⚠ حقل "transcript_file_input" ياخد ملف SRT — الشكل بالظبط (SRT نص خام كـinput
- * ولا لازم يترفع كـfile URL) محتاج تأكيد حي، بعتناه كنص خام كأفضل تخمين
+ * يحرق كابشن حقيقي (كاريوكي، كلمة بكلمة) على فيديو، باستخدام تفريغ الكلمات اللي
+ * احنا عملناه من Whisper (نص مؤكد 100% مش تخمين الموديل) — بيرجع رابط الفيديو
+ * المكبتن. باقي الحقول (font/color/stroke/إلخ) مؤكدة 100% من صفحة الـInput
+ * schema الحقيقية على Replicate (سكرين شوت من العميل نفسه).
+ * ⚠ "transcript_file_input" نوعه uri (ملف مرفوع، مش نص خام) — بنرفع الكلمات
+ * كملف JSON على R2. الشكل بالظبط ([{word,start,end}]) مبني على كود المصدر
+ * المفتوح للموديل (مش قراءة مباشرة من الـwrapper الحقيقي على Replicate)، يحتاج
+ * تأكيد حي.
  */
-export async function burnCaptions(videoUrl, segments) {
+export async function burnCaptions(videoUrl, words, { rightToLeft = false } = {}) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
-  const srt = buildSrt(segments);
+  const transcriptJson = JSON.stringify(words);
+  const transcriptKey = `generated-videos/transcript_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.json`;
+  const transcriptUrl = await uploadBufferToR2(Buffer.from(transcriptJson, 'utf8'), transcriptKey, 'application/json');
   const input = {
     video_file_input: videoUrl,
-    transcript_file_input: srt,
+    transcript_file_input: transcriptUrl,
     output_video: true,
-    font: 'Poppins/Poppins-Bold.ttf',
-    font_size: 7,
+    output_transcript: false,
+    // ⚠ "Only Arial fonts are supported" لـright_to_left حسب الـschema — لازم نستخدم Arial
+    // (مش Poppins) لما اللغة عربي، وإلا الحروف العربية هتتكسر بصريًا
+    font: rightToLeft ? 'Arial/Arial.ttf' : 'Poppins/Poppins-ExtraBold.ttf',
+    fontsize: 7,
+    MaxChars: 20,
+    kerning: -5,
     color: 'white',
+    highlight_color: 'yellow',
     stroke_color: 'black',
     stroke_width: 2.6,
+    subs_position: 'bottom75',
+    right_to_left: rightToLeft,
   };
   const output = await runReplicatePrediction('fictions-ai/autocaption', input, 'Caption burning');
   const captionedUrl = Array.isArray(output) ? output[0] : (output?.output_video || output);
