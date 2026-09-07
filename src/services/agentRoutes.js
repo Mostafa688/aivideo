@@ -149,6 +149,101 @@ function repairTruncatedJson(text) {
   return repaired;
 }
 
+// ✅ NEW: منطق فصل الأمر التقني (###READY###/###EDIT_SCENE###/###GENERATE_IMAGE###/...) عن
+// رسالة الشات نفسها — اتنقل هنا كدالة مستقلة (كان جوه الراوت مباشرة) عشان نقدر نعيد استخدامه
+// في محاولة تانية (retry) لو رد الموديل الأول وعد بالتوليد من غير ما يبعت أي ماركر فعلي
+// (باج حقيقي متكرر يسبب شكاوى عملاء: "تمام هبدأ دلوقتي" وبعدين مفيش أي حاجة بتتعمل خالص)
+function parseAgentMarkers(rawReply) {
+  let reply = rawReply;
+  let ready = null;
+  let editScene = null;
+  let videoEdit = null;
+  let generateImage = null;
+  let generateVideo = null;
+  let mergeVideosPayload = null;
+  const isEditMarker = rawReply.includes('###EDIT_SCENE###');
+  const isVideoEditMarker = !isEditMarker && rawReply.includes('###VIDEO_EDIT###');
+  const isImageGenMarker = !isEditMarker && !isVideoEditMarker && rawReply.includes('###GENERATE_IMAGE###');
+  const isVideoGenMarker = !isEditMarker && !isVideoEditMarker && !isImageGenMarker && rawReply.includes('###GENERATE_VIDEO###');
+  const isMergeVideosMarker = !isEditMarker && !isVideoEditMarker && !isImageGenMarker && !isVideoGenMarker && rawReply.includes('###MERGE_VIDEOS###');
+  const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : isImageGenMarker ? '###GENERATE_IMAGE###' : isVideoGenMarker ? '###GENERATE_VIDEO###' : isMergeVideosMarker ? '###MERGE_VIDEOS###' : '###READY###';
+  const markerIdx = rawReply.indexOf(markerName);
+  if (markerIdx !== -1) {
+    const afterMarker = rawReply.slice(markerIdx + markerName.length).trimStart();
+    // ✅ نلاقي نهاية الـ JSON الحقيقية بعدّ الأقواس (مش بس أول سطر جديد) عشان لو الرد
+    // البشري بعد الـ JSON مالوش سطر فاصل واضح، برضو نقدر نفصلهم صح
+    const { jsonText, restText } = extractJsonAndRest(afterMarker);
+    reply = restText.trim();
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (isEditMarker) {
+        if (Number.isInteger(parsed.sceneIndex) && typeof parsed.description === 'string') editScene = parsed;
+      } else if (isVideoEditMarker) {
+        if (typeof parsed.editPrompt === 'string' && parsed.editPrompt.trim()) videoEdit = parsed;
+      } else if (isImageGenMarker) {
+        const hasDistinctPrompts = Array.isArray(parsed.prompts) && parsed.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
+        if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && ((typeof parsed.prompt === 'string' && parsed.prompt.trim()) || hasDistinctPrompts)) generateImage = parsed;
+      } else if (isVideoGenMarker) {
+        if (typeof parsed.model === 'string' && NEW_VIDEO_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) {
+          const maxSec = getMaxClipSeconds(parsed.model);
+          if (maxSec && (!Number.isFinite(parsed.durationSec) || parsed.durationSec > maxSec)) parsed.durationSec = maxSec;
+          generateVideo = parsed;
+        }
+      } else if (isMergeVideosMarker) {
+        if (Array.isArray(parsed.videoUrls) && parsed.videoUrls.length >= 2 && parsed.videoUrls.every(u => typeof u === 'string' && u.trim())) {
+          mergeVideosPayload = { videoUrls: parsed.videoUrls.slice(0, 10) };
+        }
+      } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
+        ready = parsed;
+      }
+    } catch (e) {
+      // ✅ FIX: كان بيسيب الطلب كله يفشل من غير فيديو ولا رسالة خطأ واضحة لو الموديل
+      // قطع الـ JSON في النص (خصوصًا مع reasoning models زي gpt-oss اللي بتاخد جزء من
+      // التوكنز في تفكير مش ظاهر). دلوقتي بنحاول نصلّح الـ JSON المقطوع قبل ما نستسلم.
+      console.warn(`[Agent] Could not parse ${markerName} marker, attempting repair:`, e.message);
+      try {
+        const repaired = JSON.parse(repairTruncatedJson(jsonText));
+        if (isEditMarker) {
+          if (Number.isInteger(repaired.sceneIndex) && typeof repaired.description === 'string') {
+            editScene = repaired;
+            console.warn('[Agent] ✅ Repaired truncated EDIT_SCENE JSON successfully');
+          }
+        } else if (isVideoEditMarker) {
+          if (typeof repaired.editPrompt === 'string' && repaired.editPrompt.trim()) {
+            videoEdit = repaired;
+            console.warn('[Agent] ✅ Repaired truncated VIDEO_EDIT JSON successfully');
+          }
+        } else if (isImageGenMarker) {
+          const hasDistinctPrompts = Array.isArray(repaired.prompts) && repaired.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
+          if (typeof repaired.model === 'string' && NEW_IMAGE_MODELS[repaired.model] && ((typeof repaired.prompt === 'string' && repaired.prompt.trim()) || hasDistinctPrompts)) {
+            generateImage = repaired;
+            console.warn('[Agent] ✅ Repaired truncated GENERATE_IMAGE JSON successfully');
+          }
+        } else if (isVideoGenMarker) {
+          if (typeof repaired.model === 'string' && NEW_VIDEO_MODELS[repaired.model] && typeof repaired.prompt === 'string' && repaired.prompt.trim()) {
+            const maxSec = getMaxClipSeconds(repaired.model);
+            if (maxSec && (!Number.isFinite(repaired.durationSec) || repaired.durationSec > maxSec)) repaired.durationSec = maxSec;
+            generateVideo = repaired;
+            console.warn('[Agent] ✅ Repaired truncated GENERATE_VIDEO JSON successfully');
+          }
+        } else if (isMergeVideosMarker) {
+          if (Array.isArray(repaired.videoUrls) && repaired.videoUrls.length >= 2 && repaired.videoUrls.every(u => typeof u === 'string' && u.trim())) {
+            mergeVideosPayload = { videoUrls: repaired.videoUrls.slice(0, 10) };
+            console.warn('[Agent] ✅ Repaired truncated MERGE_VIDEOS JSON successfully');
+          }
+        } else if ([1, 2, 3, 4, 5, 7, 8].includes(repaired.model)) {
+          ready = repaired;
+          console.warn('[Agent] ✅ Repaired truncated JSON successfully');
+        }
+      } catch (e2) {
+        console.warn('[Agent] Repair also failed, no video will start this turn:', e2.message);
+        if (!reply) reply = 'تمام، بس حصلت مشكلة بسيطة وأنا بجهز التفاصيل — ممكن تقول "ابدأ" تاني؟';
+      }
+    }
+  }
+  return { reply, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideosPayload };
+}
+
 // بسيط جدًا — حماية إضافية ضد إساءة الاستخدام (spam) بدون تعقيد
 const lastRequestAt = new Map(); // userId -> timestamp
 const MIN_INTERVAL_MS = 1500;
@@ -373,91 +468,34 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ── فصل الأمر التقني (###READY### أو ###EDIT_SCENE### أو ###VIDEO_EDIT###) عن رسالة
     // الشات — الـ JSON بقى بييجي الأول في الرد (مش الآخر) عشان لو حصل قطع من حد التوكنز
     // يقطع في الكلام مش في الـ JSON ──
-    let reply = rawReply;
-    let ready = null;
-    let editScene = null;
-    let videoEdit = null;
-    let generateImage = null;
-    let generateVideo = null;
-    let mergeVideosPayload = null;
-    const isEditMarker = rawReply.includes('###EDIT_SCENE###');
-    const isVideoEditMarker = !isEditMarker && rawReply.includes('###VIDEO_EDIT###');
-    const isImageGenMarker = !isEditMarker && !isVideoEditMarker && rawReply.includes('###GENERATE_IMAGE###');
-    const isVideoGenMarker = !isEditMarker && !isVideoEditMarker && !isImageGenMarker && rawReply.includes('###GENERATE_VIDEO###');
-    const isMergeVideosMarker = !isEditMarker && !isVideoEditMarker && !isImageGenMarker && !isVideoGenMarker && rawReply.includes('###MERGE_VIDEOS###');
-    const markerName = isEditMarker ? '###EDIT_SCENE###' : isVideoEditMarker ? '###VIDEO_EDIT###' : isImageGenMarker ? '###GENERATE_IMAGE###' : isVideoGenMarker ? '###GENERATE_VIDEO###' : isMergeVideosMarker ? '###MERGE_VIDEOS###' : '###READY###';
-    const markerIdx = rawReply.indexOf(markerName);
-    if (markerIdx !== -1) {
-      const afterMarker = rawReply.slice(markerIdx + markerName.length).trimStart();
-      // ✅ نلاقي نهاية الـ JSON الحقيقية بعدّ الأقواس (مش بس أول سطر جديد) عشان لو الرد
-      // البشري بعد الـ JSON مالوش سطر فاصل واضح، برضو نقدر نفصلهم صح
-      const { jsonText, restText } = extractJsonAndRest(afterMarker);
-      reply = restText.trim();
+    let { reply, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideosPayload } = parseAgentMarkers(rawReply);
+
+    // ✅ FIX (باج حقيقي متكرر جدًا يسبب شكاوى عملاء حقيقية — "الطلب مش بيتبعت خالص"): أحيانًا
+    // رد الموديل بيوعد صراحة إنه هيبدأ التوليد ("تمام، هبدأ أولّد الفيديو دلوقتي") من غير ما
+    // يحط أي ماركر تقني فعلي خالص — فمفيش أي حاجة بتتعمل، والعميل بيكرر "ابدأ"/"جرب تاني" وياخد
+    // نفس الرد التأكيدي الفاضي كل مرة. لو حصل بالظبط كده (مفيش ولا ماركر واحد نجح + الرد نفسه
+    // بيوعد بالتنفيذ)، بنجرب مرة واحدة تانية فورًا بنفس الطلب + تنبيه صريح إنه لازم يحط الماركر
+    // دلوقتي فعليًا أو يسأل سؤال توضيحي واحد بدل ما يكرر وعد فاضي
+    const tookNoAction = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload;
+    const soundsLikeAnActionPromise = /هبدأ[^.\n]{0,40}(دلوقتي|الآن|حالا|حالاً)|\bi'?ll start\b[^.\n]{0,40}\bnow\b|\bstarting (right )?now\b/i.test(reply);
+    if (tookNoAction && soundsLikeAnActionPromise && reply.length < 300) {
+      console.warn('[Agent] Reply promised to start generating but included no technical marker — retrying once with an explicit nudge');
       try {
-        const parsed = JSON.parse(jsonText);
-        if (isEditMarker) {
-          if (Number.isInteger(parsed.sceneIndex) && typeof parsed.description === 'string') editScene = parsed;
-        } else if (isVideoEditMarker) {
-          if (typeof parsed.editPrompt === 'string' && parsed.editPrompt.trim()) videoEdit = parsed;
-        } else if (isImageGenMarker) {
-          const hasDistinctPrompts = Array.isArray(parsed.prompts) && parsed.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
-          if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && ((typeof parsed.prompt === 'string' && parsed.prompt.trim()) || hasDistinctPrompts)) generateImage = parsed;
-        } else if (isVideoGenMarker) {
-          if (typeof parsed.model === 'string' && NEW_VIDEO_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) {
-            const maxSec = getMaxClipSeconds(parsed.model);
-            if (maxSec && (!Number.isFinite(parsed.durationSec) || parsed.durationSec > maxSec)) parsed.durationSec = maxSec;
-            generateVideo = parsed;
-          }
-        } else if (isMergeVideosMarker) {
-          if (Array.isArray(parsed.videoUrls) && parsed.videoUrls.length >= 2 && parsed.videoUrls.every(u => typeof u === 'string' && u.trim())) {
-            mergeVideosPayload = { videoUrls: parsed.videoUrls.slice(0, 10) };
-          }
-        } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
-          ready = parsed;
+        const nudgedHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: reply }];
+        const nudgeMessage = '(system reminder: your previous reply said you were about to start generating, but did not include the required technical marker, so nothing actually happened and the customer is still waiting with no result. In THIS reply you must either include the real marker now with everything needed to execute it, based on what has already been discussed, or ask exactly one specific clarifying question if something is genuinely still missing — never repeat a vague "starting now" acknowledgement again.)';
+        const retryRawReply = await agentChat({
+          message: nudgeMessage, history: nudgedHistory, attachmentNote, userPlan, isAdminUser,
+          hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
+          hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
+          hasVideo: !!videoAlreadyUploaded,
+          videoDurationSec: videoDurationSec || null,
+          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits,
+        });
+        if (retryRawReply && retryRawReply.trim()) {
+          ({ reply, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideosPayload } = parseAgentMarkers(retryRawReply));
         }
       } catch (e) {
-        // ✅ FIX: كان بيسيب الطلب كله يفشل من غير فيديو ولا رسالة خطأ واضحة لو الموديل
-        // قطع الـ JSON في النص (خصوصًا مع reasoning models زي gpt-oss اللي بتاخد جزء من
-        // التوكنز في تفكير مش ظاهر). دلوقتي بنحاول نصلّح الـ JSON المقطوع قبل ما نستسلم.
-        console.warn(`[Agent] Could not parse ${markerName} marker, attempting repair:`, e.message);
-        try {
-          const repaired = JSON.parse(repairTruncatedJson(jsonText));
-          if (isEditMarker) {
-            if (Number.isInteger(repaired.sceneIndex) && typeof repaired.description === 'string') {
-              editScene = repaired;
-              console.warn('[Agent] ✅ Repaired truncated EDIT_SCENE JSON successfully');
-            }
-          } else if (isVideoEditMarker) {
-            if (typeof repaired.editPrompt === 'string' && repaired.editPrompt.trim()) {
-              videoEdit = repaired;
-              console.warn('[Agent] ✅ Repaired truncated VIDEO_EDIT JSON successfully');
-            }
-          } else if (isImageGenMarker) {
-            const hasDistinctPrompts = Array.isArray(repaired.prompts) && repaired.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
-            if (typeof repaired.model === 'string' && NEW_IMAGE_MODELS[repaired.model] && ((typeof repaired.prompt === 'string' && repaired.prompt.trim()) || hasDistinctPrompts)) {
-              generateImage = repaired;
-              console.warn('[Agent] ✅ Repaired truncated GENERATE_IMAGE JSON successfully');
-            }
-          } else if (isVideoGenMarker) {
-            if (typeof repaired.model === 'string' && NEW_VIDEO_MODELS[repaired.model] && typeof repaired.prompt === 'string' && repaired.prompt.trim()) {
-              const maxSec = getMaxClipSeconds(repaired.model);
-              if (maxSec && (!Number.isFinite(repaired.durationSec) || repaired.durationSec > maxSec)) repaired.durationSec = maxSec;
-              generateVideo = repaired;
-              console.warn('[Agent] ✅ Repaired truncated GENERATE_VIDEO JSON successfully');
-            }
-          } else if (isMergeVideosMarker) {
-            if (Array.isArray(repaired.videoUrls) && repaired.videoUrls.length >= 2 && repaired.videoUrls.every(u => typeof u === 'string' && u.trim())) {
-              mergeVideosPayload = { videoUrls: repaired.videoUrls.slice(0, 10) };
-              console.warn('[Agent] ✅ Repaired truncated MERGE_VIDEOS JSON successfully');
-            }
-          } else if ([1, 2, 3, 4, 5, 7, 8].includes(repaired.model)) {
-            ready = repaired;
-            console.warn('[Agent] ✅ Repaired truncated JSON successfully');
-          }
-        } catch (e2) {
-          console.warn('[Agent] Repair also failed, no video will start this turn:', e2.message);
-          if (!reply) reply = 'تمام، بس حصلت مشكلة بسيطة وأنا بجهز التفاصيل — ممكن تقول "ابدأ" تاني؟';
-        }
+        console.warn('[Agent] Retry-with-nudge failed:', e.message);
       }
     }
     // ✅ حماية إضافية: أي ماركر تاني ظل موجود جوه reply (الموديل حط أكتر من ماركر في نفس
