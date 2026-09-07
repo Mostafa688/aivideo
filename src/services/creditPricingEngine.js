@@ -95,7 +95,14 @@ export const REPLICATE_MODEL_COSTS = {
                        tiers: { '360p': 0.05, '720p': 0.15, '1080p': 0.23, '4k': 0.45 } },
 
   // ── Audio ─────────────────────────────────────────────────────────────────
-  gemini_flash_tts: { label: 'Gemini Flash TTS',   unit: 'second', usdCost: 0.00025 },
+  // ✅ NEW: الموديل الحقيقي المستخدم فعليًا (videoAudioService.js) هو google/gemini-3.1-flash-tts —
+  // بيتسعّر بالتوكنز (نص/صوت) مش بالثانية مباشرة، بس بحساب معدل كلام طبيعي (~15 حرف/ثانية)
+  // وسعر Google المعلن ($20/مليون توكن output audio ≈ $0.012/1000 حرف)، ده يعادل تقريبًا نفس
+  // الرقم القديم هنا ($0.00025/ثانية) — خليناه زي ما هو مع هامش أمان بسيط
+  gemini_flash_tts: { label: 'Gemini Flash TTS',   unit: 'second', usdCost: 0.0003 },
+  // ✅ NEW: fictions-ai/autocaption على Replicate — حرق كابشن حقيقي على فيديو، سعر ثابت لكل
+  // فيديو (مش لكل ثانية) بغض النظر عن مدته — ~$0.12/تشغيلة (مصدر: aggregator، غير مؤكد مباشرة)
+  autocaption:      { label: 'Caption Burning',    unit: 'video', usdCost: 0.12 },
 };
 
 /**
@@ -142,6 +149,13 @@ export function getPerSecondCreditCost(modelKey, durationSec, tier = null) {
 /** Real max seconds per single clip for a video model (Replicate/provider limit), or null if not capped. */
 export function getMaxClipSeconds(modelKey) {
   return REPLICATE_MODEL_COSTS[modelKey]?.maxClipSec ?? null;
+}
+
+/** Flat per-run credit cost for a "unit: 'video'" model (e.g. caption burning) — doesn't scale with duration/count. */
+export function getFlatCreditCost(modelKey) {
+  const model = REPLICATE_MODEL_COSTS[modelKey];
+  if (!model || model.unit !== 'video') throw new Error(`Unknown flat-cost model: ${modelKey}`);
+  return usdToCredits(model.usdCost);
 }
 
 /** List of real quality tiers (e.g. ["480p","720p"]) a video model supports, or null if it only has one flat rate. */

@@ -26,9 +26,10 @@ import whiteboardVideoRouter from './services/whiteboardVideoRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
-import { generateNewModelVideo, NEW_VIDEO_MODELS } from './services/newVideoModelsService.js';
+import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration } from './services/newVideoModelsService.js';
 import { mergeVideos } from './services/videoMergeService.js';
-import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
+import { synthesizeNarration, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer, composeVideoAudio } from './services/videoAudioService.js';
+import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getFlatCreditCost, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
 // عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
 const MODEL3_STANDARD_SCENE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
@@ -2952,10 +2953,20 @@ app.get('/api/videos/credit-cost', authMiddleware, (req, res) => {
   }
 });
 
+// ✅ NEW: طلب العميل — النظام الجديد مكانش فيه فويس أوفر/كابشن/موسيقى خالص (الموديلات
+// القديمة 1-8 كان فيها built-in). طبقة post-processing كاملة فوق أي فيديو بالنظام الجديد:
+// narrationScript (Gemini TTS + مدة الفيديو بتتحدد حسب مدة السرد نفسه، مش العكس) →
+// addCaptions (Whisper حقيقي + fictions-ai/autocaption لحرق الكابشن) → musicStyle
+// ('youtube' = ملف حقيقي من assets/music/، غير كده = Jamendo API). كل خطوة اختيارية،
+// وبتتحسب في التكلفة بس لو اتطلبت فعليًا.
+const CAPTION_CREDIT_FLAT = getFlatCreditCost('autocaption');
+const MUSIC_CREDIT_FLAT = 10; // معالجة سيرفر حقيقية (ffmpeg mix) + مصدر موسيقى — مش سعر Replicate
+
 app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res) => {
-  const { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier } = req.body;
+  const { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood } = req.body;
   if (!model || !NEW_VIDEO_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
   if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  if (addCaptions && !narrationScript?.trim()) return res.status(400).json({ error: 'addCaptions requires narrationScript (captions are burned from the real narration audio)' });
   const vidUser = await getUserById(req.user.userId);
   if ((vidUser?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock this video model.', show_upgrade: true });
@@ -2964,23 +2975,49 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
   if (modCheck.unsafe) {
     return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
   }
-  const sec = Math.min(Math.max(1, parseInt(durationSec, 10) || 5), getMaxClipSeconds(model) || 30);
+  if (narrationScript?.trim()) {
+    const scriptCheck = await checkContentSafety(narrationScript);
+    if (scriptCheck.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: scriptCheck.category });
+    }
+  }
+
+  // ✅ لو فيه سرد، لازم نولّده الأول عشان نعرف مدته الحقيقية ونولّد الفيديو بمدة كافية تسعه —
+  // العكس (فيديو بمدة تقديرية ثم سرد يتقطع) كان المشكلة الأصلية اللي العميل لقاها
+  let narration = null;
+  if (narrationScript?.trim()) {
+    try {
+      narration = await synthesizeNarration(narrationScript, { voiceKey: voiceKey || 'male_wise', languageCode: narrationLanguage || null });
+    } catch (e) {
+      return res.status(500).json({ error: 'narration_failed', message: `Narration generation failed: ${e.message}` });
+    }
+  }
+  const sec = narration
+    ? getSuggestedDuration(model, narration.durationSec)
+    : Math.min(Math.max(1, parseInt(durationSec, 10) || 5), getMaxClipSeconds(model) || 30);
+
   let vidCreditCost;
   try {
     vidCreditCost = getPerSecondCreditCost(model, sec, tier || null);
+    if (narration) vidCreditCost += getPerSecondCreditCost('gemini_flash_tts', Math.ceil(narration.durationSec));
+    if (addCaptions) vidCreditCost += CAPTION_CREDIT_FLAT;
+    if (musicStyle) vidCreditCost += MUSIC_CREDIT_FLAT;
   } catch (e) {
+    if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
     return res.status(400).json({ error: e.message });
   }
   const vidBalance = await getCreditsBalance(req.user.userId);
   if (vidBalance < vidCreditCost) {
+    if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${vidCreditCost} credits, you have ${vidBalance}.`, cost: vidCreditCost, remaining: vidBalance });
   }
   const vidCharge = await chargeCredits(req.user.userId, vidCreditCost);
   if (!vidCharge.success) {
+    if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
     return res.status(403).json({ error: 'quota_exceeded', message: `This video needs ${vidCreditCost} credits, you have ${vidCharge.remaining}.`, cost: vidCreditCost, remaining: vidCharge.remaining });
   }
   try {
-    const videoUrl = await generateNewModelVideo({
+    let videoUrl = await generateNewModelVideo({
       modelKey: model,
       prompt,
       imageUrl: imageUrl || null,
@@ -2989,6 +3026,21 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       durationSec: sec,
       tier: tier || null,
     });
+
+    let captionSegments = null;
+    if (narration) {
+      videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: model });
+      if (addCaptions) captionSegments = await transcribeWithTimestamps(narration.audioPath);
+      fs.rmSync(narration.workDir, { recursive: true, force: true });
+    }
+    if (captionSegments) {
+      videoUrl = await burnCaptions(videoUrl, captionSegments);
+    }
+    if (musicStyle) {
+      const musicBuffer = await getBackgroundMusicBuffer(musicStyle, musicMood || null);
+      videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: model });
+    }
+
     // ✅ NEW (باج حقيقي: توليد طال دقايق، البروكسي/الاتصال قطع قبل ما الرد يوصل للعميل رغم
     // إن التوليد نجح فعلاً وترفع على R2 — العميل اتخصم منه كريديت ومكسبش أي حاجة، والرابط
     // كان بيضيع من غير أي أثر). لو الاتصال اتقطع، نسجل الرابط بوضوح عشان يتلقى يدويًا بدل
@@ -3000,6 +3052,7 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
     res.json({ videoUrl, creditCost: vidCreditCost, remaining: vidCharge.remaining });
   } catch (genErr) {
     console.error('[NewVideoModels] generation failed:', genErr.message);
+    if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
     await addCreditsBalance(req.user.userId, vidCreditCost);
     if (!req.aborted && !res.writableEnded) {
       res.status(500).json({ error: 'generation_failed', message: 'Video generation failed, your credits were refunded.' });

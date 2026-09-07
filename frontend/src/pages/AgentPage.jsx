@@ -1134,6 +1134,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           model: gen.model, prompt: gen.prompt, imageUrl: gen.imageUrl || undefined,
           sourceVideoUrl: gen.sourceVideoUrl || undefined,
           aspectRatio: gen.aspectRatio || '16:9', durationSec: gen.durationSec || 5, tier: gen.tier || undefined,
+          narrationScript: gen.narrationScript || undefined, voiceKey: gen.voiceKey || undefined,
+          narrationLanguage: gen.narrationLanguage || undefined, addCaptions: gen.addCaptions || undefined,
+          musicStyle: gen.musicStyle || undefined, musicMood: gen.musicMood || undefined,
         }),
       });
       const data = await safeJson(res, lang);
