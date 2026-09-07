@@ -111,6 +111,8 @@ export const NEW_VIDEO_MODELS = {
   seedance_1_5: {
     slug: 'bytedance/seedance-1.5-pro',
     supportsImageInput: true,
+    minDurationSec: 1,
+    maxDurationSec: 12,
     buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
       prompt,
       resolution: tier || '720p',
@@ -123,6 +125,8 @@ export const NEW_VIDEO_MODELS = {
   seedance_2_0: {
     slug: 'bytedance/seedance-2.0',
     supportsImageInput: true,
+    minDurationSec: 4,
+    maxDurationSec: 15,
     buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
       prompt,
       resolution: tier || '720p',
@@ -135,6 +139,8 @@ export const NEW_VIDEO_MODELS = {
   seedance_2_5: {
     slug: 'bytedance/seedance-2.5',
     supportsImageInput: true,
+    minDurationSec: 4,
+    maxDurationSec: 30,
     buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
       prompt,
       resolution: tier || '720p',
@@ -248,4 +254,24 @@ export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null,
 
   const videoUrl = Array.isArray(output) ? output[0] : output;
   return persistVideoToR2(videoUrl, modelKey);
+}
+
+/**
+ * Rounds a needed duration (e.g. real narration audio length) up to the
+ * smallest real duration this engine actually supports — so a generated
+ * video is never shorter than the narration that will be muxed onto it.
+ * Discrete-duration engines (allowedDurations) pick the smallest fitting
+ * step; continuous ones (minDurationSec/maxDurationSec) just clamp.
+ */
+export function getSuggestedDuration(modelKey, neededSec) {
+  const model = NEW_VIDEO_MODELS[modelKey];
+  const rounded = Math.max(1, Math.ceil(neededSec || 1));
+  if (!model) return rounded;
+  if (model.allowedDurations) {
+    const fit = model.allowedDurations.find(d => d >= rounded);
+    return fit ?? model.allowedDurations[model.allowedDurations.length - 1];
+  }
+  const min = model.minDurationSec ?? 1;
+  const max = model.maxDurationSec ?? 30;
+  return Math.min(Math.max(rounded, min), max);
 }
