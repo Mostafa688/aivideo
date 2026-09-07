@@ -474,12 +474,18 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // رد الموديل بيوعد صراحة إنه هيبدأ التوليد ("تمام، هبدأ أولّد الفيديو دلوقتي") من غير ما
     // يحط أي ماركر تقني فعلي خالص — فمفيش أي حاجة بتتعمل، والعميل بيكرر "ابدأ"/"جرب تاني" وياخد
     // نفس الرد التأكيدي الفاضي كل مرة. لو حصل بالظبط كده (مفيش ولا ماركر واحد نجح + الرد نفسه
-    // بيوعد بالتنفيذ)، بنجرب مرة واحدة تانية فورًا بنفس الطلب + تنبيه صريح إنه لازم يحط الماركر
-    // دلوقتي فعليًا أو يسأل سؤال توضيحي واحد بدل ما يكرر وعد فاضي
-    const tookNoAction = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload;
-    const soundsLikeAnActionPromise = /هبدأ[^.\n]{0,40}(دلوقتي|الآن|حالا|حالاً)|\bi'?ll start\b[^.\n]{0,40}\bnow\b|\bstarting (right )?now\b/i.test(reply);
-    if (tookNoAction && soundsLikeAnActionPromise && reply.length < 300) {
-      console.warn('[Agent] Reply promised to start generating but included no technical marker — retrying once with an explicit nudge');
+    // بيوعد بالتنفيذ)، بنجرب لحد مرتين تانيين فورًا بنفس الطلب + تنبيه صريح إنه لازم يحط الماركر
+    // دلوقتي فعليًا أو يسأل سؤال توضيحي واحد بدل ما يكرر وعد فاضي — باج حقيقي شفناه بيصمد حتى
+    // بعد محاولة واحدة (الموديل بيكرر نفس الوعد الفاضي أكتر من مرة على التوالي أحيانًا)
+    const soundsLikeAnActionPromise = (text) => /هبدأ[^.\n]{0,40}(دلوقتي|الآن|حالا|حالاً)|\bi'?ll start\b[^.\n]{0,40}\bnow\b|\bstarting (right )?now\b/i.test(text);
+    const MAX_NUDGE_RETRIES = 2;
+    let nudgeAttempts = 0;
+    while (
+      !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload &&
+      soundsLikeAnActionPromise(reply) && reply.length < 300 && nudgeAttempts < MAX_NUDGE_RETRIES
+    ) {
+      nudgeAttempts++;
+      console.warn(`[Agent] Reply promised to start generating but included no technical marker — retry ${nudgeAttempts}/${MAX_NUDGE_RETRIES} with an explicit nudge`);
       try {
         const nudgedHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: reply }];
         const nudgeMessage = '(system reminder: your previous reply said you were about to start generating, but did not include the required technical marker, so nothing actually happened and the customer is still waiting with no result. In THIS reply you must either include the real marker now with everything needed to execute it, based on what has already been discussed, or ask exactly one specific clarifying question if something is genuinely still missing — never repeat a vague "starting now" acknowledgement again.)';
@@ -493,10 +499,20 @@ router.post('/chat', authMiddleware, async (req, res) => {
         });
         if (retryRawReply && retryRawReply.trim()) {
           ({ reply, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideosPayload } = parseAgentMarkers(retryRawReply));
+        } else {
+          break; // رد فاضي — منستحملش نلف تاني على نفس الفراغ
         }
       } catch (e) {
         console.warn('[Agent] Retry-with-nudge failed:', e.message);
+        break;
       }
+    }
+    // ✅ FIX: لو بعد كل المحاولات لسه مفيش أي ماركر ناجح والرد لسه بيوعد بالتنفيذ — منسيبش
+    // العميل يفتكر إن التوليد بدأ فعلاً وهو ما بدأش. رسالة صريحة بدل الوعد الكاذب، عشان
+    // العميل يعرف يعيد صياغة الطلب بدل ما يستنى نتيجة مش هتيجي
+    if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && soundsLikeAnActionPromise(reply)) {
+      console.warn('[Agent] Still no marker after all retries — replacing dead promise with an honest message');
+      reply = 'معلش، مش قادر أبدأ التوليد أوتوماتيك دلوقتي — ممكن تكرر طلبك بوضوح أكتر (مثلاً تحدد بالظبط عايز تعمل ايه)؟';
     }
     // ✅ حماية إضافية: أي ماركر تاني ظل موجود جوه reply (الموديل حط أكتر من ماركر في نفس
     // الرد) بيتشال هنا قبل ما نكمل — راجع تعليق stripStrayMarkers فوق
