@@ -37,21 +37,37 @@ async function uploadBufferToR2(buffer, key, contentType) {
 
 // بتنزل كل صورة من الرابط المؤقت بتاع Replicate وترفعها على R2، وترجع الرابط الدائم بدلها.
 // لو الرفع فشل لأي سبب (مفيش مفاتيح R2 مثلاً)، بترجع الرابط الأصلي بدل ما تفشّل التوليد كله
+// ✅ FIX (باج حقيقي في الإنتاج): بعض الموديلات (نانو بنانا تحديدًا) بترجع رابط مؤقت من بروكسي
+// طرف تالت (Aliyun OSS) — لو فشل تنزيله (حتى مرة واحدة، شبكة متقطعة مثلاً)، الكود القديم كان
+// "بيرجع" الرابط المؤقت ده وكأنه رابط دائم عادي، فبيتخزن في الـhistory ويتستخدم تاني كـreference
+// لاحقًا — وبعد ما وقته يخلص (أو صلاحيته الحقيقية أضيق مما اتوقعنا)، أي محاولة استخدامه بعد
+// كده بتفشل بـ403 (زي ما حصل فعليًا مع عميل حقيقي). دلوقتي: نعيد المحاولة كذا مرة (تقلبات
+// شبكة عابرة)، ولو فشلت الكل نرمي error حقيقي بدل ما نرجع رابط مؤقت مضمون يتعطل لاحقًا —
+// أحسن نفشل التوليد ونرد الكريديت بدل ما نديله صورة "ناجحة" هتنكسر بعدين
+async function downloadWithRetry(url, maxRetries = 3) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 async function persistImagesToR2(urls, modelKey) {
   if (!S3_ENDPOINT_URL || !S3_ACCESS_KEY || !S3_SECRET_KEY) return urls;
   return Promise.all(urls.map(async (url) => {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return url;
-      const contentType = res.headers.get('content-type') || 'image/jpeg';
-      const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
-      const buffer = Buffer.from(await res.arrayBuffer());
-      const key = `generated-images/${modelKey}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      return await uploadBufferToR2(buffer, key, contentType);
-    } catch (e) {
-      console.warn('[NewImageModels] R2 persist failed, falling back to source URL:', e.message);
-      return url;
-    }
+    const res = await downloadWithRetry(url);
+    const contentType = res.headers.get('content-type') || 'image/jpeg';
+    const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const key = `generated-images/${modelKey}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    return await uploadBufferToR2(buffer, key, contentType);
   }));
 }
 

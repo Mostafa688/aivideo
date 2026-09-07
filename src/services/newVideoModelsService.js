@@ -38,19 +38,32 @@ async function uploadBufferToR2(buffer, key, contentType) {
   return `${R2_PUBLIC_URL}/${key}`;
 }
 
+// ✅ FIX (نفس باج حقيقي حصل في newImageModelsService.js): كان بيرجع الرابط المؤقت وكأنه
+// دائم لو فشل التنزيل مرة واحدة — رابط مؤقت من بروكسي طرف تالت ممكن يتخزن كـ"دائم" في
+// الـhistory، وبعدين أي استخدام تاني ليه (كـreference lمثلاً) بيفشل بـ403. دلوقتي نعيد
+// المحاولة، ولو فشلت الكل نرمي error حقيقي بدل رابط مؤقت مضمون يتعطل لاحقًا
+async function downloadWithRetry(url, maxRetries = 3) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 async function persistVideoToR2(url, modelKey) {
   if (!S3_ENDPOINT_URL || !S3_ACCESS_KEY || !S3_SECRET_KEY) return url;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return url;
-    const contentType = res.headers.get('content-type') || 'video/mp4';
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const key = `generated-videos/${modelKey}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return await uploadBufferToR2(buffer, key, contentType);
-  } catch (e) {
-    console.warn('[NewVideoModels] R2 persist failed, falling back to source URL:', e.message);
-    return url;
-  }
+  const res = await downloadWithRetry(url);
+  const contentType = res.headers.get('content-type') || 'video/mp4';
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const key = `generated-videos/${modelKey}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`;
+  return await uploadBufferToR2(buffer, key, contentType);
 }
 
 // كل مفتاح هنا بيطابق نفس المفتاح في creditPricingEngine.js's REPLICATE_MODEL_COSTS —
