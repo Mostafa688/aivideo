@@ -45,6 +45,25 @@ async function safeJson(res, lang) {
   return res.json();
 }
 
+// \u2705 NEW (fix "\u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0627\u0646\u0642\u0637\u0639 \u0623\u062B\u0646\u0627\u0621 \u0627\u0644\u062A\u0648\u0644\u064A\u062F" \u0645\u0639 seedance 1.5 pro/\u062A\u0648\u0644\u064A\u062F\u0627\u062A \u0637\u0648\u064A\u0644\u0629): \u0627\u0644\u0628\u0627\u0643 \u0625\u0646\u062F \u0628\u0642\u0649
+// \u0628\u064A\u0631\u062F \u0641\u0648\u0631\u064B\u0627 \u0628\u0640jobId (202) \u0628\u062F\u0644 \u0645\u0627 \u064A\u0633\u062A\u0646\u0649 \u0627\u0644\u062A\u0648\u0644\u064A\u062F \u0643\u0627\u0645\u0644 \u0639\u0644\u0649 \u0646\u0641\u0633 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0637\u0648\u064A\u0644 (\u0646\u0641\u0633 \u0641\u0643\u0631\u0629
+// /api/render \u0627\u0644\u0642\u062F\u064A\u0645 \u0628\u0627\u0644\u0638\u0628\u0637) \u2014 \u0627\u0644\u062F\u0627\u0644\u0629 \u062F\u064A \u0628\u062A\u0639\u0645\u0644 poll \u0639\u0644\u0649 \u062D\u0627\u0644\u0629 \u0627\u0644\u0640job \u0644\u062D\u062F \u0645\u0627 \u064A\u062E\u0644\u0635 (done/failed)
+function pollGenerationJob(kind, jobId, lang) {
+  const statusUrl = kind === 'image' ? `/api/images/generate-status/${jobId}` : `/api/videos/generate-status/${jobId}`;
+  return new Promise((resolve) => {
+    const iv = setInterval(async () => {
+      try {
+        const sr = await fetch(statusUrl, { headers: tokenHeader() });
+        const sd = await safeJson(sr, lang);
+        if (sd.status === 'done' || sd.status === 'failed') {
+          clearInterval(iv);
+          resolve(sd);
+        }
+      } catch {}
+    }, 4000);
+  });
+}
+
 const isArabic = (text) => /[\u0600-\u06FF]/.test(text || '');
 
 // ✅ FIX: fetch() على data: URI ممكن يفشل بـ"Failed to fetch" تحت بعض إعدادات
@@ -1025,12 +1044,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       });
       const data = await safeJson(res, lang);
       if (!res.ok) { setError(data.message || data.error || 'Failed'); return; }
+      const sd = await pollGenerationJob('image', data.jobId, lang);
+      if (sd.status === 'failed') { setError(sd.error || 'Failed'); return; }
       let newIdx = 0;
       setMessages(m => {
         const copy = [...m];
         const idx = copy.findIndex(x => x.job?.uid === detailView.jobUid);
         if (idx !== -1) {
-          const images = [...(copy[idx].job.images || []), ...data.images];
+          const images = [...(copy[idx].job.images || []), ...sd.images];
           newIdx = images.length - 1;
           copy[idx] = { ...copy[idx], job: { ...copy[idx].job, images } };
         }
@@ -1062,7 +1083,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       });
       const data = await safeJson(res, lang);
       if (!res.ok) { setError(data.message || data.error || 'Failed'); return; }
-      updateJobByUid(detailView.jobUid, { videoUrl: data.videoUrl, cost: (msg.job.cost || 0) + (data.creditCost || 0) });
+      const sd = await pollGenerationJob('video', data.jobId, lang);
+      if (sd.status === 'failed') { setError(sd.error || 'Failed'); return; }
+      updateJobByUid(detailView.jobUid, { videoUrl: sd.videoUrl, cost: (msg.job.cost || 0) + (data.creditCost || 0) });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1106,7 +1129,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       if (!res.ok) {
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
-        updateJob({ status: 'done', images: data.images, cost: data.creditCost });
+        const sd = await pollGenerationJob('image', data.jobId, lang);
+        if (sd.status === 'failed') updateJob({ status: 'failed', error: sd.error });
+        else updateJob({ status: 'done', images: sd.images, cost: data.creditCost });
       }
     } catch (e) {
       updateJob({ status: 'failed', error: e.message });
@@ -1143,7 +1168,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       if (!res.ok) {
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
-        updateJob({ status: 'done', videoUrl: data.videoUrl, cost: data.creditCost });
+        const sd = await pollGenerationJob('video', data.jobId, lang);
+        if (sd.status === 'failed') updateJob({ status: 'failed', error: sd.error });
+        else updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: data.creditCost });
       }
     } catch (e) {
       updateJob({ status: 'failed', error: e.message });
