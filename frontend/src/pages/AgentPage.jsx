@@ -898,7 +898,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
       abortRef.current = new AbortController();
       const res = await fetch('/api/agent/chat', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body), signal: abortRef.current.signal });
-      const data = await res.json();
+      // ✅ FIX (باج حقيقي: العميل شاف "Unexpected token '<', "<!DOCTYPE "... is not valid
+      // JSON" خام في الشات): الشات نفسه (بعكس توليد الصور/الفيديوهات) كان بيستخدم res.json()
+      // خام من غير الحماية اللي باقي المسارات بتستخدمها — لو بروكسي/gateway قطع اتصال طويل
+      // ورجّع صفحة HTML بدل JSON (احتمال زاد بعد إضافة محاولات إعادة تلقائية للايجنت لما مبيبعتش
+      // ماركر)، كان الخطأ الخام بيوصل للعميل زي ما هو بدل رسالة مفهومة
+      const data = await safeJson(res, lang);
       if (!res.ok) throw new Error(data.error || 'Failed');
       setMessages(m => [...m, { role: 'assistant', content: data.reply }]);
       if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
