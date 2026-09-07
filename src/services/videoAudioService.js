@@ -13,9 +13,11 @@
 //      استخدام تجاري كامل بدون أي attribution — استبدلنا Jamendo بيه لأن الـfree tier بتاعه
 //      كان "non-commercial use" بس، خطر ترخيصي حقيقي لمنتج تجاري زي ده).
 //
-// ⚠ حقول الـinput الدقيقة لـgemini-3.1-flash-tts وfictions-ai/autocaption تحت أفضل تخمين
-// مبني على بحث عام (Replicate نفسه محجوب من الـsandbox ده) — يحتاج تأكيد حي قبل الاعتماد
-// عليه بالكامل في الإنتاج، زي باقي الموديلات الجديدة في الملفات التانية.
+// ✅ حقول gemini-3.1-flash-tts مؤكدة 100% دلوقتي (العميل بعت سكرين شوت لصفحة الـInput schema
+// الحقيقية على Replicate: text/voice/prompt/language_code) — مش تخمين تاني. أسماء الأصوات
+// التفصيلية لسه غير موثقة بالكامل (Kore مؤكدة كافتراضي، الباقي أفضل تخمين).
+// ⚠ fictions-ai/autocaption لسه تحت أفضل تخمين مبني على بحث عام (Replicate نفسه محجوب من
+// الـsandbox ده) — يحتاج تأكيد حي قبل الاعتماد عليه بالكامل.
 // ⚠ Freesound مكتبة مؤثرات صوتية/تسجيلات مجتمعية بالأساس، مش مكتبة أغاني مُلحّنة زي Jamendo —
 // فلترنا بالمدة والكلمة المفتاحية "music" عشان نقلل مؤثرات قصيرة، بس جودة/تنوع "موسيقى خلفية"
 // حقيقية فيها أقل من مكتبة موسيقى مُلحّنة بالكامل. يستاهل مراجعة حية بعد الإطلاق.
@@ -93,11 +95,18 @@ async function downloadToFile(url, outPath) {
 }
 
 // ── 1. فويس أوفر (Gemini TTS via Replicate) ──────────────────────────────────
-// ⚠ أسماء الأصوات الـ30 الحقيقية بتاعت الموديل ده مش موثقة بالكامل علنًا — استخدمنا أسماء
-// شايفناها في أمثلة حقيقية ("Charon"، "Puck"، "Kore") كأفضل تخمين، يحتاج تأكيد حي
+// ✅ FIX (مؤكد من صفحة الموديل الحقيقية نفسها — العميل بعت سكرين شوت للـ Input schema):
+// الحقول الحقيقية هي "text"، "voice" (مش "voice_name")، "prompt" (توجيه أسلوب الإلقاء —
+// نبرة/سرعة/مشاعر، افتراضي "Say the following.")، و"language_code" (كود لغة كامل زي
+// "en-US" مش "en" بس). أسماء الأصوات الفعلية لسه مش موثقة بالكامل علنًا — "Kore" مؤكدة
+// (الافتراضي في الـschema نفسه)، الباقي (Charon/Puck) من أمثلة حقيقية شايفناها بره الموديل
 const GEMINI_VOICE_MAP = {
   male_wise: 'Charon', male_american: 'Puck', male_arabic: 'Charon',
-  female_american: 'Kore', female_arabic: 'Kore', none: 'Charon',
+  female_american: 'Kore', female_arabic: 'Kore', none: 'Kore',
+};
+// لغة قصيرة (زي باقي الحقول في البرومبت: en/ar) → كود لغة كامل حقيقي يقبله الموديل
+const GEMINI_LANGUAGE_MAP = {
+  en: 'en-US', ar: 'ar-EG', ar_eg: 'ar-EG', ar_gulf: 'ar-XA', es: 'es-US', fr: 'fr-FR', de: 'de-DE',
 };
 
 /**
@@ -105,11 +114,17 @@ const GEMINI_VOICE_MAP = {
  * الحقيقية بالثواني (مقاسة بـffprobe مش تقدير كلمات) — دي المدة اللي المفروض الفيديو
  * يتولّد بيها عشان السرد يسع كامل من غير ما يتقطع.
  */
-export async function synthesizeNarration(script, { voiceKey = 'male_wise', languageCode = null } = {}) {
+export async function synthesizeNarration(script, { voiceKey = 'male_wise', languageCode = null, stylePrompt = null } = {}) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   if (!script?.trim()) throw new Error('narration script is required');
-  const voiceName = GEMINI_VOICE_MAP[voiceKey] || 'Charon';
-  const input = { text: script.trim(), voice_name: voiceName, ...(languageCode ? { language_code: languageCode } : {}) };
+  const voiceName = GEMINI_VOICE_MAP[voiceKey] || 'Kore';
+  const langCode = languageCode ? (GEMINI_LANGUAGE_MAP[languageCode] || languageCode) : undefined;
+  const input = {
+    text: script.trim(),
+    voice: voiceName,
+    prompt: stylePrompt || 'Say the following in a warm, natural, engaging narrator tone.',
+    ...(langCode ? { language_code: langCode } : {}),
+  };
   const output = await runReplicatePrediction('google/gemini-3.1-flash-tts', input, 'Gemini TTS narration');
   const audioUrl = Array.isArray(output) ? output[0] : output;
 
