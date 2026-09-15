@@ -3091,37 +3091,93 @@ app.get('/api/videos/generate-status/:jobId', authMiddleware, (req, res) => {
 // معالجة على السيرفر نفسه بـ ffmpeg، فمفيش تكلفة API حقيقية زي باقي الموديلات، فسعره سعر ثابت
 // (مش مبني على usdCost×3) بيغطي وقت المعالجة والتخزين بس: 15 كريديت لكل فيديو بيتم دمجه
 const MERGE_CREDIT_PER_VIDEO = 15;
+// ✅ NEW (طلب العميل الصريح المتكرر: "اجمع الفيديوهات في فيديو واحد وحط عليه موسيقى وكابشن
+// وفويس أوفر بسكريبت جديد" — قبل كده الايجنت كان بيحسب سعر السرد/الكابشن/الموسيقى ويوعد
+// بعملهم فعلاً، لكن ماركر الدمج ماكانش بيقبل أي حقل غيرهم خالص، فمفيش أي حاجة كانت بتتعمل
+// فعليًا غير الدمج نفسه — نفس الأدوات الحقيقية المستخدمة في /api/videos/generate (سرد
+// Gemini + كابشن Whisper/autocaption + موسيقى) بتتطبق هنا بعد الدمج مباشرة): بيدعم دلوقتي
+// نفس حقول narrationScript/voiceKey/narrationLanguage/addCaptions/musicStyle/musicMood
 app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) => {
-  const { videoUrls } = req.body;
+  const { videoUrls, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood } = req.body;
   if (!Array.isArray(videoUrls) || videoUrls.length < 2) return res.status(400).json({ error: 'at least 2 videoUrls are required' });
   if (videoUrls.length > 10) return res.status(400).json({ error: 'max 10 videos per merge' });
+  if (addCaptions && !narrationScript?.trim()) return res.status(400).json({ error: 'addCaptions requires narrationScript (captions are burned from the real narration audio)' });
   const mergeUser = await getUserById(req.user.userId);
   if ((mergeUser?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Top up credits to merge videos.', show_upgrade: true });
   }
-  const mergeCreditCost = MERGE_CREDIT_PER_VIDEO * videoUrls.length;
+  if (narrationScript?.trim()) {
+    const modCheck = await checkContentSafety(narrationScript);
+    if (modCheck.unsafe) {
+      return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
+    }
+  }
+  // ✅ لازم نولّد السرد الأول عشان نعرف مدته الحقيقية (لحساب سعره) — مدة الفيديو المدموج
+  // نفسها ثابتة (مجموع مدة الكليبات)، السرد بيتحط عليه زي ما هو (composeVideoAudio بيقصّ
+  // الأطول على الأقصر لو فيه فرق، زي أي دمج صوت/فيديو عادي)
+  let narration = null;
+  if (narrationScript?.trim()) {
+    try {
+      narration = await synthesizeNarration(narrationScript, { voiceKey: voiceKey || 'male_wise', languageCode: narrationLanguage || null });
+    } catch (e) {
+      return res.status(500).json({ error: 'narration_failed', message: `Narration generation failed: ${e.message}` });
+    }
+  }
+  let mergeCreditCost = MERGE_CREDIT_PER_VIDEO * videoUrls.length;
+  if (narration) mergeCreditCost += getPerSecondCreditCost('gemini_flash_tts', Math.ceil(narration.durationSec));
+  if (addCaptions) mergeCreditCost += CAPTION_CREDIT_FLAT;
+  if (musicStyle) mergeCreditCost += MUSIC_CREDIT_FLAT;
   const mergeBalance = await getCreditsBalance(req.user.userId);
   if (mergeBalance < mergeCreditCost) {
+    if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
     return res.status(403).json({ error: 'quota_exceeded', message: `This merge needs ${mergeCreditCost} credits, you have ${mergeBalance}.`, cost: mergeCreditCost, remaining: mergeBalance });
   }
   const mergeCharge = await chargeCredits(req.user.userId, mergeCreditCost);
   if (!mergeCharge.success) {
+    if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
     return res.status(403).json({ error: 'quota_exceeded', message: `This merge needs ${mergeCreditCost} credits, you have ${mergeCharge.remaining}.`, cost: mergeCreditCost, remaining: mergeCharge.remaining });
   }
-  try {
-    const videoUrl = await mergeVideos(videoUrls);
-    if (req.aborted || res.writableEnded || res.destroyed) {
-      console.error(`[VideoMerge] ⚠️ Client disconnected before response could be sent — user ${req.user.userId}, cost ${mergeCreditCost}cr, merged video URL (NOT lost, saved on R2): ${videoUrl}`);
-      return;
+  // ✅ FIX: نفس نمط /api/videos/generate بالظبط — رد فوري بـjobId (202) بدل ما نستنى الدمج +
+  // السرد + الكابشن + الموسيقى كامل على نفس الاتصال (ممكن ياخد دقايق مع فيديوهات كتير)
+  const jobId = `mergevid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  setRenderJob(jobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now() });
+  res.status(202).json({ jobId, status: 'processing', creditCost: mergeCreditCost, remaining: mergeCharge.remaining });
+
+  (async () => {
+    try {
+      let videoUrl = await mergeVideos(videoUrls);
+      let captionWords = null;
+      if (narration) {
+        videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: 'merged' });
+        if (addCaptions) captionWords = await transcribeWithTimestamps(narration.audioPath);
+        fs.rmSync(narration.workDir, { recursive: true, force: true });
+      }
+      if (captionWords) {
+        const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(narrationLanguage);
+        videoUrl = await burnCaptions(videoUrl, captionWords, { rightToLeft: isRtl });
+      }
+      if (musicStyle) {
+        const musicBuffer = await getBackgroundMusicBuffer(musicStyle, musicMood || null);
+        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'merged' });
+      }
+      setRenderJob(jobId, { status: 'done', videoUrl, creditCost: mergeCreditCost, completedAt: Date.now() });
+    } catch (genErr) {
+      console.error('[VideoMerge] merge failed:', genErr.message);
+      if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
+      await addCreditsBalance(req.user.userId, mergeCreditCost);
+      setRenderJob(jobId, { status: 'failed', error: 'Video merge failed, your credits were refunded.', completedAt: Date.now() });
+    } finally {
+      scheduleRenderJobCleanup(jobId);
     }
-    res.json({ videoUrl, creditCost: mergeCreditCost, remaining: mergeCharge.remaining });
-  } catch (genErr) {
-    console.error('[VideoMerge] merge failed:', genErr.message);
-    await addCreditsBalance(req.user.userId, mergeCreditCost);
-    if (!req.aborted && !res.writableEnded) {
-      res.status(500).json({ error: 'merge_failed', message: 'Video merge failed, your credits were refunded.' });
-    }
-  }
+  })();
+});
+
+app.get('/api/videos/merge-status/:jobId', authMiddleware, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const job = getRenderJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job_not_found' });
+  if (job.userId && job.userId !== req.user.userId) return res.status(404).json({ error: 'job_not_found' });
+  res.json(job);
 });
 
 // ── Global Error Handler ───────────────────────────────────────────────────

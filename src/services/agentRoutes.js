@@ -191,7 +191,11 @@ function parseAgentMarkers(rawReply) {
         }
       } else if (isMergeVideosMarker) {
         if (Array.isArray(parsed.videoUrls) && parsed.videoUrls.length >= 2 && parsed.videoUrls.every(u => typeof u === 'string' && u.trim())) {
-          mergeVideosPayload = { videoUrls: parsed.videoUrls.slice(0, 10) };
+          mergeVideosPayload = {
+            videoUrls: parsed.videoUrls.slice(0, 10),
+            narrationScript: parsed.narrationScript, voiceKey: parsed.voiceKey, narrationLanguage: parsed.narrationLanguage,
+            addCaptions: parsed.addCaptions, musicStyle: parsed.musicStyle, musicMood: parsed.musicMood,
+          };
         }
       } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
         ready = parsed;
@@ -228,7 +232,11 @@ function parseAgentMarkers(rawReply) {
           }
         } else if (isMergeVideosMarker) {
           if (Array.isArray(repaired.videoUrls) && repaired.videoUrls.length >= 2 && repaired.videoUrls.every(u => typeof u === 'string' && u.trim())) {
-            mergeVideosPayload = { videoUrls: repaired.videoUrls.slice(0, 10) };
+            mergeVideosPayload = {
+              videoUrls: repaired.videoUrls.slice(0, 10),
+              narrationScript: repaired.narrationScript, voiceKey: repaired.voiceKey, narrationLanguage: repaired.narrationLanguage,
+              addCaptions: repaired.addCaptions, musicStyle: repaired.musicStyle, musicMood: repaired.musicMood,
+            };
             console.warn('[Agent] ✅ Repaired truncated MERGE_VIDEOS JSON successfully');
           }
         } else if ([1, 2, 3, 4, 5, 7, 8].includes(repaired.model)) {
@@ -477,7 +485,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // بيوعد بالتنفيذ)، بنجرب لحد مرتين تانيين فورًا بنفس الطلب + تنبيه صريح إنه لازم يحط الماركر
     // دلوقتي فعليًا أو يسأل سؤال توضيحي واحد بدل ما يكرر وعد فاضي — باج حقيقي شفناه بيصمد حتى
     // بعد محاولة واحدة (الموديل بيكرر نفس الوعد الفاضي أكتر من مرة على التوالي أحيانًا)
-    const soundsLikeAnActionPromise = (text) => /هبدأ[^.\n]{0,40}(دلوقتي|الآن|حالا|حالاً)|\bi'?ll start\b[^.\n]{0,40}\bnow\b|\bstarting (right )?now\b/i.test(text);
+    // ✅ FIX (باج حقيقي: "بدأت الحركة دلوقتي" — الموديل أحيانًا بيكتب الوعد بصيغة الماضي
+    // "بدأت"/"بدأ" مش بس المستقبل "هبدأ"، وده كان بيفلت من الرصد القديم فمفيش أي retry بيحصل)
+    const soundsLikeAnActionPromise = (text) => /(هبدأ|بدأت|بدأ)[^.\n]{0,40}(دلوقتي|الآن|حالا|حالاً)|\bi'?ll start\b[^.\n]{0,40}\bnow\b|\b(started|starting) (right )?now\b/i.test(text);
     const MAX_NUDGE_RETRIES = 2;
     let nudgeAttempts = 0;
     while (
@@ -565,6 +575,15 @@ router.post('/chat', authMiddleware, async (req, res) => {
       console.warn('[Agent] Rejected unknown/corrupted imageUrl (not found in history)');
       delete generateVideo.imageUrl;
     }
+    // ✅ FIX (باج حقيقي: صورة اتعملت 16:9، والعميل قال "حرك الصورة دي" من غير ما يكرر
+    // النسبة، فالفيديو الناتج طلع 9:16 — الايجنت (الموديل نفسه) اعتمد على تخمينه الافتراضي
+    // بدل ما ياخد بالفعل نسبة الصورة الحقيقية من الـ history، رغم التعليمة الصريحة في
+    // البرومبت): حاجز إضافي في الكود نفسه، بنفس مبدأ forcedImageModel/isKnownUrl فوق —
+    // نفرض نسبة الصورة الحقيقية المصدر بغض النظر عمّا حطّه الايجنت في الماركر
+    if (generateVideo?.imageUrl) {
+      const sourceRatioMatch = history.find(m => typeof m?.content === 'string' && m.content.includes(generateVideo.imageUrl))?.content?.match(/\(aspect ratio: (\d{1,2}:\d{1,2})\)/);
+      if (sourceRatioMatch) generateVideo.aspectRatio = sourceRatioMatch[1];
+    }
     // ✅ NEW: تنضيف حقول السرد/الكابشن/الموسيقى الجديدة قبل ما توصل للراوت
     if (generateVideo) {
       if (typeof generateVideo.narrationScript !== 'string' || !generateVideo.narrationScript.trim()) {
@@ -584,6 +603,20 @@ router.post('/chat', authMiddleware, async (req, res) => {
         console.warn('[Agent] Rejected MERGE_VIDEOS marker — fewer than 2 valid known video URLs after validation');
         mergeVideosPayload = null;
       }
+    }
+    // ✅ NEW: تنضيف حقول السرد/الكابشن/الموسيقى الجديدة بتاعة الدمج — نفس منطق generateVideo فوق بالظبط
+    if (mergeVideosPayload) {
+      if (typeof mergeVideosPayload.narrationScript !== 'string' || !mergeVideosPayload.narrationScript.trim()) {
+        delete mergeVideosPayload.narrationScript;
+        delete mergeVideosPayload.addCaptions;
+      } else {
+        mergeVideosPayload.narrationScript = mergeVideosPayload.narrationScript.trim().slice(0, 4000);
+        mergeVideosPayload.addCaptions = mergeVideosPayload.addCaptions === true;
+      }
+      if (!['youtube', 'general'].includes(mergeVideosPayload.musicStyle)) delete mergeVideosPayload.musicStyle;
+      if (typeof mergeVideosPayload.musicMood !== 'string') delete mergeVideosPayload.musicMood;
+      if (typeof mergeVideosPayload.voiceKey !== 'string') delete mergeVideosPayload.voiceKey;
+      if (typeof mergeVideosPayload.narrationLanguage !== 'string') delete mergeVideosPayload.narrationLanguage;
     }
     // ✅ FIX: العميل صريح في رسالته عن النسبة اللي عايزها — نفرضها بغض النظر عمّا حطّه
     // الايجنت في الماركر، بدل ما نعتمد بالكامل على التزامه بالتعليمات
