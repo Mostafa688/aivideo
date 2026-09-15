@@ -49,7 +49,7 @@ async function safeJson(res, lang) {
 // \u0628\u064A\u0631\u062F \u0641\u0648\u0631\u064B\u0627 \u0628\u0640jobId (202) \u0628\u062F\u0644 \u0645\u0627 \u064A\u0633\u062A\u0646\u0649 \u0627\u0644\u062A\u0648\u0644\u064A\u062F \u0643\u0627\u0645\u0644 \u0639\u0644\u0649 \u0646\u0641\u0633 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0637\u0648\u064A\u0644 (\u0646\u0641\u0633 \u0641\u0643\u0631\u0629
 // /api/render \u0627\u0644\u0642\u062F\u064A\u0645 \u0628\u0627\u0644\u0638\u0628\u0637) \u2014 \u0627\u0644\u062F\u0627\u0644\u0629 \u062F\u064A \u0628\u062A\u0639\u0645\u0644 poll \u0639\u0644\u0649 \u062D\u0627\u0644\u0629 \u0627\u0644\u0640job \u0644\u062D\u062F \u0645\u0627 \u064A\u062E\u0644\u0635 (done/failed)
 function pollGenerationJob(kind, jobId, lang) {
-  const statusUrl = kind === 'image' ? `/api/images/generate-status/${jobId}` : `/api/videos/generate-status/${jobId}`;
+  const statusUrl = kind === 'image' ? `/api/images/generate-status/${jobId}` : kind === 'video-merge' ? `/api/videos/merge-status/${jobId}` : `/api/videos/generate-status/${jobId}`;
   return new Promise((resolve) => {
     const iv = setInterval(async () => {
       try {
@@ -821,19 +821,25 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     }
     if (m.type === 'imageBatch') {
       if (m.job?.status === 'done') {
+        // ✅ FIX (باج حقيقي: صورة اتعملت 16:9، والعميل قال "حرّك الصورة دي" من غير ما يكرر
+        // النسبة، فالفيديو الناتج طلع 9:16 — لأن الايجنت مالوش أي طريقة يعرف بيها نسبة الصورة
+        // الأصلية أصلاً، مكانتش موجودة في الـ note ده خالص، فكان بيخمّن نسبة افتراضية بتاعته
+        // هو مش نسبة الصورة الحقيقية): بنضيف النسبة الحقيقية هنا عشان "حرّك الصورة دي" يبقى
+        // افتراضيًا بنفس نسبة الصورة نفسها إلا لو العميل طلب نسبة مختلفة صراحة
+        const ratioTag = m.job.aspectRatio ? ` (aspect ratio: ${m.job.aspectRatio})` : '';
         // ✅ NEW: لو كانت دفعة مشاهد مختلفة (job.prompts)، بنسيب كل صورة مربوطة بالبرومبت
         // بتاعها في نفس النص — ده اللي بيخلي الايجنت يقدر يفرق "صورة السيف" عن "صورة القلعة"
         // لما العميل يطلب يحرك واحدة بعينها لاحقًا
         if (Array.isArray(m.job.prompts) && m.job.prompts.length >= 2) {
           const pairs = (m.job.images || []).map((u, i) => `"${m.job.prompts[i] || ''}" → ${u}`).join(' | ');
           return lang === 'ar'
-            ? `[تم توليد ${m.job.images?.length || 0} صورة مشاهد مختلفة بنجاح بموديل ${m.job.model || ''} — كل مشهد وصورته: ${pairs}]`
-            : `[Successfully generated ${m.job.images?.length || 0} distinct-scene image(s) with model ${m.job.model || ''} — each scene and its image: ${pairs}]`;
+            ? `[تم توليد ${m.job.images?.length || 0} صورة مشاهد مختلفة بنجاح بموديل ${m.job.model || ''}${ratioTag} — كل مشهد وصورته: ${pairs}]`
+            : `[Successfully generated ${m.job.images?.length || 0} distinct-scene image(s) with model ${m.job.model || ''}${ratioTag} — each scene and its image: ${pairs}]`;
         }
         const urls = (m.job.images || []).join(', ');
         return lang === 'ar'
-          ? `[تم توليد ${m.job.images?.length || 0} صورة بنجاح بموديل ${m.job.model || ''} — روابط الصور: ${urls}]`
-          : `[Successfully generated ${m.job.images?.length || 0} image(s) with model ${m.job.model || ''} — image URLs: ${urls}]`;
+          ? `[تم توليد ${m.job.images?.length || 0} صورة بنجاح بموديل ${m.job.model || ''}${ratioTag} — روابط الصور: ${urls}]`
+          : `[Successfully generated ${m.job.images?.length || 0} image(s) with model ${m.job.model || ''}${ratioTag} — image URLs: ${urls}]`;
       }
       if (m.job?.status === 'failed') {
         return failedNote(lang === 'ar' ? 'دفعة صور سابقة فشلت في التوليد ولم تكتمل' : 'A previous image batch FAILED and did not complete');
@@ -842,7 +848,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     }
     if (m.type === 'videoModel') {
       if (m.job?.status === 'done') {
-        return `[${lang === 'ar' ? 'تم توليد فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''} — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}]`;
+        const ratioTag = m.job.aspectRatio ? ` (aspect ratio: ${m.job.aspectRatio})` : '';
+        return `[${lang === 'ar' ? 'تم توليد فيديو بنجاح بموديل' : 'A video was successfully generated with model'} ${m.job.model || ''}${ratioTag} — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}]`;
       }
       if (m.job?.status === 'failed') {
         return failedNote(lang === 'ar' ? 'فيديو سابق فشل في التوليد ولم يكتمل' : 'A previous video generation FAILED and did not complete');
@@ -1218,13 +1225,20 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     try {
       const res = await fetch('/api/videos/merge', {
         method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ videoUrls: merge.videoUrls }),
+        body: JSON.stringify({
+          videoUrls: merge.videoUrls,
+          narrationScript: merge.narrationScript || undefined, voiceKey: merge.voiceKey || undefined,
+          narrationLanguage: merge.narrationLanguage || undefined, addCaptions: merge.addCaptions || undefined,
+          musicStyle: merge.musicStyle || undefined, musicMood: merge.musicMood || undefined,
+        }),
       });
       const data = await safeJson(res, lang);
       if (!res.ok) {
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
-        updateJob({ status: 'done', videoUrl: data.videoUrl, cost: data.creditCost });
+        const sd = await pollGenerationJob('video-merge', data.jobId, lang);
+        if (sd.status === 'failed') updateJob({ status: 'failed', error: sd.error });
+        else updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: data.creditCost });
       }
     } catch (e) {
       updateJob({ status: 'failed', error: e.message });
