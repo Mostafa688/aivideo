@@ -162,19 +162,23 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
-  // ✅ NEW (طلب العميل — سعره مؤكد من صفحة الموديل مباشرة، سكرين شوت العميل): نسخة أسرع/أرخص
-  // من seedance_2_0 — نفس شكل الـinput بالظبط بالقياس على العيلة، بس الـslug واسم النسخة
-  // (fast) لسه محتاج تأكيد حي، ومدى المدة مفترض نفس seedance_2_0 العادي لحد ما يتأكد
+  // ✅ FIX (طلب العميل — سكرين شوت حقيقي لصفحة الـInput schema بعد الإطلاق): الحقول الحقيقية
+  // مؤكدة دلوقتي — duration (Default 5, Minimum -1 "auto", Maximum 15)، resolution
+  // (Default 720p)، aspect_ratio (Default 16:9، وفيه خيار "adaptive")، generate_audio
+  // (Default true — بيوصف صراحة "including dialogue")، last_frame_image،
+  // reference_audios/reference_images/reference_videos (مش مستخدمين حاليًا). الـslug نفسه
+  // لسه تخمين (اسم النسخة "fast") محتاج تأكيد حي، بس باقي الحقول بقت حقيقية مش تخمين
   seedance_2_0_fast: {
     slug: 'bytedance/seedance-2.0-fast',
     supportsImageInput: true,
-    minDurationSec: 4,
+    minDurationSec: 1,
     maxDurationSec: 15,
     buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
       prompt,
       resolution: tier || '720p',
       aspect_ratio: aspectRatio || '16:9',
-      duration: Math.min(Math.max(durationSec || 5, 4), 15),
+      duration: Math.min(Math.max(durationSec || 5, 1), 15),
+      generate_audio: true,
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
@@ -196,35 +200,46 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
-  // ✅ NEW (طلب العميل، سعره مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل): الـschema
-  // الحقيقي (أسماء الحقول) لسه مش مؤكدة (مفيش سكرين شوت لصفحة الـInput)، دي أفضل تخمين بناءً
-  // على نمط باقي الموديلات في نفس الملف، يحتاج تأكيد حي قبل الاعتماد عليه بكتر
+  // ✅ FIX (طلب العميل — سكرين شوت حقيقي لصفحة الـInput schema): الحقول الحقيقية مؤكدة دلوقتي
+  // — fps (Default 24)، draft (bool — "Draft mode: generates a lower-quality preview"؛ إحنا
+  // دايمًا false عشان نديله الجودة الكاملة "Standard" اللي سعّرناها فعليًا مش نسخة الـdraft
+  // الأرخص)، image، duration (1-20، مش 10 زي ما كان مفترض قبل كده)، resolution، aspect_ratio،
+  // disable_safety_filter (bool، الافتراضي true بيعطّل فلتر الأمان بتاع Replicate — إحنا
+  // بنعمل فحص محتوى حقيقي بنفسنا قبل ما نوصل هنا أصلاً (checkContentSafety)، بس بنسيب طبقة
+  // حماية إضافية هنا كمان بتفعيله صراحة). "audio"/"reference" fields لسه مش موصولين (ميزة
+  // lip-sync من صوت مرجعي، خارج نطاق الشغل الحالي)
   prunaai_p_video: {
     slug: 'prunaai/p-video',
     supportsImageInput: true,
     minDurationSec: 1,
-    maxDurationSec: 10,
+    maxDurationSec: 20,
     buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
       prompt,
       aspect_ratio: aspectRatio || '16:9',
       resolution: tier || '720p',
-      duration: Math.min(Math.max(durationSec || 5, 1), 10),
+      duration: Math.min(Math.max(durationSec || 5, 1), 20),
+      fps: 24,
+      draft: false,
+      disable_safety_filter: false,
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
-  // ✅ NEW (طلب العميل، سعره مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل، وreadme الموديل
-  // بيقول صراحة إنه بيدعم "native-speech lip-sync" — نسخة قوية للفيديوهات اللي فيها حوار/
-  // كلام حقيقي على الشاشة): نفس ملاحظة الـschema فوق، تخمين معقول محتاج تأكيد حي
+  // ✅ FIX (نفس الـschema الحقيقي المؤكد فوق — نفس عيلة الموديل بالظبط): readme الموديل بيقول
+  // صراحة إنه بيدعم "native-speech lip-sync" — نسخة قوية للفيديوهات اللي فيها حوار/كلام حقيقي
+  // على الشاشة
   prunaai_p_video_2: {
     slug: 'prunaai/p-video-2',
     supportsImageInput: true,
     minDurationSec: 1,
-    maxDurationSec: 10,
+    maxDurationSec: 20,
     buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
       prompt,
       aspect_ratio: aspectRatio || '16:9',
       resolution: tier || '720p',
-      duration: Math.min(Math.max(durationSec || 5, 1), 10),
+      duration: Math.min(Math.max(durationSec || 5, 1), 20),
+      fps: 24,
+      draft: false,
+      disable_safety_filter: false,
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
