@@ -17,12 +17,24 @@ function adminAuth(req, res, next) {
   if (!secret || secret !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
+// ✅ NEW (طلب العميل: "تضيف شكل الرسم البياني لاحصائيات الموقع اخر 28 و 90 و 365 يوم"):
+// المدة (range، بالأيام) بتحدد حجم "الدلو" اللي بنجمّع بيه البيانات — يوم بيوم للمدد
+// القصيرة (مفهوم ومقروء)، أسبوع بأسبوع للمتوسطة، شهر بشهر للطويلة (365) عشان الرسم البياني
+// يفضل مقروء (مش 365 عمود صغير فوق بعض)
+function periodBucketFor(rangeDays) {
+  if (rangeDays <= 35) return { bucket: 'day', fmt: 'YYYY-MM-DD' };
+  if (rangeDays <= 120) return { bucket: 'week', fmt: 'IYYY-IW' };
+  return { bucket: 'month', fmt: 'YYYY-MM' };
+}
+
 router.get('/stats', adminAuth, async (req, res) => {
   try {
+    const rangeDays = Math.min(400, Math.max(7, parseInt(req.query.range, 10) || 28));
+    const { bucket, fmt } = periodBucketFor(rangeDays);
     const [
       totalUsers, verifiedUsers, planDist, totalVideos, recentUsers,
       totalRevenue, pendingPayments, weeklySignups, model3Users, videosPerDay, topUsers,
-      signupsToday, loginsToday, monthlySubs,
+      signupsToday, loginsToday, monthlySubs, videosPerPeriod, signupsPerPeriod,
     ] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM users'),
       pool.query('SELECT COUNT(*) FROM users WHERE verified = 1'),
@@ -46,6 +58,18 @@ router.get('/stats', adminAuth, async (req, res) => {
         GROUP BY month
         ORDER BY month ASC
       `),
+      pool.query(
+        `SELECT TO_CHAR(DATE_TRUNC('${bucket}', created_at::timestamp), '${fmt}') as period, COUNT(*) as count
+         FROM videos WHERE created_at::timestamp >= NOW() - $1::interval
+         GROUP BY period ORDER BY period ASC`,
+        [`${rangeDays} days`]
+      ),
+      pool.query(
+        `SELECT TO_CHAR(DATE_TRUNC('${bucket}', created_at::timestamp), '${fmt}') as period, COUNT(*) as count
+         FROM users WHERE created_at::timestamp >= NOW() - $1::interval
+         GROUP BY period ORDER BY period ASC`,
+        [`${rangeDays} days`]
+      ),
     ]);
     const totalRevenueEgp = parseInt(totalRevenue.rows[0].total);
     const revenueEstimate = estimatePaymentProfit(totalRevenueEgp);
@@ -68,6 +92,10 @@ router.get('/stats', adminAuth, async (req, res) => {
       videos_per_day: videosPerDay.rows,
       top_users: topUsers.rows,
       monthly_subscriptions: monthlySubs.rows,
+      videos_per_period: videosPerPeriod.rows,
+      signups_per_period: signupsPerPeriod.rows,
+      period_bucket: bucket,
+      range_days: rangeDays,
     });
   } catch (err) {
     console.error('[Admin Stats]', err.message);
@@ -180,6 +208,62 @@ router.get('/videos', adminAuth, async (req, res) => {
     `);
     res.json({ videos: rows });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW (طلب العميل: "عايزك تضيف خانة جديدة اني اقدر اشوف مشاريع وصور والفيديوهات
+// المنشاء من خلال العملاء عشان اعرف بيشتكوا من اي"): تصفح كل مشروع اتعمل بالنظام الجديد
+// (Agent + Canvas) مع كل الميديا الحقيقية اللي اتولدت فيه — بيدور جوه project_chat_state
+// (نفس الجدول اللي بيحفظ محادثة الايجنت لكل مشروع، راجع projectRoutes.js) ويطلع كل صورة/
+// فيديو اتعمل بنجاح، عشان الأدمن يقدر يشوف بالظبط العميل شايف إيه لما يجيله يشتكي
+function extractAllMedia(messages) {
+  const images = [], videos = [];
+  if (!Array.isArray(messages)) return { images, videos };
+  for (const m of messages) {
+    const job = m?.job;
+    if (!job) continue;
+    if (m.type === 'imageBatch' && job.status === 'done' && Array.isArray(job.images)) {
+      images.push(...job.images);
+    }
+    if ((m.type === 'videoModel' || m.type === 'render') && job.status === 'done' && job.videoUrl) {
+      videos.push(job.videoUrl);
+    }
+    if (m.type === 'whiteboard' && job.status === 'done' && job.video_url) {
+      videos.push(job.video_url);
+    }
+  }
+  return { images, videos };
+}
+router.get('/customer-projects', adminAuth, async (req, res) => {
+  try {
+    const { email, limit = 30, offset = 0 } = req.query;
+    const params = [];
+    let where = '';
+    if (email?.trim()) { params.push(`%${email.trim()}%`); where = `WHERE u.email ILIKE $${params.length}`; }
+    params.push(Math.min(100, parseInt(limit, 10) || 30), Math.max(0, parseInt(offset, 10) || 0));
+    const { rows } = await pool.query(`
+      SELECT p.id, p.name, p.created_at, p.updated_at, u.email as user_email, u.plan as user_plan,
+             pcs.messages
+      FROM projects p
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN project_chat_state pcs ON pcs.project_id = p.id
+      ${where}
+      ORDER BY p.updated_at DESC
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
+    const projects = rows.map(r => {
+      const { images, videos } = extractAllMedia(r.messages);
+      return {
+        id: r.id, name: r.name, created_at: r.created_at, updated_at: r.updated_at,
+        user_email: r.user_email, user_plan: r.user_plan,
+        images, videos,
+        message_count: Array.isArray(r.messages) ? r.messages.length : 0,
+      };
+    });
+    res.json({ projects });
+  } catch (err) {
+    console.error('[Admin CustomerProjects]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
