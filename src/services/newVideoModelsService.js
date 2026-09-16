@@ -162,6 +162,72 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
+  // ✅ NEW (طلب العميل — سعره مؤكد من صفحة الموديل مباشرة، سكرين شوت العميل): نسخة أسرع/أرخص
+  // من seedance_2_0 — نفس شكل الـinput بالظبط بالقياس على العيلة، بس الـslug واسم النسخة
+  // (fast) لسه محتاج تأكيد حي، ومدى المدة مفترض نفس seedance_2_0 العادي لحد ما يتأكد
+  seedance_2_0_fast: {
+    slug: 'bytedance/seedance-2.0-fast',
+    supportsImageInput: true,
+    minDurationSec: 4,
+    maxDurationSec: 15,
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      resolution: tier || '720p',
+      aspect_ratio: aspectRatio || '16:9',
+      duration: Math.min(Math.max(durationSec || 5, 4), 15),
+      ...(imageUrl ? { image: imageUrl } : {}),
+    }),
+  },
+  // ✅ NEW (طلب العميل — الـslug ده فعلاً مؤكد ومستخدم بالفعل في adminRoutes.js's Studio
+  // feature القديمة، فحقول الـinput دي حقيقية مش تخمين: prompt/aspect_ratio/resolution/
+  // duration/fps/camera_fixed). مدى المدة مش مؤكد فعليًا (افتراض بالقياس على seedance_1_5)
+  seedance_1_pro_fast: {
+    slug: 'bytedance/seedance-1-pro-fast',
+    supportsImageInput: true,
+    minDurationSec: 1,
+    maxDurationSec: 12,
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      aspect_ratio: aspectRatio || '16:9',
+      resolution: tier || '720p',
+      duration: Math.min(Math.max(durationSec || 5, 1), 12),
+      fps: 24,
+      camera_fixed: false,
+      ...(imageUrl ? { image: imageUrl } : {}),
+    }),
+  },
+  // ✅ NEW (طلب العميل، سعره مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل): الـschema
+  // الحقيقي (أسماء الحقول) لسه مش مؤكدة (مفيش سكرين شوت لصفحة الـInput)، دي أفضل تخمين بناءً
+  // على نمط باقي الموديلات في نفس الملف، يحتاج تأكيد حي قبل الاعتماد عليه بكتر
+  prunaai_p_video: {
+    slug: 'prunaai/p-video',
+    supportsImageInput: true,
+    minDurationSec: 1,
+    maxDurationSec: 10,
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      aspect_ratio: aspectRatio || '16:9',
+      resolution: tier || '720p',
+      duration: Math.min(Math.max(durationSec || 5, 1), 10),
+      ...(imageUrl ? { image: imageUrl } : {}),
+    }),
+  },
+  // ✅ NEW (طلب العميل، سعره مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل، وreadme الموديل
+  // بيقول صراحة إنه بيدعم "native-speech lip-sync" — نسخة قوية للفيديوهات اللي فيها حوار/
+  // كلام حقيقي على الشاشة): نفس ملاحظة الـschema فوق، تخمين معقول محتاج تأكيد حي
+  prunaai_p_video_2: {
+    slug: 'prunaai/p-video-2',
+    supportsImageInput: true,
+    minDurationSec: 1,
+    maxDurationSec: 10,
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      aspect_ratio: aspectRatio || '16:9',
+      resolution: tier || '720p',
+      duration: Math.min(Math.max(durationSec || 5, 1), 10),
+      ...(imageUrl ? { image: imageUrl } : {}),
+    }),
+  },
   // ✅ Luma Ray 2 — Replicate بيعرضه كـ slug منفصل لكل دقة (مش باراميتر resolution داخل نفس
   // الموديل زي الباقي)، فمفتاح الموديل هنا نفسه بيحدد الجودة
   luma_ray2_540p: {

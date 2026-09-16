@@ -61,6 +61,8 @@ export const REPLICATE_MODEL_COSTS = {
   // ✅ FIX: تدرجات حقيقية حسب دقة الصورة، مؤكدة من صفحة الموديل مباشرة — مش رقم متوسط تقديري تاني
   seedream_5:       { label: 'Seedream 5',         unit: 'image', usdCost: 0.045, tiers: { '1K': 0.045, '2K': 0.090 } },
   seedream_5_lite:  { label: 'Seedream 5 Lite',    unit: 'image', usdCost: 0.035 },
+  // ✅ NEW (طلب العميل — سعر واحد بلا دقات متعددة، مؤكد من العميل مباشرة)
+  nano_banana_2_lite: { label: 'Nano Banana 2 Lite', unit: 'image', usdCost: 0.034 },
 
   // ── Video generation (per second of output) ──────────────────────────────
   // كل موديل فيديو هنا بيسعّر حسب الدقة (وأحيانًا حسب معايير تانية زي وجود صوت أو صورة/فيديو
@@ -93,6 +95,22 @@ export const REPLICATE_MODEL_COSTS = {
   // ✅ FIX (مؤكد من صفحة الموديل مباشرة، أعلى من التقدير القديم): سعر كل دقة، بدون تقسيم صوت/فيديو مدخل
   omni_flash_1_1:   { label: 'Gemini Omni 1.1 Flash', unit: 'second', usdCost: 0.15, maxClipSec: 10,
                        tiers: { '360p': 0.05, '720p': 0.15, '1080p': 0.23, '4k': 0.45 } },
+  // ✅ NEW (طلب العميل، مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل): بسعر non_video_in
+  // (زي seedance_2_0 بالظبط — إحنا مش بنبعت فيديو مدخل). الموديل مبيوصلش لـ1080p/4K هنا
+  seedance_2_0_fast: { label: 'Seedance 2.0 Fast', unit: 'second', usdCost: 0.15, maxClipSec: 15,
+                       tiers: { '480p': 0.07, '720p': 0.15 } },
+  // ✅ NEW (طلب العميل، مؤكد منه مباشرة)
+  seedance_1_pro_fast: { label: 'Seedance 1 Pro Fast', unit: 'second', usdCost: 0.025, maxClipSec: 12,
+                       tiers: { '480p': 0.015, '720p': 0.025, '1080p': 0.06 } },
+  // ✅ NEW (طلب العميل، مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل): بسعر "Standard" (draft
+  // mode OFF) — إحنا دايمًا بنسلّم الجودة الكاملة الحقيقية للعميل، مش نسخة draft أرخص وأقل جودة
+  prunaai_p_video:  { label: 'PrunaAI P-Video',    unit: 'second', usdCost: 0.02, maxClipSec: 10,
+                       tiers: { '720p': 0.02, '1080p': 0.04 } },
+  // ✅ NEW (طلب العميل، مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل): نفس مبدأ Standard فوق.
+  // الموديل ده بالتحديد بيدعم native-speech lip-sync حسب الـreadme بتاعه — خيار قوي لفيديوهات
+  // فيها حوار/كلام حقيقي على الشاشة
+  prunaai_p_video_2: { label: 'PrunaAI P-Video 2',  unit: 'second', usdCost: 0.03, maxClipSec: 10,
+                       tiers: { '720p': 0.03, '1080p': 0.06 } },
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   // ✅ NEW: الموديل الحقيقي المستخدم فعليًا (videoAudioService.js) هو google/gemini-3.1-flash-tts —

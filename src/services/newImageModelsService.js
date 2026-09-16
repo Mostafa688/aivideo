@@ -104,6 +104,15 @@ export const NEW_IMAGE_MODELS = {
     slug: 'xai/grok-imagine-image',
     buildInput: ({ prompt, aspectRatio }) => ({ prompt, aspect_ratio: aspectRatio || '9:16' }),
   },
+  // ✅ NEW (طلب العميل — سعره مؤكد من العميل مباشرة $0.034/صورة، سعر واحد بلا دقات متعددة):
+  // ⚠ اسم الـslug تخمين بالقياس على nano_banana_2/nano_banana_pro، يحتاج تأكيد حي
+  nano_banana_2_lite: {
+    slug: 'google/nano-banana-2-lite',
+    buildInput: ({ prompt, referenceImageUrls, aspectRatio }) => ({
+      prompt, aspect_ratio: aspectRatio || '9:16', output_format: 'jpg',
+      ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 14) } : {}),
+    }),
+  },
   // ❌ REMOVED (gpt_image / openai/gpt-image-1) — باج حقيقي مكتشف أثناء مراجعة الأسعار: الموديل
   // ده على Replicate شغال "bring-your-own-key" فقط — لازم العميل (يعني إحنا) نبعت مفتاح OpenAI
   // حقيقي خاص بنا جوه الـ input نفسه ("openai_api_key")، وبعدين حساب OpenAI بتاعنا هو اللي

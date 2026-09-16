@@ -7,6 +7,7 @@ import {
   CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
   ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
   MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2, Maximize2,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 import { downloadRemoteFile, fetchRemoteBlob } from '../utils/download.js';
@@ -625,6 +626,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const imageInputRef = useRef();
   const videoInputRef = useRef();
   const scrollRef = useRef();
+  const textareaRef = useRef(null); // ✅ FIX (طلب العميل: "الخانة ضيقة جدًا ومش بتكبر لو نص كبير، عكس باقي المنصات زي flow" — النص كان بينزل تحت جوه صندوق ثابت الارتفاع بدل ما الصندوق نفسه يكبر) — auto-grow حقيقي بارتفاع المحتوى الفعلي
   const pollRef = useRef(null);
   const timerRef = useRef(null);
   const abortRef = useRef(null);
@@ -645,6 +647,19 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, loading]);
+
+  // ✅ FIX (باج حقيقي: خانة الكتابة كانت ثابتة الارتفاع، فالنص الطويل كان بينزل ويتقص بدل
+  // ما الصندوق يكبر معاه زي flow وباقي المنصات) — بيكبّر الصندوق مع المحتوى الفعلي لحد سقف
+  // معقول (160px)، وبعدها بيرجع للـscroll العادي جوه الصندوق نفسه
+  const TEXTAREA_MAX_HEIGHT = 160;
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const next = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT);
+    el.style.height = next + 'px';
+    el.style.overflowY = el.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden';
+  }, [input]);
 
   // ✅ FIX (باج حقيقي: العميل بيخرج من المشروع ويرجع يلاقي الشات والصور والفيديوهات كلها
   // اختفت): محادثة الايجنت كانت state في الفرونت إند بس، تتمسح لما الكومبوننت يتشال من
@@ -1797,158 +1812,140 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const [rightTab, setRightTab] = useState('all');
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
 
-  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
-  // ✅ NEW: زرار اختيار ستايل اختياري جنب زرار الإرفاق — بيدّي الإيجنت تلميح عن الستايل
-  // البصري المطلوب (anime/3D cartoon/action/realistic/cinematic/map video) قبل ما يكتب البرومبت،
-  // اختياري بالكامل ومش شرط، وبيفضل مختار (persistent) لحد ما تغيّره أو تلغيه بنفسك
+  // ✅ FIX (طلب العميل: "بدلا من ان يكون فيه سهمين لا اجمع كل حاجه في علامة + ... كله بلغة
+  // الانجليزية"): كان فيه 3 أزرار منفصلة (+ للإرفاق، ▾ للستايل، ▾ لفرض موديل معيّن) — دلوقتي
+  // كله جوه علامة "+" واحدة، بقائمة رئيسية (رفع ملف/إنشاء صورة/إنشاء فيديو/ستايل) وقوائم فرعية
+  // (Back) لكل خيار — نفس منطق forcedModel/selectedStyle القديم بالظبط، بس واجهة موحّدة، وكل
+  // نصوص القائمة دي تحديدًا بالإنجليزي زي ما اتطلب صراحة
   const [selectedStyle, setSelectedStyle] = useState(null);
-  const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const STYLE_OPTIONS = [
-    { key: 'anime',      icon: Sparkles,     label: lang === 'ar' ? 'أنمي' : 'Anime' },
-    { key: '3d_cartoon', icon: Box,          label: lang === 'ar' ? 'كرتون 3D' : '3D Cartoon' },
-    { key: 'action',     icon: Swords,       label: lang === 'ar' ? 'أكشن' : 'Action' },
-    { key: 'realistic',  icon: Camera,       label: lang === 'ar' ? 'واقعي' : 'Realistic' },
-    { key: 'cinematic',  icon: Clapperboard, label: lang === 'ar' ? 'سينمائي' : 'Cinematic' },
-    { key: 'map_video',  icon: MapIcon,      label: lang === 'ar' ? 'فيديو خريطة' : 'Map Video' },
+    { key: 'anime',      icon: Sparkles,     label: 'Anime' },
+    { key: '3d_cartoon', icon: Box,          label: '3D Cartoon' },
+    { key: 'action',     icon: Swords,       label: 'Action' },
+    { key: 'realistic',  icon: Camera,       label: 'Realistic' },
+    { key: 'cinematic',  icon: Clapperboard, label: 'Cinematic' },
+    { key: 'map_video',  icon: MapIcon,      label: 'Map Video' },
   ];
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [plusMenuView, setPlusMenuView] = useState('main'); // 'main' | 'createImage' | 'createVideo' | 'style'
+  const closePlusMenu = () => { setPlusMenuOpen(false); setPlusMenuView('main'); };
+  const plusItemStyle = { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', width: '100%' };
+  const plusItemHover = (e, on) => { e.currentTarget.style.background = on ? 'rgba(255,255,255,0.06)' : 'none'; };
 
-  const StylePickerButton = () => (
+  const PlusMenu = () => (
     <div style={{ position: 'relative' }}>
-      <button onClick={() => setStyleMenuOpen(v => !v)}
-        title={lang === 'ar' ? 'اختر ستايل بصري (اختياري)' : 'Pick a visual style (optional)'}
-        style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: selectedStyle ? 'rgba(124,106,247,0.18)' : (styleMenuOpen ? 'var(--accent-bg)' : 'rgba(255,255,255,0.05)'),
-          border: `1px solid ${selectedStyle || styleMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`,
-          color: selectedStyle ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 15, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>
-        {selectedStyle
-          ? (() => { const SelIcon = STYLE_OPTIONS.find(s => s.key === selectedStyle)?.icon; return SelIcon ? <SelIcon size={16} strokeWidth={2} /> : null; })()
-          : '▾'}
-      </button>
-      {styleMenuOpen && (
+      <input ref={voiceInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
+      <input ref={voiceCloneInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceCloneFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
+      <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
+      <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => { handleVideoFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
+      <button onClick={() => (plusMenuOpen ? closePlusMenu() : setPlusMenuOpen(true))} title="Attach, create, or set a style"
+        style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (plusMenuOpen || forcedModel || selectedStyle) ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${(plusMenuOpen || forcedModel || selectedStyle) ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: (plusMenuOpen || forcedModel || selectedStyle) ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: plusMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
+
+      {plusMenuOpen && (
         <>
-          <div onClick={() => setStyleMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {STYLE_OPTIONS.map(opt => (
-              <button key={opt.key}
-                onClick={() => { setSelectedStyle(v => v === opt.key ? null : opt.key); setStyleMenuOpen(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8,
-                  background: selectedStyle === opt.key ? 'rgba(124,106,247,0.15)' : 'none', border: 'none',
-                  color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-                onMouseLeave={e => e.currentTarget.style.background = selectedStyle === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
-                <opt.icon size={16} strokeWidth={2} />{opt.label}
-                {selectedStyle === opt.key && <Check size={14} strokeWidth={3} style={{ marginLeft: 'auto', color: 'var(--accent2)' }} />}
-              </button>
-            ))}
-            {selectedStyle && (
-              <button onClick={() => { setSelectedStyle(null); setStyleMenuOpen(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2, paddingTop: 10, color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
-                onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
-                <X size={14} strokeWidth={2.5} /> {lang === 'ar' ? 'إلغاء الاختيار' : 'Clear selection'}
-              </button>
+          <div onClick={closePlusMenu} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 230, maxHeight: 360, overflowY: 'auto', boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
+
+            {plusMenuView === 'main' && (
+              <>
+                <button onClick={() => imageInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <ImageIcon size={16} strokeWidth={2} /> Upload photo
+                </button>
+                <button onClick={() => videoInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={`Upload a video to edit (max ${MAX_VIDEO_UPLOAD_SEC}s)`}>
+                  <Film size={16} strokeWidth={2} /> Upload video to edit
+                </button>
+                <button onClick={() => voiceInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}>
+                  <Mic size={16} strokeWidth={2} /> Record voice message
+                </button>
+                <button onClick={() => voiceCloneInputRef.current?.click()} disabled={savingVoice} style={{ ...plusItemStyle, cursor: savingVoice ? 'wait' : 'pointer' }} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}
+                  title="Save your voice once (10s recommended, max 1 minute) and use it in any future video">
+                  <Volume2 size={16} strokeWidth={2} /> {savingVoice ? 'Saving...' : (myClonedVoice ? 'Update my saved voice' : 'Save my voice')}
+                </button>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 2px' }} />
+                <button onClick={() => setPlusMenuView('createImage')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <ImageIcon size={16} strokeWidth={2} /> Create image <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
+                </button>
+                <button onClick={() => setPlusMenuView('createVideo')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <Film size={16} strokeWidth={2} /> Create video <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
+                </button>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 2px' }} />
+                <button onClick={() => setPlusMenuView('style')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  {(() => { const SelIcon = STYLE_OPTIONS.find(s => s.key === selectedStyle)?.icon || Sparkles; return <SelIcon size={16} strokeWidth={2} />; })()}
+                  Visual style{selectedStyle ? `: ${STYLE_OPTIONS.find(s => s.key === selectedStyle)?.label}` : ''}
+                  <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
+                </button>
+                {(forcedModel || selectedStyle) && (
+                  <button onClick={() => { setForcedModel(null); setSelectedStyle(null); }}
+                    style={{ ...plusItemStyle, borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2, paddingTop: 10, color: 'rgba(255,255,255,0.4)', fontSize: 12 }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
+                    <X size={14} strokeWidth={2.5} /> Clear engine/style selection
+                  </button>
+                )}
+              </>
             )}
-          </div>
-        </>
-      )}
-    </div>
-  );
 
-  // ✅ NEW (طلب العميل: زرار سهم زي Google Flow لاختيار موديل الصورة أو الفيديو يدويًا بدل ما
-  // الايجنت يختار لوحده): قايمة منسدلة فيها "تلقائي" (الافتراضي — الايجنت يختار) + كل موديلات
-  // الصور وكل موديلات الفيديو الحقيقية بسعرها. لو المستخدم اختار واحد، بيتبعت مع كل رسالة
-  // جاية لحد ما يلغيه أو يختار غيره، ونفس نمط StylePickerButton فوق بالظبط
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const ModelPickerButton = () => (
-    <div style={{ position: 'relative' }}>
-      <button onClick={() => setModelMenuOpen(v => !v)}
-        title={lang === 'ar' ? 'اختار موديل معيّن يدويًا (اختياري)' : 'Manually pick a specific engine (optional)'}
-        style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: forcedModel ? 'rgba(124,106,247,0.18)' : (modelMenuOpen ? 'var(--accent-bg)' : 'rgba(255,255,255,0.05)'),
-          border: `1px solid ${forcedModel || modelMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`,
-          color: forcedModel ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 15, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s' }}>
-        {forcedModel ? (forcedModel.type === 'image' ? <ImageIcon size={16} strokeWidth={2} /> : <Film size={16} strokeWidth={2} />) : '▾'}
-      </button>
-      {modelMenuOpen && (
-        <>
-          <div onClick={() => setModelMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 240, maxHeight: 340, overflowY: 'auto', boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{ padding: '6px 10px 2px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>{lang === 'ar' ? 'موديلات الصور' : 'Image Engines'}</div>
-            {imageModelOptions.map(opt => (
-              <button key={opt.key}
-                onClick={() => { setForcedModel({ type: 'image', key: opt.key, label: opt.label }); setModelMenuOpen(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8,
-                  background: forcedModel?.type === 'image' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none', border: 'none',
-                  color: '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-                onMouseLeave={e => e.currentTarget.style.background = forcedModel?.type === 'image' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
-                <ImageIcon size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{opt.creditCostPerImage}cr</span>
-                {forcedModel?.type === 'image' && forcedModel.key === opt.key && <Check size={13} strokeWidth={3} style={{ color: 'var(--accent2)', flexShrink: 0 }} />}
-              </button>
-            ))}
-            <div style={{ padding: '10px 10px 2px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2 }}>{lang === 'ar' ? 'موديلات الفيديو' : 'Video Engines'}</div>
-            {videoModelOptions.map(opt => (
-              <button key={opt.key}
-                onClick={() => { setForcedModel({ type: 'video', key: opt.key, label: opt.label }); setModelMenuOpen(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8,
-                  background: forcedModel?.type === 'video' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none', border: 'none',
-                  color: '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-                onMouseLeave={e => e.currentTarget.style.background = forcedModel?.type === 'video' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
-                <Film size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{opt.creditCostPerSecond}cr/s</span>
-                {forcedModel?.type === 'video' && forcedModel.key === opt.key && <Check size={13} strokeWidth={3} style={{ color: 'var(--accent2)', flexShrink: 0 }} />}
-              </button>
-            ))}
-            {forcedModel && (
-              <button onClick={() => { setForcedModel(null); setModelMenuOpen(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4, paddingTop: 10, color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: lang === 'ar' ? 'right' : 'left' }}
-                onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
-                <X size={14} strokeWidth={2.5} /> {lang === 'ar' ? 'رجّع للاختيار التلقائي' : 'Back to auto'}
-              </button>
+            {plusMenuView === 'createImage' && (
+              <>
+                <button onClick={() => setPlusMenuView('main')} style={{ ...plusItemStyle, color: 'rgba(255,255,255,0.5)', fontSize: 12 }} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <ChevronLeft size={14} strokeWidth={2} /> Back
+                </button>
+                {imageModelOptions.map(opt => (
+                  <button key={opt.key}
+                    onClick={() => { setForcedModel({ type: 'image', key: opt.key, label: opt.label }); closePlusMenu(); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8,
+                      background: forcedModel?.type === 'image' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none', border: 'none',
+                      color: '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background = forcedModel?.type === 'image' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
+                    <ImageIcon size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{opt.creditCostPerImage}cr</span>
+                    {forcedModel?.type === 'image' && forcedModel.key === opt.key && <Check size={13} strokeWidth={3} style={{ color: 'var(--accent2)', flexShrink: 0 }} />}
+                  </button>
+                ))}
+              </>
             )}
-          </div>
-        </>
-      )}
-    </div>
-  );
 
-  const AttachBar = () => (
-    <div style={{ position: 'relative' }}>
-      <input ref={voiceInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
-      <input ref={voiceCloneInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceCloneFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
-      <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
-      <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => { handleVideoFile(e); setAttachMenuOpen(false); }} style={{ display: 'none' }} />
-      <button onClick={() => setAttachMenuOpen(v => !v)} title={t.attachTitle}
-        style={{ width: 38, height: 38, borderRadius: 10, background: attachMenuOpen ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${attachMenuOpen ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: attachMenuOpen ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
+            {plusMenuView === 'createVideo' && (
+              <>
+                <button onClick={() => setPlusMenuView('main')} style={{ ...plusItemStyle, color: 'rgba(255,255,255,0.5)', fontSize: 12 }} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <ChevronLeft size={14} strokeWidth={2} /> Back
+                </button>
+                {videoModelOptions.map(opt => (
+                  <button key={opt.key}
+                    onClick={() => { setForcedModel({ type: 'video', key: opt.key, label: opt.label }); closePlusMenu(); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8,
+                      background: forcedModel?.type === 'video' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none', border: 'none',
+                      color: '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background = forcedModel?.type === 'video' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
+                    <Film size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{opt.creditCostPerSecond}cr/s</span>
+                    {forcedModel?.type === 'video' && forcedModel.key === opt.key && <Check size={13} strokeWidth={3} style={{ color: 'var(--accent2)', flexShrink: 0 }} />}
+                  </button>
+                ))}
+              </>
+            )}
 
-      {attachMenuOpen && (
-        <>
-          <div onClick={() => setAttachMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 190, boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <button onClick={() => { voiceInputRef.current?.click(); }} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <Mic size={16} strokeWidth={2} />{t.attachVoice}
-            </button>
-            <button onClick={() => { imageInputRef.current?.click(); }} title={t.imageTitle}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <ImageIcon size={16} strokeWidth={2} />{t.attachPhoto}
-            </button>
-            <button onClick={() => { videoInputRef.current?.click(); }} title={lang === 'ar' ? `ارفع فيديو للتعديل (أقصى ${MAX_VIDEO_UPLOAD_SEC} ثانية)` : `Upload a video to edit (max ${MAX_VIDEO_UPLOAD_SEC}s)`}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <Film size={16} strokeWidth={2} />{lang === 'ar' ? 'ارفع فيديو للتعديل' : 'Upload video to edit'}
-            </button>
-            <button onClick={() => { voiceCloneInputRef.current?.click(); }} disabled={savingVoice}
-              title={lang === 'ar' ? `احفظ صوتك مرة واحدة (موصى بيها 10 ثواني، أقصى دقيقة) واستخدمه في أي فيديو جاي` : `Save your voice once (10s recommended, max 1 minute) and use it in any future video`}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: savingVoice ? 'wait' : 'pointer', textAlign: isArabic(t.attachTitle) ? 'right' : 'left' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <Volume2 size={16} strokeWidth={2} />{savingVoice ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (myClonedVoice ? (lang === 'ar' ? 'تحديث صوتي المحفوظ' : 'Update my saved voice') : (lang === 'ar' ? 'احفظ صوتي' : 'Save my voice'))}
-            </button>
+            {plusMenuView === 'style' && (
+              <>
+                <button onClick={() => setPlusMenuView('main')} style={{ ...plusItemStyle, color: 'rgba(255,255,255,0.5)', fontSize: 12 }} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <ChevronLeft size={14} strokeWidth={2} /> Back
+                </button>
+                {STYLE_OPTIONS.map(opt => (
+                  <button key={opt.key}
+                    onClick={() => { setSelectedStyle(v => v === opt.key ? null : opt.key); closePlusMenu(); }}
+                    style={{ ...plusItemStyle, background: selectedStyle === opt.key ? 'rgba(124,106,247,0.15)' : 'none' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background = selectedStyle === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
+                    <opt.icon size={16} strokeWidth={2} />{opt.label}
+                    {selectedStyle === opt.key && <Check size={14} strokeWidth={3} style={{ marginLeft: 'auto', color: 'var(--accent2)' }} />}
+                  </button>
+                ))}
+              </>
+            )}
+
           </div>
         </>
       )}
@@ -2096,10 +2093,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             borderRadius: 16, padding: 8,
             transition: 'border-color 0.2s ease',
           }}>
-            <AttachBar />
-            <StylePickerButton />
-            <ModelPickerButton />
+            <PlusMenu />
             <textarea
+              ref={textareaRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -2107,7 +2103,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
               onBlur={() => setInputFocused(false)}
               placeholder={t.placeholder}
               rows={1}
-              style={{ flex: 1, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 14, fontFamily: 'inherit', padding: '9px 6px', direction: isArabic(input) ? 'rtl' : 'ltr', maxHeight: 100 }}
+              style={{ flex: 1, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 14, fontFamily: 'inherit', padding: '9px 6px', direction: isArabic(input) ? 'rtl' : 'ltr', overflowY: 'hidden' }}
             />
             {(loading || activeJobRef.current) ? (
               <button onClick={stopEverything} title={t.stop}
