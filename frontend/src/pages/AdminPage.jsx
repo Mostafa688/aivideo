@@ -131,6 +131,66 @@ function MonthlyBarChart({ data }) {
   );
 }
 
+// ── Range Chart (28/90/365 days — طلب العميل) ───────────────────────────────
+function formatPeriodLabel(period, bucket) {
+  if (bucket === 'month') {
+    const [y, m] = period.split('-');
+    return new Date(y, m - 1, 1).toLocaleDateString('en', { month: 'short', year: '2-digit' });
+  }
+  if (bucket === 'week') {
+    const [, wk] = period.split('-'); // ISO "IYYY-IW"
+    return `W${parseInt(wk, 10)}`;
+  }
+  return new Date(period).toLocaleDateString('en', { month: 'short', day: 'numeric' });
+}
+
+function RangeBarChart({ data, bucket, color = '#7c6af7' }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+  if (!data?.length) return <div style={{ color: '#4b5563', fontSize: 13 }}>No data yet for this range</div>;
+  const counts = data.map(d => parseInt(d.count, 10) || 0);
+  const max = Math.max(...counts, 1);
+  const peakIdx = counts.indexOf(Math.max(...counts));
+  // ✅ مفيش تسمية تحت كل عمود لو الأعمدة كتير (365 يوم مثلاً) عشان النص مايتزاحمش على بعضه
+  const labelEvery = data.length > 40 ? Math.ceil(data.length / 20) : data.length > 16 ? 2 : 1;
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: data.length > 60 ? 2 : 4, height: 90 }}>
+        {data.map((d, i) => {
+          const count = counts[i];
+          const isPeak = i === peakIdx && count > 0;
+          return (
+            <div key={i}
+              onMouseEnter={() => setHoverIdx(i)}
+              onMouseLeave={() => setHoverIdx(h => (h === i ? null : h))}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 2 }}>
+              <div style={{
+                width: '100%', borderRadius: '3px 3px 0 0',
+                background: isPeak ? '#22c55e' : color,
+                opacity: hoverIdx === null || hoverIdx === i ? 1 : 0.5,
+                height: `${Math.max(3, (count / max) * 80)}px`,
+                transition: 'opacity 0.15s',
+              }} />
+              {i % labelEvery === 0 && (
+                <span style={{ fontSize: 9, color: '#4b5563', whiteSpace: 'nowrap' }}>{formatPeriodLabel(d.period, bucket)}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {hoverIdx != null && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: `${((hoverIdx + 0.5) / data.length) * 100}%`, transform: 'translateX(-50%)',
+          marginBottom: 6, background: '#1a1a2e', border: '1px solid #2d2d4a', borderRadius: 8,
+          padding: '6px 10px', fontSize: 11, color: '#fff', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 10,
+          boxShadow: '0 4px 12px #0006',
+        }}>
+          <strong>{counts[hoverIdx]}</strong> — {formatPeriodLabel(data[hoverIdx].period, bucket)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Login Screen ───────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [secret, setSecret] = useState('');
@@ -1898,7 +1958,23 @@ export default function AdminPage() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
-  const loadStats    = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/stats', { headers }); const d = await r.json(); setStats(d); } catch (e) { console.error(e); } setLoading(false); }, []);
+  const [statsRange, setStatsRange] = useState(28); // ✅ NEW: 28/90/365 يوم لرسم بياني الموقع
+  const loadStats    = useCallback(async (range) => { setLoading(true); try { const r = await fetch(`/api/admin/stats?range=${range || statsRange}`, { headers }); const d = await r.json(); setStats(d); } catch (e) { console.error(e); } setLoading(false); }, [statsRange]);
+  // ✅ NEW (طلب العميل: "تضيف خانة اني اقدر اشوف مشاريع وصور وفيديوهات العملاء"): تصفح كل
+  // مشروع اتعمل بالنظام الجديد مع ميديا العميل الحقيقية، فلترة بالإيميل
+  const [customerProjects, setCustomerProjects] = useState([]);
+  const [customerProjectsEmail, setCustomerProjectsEmail] = useState('');
+  const loadCustomerProjects = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '30' });
+      if (customerProjectsEmail.trim()) params.set('email', customerProjectsEmail.trim());
+      const r = await fetch('/api/admin/customer-projects?' + params, { headers });
+      const d = await r.json();
+      setCustomerProjects(d.projects || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, [customerProjectsEmail]);
   const loadPayments = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/admin/payments', { headers }); const d = await r.json(); setPayments(d.payments || []); } catch (e) { console.error(e); } setLoading(false); }, []);
   const markPaid = useCallback(async (id, paid) => {
     try {
@@ -2114,7 +2190,8 @@ export default function AdminPage() {
     else if (tab === 'videos') loadAgentChats();
     else if (tab === 'support') { loadSupport(); }
     else if (tab === 'community') { loadCommunity(); }
-  }, [authed, tab, loadStats, loadUsers, loadPayments, loadAgentChats, loadSupport, loadCommunity]);
+    else if (tab === 'customerProjects') { loadCustomerProjects(); }
+  }, [authed, tab, loadStats, loadUsers, loadPayments, loadAgentChats, loadSupport, loadCommunity, loadCustomerProjects]);
 
   // Poll support messages when chat is open
   useEffect(() => {
@@ -2179,6 +2256,7 @@ export default function AdminPage() {
     { key: 'users',      label: '👥 Users'       },
     { key: 'payments',   label: '💰 Payments'    },
     { key: 'videos',     label: '🤖 Agent Chats' },
+    { key: 'customerProjects', label: '🗂️ Customer Projects' },
     { key: 'support',    label: `💬 Support${totalUnread > 0 ? ` 🔴${totalUnread}` : supportChats.length > 0 ? ` (${supportChats.length})` : ''}` },
     { key: 'affiliates', label: '🤝 Affiliates'  },
     { key: 'ratings',    label: '⭐ Ratings'      },
@@ -2218,7 +2296,7 @@ export default function AdminPage() {
         {/* ── OVERVIEW ── */}
         {tab === 'overview' && (
           <>
-            <div style={s.topbar}><div style={s.title}>Overview</div><button style={s.btn()} onClick={loadStats}>🔄 Refresh</button></div>
+            <div style={s.topbar}><div style={s.title}>Overview</div><button style={s.btn()} onClick={() => loadStats()}>🔄 Refresh</button></div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
             {stats && <>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
@@ -2236,6 +2314,30 @@ export default function AdminPage() {
               <div style={s.card}>
                 <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Subscriptions per month — last 12 months</div>
                 <MonthlyBarChart data={stats.monthly_subscriptions} />
+              </div>
+              {/* ✅ NEW (طلب العميل: "الرسم البياني لاحصائيات الموقع اخر 28 و 90 و 365 يوم") */}
+              <div style={s.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ fontSize: 13, color: '#6b7280' }}>Site activity — last {stats.range_days || statsRange} days ({stats.period_bucket === 'month' ? 'by month' : stats.period_bucket === 'week' ? 'by week' : 'by day'})</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[28, 90, 365].map(r => (
+                      <button key={r} onClick={() => { setStatsRange(r); loadStats(r); }}
+                        style={{ ...s.btn(statsRange === r ? '#7c6af7' : '#1a1a2e'), color: statsRange === r ? '#fff' : '#9ca3af' }}>
+                        {r}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 10 }}>Videos generated</div>
+                    <RangeBarChart data={stats.videos_per_period} bucket={stats.period_bucket} color="#7c6af7" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 10 }}>New signups</div>
+                    <RangeBarChart data={stats.signups_per_period} bucket={stats.period_bucket} color="#06b6d4" />
+                  </div>
+                </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 16 }}>
                 <div style={s.card}>
@@ -2514,6 +2616,53 @@ export default function AdminPage() {
                   </div>
                   <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 6 }}><b style={{ color: '#d1d5db' }}>Customer:</b> {c.user_message}</div>
                   <div style={{ fontSize: 13, color: '#9ca3af' }}><b style={{ color: '#7c6af7' }}>Agent:</b> {c.agent_reply}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ── CUSTOMER PROJECTS (طلب العميل: "اقدر اشوف مشاريع وصور وفيديوهات العملاء عشان
+        اعرف بيشتكوا من ايه") ── */}
+        {tab === 'customerProjects' && (
+          <>
+            <div style={s.topbar}>
+              <div style={s.title}>🗂️ Customer Projects ({customerProjects.length})</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input style={{ ...s.input, width: 220 }} placeholder="Filter by customer email..." value={customerProjectsEmail} onChange={e => setCustomerProjectsEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadCustomerProjects()} />
+                <button style={s.btn()} onClick={loadCustomerProjects}>🔍 Search</button>
+              </div>
+            </div>
+            {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
+            {!loading && customerProjects.length === 0 && <div style={{ color: '#6b7280' }}>مفيش مشاريع لسه، أو الفلتر مافيهوش نتيجة.</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {customerProjects.map(p => (
+                <div key={p.id} style={s.card}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span>{p.user_email}</span>
+                        {p.user_plan && <span style={planStyle(p.user_plan)}>{p.user_plan}</span>}
+                        <span>· {p.message_count} messages · updated {new Date(p.updated_at).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#4b5563', whiteSpace: 'nowrap' }}>{p.images.length} images · {p.videos.length} videos</div>
+                  </div>
+                  {(p.images.length > 0 || p.videos.length > 0) ? (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {p.images.map((url, i) => (
+                        <a key={'img' + i} href={url} target="_blank" rel="noreferrer" title="Open full size">
+                          <img src={url} alt="" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #1a1a2e', display: 'block' }} />
+                        </a>
+                      ))}
+                      {p.videos.map((url, i) => (
+                        <video key={'vid' + i} src={url} controls style={{ width: 130, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #1a1a2e', background: '#000' }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#4b5563' }}>مفيش ميديا اتولدت في المشروع ده لسه.</div>
+                  )}
                 </div>
               ))}
             </div>
