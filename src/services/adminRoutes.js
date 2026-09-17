@@ -5,18 +5,32 @@ import fs from 'fs';
 import path from 'path';
 import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, listRecentDailyRunsForAdmin, listClonedVoicesForAdmin } from './authService.js';
 import { isGA4Configured, getGA4Overview } from './googleAnalyticsService.js';
+import { adminAuth, verifyAdminCredentials, issueAdminToken, checkLoginRateLimit } from './adminAuthMiddleware.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
 });
-function adminAuth(req, res, next) {
-  const secret = req.headers['x-admin-secret'] || req.query.secret;
-  const ADMIN_SECRET = process.env.ADMIN_SECRET || 'erivion_admin_2026';
-  if (!secret || secret !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-  next();
-}
+
+// ✅ NEW: نقطة الدخول الحقيقية الوحيدة لصفحة الأدمن — إيميل من قايمة محددة + نفس الباسورد
+// القديم (ADMIN_SECRET)، وبيرجع توكن جلسة (JWT) قصير العمر بدل ما يسيب الفرونت إند يحتفظ
+// بأي سر حقيقي. راجع adminAuthMiddleware.js للتفاصيل الكاملة عن الباج الأمني اللي كان موجود.
+router.post('/login', (req, res) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.socket?.remoteAddress || 'unknown';
+  if (!checkLoginRateLimit(ip)) {
+    return res.status(429).json({ error: 'too_many_attempts', message: 'Too many login attempts — try again in a few minutes.' });
+  }
+  const { email, password } = req.body || {};
+  const result = verifyAdminCredentials(email, password);
+  if (!result.ok) {
+    if (result.reason === 'not_configured') {
+      return res.status(503).json({ error: 'not_configured', message: 'Admin login is not configured on the server (ADMIN_SECRET missing).' });
+    }
+    return res.status(401).json({ error: 'invalid_credentials', message: 'Wrong email or password.' });
+  }
+  res.json({ token: issueAdminToken(result.email) });
+});
 // ✅ NEW (طلب العميل: "تضيف شكل الرسم البياني لاحصائيات الموقع اخر 28 و 90 و 365 يوم"):
 // المدة (range، بالأيام) بتحدد حجم "الدلو" اللي بنجمّع بيه البيانات — يوم بيوم للمدد
 // القصيرة (مفهوم ومقروء)، أسبوع بأسبوع للمتوسطة، شهر بشهر للطويلة (365) عشان الرسم البياني

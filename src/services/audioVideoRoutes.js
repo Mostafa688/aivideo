@@ -16,16 +16,10 @@ import sharp from 'sharp';
 import { transcribeAudioWithTimestamps, uploadAudioVideoSourceToR2, tmpAudioPath, extractVideoElements, resolveElementImages, searchStickerCandidates, uploadElementImageToR2, uploadReferenceImageToR2, uploadCompositeImageToR2, uploadBulkStickerToR2, captionImageWithVision, matchStickersToTranscript } from './audioVideoService.js';
 import { renderAudioVideoJob } from './audioVideoRenderService.js';
 import { createAudioVideoJob, updateAudioVideoJob, getAudioVideoJobById, listAudioVideoJobsForAdmin, upsertReferenceImage, listReferenceImages, getReferenceImagesMap, deleteReferenceImage } from './authService.js';
+import { adminAuth } from './adminAuthMiddleware.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
-
-function adminAuth(req, res, next) {
-  const secret = req.headers['x-admin-secret'] || req.query.secret;
-  const ADMIN_SECRET = process.env.ADMIN_SECRET || 'erivion_admin_2026';
-  if (!secret || secret !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-  next();
-}
 
 // ✅ NEW (طلب العميل): فيديوهات طويلة بيتقسم صوتها لأكتر من ملف — بنقبل لحد 10 ملفات صوت
 // دفعة واحدة، وبنفرّغ كل ملف لوحده (كل ملف يفضل تحت أي حد حجم/مدة بتاع Whisper نفسه، وده
