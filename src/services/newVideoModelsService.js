@@ -11,11 +11,38 @@
 // fetch, and should be double-checked against each model's real
 // replicate.com/<slug>/api/schema page before depending on them heavily.
 
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { execSync } from 'child_process';
+
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000; // فيديو بياخد وقت أطول بكتير من صورة — 10 دقايق كافية للغالبية
 
 function authHeaders() {
   return { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json', 'Prefer': 'wait' };
+}
+
+// ✅ NEW (طلب العميل: توجيه تعديل الفيديو حسب مدته الحقيقية — omni_flash_1_1 لحد 10 ثواني،
+// decart/lucy-edit-2 لأي مدة أطول): بنقيس المدة الحقيقية للفيديو المصدر بـffprobe (مش بنثق
+// في أي رقم مدة جاي من العميل/الايجنت) — نفس نمط ffprobe المستخدم في كل حتة تانية في المشروع،
+// بننزّل الفيديو لملف مؤقت الأول (زي كل استخدامات ffprobe التانية) بدل قياس رابط مباشر
+export async function measureVideoDurationSec(url) {
+  const tmpPath = path.join(os.tmpdir(), `probe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+    fs.writeFileSync(tmpPath, Buffer.from(await res.arrayBuffer()));
+    const out = execSync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmpPath}"`,
+      { encoding: 'utf8' }
+    ).trim();
+    const sec = parseFloat(out);
+    if (!sec || !Number.isFinite(sec)) throw new Error(`ffprobe returned no duration: "${out}"`);
+    return sec;
+  } finally {
+    try { fs.unlinkSync(tmpPath); } catch {}
+  }
 }
 
 // نفس نمط الرفع لـ R2 المستخدم في newImageModelsService.js/audioVideoService.js —
@@ -284,6 +311,21 @@ export const NEW_VIDEO_MODELS = {
       aspect_ratio: aspectRatio || '16:9',
       duration: Math.min(Math.max(durationSec || 5, 3), 10),
       ...(sourceVideoUrl ? { video: sourceVideoUrl } : imageUrl ? { reference_images: [imageUrl] } : {}),
+    }),
+  },
+  // ✅ NEW (طلب العميل: تعديل فيديوهات أطول من 10 ثواني — omni_flash_1_1 محدود بـ10 ثواني بس):
+  // decart/lucy-edit-2 — بيدور على فيديوهات video-to-video editing أطول. السعر ($0.04/ثانية)
+  // ومدى المدة الأقصى (العميل قال "على ما اظن" ~30 دقيقة) لسه مش مؤكدين من صفحة الموديل نفسها
+  // (مفيش سكرين شوت)، ده تصريح العميل نفسه بس — والـschema (اسم حقل الفيديو المصدر بالتحديد)
+  // برضو تخمين بالقياس على omni_flash_1_1 ("video")، محتاج تأكيد حي قبل الاعتماد عليه بكتر.
+  // مفيش حقل "duration" هنا عن قصد — موديلات تعديل الفيديو (زي omni_flash_1_1 نفسه) بتحافظ
+  // على مدة الفيديو المصدر الحقيقية زي ما هي، مش بتاخد مدة مستهدفة منفصلة
+  decart_lucy_edit_2: {
+    slug: 'decart/lucy-edit-2',
+    supportsVideoEdit: true,
+    buildInput: ({ prompt, sourceVideoUrl }) => ({
+      prompt,
+      video: sourceVideoUrl,
     }),
   },
 };
