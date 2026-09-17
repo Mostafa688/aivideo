@@ -5,9 +5,9 @@ const faqs_ar = [
   {
     category: '🌟 عن Erivion',
     questions: [
-      { q: 'ايه هي Erivion وبتقدم ايه بالظبط؟', a: 'Erivion منصة بتحول أي فكرة، سكريبت، أو حتى صورة، لفيديو جاهز بالذكاء الاصطناعي — صوت، موسيقى، وكابشن، من غير ما تحتاج خبرة مونتاج. عندك أكتر من موديل توليد (فوتيج حقيقي، صور AI فنية، فيديو AI بحركة حقيقية، سينمائي بشخصيات ثابتة، إعلانات منتجات) وايجنت ذكي بيعمل كل ده معاك في شات واحد.' },
+      { q: 'ايه هي Erivion وبتقدم ايه بالظبط؟', a: 'Erivion منصة بتحول أي فكرة، سكريبت، أو حتى صورة، لفيديو جاهز بالذكاء الاصطناعي — صوت، موسيقى، وكابشن، من غير ما تحتاج خبرة مونتاج. الايجنت الذكي بيبني الفيديو معاك خطوة بخطوة (صورة مرجعية لو محتاج شخصية ثابتة تفضل زي ما هي في كل المشاهد، صور المشاهد، وبعدين تحريكها فيديو) مستخدم أحدث موديلات الصور والفيديو المتاحة، وبيختارلك أنسب موديل لكل مشهد تلقائيًا من غير ما تحتاج تختار حاجة بنفسك.' },
       { q: 'هل فيه خطة مجانية؟', a: 'لأ، الخطة المجانية اتلغت. أي مستخدم جديد بيبدأ برصيد كريديت صفر، ولازم يشحن كريديت (مصري عن طريق InstaPay، أو دولي عن طريق Gumroad) قبل ما يقدر يعمل أي فيديو.' },
-      { q: 'إمتى أستخدم الايجنت وإمتى أستخدم صفحة موديل معينة مباشرة؟', a: 'الايجنت هو أسهل طريق لو مش عارف تختار موديل أو عايز تتكلم بشكل طبيعي عن فكرتك. صفحات الموديلات المباشرة (Model 3، 4، 5، 7...) مفيدة لو عندك تفاصيل دقيقة عايز تتحكم فيها بنفسك (زي عدد المشاهد بالظبط أو إعدادات متقدمة).' },
+      { q: 'إمتى أستخدم الايجنت وإمتى أستخدم صفحة موديل معينة مباشرة؟', a: 'الايجنت هو الطريق الافتراضي والأسهل لأي فيديو جديد — بيبني الفيديو بالكامل من وصفك للفكرة وبيختار أحدث الموديلات المتاحة تلقائيًا. صفحات الموديلات القديمة المرقمة (زي Model 3، 4، 5) لسه شغالة بس بقت خيار إضافي بس، مش الأساس — تقدر تستخدمها لو انت مشترك فيها من قبل، أو لو طلبت موديل معين بالاسم صراحة.' },
     ],
   },
   {
@@ -31,7 +31,8 @@ const faqs_ar = [
   {
     category: '🎬 الموديلات والفيديوهات',
     questions: [
-      { q: 'ايه الفرق بين الموديلات؟', a: '• Model 1/2: صور أو فوتيج حقيقي — أرخص خيار\n• Model 3: صور AI فنية\n• Model 4: فيديو AI بحركة حقيقية\n• Model 5 (Cinematic): شخصية ثابتة عبر كل المشاهد + وضع Map Video للفيديوهات التاريخية/الجغرافية\n• Model 7: إعلانات منتجات من صورة واحدة' },
+      { q: 'ايه الفرق بين الموديلات؟', a: 'مبقاش لازم تختار موديل بنفسك — الايجنت بيختار أفضل موديل فيديو أو صور لكل مشهد تلقائيًا حسب طلبك (موديلات فيديو زي Veo وKling وSeedance وغيرهم، وموديلات صور زي Nano Banana وSeedream للمشاهد). لو المشهد فيه حوار بين شخصيات أو نص لازم يظهر واضح على الشاشة، الايجنت بيختار موديل مخصص لده تلقائيًا. الموديلات القديمة المرقمة (من 1 لحد 8) لسه موجودة كخيار إضافي، بس مش الاختيار الافتراضي — تقدر تطلبها بالاسم صراحة لو حابب.' },
+      { q: 'أقدر أعدّل فيديو خلصت عمله قبل كده؟', a: 'أيوه — قوله للايجنت إنك عايز تعدّل حاجة في فيديو اتعمل بالفعل (زي تغيير جو المشهد أو تفاصيل معينة) من غير ما تعمل الفيديو من الأول تاني. المدة الحقيقية للفيديو المصدر هي اللي بتحدد الموديل المستخدم في التعديل تلقائيًا.' },
       { q: 'كام وقت يستغرق تصيير الفيديو؟', a: 'من دقيقة لحد شوية دقايق حسب مدة الفيديو والموديل. لو اتأخر، هتلاقيه في صفحة "My Videos" حتى لو الشاشة قفلت.' },
       { q: 'أقدر أرفع سكريبت أو صوت جاهز؟', a: 'أيوه — تقدر تلصق سكريبت كامل (حتى مقسّم مشاهد) أو ترفع تسجيل صوتي وهيتحول لنارريشن حقيقي في الفيديو.' },
     ],
@@ -63,9 +64,9 @@ const faqs_en = [
   {
     category: '🌟 About Erivion',
     questions: [
-      { q: 'What is Erivion and what does it actually offer?', a: 'Erivion turns any idea, script, or even a single photo into a finished AI-generated video — voiceover, music, and captions included, no editing experience required. You get several generation models (real stock footage, artistic AI images, real AI motion video, cinematic with consistent characters, product ads) plus a smart Agent that can do all of it for you in one chat.' },
+      { q: 'What is Erivion and what does it actually offer?', a: "Erivion turns any idea, script, or even a single photo into a finished AI-generated video — voiceover, music, and captions included, no editing experience required. The smart Agent builds your video step by step (a reference image first if a character needs to stay consistent across scenes, then scene images, then animating them into video) using the latest available image and video engines, automatically picking the best one for each scene so you never have to choose anything yourself." },
       { q: 'Is there a free plan?', a: "No, the free plan has been discontinued. Every new account starts at 0 credits and needs to top up (Egypt via InstaPay, international via Gumroad) before generating any video." },
-      { q: 'When should I use the Agent vs. a specific model page directly?', a: "The Agent is the easiest path if you're unsure which model fits or just want to describe your idea naturally. The direct model pages (Model 3, 4, 5, 7...) are better when you want fine control over specific settings yourself." },
+      { q: 'When should I use the Agent vs. a specific model page directly?', a: "The Agent is the default, easiest path for any new video — it builds the whole thing from your description and automatically picks the latest available engines. The old numbered model pages (Model 3, 4, 5...) still work, but are now an extra option rather than the default — use them if you're already subscribed to one, or if you explicitly ask for a specific model by name." },
     ],
   },
   {
@@ -89,7 +90,8 @@ const faqs_en = [
   {
     category: '🎬 Models & Videos',
     questions: [
-      { q: "What's the difference between the models?", a: '• Model 1/2: images or real stock footage — the cheapest option\n• Model 3: artistic AI images\n• Model 4: real AI motion video\n• Model 5 (Cinematic): consistent character across every scene + Map Video mode for historical/geographic videos\n• Model 7: product ads from a single photo' },
+      { q: "What's the difference between the models?", a: "You don't need to pick a model yourself anymore — the Agent automatically picks the best video or image engine for each scene based on what you're asking for (video engines like Veo, Kling, Seedance and others; image engines like Nano Banana and Seedream for scenes). If a scene needs dialogue between characters or on-screen text that needs to render clearly, the Agent automatically picks an engine built for that. The old numbered models (1 through 8) still exist as an extra option, but aren't the default anymore — ask for one by name if you'd like to use it." },
+      { q: 'Can I edit a video I already generated?', a: "Yes — just tell the Agent you want to change something in a video you already made (like the scene's mood or a specific detail) instead of generating it from scratch. The source video's real length automatically determines which engine is used for the edit." },
       { q: 'How long does rendering take?', a: "From under a minute to a few minutes depending on video length and model. If it's taking a while, check the \"My Videos\" page — it'll be there even if you closed the screen." },
       { q: 'Can I upload a ready-made script or voice recording?', a: "Yes — you can paste a full script (even scene-by-scene) or upload a voice recording and it becomes the video's actual narration." },
     ],
