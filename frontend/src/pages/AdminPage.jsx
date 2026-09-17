@@ -11,13 +11,6 @@ import { downloadRemoteFile } from '../utils/download.js';
 let adminToken = null;
 try { adminToken = sessionStorage.getItem('erivion_admin_token') || null; } catch { /* ignore */ }
 
-const PLANS = {
-  free:  { credits_weekly: 10  },
-  pro:   { credits_weekly: 400 },
-  plus:  { credits_weekly: 60  },
-  max:   { credits_weekly: 600 },
-};
-
 const MOBILE_CSS = `
   @media (max-width: 768px) {
     .admin-stats { flex-direction: column !important; }
@@ -1984,9 +1977,18 @@ export default function AdminPage() {
   const [toast, setToast] = useState('');
   const [addCreditsEmail, setAddCreditsEmail] = useState('');
   const [addCreditsAmount, setAddCreditsAmount] = useState('');
-  const [rechargeModel, setRechargeModel] = useState('m12');
   const [rechargeEmail, setRechargeEmail] = useState('');
   const [rechargeAmount, setRechargeAmount] = useState('');
+  // ✅ NEW: إدارة الوصول/الباقة/شحن الكريديت لتيرات الموديلات المدفوعة (3/4/5) — الـbackend
+  // endpoints دي كانت موجودة أصلاً (recharge-m3/m4/m5, user/model3/4/5) بس صفحة الأدمن
+  // مكنتش بتستخدمهم خالص، فكان لازم الدخول لقاعدة البيانات يدويًا عشان تدير عميل مشترك فيهم
+  const [modelAccess, setModelAccess] = useState({
+    model3: { access: false, plan: 'm3_starter' },
+    model4: { access: false, plan: 'm4_plan1' },
+    model5: { access: false, plan: 'mc_starter' },
+  });
+  const [modelRecharge, setModelRecharge] = useState({ model3: '', model4: '', model5: '' });
+  const [savingModel, setSavingModel] = useState(null); // 'model3' | 'model4' | 'model5' | null
   const [supportChats, setSupportChats] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
@@ -2129,7 +2131,46 @@ export default function AdminPage() {
     } catch (e) { showToast('❌ ' + e.message); }
   };
 
-  const handleAddCredits = handleRecharge;
+  const MODEL_PLAN_OPTIONS = {
+    model3: [{ value: 'm3_starter', label: 'Starter' }, { value: 'm3_pro', label: 'Pro' }, { value: 'm3_max', label: 'Max' }],
+    model4: [{ value: 'm4_plan1', label: 'Starter' }, { value: 'm4_plan2', label: 'Creator' }, { value: 'm4_plan3', label: 'Pro' }],
+    model5: [{ value: 'mc_starter', label: 'Starter' }, { value: 'mc_pro', label: 'Pro' }, { value: 'mc_max', label: 'Max' }],
+  };
+  const MODEL_ENDPOINT_SUFFIX = { model3: '3', model4: '4', model5: '5' };
+
+  const saveModelAccess = async (modelKey) => {
+    if (!editUser) return;
+    setSavingModel(modelKey);
+    try {
+      const { access, plan } = modelAccess[modelKey];
+      const r = await fetch(`/api/admin/user/${modelKey}`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ email: editUser.email, access, plan }),
+      });
+      const d = await r.json();
+      if (d.success) { showToast(`✅ ${d.message}`); loadUsers(); }
+      else showToast('❌ ' + d.error);
+    } catch (e) { showToast('❌ ' + e.message); }
+    setSavingModel(null);
+  };
+
+  const rechargeModelCredits = async (modelKey) => {
+    if (!editUser) return;
+    const amount = modelRecharge[modelKey];
+    if (!amount) return;
+    setSavingModel(modelKey);
+    try {
+      const suffix = MODEL_ENDPOINT_SUFFIX[modelKey];
+      const r = await fetch(`/api/admin/user/recharge-m${suffix}`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ email: editUser.email, amount: parseInt(amount, 10) }),
+      });
+      const d = await r.json();
+      if (d.success) { showToast(`✅ ${d.message}`); setModelRecharge(m => ({ ...m, [modelKey]: '' })); }
+      else showToast('❌ ' + d.error);
+    } catch (e) { showToast('❌ ' + e.message); }
+    setSavingModel(null);
+  };
 
   const loadSupport = useCallback(async () => {
     setLoading(true);
@@ -2314,6 +2355,7 @@ export default function AdminPage() {
     { key: 'voices',     label: '🗣️ Voices'      },
     { key: 'audiovideo', label: '🎬 Audio→Video' },
     { key: 'analytics',  label: '📈 Analytics'    },
+    { key: 'studio',     label: '🎞️ My Studio'    },
   ];
 
   return (
@@ -2356,6 +2398,8 @@ export default function AdminPage() {
                 <StatCard label="Est. Profit (EGP)" value={fmt(stats.overview.total_profit_estimate_egp)} color="#22c55e" />
                 <StatCard label="Pending Payments" value={stats.overview.pending_payments} color={stats.overview.pending_payments > 0 ? '#ef4444' : '#9ca3af'} />
                 <StatCard label="Model 3 Users" value={stats.overview.model3_users} color="#7c6af7" />
+                <StatCard label="Model 4 Users" value={stats.overview.model4_users} color="#c084fc" />
+                <StatCard label="Model 5 Users" value={stats.overview.model5_users} color="#06b6d4" />
               </div>
               <div style={s.card}>
                 <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Subscriptions per month — last 12 months</div>
@@ -2453,6 +2497,7 @@ export default function AdminPage() {
                 <thead><tr>
                   <th style={s.th}>Email</th>
                   <th style={s.th}>Plan</th>
+                  <th style={s.th}>Premium Models</th>
                   <th style={s.th}>Region</th>
                   <th style={s.th}>Credits Balance</th>
                   <th style={s.th}>Videos</th>
@@ -2477,6 +2522,14 @@ export default function AdminPage() {
                           {u.plan_expires_at && <div style={{ fontSize:9, color:'#4b5563' }}>exp: {new Date(u.plan_expires_at).toLocaleDateString()}</div>}
                         </td>
                         <td style={s.td}>
+                          <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                            {u.model3_access ? <span style={{ fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:5, background:'rgba(124,106,247,0.12)', color:'#a78bfa', border:'1px solid rgba(124,106,247,0.3)' }}>M3 · {u.model3_plan || '–'}</span> : null}
+                            {u.model4_access ? <span style={{ fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:5, background:'rgba(192,132,252,0.12)', color:'#c084fc', border:'1px solid rgba(192,132,252,0.3)' }}>M4 · {u.model4_plan || '–'}</span> : null}
+                            {u.model5_access ? <span style={{ fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:5, background:'rgba(6,182,212,0.12)', color:'#06b6d4', border:'1px solid rgba(6,182,212,0.3)' }}>M5 · {u.model5_plan || '–'}</span> : null}
+                            {!u.model3_access && !u.model4_access && !u.model5_access && <span style={{ fontSize:11, color:'#4b5563' }}>–</span>}
+                          </div>
+                        </td>
+                        <td style={s.td}>
                           <span style={{ fontSize:12, padding:'2px 8px', borderRadius:6, background: u.region==='eg'?'rgba(34,197,94,0.1)':'rgba(6,182,212,0.1)', color: u.region==='eg'?'#22c55e':'#06b6d4', border:`1px solid ${u.region==='eg'?'rgba(34,197,94,0.3)':'rgba(6,182,212,0.3)'}`, fontWeight:700 }}>
                             {u.region==='eg' ? '🇪🇬 EG' : u.region==='intl' ? '🌐 Intl' : '–'}
                           </span>
@@ -2492,7 +2545,16 @@ export default function AdminPage() {
                         </td>
                         <td style={s.td}>{new Date(u.created_at).toLocaleDateString()}</td>
                         <td style={{ ...s.td, display:'flex', gap:4, flexWrap:'wrap' }}>
-                          <button style={s.btn('#374151')} title="Edit" onClick={() => { setEditUser(u); setEditPlan(u.plan); }}>✏️</button>
+                          <button style={s.btn('#374151')} title="Edit" onClick={() => {
+                            setEditUser(u);
+                            setEditPlan(u.plan);
+                            setModelAccess({
+                              model3: { access: !!u.model3_access, plan: u.model3_plan || 'm3_starter' },
+                              model4: { access: !!u.model4_access, plan: u.model4_plan || 'm4_plan1' },
+                              model5: { access: !!u.model5_access, plan: u.model5_plan || 'mc_starter' },
+                            });
+                            setModelRecharge({ model3: '', model4: '', model5: '' });
+                          }}>✏️</button>
                           <button style={s.btn('#312e81')} title="Send message" onClick={() => { setMessageUser({ email: u.email, name: u.name }); setMessageText(''); setMessageLang(u.region==='intl'?'en':'ar'); }}>✉️</button>
                           <button style={s.btn('#1e3a2f')} disabled={resetingCredits===u.email} title="Reset M1&2 credits" onClick={() => handleResetCredits(u.email)}>
                             {resetingCredits===u.email ? '...' : '🔄'}
@@ -2516,8 +2578,11 @@ export default function AdminPage() {
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Plan</div>
                     <select style={{ ...s.input, width: '100%' }} value={editPlan} onChange={e => setEditPlan(e.target.value)}>
-                      <option value="free">Free (Model 2 only + watermark)</option>
-                      <option value="paid">Paid (all models unlocked)</option>
+                      <option value="free">Free (10 credits/week, watermark)</option>
+                      <option value="pro">Pro (400 credits/week)</option>
+                      <option value="plus">Plus (60 credits/week, no watermark)</option>
+                      <option value="max">Max (600 credits/week, full features)</option>
+                      <option value="paid">Paid (legacy — unlocks Models 1-5, no watermark)</option>
                     </select>
                   </div>
 
@@ -2529,6 +2594,55 @@ export default function AdminPage() {
                       <button style={{ ...s.btn('#7c6af7'), fontSize: 12, padding: '6px 14px' }} onClick={() => saveCreditsAdjust(creditsDelta)} disabled={saving || !creditsDelta}>Apply</button>
                     </div>
                     <p style={{ fontSize: 10, color: '#4b5563', margin: '6px 0 0' }}>موجب = إضافة كريديت، سالب = خصم كريديت</p>
+                  </div>
+
+                  {/* ✅ NEW: إدارة تيرات الموديلات 3/4/5 المدفوعة المنفصلة — قبل كده كان لازم SQL يدوي */}
+                  <div style={{ marginBottom: 16, paddingTop: 12, borderTop: '1px solid #1f2937' }}>
+                    <div style={{ fontSize: 12, color: '#a99bff', marginBottom: 10, fontWeight: 700 }}>💠 Premium Model Access</div>
+                    {[
+                      { key: 'model3', label: 'Model 3 — AI Images' },
+                      { key: 'model4', label: 'Model 4 — Seedance AI' },
+                      { key: 'model5', label: 'Model 5 — Cinematic' },
+                    ].map(({ key, label }) => (
+                      <div key={key} style={{ marginBottom: 10, padding: '10px', background: '#0a0a14', border: '1px solid #1f2937', borderRadius: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#d1d5db', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={modelAccess[key].access}
+                              onChange={e => setModelAccess(m => ({ ...m, [key]: { ...m[key], access: e.target.checked } }))}
+                            />
+                            {label}
+                          </label>
+                          <select
+                            style={{ ...s.input, fontSize: 11, padding: '3px 6px', width: 90 }}
+                            value={modelAccess[key].plan}
+                            onChange={e => setModelAccess(m => ({ ...m, [key]: { ...m[key], plan: e.target.value } }))}
+                          >
+                            {MODEL_PLAN_OPTIONS[key].map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 10px' }}
+                            onClick={() => saveModelAccess(key)}
+                            disabled={savingModel === key}
+                          >{savingModel === key ? '...' : 'Save Access'}</button>
+                          <input
+                            type="number"
+                            placeholder="+credits"
+                            style={{ ...s.input, fontSize: 11, padding: '4px 8px', width: 80 }}
+                            value={modelRecharge[key]}
+                            onChange={e => setModelRecharge(m => ({ ...m, [key]: e.target.value }))}
+                          />
+                          <button
+                            style={{ ...s.btn('#166534'), fontSize: 11, padding: '4px 10px' }}
+                            onClick={() => rechargeModelCredits(key)}
+                            disabled={savingModel === key || !modelRecharge[key]}
+                          >Recharge</button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
