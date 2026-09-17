@@ -647,6 +647,9 @@ export default function AuthPage({ onAuth, googlePendingData }) {
       if (!res.ok) throw new Error(data.error);
       localStorage.setItem('token', data.token);
       localStorage.setItem('email', data.email);
+      // ✅ NEW (طلب العميل: رسالة ترحيبية توديه لصفحة الكورسات لأي حد يسجل جديد) — بتتقرا
+      // في ProjectsDashboardPage.jsx أول ما المستخدم يوصل لصفحة المشاريع بعد التسجيل
+      localStorage.setItem('erivion_show_courses_welcome', '1');
       setPendingAuthData(data);
       setStep('terms');
     } catch (e) { setError(e.message); } finally { setLoading(false); }
