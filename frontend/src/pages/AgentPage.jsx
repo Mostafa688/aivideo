@@ -669,12 +669,74 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const messagesHydratedRef = useRef(false);
   const saveDebounceRef = useRef(null);
 
+  // ✅ FIX (باج حقيقي — طلب العميل: "لازم ينفذ طلبات في مشاريع قديمة زي ما بتعمل مواقع
+  // زي Flow"): تجميد job لسه بيولّد لحالة "failed" لما المشروع يتقفل مبكر (فوق) كان بيمسح
+  // رابط الصورة/الفيديو الحقيقي نهائيًا من الذاكرة، حتى لو التوليد خلص فعلاً بنجاح على
+  // السيرفر ثانية بعد كده — فلما العميل يرجع للمشروع القديم ده ويطلب من الايجنت يكمل (مثلاً
+  // "اعمليها كمان")، الايجنت بيلاقي نفسه من غير أي رابط صورة حقيقي يقدر يرجع له في المحادثة
+  // (extractKnownUrls في الباك إند بيرفض أي رابط الايجنت "يخترعه" مش موجود حرفيًا في
+  // التاريخ)، فبيفضل يعتذر بدل ما ينفذ. الحل: أي job اتجمد كده (أو لسه status:'generating'
+  // من قبل ما نقفل الصفحة قبل أول حفظ) وليه backendJobId حقيقي محفوظ، بنتأكد من حالته
+  // الحقيقية فعليًا عند فتح المشروع (endpoint الـstatus بيفضل شغال لمدة ساعة بعد التوليد)
+  // قبل ما نصدق التجميد أو نستسلم — تمامًا زي ما مواقع زي Flow بتكمل شغل على مشاريع قديمة
+  const FROZEN_ERROR_MARKERS = ['اتقفل قبل ما يخلص', 'Closed before finishing'];
+  const reconcileStaleJobs = async (msgs) => {
+    const candidates = [];
+    msgs.forEach((m, idx) => {
+      const isImg = m.type === 'imageBatch';
+      const isVid = m.type === 'videoModel';
+      if ((!isImg && !isVid) || !m.job?.backendJobId) return;
+      const wasFrozen = m.job.status === 'failed' && typeof m.job.error === 'string' && FROZEN_ERROR_MARKERS.some(marker => m.job.error.includes(marker));
+      const stillGenerating = m.job.status === 'generating';
+      if (wasFrozen || stillGenerating) candidates.push({ idx, kind: isImg ? 'image' : 'video', jobId: m.job.backendJobId });
+    });
+    if (!candidates.length) return msgs;
+    const results = await Promise.all(candidates.map(async (c) => {
+      try {
+        const url = c.kind === 'image' ? `/api/images/generate-status/${c.jobId}` : `/api/videos/generate-status/${c.jobId}`;
+        const r = await fetch(url, { headers: tokenHeader() });
+        if (r.status === 404) return { ...c, sd: { status: 'expired' } };
+        const sd = await r.json();
+        return { ...c, sd };
+      } catch { return { ...c, sd: null }; }
+    }));
+    const copy = [...msgs];
+    for (const r of results) {
+      if (!r.sd) continue;
+      if (r.sd.status === 'done') {
+        copy[r.idx] = { ...copy[r.idx], job: { ...copy[r.idx].job, status: 'done', error: undefined, cost: r.sd.creditCost ?? copy[r.idx].job.cost,
+          ...(r.kind === 'image' ? { images: r.sd.images } : { videoUrl: r.sd.videoUrl }) } };
+      } else if (r.sd.status === 'processing') {
+        // لسه فعلاً شغال على السيرفر — نستأنف الـpolling الحقيقي بدل ما نفتكره خلص أو فشل
+        copy[r.idx] = { ...copy[r.idx], job: { ...copy[r.idx].job, status: 'generating', error: undefined } };
+        pollGenerationJob(r.kind, r.jobId, lang).then(sd2 => {
+          setMessages(mm => {
+            const c2 = [...mm];
+            const idx2 = c2.findIndex(x => x.job?.backendJobId === r.jobId);
+            if (idx2 === -1) return mm;
+            c2[idx2] = sd2.status === 'failed'
+              ? { ...c2[idx2], job: { ...c2[idx2].job, status: 'failed', error: sd2.error } }
+              : { ...c2[idx2], job: { ...c2[idx2].job, status: 'done', cost: sd2.creditCost, ...(r.kind === 'image' ? { images: sd2.images } : { videoUrl: sd2.videoUrl }) } };
+            return c2;
+          });
+        }).catch(() => {});
+      } else {
+        // فشل حقيقي، أو انتهت مهلة الـstatus (ساعة) — رسالة صريحة بدل التجميد الصامت القديم
+        copy[r.idx] = { ...copy[r.idx], job: { ...copy[r.idx].job, status: 'failed', error: r.sd.error || (lang === 'ar' ? 'انتهت مهلة التوليد ده — جرب تاني' : 'This generation expired — please try again') } };
+      }
+    }
+    return copy;
+  };
+
   useEffect(() => {
     messagesHydratedRef.current = false;
     if (!activeProject?.id) { setMessages([]); messagesHydratedRef.current = true; return; }
     fetch(`/api/projects/${activeProject.id}/messages`, { headers: tokenHeader() })
       .then(r => r.json())
-      .then(d => { setMessages(Array.isArray(d.messages) ? d.messages : []); })
+      .then(async d => {
+        const loaded = Array.isArray(d.messages) ? d.messages : [];
+        setMessages(await reconcileStaleJobs(loaded));
+      })
       .catch(() => setMessages([]))
       .finally(() => { messagesHydratedRef.current = true; });
   }, [activeProject?.id]);
@@ -1174,6 +1236,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       if (!res.ok) {
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
+        // ✅ FIX (باج حقيقي: العميل يعمل صورة في مشروع، يقفل قبل ما تخلص، يرجع للمشروع تاني —
+        // الايجنت بيلاقي نفسه من غير رابط صورة حقيقي يقدر يشتغل عليه لأن jobId الحقيقي بتاع
+        // السيرفر مكانش بيتخزن في الـmessage خالص (كان بس متغير محلي جوه الدالة دي)، فمفيش
+        // إمكانية نتأكد من حالته الحقيقية بعد إعادة التحميل. دلوقتي بنخزنه في الـjob نفسه —
+        // يتحفظ مع باقي المحادثة، ويتستخدم في reconcileStaleJobs لما المشروع يتفتح تاني
+        updateJob({ backendJobId: data.jobId });
         const sd = await pollGenerationJob('image', data.jobId, lang);
         if (sd.status === 'failed') updateJob({ status: 'failed', error: sd.error });
         else updateJob({ status: 'done', images: sd.images, cost: data.creditCost });
@@ -1213,6 +1281,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       if (!res.ok) {
         updateJob({ status: 'failed', error: data.message || data.error });
       } else {
+        // ✅ FIX: نفس فكرة startImageGeneration فوق — نخزن jobId الحقيقي بتاع السيرفر في
+        // الـjob نفسه عشان reconcileStaleJobs يقدر يتأكد من حالته الحقيقية بعد إعادة التحميل
+        updateJob({ backendJobId: data.jobId });
         const sd = await pollGenerationJob('video', data.jobId, lang);
         if (sd.status === 'failed') updateJob({ status: 'failed', error: sd.error });
         else updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: data.creditCost });

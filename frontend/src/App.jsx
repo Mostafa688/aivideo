@@ -234,7 +234,10 @@ export default function App() {
       if (path === '/' || path === '') {
         setShowPricing(false);
         setShowAuth(false);
-        setPage('input');
+        // ✅ FIX (طلب العميل: زرار الرجوع من أي صفحة لازم يرجع لصفحة المشاريع، مش الموديلات):
+        // ده مؤثر بس على المستخدم المسجل دخوله (اللي مش مسجل بيشوف LandingPage دايمًا بصرف
+        // النظر عن page — راجع "if (!user) return <LandingPage/>" تحت)، فتغييره هنا آمن تمامًا
+        setPage('dashboard');
       } else if (path === '/pricing') {
         setShowPricing(true);
       } else if (path === '/affiliate') {
