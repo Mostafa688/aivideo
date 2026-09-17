@@ -6,6 +6,7 @@ import path from 'path';
 import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, listRecentDailyRunsForAdmin, listClonedVoicesForAdmin } from './authService.js';
 import { isGA4Configured, getGA4Overview } from './googleAnalyticsService.js';
 import { adminAuth, verifyAdminCredentials, issueAdminToken, checkLoginRateLimit } from './adminAuthMiddleware.js';
+import { generateNewModelVideo } from './newVideoModelsService.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -47,18 +48,20 @@ router.get('/stats', adminAuth, async (req, res) => {
     const { bucket, fmt } = periodBucketFor(rangeDays);
     const [
       totalUsers, verifiedUsers, planDist, totalVideos, recentUsers,
-      totalRevenue, pendingPayments, weeklySignups, model3Users, videosPerDay, topUsers,
+      totalRevenue, pendingPayments, weeklySignups, model3Users, model4Users, model5Users, videosPerDay, topUsers,
       signupsToday, loginsToday, monthlySubs, videosPerPeriod, signupsPerPeriod,
     ] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM users'),
       pool.query('SELECT COUNT(*) FROM users WHERE verified = 1'),
       pool.query('SELECT plan, COUNT(*) as count FROM users GROUP BY plan'),
       pool.query('SELECT COUNT(*) FROM videos'),
-      pool.query('SELECT id, email, plan, model3_access, model5_access, created_at, verified FROM users ORDER BY id DESC LIMIT 20'),
+      pool.query('SELECT id, email, plan, model3_access, model4_access, model5_access, created_at, verified FROM users ORDER BY id DESC LIMIT 20'),
       pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM payment_requests WHERE status = 'approved'"),
       pool.query("SELECT COUNT(*) FROM payment_requests WHERE status = 'pending'"),
       pool.query("SELECT COUNT(*) FROM users WHERE created_at::timestamp >= NOW() - INTERVAL '7 days'"),
       pool.query('SELECT COUNT(*) FROM users WHERE model3_access = 1'),
+      pool.query('SELECT COUNT(*) FROM users WHERE model4_access = 1'),
+      pool.query('SELECT COUNT(*) FROM users WHERE model5_access = 1'),
       pool.query(`SELECT DATE(created_at::timestamp) as day, COUNT(*) as count FROM videos WHERE created_at::timestamp >= NOW() - INTERVAL '7 days' GROUP BY DATE(created_at::timestamp) ORDER BY day ASC`),
       pool.query(`SELECT u.email, u.plan, COUNT(v.id) as video_count FROM users u LEFT JOIN videos v ON v.user_id = u.id GROUP BY u.id, u.email, u.plan ORDER BY video_count DESC LIMIT 5`),
       pool.query(`SELECT COUNT(*) FROM users WHERE DATE(created_at::timestamp) = CURRENT_DATE`),
@@ -98,6 +101,8 @@ router.get('/stats', adminAuth, async (req, res) => {
         pending_payments: parseInt(pendingPayments.rows[0].count),
         weekly_signups: parseInt(weeklySignups.rows[0].count),
         model3_users: parseInt(model3Users.rows[0].count),
+        model4_users: parseInt(model4Users.rows[0].count),
+        model5_users: parseInt(model5Users.rows[0].count),
         signups_today: parseInt(signupsToday.rows[0].count),
         logins_today: parseInt(loginsToday.rows[0].count),
       },
@@ -435,58 +440,13 @@ router.post('/reset-credits', adminAuth, async (req, res) => {
 const TEMP_DIR_ADMIN = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const OUTPUTS_DIR_ADMIN = 'outputs';
 
+// ✅ FIX (طلب العميل: تحديث تاب Studio "القديم" ليستخدم النظام الجديد): كان بيعمل نداء
+// Replicate خام ومكرر لموديل bytedance/seedance-1-pro-fast بدل ما يستخدم البنية التحتية
+// المشتركة الموجودة أصلاً في newVideoModelsService.js (نفس الموديل بالظبط، لسه من ضمن
+// NEW_VIDEO_MODELS المستخدمة في الايجنت الحي)، فكان بيفوّت إعادة المحاولة عند rate-limit
+// (withRetry429) والتخزين الدائم على R2 (بدل ما يفضل رابط replicate.delivery المؤقت)
 async function generateStudioClip(prompt, ratio = '16:9') {
-  const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
-  if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
-
-  const headers = {
-    'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'wait',
-  };
-
-  const submitRes = await fetch('https://api.replicate.com/v1/models/bytedance/seedance-1-pro-fast/predictions', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      input: { prompt, aspect_ratio: ratio, resolution: '720p', duration: 5, fps: 24, camera_fixed: false },
-    }),
-  });
-
-  if (!submitRes.ok) {
-    const err = await submitRes.text();
-    throw new Error(`Replicate error ${submitRes.status}: ${err}`);
-  }
-
-  const prediction = await submitRes.json();
-  if (prediction.status === 'succeeded' && prediction.output) {
-    return Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-  }
-
-  const predictionId = prediction.id;
-  if (!predictionId) throw new Error(`No prediction ID: ${JSON.stringify(prediction)}`);
-  console.log(`[Studio] Job: ${predictionId}`);
-
-  const maxWait = 300_000;
-  const pollInterval = 5_000;
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWait) {
-    await new Promise(r => setTimeout(r, pollInterval));
-    const statusRes = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, { headers });
-    if (!statusRes.ok) continue;
-    const data = await statusRes.json();
-    console.log(`[Studio] Status: ${data.status} (${Math.round((Date.now() - startTime) / 1000)}s)`);
-    if (data.status === 'succeeded') {
-      const url = Array.isArray(data.output) ? data.output[0] : data.output;
-      if (!url) throw new Error('No video URL in output');
-      return url;
-    }
-    if (data.status === 'failed' || data.status === 'canceled') {
-      throw new Error(`Replicate failed: ${data.error || 'unknown'}`);
-    }
-  }
-  throw new Error('Timeout after 5 minutes');
+  return generateNewModelVideo({ modelKey: 'seedance_1_pro_fast', prompt, aspectRatio: ratio, durationSec: 5, tier: '720p' });
 }
 
 async function downloadStudioClip(url, outputPath) {
@@ -692,27 +652,6 @@ router.post('/user/delete', adminAuth, async (req, res) => {
     await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]).catch(() => {});
     await pool.query('DELETE FROM users WHERE id = $1', [uid]);
     res.json({ success: true, message: `User ${email} deleted` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── Add Credits to User (Model 1&2) ───────────────────────────────────────────
-router.post('/user/add-credits', adminAuth, async (req, res) => {
-  try {
-    const { email, amount } = req.body;
-    if (!email || !amount) return res.status(400).json({ error: 'email and amount required' });
-    const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (!rows.length) return res.status(404).json({ error: 'User not found' });
-    const uid = rows[0].id;
-    // Decrease credits_used (effectively adding credits back)
-    await pool.query(
-      `INSERT INTO user_usage (user_id, credits_used) VALUES ($1, 0)
-       ON CONFLICT (user_id) DO UPDATE
-       SET credits_used = GREATEST(0, user_usage.credits_used - $2)`,
-      [uid, parseInt(amount)]
-    );
-    res.json({ success: true, message: `Added ${amount} credits to ${email}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
