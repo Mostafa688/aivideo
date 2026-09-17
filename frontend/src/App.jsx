@@ -446,6 +446,10 @@ export default function App() {
     if (showAuth) return <AuthPage googlePendingData={googlePendingData} onAuth={(data) => {
       localStorage.setItem('token', data.token); localStorage.setItem('email', data.email); localStorage.setItem('plan', data.plan || 'free');
       setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false); setGooglePendingData(null);
+      // ✅ FIX (طلب العميل: "الغي الموضوع بتاع اني ارجع لصفحة الموديلات خالص — الرجوع للمشاريع"):
+      // لو page كان لسه فاضل على قيمة قديمة من قبل تسجيل الدخول (مثلاً الزائر كان داخل صفحة
+      // موديل معينة قبل ما يسجل)، أول ما يخلص التسجيل لازم يبدأ من صفحة المشاريع دايمًا
+      setPage('dashboard');
       const planChosenBefore = localStorage.getItem('planSelected') === 'true';
       if (!planChosenBefore) setShowLogoTransition(true);
     }} />;
@@ -461,6 +465,8 @@ export default function App() {
   if (showAuth) return <AuthPage onAuth={(data) => {
     localStorage.setItem('token', data.token); localStorage.setItem('email', data.email); localStorage.setItem('plan', data.plan || 'free');
     setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false);
+    // ✅ FIX (نفس الفيكس فوق): يضمن إن أي جلسة تسجيل دخول تبدأ من صفحة المشاريع دايمًا
+    setPage('dashboard');
     const planChosenBefore = localStorage.getItem('planSelected') === 'true';
     if (!planChosenBefore) setShowLogoTransition(true);
   }} />;
@@ -473,10 +479,15 @@ export default function App() {
       setUserPlan(plan); setShowPricing(false); setPlanSelected(true);
       localStorage.setItem('plan', plan); localStorage.setItem('planSelected', 'true');
       fetchCredits();
+      // ✅ FIX (طلب العميل): تأكيد إضافي إن اختيار باقة (مش بس Skip) بيودّي لصفحة المشاريع برضو
+      setPage('dashboard');
       if (window.location.pathname === '/pricing') window.history.pushState({}, '', '/');
     }}
     onSkip={() => {
       setShowPricing(false); setPlanSelected(true); localStorage.setItem('planSelected', 'true');
+      // ✅ FIX (طلب العميل: "دوست skip من صفحة الاسعار دخلني على الموديلات... الرجوع يكون
+      // للمشاريع"): تأكيد إضافي هنا كمان (مش بس في onAuth) يضمن إن Skip يودّي للمشاريع دايمًا
+      setPage('dashboard');
       if (window.location.pathname === '/pricing') window.history.pushState({}, '', '/');
     }}
     onNavigate={handleNavigate}
