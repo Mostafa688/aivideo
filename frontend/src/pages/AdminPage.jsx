@@ -2,7 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import TimelineEditor from '../components/AudioVideoTimelineEditor.jsx';
 import { downloadRemoteFile } from '../utils/download.js';
 
-const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET || 'Sosa6892Midbok';
+// ✅ FIX (باج أمان خطير حقيقي): كان في سر أدمن ثابت (VITE_ADMIN_SECRET أو fallback هاردكودد
+// 'Sosa6892Midbok') متضمّن حرفيًا هنا — أي متغيّر بادئته VITE_ بيتحط كنص خام جوه ملف الـJS
+// النهائي اللي بيوصل لأي زائر عادي (view-source/devtools)، يعني أي حد يقدر يجيب السر الحقيقي
+// المستخدم على الموقع الحي ويدخل صفحة الأدمن كاملة. دلوقتي مفيش أي سر حقيقي متخزن في
+// الفرونت إند خالص — بس توكن جلسة (JWT) قصير العمر بيتصدر من السيرفر بعد تسجيل دخول حقيقي
+// بإيميل (من قايمة أدمن محددة) + باسورد، راجع adminAuthMiddleware.js في الباك إند للتفاصيل
+let adminToken = null;
+try { adminToken = sessionStorage.getItem('erivion_admin_token') || null; } catch { /* ignore */ }
 
 const PLANS = {
   free:  { credits_weekly: 10  },
@@ -30,10 +37,21 @@ const MOBILE_CSS = `
   }
 `;
 
-const headers = {
-  'Content-Type': 'application/json',
-  'x-admin-secret': ADMIN_SECRET,
-};
+// ✅ بنسيب نفس اسم "headers" وبنعدّل الخاصيات جوّاه (mutation) بدل ما نستبدل الـobject نفسه —
+// عشرات الأماكن في الملف ده بتستخدم { headers } بالإشارة لنفس الـobject ده، فتحديث الخاصية
+// هنا بيوصل لكل حتة تلقائيًا من غير ما نلمس كل استخدام لوحده
+const headers = { 'Content-Type': 'application/json' };
+function applyAdminToken(token) {
+  adminToken = token;
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    try { sessionStorage.setItem('erivion_admin_token', token); } catch { /* ignore */ }
+  } else {
+    delete headers['Authorization'];
+    try { sessionStorage.removeItem('erivion_admin_token'); } catch { /* ignore */ }
+  }
+}
+if (adminToken) applyAdminToken(adminToken); // إعادة تفعيل الهيدر من توكن محفوظ من جلسة سابقة
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const fmt = (n) => {
@@ -192,23 +210,49 @@ function RangeBarChart({ data, bucket, color = '#7c6af7' }) {
 }
 
 // ── Login Screen ───────────────────────────────────────────────────────────
+// ✅ FIX: بقى تسجيل دخول حقيقي (إيميل + باسورد) ضد /api/admin/login — السيرفر هو اللي بيتحقق
+// إن الإيميل من قايمة أدمن محددة والباسورد صح، وبيرجع توكن جلسة قصير العمر. مفيش أي مقارنة
+// أو سر بيتخزن في الفرونت إند خالص بعد كده
 function LoginScreen({ onLogin }) {
-  const [secret, setSecret] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const handle = () => {
-    if (secret === ADMIN_SECRET) { sessionStorage.setItem('erivion_admin_ok', '1'); onLogin(); }
-    else setError('Wrong secret');
+  const [loading, setLoading] = useState(false);
+  const handle = async () => {
+    if (!email.trim() || !password) return;
+    setError(''); setLoading(true);
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || 'Wrong email or password');
+        return;
+      }
+      applyAdminToken(data.token);
+      try { sessionStorage.setItem('erivion_admin_ok', '1'); } catch { /* ignore */ }
+      onLogin();
+    } catch (e) {
+      setError('Connection error — try again');
+    } finally {
+      setLoading(false);
+    }
   };
   return (
     <div style={{ minHeight: '100vh', background: '#080810', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: '#0f0f1a', border: '1px solid #1f2937', borderRadius: 16, padding: '40px 36px', width: 340, textAlign: 'center' }}>
         <div style={{ fontSize: 32, marginBottom: 8 }}>🔐</div>
         <h2 style={{ color: '#7c6af7', margin: '0 0 24px', fontSize: 20 }}>Erivion Admin</h2>
-        <input type="password" placeholder="Admin secret" value={secret}
-          onChange={e => setSecret(e.target.value)} onKeyDown={e => e.key === 'Enter' && handle()}
+        <input type="email" placeholder="Admin email" value={email} autoComplete="username"
+          onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handle()}
+          style={{ width: '100%', background: '#1a1a2e', border: '1px solid #2d2d4a', borderRadius: 8, padding: '10px 14px', color: '#fff', fontSize: 14, marginBottom: 10, boxSizing: 'border-box', outline: 'none' }} />
+        <input type="password" placeholder="Password" value={password} autoComplete="current-password"
+          onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handle()}
           style={{ width: '100%', background: '#1a1a2e', border: '1px solid #2d2d4a', borderRadius: 8, padding: '10px 14px', color: '#fff', fontSize: 14, marginBottom: 12, boxSizing: 'border-box', outline: 'none' }} />
         {error && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
-        <button onClick={handle} style={{ width: '100%', background: '#7c6af7', border: 'none', borderRadius: 8, padding: '11px', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Enter</button>
+        <button onClick={handle} disabled={loading} style={{ width: '100%', background: '#7c6af7', border: 'none', borderRadius: 8, padding: '11px', color: '#fff', fontWeight: 700, fontSize: 14, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>{loading ? 'Checking…' : 'Enter'}</button>
       </div>
     </div>
   );
@@ -819,7 +863,7 @@ function AudioVideoTab({ s }) {
       form.append('image', file);
       form.append('ref_key', refKeyInput.trim().toLowerCase());
       const r = await fetch('/api/admin/audio-video/reference-images', {
-        method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: form,
+        method: 'POST', headers: { 'Authorization': `Bearer ${adminToken}` }, body: form,
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Upload failed');
@@ -879,7 +923,7 @@ function AudioVideoTab({ s }) {
       files.forEach(f => form.append('audio', f));
       const r = await fetch('/api/admin/audio-video/transcribe', {
         method: 'POST',
-        headers: { 'x-admin-secret': ADMIN_SECRET },
+        headers: { 'Authorization': `Bearer ${adminToken}` },
         body: form,
       });
       const d = await r.json();
@@ -1031,7 +1075,7 @@ function AudioVideoTab({ s }) {
                 ))}
               </div>
 
-              <TimelineEditor job={activeJob} onSaved={setActiveJob} />
+              <TimelineEditor job={activeJob} onSaved={setActiveJob} authHeaders={headers} />
 
               {/* الخطوة 3+4: بناء الفيديو النهائي — الزرار فاضل ظاهر حتى لو الفيديو خلص قبل
                   كده، عشان تقدر تعيد البناء بعد أي تعديل من التايم لاين فوق من غير ما تحتاج
@@ -1105,7 +1149,7 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
         const audioForm = new FormData();
         audioFiles.forEach(f => audioForm.append('audio', f));
         const ar = await fetch('/api/admin/audio-video/transcribe', {
-          method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: audioForm,
+          method: 'POST', headers: { 'Authorization': `Bearer ${adminToken}` }, body: audioForm,
         });
         const ad = await ar.json();
         if (!ar.ok) throw new Error(ad.error || 'Transcription failed');
@@ -1122,7 +1166,7 @@ function BulkStickerUploader({ job, onSaved, onNewJob }) {
       // ونبعت محتواه كنص عادي، مش كملف منفصل، أبسط في السيرفر
       if (timingFile) form.append('manualTimes', await timingFile.text());
       const r = await fetch(`/api/admin/audio-video/jobs/${targetJob.id}/bulk-stickers`, {
-        method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: form,
+        method: 'POST', headers: { 'Authorization': `Bearer ${adminToken}` }, body: form,
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Upload failed');
@@ -1263,7 +1307,7 @@ function CompositeSceneEditor({ job, onSaved }) {
       const form = new FormData();
       form.append('image', file);
       const r = await fetch(`/api/admin/audio-video/jobs/${job.id}/composite-image`, {
-        method: 'POST', headers: { 'x-admin-secret': ADMIN_SECRET }, body: form,
+        method: 'POST', headers: { 'Authorization': `Bearer ${adminToken}` }, body: form,
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Upload failed');
@@ -1760,7 +1804,7 @@ function TemplatesTab({ s }) {
       fd.append('video', file);
       const r = await fetch('/api/templates/upload-video', {
         method: 'POST',
-        headers: { 'x-admin-secret': ADMIN_SECRET },
+        headers: { 'Authorization': `Bearer ${adminToken}` },
         body: fd,
       });
       const d = await r.json();
@@ -1910,7 +1954,9 @@ function TemplatesTab({ s }) {
 }
 
 export default function AdminPage() {
-  const [authed, setAuthed] = useState(sessionStorage.getItem('erivion_admin_ok') === '1');
+  // ✅ محتاجين الاتنين (فلاج + توكن حقيقي فعلاً موجود) — لو الجلسة قديمة وفيها الفلاج بس
+  // التوكن خلص/اتشال، مينفعش نعتبره "داخل" وهو أي طلب API هيرجعله 401
+  const [authed, setAuthed] = useState(sessionStorage.getItem('erivion_admin_ok') === '1' && !!adminToken);
   const [tab, setTab] = useState('overview');
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
@@ -2088,7 +2134,7 @@ export default function AdminPage() {
   const loadSupport = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/support/chats', { headers: { ...headers, 'x-admin-secret': ADMIN_SECRET } });
+      const r = await fetch('/api/support/chats', { headers });
       const d = await r.json();
       setSupportChats(d.chats || []);
     } catch (e) { console.error(e); }
@@ -2106,8 +2152,8 @@ export default function AdminPage() {
     try {
       await fetch('/api/support/mark-read', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, secret: ADMIN_SECRET }),
+        headers,
+        body: JSON.stringify({ chatId }),
       });
       setSupportChats(prev => prev.map(c => c.id === chatId ? { ...c, unread_count: 0 } : c));
     } catch {}
@@ -2127,8 +2173,8 @@ export default function AdminPage() {
     try {
       await fetch('/api/support/admin-reply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: activeChat.id, text: adminReply.trim(), secret: ADMIN_SECRET, mediaBase64: adminAttachment?.base64 || null, mediaType: adminAttachment?.type || null, replyToId: adminReplyTo?.id || null }),
+        headers,
+        body: JSON.stringify({ chatId: activeChat.id, text: adminReply.trim(), mediaBase64: adminAttachment?.base64 || null, mediaType: adminAttachment?.type || null, replyToId: adminReplyTo?.id || null }),
       });
       setAdminReply(''); setAdminAttachment(null); setAdminReplyTo(null);
       await loadChatMessages(activeChat.id);
@@ -2151,7 +2197,7 @@ export default function AdminPage() {
   const deleteChat = async (chatId) => {
     if (!confirm('Delete this chat?')) return;
     try {
-      await fetch(`/api/support/chat/${chatId}`, { method: 'DELETE', headers: { 'x-admin-secret': ADMIN_SECRET } });
+      await fetch(`/api/support/chat/${chatId}`, { method: 'DELETE', headers });
       setSupportChats(prev => prev.filter(c => c.id !== chatId));
       if (activeChat?.id === chatId) { setActiveChat(null); setChatMessages([]); }
       showToast('✅ Chat deleted');
@@ -2165,8 +2211,8 @@ export default function AdminPage() {
     try {
       const r = await fetch('/api/support/admin-start-chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: messageUser.email, name: messageUser.name, text: messageText.trim(), language: messageLang, secret: ADMIN_SECRET }),
+        headers,
+        body: JSON.stringify({ email: messageUser.email, name: messageUser.name, text: messageText.trim(), language: messageLang }),
       });
       const d = await r.json();
       if (d.success) {
@@ -2284,7 +2330,7 @@ export default function AdminPage() {
         ))}
         <div style={{ marginTop: 'auto' }}>
           <div style={{ ...s.navItem(false), color: '#ef4444' }}
-            onClick={() => { sessionStorage.removeItem('erivion_admin_ok'); setAuthed(false); }}>
+            onClick={() => { sessionStorage.removeItem('erivion_admin_ok'); applyAdminToken(null); setAuthed(false); }}>
             🚪 Logout
           </div>
         </div>
@@ -3003,7 +3049,7 @@ export default function AdminPage() {
               <div style={{ display:'flex', gap:8 }}>
                 <button style={s.btn('#374151')} onClick={async () => { await fetch('/api/support/cleanup', {method:'POST'}); loadSupport(); }}>🗑️ Cleanup Expired</button>
                 <button style={s.btn('#7c6af7')} onClick={async () => {
-                  const r = await fetch(`/api/support/notify-status?secret=${ADMIN_SECRET}`, { headers: { 'x-admin-secret': ADMIN_SECRET } });
+                  const r = await fetch('/api/support/notify-status', { headers });
                   const d = await r.json();
                   alert(d.message + (d.resendError ? '\n\n' + JSON.stringify(d.resendError) : ''));
                 }}>✉️ Test Email Notifications</button>

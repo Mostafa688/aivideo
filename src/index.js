@@ -67,6 +67,7 @@ const MODEL8_RATE_VOICEOVER = 5; // فويس أوفر Gemini: 5 كريديت/ث�
 const MODEL8_RATE_CINEMATIC = 6; // صوت متولّد مع الفيديو نفسه: 6 كريديت/ثانية (5 ثواني = 30، 20 ثانية = 120)
 const MODEL8_EDIT_SCENE_COST = 15; // تعديل نصي لمشهد واحد (أرخص من موديل 4 لأن التوليد نفسه أرخص)
 import adminRouter from './services/adminRoutes.js';
+import { adminAuth } from './services/adminAuthMiddleware.js';
 import supportRouter from './services/supportRoutes.js';
 import projectRouter from './services/projectRoutes.js';
 import { transcribeAudio } from './services/transcribeService.js';
@@ -602,10 +603,8 @@ app.get('/api/notifications', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/api/admin/notifications', async (req, res) => {
+app.get('/api/admin/notifications', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.query.secret;
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     const { rows } = await cPool.query(`SELECT id, title, message, created_at FROM admin_notifications ORDER BY id DESC LIMIT 100`);
     res.json({ notifications: rows });
   } catch (err) {
@@ -613,10 +612,8 @@ app.get('/api/admin/notifications', async (req, res) => {
   }
 });
 
-app.post('/api/admin/notifications', async (req, res) => {
+app.post('/api/admin/notifications', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.body.secret;
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     const { title, message } = req.body;
     if (!title?.trim() || !message?.trim()) return res.status(400).json({ error: 'title and message are required' });
     const { rows } = await cPool.query(
@@ -629,10 +626,8 @@ app.post('/api/admin/notifications', async (req, res) => {
   }
 });
 
-app.delete('/api/admin/notifications/:id', async (req, res) => {
+app.delete('/api/admin/notifications/:id', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.query.secret;
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     await cPool.query(`DELETE FROM admin_notifications WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
   } catch (err) {
@@ -642,10 +637,8 @@ app.delete('/api/admin/notifications/:id', async (req, res) => {
 
 // ✅ NEW: رسالة جماعية بالإيميل لكل المستخدمين — منفصلة تمامًا عن الإشعار الداخلي (in-app)
 // فوق. زرار مستقل في صفحة الأدمن، مش بيتحفظ في admin_notifications ولا بيظهر جوه الموقع
-app.post('/api/admin/notifications/email-all', async (req, res) => {
+app.post('/api/admin/notifications/email-all', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.body.secret;
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     const { subject, message, html: customHtml, excludeEmails } = req.body;
     if (!subject?.trim()) return res.status(400).json({ error: 'subject is required' });
     if (!customHtml?.trim() && !message?.trim()) return res.status(400).json({ error: 'message or html is required' });
@@ -665,10 +658,8 @@ app.post('/api/admin/notifications/email-all', async (req, res) => {
 });
 
 // ✅ NEW: أكتر المنصات اللي بيجي منها عملاء — لتاب "Answers" في صفحة الأدمن
-app.get('/api/admin/referral-sources', async (req, res) => {
+app.get('/api/admin/referral-sources', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.query.secret;
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     const sources = await getReferralSourceStats();
     res.json({ sources });
   } catch (err) {
@@ -676,10 +667,8 @@ app.get('/api/admin/referral-sources', async (req, res) => {
   }
 });
 
-app.get('/api/admin/ratings', async (req, res) => {
+app.get('/api/admin/ratings', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.query.secret;
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     const ratings = await getAllFeedbackRatings();
     res.json({ ratings });
   } catch (err) {
@@ -688,11 +677,8 @@ app.get('/api/admin/ratings', async (req, res) => {
 });
 
 // GET /api/admin/community-questions — get posts flagged for support (admin only)
-app.get('/api/admin/community-questions', async (req, res) => {
+app.get('/api/admin/community-questions', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.query.secret;
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
-
     await cPool.query(`ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS needs_support BOOLEAN DEFAULT FALSE`).catch(()=>{});
 
     const { rows } = await cPool.query(`
@@ -720,11 +706,8 @@ app.get('/api/admin/community-questions', async (req, res) => {
 });
 
 // GET /api/admin/community-all — get ALL community posts for admin
-app.get('/api/admin/community-all', async (req, res) => {
+app.get('/api/admin/community-all', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'] || req.query.secret;
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
-
     const { rows } = await cPool.query(`
       SELECT p.*,
         COALESCE(json_agg(
@@ -748,11 +731,8 @@ app.get('/api/admin/community-all', async (req, res) => {
 });
 
 // POST /api/admin/community-reply — admin replies as comment on a post
-app.post('/api/admin/community-reply', async (req, res) => {
+app.post('/api/admin/community-reply', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
-
     const { post_id, content } = req.body;
     if (!post_id || !content?.trim()) return res.status(400).json({ error: 'Missing fields' });
 
@@ -773,10 +753,8 @@ app.post('/api/admin/community-reply', async (req, res) => {
 });
 
 // DELETE /api/admin/community-post/:id — admin delete any post
-app.delete('/api/admin/community-post/:id', async (req, res) => {
+app.delete('/api/admin/community-post/:id', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     await cPool.query(`DELETE FROM community_posts WHERE id=$1`, [parseInt(req.params.id)]);
     res.json({ success: true });
   } catch (e) {
@@ -785,11 +763,8 @@ app.delete('/api/admin/community-post/:id', async (req, res) => {
 });
 
 // GET /api/admin/community-pending — get posts awaiting moderation
-app.get('/api/admin/community-pending', async (req, res) => {
+app.get('/api/admin/community-pending', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
-
     const { rows } = await cPool.query(`
       SELECT p.*,
         COALESCE(json_agg(
@@ -824,10 +799,8 @@ app.get('/api/admin/community-pending', async (req, res) => {
 });
 
 // POST /api/admin/community-post/:id/approve — approve a pending post
-app.post('/api/admin/community-post/:id/approve', async (req, res) => {
+app.post('/api/admin/community-post/:id/approve', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     const postId = parseInt(req.params.id);
     if (isNaN(postId)) return res.status(400).json({ error: 'Invalid post ID' });
     await cPool.query(
@@ -842,10 +815,8 @@ app.post('/api/admin/community-post/:id/approve', async (req, res) => {
 });
 
 // POST /api/admin/community-post/:id/reject — reject a pending post with optional reason
-app.post('/api/admin/community-post/:id/reject', async (req, res) => {
+app.post('/api/admin/community-post/:id/reject', adminAuth, async (req, res) => {
   try {
-    const secret = req.headers['x-admin-secret'];
-    if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Forbidden' });
     const postId = parseInt(req.params.id);
     if (isNaN(postId)) return res.status(400).json({ error: 'Invalid post ID' });
     const reason = (req.body.reason || '').trim() || null;
@@ -3240,14 +3211,10 @@ tPool.query(`
   tPool.query(`ALTER TABLE templates ADD COLUMN IF NOT EXISTS script TEXT;`)
 ).catch(e => console.error('[Templates] DB init error:', e.message));
 
-const ADMIN_SECRET_TPL = process.env.ADMIN_SECRET || 'Sosa6892Midbok';
-
-function templateAdminAuth(req, res, next) {
-  if (req.headers['x-admin-secret'] !== ADMIN_SECRET_TPL) {
-    return res.status(403).json({ error: 'Unauthorized' });
-  }
-  next();
-}
+// ✅ FIX (باج أمان خطير حقيقي): كان في سر ثابت (fallback هاردكودد 'Sosa6892Midbok' نفسه
+// المكشوف في الفرونت إند القديم) مقارن بـ!== عادي — دلوقتي بيستخدم نفس adminAuth الموحّد
+// (JWT، إيميل من قايمة محددة، مفيش أي سر بيتخزن في الفرونت إند) — راجع adminAuthMiddleware.js
+const templateAdminAuth = adminAuth;
 
 // ── Seed default templates (runs once on startup if table is empty) ─────────
 await (async () => {

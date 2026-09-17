@@ -2,6 +2,7 @@ import express from 'express';
 import pkg from 'pg';
 import fs from 'fs';
 import path from 'path';
+import { adminAuth } from './adminAuthMiddleware.js';
 const { Pool } = pkg;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
@@ -224,9 +225,7 @@ router.get('/my-chats', async (req, res) => {
 });
 
 // ── Get all open chats (admin) ────────────────────────────────────────────────
-router.get('/chats', async (req, res) => {
-  const secret = req.headers['x-admin-secret'] || req.query.secret;
-  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+router.get('/chats', adminAuth, async (req, res) => {
   try {
     // Add read_at column if not exists
     await pool.query(`ALTER TABLE support_chats ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ DEFAULT NULL`).catch(()=>{});
@@ -249,9 +248,7 @@ router.get('/chats', async (req, res) => {
 });
 
 // ── Mark chat as read ─────────────────────────────────────────────────────────
-router.post('/mark-read', async (req, res) => {
-  const secret = req.headers['x-admin-secret'] || req.body.secret;
-  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+router.post('/mark-read', adminAuth, async (req, res) => {
   const { chatId } = req.body;
   try {
     await pool.query(`UPDATE support_chats SET read_at = NOW() WHERE id = $1`, [chatId]);
@@ -262,9 +259,7 @@ router.post('/mark-read', async (req, res) => {
 });
 
 // ── Admin reply ───────────────────────────────────────────────────────────────
-router.post('/admin-reply', async (req, res) => {
-  const secret = req.headers['x-admin-secret'] || req.body.secret;
-  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+router.post('/admin-reply', adminAuth, async (req, res) => {
   const { chatId, text, mediaBase64, mediaType, replyToId } = req.body;
   if (!chatId) return res.status(400).json({ error: 'chatId required' });
   if (!text?.trim() && !mediaBase64) return res.status(400).json({ error: 'text or media required' });
@@ -295,9 +290,7 @@ router.post('/admin-reply', async (req, res) => {
 // ✅ NEW: بيسمح للأدمن إنه يبعت رسالة لعميل من صفحة الأدمن حتى لو العميل ميعملش "Start Chat"
 // أصلاً — بيدور على تشات مفتوح للإيميل ده ويستخدمه، أو يعمل واحد جديد لو مفيش. بعدها بيبعت
 // إيميل للعميل فيه الرسالة + زرار "افتح المحادثة" برابط بيوديه على نفس الشات مباشرة.
-router.post('/admin-start-chat', async (req, res) => {
-  const secret = req.headers['x-admin-secret'] || req.body.secret;
-  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+router.post('/admin-start-chat', adminAuth, async (req, res) => {
   const { email, name, text, language } = req.body;
   if (!email || !text || !text.trim()) return res.status(400).json({ error: 'email and text required' });
   const lang = language === 'en' ? 'en' : 'ar';
@@ -358,9 +351,7 @@ router.post('/admin-start-chat', async (req, res) => {
 });
 
 // ── Close / delete a chat ─────────────────────────────────────────────────────
-router.delete('/chat/:chatId', async (req, res) => {
-  const secret = req.headers['x-admin-secret'];
-  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+router.delete('/chat/:chatId', adminAuth, async (req, res) => {
   try {
     await pool.query(`DELETE FROM support_chats WHERE id = $1`, [req.params.chatId]);
     res.json({ success: true });
@@ -386,9 +377,7 @@ router.post('/cleanup', async (req, res) => {
 // اتراجع وهو مطابق تمامًا لصيغة Resend API الحقيقية، فمفيش باج كود هنا. الروت ده تشخيصي فقط:
 // بيرجع هل المفتاح موجود، وبيبعت إيميل اختبار حقيقي ويرجّع رد Resend الفعلي (بما فيه رسالة
 // الخطأ الحقيقية لو فشل) عشان تعرف السبب الحقيقي بدل ما يفضل صامت في console.warn على Railway
-router.get('/notify-status', async (req, res) => {
-  const secret = req.headers['x-admin-secret'] || req.query.secret;
-  if (secret !== process.env.ADMIN_SECRET) return res.status(403).json({ error: 'Unauthorized' });
+router.get('/notify-status', adminAuth, async (req, res) => {
   const hasKey = !!process.env.RESEND_API_KEY;
   const adminEmail = process.env.ADMIN_EMAIL || 'digidelight33@gmail.com';
   if (!hasKey) {

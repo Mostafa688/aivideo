@@ -148,7 +148,11 @@ export function StickerSearchPanel({ apiBase, authHeaders, jobId, onPick, onClos
 }
 
 export default function TimelineEditor({ job, onSaved, apiBase = '/api/admin/audio-video', authHeaders }) {
-  const headers = authHeaders || { 'Content-Type': 'application/json', 'x-admin-secret': import.meta.env.VITE_ADMIN_SECRET || 'Sosa6892Midbok' };
+  // ✅ FIX (باج أمان خطير حقيقي): كان في fallback هاردكودد لسر أدمن ثابت هنا — أي حد يستخدم
+  // الكومبوننت ده من غير ما يمرّر authHeaders كان بيقع على سر معروف/عام. دلوقتي لازم الأب
+  // (AdminPage.jsx) يمرّر الـheaders الحقيقية (توكن الجلسة) صراحة، وإلا الطلبات هتفشل بـ401
+  // بدل ما تنجح بسر مكشوف
+  const headers = authHeaders || { 'Content-Type': 'application/json' };
   // ✅ FIX: كانت بتاخد 'x-admin-secret' بس بالاسم — أي مصادقة تانية (زي Authorization Bearer
   // للمستخدم العادي في فيديو Whiteboard) كانت بتتفقد خالص لأي رفع ملف (multipart). دلوقتي
   // بنسحب أي هيدر مصادقة موجود فعليًا (أيًا كان اسمه) ما عدا Content-Type — الملتيبارت لازم

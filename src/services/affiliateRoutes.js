@@ -1,5 +1,6 @@
 import express from 'express';
 import pkg from 'pg';
+import { adminAuth } from './adminAuthMiddleware.js';
 const { Pool } = pkg;
 
 const router = express.Router();
@@ -74,15 +75,6 @@ function generateRefCode(email) {
   const base = email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 8);
   const rand = Math.random().toString(36).slice(2, 6);
   return `${base}${rand}`;
-}
-
-// ── Admin auth ─────────────────────────────────────────────────────────────
-function adminAuth(req, res, next) {
-  const secret = req.headers['x-admin-secret'] || req.query.secret;
-  if (!secret || secret !== (process.env.ADMIN_SECRET || 'erivion_admin_2026')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
 }
 
 // ══════════════════════════════════════════════════════════════════════════
