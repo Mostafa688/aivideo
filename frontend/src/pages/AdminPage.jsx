@@ -11,22 +11,51 @@ import { downloadRemoteFile } from '../utils/download.js';
 let adminToken = null;
 try { adminToken = sessionStorage.getItem('erivion_admin_token') || null; } catch { /* ignore */ }
 
-const MOBILE_CSS = `
-  @media (max-width: 768px) {
+// ✅ FIX (طلب العميل: "حسّن من شكل الصفحة"): كانت MOBILE_CSS معرّفة بس مش متعرضة في أي مكان
+// خالص (مفيش <style>{MOBILE_CSS}</style> في الـJSX) — يعني كل قواعد الموبايل دي كانت كود ميت
+// من يوم ما اتكتبت، وده سبب حقيقي وراء إن صفحة الأدمن كانت شكلها متكسر على الموبايل. دلوقتي
+// بتتعرض فعليًا (دور على ADMIN_CSS تحت)، مع تحسينات شكل عامة (hover/focus/scrollbar) وألوان
+// وخطوط متسقة مع نظام التصميم الحقيقي المستخدم في باقي الموقع (frontend/src/styles/global.css)
+const ADMIN_CSS = `
+  .admin-root button:not(:disabled) { cursor: pointer; transition: filter .15s ease, transform .05s ease; }
+  .admin-root button:not(:disabled):hover { filter: brightness(1.14); }
+  .admin-root button:not(:disabled):active { transform: scale(0.96); }
+  .admin-root button:disabled { cursor: not-allowed; }
+
+  .admin-root input, .admin-root select, .admin-root textarea {
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .admin-root input:focus, .admin-root select:focus, .admin-root textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px var(--accent-bg);
+    outline: none;
+  }
+
+  .admin-root table tbody tr td { transition: background .1s ease; }
+  .admin-root table tbody tr:hover td { background: rgba(255,255,255,0.025) !important; }
+
+  .admin-nav-item { transition: background .15s ease, color .15s ease; }
+  .admin-nav-item:not([data-active="true"]):hover { background: var(--bg4) !important; color: var(--text) !important; }
+
+  .admin-root ::-webkit-scrollbar { width: 10px; height: 10px; }
+  .admin-root ::-webkit-scrollbar-track { background: transparent; }
+  .admin-root ::-webkit-scrollbar-thumb { background: var(--bg5); border-radius: 6px; }
+  .admin-root ::-webkit-scrollbar-thumb:hover { background: var(--border3); }
+  .admin-root ::selection { background: var(--accent-glow); color: #fff; }
+
+  @media (max-width: 900px) {
+    .admin-root { flex-direction: column !important; }
+    .admin-sidebar-wrap { width: 100% !important; flex-direction: row !important; align-items: center; overflow-x: auto; -webkit-overflow-scrolling: touch; border-right: none !important; border-bottom: 1px solid var(--border); padding: 10px 12px !important; gap: 6px !important; }
+    .admin-sidebar-wrap .admin-logo { display: none !important; }
+    .admin-nav-item { white-space: nowrap; }
+    .admin-sidebar-footer { margin-top: 0 !important; margin-left: auto !important; }
+    .admin-main { padding: 14px !important; }
     .admin-stats { flex-direction: column !important; }
     .admin-stat-card { min-width: unset !important; width: 100% !important; }
     .admin-grid-2 { grid-template-columns: 1fr !important; }
-    .admin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .admin-table { min-width: 600px; }
-    .admin-header { padding: 0 10px !important; }
-    .admin-header-title { font-size: 14px !important; }
-    .admin-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
-    .admin-tab { padding: 8px 12px !important; font-size: 12px !important; }
-    .admin-main { padding: 12px !important; }
-    .admin-user-actions { flex-direction: column !important; gap: 4px !important; }
-    .admin-btn { padding: 6px 10px !important; font-size: 11px !important; }
-    .admin-search { width: 100% !important; }
-    .admin-filter-row { flex-direction: column !important; gap: 8px !important; }
+    .admin-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .admin-table th, .admin-table td { white-space: nowrap; }
+    .admin-header { flex-wrap: wrap; gap: 10px; }
   }
 `;
 
@@ -72,14 +101,17 @@ const planStyle = (plan) => {
 
 // ── Stat Card ──────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, color }) {
+  const accent = color || 'var(--accent)';
   return (
-    <div style={{
-      background: '#0f0f1a', border: '1px solid #1f2937', borderRadius: 12,
-      padding: '16px 20px', flex: 1, minWidth: 130,
+    <div className="admin-stat-card" style={{
+      background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)',
+      padding: '16px 20px', flex: 1, minWidth: 150, position: 'relative', overflow: 'hidden',
+      boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
     }}>
-      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, color: color || '#fff' }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#4b5563', marginTop: 4 }}>{sub}</div>}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: accent, opacity: 0.85 }} />
+      <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-display)', color: color || 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -234,18 +266,27 @@ function LoginScreen({ onLogin }) {
     }
   };
   return (
-    <div style={{ minHeight: '100vh', background: '#080810', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#0f0f1a', border: '1px solid #1f2937', borderRadius: 16, padding: '40px 36px', width: 340, textAlign: 'center' }}>
-        <div style={{ fontSize: 32, marginBottom: 8 }}>🔐</div>
-        <h2 style={{ color: '#7c6af7', margin: '0 0 24px', fontSize: 20 }}>Erivion Admin</h2>
-        <input type="email" placeholder="Admin email" value={email} autoComplete="username"
+    <div className="admin-root" style={{ minHeight: '100vh', background: 'radial-gradient(900px 500px at 50% -10%, var(--accent-bg), transparent 60%), var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-body)' }}>
+      <style>{`
+        .admin-login-input:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-bg); outline: none; }
+        .admin-login-btn:not(:disabled):hover { filter: brightness(1.12); }
+        .admin-login-btn:not(:disabled):active { transform: scale(0.98); }
+      `}</style>
+      <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', padding: '40px 36px', width: 340, textAlign: 'center', boxShadow: '0 24px 60px rgba(0,0,0,0.4)' }}>
+        <div style={{
+          width: 52, height: 52, borderRadius: 16, margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'linear-gradient(135deg, var(--accent), var(--accent2))', boxShadow: '0 8px 24px var(--accent-glow)', fontSize: 24,
+        }}>🔐</div>
+        <h2 style={{ color: 'var(--text)', margin: '0 0 4px', fontSize: 21, fontFamily: 'var(--font-display)', fontWeight: 800, letterSpacing: '-0.02em' }}>Erivion Admin</h2>
+        <p style={{ color: 'var(--text3)', fontSize: 12, margin: '0 0 24px' }}>Authorized personnel only</p>
+        <input type="email" placeholder="Admin email" value={email} autoComplete="username" className="admin-login-input"
           onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handle()}
-          style={{ width: '100%', background: '#1a1a2e', border: '1px solid #2d2d4a', borderRadius: 8, padding: '10px 14px', color: '#fff', fontSize: 14, marginBottom: 10, boxSizing: 'border-box', outline: 'none' }} />
-        <input type="password" placeholder="Password" value={password} autoComplete="current-password"
+          style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 'var(--r-sm)', padding: '10px 14px', color: 'var(--text)', fontSize: 14, marginBottom: 10, boxSizing: 'border-box', transition: 'border-color .15s, box-shadow .15s' }} />
+        <input type="password" placeholder="Password" value={password} autoComplete="current-password" className="admin-login-input"
           onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handle()}
-          style={{ width: '100%', background: '#1a1a2e', border: '1px solid #2d2d4a', borderRadius: 8, padding: '10px 14px', color: '#fff', fontSize: 14, marginBottom: 12, boxSizing: 'border-box', outline: 'none' }} />
-        {error && <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
-        <button onClick={handle} disabled={loading} style={{ width: '100%', background: '#7c6af7', border: 'none', borderRadius: 8, padding: '11px', color: '#fff', fontWeight: 700, fontSize: 14, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>{loading ? 'Checking…' : 'Enter'}</button>
+          style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 'var(--r-sm)', padding: '10px 14px', color: 'var(--text)', fontSize: 14, marginBottom: 12, boxSizing: 'border-box', transition: 'border-color .15s, box-shadow .15s' }} />
+        {error && <div style={{ color: 'var(--red)', background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: 'var(--r-sm)', padding: '8px 10px', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+        <button onClick={handle} disabled={loading} className="admin-login-btn" style={{ width: '100%', background: 'var(--accent)', border: 'none', borderRadius: 'var(--r-sm)', padding: '11px', color: '#fff', fontWeight: 700, fontSize: 14, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1, transition: 'filter .15s, transform .05s' }}>{loading ? 'Checking…' : 'Enter'}</button>
       </div>
     </div>
   );
@@ -326,8 +367,8 @@ function AffiliatesTab({ s }) {
         <div style={{ position: 'fixed', top: 20, right: 20, background: '#1a1a2e', border: '1px solid #2d2d4a', borderRadius: 10, padding: '12px 20px', fontSize: 14, color: '#fff', zIndex: 9999 }}>{toast}</div>
       )}
 
-      <div style={s.topbar}>
-        <div style={s.title}>🤝 المسوقين — Affiliates</div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">🤝 المسوقين — Affiliates</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
       </div>
 
@@ -350,7 +391,7 @@ function AffiliatesTab({ s }) {
         {/* قائمة المسوقين */}
         <div style={s.card}>
           {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
-          <table style={s.table}>
+          <table style={s.table} className="admin-table">
             <thead>
               <tr>
                 <th style={s.th}>المسوق</th>
@@ -452,7 +493,7 @@ function AffiliatesTab({ s }) {
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 10 }}>آخر النشاطات</div>
             {refLoading && <div style={{ color: '#4b5563', fontSize: 13 }}>Loading...</div>}
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-              <table style={s.table}>
+              <table style={s.table} className="admin-table">
                 <thead>
                   <tr>
                     <th style={s.th}>Event</th>
@@ -562,8 +603,8 @@ function NotificationsTab({ s }) {
 
   return (
     <div>
-      <div style={s.topbar}>
-        <div style={s.title}>🔔 الإشعارات — Notifications</div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">🔔 الإشعارات — Notifications</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
       </div>
 
@@ -647,8 +688,8 @@ function ChannelsTab({ s }) {
 
   return (
     <div>
-      <div style={s.topbar}>
-        <div style={s.title}>📺 Managed Channels (VidIQ)</div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">📺 Managed Channels (VidIQ)</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
       </div>
       {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
@@ -701,8 +742,8 @@ function VoicesTab({ s }) {
 
   return (
     <div>
-      <div style={s.topbar}>
-        <div style={s.title}>🗣️ Cloned Voices</div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">🗣️ Cloned Voices</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
       </div>
       {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
@@ -754,8 +795,8 @@ function AnalyticsTab({ s }) {
 
   return (
     <div>
-      <div style={s.topbar}>
-        <div style={s.title}>📈 Google Analytics</div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">📈 Google Analytics</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
       </div>
 
@@ -965,8 +1006,8 @@ function AudioVideoTab({ s }) {
 
   return (
     <div>
-      <div style={s.topbar}>
-        <div style={s.title}>🎬 Audio → Video (Voiceover → فيديو كامل تلقائيًا)</div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">🎬 Audio → Video (Voiceover → فيديو كامل تلقائيًا)</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
       </div>
 
@@ -1026,7 +1067,7 @@ function AudioVideoTab({ s }) {
           <audio controls src={activeJob.audio_url} style={{ width: '100%', height: 32, marginBottom: 12 }} />
           <div style={{ fontSize: 12.5, color: '#d1d5db', marginBottom: 12, lineHeight: 1.7 }}>{activeJob.transcript_text}</div>
           <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid #1a1a2e', borderRadius: 8, marginBottom: 16 }}>
-            <table style={s.table}>
+            <table style={s.table} className="admin-table">
               <thead><tr><th style={s.th}>#</th><th style={s.th}>Word</th><th style={s.th}>Start (s)</th><th style={s.th}>End (s)</th></tr></thead>
               <tbody>
                 {(activeJob.words_json || []).map((w, i) => (
@@ -1535,8 +1576,8 @@ function RatingsTab({ s }) {
 
   return (
     <div>
-      <div style={s.topbar}>
-        <div style={s.title}>⭐ التقييمات — Ratings</div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">⭐ التقييمات — Ratings</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
       </div>
 
@@ -1558,7 +1599,7 @@ function RatingsTab({ s }) {
 
       <div style={s.card}>
         {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
-        <table style={s.table}>
+        <table style={s.table} className="admin-table">
           <thead>
             <tr>
               <th style={s.th}>العميل</th>
@@ -1649,8 +1690,8 @@ function StudioTab({ s }) {
 
   return (
     <div>
-      <div style={s.topbar}>
-        <div style={s.title}>🎥 My Studio — Batch Video Generator</div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">🎥 My Studio — Batch Video Generator</div>
         <span style={{ fontSize: 12, color: '#4b5563' }}>Seedance 1 Pro Fast · 5s per scene</span>
       </div>
 
@@ -1916,7 +1957,7 @@ function TemplatesTab({ s }) {
         {templates.length === 0 && !loading ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#4b5563' }}>No templates yet. Add the first one above.</div>
         ) : (
-          <table style={s.table}>
+          <table style={s.table} className="admin-table">
             <thead>
               <tr>
                 <th style={s.th}>Title</th>
@@ -2327,20 +2368,24 @@ export default function AdminPage() {
 
   if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
 
+  // ✅ FIX (طلب العميل: "حسّن من شكل الصفحة"): كانت الألوان/الخطوط هنا أرقام hex منفصلة تمامًا
+  // عن نظام التصميم الحقيقي المستخدم في باقي الموقع (frontend/src/styles/global.css)، فصفحة
+  // الأدمن كانت شكلها مختلف عن هوية الموقع. دلوقتي بتستخدم نفس الـCSS variables (--bg/--text/
+  // --accent/--font-display/--font-body...) عشان تبقى متسقة بصريًا مع باقي المنتج
   const s = {
-    root: { minHeight: '100vh', background: '#080810', color: '#e5e7eb', fontFamily: 'system-ui, sans-serif', display: 'flex' },
-    sidebar: { width: 200, background: '#0f0f1a', borderRight: '1px solid #1a1a2e', padding: '20px 12px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 },
-    logo: { fontSize: 16, fontWeight: 700, color: '#7c6af7', padding: '4px 12px 20px', borderBottom: '1px solid #1a1a2e', marginBottom: 8 },
-    navItem: (active) => ({ padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: active ? '#fff' : '#6b7280', background: active ? '#1a1a2e' : 'transparent', border: active ? '1px solid #2d2d4a' : '1px solid transparent', fontWeight: active ? 600 : 400 }),
+    root: { minHeight: '100vh', background: 'radial-gradient(1100px 560px at 12% -8%, var(--accent-bg), transparent 60%), var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-body)', display: 'flex' },
+    sidebar: { width: 210, background: 'var(--bg2)', borderRight: '1px solid var(--border)', padding: '20px 12px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 },
+    logo: { fontSize: 16, fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', color: 'var(--accent)', padding: '4px 12px 20px', borderBottom: '1px solid var(--border)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 },
+    navItem: (active) => ({ padding: '9px 12px', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontSize: 13, color: active ? '#fff' : 'var(--text2)', background: active ? 'var(--bg4)' : 'transparent', borderLeft: active ? '3px solid var(--accent)' : '3px solid transparent', fontWeight: active ? 600 : 400 }),
     main: { flex: 1, padding: '24px 28px', overflow: 'auto' },
     topbar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
-    title: { fontSize: 18, fontWeight: 600, color: '#fff' },
+    title: { fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '-0.01em', color: 'var(--text)' },
     table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-    th: { textAlign: 'left', padding: '8px 12px', color: '#6b7280', fontWeight: 500, borderBottom: '1px solid #1a1a2e' },
-    td: { padding: '10px 12px', borderBottom: '1px solid #0f0f1a', color: '#d1d5db', verticalAlign: 'middle' },
-    card: { background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 12, padding: '20px 24px', marginBottom: 16 },
-    btn: (color) => ({ background: color || '#7c6af7', border: 'none', borderRadius: 7, padding: '6px 14px', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer' }),
-    input: { background: '#1a1a2e', border: '1px solid #2d2d4a', borderRadius: 8, padding: '8px 12px', color: '#fff', fontSize: 13, outline: 'none' },
+    th: { textAlign: 'left', padding: '8px 12px', color: 'var(--text2)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--border)' },
+    td: { padding: '10px 12px', borderBottom: '1px solid var(--border)', color: '#d1d5db', verticalAlign: 'middle' },
+    card: { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '20px 24px', marginBottom: 16, boxShadow: '0 8px 24px rgba(0,0,0,0.18)' },
+    btn: (color) => ({ background: color || 'var(--accent)', border: 'none', borderRadius: 'var(--r-sm)', padding: '6px 14px', color: '#fff', fontWeight: 600, fontSize: 12 }),
+    input: { background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 'var(--r-sm)', padding: '8px 12px', color: 'var(--text)', fontSize: 13, outline: 'none' },
   };
 
   const tabs = [
@@ -2364,19 +2409,20 @@ export default function AdminPage() {
   ];
 
   return (
-    <div style={s.root}>
+    <div style={s.root} className="admin-root">
+      <style>{ADMIN_CSS}</style>
       {toast && (
-        <div style={{ position: 'fixed', top: 20, right: 20, background: '#1a1a2e', border: '1px solid #2d2d4a', borderRadius: 10, padding: '12px 20px', fontSize: 14, color: '#fff', zIndex: 9999, boxShadow: '0 4px 20px #0008' }}>{toast}</div>
+        <div style={{ position: 'fixed', top: 20, right: 20, background: 'var(--bg4)', border: '1px solid var(--border2)', borderRadius: 'var(--r-md)', padding: '12px 20px', fontSize: 14, color: '#fff', zIndex: 9999, boxShadow: '0 8px 28px rgba(0,0,0,0.4)' }}>{toast}</div>
       )}
 
       {/* Sidebar */}
-      <div style={s.sidebar}>
-        <div style={s.logo}>⚡ Erivion Admin</div>
+      <div style={s.sidebar} className="admin-sidebar-wrap">
+        <div style={s.logo} className="admin-logo"><span>⚡</span> Erivion Admin</div>
         {tabs.map(t => (
-          <div key={t.key} style={s.navItem(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</div>
+          <div key={t.key} className="admin-nav-item" data-active={tab === t.key} style={s.navItem(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</div>
         ))}
-        <div style={{ marginTop: 'auto' }}>
-          <div style={{ ...s.navItem(false), color: '#ef4444' }}
+        <div style={{ marginTop: 'auto' }} className="admin-sidebar-footer">
+          <div className="admin-nav-item" style={{ ...s.navItem(false), color: '#f87171' }}
             onClick={() => { sessionStorage.removeItem('erivion_admin_ok'); applyAdminToken(null); setAuthed(false); }}>
             🚪 Logout
           </div>
@@ -2384,15 +2430,15 @@ export default function AdminPage() {
       </div>
 
       {/* Main */}
-      <div style={s.main}>
+      <div style={s.main} className="admin-main">
 
         {/* ── OVERVIEW ── */}
         {tab === 'overview' && (
           <>
-            <div style={s.topbar}><div style={s.title}>Overview</div><button style={s.btn()} onClick={() => loadStats()}>🔄 Refresh</button></div>
+            <div style={s.topbar} className="admin-header"><div style={s.title} className="admin-header-title">Overview</div><button style={s.btn()} onClick={() => loadStats()}>🔄 Refresh</button></div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
             {stats && <>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }} className="admin-stats">
                 <StatCard label="Total Users" value={fmt(stats.overview.total_users)} sub={`${stats.overview.verified_users} verified`} />
                 <StatCard label="Signups Today" value={fmt(stats.overview.signups_today)} color="#22c55e" />
                 <StatCard label="Logins Today" value={fmt(stats.overview.logins_today)} color="#06b6d4" />
@@ -2423,7 +2469,7 @@ export default function AdminPage() {
                     ))}
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                <div className="admin-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                   <div>
                     <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 10 }}>Videos generated</div>
                     <RangeBarChart data={stats.videos_per_period} bucket={stats.period_bucket} color="#7c6af7" />
@@ -2434,7 +2480,7 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="admin-grid-2" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 16 }}>
                 <div style={s.card}>
                   <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Videos generated — last 7 days</div>
                   <BarChart data={stats.videos_per_day} />
@@ -2458,16 +2504,16 @@ export default function AdminPage() {
                   })}
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="admin-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div style={s.card}>
                   <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>Recent users</div>
-                  <table style={s.table}><thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Joined</th></tr></thead>
+                  <table style={s.table} className="admin-table"><thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Joined</th></tr></thead>
                     <tbody>{stats.recent_users.slice(0, 8).map(u => (<tr key={u.id}><td style={s.td}>{u.email}</td><td style={s.td}><span style={planStyle(u.plan)}>{u.plan}</span></td><td style={s.td}>{new Date(u.created_at).toLocaleDateString()}</td></tr>))}</tbody>
                   </table>
                 </div>
                 <div style={s.card}>
                   <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>Top video creators</div>
-                  <table style={s.table}><thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Videos</th></tr></thead>
+                  <table style={s.table} className="admin-table"><thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Videos</th></tr></thead>
                     <tbody>{stats.top_users.map((u, i) => (<tr key={i}><td style={s.td}>{u.email}</td><td style={s.td}><span style={planStyle(u.plan)}>{u.plan}</span></td><td style={{ ...s.td, color: '#7c6af7', fontWeight: 700 }}>{u.video_count}</td></tr>))}</tbody>
                   </table>
                 </div>
@@ -2479,8 +2525,8 @@ export default function AdminPage() {
         {/* ── USERS ── */}
         {tab === 'users' && (
           <>
-            <div style={s.topbar}>
-              <div style={s.title}>Users ({users.length})</div>
+            <div style={s.topbar} className="admin-header">
+              <div style={s.title} className="admin-header-title">Users ({users.length})</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input style={{ ...s.input, width: 180 }} placeholder="Search email..." value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadUsers()} />
                 <select style={s.input} value={planFilter} onChange={e => setPlanFilter(e.target.value)}>
@@ -2498,7 +2544,7 @@ export default function AdminPage() {
             </div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
             <div style={{ ...s.card, overflowX:'auto' }}>
-              <table style={s.table}>
+              <table style={s.table} className="admin-table">
                 <thead><tr>
                   <th style={s.th}>Email</th>
                   <th style={s.th}>Plan</th>
@@ -2717,13 +2763,13 @@ export default function AdminPage() {
         {/* ── PAYMENTS ── */}
         {tab === 'payments' && (
           <>
-            <div style={s.topbar}><div style={s.title}>Payment Requests</div><button style={s.btn()} onClick={loadPayments}>🔄 Refresh</button></div>
+            <div style={s.topbar} className="admin-header"><div style={s.title} className="admin-header-title">Payment Requests</div><button style={s.btn()} onClick={loadPayments}>🔄 Refresh</button></div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
             <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 10 }}>
               💡 التكلفة والربح تقديريان بناءً على متوسط هامش ربح ~72% — القيمة الفعلية بتختلف حسب الموديل اللي العميل هيستخدمه فعليًا
             </div>
             <div style={s.card}>
-              <table style={s.table}>
+              <table style={s.table} className="admin-table">
                 <thead><tr><th style={s.th}>Email</th><th style={s.th}>Plan</th><th style={s.th}>Billing</th><th style={s.th}>Amount</th><th style={s.th}>Est. Cost</th><th style={s.th}>Est. Profit</th><th style={s.th}>Receipt</th><th style={s.th}>Status</th><th style={s.th}>Date</th><th style={s.th}>Action</th><th style={s.th}>Cost Paid?</th></tr></thead>
                 <tbody>
                   {payments.map(p => (
@@ -2780,8 +2826,8 @@ export default function AdminPage() {
         {/* ── VIDEOS ── */}
         {tab === 'videos' && (
           <>
-            <div style={s.topbar}>
-              <div style={s.title}>🤖 Agent Chats <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 400 }}>(آخر 24 ساعة بس — بتتمسح تلقائي بعد كده)</span></div>
+            <div style={s.topbar} className="admin-header">
+              <div style={s.title} className="admin-header-title">🤖 Agent Chats <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 400 }}>(آخر 24 ساعة بس — بتتمسح تلقائي بعد كده)</span></div>
               <button style={s.btn()} onClick={loadAgentChats}>🔄 Refresh</button>
             </div>
             {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
@@ -2805,8 +2851,8 @@ export default function AdminPage() {
         اعرف بيشتكوا من ايه") ── */}
         {tab === 'customerProjects' && (
           <>
-            <div style={s.topbar}>
-              <div style={s.title}>🗂️ Customer Projects ({customerProjects.length})</div>
+            <div style={s.topbar} className="admin-header">
+              <div style={s.title} className="admin-header-title">🗂️ Customer Projects ({customerProjects.length})</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input style={{ ...s.input, width: 220 }} placeholder="Filter by customer email..." value={customerProjectsEmail} onChange={e => setCustomerProjectsEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadCustomerProjects()} />
                 <button style={s.btn()} onClick={loadCustomerProjects}>🔍 Search</button>
@@ -2864,8 +2910,8 @@ export default function AdminPage() {
         {/* ── ANSWERS ── */}
         {tab === 'answers' && (
           <>
-            <div style={s.topbar}>
-              <div style={s.title}>📋 User Onboarding Answers</div>
+            <div style={s.topbar} className="admin-header">
+              <div style={s.title} className="admin-header-title">📋 User Onboarding Answers</div>
               <button style={s.btn()} onClick={loadAnswers}>🔄 Load Answers</button>
             </div>
             {loading && <div style={{ color: '#6b7280', fontSize: 13 }}>Loading...</div>}
@@ -2892,7 +2938,7 @@ export default function AdminPage() {
               <div style={s.card}>
                 <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>{answers.length} user(s) answered the onboarding survey</div>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={s.table}>
+                  <table style={s.table} className="admin-table">
                     <thead>
                       <tr>
                         <th style={s.th}>Email</th>
@@ -2929,8 +2975,8 @@ export default function AdminPage() {
         {/* ── Community Tab ── */}
         {tab === 'community' && (
           <div>
-            <div style={s.topbar}>
-              <div style={s.title}>
+            <div style={s.topbar} className="admin-header">
+              <div style={s.title} className="admin-header-title">
                 🌍 Community
                 {communityPending.length > 0 && (
                   <span style={{ marginLeft:10, padding:'2px 10px', borderRadius:999, background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)', color:'#ef4444', fontSize:12, fontWeight:700 }}>
@@ -3177,8 +3223,8 @@ export default function AdminPage() {
         {/* ── Support Chat Tab ── */}
         {tab === 'support' && (
           <div>
-            <div style={s.topbar}>
-              <div style={s.title}>💬 Support Chats ({supportChats.length})</div>
+            <div style={s.topbar} className="admin-header">
+              <div style={s.title} className="admin-header-title">💬 Support Chats ({supportChats.length})</div>
               <div style={{ display:'flex', gap:8 }}>
                 <button style={s.btn('#374151')} onClick={async () => { await fetch('/api/support/cleanup', {method:'POST'}); loadSupport(); }}>🗑️ Cleanup Expired</button>
                 <button style={s.btn('#7c6af7')} onClick={async () => {
