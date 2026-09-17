@@ -1987,6 +1987,368 @@ function TemplatesTab({ s }) {
   );
 }
 
+// ── Courses Tab ──────────────────────────────────────────────────────────────
+// ✅ NEW: نظام كورسات حقيقي — كورسات مقفولة للمشتركين بس (plan != 'free')، ماعدا فيديو
+// تعريفي واحد بيشرح الموقع نفسه متاح للكل. كل كورس ممكن يحتوي على أكتر من فيديو، وكل
+// كورس/فيديو له عنوان/وصف/صورة مصغرة/ملف مرفق خاص بيه. لإضافة نفس الكورس بلغة تانية،
+// استخدم "Add translation of an existing course" بدل "New course".
+function CoursesTab({ s }) {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState('');
+  const showToastMsg = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  const emptyAddForm = { mode: 'new', translateGroupKey: '', language: 'ar', title: '', description: '', thumbnail_url: '', intro_video_url: '', attachment_url: '', attachment_label: '', is_free: false, sort_order: 0 };
+  const [showForm, setShowForm] = useState(false);
+  const [addForm, setAddForm] = useState(emptyAddForm);
+  const [adding, setAdding] = useState(false);
+  const [uploadingField, setUploadingField] = useState(null);
+
+  const loadCourses = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/courses/admin/list', { headers });
+      const d = await r.json();
+      setCourses(d.courses || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+  useEffect(() => { loadCourses(); }, []);
+
+  const uploadCourseFile = async (file, onUrl) => {
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch('/api/courses/admin/upload', { method: 'POST', headers: { Authorization: `Bearer ${adminToken}` }, body: fd });
+      const d = await r.json();
+      if (d.url) { onUrl(d.url); showToastMsg('✅ Uploaded'); }
+      else showToastMsg('❌ ' + (d.error || 'Upload failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+  };
+
+  const handleAdd = async () => {
+    if (!addForm.title.trim()) { showToastMsg('❌ Title is required'); return; }
+    if (addForm.mode === 'translation' && !addForm.translateGroupKey) { showToastMsg('❌ Pick which course this is a translation of'); return; }
+    setAdding(true);
+    try {
+      const body = { ...addForm, group_key: addForm.mode === 'translation' ? addForm.translateGroupKey : '' };
+      const r = await fetch('/api/courses/admin', { method: 'POST', headers, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (d.course) {
+        showToastMsg('✅ Course added');
+        setAddForm(emptyAddForm);
+        setShowForm(false);
+        loadCourses();
+      } else showToastMsg('❌ ' + (d.error || 'Failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setAdding(false);
+  };
+
+  const handleDeleteCourse = async (id) => {
+    if (!confirm('Delete this course and all its videos?')) return;
+    try {
+      const r = await fetch(`/api/courses/admin/${id}`, { method: 'DELETE', headers });
+      const d = await r.json();
+      if (d.success) { showToastMsg('✅ Deleted'); loadCourses(); }
+      else showToastMsg('❌ ' + d.error);
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+  };
+
+  // ── إدارة فيديوهات كل كورس ──
+  const [expandedId, setExpandedId] = useState(null);
+  const [videosByCourse, setVideosByCourse] = useState({});
+  const emptyVideoForm = { title: '', description: '', thumbnail_url: '', video_url: '', attachment_url: '', attachment_label: '', sort_order: 0 };
+  const [videoForm, setVideoForm] = useState(emptyVideoForm);
+  const [addingVideo, setAddingVideo] = useState(false);
+
+  const loadVideos = async (courseId) => {
+    try {
+      const r = await fetch(`/api/courses/admin/${courseId}/videos`, { headers });
+      const d = await r.json();
+      setVideosByCourse(m => ({ ...m, [courseId]: d.videos || [] }));
+    } catch (e) { console.error(e); }
+  };
+
+  const toggleExpand = (courseId) => {
+    if (expandedId === courseId) { setExpandedId(null); return; }
+    setExpandedId(courseId);
+    setVideoForm(emptyVideoForm);
+    if (!videosByCourse[courseId]) loadVideos(courseId);
+  };
+
+  const handleAddVideo = async (courseId) => {
+    if (!videoForm.title.trim() || !videoForm.video_url.trim()) { showToastMsg('❌ Title and video are required'); return; }
+    setAddingVideo(true);
+    try {
+      const r = await fetch(`/api/courses/admin/${courseId}/videos`, { method: 'POST', headers, body: JSON.stringify(videoForm) });
+      const d = await r.json();
+      if (d.video) {
+        showToastMsg('✅ Video added');
+        setVideoForm(emptyVideoForm);
+        loadVideos(courseId);
+        loadCourses();
+      } else showToastMsg('❌ ' + (d.error || 'Failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setAddingVideo(false);
+  };
+
+  const handleDeleteVideo = async (courseId, videoId) => {
+    if (!confirm('Delete this video?')) return;
+    try {
+      const r = await fetch(`/api/courses/admin/videos/${videoId}`, { method: 'DELETE', headers });
+      const d = await r.json();
+      if (d.success) { showToastMsg('✅ Deleted'); loadVideos(courseId); loadCourses(); }
+      else showToastMsg('❌ ' + d.error);
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+  };
+
+  // ── الفيديو التعريفي المجاني بتاع الموقع نفسه (singleton) ──
+  const [intro, setIntro] = useState({ title_ar: '', title_en: '', description_ar: '', description_en: '', thumbnail_url: '', video_url: '' });
+  const [savingIntro, setSavingIntro] = useState(false);
+
+  const loadIntro = async () => {
+    try {
+      const r = await fetch('/api/courses/admin/intro-video', { headers });
+      const d = await r.json();
+      if (d.intro) setIntro(p => ({ ...p, ...d.intro }));
+    } catch (e) { console.error(e); }
+  };
+  useEffect(() => { loadIntro(); }, []);
+
+  const saveIntro = async () => {
+    setSavingIntro(true);
+    try {
+      const r = await fetch('/api/courses/admin/intro-video', { method: 'PUT', headers, body: JSON.stringify(intro) });
+      const d = await r.json();
+      if (d.intro) showToastMsg('✅ Intro video saved');
+      else showToastMsg('❌ ' + (d.error || 'Failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setSavingIntro(false);
+  };
+
+  const distinctGroups = [];
+  const seenGroups = new Set();
+  for (const c of courses) {
+    if (!seenGroups.has(c.group_key)) { seenGroups.add(c.group_key); distinctGroups.push(c); }
+  }
+
+  const UploadBtn = ({ label, accept, uploading, onFile }) => (
+    <label style={{ ...s.btn('#374151'), cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, padding: '6px 12px' }}>
+      {uploading ? '⏳ Uploading...' : label}
+      <input type="file" accept={accept} style={{ display: 'none' }} disabled={uploading}
+        onChange={e => { const f = e.target.files[0]; if (f) onFile(f); e.target.value = ''; }} />
+    </label>
+  );
+
+  return (
+    <div>
+      {toast && (
+        <div style={{ position: 'fixed', top: 16, right: 16, background: toast.startsWith('✅') ? '#166534' : '#7f1d1d', border: '1px solid ' + (toast.startsWith('✅') ? '#22c55e' : '#ef4444'), borderRadius: 10, padding: '12px 20px', color: '#fff', fontWeight: 600, fontSize: 14, zIndex: 9999, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>{toast}</div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>🎓 Courses</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={s.btn()} onClick={loadCourses}>🔄 Refresh</button>
+          <button style={s.btn('#22c55e')} onClick={() => setShowForm(v => !v)}>{showForm ? '✕ Cancel' : '+ Add Course'}</button>
+        </div>
+      </div>
+
+      {/* Free site intro video — singleton, open to everyone without a subscription */}
+      <div style={{ ...s.card, borderColor: '#166534' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#4ade80', marginBottom: 4 }}>🎬 Free Intro Video (open to everyone, no subscription needed)</div>
+        <p style={{ fontSize: 11, color: '#4b5563', margin: '0 0 16px' }}>فيديو واحد بس بيشرح الموقع نفسه — بيظهر للزوار كلهم قبل أي كورس مقفول.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
+          <div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Title (Arabic)</div>
+            <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={intro.title_ar || ''} onChange={e => setIntro(p => ({ ...p, title_ar: e.target.value }))} placeholder="عنوان الفيديو..." />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Title (English)</div>
+            <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={intro.title_en || ''} onChange={e => setIntro(p => ({ ...p, title_en: e.target.value }))} placeholder="Video title..." />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Description (Arabic)</div>
+            <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={intro.description_ar || ''} onChange={e => setIntro(p => ({ ...p, description_ar: e.target.value }))} placeholder="وصف قصير..." />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Description (English)</div>
+            <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={intro.description_en || ''} onChange={e => setIntro(p => ({ ...p, description_en: e.target.value }))} placeholder="Short description..." />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+          <UploadBtn label="📤 Upload Thumbnail" accept="image/*" onFile={f => uploadCourseFile(f, url => setIntro(p => ({ ...p, thumbnail_url: url })))} />
+          {intro.thumbnail_url && <span style={{ fontSize: 11, color: '#22c55e' }}>✅ thumbnail ready</span>}
+          <UploadBtn label="📤 Upload Video" accept="video/*" onFile={f => uploadCourseFile(f, url => setIntro(p => ({ ...p, video_url: url })))} />
+          {intro.video_url && <span style={{ fontSize: 11, color: '#22c55e' }}>✅ video ready</span>}
+        </div>
+        <button style={s.btn('#166534')} onClick={saveIntro} disabled={savingIntro}>{savingIntro ? 'Saving...' : '💾 Save Intro Video'}</button>
+      </div>
+
+      {/* Add Course Form */}
+      {showForm && (
+        <div style={{ background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 16, padding: 24, marginBottom: 24 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#7c6af7', marginBottom: 20 }}>➕ Add New Course</div>
+
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Type</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#d1d5db', cursor: 'pointer' }}>
+                <input type="radio" checked={addForm.mode === 'new'} onChange={() => setAddForm(p => ({ ...p, mode: 'new' }))} /> New course
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#d1d5db', cursor: 'pointer' }}>
+                <input type="radio" checked={addForm.mode === 'translation'} onChange={() => setAddForm(p => ({ ...p, mode: 'translation' }))} /> Add translation of an existing course
+              </label>
+            </div>
+          </div>
+
+          {addForm.mode === 'translation' && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Which course is this a translation of? *</div>
+              <select style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={addForm.translateGroupKey} onChange={e => setAddForm(p => ({ ...p, translateGroupKey: e.target.value }))}>
+                <option value="">— Select —</option>
+                {distinctGroups.map(c => <option key={c.group_key} value={c.group_key}>{c.title} ({c.language})</option>)}
+              </select>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Title *</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={addForm.title} onChange={e => setAddForm(p => ({ ...p, title: e.target.value }))} placeholder="Course title..." />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Language *</div>
+              <select style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={addForm.language} onChange={e => setAddForm(p => ({ ...p, language: e.target.value }))}>
+                <option value="ar">🇸🇦 Arabic</option>
+                <option value="en">🇺🇸 English</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Description</div>
+            <textarea style={{ ...s.input, width: '100%', boxSizing: 'border-box', minHeight: 70, resize: 'vertical', fontFamily: 'inherit' }} value={addForm.description} onChange={e => setAddForm(p => ({ ...p, description: e.target.value }))} placeholder="What this course covers..." />
+          </div>
+
+          <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <UploadBtn label="📤 Thumbnail" accept="image/*" onFile={f => uploadCourseFile(f, url => setAddForm(p => ({ ...p, thumbnail_url: url })))} />
+            {addForm.thumbnail_url && <span style={{ fontSize: 11, color: '#22c55e' }}>✅ ready</span>}
+            <UploadBtn label="📤 Intro/Trailer Video (optional)" accept="video/*" onFile={f => uploadCourseFile(f, url => setAddForm(p => ({ ...p, intro_video_url: url })))} />
+            {addForm.intro_video_url && <span style={{ fontSize: 11, color: '#22c55e' }}>✅ ready</span>}
+          </div>
+
+          <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <UploadBtn label="📎 Course-wide Attachment (optional)" accept="*/*" onFile={f => uploadCourseFile(f, url => setAddForm(p => ({ ...p, attachment_url: url })))} />
+            {addForm.attachment_url && <span style={{ fontSize: 11, color: '#22c55e' }}>✅ ready</span>}
+            <input style={{ ...s.input, width: 220 }} value={addForm.attachment_label} onChange={e => setAddForm(p => ({ ...p, attachment_label: e.target.value }))} placeholder="Attachment label (e.g. Workbook PDF)" />
+          </div>
+
+          <div style={{ marginBottom: 20, display: 'flex', gap: 16, alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#d1d5db', cursor: 'pointer' }}>
+              <input type="checkbox" checked={addForm.is_free} onChange={e => setAddForm(p => ({ ...p, is_free: e.target.checked }))} /> Free (no subscription required)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: '#6b7280' }}>Sort order</span>
+              <input type="number" style={{ ...s.input, width: 70 }} value={addForm.sort_order} onChange={e => setAddForm(p => ({ ...p, sort_order: e.target.value }))} />
+            </div>
+          </div>
+
+          <button style={s.btn('#22c55e')} onClick={handleAdd} disabled={adding}>{adding ? '⏳ Adding...' : '✅ Add Course'}</button>
+        </div>
+      )}
+
+      {/* Courses List */}
+      {loading && <div style={{ color: '#6b7280' }}>Loading...</div>}
+      <div style={s.card}>
+        {courses.length === 0 && !loading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#4b5563' }}>No courses yet. Add the first one above.</div>
+        ) : (
+          <table style={s.table} className="admin-table">
+            <thead>
+              <tr>
+                <th style={s.th}>Title</th>
+                <th style={s.th}>Lang</th>
+                <th style={s.th}>Access</th>
+                <th style={s.th}>Videos</th>
+                <th style={s.th}>Group</th>
+                <th style={s.th}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {courses.map(c => (
+                <React.Fragment key={c.id}>
+                  <tr>
+                    <td style={s.td}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {c.thumbnail_url && <img src={c.thumbnail_url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6 }} />}
+                        <div style={{ fontWeight: 600, color: '#fff' }}>{c.title}</div>
+                      </div>
+                    </td>
+                    <td style={s.td}>{c.language === 'en' ? '🇺🇸 EN' : '🇸🇦 AR'}</td>
+                    <td style={s.td}>{c.is_free ? <span style={{ color: '#4ade80', fontSize: 11, fontWeight: 700 }}>Free</span> : <span style={{ color: '#c4b5fd', fontSize: 11, fontWeight: 700 }}>Subscribers only</span>}</td>
+                    <td style={s.td}>{c.video_count}</td>
+                    <td style={{ ...s.td, fontSize: 10, color: '#4b5563' }}>{c.group_key.slice(0, 16)}…</td>
+                    <td style={{ ...s.td, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button style={s.btn('#374151')} onClick={() => toggleExpand(c.id)}>{expandedId === c.id ? '▲ Hide Videos' : '▼ Manage Videos'}</button>
+                      <button style={s.btn('#7f1d1d')} onClick={() => handleDeleteCourse(c.id)}>🗑 Delete</button>
+                    </td>
+                  </tr>
+                  {expandedId === c.id && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: 0, borderBottom: '1px solid #1a1a2e' }}>
+                        <div style={{ background: '#0a0a14', padding: 20 }}>
+                          {(videosByCourse[c.id] || []).length === 0 ? (
+                            <div style={{ fontSize: 12, color: '#4b5563', marginBottom: 16 }}>No videos in this course yet.</div>
+                          ) : (
+                            <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {(videosByCourse[c.id] || []).map(v => (
+                                <div key={v.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 8, padding: '8px 12px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    {v.thumbnail_url && <img src={v.thumbnail_url} alt="" style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 5 }} />}
+                                    <div>
+                                      <div style={{ fontSize: 12.5, color: '#fff', fontWeight: 600 }}>{v.title}</div>
+                                      {v.attachment_url && <div style={{ fontSize: 10, color: '#7c6af7' }}>📎 {v.attachment_label || 'attachment'}</div>}
+                                    </div>
+                                  </div>
+                                  <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 10px' }} onClick={() => handleDeleteVideo(c.id, v.id)}>🗑</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#7c6af7', marginBottom: 10 }}>+ Add Video to this Course</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }} className="admin-grid-2">
+                            <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={videoForm.title} onChange={e => setVideoForm(p => ({ ...p, title: e.target.value }))} placeholder="Video title..." />
+                            <input type="number" style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={videoForm.sort_order} onChange={e => setVideoForm(p => ({ ...p, sort_order: e.target.value }))} placeholder="Sort order" />
+                          </div>
+                          <textarea style={{ ...s.input, width: '100%', boxSizing: 'border-box', minHeight: 50, resize: 'vertical', fontFamily: 'inherit', marginBottom: 10 }} value={videoForm.description} onChange={e => setVideoForm(p => ({ ...p, description: e.target.value }))} placeholder="Video description..." />
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+                            <UploadBtn label="📤 Thumbnail" accept="image/*" onFile={f => uploadCourseFile(f, url => setVideoForm(p => ({ ...p, thumbnail_url: url })))} />
+                            {videoForm.thumbnail_url && <span style={{ fontSize: 11, color: '#22c55e' }}>✅</span>}
+                            <UploadBtn label="📤 Video *" accept="video/*" onFile={f => uploadCourseFile(f, url => setVideoForm(p => ({ ...p, video_url: url })))} />
+                            {videoForm.video_url && <span style={{ fontSize: 11, color: '#22c55e' }}>✅</span>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+                            <UploadBtn label="📎 Attachment (optional)" accept="*/*" onFile={f => uploadCourseFile(f, url => setVideoForm(p => ({ ...p, attachment_url: url })))} />
+                            {videoForm.attachment_url && <span style={{ fontSize: 11, color: '#22c55e' }}>✅</span>}
+                            <input style={{ ...s.input, width: 200 }} value={videoForm.attachment_label} onChange={e => setVideoForm(p => ({ ...p, attachment_label: e.target.value }))} placeholder="Attachment label" />
+                          </div>
+                          <button style={s.btn('#22c55e')} onClick={() => handleAddVideo(c.id)} disabled={addingVideo}>{addingVideo ? '⏳ Adding...' : '✅ Add Video'}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   // ✅ محتاجين الاتنين (فلاج + توكن حقيقي فعلاً موجود) — لو الجلسة قديمة وفيها الفلاج بس
   // التوكن خلص/اتشال، مينفعش نعتبره "داخل" وهو أي طلب API هيرجعله 401
@@ -2399,6 +2761,7 @@ export default function AdminPage() {
     { key: 'ratings',    label: '⭐ Ratings'      },
     { key: 'notifications', label: '🔔 Notifications' },
     { key: 'templates',  label: '🎬 Templates'   },
+    { key: 'courses',    label: '🎓 Courses'     },
     { key: 'answers',    label: '📋 Answers'     },
     { key: 'community',  label: '🌍 Community'   },
     { key: 'channels',   label: '📺 Channels'    },
@@ -2905,6 +3268,7 @@ export default function AdminPage() {
 
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}
+        {tab === 'courses' && <CoursesTab s={s} />}
 
         {/* ── STUDIO ── */}
         {/* ── ANSWERS ── */}
