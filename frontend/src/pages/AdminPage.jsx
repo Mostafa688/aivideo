@@ -1989,6 +1989,11 @@ export default function AdminPage() {
   });
   const [modelRecharge, setModelRecharge] = useState({ model3: '', model4: '', model5: '' });
   const [savingModel, setSavingModel] = useState(null); // 'model3' | 'model4' | 'model5' | null
+  // ✅ NEW (طلب العميل): الموقع بقى كله شغال بخطة واحدة موحدة (اشترك مرة واحدة وكل حاجة
+  // تفتح) — نظام model3/4/5_access ده باقي من قبل التوحيد، لعملاء قدامى اشتروا موديل واحد
+  // لوحده بس، مش الطريقة اللي بيتباع بيها الاشتراك دلوقتي. هيتصفّى تدريجيًا، فمقفول افتراضيًا
+  // في المودال عشان محدش يفتكر إنه جزء من نظام الاشتراك الحالي
+  const [showLegacyModels, setShowLegacyModels] = useState(false);
   const [supportChats, setSupportChats] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
@@ -2397,9 +2402,9 @@ export default function AdminPage() {
                 <StatCard label="Est. Cost (EGP)" value={fmt(stats.overview.total_cost_estimate_egp)} color="#ef4444" />
                 <StatCard label="Est. Profit (EGP)" value={fmt(stats.overview.total_profit_estimate_egp)} color="#22c55e" />
                 <StatCard label="Pending Payments" value={stats.overview.pending_payments} color={stats.overview.pending_payments > 0 ? '#ef4444' : '#9ca3af'} />
-                <StatCard label="Model 3 Users" value={stats.overview.model3_users} color="#7c6af7" />
-                <StatCard label="Model 4 Users" value={stats.overview.model4_users} color="#c084fc" />
-                <StatCard label="Model 5 Users" value={stats.overview.model5_users} color="#06b6d4" />
+                <StatCard label="Legacy Model 3 Users" value={stats.overview.model3_users} color="#7c6af7" />
+                <StatCard label="Legacy Model 4 Users" value={stats.overview.model4_users} color="#c084fc" />
+                <StatCard label="Legacy Model 5 Users" value={stats.overview.model5_users} color="#06b6d4" />
               </div>
               <div style={s.card}>
                 <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Subscriptions per month — last 12 months</div>
@@ -2497,7 +2502,7 @@ export default function AdminPage() {
                 <thead><tr>
                   <th style={s.th}>Email</th>
                   <th style={s.th}>Plan</th>
-                  <th style={s.th}>Premium Models</th>
+                  <th style={s.th}>Legacy Models</th>
                   <th style={s.th}>Region</th>
                   <th style={s.th}>Credits Balance</th>
                   <th style={s.th}>Videos</th>
@@ -2554,6 +2559,7 @@ export default function AdminPage() {
                               model5: { access: !!u.model5_access, plan: u.model5_plan || 'mc_starter' },
                             });
                             setModelRecharge({ model3: '', model4: '', model5: '' });
+                            setShowLegacyModels(false);
                           }}>✏️</button>
                           <button style={s.btn('#312e81')} title="Send message" onClick={() => { setMessageUser({ email: u.email, name: u.name }); setMessageText(''); setMessageLang(u.region==='intl'?'en':'ar'); }}>✉️</button>
                           <button style={s.btn('#1e3a2f')} disabled={resetingCredits===u.email} title="Reset M1&2 credits" onClick={() => handleResetCredits(u.email)}>
@@ -2596,9 +2602,21 @@ export default function AdminPage() {
                     <p style={{ fontSize: 10, color: '#4b5563', margin: '6px 0 0' }}>موجب = إضافة كريديت، سالب = خصم كريديت</p>
                   </div>
 
-                  {/* ✅ NEW: إدارة تيرات الموديلات 3/4/5 المدفوعة المنفصلة — قبل كده كان لازم SQL يدوي */}
+                  {/* ✅ إدارة وصول موديلات 3/4/5 القديمة — نظام منفصل قبل توحيد الخطة الحالية،
+                      باقي بس لعملاء قدامى لسه عندهم وصول من قبل التوحيد. مقفول افتراضيًا هنا
+                      عشان محدش يفتكر إنه جزء من الاشتراك الحالي (اللي بقى خطة واحدة تفتح كل حاجة) */}
                   <div style={{ marginBottom: 16, paddingTop: 12, borderTop: '1px solid #1f2937' }}>
-                    <div style={{ fontSize: 12, color: '#a99bff', marginBottom: 10, fontWeight: 700 }}>💠 Premium Model Access</div>
+                    <button
+                      onClick={() => setShowLegacyModels(v => !v)}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: showLegacyModels ? 10 : 0 }}
+                    >
+                      <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 700 }}>🕰️ Legacy Model 3/4/5 Access</span>
+                      <span style={{ fontSize: 11, color: '#4b5563' }}>{showLegacyModels ? '▲ Hide' : '▼ Show'}</span>
+                    </button>
+                    {showLegacyModels && <>
+                    <p style={{ fontSize: 10, color: '#4b5563', margin: '0 0 10px' }}>
+                      نظام قديم من قبل ما الاشتراك بقى خطة واحدة موحدة تفتح كل حاجة — استخدمه بس لعميل قديم عنده وصول من زمان. مش الطريقة اللي بيتباع بيها الاشتراك دلوقتي.
+                    </p>
                     {[
                       { key: 'model3', label: 'Model 3 — AI Images' },
                       { key: 'model4', label: 'Model 4 — Seedance AI' },
@@ -2643,6 +2661,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                     ))}
+                    </>}
                   </div>
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
