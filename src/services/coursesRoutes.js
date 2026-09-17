@@ -332,7 +332,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
     if (!unlocked) {
       return res.json({
-        course: { id: course.id, title: course.title, description: course.description, thumbnail_url: course.thumbnail_url, is_free: false },
+        course: { id: course.id, title: course.title, description: course.description, thumbnail_url: course.thumbnail_url, intro_video_url: course.intro_video_url, is_free: false },
         videos: videos.map(v => ({ id: v.id, title: v.title, description: v.description, thumbnail_url: v.thumbnail_url })),
         locked: true,
       });
