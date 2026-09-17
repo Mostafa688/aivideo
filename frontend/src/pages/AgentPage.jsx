@@ -119,6 +119,8 @@ const T = {
     allMedia: 'كل الوسائط',
     imagesTab: 'صور',
     videosTab: 'فيديوهات',
+    favoritesTab: 'المفضّلة',
+    favoritesEmpty: 'مفيش حاجة في المفضّلة لسه — دوس على القلب فوق أي صورة أو فيديو عشان تضيفه هنا.',
     collapse: 'تصغير',
     expand: 'توسيع',
   },
@@ -161,6 +163,8 @@ const T = {
     allMedia: 'All Media',
     imagesTab: 'Images',
     videosTab: 'Videos',
+    favoritesTab: 'Favorites',
+    favoritesEmpty: "Nothing in Favorites yet — click the heart on any image or video to add it here.",
     collapse: 'Collapse',
     expand: 'Expand',
   },
@@ -396,7 +400,13 @@ function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, 
                 {meta.title && (
                   <div style={{ position: 'absolute', bottom: 6, left: 6, insetInlineEnd: 36, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta.title}</div>
                 )}
-                <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
+                <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6, display: 'flex', gap: 6 }}>
+                  {/* ✅ NEW (طلب العميل: قلب واضح على الصورة مباشرة، مش مدفون جوه منيو الـ⋮) */}
+                  <button onClick={() => setMeta({ favorited: !meta.favorited })}
+                    title={lang === 'ar' ? (meta.favorited ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة') : (meta.favorited ? 'Remove from Favorites' : 'Add to Favorites')}
+                    style={{ width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: meta.favorited ? '#f472b6' : '#fff', cursor: 'pointer', padding: 0 }}>
+                    <Heart size={14} strokeWidth={2.25} fill={meta.favorited ? 'currentColor' : 'none'} />
+                  </button>
                   <MediaActionsMenu
                     lang={lang}
                     isFavorited={!!meta.favorited}
@@ -459,7 +469,13 @@ function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onRep
         {job.title && (
           <div style={{ position: 'absolute', top: 6, left: 6, padding: '3px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11 }}>{job.title}</div>
         )}
-        <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
+        <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6, display: 'flex', gap: 6 }}>
+          {/* ✅ NEW (طلب العميل: قلب واضح على الفيديو مباشرة، مش مدفون جوه منيو الـ⋮) */}
+          <button onClick={() => onUpdateJob?.({ favorited: !job.favorited })}
+            title={lang === 'ar' ? (job.favorited ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة') : (job.favorited ? 'Remove from Favorites' : 'Add to Favorites')}
+            style={{ width: 26, height: 26, borderRadius: 8, background: 'rgba(0,0,0,0.6)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: job.favorited ? '#f472b6' : '#fff', cursor: 'pointer', padding: 0 }}>
+            <Heart size={14} strokeWidth={2.25} fill={job.favorited ? 'currentColor' : 'none'} />
+          </button>
           <MediaActionsMenu
             lang={lang}
             isFavorited={!!job.favorited}
@@ -2029,14 +2045,23 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const mediaItems = messages
     .map((m, i) => ({ ...m, _i: i }))
     .filter(m => MEDIA_TYPES.includes(m.type));
+  // ✅ NEW (طلب العميل: تاب "المفضّلة" جوه المشروع): بيفحص كل ميديا في المشروع ده — صورة
+  // واحدة مفضّلة جوه دفعة صور تكفي عشان الكارت كله يظهر في التاب ده (الفلترة الحقيقية على
+  // مستوى الصورة نفسها بتحصل جوه ImageBatchCard زي ما هي)
+  const isMediaFavorited = (m) => {
+    if (m.type === 'imageBatch') return (m.job?.imageMeta || []).some(meta => meta?.favorited);
+    return !!m.job?.favorited;
+  };
   const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
     : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel')
+    : rightTab === 'favorites' ? mediaItems.filter(isMediaFavorited)
     : mediaItems;
 
   const RIGHT_TABS = [
     { key: 'all', label: t.allMedia, icon: LayoutGrid },
     { key: 'images', label: t.imagesTab, icon: Images },
     { key: 'videos', label: t.videosTab, icon: Video },
+    { key: 'favorites', label: t.favoritesTab, icon: Heart },
   ];
 
   return (
@@ -2213,10 +2238,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           {visibleMedia.length === 0 ? (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
               <div style={{ width: 64, height: 64, borderRadius: 18, background: 'var(--bg2)', border: '1px solid var(--border2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
-                <Images size={28} strokeWidth={1.5} color="var(--text3)" />
+                {rightTab === 'favorites' ? <Heart size={28} strokeWidth={1.5} color="var(--text3)" /> : <Images size={28} strokeWidth={1.5} color="var(--text3)" />}
               </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{t.canvasEmptyTitle}</div>
-              <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 320, lineHeight: 1.7 }}>{t.canvasEmptySub}</div>
+              {rightTab === 'favorites' ? (
+                <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 320, lineHeight: 1.7 }}>{t.favoritesEmpty}</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{t.canvasEmptyTitle}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 320, lineHeight: 1.7 }}>{t.canvasEmptySub}</div>
+                </>
+              )}
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
