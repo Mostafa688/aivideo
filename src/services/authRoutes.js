@@ -84,7 +84,12 @@ router.post('/verify', async (req, res) => {
           subject: `🆕 New user registered — ${email}`,
           html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#22c55e;margin:0 0 16px">🆕 New User Registered</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${result.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Email & Password</td></tr></table></div>`,
         }),
-      }).catch(() => {});
+      })
+        // ✅ FIX (طلب العميل: "الإيميل مش بيوصل مش عارف ليه"): .catch(()=>{}) كان بيبلع أي
+        // فشل في الإرسال من غير أي أثر — لا في الـresponse ولا في اللوجز، فمستحيل تعرف السبب
+        // الحقيقي (مفتاح غلط، نطاق مش verified، ...). دلوقتي أي فشل بيتسجل في لوجز Railway
+        .then(async r => { if (!r.ok) console.error('[Signup Notify] Resend failed:', r.status, await r.text().catch(() => '')); })
+        .catch(e => console.error('[Signup Notify] Resend request failed:', e.message));
     }
     res.json(result);
   } catch (err) {
@@ -108,7 +113,9 @@ router.post('/login', async (req, res) => {
         subject: `🔐 User Login — ${email}`,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#7c6af7;margin:0 0 16px">🔐 User Logged In</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${result.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Email & Password</td></tr></table></div>`,
       }),
-    }).catch(() => {});
+    })
+      .then(async r => { if (!r.ok) console.error('[Login Notify] Resend failed:', r.status, await r.text().catch(() => '')); })
+      .catch(e => console.error('[Login Notify] Resend request failed:', e.message));
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -168,7 +175,9 @@ router.get('/google/callback', async (req, res) => {
         to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:${authData.isNewUser ? '#22c55e' : '#7c6af7'};margin:0 0 16px">${authData.isNewUser ? '🆕 New User Registered' : '🔐 User Logged In'}</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${authData.email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Name</td><td style="color:#d1d5db;font-size:13px">${authData.name || '—'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${authData.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Google OAuth</td></tr></table></div>`,
       }),
-    }).catch(() => {});
+    })
+      .then(async r => { if (!r.ok) console.error('[Google Notify] Resend failed:', r.status, await r.text().catch(() => '')); })
+      .catch(e => console.error('[Google Notify] Resend request failed:', e.message));
     res.redirect(`${frontendUrl}?google_token=${authData.token}&email=${encodeURIComponent(authData.email)}&plan=${authData.plan}&name=${encodeURIComponent(authData.name || '')}&avatar=${encodeURIComponent(authData.avatar || '')}`);
   } catch (err) {
     console.error('[Google OAuth] Error:', err.message);

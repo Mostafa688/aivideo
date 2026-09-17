@@ -552,6 +552,21 @@ function NotificationsTab({ s }) {
   const [emailExclude, setEmailExclude] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [emailResult, setEmailResult] = useState(null);
+  // ✅ NEW (طلب العميل: "إيميل التسجيل الجديد مش بيوصل، مش عارف ليه") — endpoint التشخيص ده
+  // كان موجود أصلاً في الباك إند (notify-status) بس مفيش زرار في صفحة الأدمن بيكلمه، فمكانش
+  // في طريقة سهلة للعميل يتأكد بنفسه هل RESEND_API_KEY متظبط ولا نطاق erivion.net مش
+  // verified في حساب Resend نفسه — ده السبب الأشهر لإرسال صامت بيفشل من غير أي error ظاهر
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  const [emailCheckResult, setEmailCheckResult] = useState(null);
+  const checkEmailDelivery = async () => {
+    setCheckingEmail(true); setEmailCheckResult(null);
+    try {
+      const r = await fetch('/api/support/notify-status', { headers });
+      const d = await r.json();
+      setEmailCheckResult(d);
+    } catch (e) { setEmailCheckResult({ error: e.message }); }
+    setCheckingEmail(false);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -606,6 +621,25 @@ function NotificationsTab({ s }) {
       <div style={s.topbar} className="admin-header">
         <div style={s.title} className="admin-header-title">🔔 الإشعارات — Notifications</div>
         <button style={s.btn()} onClick={load}>🔄 Refresh</button>
+      </div>
+
+      <div style={{ ...s.card, borderColor: emailCheckResult?.sendSucceeded ? '#166534' : emailCheckResult ? '#7f1d1d' : undefined }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 8 }}>📬 اختبار وصول إيميلات الإشعارات (تسجيل جديد، دخول، الخ)</div>
+        <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 10px' }}>بيبعت إيميل اختباري حقيقي فورًا للإيميل المتظبط في ADMIN_EMAIL، ويقولك بالظبط لو المشكلة إن المفتاح مش متظبط أو النطاق مش verified في Resend.</p>
+        <button style={s.btn('#7c6af7')} onClick={checkEmailDelivery} disabled={checkingEmail}>
+          {checkingEmail ? '⏳ جاري الفحص...' : '📨 ابعت إيميل اختبار دلوقتي'}
+        </button>
+        {emailCheckResult && (
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#0a0a14', border: '1px solid #1f2937', fontSize: 12, color: '#d1d5db', lineHeight: 1.7 }}>
+            <div style={{ fontWeight: 700, color: emailCheckResult.sendSucceeded ? '#4ade80' : '#f87171', marginBottom: 4 }}>
+              {emailCheckResult.message || emailCheckResult.error || 'حصل خطأ غير متوقع'}
+            </div>
+            {emailCheckResult.adminEmail && <div style={{ color: '#6b7280' }}>الإيميل المستهدف: <span style={{ color: '#fff' }}>{emailCheckResult.adminEmail}</span></div>}
+            {emailCheckResult.resendError && (
+              <pre style={{ marginTop: 6, fontSize: 10.5, color: '#f87171', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(emailCheckResult.resendError, null, 2)}</pre>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={s.card}>
