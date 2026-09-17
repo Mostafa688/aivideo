@@ -25,19 +25,11 @@ export const EG_PACKAGES = [
   { key: 'studio',  name: 'Studio',  tagline: 'للاستخدام المكثف', credits: 3000, egp: 2100 },
 ];
 
-// ── حساب "الرصيد ده يكفي لعمل كام فيديو" — موديل رخيص (2) وموديل مميز (4) كمرجع ──
-function videoEquivalents(credits) {
-  return {
-    model2: Math.floor(credits / 5),   // 30s @ 5cr
-    model4: Math.floor(credits / 100), // 30s @ 100cr
-  };
-}
-
 const FEATURE_LIST = [
-  'Access to all 5 AI video models',
+  'Access to every AI video & image engine',
   'No watermark on any video',
   'Credits never expire',
-  'HD export on every model',
+  'HD export on every engine',
   'Priority email support',
 ];
 
@@ -64,23 +56,6 @@ function FeatureList({ color }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-// ─── سطرين "يكفي لعمل" لأي كمية كريديت ───────────────────────────────────
-function EnoughForLines({ credits, lang = 'en' }) {
-  const eq = videoEquivalents(credits);
-  const label = lang === 'ar'
-    ? { title: `${credits.toLocaleString()} كريديت يكفي لـ:`, m2: `${eq.model2} فيديو (Model 2, 30 ثانية)`, m4: `${eq.model4} فيديو (Model 4, 30 ثانية)` }
-    : { title: `${credits.toLocaleString()} credits is enough for:`, m2: `${eq.model2} videos (Model 2, 30s)`, m4: `${eq.model4} videos (Model 4, 30s)` };
-  return (
-    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px' }}>
-      <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{label.title}</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        <span style={{ fontSize: 13, color: '#d1d5db' }}>• {label.m2}</span>
-        <span style={{ fontSize: 13, color: '#d1d5db' }}>• {label.m4}</span>
-      </div>
-    </div>
   );
 }
 
@@ -353,11 +328,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                   <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>دفعة واحدة · لا يتجدد</div>
 
                   <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: isLast ? 16 : 22 }}>
-                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{displayCredits.toLocaleString()} كريديت يكفي لـ:</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(displayCredits / 5)} فيديو (Model 2, 30 ثانية)</span>
-                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(displayCredits / 100)} فيديو (Model 4, 30 ثانية)</span>
-                    </div>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{displayCredits.toLocaleString()} كريديت — رصيد واحد مشترك بين كل موديلات الفيديو والصور</p>
                   </div>
 
                   {isLast && (
@@ -398,11 +369,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                   <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
 
                   <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 22 }}>
-                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits is enough for:</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(pkg.credits / 5)} videos (Model 2, 30s)</span>
-                      <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(pkg.credits / 100)} videos (Model 4, 30s)</span>
-                    </div>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits — one shared balance across every video & image engine</p>
                   </div>
 
                   <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: pkg.popular ? pkg.color : 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
@@ -429,11 +396,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                     <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 2, letterSpacing: '-0.02em' }}>${pkg.usd}</div>
                     <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
                     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 22 }}>
-                      <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits is enough for:</p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(pkg.credits / 5)} videos (Model 2, 30s)</span>
-                        <span style={{ fontSize: 13, color: '#d1d5db' }}>• {Math.floor(pkg.credits / 100)} videos (Model 4, 30s)</span>
-                      </div>
+                      <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits — one shared balance across every video & image engine</p>
                     </div>
                     <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
                       Get {pkg.name}
