@@ -17,6 +17,11 @@ const SHOWCASE_VIDEOS = [
 function LoginVideoCarousel() {
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState('loading'); // 'loading' | 'playing'
+  // ✅ FIX (طلب العميل: "خلي صوتها شغال لانه مقفول"): المتصفحات بترفض autoplay لفيديو غير
+  // مكتوم خالص (ده مش باج عندنا، سياسة أمان في كل المتصفحات) — فبنسيب autoplay مكتوم زي ما
+  // هو (عشان يفضل يشتغل لوحده من غير ما يحتاج ضغطة أول)، وبنضيف زرار صوت واضح يقدر يفعّله
+  // بنفسه لو عايز يسمع البرومبت
+  const [muted, setMuted] = useState(true);
 
   useEffect(() => {
     if (phase !== 'loading') return;
@@ -34,7 +39,9 @@ function LoginVideoCarousel() {
   return (
     <div style={{ marginBottom: 40 }}>
       <div style={{
-        position: 'relative', width: '100%', maxWidth: 380, aspectRatio: '16/9', margin: '0 auto',
+        // ✅ FIX (طلب العميل: "كبر حجم الفيديوهات... لانها صغيره"): 380px → أكبر بكتير ومتجاوب
+        // (clamp بيكبر مع عرض الشاشة لحد سقف معقول، بدل رقم ثابت صغير)
+        position: 'relative', width: '100%', maxWidth: 'clamp(380px, 34vw, 620px)', aspectRatio: '16/9', margin: '0 auto',
         borderRadius: 18, overflow: 'hidden', background: '#0a0a14',
         border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
       }}>
@@ -53,15 +60,26 @@ function LoginVideoCarousel() {
             </div>
           </div>
         ) : (
-          <video
-            key={current.url}
-            src={current.url}
-            autoPlay
-            muted
-            playsInline
-            onEnded={handleEnded}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
+          <>
+            <video
+              key={current.url}
+              src={current.url}
+              autoPlay
+              muted={muted}
+              playsInline
+              onEnded={handleEnded}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            <button
+              onClick={() => setMuted(m => !m)}
+              title={muted ? 'Unmute' : 'Mute'}
+              style={{
+                position: 'absolute', bottom: 10, insetInlineEnd: 10, width: 32, height: 32, borderRadius: 10,
+                background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15,
+              }}
+            >{muted ? '🔇' : '🔊'}</button>
+          </>
         )}
       </div>
       <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 1.6, fontStyle: 'italic', textAlign: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>

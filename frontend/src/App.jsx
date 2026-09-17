@@ -153,6 +153,10 @@ function CookieConsentBanner() {
 // ويعمل حركة انيميشن حلوة وبعد كده يفتح صفحة الاسعار"): شاشة انتقال قصيرة بشعار متحرك بين
 // نهاية أسئلة الـonboarding في AuthPage وفتح PricingPage — كانت قبل كده قفزة فورية من غير
 // أي انتقال خالص
+// ✅ FIX (طلب العميل: "حجمه كبير مناسب للكومبيوتر والهاتف ويتحرك بانيميشن") — كان اللوجو
+// صغير بمقاس ثابت (76px) بصرف النظر عن حجم الشاشة، وبعد الدخول الأولي كانت الحركة بتوقف
+// (glow بس بيفضل، مفيش حركة حقيقية مستمرة). دلوقتي المقاس بيكبر مع الشاشة (clamp) وفيه
+// حركة عوم مستمرة (float) طول ما الشاشة دي ظاهرة، مش لحظة دخول بس
 function LogoTransition({ onDone }) {
   useEffect(() => {
     const t = setTimeout(onDone, 1700);
@@ -162,16 +166,16 @@ function LogoTransition({ onDone }) {
     <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100000 }}>
       <style>{`
         @keyframes logoTransIn { 0% { opacity: 0; transform: scale(0.6) rotate(-8deg); } 60% { opacity: 1; transform: scale(1.1) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(0deg); } }
-        @keyframes logoTransGlow { 0%, 100% { box-shadow: 0 0 30px rgba(124,106,247,0.35); } 50% { box-shadow: 0 0 60px rgba(124,106,247,0.65); } }
+        @keyframes logoTransFloat { 0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 0 30px rgba(124,106,247,0.35); } 50% { transform: translateY(-10px) scale(1.04); box-shadow: 0 0 60px rgba(124,106,247,0.65); } }
         @keyframes logoTransFade { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
-        .logo-trans-badge { animation: logoTransIn 0.55s cubic-bezier(0.34,1.56,0.64,1) forwards, logoTransGlow 1.5s ease-in-out infinite 0.55s; }
+        .logo-trans-badge { animation: logoTransIn 0.55s cubic-bezier(0.34,1.56,0.64,1) forwards, logoTransFloat 2.2s ease-in-out infinite 0.55s; }
         .logo-trans-text { animation: logoTransFade 0.4s ease forwards; animation-delay: 0.5s; opacity: 0; }
       `}</style>
       <div style={{ textAlign: 'center' }}>
-        <div className="logo-trans-badge" style={{ width: 76, height: 76, borderRadius: 22, background: 'linear-gradient(135deg,#7c6af7,#a08ff8)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
-          <img src={LOGO} alt="Erivion" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+        <div className="logo-trans-badge" style={{ width: 'clamp(76px, 14vw, 150px)', height: 'clamp(76px, 14vw, 150px)', borderRadius: '28%', background: 'linear-gradient(135deg,#7c6af7,#a08ff8)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto clamp(18px, 2.5vw, 28px)' }}>
+          <img src={LOGO} alt="Erivion" style={{ width: '55%', height: '55%', objectFit: 'contain' }} />
         </div>
-        <div className="logo-trans-text" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text2)', letterSpacing: '0.02em' }}>Erivion</div>
+        <div className="logo-trans-text" style={{ fontSize: 'clamp(15px, 2vw, 22px)', fontWeight: 700, color: 'var(--text2)', letterSpacing: '0.02em' }}>Erivion</div>
       </div>
     </div>
   );
@@ -614,21 +618,21 @@ export default function App() {
           model3Access={model3Access} model4Access={model4Access} model5Access={model5Access}
           userPlan={userPlan} credits={credits} onNavigate={handleNavigate}
         />}
-        {page === 'model3' && <Model3Page onBack={() => setPage('input')} model3Plan={model3Plan} model3Access={model3Access} userPlan={userPlan} onNavigate={handleNavigate} />}
-        {page === 'model4' && <Model4Page onBack={() => { setPage('input'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} userPlan={userPlan} onNavigate={handleNavigate} />}
-        {page === 'model8' && <Model8Page onBack={() => { setPage('input'); fetchCredits(); }} userPlan={userPlan} onNavigate={handleNavigate} />}
-        {page === 'model5' && <ModelCinematicPage onBack={() => { setPage('input'); fetchCredits(); }} model5Plan={model5Plan} model5Access={model5Access} userPlan={userPlan} onNavigate={handleNavigate} />}
-        {page === 'model6' && <MapVideoPage formData={formData} onBack={() => setPage('input')} />}
-        {page === 'model7' && <ModelErivionPage onBack={() => { setPage('input'); fetchCredits(); }} erivionPlan={erivionPlan} erivionAccess={erivionAccess} onNavigate={handleNavigate} />}
-        {page === 'whiteboard' && <WhiteboardVideoPage region={userRegion || localStorage.getItem('erivion_region') || 'intl'} onBack={() => setPage('input')} onNavigate={handleNavigate} />}
-        {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('input'); window.history.pushState({}, '', '/'); }} />}
-        {page === 'settings' && <SettingsPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
+        {page === 'model3' && <Model3Page onBack={() => setPage('dashboard')} model3Plan={model3Plan} model3Access={model3Access} userPlan={userPlan} onNavigate={handleNavigate} />}
+        {page === 'model4' && <Model4Page onBack={() => { setPage('dashboard'); fetchCredits(); }} model4Plan={model4Plan} model4Access={model4Access} userPlan={userPlan} onNavigate={handleNavigate} />}
+        {page === 'model8' && <Model8Page onBack={() => { setPage('dashboard'); fetchCredits(); }} userPlan={userPlan} onNavigate={handleNavigate} />}
+        {page === 'model5' && <ModelCinematicPage onBack={() => { setPage('dashboard'); fetchCredits(); }} model5Plan={model5Plan} model5Access={model5Access} userPlan={userPlan} onNavigate={handleNavigate} />}
+        {page === 'model6' && <MapVideoPage formData={formData} onBack={() => setPage('dashboard')} />}
+        {page === 'model7' && <ModelErivionPage onBack={() => { setPage('dashboard'); fetchCredits(); }} erivionPlan={erivionPlan} erivionAccess={erivionAccess} onNavigate={handleNavigate} />}
+        {page === 'whiteboard' && <WhiteboardVideoPage region={userRegion || localStorage.getItem('erivion_region') || 'intl'} onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}
+        {page === 'affiliate' && <AffiliatePage onBack={() => { setPage('dashboard'); window.history.pushState({}, '', '/'); }} />}
+        {page === 'settings' && <SettingsPage onBack={() => setPage('dashboard')} user={user} onNavigate={handleNavigate} />}
         {page === 'templates' && <TemplatesPage onNavigate={handleNavigate} userRegion={userRegion} />}
-        {page === 'courses' && <CoursesPage onBack={() => setPage('input')} onNavigate={handleNavigate} userRegion={userRegion} />}
-        {page === 'channels' && <ChannelsPage onBack={() => setPage('input')} userRegion={userRegion} />}
-        {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('input')} />}
-        {page === 'community' && <CommunityPage onBack={() => setPage('input')} user={user} onNavigate={handleNavigate} />}
-        {page === 'faq' && <FAQPage onBack={() => setPage('input')} onNavigate={handleNavigate} />}
+        {page === 'courses' && <CoursesPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} userRegion={userRegion} />}
+        {page === 'channels' && <ChannelsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
+        {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('dashboard')} />}
+        {page === 'community' && <CommunityPage onBack={() => setPage('dashboard')} user={user} onNavigate={handleNavigate} />}
+        {page === 'faq' && <FAQPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}
         {page === 'notfound' && <NotFoundPage onNavigate={handleNavigate} />}
       </div>
       <CookieConsentBanner />
