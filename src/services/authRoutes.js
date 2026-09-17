@@ -69,6 +69,23 @@ router.post('/verify', async (req, res) => {
         trackAffiliateSignup(result.userId, email, refCode).catch(() => {});
       }
     }
+    // ✅ NEW (طلب العميل: مش بيوصله إشعار لما حد يسجل جديد على الموقع): ده أول لحظة حساب
+    // إيميل+باسورد بيبقى نشط فعلاً (بعد ما يدخل كود التفعيل) — نفس شكل إشعار "User Logged
+    // In" الموجود أصلاً في /login تحت، بس بعنوان ومحتوى مخصص للتسجيل الجديد
+    if (result?.userId) {
+      const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+      const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion Visitors <noreply@erivion.net>',
+          to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
+          subject: `🆕 New user registered — ${email}`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#22c55e;margin:0 0 16px">🆕 New User Registered</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${result.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Email & Password</td></tr></table></div>`,
+        }),
+      }).catch(() => {});
+    }
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -128,7 +145,10 @@ router.get('/google/callback', async (req, res) => {
     if (!googleUser.email) throw new Error('Could not get user email from Google');
     const authData = await loginOrCreateGoogleUser({ googleId: googleUser.id, email: googleUser.email, name: googleUser.name, avatar: googleUser.picture });
     // ── Affiliate tracking للـ Google signup ─────────────────────────────
-    if (authData?.isNew && authData?.userId) {
+    // ✅ FIX (باج حقيقي ثاني بجوار isNewUser الدايمًا false في authService.js): كان بيتفحص
+    // authData?.isNew بس الحقل الحقيقي اسمه isNewUser — يعني حتى لو الباج التاني اتصلح
+    // لوحده، السطر ده كان هيفضل ميعملش حاجة أبدًا لأنه بيدوّر على حقل مش موجود خالص
+    if (authData?.isNewUser && authData?.userId) {
       const refCode = req.query.state || null;
       if (refCode) {
         trackAffiliateSignup(authData.userId, authData.email, refCode).catch(() => {});
@@ -136,14 +156,17 @@ router.get('/google/callback', async (req, res) => {
     }
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
     const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
+    // ✅ FIX (طلب العميل: مش بيوصله إشعار لما حد يسجل جديد): كان في إشعار "User Logged In"
+    // بس بيتبعت في كل تسجيل دخول (جديد أو قديم) بنفس العنوان، فمفيش تفرقة واضحة. دلوقتي
+    // العنوان والمحتوى بيتغيروا لو الحساب ده جديد فعلاً (authData.isNewUser بعد إصلاحه فوق)
     fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: 'Erivion Visitors <noreply@erivion.net>',
+        subject: authData.isNewUser ? `🆕 New user registered — ${authData.email}` : `🔐 User Login — ${authData.email}`,
         to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
-        subject: `🔐 User Login — ${authData.email}`,
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#7c6af7;margin:0 0 16px">🔐 User Logged In</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${authData.email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Name</td><td style="color:#d1d5db;font-size:13px">${authData.name || '—'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${authData.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Google OAuth</td></tr></table></div>`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:${authData.isNewUser ? '#22c55e' : '#7c6af7'};margin:0 0 16px">${authData.isNewUser ? '🆕 New User Registered' : '🔐 User Logged In'}</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${authData.email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Name</td><td style="color:#d1d5db;font-size:13px">${authData.name || '—'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${authData.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Google OAuth</td></tr></table></div>`,
       }),
     }).catch(() => {});
     res.redirect(`${frontendUrl}?google_token=${authData.token}&email=${encodeURIComponent(authData.email)}&plan=${authData.plan}&name=${encodeURIComponent(authData.name || '')}&avatar=${encodeURIComponent(authData.avatar || '')}`);

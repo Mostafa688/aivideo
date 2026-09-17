@@ -25,6 +25,10 @@ const T = {
     newProjectTitle: 'مشروع جديد',
     namePlaceholder: 'اسم المشروع...',
     create: 'إنشاء',
+    coursesWelcomeTitle: 'أهلًا بيك في Erivion! 🎉',
+    coursesWelcomeBody: 'قبل ما تبدأ، اتفرج على صفحة الكورسات — فيها فيديو مجاني بيشرحلك الموقع خطوة بخطوة، وكورسات تانية تساعدك تطلع فيديوهات احترافية بسرعة.',
+    coursesWelcomeCta: 'زيارة صفحة الكورسات',
+    coursesWelcomeSkip: 'مش دلوقتي',
   },
   en: {
     title: 'Projects',
@@ -43,6 +47,10 @@ const T = {
     newProjectTitle: 'New Project',
     namePlaceholder: 'Project name...',
     create: 'Create',
+    coursesWelcomeTitle: 'Welcome to Erivion! 🎉',
+    coursesWelcomeBody: "Before you start, check out our Courses page — there's a free video walking you through the platform step by step, plus courses to help you make great videos fast.",
+    coursesWelcomeCta: 'Visit Courses',
+    coursesWelcomeSkip: 'Not now',
   },
 };
 
@@ -174,11 +182,32 @@ function NewProjectModal({ lang, onCreate, onCancel, creating }) {
   );
 }
 
-export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject }) {
+// ✅ NEW (طلب العميل: أي حد يسجل جديد يشوف رسالة توديه لصفحة الكورسات وهو في صفحة المشاريع):
+// نفس شكل NewProjectModal فوق، بيظهر مرة واحدة بس لأي مستخدم جديد (الفلاج بيتحط لحظة
+// التسجيل فعليًا — راجع AuthPage.jsx's handleVerify وApp.jsx's Google-signup branch)
+function CoursesWelcomeModal({ lang, onVisit, onSkip }) {
+  const t = T[lang];
+  return (
+    <div onClick={onSkip} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(420px, 90vw)', background: 'var(--bg2)', border: '1px solid var(--border2)', borderRadius: 'var(--r-xl)', padding: 26, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', textAlign: lang === 'ar' ? 'right' : 'left' }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', fontFamily: 'var(--font-display)', marginBottom: 10 }}>{t.coursesWelcomeTitle}</div>
+        <p style={{ fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.8, marginBottom: 20 }}>{t.coursesWelcomeBody}</p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onSkip} style={{ padding: '9px 16px', borderRadius: 9, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 13, fontWeight: 600 }}>{t.coursesWelcomeSkip}</button>
+          <button className="btn-primary" onClick={onVisit} style={{ padding: '9px 16px', fontSize: 13 }}>{t.coursesWelcomeCta}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNavigate }) {
   const t = T[lang];
   const [projects, setProjects] = useState(null);
   const [creating, setCreating] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showCoursesWelcome, setShowCoursesWelcome] = useState(() => localStorage.getItem('erivion_show_courses_welcome') === '1');
+  const dismissCoursesWelcome = () => { localStorage.removeItem('erivion_show_courses_welcome'); setShowCoursesWelcome(false); };
 
   const load = async () => {
     try {
@@ -254,6 +283,10 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject }) {
 
       {showNewModal && (
         <NewProjectModal lang={lang} creating={creating} onCreate={createProject} onCancel={() => setShowNewModal(false)} />
+      )}
+
+      {showCoursesWelcome && (
+        <CoursesWelcomeModal lang={lang} onSkip={dismissCoursesWelcome} onVisit={() => { dismissCoursesWelcome(); onNavigate?.('courses'); }} />
       )}
     </div>
   );

@@ -317,6 +317,10 @@ export default function App() {
       const planChosenBefore = localStorage.getItem('planSelected') === 'true';
       if (!termsAccepted) {
         // مستخدم جديد — مش بنعمل setUser عشان يعرض AuthPage صح
+        // ✅ NEW (طلب العميل: رسالة ترحيبية توديه لصفحة الكورسات لأي حد يسجل جديد): نفس
+        // الفلاج المستخدم في AuthPage.jsx's handleVerify (تسجيل إيميل+باسورد)، هنا لمسار
+        // جوجل الجديد بالظبط
+        localStorage.setItem('erivion_show_courses_welcome', '1');
         const pendingData = { token: googleToken, email: googleEmail, plan: googlePlan || 'free', name: decodeURIComponent(params.get('name') || '') };
         setGooglePendingData(pendingData);
         setShowAuth(true);
@@ -592,7 +596,7 @@ export default function App() {
       <div id="app-main" style={{ paddingTop: 54, paddingBottom: 20 }}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
-        {page === 'dashboard' && <div key="dashboard" className="workspace-transition"><ProjectsDashboardPage lang={(userRegion || localStorage.getItem('erivion_region') || 'eg') === 'eg' ? 'ar' : 'en'} onOpenProject={(project) => { setActiveProject(project); setPage('agent'); }} /></div>}
+        {page === 'dashboard' && <div key="dashboard" className="workspace-transition"><ProjectsDashboardPage lang={(userRegion || localStorage.getItem('erivion_region') || 'eg') === 'eg' ? 'ar' : 'en'} onOpenProject={(project) => { setActiveProject(project); setPage('agent'); }} onNavigate={handleNavigate} /></div>}
         {page === 'agent' && <div key={`agent-${activeProject?.id || 'none'}`} className="workspace-transition"><AgentPage onNavigate={handleNavigate} onSwitchToModels={() => setPage('input')} activeProject={activeProject} /></div>}
         {page === 'input' && <InputPage
           onSubmit={(data) => {

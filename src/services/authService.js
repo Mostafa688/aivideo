@@ -1016,6 +1016,10 @@ export async function login(email, password) {
 export async function loginOrCreateGoogleUser({ googleId, email, name, avatar }) {
   const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
   let user = rows[0];
+  // ✅ FIX (باج حقيقي: isNewUser كانت دايمًا false هنا، حتى لما حساب جديد فعلاً بيتعمل تحت —
+  // ده كان بيمنع أي منطق يعتمد على "هل ده تسجيل جديد فعلاً؟" (زي إشعار تسجيل جديد للأدمن)
+  // من التفريق بين مستخدم جديد ومستخدم قديم بيسجل دخول بجوجل تاني)
+  const isNew = !user;
   if (user) {
     if (!user.google_id) await pool.query('UPDATE users SET google_id = $1, avatar = $2, verified = 1 WHERE id = $3', [googleId, avatar, user.id]);
   } else {
@@ -1031,7 +1035,7 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
     maybeSendUpgradeEmail(user.id, user.email, user.name).catch(() => {});
   }
   logLoginEvent(user.id, user.email, 'google').catch(() => {});
-  return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: false };
+  return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: isNew, userId: user.id };
 }
 
 export function verifyToken(token) {
