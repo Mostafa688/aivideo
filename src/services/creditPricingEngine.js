@@ -111,6 +111,9 @@ export const REPLICATE_MODEL_COSTS = {
   // فيها حوار/كلام حقيقي على الشاشة
   prunaai_p_video_2: { label: 'PrunaAI P-Video 2',  unit: 'second', usdCost: 0.03, maxClipSec: 10,
                        tiers: { '720p': 0.03, '1080p': 0.06 } },
+  // ✅ NEW (طلب العميل: تعديل فيديوهات أطول من 10 ثواني): سعر $0.04/ثانية ومدى المدة (~30 دقيقة)
+  // من تصريح العميل نفسه مباشرة ("على ما اظن")، مش مؤكدين من صفحة الموديل — يحتاج تأكيد حي
+  decart_lucy_edit_2: { label: 'Lucy Edit 2', unit: 'second', usdCost: 0.04, maxClipSec: 1800 },
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   // ✅ NEW: الموديل الحقيقي المستخدم فعليًا (videoAudioService.js) هو google/gemini-3.1-flash-tts —

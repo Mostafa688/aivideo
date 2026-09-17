@@ -26,7 +26,7 @@ import whiteboardVideoRouter from './services/whiteboardVideoRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
-import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration } from './services/newVideoModelsService.js';
+import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureVideoDurationSec } from './services/newVideoModelsService.js';
 import { mergeVideos } from './services/videoMergeService.js';
 import { synthesizeNarration, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer, composeVideoAudio } from './services/videoAudioService.js';
 import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getFlatCreditCost, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
@@ -2977,10 +2977,23 @@ const CAPTION_CREDIT_FLAT = getFlatCreditCost('autocaption');
 const MUSIC_CREDIT_FLAT = 10; // معالجة سيرفر حقيقية (ffmpeg mix) + مصدر موسيقى — مش سعر Replicate
 
 app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res) => {
-  const { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood } = req.body;
+  let { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood } = req.body;
   if (!model || !NEW_VIDEO_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
   if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
   if (addCaptions && !narrationScript?.trim()) return res.status(400).json({ error: 'addCaptions requires narrationScript (captions are burned from the real narration audio)' });
+  // ✅ NEW (طلب العميل: "لو عميل طلب مونتاج لفيديو اقل من 10 ثواني... يتعمل بـomni flash1.1
+  // ولو اكتر يتعمل بـdecart/lucy-edit-2"): حاجز إضافي في الكود نفسه — مش بنثق في أي موديل جاي
+  // من العميل/الايجنت لطلب تعديل فيديو، بنقيس مدته الحقيقية بـffprobe ونفرض الموديل الصح
+  // بنفسنا (نفس مبدأ فرض النسبة/الموديل المستخدم في أماكن تانية في المشروع)
+  let sourceVideoDurationSec = null;
+  if (sourceVideoUrl) {
+    try {
+      sourceVideoDurationSec = await measureVideoDurationSec(sourceVideoUrl);
+    } catch (e) {
+      return res.status(400).json({ error: 'source_video_probe_failed', message: `Could not read the source video: ${e.message}` });
+    }
+    model = sourceVideoDurationSec <= 10 ? 'omni_flash_1_1' : 'decart_lucy_edit_2';
+  }
   const vidUser = await getUserById(req.user.userId);
   if ((vidUser?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock this video model.', show_upgrade: true });
@@ -3006,9 +3019,13 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       return res.status(500).json({ error: 'narration_failed', message: `Narration generation failed: ${e.message}` });
     }
   }
-  const sec = narration
-    ? getSuggestedDuration(model, narration.durationSec)
-    : Math.min(Math.max(1, parseInt(durationSec, 10) || 5), getMaxClipSeconds(model) || 30);
+  // ✅ لطلب تعديل فيديو (sourceVideoUrl)، المدة الحقيقية للفيديو المصدر (متقاسة فوق بـffprobe)
+  // هي المصدر الوحيد للحقيقة — التعديل بيغطي الفيديو كله زي ما هو، مش مدة نختارها أو نخمّنها
+  const sec = sourceVideoDurationSec != null
+    ? Math.min(sourceVideoDurationSec, getMaxClipSeconds(model) || sourceVideoDurationSec)
+    : narration
+      ? getSuggestedDuration(model, narration.durationSec)
+      : Math.min(Math.max(1, parseInt(durationSec, 10) || 5), getMaxClipSeconds(model) || 30);
 
   let vidCreditCost;
   try {
