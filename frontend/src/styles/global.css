@@ -238,6 +238,15 @@ select option { background: var(--bg3); }
 }
 .workspace-transition { animation: workspaceEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
+/* ✅ NEW (طلب العميل تاني: "لازم الخروج او الدخول لمشروع يبقى بانيميشن" — الدخول كان عنده
+   انتقال (workspaceEnter فوق) بس الخروج لأ. عكس نفس الحركة بالظبط، بتتفعّل بـclass بتتحط
+   لمدة قصيرة قبل ما الصفحة فعليًا تتغيّر (راجع AgentPage.jsx's handleBack) */
+@keyframes workspaceExit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(10px) scale(0.985); }
+}
+.workspace-exiting { animation: workspaceExit 0.22s cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }

@@ -598,6 +598,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  // ✅ NEW (طلب العميل: الخروج من المشروع لازم يبقى له أنيميشن زي الدخول بالظبط): بنأخر
+  // النداء الفعلي لـonNavigate شوية عشان الأنيميشن (workspaceExit في global.css) يظهر
+  // فعليًا قبل ما الكومبوننت يتشال من الشاشة تمامًا
+  const [leavingWorkspace, setLeavingWorkspace] = useState(false);
+  const handleLeaveWorkspace = () => {
+    setLeavingWorkspace(true);
+    setTimeout(() => onNavigate?.('dashboard'), 220);
+  };
   // ✅ NEW: اختيار يدوي (اختياري) لموديل الصورة/الفيديو — فاضل زي ما هو (auto) لحد ما
   // العميل يختار بنفسه، وبيفضل مختار (persistent) لحد ما يغيّره أو يلغيه، زي selectedStyle
   const [imageModelOptions, setImageModelOptions] = useState([]);
@@ -2065,7 +2073,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   ];
 
   return (
-    <div className="agent-3col" style={{ height: 'calc(100vh - 74px)', display: 'flex', overflow: 'hidden' }}>
+    <div className={`agent-3col${leavingWorkspace ? ' workspace-exiting' : ''}`} style={{ height: 'calc(100vh - 74px)', display: 'flex', overflow: 'hidden' }}>
       <style>{`
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
@@ -2093,7 +2101,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 100% 30% at 50% -10%, rgba(124,106,247,0.08) 0%, transparent 70%)' }} />
 
         <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--border)', position: 'relative', flexShrink: 0 }}>
-          <button className="agent-icon-btn" onClick={() => onNavigate?.('dashboard')} title={t.backToProjects}
+          <button className="agent-icon-btn" onClick={handleLeaveWorkspace} title={t.backToProjects}
             style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg2)', color: 'var(--text2)', flexShrink: 0, transition: 'all 0.15s' }}>
             <ArrowLeft size={15} strokeWidth={2} />
           </button>
