@@ -961,6 +961,42 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     return '';
   };
 
+  // ✅ NEW (باج حقيقي خطير — سبب حقيقي لـ"مش قادر أبدأ التوليد" في مشروع طويل الأمد): الـ
+  // history المبعوت تحت بيتقطع لآخر 16 رسالة بس. في مشروع طويل، أي صورة/فيديو اتولد قبل كده
+  // بكتير ("استخدم الصورة اللي عملناها قبل كده") بيختفي تمامًا من الـ context اللي بيوصل
+  // للايجنت، فمش بيلاقي رابط حقيقي يستخدمه (وممنوع يلفّق واحد)، فمابيحطش أي ماركر خالص ويفضل
+  // يكرر "هبدأ دلوقتي" من غير ما يعمل حاجة. بنبني هنا دفتر مختصر بكل صورة/فيديو اتولد في
+  // المشروع من الأول للآخر (مش بس آخر 16 رسالة) ونبعته منفصل تمامًا عن نافذة الـ history
+  const buildMediaLedger = (allMsgs) => {
+    const lines = [];
+    let imgIdx = 0, vidIdx = 0;
+    for (const m of allMsgs) {
+      if (m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length) {
+        imgIdx++;
+        const ratioTag = m.job.aspectRatio ? ` ratio=${m.job.aspectRatio}` : '';
+        if (Array.isArray(m.job.prompts) && m.job.prompts.length >= 2) {
+          const pairs = m.job.images.map((u, i) => `"${(m.job.prompts[i] || '').slice(0, 80)}"->${u}`).join(' | ');
+          lines.push(`[IMG#${imgIdx} model=${m.job.model || ''}${ratioTag}] ${pairs}`);
+        } else {
+          lines.push(`[IMG#${imgIdx} model=${m.job.model || ''}${ratioTag}] ${m.job.images.join(', ')}`);
+        }
+      } else if (m.type === 'videoModel' && m.job?.status === 'done' && m.job.videoUrl) {
+        vidIdx++;
+        const ratioTag = m.job.aspectRatio ? ` ratio=${m.job.aspectRatio}` : '';
+        lines.push(`[VID#${vidIdx} model=${m.job.model || ''}${ratioTag}] ${m.job.videoUrl}`);
+      } else if (m.type === 'render' && m.job?.status === 'done' && m.job.videoUrl) {
+        vidIdx++;
+        lines.push(`[VID#${vidIdx} model=${m.job.model || ''}] ${m.job.videoUrl}`);
+      }
+    }
+    if (!lines.length) return undefined;
+    const MAX_LEDGER_CHARS = 8000;
+    // لو الدفتر كله كبير جدًا (مشروع فيه عشرات الدفعات)، بنفضّل نسيب الأحدث (الأقرب لطلب
+    // العميل الحالي غالبًا) بدل ما نقطع أي رابط نص نص
+    while (lines.join('\n').length > MAX_LEDGER_CHARS && lines.length > 1) lines.shift();
+    return lines.join('\n');
+  };
+
   const sendMessage = async (overrideText) => {
     const textToSend = overrideText !== undefined ? overrideText : input;
     if (!textToSend.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) return;
@@ -986,6 +1022,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         message: textToSend.trim() || (lang === 'ar' ? 'من الصوت/الصورة المرفوعة' : 'from the attached voice/image'),
         // ✅ FIX: كانت -6 (3 تبادلات بس) وده كان بيخلي الايجنت ينسى تفاصيل قديمة في المحادثة — رفعناها لـ 16 لتغطي محادثة كاملة
         history: nextMessages.slice(0, -1).slice(-16).map(m => ({ role: m.role, content: historyContentFor(m) })),
+        // ✅ NEW: دفتر كامل بكل صور/فيديوهات المشروع من الأول للآخر — منفصل عن نافذة الـ16
+        // رسالة فوق، عشان رابط قديم يفضل متاح للايجنت حتى لو خرج بره الـhistory المرسل
+        mediaLedger: buildMediaLedger(nextMessages),
         // ✅ FIX: نفضل نفكّر الباك إند إن صورة/صوت اترفعوا قبل كده في الجلسة دي حتى لو خرجوا بره الـ history،
         // عشان الايجنت مايطلبش رفعهم تاني بعد كام رسالة
         photoAlreadyUploaded: !!lastUploadedPhotos.length,

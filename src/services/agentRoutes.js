@@ -96,13 +96,22 @@ function extractJsonAndRest(text) {
 // حقيقي فعلاً ظهر في الـ history (اللي إحنا كتبناه بنفسنا في notes زي "[...image URLs: ...]")
 // في مجموعة، ونتحقق إن أي رابط الايجنت "نسخه" فعلاً موجود بالظبط في المجموعة دي — لو مش موجود
 // (يبقى غالبًا مبتور أو مختلق)، نرفضه بدل ما نبعته لـ API مدفوع مضمون يفشل
-function extractKnownUrls(history) {
+// ✅ FIX: بعد ما بقينا نبعت "دفتر" منفصل بكل روابط الميديا في المشروع (mediaLedger — عشان
+// روابط قديمة برة نافذة آخر 16 رسالة تفضل متاحة للايجنت)، كان لازم الرابط ده يتضاف لمجموعة
+// "الروابط المعروفة" هنا كمان — وإلا الحارس ده كان هيرفض أي رابط الايجنت ينقله من الدفتر
+// (يشوفه "مش معروف" ويعتبره مختلق) حتى بعد ما بقى شايفه فعليًا في الـ prompt
+function extractKnownUrls(history, extraText = null) {
   const set = new Set();
-  if (!Array.isArray(history)) return set;
   const urlRegex = /https?:\/\/[^\s\]"',]+/g;
-  for (const m of history) {
-    const content = typeof m?.content === 'string' ? m.content : '';
-    const matches = content.match(urlRegex);
+  if (Array.isArray(history)) {
+    for (const m of history) {
+      const content = typeof m?.content === 'string' ? m.content : '';
+      const matches = content.match(urlRegex);
+      if (matches) matches.forEach(u => set.add(u.replace(/[.,;)\]]+$/, '')));
+    }
+  }
+  if (typeof extraText === 'string' && extraText) {
+    const matches = extraText.match(urlRegex);
     if (matches) matches.forEach(u => set.add(u.replace(/[.,;)\]]+$/, '')));
   }
   return set;
@@ -285,7 +294,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel } = req.body;
+    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel, mediaLedger } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
     // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual
@@ -411,6 +420,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       userChannels,
       hasClonedVoice,
       userCredits,
+      mediaLedger,
     });
 
     // ── RESEARCH: لو الايجنت طلب تحقق حقيقي من معلومة (حدث تاريخي/حقيقي) قبل ما يرد،
@@ -432,14 +442,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
             hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded,
             videoDurationSec: videoDurationSec || null,
-            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits, mediaLedger,
           });
         } else if (query) {
           rawReply = await agentChat({
             message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + 'You asked to research this but web search is not configured on this deployment — answer using your own knowledge and honestly tell the user you cannot verify it live right now.', userPlan, isAdminUser,
             hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
-            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits,
+            hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits, mediaLedger,
           });
         }
       } catch (e) {
@@ -467,7 +477,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + channelNote, userPlan, isAdminUser,
           hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
           hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
-          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits,
+          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits, mediaLedger,
         });
       } catch (e) {
         console.warn('[Agent] CHANNEL_IDEA marker failed:', e.message);
@@ -526,7 +536,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
           hasVideo: !!videoAlreadyUploaded,
           videoDurationSec: videoDurationSec || null,
-          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits,
+          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits, mediaLedger,
         });
         if (retryRawReply && retryRawReply.trim()) {
           ({ reply, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideosPayload } = parseAgentMarkers(retryRawReply));
@@ -568,7 +578,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     // ✅ NEW: أي رابط الايجنت "نسخه" بنفسه من الـ history (مش رابط جينا إحنا بيه من السيرفر)
     // لازم يتأكد إنه رابط حقيقي فعلاً ظهر قبل كده، دفاعًا ضد رابط مبتور بسبب انقطاع الرد
-    const knownUrls = extractKnownUrls(history);
+    const knownUrls = extractKnownUrls(history, mediaLedger);
     const isKnownUrl = (u) => typeof u === 'string' && knownUrls.has(u.trim());
 
     // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة — لو
