@@ -425,10 +425,19 @@ async function callClaudeDirectAPI(systemPrompt, historyMessages, userContent) {
 export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', isAdminUser = false, hasPhoto = false, hasVoice = false, hasVideo = false, videoDurationSec = null, hasStructuredScript = false, hasAdsScenePlan = false, userRegion = null, memoryNote = null, userChannels = [], hasClonedVoice = false, userCredits = null }) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
-  const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES).map(m => ({
-    role: m.role === 'assistant' ? 'assistant' : 'user',
-    content: String(m.content || '').slice(0, 900), // ✅ FIX: كانت 500 — كانت بتقطع أفكار/سكريبتات طويلة
-  }));
+  const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES).map(m => {
+    const raw = String(m.content || '');
+    // ✅ FIX: ملاحظات "روابط الصور: ..." لدفعة مشاهد متعددة (كل مشهد وبرومبته الكامل + رابطه)
+    // ممكن يعدّوا 900 حرف بسهولة لو كانت البرومبتات طويلة (زي إعلان منتج 4 مشاهد) — القطع عند
+    // 900 كان بيلغي روابط صور حقيقية من الـ history، فلما العميل يطلب "استخدم الصورة اللي عملناها
+    // قبل كده كمرجع" الايجنت ميلاقي رابط حقيقي يستخدمه (ومش مسموح له يلفّق رابط)، فمابيبعتش أي
+    // ماركر خالص. بنسيب أي رسالة فيها رابط بدون قطع تقريبًا عشان الروابط تفضل سليمة
+    const cap = /https?:\/\//.test(raw) ? 4000 : 900; // كانت 500 — كانت بتقطع أفكار/سكريبتات طويلة
+    return {
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: raw.slice(0, cap),
+    };
+  });
 
   let persistentNote = '';
   if (hasPhoto) persistentNote += ' A required character/product photo was already uploaded earlier in this conversation and is still available — never ask for it again, treat that requirement as fully satisfied.';
