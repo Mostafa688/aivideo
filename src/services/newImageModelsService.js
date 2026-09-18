@@ -245,6 +245,29 @@ export async function generateNewModelImages({ modelKey, prompt, prompts = null,
   const distinctPrompts = Array.isArray(prompts) ? prompts.filter(p => typeof p === 'string' && p.trim()) : [];
   if (distinctPrompts.length >= 2) {
     const capped = distinctPrompts.slice(0, MAX_BATCH);
+    // ✅ FIX (باج حقيقي — طلب صريح من العميل: "صورة تسلم صورة"): لما فيه referenceImageUrls
+    // (يعني العميل عايز نفس الشخصية/المنتج/المكان ثابت عبر المشاهد)، كان كل مشهد بيتولد
+    // بالتوازي مستقل تمامًا عن التاني، كلهم بيرجعوا لنفس المرجع الثابت الأصلي بس — لو المرجع
+    // ده معندوش كل حاجة محتاجة تفضل ثابتة (مثلاً مفيش شخص فيه، والشخص بيدخل من المشهد التاني)،
+    // كل مشهد كان بيخترع نسخته الخاصة (شخص مختلف كل مرة) لأنه مالوش أي وصلة بالمشهد اللي قبله.
+    // دلوقتي، لما فيه مرجع، التوليد بقى متسلسل (مش متوازي): كل صورة بعد الأولى بتستخدم الصورة
+    // اللي اتولدت في الخطوة اللي قبلها هي نفسها كمرجع إضافي (فوق المرجع الأصلي)، فالثبات
+    // (شخصية + مكان) بينتقل فعليًا من صورة للي بعدها زي ما العميل طلب بالظبط، حتى لسلسلة طويلة
+    if (Array.isArray(referenceImageUrls) && referenceImageUrls.length) {
+      const outputs = [];
+      let runningRefs = referenceImageUrls.slice(0, 14);
+      for (const p of capped) {
+        const stepOutput = await runPrediction(model.slug, model.buildInput({ prompt: p, referenceImageUrls: runningRefs, aspectRatio, count: 1, tier }), label);
+        const persisted = await persistImagesToR2(stepOutput, modelKey);
+        outputs.push(...persisted);
+        // الصورة اللي اتعملت دلوقتي بقى هي المرجع الأساسي للمشهد اللي بعدها — بنسيب المرجع
+        // الأصلي (صورة المنتج الحقيقية مثلاً) في آخر القائمة لسه متاح لحد سقف 14 صورة مرجع
+        runningRefs = [...persisted, ...referenceImageUrls].slice(0, 14);
+      }
+      return outputs;
+    }
+    // مفيش مرجع خالص (يعني المشاهد أصلاً مقصود إنها مواضيع مختلفة تمامًا، زي "بطل وقلعة وتنين" —
+    // راجع تعليق fmtImageModels في agentService.js) — التوليد المتوازي زي ما هو، مفيش داعي للتسلسل
     const results = await runWithConcurrency(
       capped.map(p => () => runPrediction(model.slug, model.buildInput({ prompt: p, referenceImageUrls, aspectRatio, count: 1, tier }), label)),
       4

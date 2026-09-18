@@ -979,7 +979,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     let imgIdx = 0, vidIdx = 0;
     for (const m of allMsgs) {
       if (m.role === 'user' && Array.isArray(m.uploadedPhotoUrls) && m.uploadedPhotoUrls.length) {
-        lines.push(`[UPLOADED photo by customer, real physical product/character — not AI-generated] ${m.uploadedPhotoUrls.join(', ')}`);
+        // ✅ FIX: باج حقيقي — العميل ميّز صراحة بين صورتين مرفوعتين ("استخدم الي فيها المنتج
+        // بلغة عربي") والايجنت استخدم التانية غلط، لأن الدفتر كان بس بيسرد الرابط من غير أي
+        // وصف يميّزه. بنضيف نص رسالة العميل نفسها (اللي غالبًا بتوصف الصورة) كسياق مميّز
+        const descNote = m.content ? ` — customer's own words when uploading: "${m.content.slice(0, 150)}"` : '';
+        lines.push(`[UPLOADED photo by customer, real physical product/character — not AI-generated${descNote}] ${m.uploadedPhotoUrls.join(', ')}`);
       } else if (m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length) {
         imgIdx++;
         const ratioTag = m.job.aspectRatio ? ` ratio=${m.job.aspectRatio}` : '';
@@ -987,7 +991,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           const pairs = m.job.images.map((u, i) => `"${(m.job.prompts[i] || '').slice(0, 80)}"->${u}`).join(' | ');
           lines.push(`[IMG#${imgIdx} model=${m.job.model || ''}${ratioTag}] ${pairs}`);
         } else {
-          lines.push(`[IMG#${imgIdx} model=${m.job.model || ''}${ratioTag}] ${m.job.images.join(', ')}`);
+          // ✅ FIX: نفس الفكرة — وضع "prompt" الحقيقي هنا كمان (كان مفقود في وضع النسخ
+          // المتطابقة) عشان لو اتعمل أكتر من دفعة منفصلة بنفس الموديل، الايجنت يقدر يميّز
+          // بينهم لاحقًا بدل ما يشوف روابط عارية من غير أي وصف خالص
+          const promptTag = m.job.prompt ? ` prompt="${m.job.prompt.slice(0, 100)}"` : '';
+          lines.push(`[IMG#${imgIdx} model=${m.job.model || ''}${ratioTag}${promptTag}] ${m.job.images.join(', ')}`);
         }
       } else if (m.type === 'videoModel' && m.job?.status === 'done' && m.job.videoUrl) {
         vidIdx++;
