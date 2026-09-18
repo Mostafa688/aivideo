@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
-import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
+import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { getFreshChannelIdea } from './channelSchedulerService.js';
@@ -869,6 +869,23 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
 router.get('/limits', authMiddleware, (req, res) => {
   res.json(AGENT_LIMITS);
+});
+
+// ✅ NEW (باج حقيقي: مربع "AI edit this image/video" في نافذة تفاصيل الميديا كان بيبعت كلام
+// العميل الخام (أي لغة، صياغة مكسورة أحيانًا) مباشرة كـprompt لـReplicate من غير أي ترجمة أو
+// تحسين — بعكس أي prompt بيكتبه الايجنت نفسه، اللي دايمًا بيتترجم/يتحسّن للإنجليزي أولاً. ده
+// مسار منفصل تمامًا عن /chat (مفيش أي LLM في النص خالص)، فبنضيف نقطة نهاية خفيفة مخصصة بس
+// لخطوة الترجمة/التحسين دي، تتنادى من الفرونت إند قبل ما التعديل يتبعت فعليًا
+router.post('/refine-edit-prompt', authMiddleware, async (req, res) => {
+  try {
+    const { text } = req.body || {};
+    if (!text || !String(text).trim()) return res.status(400).json({ error: 'text is required' });
+    const refined = await refineEditInstruction(String(text).slice(0, 1000));
+    res.json({ refined });
+  } catch (e) {
+    console.warn('[Agent] refine-edit-prompt failed:', e.message);
+    res.json({ refined: req.body?.text || '' }); // فشل الترجمة مايوقفش التعديل — يرجع النص الخام بدل ما يفشل الطلب كله
+  }
 });
 
 // ✅ NEW (Flow-style context menu — "الإبلاغ عن الناتج"): إبلاغ خفيف عن صورة/فيديو متولد،

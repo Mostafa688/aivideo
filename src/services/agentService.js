@@ -612,6 +612,39 @@ export async function analyzeSceneImage(photoBase64) {
   return description;
 }
 
+// ✅ NEW (باج حقيقي: العميل كتب تعليمة تعديل بالعربي في مربع "AI edit this image/video" في
+// نافذة تفاصيل الميديا، وطلعت الأمر ده حرفيًا (عربي، بصياغة مكسورة) اتبعت لـReplicate كـ
+// prompt خام — الميزة دي مالهاش أي علاقة بالايجنت/الشات خالص، فمكنش فيه أي خطوة ترجمة/تحسين
+// زي قاعدة "ENGLISH REFINEMENT" المطبّقة على كل حقول الايجنت. بنضيف خطوة ترجمة/تحسين خفيفة
+// ومنفصلة هنا، بتتنادى قبل ما التعديل يتبعت فعليًا (submitImageEdit/submitVideoEdit في الفرونت إند)
+export async function refineEditInstruction(rawText) {
+  const text = String(rawText || '').trim();
+  if (!text) return text;
+  if (!GROQ_API_KEY) return text;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        model: AGENT_MODEL_FREE,
+        max_tokens: 200,
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: 'The user is describing a change they want made to an existing image or video, in any language (possibly informal or with typos). Translate and lightly polish it into a single clear, well-formed English editing instruction — never add anything they did not ask for, never drop any detail they gave, just make it a clean, unambiguous instruction a downstream AI image/video edit model can follow reliably. Output ONLY the refined English instruction text, nothing else — no quotes, no preamble.' },
+          { role: 'user', content: text },
+        ],
+      }),
+    });
+    if (!res.ok) return text;
+    const data = await res.json();
+    const refined = data.choices?.[0]?.message?.content?.trim();
+    return refined || text;
+  } catch (e) {
+    console.warn('[Agent] Failed to refine edit instruction, using raw text as-is:', e.message);
+    return text;
+  }
+}
+
 export const AGENT_LIMITS = { MAX_AUDIO_SEC, MAX_AUDIO_MB, MAX_IMAGE_MB };
 
 // ══════════════════════════════════════════════════════════════════════════
