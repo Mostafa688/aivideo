@@ -18,6 +18,38 @@ import { getMaxClipSeconds } from './creditPricingEngine.js';
 // بالتعليمات (LLM compliance)، مش كود. الحل الحقيقي: حاجز إضافي في الكود نفسه بيقرأ رسالة
 // العميل الخام (مش رد الايجنت) ولو فيها طلب نسبة/اتجاه صريح، يفرضه بغض النظر عمّا قاله
 // الايجنت في الماركر — نفس مبدأ forcedImageModel/forcedVideoModel فوق بالظبط
+// ✅ NEW (باج حقيقي: العميل رفع صورة منتجه الحقيقية في رسالة، واستخدمها الايجنت صح في نفس
+// الرسالة دي بس بصيغة base64 مؤقتة — بعد كام رسالة لما طلب "استخدم صورة المنتج اللي رفعتها"
+// تاني، الايجنت ملقاش أي رابط حقيقي لها خالص (الـ base64 كان جوه الطلب ده بس، ماتخزنش في أي
+// history)، فاستبدلها بصورة تانية اتولدت في المحادثة (شكلها قريب بس مش نفس المنتج الحقيقي).
+// الحل الجذري: أي صورة العميل يرفعها بترفع فورًا على R2 برابط دائم (زي أي صورة بيولدها
+// الايجنت بالظبط)، والرابط ده بيترجع في الرد ويتحفظ مع رسالة العميل عشان يفضل قابل للاستشهاد
+// بيه في أي رسالة جاية، مش بس نفس اللحظة اللي اترفعت فيها
+const S3_ENDPOINT_URL = process.env.S3_ENDPOINT_URL;
+const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY;
+const S3_SECRET_KEY = process.env.S3_SECRET_KEY;
+const S3_BUCKET = process.env.S3_BUCKET || 'erivion-videos';
+const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
+
+async function uploadUserPhotoToR2(base64DataUri) {
+  if (!S3_ENDPOINT_URL || !S3_ACCESS_KEY || !S3_SECRET_KEY || !R2_PUBLIC_URL) return null;
+  const match = /^data:(image\/\w+);base64,(.+)$/.exec(base64DataUri || '');
+  if (!match) return null;
+  try {
+    const contentType = match[1];
+    const buffer = Buffer.from(match[2], 'base64');
+    const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+    const key = `agent-uploads/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+    const s3 = new S3Client({ region: 'auto', endpoint: S3_ENDPOINT_URL, credentials: { accessKeyId: S3_ACCESS_KEY, secretAccessKey: S3_SECRET_KEY } });
+    await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: buffer, ContentType: contentType }));
+    return `${R2_PUBLIC_URL}/${key}`;
+  } catch (e) {
+    console.warn('[Agent] Failed to persist uploaded photo to R2:', e.message);
+    return null;
+  }
+}
+
 function detectExplicitAspectRatio(message) {
   if (!message) return null;
   const text = String(message).toLowerCase();
@@ -359,9 +391,17 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
 
+    let uploadedPhotoUrls = [];
     if (images.length) {
       try {
         for (const img of images) validateAgentImage(img);
+        // ✅ NEW: بنرفع الصور المرفقة على R2 فورًا برابط دائم — لو نجح، الرابط ده بيتحفظ مع
+        // رسالة العميل (الفرونت إند بيخزنه) عشان يفضل قابل للاستشهاد بيه في referenceImageUrls
+        // في أي رسالة جاية، مش بس دلوقتي وهو لسه base64 جوه الطلب الحالي
+        uploadedPhotoUrls = (await Promise.all(images.map(img => uploadUserPhotoToR2(img)))).filter(Boolean);
+        if (uploadedPhotoUrls.length) {
+          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The photo(s) just uploaded are now permanently available at ${uploadedPhotoUrls.length > 1 ? 'these exact URLs' : 'this exact URL'}: ${uploadedPhotoUrls.join(', ')} — you may use ${uploadedPhotoUrls.length > 1 ? 'them' : 'it'} directly in "referenceImageUrls" right now, and this same URL will remain valid to cite in ANY future message in this conversation (see the MEDIA LEDGER note if present) if the customer later asks to reuse this exact uploaded photo — never substitute a different, previously-generated image instead of this real uploaded one.`;
+        }
         // ✅ NEW: لو العميل رفع صورة مشهد وقال "اعملي نفس المشهد ده" أو أي صيغة مشابهة،
         // نحلل الصورة بالـ vision model ونطلع منها rawPrompt جاهز بدل ما نطلب منه يوصف بنفسه
         const sameSceneIntent = images.length === 1 && /same\s*scene|recreate this|make (a|the) same|make this (a|into a) video|animate this photo|نفس\s*المشهد|زي\s*(الصورة|المشهد)\s*ده|كأنه\s*المشهد|حرك\s*(الصورة|المشهد)\s*دي?/i.test(message || '');
@@ -741,6 +781,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
       reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
       subscribe: subscribePayload, showcaseVideos, whiteboardVideo,
+      // ✅ NEW: الروابط الدائمة (R2) لأي صورة العميل رفعها في الرسالة دي — الفرونت إند بيحفظها
+      // مع رسالة العميل نفسها عشان تفضل قابلة للاستشهاد بيها في أي رسالة جاية (راجع
+      // uploadUserPhotoToR2 فوق)
+      uploadedPhotoUrls: uploadedPhotoUrls.length ? uploadedPhotoUrls : undefined,
     });
 
     // ✅ NEW: تسجيل تبادل الشات (رسالة العميل + رد الايجنت) عشان يظهر للأدمن — مش بيوقف

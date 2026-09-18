@@ -904,7 +904,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // العميل قاله "ابدأ"/"جرب تاني" صراحة. دلوقتي كل نوع بيميّز 'failed' عن 'generating' بوضوح
   const failedNote = (label) => `[${label} — ${lang === 'ar' ? 'مفيش أي نتيجة اتعملت، لو العميل طلب يعيد المحاولة ابدأ توليد جديد فورًا (ماركر جديد)، متقولش إن فيه توليد شغال بالفعل.' : 'nothing was produced — if the customer asks to retry, start a fresh generation immediately (a new marker), never say one is already in progress.'}]`;
   const historyContentFor = (m) => {
-    if (m.content) return m.content;
+    if (m.content) {
+      // ✅ NEW: لو الرسالة دي حصل فيها رفع صورة اتخزن ليها رابط دائم (R2)، بنضيف الرابط في
+      // نص الرسالة نفسها عشان يفضل قابل للاستشهاد بيه في أي رسالة جاية (مش بس اللحظة دي)
+      const uploadNote = Array.isArray(m.uploadedPhotoUrls) && m.uploadedPhotoUrls.length
+        ? ` [Uploaded photo URL${m.uploadedPhotoUrls.length > 1 ? 's' : ''}: ${m.uploadedPhotoUrls.join(', ')}]`
+        : '';
+      return m.content + uploadNote;
+    }
     if (m.type === 'render') {
       // ✅ FIX (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد" — الايجنت مش عارف
       // يعمل ده لفيديوهات الموديلات القديمة 1-8 لأن رابطها مكنش موجود في الـ history خالص،
@@ -971,7 +978,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     const lines = [];
     let imgIdx = 0, vidIdx = 0;
     for (const m of allMsgs) {
-      if (m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length) {
+      if (m.role === 'user' && Array.isArray(m.uploadedPhotoUrls) && m.uploadedPhotoUrls.length) {
+        lines.push(`[UPLOADED photo by customer, real physical product/character — not AI-generated] ${m.uploadedPhotoUrls.join(', ')}`);
+      } else if (m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length) {
         imgIdx++;
         const ratioTag = m.job.aspectRatio ? ` ratio=${m.job.aspectRatio}` : '';
         if (Array.isArray(m.job.prompts) && m.job.prompts.length >= 2) {
@@ -1009,7 +1018,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       : uploadedVideoFile
       ? (lang === 'ar' ? 'فيديو مرفوع للتعديل' : 'Uploaded video to edit')
       : '';
-    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles };
+    // ✅ NEW: uid ثابت للرسالة دي — لازم عشان نقدر نلحقها بعدين برابط R2 الدائم لأي صورة
+    // اترفعت فيها (uploadedPhotoUrls من رد السيرفر)، حتى لو المستخدم بعت رسايل تانية قبل ما الرد يرجع
+    const msgUid = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
     const currentVoice = voiceFile, currentImages = imageFiles;
@@ -1054,6 +1066,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       if (!res.ok) throw new Error(data.error || 'Failed');
       setMessages(m => [...m, { role: 'assistant', content: data.reply }]);
       if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
+      // ✅ NEW: بنحفظ الرابط الدائم (R2) لأي صورة اترفعت في الرسالة دي جوه الرسالة نفسها —
+      // كده تفضل قابلة للاستشهاد بيها في history/mediaLedger في أي رسالة جاية، مش بس دلوقتي
+      if (Array.isArray(data.uploadedPhotoUrls) && data.uploadedPhotoUrls.length) {
+        setMessages(m => m.map(x => x.uid === msgUid ? { ...x, uploadedPhotoUrls: data.uploadedPhotoUrls } : x));
+      }
       if (data.transcript) setLastUploadedTranscript(data.transcript);
       if (Array.isArray(data.structuredScenes) && data.structuredScenes.length) setLastParsedStructuredScenes(data.structuredScenes);
       if (data.adsScenePlan?.scenes?.length) setLastParsedAdsScenePlan(data.adsScenePlan);
