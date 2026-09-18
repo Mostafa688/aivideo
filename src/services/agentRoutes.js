@@ -488,17 +488,25 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ FIX (باج حقيقي: "بدأت الحركة دلوقتي" — الموديل أحيانًا بيكتب الوعد بصيغة الماضي
     // "بدأت"/"بدأ" مش بس المستقبل "هبدأ"، وده كان بيفلت من الرصد القديم فمفيش أي retry بيحصل)
     const soundsLikeAnActionPromise = (text) => /(هبدأ|بدأت|بدأ)[^.\n]{0,40}(دلوقتي|الآن|حالا|حالاً)|\bi'?ll start\b[^.\n]{0,40}\bnow\b|\b(started|starting) (right )?now\b/i.test(text);
-    const MAX_NUDGE_RETRIES = 2;
+    // ✅ FIX (باج حقيقي — طلب العميل: إعلان مفصّل بـ4 مشاهد ثابتة المنتج/المكان اتقفل برسالة
+    // "مش قادر أبدأ التوليد" من غير أي محاولة retry خالص): كان شرط الحلقة تحت بيتطلب
+    // reply.length < 300 عشان يعتبر الرد "وعد فاضي" — بس رد مفصّل لطلب معقد (زي إعادة صياغة
+    // خطة الـ4 مشاهد قبل ما ينسى يحط الماركر) بيبقى غالبًا أطول من 300 حرف، فالحلقة تحت كانت
+    // بتتجاهله تمامًا (شرطها مايتحققش)، بينما الفحص الأخير (تحت) اللي بيستبدل الرد برسالة
+    // الاعتذار الجاهزة مالوش نفس قيد الطول — فالنتيجة: رد طويل واعد بالتنفيذ من غير ماركر كان
+    // بيروح على طول لرسالة الاعتذار من غير ما ياخد ولا فرصة تصحيح واحدة. شلنا قيد الطول تمامًا؛
+    // كشف "بيوعد بالتنفيذ" نفسه (regex أعلاه) دقيق بما يكفي بغض النظر عن طول الرد
+    const MAX_NUDGE_RETRIES = 3;
     let nudgeAttempts = 0;
     while (
       !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload &&
-      soundsLikeAnActionPromise(reply) && reply.length < 300 && nudgeAttempts < MAX_NUDGE_RETRIES
+      soundsLikeAnActionPromise(reply) && nudgeAttempts < MAX_NUDGE_RETRIES
     ) {
       nudgeAttempts++;
       console.warn(`[Agent] Reply promised to start generating but included no technical marker — retry ${nudgeAttempts}/${MAX_NUDGE_RETRIES} with an explicit nudge`);
       try {
         const nudgedHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: reply }];
-        const nudgeMessage = '(system reminder: your previous reply said you were about to start generating, but did not include the required technical marker, so nothing actually happened and the customer is still waiting with no result. In THIS reply you must either include the real marker now with everything needed to execute it, based on what has already been discussed, or ask exactly one specific clarifying question if something is genuinely still missing — never repeat a vague "starting now" acknowledgement again.)';
+        const nudgeMessage = '(system reminder: your previous reply said you were about to start generating, but did not include the required technical marker, so nothing actually happened and the customer is still waiting with no result. In THIS reply you must either include the real marker now with everything needed to execute it, based on what has already been discussed, or ask exactly one specific clarifying question if something is genuinely still missing — never repeat a vague "starting now" acknowledgement again. If the customer already fully described a multi-scene plan (e.g. several scenes with a consistent product/character/location), do NOT re-explain or recap that plan back to them again — you already have everything needed, so just emit the marker for the very first required step right now (a reference image if one consistent subject needs to stay the same across scenes, otherwise the first scene image batch), with at most one short sentence stating the cost so far. Re-describing the plan instead of acting on it is exactly the mistake that caused this retry.)';
         const retryRawReply = await agentChat({
           message: nudgeMessage, history: nudgedHistory, attachmentNote, userPlan, isAdminUser,
           hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
