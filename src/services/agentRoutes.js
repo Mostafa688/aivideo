@@ -831,8 +831,15 @@ router.post('/chat', authMiddleware, async (req, res) => {
       updateUserName(userId, accountActionPayload.value).catch(e => console.warn('[Agent] account_action update_name failed:', e.message));
     }
 
+    // ✅ NEW (طلب العميل: أزرار سريعة "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة): لو الرد ده
+    // مجرد سؤال تأكيد قبل التوليد (مفيش أي ماركر نفّذ فعليًا في الرد ده)، بنعلّم الفرونت إند
+    // بعلم صريح عشان يعرض زرار "ابدأ"/"لأ" (أو "Yes"/"No") تحت الرسالة مباشرة
+    const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !!reply &&
+      /(جاهز[ةه]?[^.\n]{0,20}[؟?]|تمام[^.\n]{0,15}(هبدأ|نبدأ|ابدأ)[^.\n]{0,15}[؟?]|(هبدأ|نبدأ|ابدأ)[^.\n]{0,15}[؟?]|ready to (generate|start|proceed)|shall i (start|proceed|generate)|should i (start|proceed|generate)|want me to (start|proceed|generate)|go ahead\?)/i.test(reply);
+
     res.json({
       reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl,
+      awaitingConfirmation,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
       subscribe: subscribePayload, showcaseVideos, whiteboardVideo,
       // ✅ NEW: الروابط الدائمة (R2) لأي صورة العميل رفعها في الرسالة دي — الفرونت إند بيحفظها

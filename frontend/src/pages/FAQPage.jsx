@@ -118,7 +118,7 @@ const faqs_en = [
   },
 ];
 
-export default function FAQPage({ onBack }) {
+export default function FAQPage({ onBack, onNavigate }) {
   const region   = localStorage.getItem('erivion_region') || 'eg';
   const isAr     = region !== 'intl';
   const faqs     = isAr ? faqs_ar : faqs_en;
@@ -211,10 +211,10 @@ export default function FAQPage({ onBack }) {
           <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginBottom: 16 }}>
             {isAr ? 'فريق الدعم جاهز لمساعدتك' : 'Our support team is ready to help'}
           </div>
-          <a href="mailto:support@erivion.net"
-            style={{ display: 'inline-block', padding: '10px 24px', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', borderRadius: 999, color: '#fff', fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
+          <button onClick={() => onNavigate ? onNavigate('support') : (window.location.href = 'mailto:support@erivion.net')}
+            style={{ display: 'inline-block', padding: '10px 24px', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
             {isAr ? 'تواصل مع الدعم' : 'Contact Support'}
-          </a>
+          </button>
         </div>
 
       </div>

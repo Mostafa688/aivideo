@@ -1082,7 +1082,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // ماركر)، كان الخطأ الخام بيوصل للعميل زي ما هو بدل رسالة مفهومة
       const data = await safeJson(res, lang);
       if (!res.ok) throw new Error(data.error || 'Failed');
-      setMessages(m => [...m, { role: 'assistant', content: data.reply }]);
+      // ✅ NEW (طلب العميل: زرار سريع "ابدأ/لأ" بدل الكتابة اليدوية كل مرة): لو الرد سؤال
+      // تأكيد قبل التوليد، بنعلّم الرسالة عشان نعرض أزرار سريعة تحتها
+      setMessages(m => [...m, { role: 'assistant', content: data.reply, awaitingConfirmation: !!data.awaitingConfirmation }]);
       if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
       // ✅ NEW: بنحفظ الرابط الدائم (R2) لأي صورة اترفعت في الرسالة دي جوه الرسالة نفسها —
       // كده تفضل قابلة للاستشهاد بيها في history/mediaLedger في أي رسالة جاية، مش بس دلوقتي
@@ -2237,6 +2239,21 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     {m.hasVoice && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, opacity: 0.8, marginBottom: 6 }}><Mic size={12} strokeWidth={2} /> {t.voiceAttached}</div>}
                     {m.content}
                   </div>
+                  {/* ✅ NEW (طلب العميل: زرار سريع "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة) —
+                      بيظهر بس تحت آخر رسالة من الايجنت لو كانت سؤال تأكيد فعلاً، وبيختفي أول
+                      ما العميل يبعت أي رسالة تانية (مش آخر رسالة بقى) */}
+                  {m.role === 'assistant' && m.awaitingConfirmation && i === messages.length - 1 && !loading && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button onClick={() => sendMessage(lang === 'ar' ? 'ابدأ' : 'Yes')}
+                        style={{ padding: '8px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7c6af7,#9d4edd)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        {lang === 'ar' ? 'ابدأ' : 'Yes'}
+                      </button>
+                      <button onClick={() => sendMessage(lang === 'ar' ? 'لأ' : 'No')}
+                        style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.04)', color: 'var(--text2)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        {lang === 'ar' ? 'لأ' : 'No'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })
