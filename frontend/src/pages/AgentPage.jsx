@@ -909,8 +909,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // نص الرسالة نفسها عشان يفضل قابل للاستشهاد بيه في أي رسالة جاية (مش بس اللحظة دي)
       // ✅ FIX: نفس ترقيم "Photo 1/Photo 2" المستخدم في ملاحظة الباك إند وقت الرفع — عشان
       // يفضل ثابت عبر المحادثة كلها (مش بس أول رسالة) ويسهّل ربط كل صورة بتعليمة التحريك بتاعتها
+      // ✅ FIX (باج حقيقي: صورة العميل 16:9 طلعت فيديو 9:16): بنضيف "(aspect ratio: X)" جنب كل
+      // صورة — نفس التاج بالظبط المستخدم لصور الايجنت، عشان حاجز الكود القائم (اللي بيقرا
+      // النص ده من الـ history) يفرض النسبة الصح هنا كمان، مش بس للصور اللي بيولدها الايجنت
+      const ratioTag = (i) => m.uploadedPhotoRatios?.[i] ? ` (aspect ratio: ${m.uploadedPhotoRatios[i]})` : '';
       const uploadNote = Array.isArray(m.uploadedPhotoUrls) && m.uploadedPhotoUrls.length
-        ? ` [Uploaded photo URL${m.uploadedPhotoUrls.length > 1 ? 's' : ''}: ${m.uploadedPhotoUrls.length > 1 ? m.uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}`).join(', ') : m.uploadedPhotoUrls[0]}]`
+        ? ` [Uploaded photo URL${m.uploadedPhotoUrls.length > 1 ? 's' : ''}: ${m.uploadedPhotoUrls.length > 1 ? m.uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}${ratioTag(i)}`).join(', ') : `${m.uploadedPhotoUrls[0]}${ratioTag(0)}`}]`
         : '';
       return m.content + uploadNote;
     }
@@ -985,9 +989,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         // بلغة عربي") والايجنت استخدم التانية غلط، لأن الدفتر كان بس بيسرد الرابط من غير أي
         // وصف يميّزه. بنضيف نص رسالة العميل نفسها (اللي غالبًا بتوصف الصورة) كسياق مميّز
         const descNote = m.content ? ` — customer's own words when uploading: "${m.content.slice(0, 150)}"` : '';
+        const ratioTag = (i) => m.uploadedPhotoRatios?.[i] ? ` (aspect ratio: ${m.uploadedPhotoRatios[i]})` : '';
         const indexedUrls = m.uploadedPhotoUrls.length > 1
-          ? m.uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}`).join(', ')
-          : m.uploadedPhotoUrls[0];
+          ? m.uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}${ratioTag(i)}`).join(', ')
+          : `${m.uploadedPhotoUrls[0]}${ratioTag(0)}`;
         lines.push(`[UPLOADED photo by customer, real physical product/character — not AI-generated${descNote}] ${indexedUrls}`);
       } else if (m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length) {
         imgIdx++;
@@ -1082,7 +1087,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // ✅ NEW: بنحفظ الرابط الدائم (R2) لأي صورة اترفعت في الرسالة دي جوه الرسالة نفسها —
       // كده تفضل قابلة للاستشهاد بيها في history/mediaLedger في أي رسالة جاية، مش بس دلوقتي
       if (Array.isArray(data.uploadedPhotoUrls) && data.uploadedPhotoUrls.length) {
-        setMessages(m => m.map(x => x.uid === msgUid ? { ...x, uploadedPhotoUrls: data.uploadedPhotoUrls } : x));
+        setMessages(m => m.map(x => x.uid === msgUid ? { ...x, uploadedPhotoUrls: data.uploadedPhotoUrls, uploadedPhotoRatios: data.uploadedPhotoRatios } : x));
       }
       if (data.transcript) setLastUploadedTranscript(data.transcript);
       if (Array.isArray(data.structuredScenes) && data.structuredScenes.length) setLastParsedStructuredScenes(data.structuredScenes);

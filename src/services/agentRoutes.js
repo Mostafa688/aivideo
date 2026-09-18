@@ -1,6 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
@@ -46,6 +47,28 @@ async function uploadUserPhotoToR2(base64DataUri) {
     return `${R2_PUBLIC_URL}/${key}`;
   } catch (e) {
     console.warn('[Agent] Failed to persist uploaded photo to R2:', e.message);
+    return null;
+  }
+}
+
+// ✅ NEW (باج حقيقي: العميل رفع صورة 16:9، وطلب يحرّكها فيديو — طلعت النسبة 9:16 غلط لأن
+// الايجنت (الموديل نفسه) مالوش أي طريقة "يشوف" أبعاد الصورة الحقيقية، فبيخمّن نسبة افتراضية
+// بدل ما ياخد أبعادها الحقيقية. نفس الباج اللي كان موجود قبل كده للصور اللي بيولدها الايجنت
+// نفسه (اتصلح بحاجز في الكود يقرا "(aspect ratio: X)" من الـ history) — هنا مفيش نص زي ده
+// خالص لصورة العميل نفسه، فبنقيس الأبعاد الحقيقية وقت الرفع (sharp) ونستخدمها كحاجز مماثل تحت
+async function detectImageAspectRatioInfo(base64DataUri) {
+  const match = /^data:image\/\w+;base64,(.+)$/.exec(base64DataUri || '');
+  if (!match) return null;
+  try {
+    const buffer = Buffer.from(match[1], 'base64');
+    const { width, height } = await sharp(buffer).metadata();
+    if (!width || !height) return null;
+    const ratio = width / height;
+    const bucket = ratio > 1.2 ? '16:9' : ratio < 0.83 ? '9:16' : '1:1'; // للصور — بتدعم 1:1 كمان
+    const videoRatio = ratio >= 1 ? '16:9' : '9:16'; // الفيديو الجديد مالوش خيار 1:1 أصلاً
+    return { bucket, videoRatio };
+  } catch (e) {
+    console.warn('[Agent] Failed to detect uploaded image aspect ratio:', e.message);
     return null;
   }
 }
@@ -394,21 +417,34 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
 
     let uploadedPhotoUrls = [];
+    // ✅ NEW: خريطة رابط → معلومة النسبة الحقيقية (من sharp) — بتتستخدم تحت كحاجز إضافي
+    // بالكود يفرض النسبة الصح على أي فيديو بيحرّك الصورة دي بالظبط، بدل ما نعتمد على تخمين
+    // الايجنت (راجع تعليق detectImageAspectRatioInfo فوق)
+    const uploadedPhotoRatioByUrl = new Map();
     if (images.length) {
       try {
         for (const img of images) validateAgentImage(img);
         // ✅ NEW: بنرفع الصور المرفقة على R2 فورًا برابط دائم — لو نجح، الرابط ده بيتحفظ مع
         // رسالة العميل (الفرونت إند بيخزنه) عشان يفضل قابل للاستشهاد بيه في referenceImageUrls
         // في أي رسالة جاية، مش بس دلوقتي وهو لسه base64 جوه الطلب الحالي
-        uploadedPhotoUrls = (await Promise.all(images.map(img => uploadUserPhotoToR2(img)))).filter(Boolean);
+        const uploadResults = await Promise.all(images.map(async (img) => ({
+          url: await uploadUserPhotoToR2(img),
+          ratioInfo: await detectImageAspectRatioInfo(img),
+        })));
+        for (const r of uploadResults) if (r.url && r.ratioInfo) uploadedPhotoRatioByUrl.set(r.url, r.ratioInfo);
+        uploadedPhotoUrls = uploadResults.filter(r => r.url).map(r => r.url);
         if (uploadedPhotoUrls.length) {
           // ✅ FIX: لو أكتر من صورة، بنرقّم كل واحدة صراحة ("Photo 1: url, Photo 2: url") —
           // مش مجرد قائمة روابط مجمّعة من غير ترقيم — عشان الايجنت يقدر يربط كل صورة بالبرومبت
           // بتاعها بالترتيب الصح لو العميل وصف تحريك مختلف لكل صورة (راجع الحاجز الإضافي تحت)
+          // ✅ FIX: بنضيف النسبة الحقيقية جنب كل صورة كمان (زي ملاحظات الصور اللي بيولدها
+          // الايجنت بالظبط) — عشان لو الايجنت هو نفسه فاكر يستخدمها صح، مع إن الكود تحت
+          // بيفرضها بغض النظر عن التزامه بالتعليمة دي
+          const labelFor = (u) => `${u}${uploadedPhotoRatioByUrl.has(u) ? ` (aspect ratio: ${uploadedPhotoRatioByUrl.get(u).bucket})` : ''}`;
           const indexedUrls = uploadedPhotoUrls.length > 1
-            ? uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}`).join(', ')
-            : uploadedPhotoUrls[0];
-          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The photo(s) just uploaded are now permanently available at ${uploadedPhotoUrls.length > 1 ? 'these exact URLs, numbered in the exact order they were uploaded' : 'this exact URL'}: ${indexedUrls} — you may use ${uploadedPhotoUrls.length > 1 ? 'them' : 'it'} directly in "referenceImageUrls"/"imageUrl" right now, and ${uploadedPhotoUrls.length > 1 ? 'each of these URLs' : 'this same URL'} will remain valid to cite in ANY future message in this conversation (see the MEDIA LEDGER note if present) if the customer later asks to reuse this exact uploaded photo — never substitute a different, previously-generated image instead of this real uploaded one.`;
+            ? uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${labelFor(u)}`).join(', ')
+            : labelFor(uploadedPhotoUrls[0]);
+          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The photo(s) just uploaded are now permanently available at ${uploadedPhotoUrls.length > 1 ? 'these exact URLs, numbered in the exact order they were uploaded' : 'this exact URL'}: ${indexedUrls} — you may use ${uploadedPhotoUrls.length > 1 ? 'them' : 'it'} directly in "referenceImageUrls"/"imageUrl" right now, and ${uploadedPhotoUrls.length > 1 ? 'each of these URLs' : 'this same URL'} will remain valid to cite in ANY future message in this conversation (see the MEDIA LEDGER note if present) if the customer later asks to reuse this exact uploaded photo — never substitute a different, previously-generated image instead of this real uploaded one. If animating one of these photos directly, match "aspectRatio" to that exact photo's own stated ratio above, never a generic default.`;
         }
         // ✅ NEW: لو العميل رفع صورة مشهد وقال "اعملي نفس المشهد ده" أو أي صيغة مشابهة،
         // نحلل الصورة بالـ vision model ونطلع منها rawPrompt جاهز بدل ما نطلب منه يوصف بنفسه
@@ -678,6 +714,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (generateVideo?.imageUrl) {
       const sourceRatioMatch = history.find(m => typeof m?.content === 'string' && m.content.includes(generateVideo.imageUrl))?.content?.match(/\(aspect ratio: (\d{1,2}:\d{1,2})\)/);
       if (sourceRatioMatch) generateVideo.aspectRatio = sourceRatioMatch[1];
+      // ✅ NEW: نفس الحاجز فوق، بس لصورة اترفعت في نفس الرسالة الحالية (لسه مش موجودة في
+      // الـ history لحد دلوقتي — لو العميل رفع صورة وطلب يحركها في نفس الرسالة من غير خطوة تأكيد)
+      else if (uploadedPhotoRatioByUrl.has(generateVideo.imageUrl)) {
+        generateVideo.aspectRatio = uploadedPhotoRatioByUrl.get(generateVideo.imageUrl).videoRatio;
+      }
     }
     // ✅ NEW: تنضيف حقول السرد/الكابشن/الموسيقى الجديدة قبل ما توصل للراوت
     if (generateVideo) {
@@ -798,6 +839,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
       // مع رسالة العميل نفسها عشان تفضل قابلة للاستشهاد بيها في أي رسالة جاية (راجع
       // uploadUserPhotoToR2 فوق)
       uploadedPhotoUrls: uploadedPhotoUrls.length ? uploadedPhotoUrls : undefined,
+      // ✅ NEW: نسبة كل صورة الحقيقية (من sharp) بنفس ترتيب uploadedPhotoUrls — الفرونت إند
+      // بيحفظها كمان عشان يضيفها كتاج "(aspect ratio: X)" في ملاحظة الـhistory، فحاجز الكود
+      // القائم بالفعل (اللي بيقرا نفس التاج للصور اللي بيولدها الايجنت) يشتغل عليها هي كمان
+      uploadedPhotoRatios: uploadedPhotoUrls.length ? uploadedPhotoUrls.map(u => uploadedPhotoRatioByUrl.get(u)?.bucket || null) : undefined,
     });
 
     // ✅ NEW: تسجيل تبادل الشات (رسالة العميل + رد الايجنت) عشان يظهر للأدمن — مش بيوقف
