@@ -211,10 +211,10 @@ export default function CoursesPage({ onBack, onNavigate, userRegion }) {
           <div style={{ fontSize: 20, marginBottom: 8 }}>💬</div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>{t.questionTitle}</div>
           <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginBottom: 16 }}>{t.questionSub}</div>
-          <a href="mailto:support@erivion.net"
-            style={{ display: 'inline-block', padding: '10px 24px', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', borderRadius: 999, color: '#fff', fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
+          <button onClick={() => onNavigate ? onNavigate('support') : (window.location.href = 'mailto:support@erivion.net')}
+            style={{ display: 'inline-block', padding: '10px 24px', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
             {t.contactSupport}
-          </a>
+          </button>
         </div>
 
       </div>
