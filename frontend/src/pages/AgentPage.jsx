@@ -827,10 +827,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     }
   };
 
+  // ✅ FIX: رفعناها من 2 لـ6 — طلب العميل: يرفع أكتر من صورة (منتجات/شخصيات مختلفة) في نفس
+  // الرسالة عشان كل واحدة تتحرك بالبرومبت الخاص بيها هي (راجع "ANIMATING MULTIPLE UPLOADED
+  // PHOTOS" في agentService.js)
+  const MAX_MSG_PHOTOS = 6;
   const handleImageFile = (e) => {
-    const files = Array.from(e.target.files || []).slice(0, 2 - imageFiles.length); // ✅ مايتخطاش صورتين في نفس الرسالة
+    const files = Array.from(e.target.files || []).slice(0, MAX_MSG_PHOTOS - imageFiles.length);
     if (!files.length) {
-      if (e.target.files?.length) setError(t.maxTwoPhotos || 'This chat accepts up to 2 photos per message.');
+      if (e.target.files?.length) setError(t.maxTwoPhotos || `This chat accepts up to ${MAX_MSG_PHOTOS} photos per message.`);
       return;
     }
     setError('');
@@ -838,15 +842,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       if (file.size > limits.MAX_IMAGE_MB * 1024 * 1024) { setError(t.imageTooBig(limits.MAX_IMAGE_MB)); continue; }
       const reader = new FileReader();
       reader.onload = (ev) => {
-        setImageFiles(prev => prev.length >= 2 ? prev : [...prev, ev.target.result]);
-        // ✅ FIX: بتتراكم (مش تستبدل) لحد صورتين — الشات بيقبل شخصية واحدة أو اتنين لموديل 5
-        setLastUploadedPhotos(prev => {
-          if (prev.length >= 2) {
-            setError(t.maxTwoPhotos || 'This chat accepts up to 2 character photos — use the Models page directly for more.');
-            return prev;
-          }
-          return [...prev, ev.target.result];
-        });
+        setImageFiles(prev => prev.length >= MAX_MSG_PHOTOS ? prev : [...prev, ev.target.result]);
+        // ✅ لسه لحد صورتين بس هنا تحديدًا — ده مرجع الشخصية القديم لموديل 5 بالذات (بيدعم
+        // شخص واحد أو اتنين حسب تصميمه الأصلي)، مش كل صور الرسالة العامة (imageFiles فوق،
+        // اللي دلوقتي بتقبل لحد 6 للاستخدام الجديد — كل صورة بفيديو تحريك منفصل بالبرومبت بتاعها)
+        setLastUploadedPhotos(prev => prev.length >= 2 ? prev : [...prev, ev.target.result]);
       };
       reader.readAsDataURL(file);
     }
@@ -907,8 +907,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (m.content) {
       // ✅ NEW: لو الرسالة دي حصل فيها رفع صورة اتخزن ليها رابط دائم (R2)، بنضيف الرابط في
       // نص الرسالة نفسها عشان يفضل قابل للاستشهاد بيه في أي رسالة جاية (مش بس اللحظة دي)
+      // ✅ FIX: نفس ترقيم "Photo 1/Photo 2" المستخدم في ملاحظة الباك إند وقت الرفع — عشان
+      // يفضل ثابت عبر المحادثة كلها (مش بس أول رسالة) ويسهّل ربط كل صورة بتعليمة التحريك بتاعتها
       const uploadNote = Array.isArray(m.uploadedPhotoUrls) && m.uploadedPhotoUrls.length
-        ? ` [Uploaded photo URL${m.uploadedPhotoUrls.length > 1 ? 's' : ''}: ${m.uploadedPhotoUrls.join(', ')}]`
+        ? ` [Uploaded photo URL${m.uploadedPhotoUrls.length > 1 ? 's' : ''}: ${m.uploadedPhotoUrls.length > 1 ? m.uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}`).join(', ') : m.uploadedPhotoUrls[0]}]`
         : '';
       return m.content + uploadNote;
     }
@@ -983,7 +985,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         // بلغة عربي") والايجنت استخدم التانية غلط، لأن الدفتر كان بس بيسرد الرابط من غير أي
         // وصف يميّزه. بنضيف نص رسالة العميل نفسها (اللي غالبًا بتوصف الصورة) كسياق مميّز
         const descNote = m.content ? ` — customer's own words when uploading: "${m.content.slice(0, 150)}"` : '';
-        lines.push(`[UPLOADED photo by customer, real physical product/character — not AI-generated${descNote}] ${m.uploadedPhotoUrls.join(', ')}`);
+        const indexedUrls = m.uploadedPhotoUrls.length > 1
+          ? m.uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}`).join(', ')
+          : m.uploadedPhotoUrls[0];
+        lines.push(`[UPLOADED photo by customer, real physical product/character — not AI-generated${descNote}] ${indexedUrls}`);
       } else if (m.type === 'imageBatch' && m.job?.status === 'done' && m.job.images?.length) {
         imgIdx++;
         const ratioTag = m.job.aspectRatio ? ` ratio=${m.job.aspectRatio}` : '';
@@ -1205,7 +1210,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-      setImageFiles(prev => (prev.length >= 2 ? prev : [...prev, base64]));
+      setImageFiles(prev => (prev.length >= MAX_MSG_PHOTOS ? prev : [...prev, base64]));
       setLastUploadedPhotos(prev => (prev.length >= 2 ? prev : [...prev, base64]));
       return true;
     } catch (e) {

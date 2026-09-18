@@ -356,10 +356,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     const hasAdsScenePlan = !!adsScenePlanResult || !!clientHasAdsScenePlan;
 
-    // ✅ FIX: بيقبل دلوقتي مصفوفة صور (لحد 2) في نفس الرسالة، مش صورة واحدة بس —
+    // ✅ FIX: بيقبل دلوقتي مصفوفة صور (لحد 6) في نفس الرسالة، مش صورتين بس كان الحد الأقصى —
+    // طلب العميل: يرفع أكتر من صورة (منتجات/شخصيات مختلفة) في نفس الرسالة عشان يحركهم كل واحدة
+    // بالبرومبت بتاعها هي، مش بس الحالة القديمة (صورتين لدمجهم كشخصية واحدة في موديل 5) —
     // imageBase64 (مفرد) لسه متاح للتوافق مع أي كود قديم، بس imagesBase64 (جمع) هو الأساس دلوقتي
     const images = Array.isArray(imagesBase64) && imagesBase64.length
-      ? imagesBase64.slice(0, 2)
+      ? imagesBase64.slice(0, 6)
       : (imageBase64 ? [imageBase64] : []);
 
     const styleHintNote = styleHint
@@ -400,7 +402,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
         // في أي رسالة جاية، مش بس دلوقتي وهو لسه base64 جوه الطلب الحالي
         uploadedPhotoUrls = (await Promise.all(images.map(img => uploadUserPhotoToR2(img)))).filter(Boolean);
         if (uploadedPhotoUrls.length) {
-          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The photo(s) just uploaded are now permanently available at ${uploadedPhotoUrls.length > 1 ? 'these exact URLs' : 'this exact URL'}: ${uploadedPhotoUrls.join(', ')} — you may use ${uploadedPhotoUrls.length > 1 ? 'them' : 'it'} directly in "referenceImageUrls" right now, and this same URL will remain valid to cite in ANY future message in this conversation (see the MEDIA LEDGER note if present) if the customer later asks to reuse this exact uploaded photo — never substitute a different, previously-generated image instead of this real uploaded one.`;
+          // ✅ FIX: لو أكتر من صورة، بنرقّم كل واحدة صراحة ("Photo 1: url, Photo 2: url") —
+          // مش مجرد قائمة روابط مجمّعة من غير ترقيم — عشان الايجنت يقدر يربط كل صورة بالبرومبت
+          // بتاعها بالترتيب الصح لو العميل وصف تحريك مختلف لكل صورة (راجع الحاجز الإضافي تحت)
+          const indexedUrls = uploadedPhotoUrls.length > 1
+            ? uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}`).join(', ')
+            : uploadedPhotoUrls[0];
+          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The photo(s) just uploaded are now permanently available at ${uploadedPhotoUrls.length > 1 ? 'these exact URLs, numbered in the exact order they were uploaded' : 'this exact URL'}: ${indexedUrls} — you may use ${uploadedPhotoUrls.length > 1 ? 'them' : 'it'} directly in "referenceImageUrls"/"imageUrl" right now, and ${uploadedPhotoUrls.length > 1 ? 'each of these URLs' : 'this same URL'} will remain valid to cite in ANY future message in this conversation (see the MEDIA LEDGER note if present) if the customer later asks to reuse this exact uploaded photo — never substitute a different, previously-generated image instead of this real uploaded one.`;
         }
         // ✅ NEW: لو العميل رفع صورة مشهد وقال "اعملي نفس المشهد ده" أو أي صيغة مشابهة،
         // نحلل الصورة بالـ vision model ونطلع منها rawPrompt جاهز بدل ما نطلب منه يوصف بنفسه
@@ -414,8 +422,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
             attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + 'User uploaded a photo and wants the same scene recreated as a video, but automatic analysis of the photo failed — ask them to briefly describe in a sentence what is happening in the photo themselves so you can use Model 5 prompt-to-video mode instead.';
           }
         } else {
+          // ✅ FIX (طلب العميل: رفع أكتر من صورة عشان تتحرك كل واحدة بالبرومبت بتاعها هي، مش
+          // بس حالة "شخصين لموديل 5" القديمة): لو العميل وصف صراحة إنه عايز موديل 5 بشخصين
+          // (نادر دلوقتي، الخط القديم متقاعد)، لسه ممكن يحصل — لكن الافتراض الجديد لأكتر من
+          // صورة هو الحالة الأشيع بكتير: كل صورة عندها موضوعها الخاص وهتتحرك لوحدها بفيديو
+          // منفصل (GENERATE_VIDEO) بالبرومبت الخاص بيها هي، بنفس ترتيب الرفع بالظبط
           const note = images.length > 1
-            ? 'User just uploaded 2 photos (two characters) for Model 5. This fully satisfies the character reference requirement for BOTH people — treat it as met right now, do not ask for more photos, and proceed toward confirming and generating if you already have the other required details. Mention the cost is a bit higher than a single photo.'
+            ? `User just uploaded ${images.length} photos in this one message, numbered above in upload order (Photo 1, Photo 2, ...). Unless the customer explicitly says these are "two characters for one video"/Model 5 merged-reference mode, assume each photo is its own separate subject that needs its OWN separate animation — see the "ANIMATING MULTIPLE UPLOADED PHOTOS" rule below for exactly how to sequence this (one ###GENERATE_VIDEO### per turn, in upload order, using each photo's own numbered URL). If the customer already described a distinct motion/scene for each photo (in this same message or already earlier), match instruction 1 to Photo 1, instruction 2 to Photo 2, and so on in the exact order both were given — never mix up which instruction belongs to which photo.`
             : 'User just uploaded a photo. This satisfies the required product/character photo for Model 7 (Ads) or Model 5 (character reference) — OR, if they just want the photo animated directly with no scene description at all, this is Model 5\'s "image to video" mode (promptMode:"image", no idea/rawPrompt needed, just confirm duration). Treat the photo requirement as met right now, do not ask for it again, and proceed toward confirming and generating if you already have the other required details.';
           attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + note;
         }
