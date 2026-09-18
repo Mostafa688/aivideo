@@ -1236,12 +1236,28 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // ✅ NEW (media detail view — image editing): بتولّد صورة جديدة باستخدام الصورة الحالية
   // كمرجع بصري + التعديل المطلوب كبرومبت، وبتضيفها في نفس دفعة الصور (job.images) — نفس
   // مسار /api/images/generate العادي بسعره وخصمه الحقيقي، مفيش موديل بيانات جديد
-  const submitImageEdit = async (editPrompt, referenceUrl) => {
+  // ✅ NEW (باج حقيقي: العميل كتب تعليمة التعديل بالعربي، وبقت التعليمة دي حرفيًا (عربي خام)
+  // هي الـprompt اللي اتبعت لـReplicate — المربع ده مالوش أي علاقة بالايجنت، فمكانش فيه أي
+  // ترجمة/تحسين زي أي برومبت تاني بيكتبه الايجنت. بننادي نقطة النهاية الخفيفة دي أولاً عشان
+  // نترجم/نحسّن التعليمة للإنجليزي قبل ما نبعتها فعليًا — لو فشلت الترجمة لأي سبب، نستخدم
+  // النص الخام زي ما هو بدل ما نوقف التعديل كله
+  const refineEditPrompt = async (rawText) => {
+    try {
+      const res = await fetch('/api/agent/refine-edit-prompt', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text: rawText }) });
+      const data = await safeJson(res, lang);
+      return data.refined || rawText;
+    } catch {
+      return rawText;
+    }
+  };
+
+  const submitImageEdit = async (editPromptRaw, referenceUrl) => {
     if (!detailView || detailView.kind !== 'imageBatch' || editingImageJob) return;
     const msg = messages.find(m => m.job?.uid === detailView.jobUid);
     if (!msg) return;
     setEditingImageJob(true);
     try {
+      const editPrompt = await refineEditPrompt(editPromptRaw);
       const res = await fetch('/api/images/generate', {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({
@@ -1275,12 +1291,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // ✅ NEW (Gemini Omni 1.1 Flash — أول موديل video-to-video حقيقي عندنا): تعديل فيديو موجود
   // مباشرة من نافذة التفاصيل، بنفس فكرة تعديل الصور فوق — بيستبدل رابط الفيديو في نفس الـ
   // job (مفيش "تاريخ نسخ" للفيديو زي الصور، النسخة الجديدة بس هي اللي بتفضل)
-  const submitVideoEdit = async (editPrompt, referenceUrl) => {
+  const submitVideoEdit = async (editPromptRaw, referenceUrl) => {
     if (!detailView || detailView.kind !== 'videoModel' || editingImageJob) return;
     const msg = messages.find(m => m.job?.uid === detailView.jobUid);
     if (!msg) return;
     setEditingImageJob(true);
     try {
+      const editPrompt = await refineEditPrompt(editPromptRaw);
       const res = await fetch('/api/videos/generate', {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({
