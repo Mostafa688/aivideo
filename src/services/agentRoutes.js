@@ -176,18 +176,29 @@ function parseAgentMarkers(rawReply) {
     reply = restText.trim();
     try {
       const parsed = JSON.parse(jsonText);
+      // ✅ NEW: لو الـ JSON اتقرا صح لغويًا بس مستوفيش الشروط تحت (زي موديل مش معروف، أو
+      // "prompt"/"prompts" ناقصين)، كان بيتم تجاهله بصمت تام — من غير ولا سطر لوج واحد، عكس
+      // فشل JSON.parse نفسه اللي بيتسجل. ده باج حقيقي منفصل تمامًا عن أي حاجة اتصلحت قبل كده:
+      // الموديل ممكن يكون فعلاً حط الماركر زي ما المفروض، بس بحقل ناقص/غلط، فالنتيجة بره كانت
+      // مطابقة تمامًا لما لو مفيش ماركر خالص (رسالة الاعتذار الجاهزة) من غير أي دليل نقدر نشوفه
+      // في الـ logs يوضح ليه. بنسجل الـ payload الخام هنا في كل حالة رفض عشان نقدر نشخّص فعليًا.
       if (isEditMarker) {
         if (Number.isInteger(parsed.sceneIndex) && typeof parsed.description === 'string') editScene = parsed;
+        else console.warn('[Agent] EDIT_SCENE marker parsed but failed validation:', JSON.stringify(parsed).slice(0, 500));
       } else if (isVideoEditMarker) {
         if (typeof parsed.editPrompt === 'string' && parsed.editPrompt.trim()) videoEdit = parsed;
+        else console.warn('[Agent] VIDEO_EDIT marker parsed but failed validation:', JSON.stringify(parsed).slice(0, 500));
       } else if (isImageGenMarker) {
         const hasDistinctPrompts = Array.isArray(parsed.prompts) && parsed.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
         if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && ((typeof parsed.prompt === 'string' && parsed.prompt.trim()) || hasDistinctPrompts)) generateImage = parsed;
+        else console.warn('[Agent] GENERATE_IMAGE marker parsed but failed validation (missing/invalid model, or no usable prompt/prompts):', JSON.stringify(parsed).slice(0, 800));
       } else if (isVideoGenMarker) {
         if (typeof parsed.model === 'string' && NEW_VIDEO_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) {
           const maxSec = getMaxClipSeconds(parsed.model);
           if (maxSec && (!Number.isFinite(parsed.durationSec) || parsed.durationSec > maxSec)) parsed.durationSec = maxSec;
           generateVideo = parsed;
+        } else {
+          console.warn('[Agent] GENERATE_VIDEO marker parsed but failed validation (missing/invalid model, or no usable prompt):', JSON.stringify(parsed).slice(0, 800));
         }
       } else if (isMergeVideosMarker) {
         if (Array.isArray(parsed.videoUrls) && parsed.videoUrls.length >= 2 && parsed.videoUrls.every(u => typeof u === 'string' && u.trim())) {
@@ -196,6 +207,8 @@ function parseAgentMarkers(rawReply) {
             narrationScript: parsed.narrationScript, voiceKey: parsed.voiceKey, narrationLanguage: parsed.narrationLanguage,
             addCaptions: parsed.addCaptions, musicStyle: parsed.musicStyle, musicMood: parsed.musicMood,
           };
+        } else {
+          console.warn('[Agent] MERGE_VIDEOS marker parsed but failed validation (need >=2 real videoUrls):', JSON.stringify(parsed).slice(0, 500));
         }
       } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
         ready = parsed;
@@ -529,8 +542,19 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // العميل يفتكر إن التوليد بدأ فعلاً وهو ما بدأش. رسالة صريحة بدل الوعد الكاذب، عشان
     // العميل يعرف يعيد صياغة الطلب بدل ما يستنى نتيجة مش هتيجي
     if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && soundsLikeAnActionPromise(reply)) {
-      console.warn('[Agent] Still no marker after all retries — replacing dead promise with an honest message');
-      reply = 'معلش، مش قادر أبدأ التوليد أوتوماتيك دلوقتي — ممكن تكرر طلبك بوضوح أكتر (مثلاً تحدد بالظبط عايز تعمل ايه)؟';
+      // ✅ NEW: بنسجل الرد الخام كامل هنا (مش بس تحذير عام) — عشان لو المشكلة رجعت تاني نقدر
+      // نشوف بالظبط الموديل كان قاعد يقول ايه في Railway logs، بدل ما نخمّن السبب من غير أي
+      // دليل حقيقي (زي ما حصل مع فيكس سابق اتضح إنه مش بيغطي كل الحالات)
+      console.error('[Agent] Still no marker after all retries — full raw reply for diagnosis:', JSON.stringify(reply));
+      // ✅ FIX: كان بيمسح رد الموديل كله ويستبدله برسالة عامة حتى لو الموديل كتب فعلاً سبب حقيقي
+      // (زي تردد بخصوص تفصيلة معينة في الطلب) جنب جملة الوعد الفاضي — فكنا بنضيع أي تفسير حقيقي
+      // كتبه الموديل بنفسه ويبقى مفيش أي دليل ليه رفض. دلوقتي: لو باقي الرد (بعد شيل جملة الوعد
+      // الفاضي) فيه محتوى حقيقي كفاية، نسيبه زي ما هو (يمكن يكون فيه سبب حقيقي مفيد للعميل)،
+      // ونستبدل بالرسالة الجاهزة بس لو معندهوش أي محتوى حقيقي تاني غير الوعد الفاضي نفسه
+      const withoutPromise = reply.replace(/(هبدأ|بدأت|بدأ)[^.\n]{0,40}(دلوقتي|الآن|حالا|حالاً)|\bi'?ll start\b[^.\n]{0,40}\bnow\b|\b(started|starting) (right )?now\b/i, '').trim();
+      if (withoutPromise.length < 40) {
+        reply = 'معلش، مش قادر أبدأ التوليد أوتوماتيك دلوقتي — ممكن تكرر طلبك بوضوح أكتر (مثلاً تحدد بالظبط عايز تعمل ايه)؟';
+      }
     }
     // ✅ حماية إضافية: أي ماركر تاني ظل موجود جوه reply (الموديل حط أكتر من ماركر في نفس
     // الرد) بيتشال هنا قبل ما نكمل — راجع تعليق stripStrayMarkers فوق
