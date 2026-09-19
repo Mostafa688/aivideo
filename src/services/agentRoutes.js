@@ -606,6 +606,15 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // يقول "ابدأ" تاني. وسّعنا المسافة المسموحة (كانت 40، بقت 150) عشان توصيف قصير للمشهد
     // جوه الجملة ميفلتش من الكشف تاني
     const soundsLikeAnActionPromise = (text) => /(هبدأ|بدأت|بدأ)[^.\n]{0,150}(دلوقتي|الآن|حالا|حالاً)|\bi'?ll start\b[^.\n]{0,150}\bnow\b|\b(started|starting) (right )?now\b/i.test(text);
+    // ✅ NEW (باج حقيقي منفصل تمامًا عن "الوعد الفاضي" فوق): العميل يأكد ("ابدأ")، والايجنت
+    // بيرد بنفس سؤال التأكيد تاني (أو سؤال تأكيد تاني) من غير ما يحط أي ماركر خالص — مش
+    // "هبدأ دلوقتي" فاضي، ده "جاهز أبدأ؟" بيتكرر في حلقة لا نهائية، وأزرار "ابدأ/لأ" السريعة
+    // (راجع awaitingConfirmation تحت) كانت بتخلي الحلقة دي تحس إنها طبيعية بدل ما تتكشف كباج
+    const looksLikeConfirmationQuestion = (text) => !!text && /(جاهز[ةه]?[^.\n]{0,20}[؟?]|تمام[^.\n]{0,15}(هبدأ|نبدأ|ابدأ)[^.\n]{0,15}[؟?]|(هبدأ|نبدأ|ابدأ)[^.\n]{0,15}[؟?]|ready to (generate|start|proceed)|shall i (start|proceed|generate)|should i (start|proceed|generate)|want me to (start|proceed|generate)|go ahead\?)/i.test(text);
+    const userJustConfirmed = /^(ابدأ|ابدا|ابدت|يلا\s*ابدأ|اه|ايوه|تمام|yes|ok|okay|go|start|proceed)[.!\s]*$/i.test(String(message || '').trim());
+    // العميل أكّد فعلاً في الرسالة دي، والرد رجع سؤال تأكيد تاني من غير أي ماركر — نفس عرض
+    // "مفيش تنفيذ حقيقي حصل" اللي soundsLikeAnActionPromise بيكشفه، بس بشكل مختلف
+    const stuckReaskingConfirmation = (text) => userJustConfirmed && looksLikeConfirmationQuestion(text);
     // ✅ FIX (باج حقيقي — طلب العميل: إعلان مفصّل بـ4 مشاهد ثابتة المنتج/المكان اتقفل برسالة
     // "مش قادر أبدأ التوليد" من غير أي محاولة retry خالص): كان شرط الحلقة تحت بيتطلب
     // reply.length < 300 عشان يعتبر الرد "وعد فاضي" — بس رد مفصّل لطلب معقد (زي إعادة صياغة
@@ -618,13 +627,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
     let nudgeAttempts = 0;
     while (
       !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload &&
-      soundsLikeAnActionPromise(reply) && nudgeAttempts < MAX_NUDGE_RETRIES
+      (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply)) && nudgeAttempts < MAX_NUDGE_RETRIES
     ) {
       nudgeAttempts++;
-      console.warn(`[Agent] Reply promised to start generating but included no technical marker — retry ${nudgeAttempts}/${MAX_NUDGE_RETRIES} with an explicit nudge`);
+      console.warn(`[Agent] Reply promised to start generating (or re-asked for confirmation the customer already gave) but included no technical marker — retry ${nudgeAttempts}/${MAX_NUDGE_RETRIES} with an explicit nudge`);
       try {
         const nudgedHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: reply }];
-        const nudgeMessage = '(system reminder: your previous reply said you were about to start generating, but did not include the required technical marker, so nothing actually happened and the customer is still waiting with no result. In THIS reply you must either include the real marker now with everything needed to execute it, based on what has already been discussed, or ask exactly one specific clarifying question if something is genuinely still missing — never repeat a vague "starting now" acknowledgement again. If the customer already fully described a multi-scene plan (e.g. several scenes with a consistent product/character/location), do NOT re-explain or recap that plan back to them again — you already have everything needed, so just emit the marker for the very first required step right now (a reference image if one consistent subject needs to stay the same across scenes, otherwise the first scene image batch), with at most one short sentence stating the cost so far. Re-describing the plan instead of acting on it is exactly the mistake that caused this retry.)';
+        const nudgeMessage = '(system reminder: the customer already confirmed (or your previous reply said you were about to start generating), but your last reply either repeated the same confirmation question again or promised to start without including the required technical marker — so nothing actually happened and the customer is still waiting with no result. In THIS reply you must either include the real marker now with everything needed to execute it, based on what has already been discussed and confirmed, or ask exactly one specific clarifying question if something is genuinely still missing — never repeat the same or another confirmation question again, and never repeat a vague "starting now" acknowledgement again. If the customer already fully described a multi-scene plan (e.g. several scenes with a consistent product/character/location) or already confirmed a merge/animation/generation plan, do NOT re-explain, re-confirm, or recap that plan back to them again — you already have everything needed and they already said yes, so just emit the marker right now, with at most one short sentence stating the cost so far. Re-asking or re-describing instead of acting on it is exactly the mistake that caused this retry.)';
         const retryRawReply = await agentChat({
           message: nudgeMessage, history: nudgedHistory, attachmentNote, userPlan, isAdminUser,
           hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
@@ -646,7 +655,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ FIX: لو بعد كل المحاولات لسه مفيش أي ماركر ناجح والرد لسه بيوعد بالتنفيذ — منسيبش
     // العميل يفتكر إن التوليد بدأ فعلاً وهو ما بدأش. رسالة صريحة بدل الوعد الكاذب، عشان
     // العميل يعرف يعيد صياغة الطلب بدل ما يستنى نتيجة مش هتيجي
-    if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && soundsLikeAnActionPromise(reply)) {
+    if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply))) {
       // ✅ NEW: بنسجل الرد الخام كامل هنا (مش بس تحذير عام) — عشان لو المشكلة رجعت تاني نقدر
       // نشوف بالظبط الموديل كان قاعد يقول ايه في Railway logs، بدل ما نخمّن السبب من غير أي
       // دليل حقيقي (زي ما حصل مع فيكس سابق اتضح إنه مش بيغطي كل الحالات)
@@ -840,8 +849,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ NEW (طلب العميل: أزرار سريعة "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة): لو الرد ده
     // مجرد سؤال تأكيد قبل التوليد (مفيش أي ماركر نفّذ فعليًا في الرد ده)، بنعلّم الفرونت إند
     // بعلم صريح عشان يعرض زرار "ابدأ"/"لأ" (أو "Yes"/"No") تحت الرسالة مباشرة
-    const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !!reply &&
-      /(جاهز[ةه]?[^.\n]{0,20}[؟?]|تمام[^.\n]{0,15}(هبدأ|نبدأ|ابدأ)[^.\n]{0,15}[؟?]|(هبدأ|نبدأ|ابدأ)[^.\n]{0,15}[؟?]|ready to (generate|start|proceed)|shall i (start|proceed|generate)|should i (start|proceed|generate)|want me to (start|proceed|generate)|go ahead\?)/i.test(reply);
+    const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload &&
+      looksLikeConfirmationQuestion(reply);
 
     res.json({
       reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl,
