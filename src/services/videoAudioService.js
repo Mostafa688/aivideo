@@ -271,18 +271,30 @@ export async function composeVideoAudio({ videoUrl, narrationPath = null, musicB
     }
 
     const outputPath = path.join(workDir, 'out.mp4');
+    // ✅ FIX (باج حقيقي في الإنتاج — الدمج بيفشل والعميل بياخد كريديته مرجوعة، ffmpeg process
+    // بيتقفل بـ"Killed" بعد "buffers queued in out_#0:1, something may be wrong" متصاعدة):
+    // "-shortest" مش موثوق فيه هنا لأنه بيعتمد على الـmuxer يكتشف نهاية أقصر stream لوحده —
+    // بس فرع الموسيقى فيه "aloop=loop=-1" (تكرار لا نهائي)، والفيديو ماشي بـ"-c:v copy" (نسخ
+    // مباشر من غير ما يعدي على الـfilter graph خالص) — التركيبة دي معروفة إنها مش دايمًا بتدّي
+    // للـmuxer إشارة EOF واضحة، فبيفضل فرع الموسيقى اللانهائي يطلّع صوت من غير ما حد يوقفه،
+    // والبفر بتاع مسار الصوت في المخرج بيكبر من غير حد لحد ما الـprocess يتقتل (OOM). الحل:
+    // نقيس المدة الحقيقية المستهدفة بـffprobe (مدة السرد، أو مدة الفيديو لو موسيقى بس) ونديها
+    // كـ"-t" صريح بدل ما نتوكل على "-shortest" يكتشفها لوحده
+    const targetDurationSec = narrationPath ? getMediaDuration(narrationPath) : getMediaDuration(videoPath);
+    const t = targetDurationSec > 0 ? targetDurationSec.toFixed(2) : null;
+    const durationArg = t ? `-t ${t}` : '-shortest';
     let cmd;
     if (narrationPath && musicPath) {
       // سرد (أساسي) + موسيقى (خافتة تحته طول الوقت، تتقطع لو أطول من الفيديو)
       cmd = `ffmpeg -i "${videoPath}" -i "${narrationPath}" -i "${musicPath}" -filter_complex ` +
         `"[2:a]volume=0.18,aloop=loop=-1:size=2e9[music];[1:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
-        `-map 0:v -map "[aout]" -c:v copy -c:a aac -shortest -y "${outputPath}"`;
+        `-map 0:v -map "[aout]" -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else if (narrationPath) {
-      cmd = `ffmpeg -i "${videoPath}" -i "${narrationPath}" -map 0:v -map 1:a -c:v copy -c:a aac -shortest -y "${outputPath}"`;
+      cmd = `ffmpeg -i "${videoPath}" -i "${narrationPath}" -map 0:v -map 1:a -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else if (musicPath) {
       cmd = `ffmpeg -i "${videoPath}" -i "${musicPath}" -filter_complex ` +
         `"[1:a]volume=0.35,aloop=loop=-1:size=2e9[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
-        `-map 0:v -map "[aout]" -c:v copy -c:a aac -shortest -y "${outputPath}"`;
+        `-map 0:v -map "[aout]" -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else {
       throw new Error('composeVideoAudio needs narrationPath and/or musicBuffer');
     }
