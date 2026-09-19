@@ -337,17 +337,24 @@ export async function composeVideoAudio({ videoUrl, narrationPath = null, musicB
     const t = targetDurationSec > 0 ? targetDurationSec.toFixed(2) : null;
     const durationArg = t ? `-t ${t}` : '-shortest';
     const MUSIC_LOOP_COUNT = 50; // محدود، مش لانهائي — كافي لأي فيديو حقيقي بأمان
+    // ✅ FIX (باج حقيقي — العميل سمع الموسيقى عالية جدًا فوق السرد رغم إنها متخفّضة لـ0.18 في
+    // الكود): "amix" في ffmpeg بيطبّق تطبيع تلقائي (normalize) افتراضيًا — بيقسّم كل المداخل
+    // على عددهم (0.5x لكل مدخل هنا) إلا لو "normalize=0" اتحطت صراحة. ده كان بيقلل صوت
+    // السرد نفسه بنص قيمته الأصلية من غير قصد، فالنسبة الحقيقية بين السرد والموسيقى بعد
+    // الدمج مكانتش زي المتوقع من قيم "volume" المكتوبة، والموسيقى حسّت إنها أعلى مما هي
+    // مفروضة. بنضيف "normalize=0" عشان قيم الـvolume المكتوبة تبقى هي الفيصل الوحيد، مع
+    // تخفيض إضافي لقيم الموسيقى نفسها كمان بناءً على ملاحظة العميل المباشرة
     let cmd;
     if (narrationPath && musicPath) {
       // سرد (أساسي) + موسيقى (خافتة تحته طول الوقت، تتقطع لو أطول من الفيديو)
       cmd = `ffmpeg -i "${videoPath}" -i "${narrationPath}" -i "${musicPath}" -filter_complex ` +
-        `"[2:a]volume=0.18,aloop=loop=${MUSIC_LOOP_COUNT}:size=2e9[music];[1:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
+        `"[2:a]volume=0.12,aloop=loop=${MUSIC_LOOP_COUNT}:size=2e9[music];[1:a][music]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]" ` +
         `-map 0:v -map "[aout]" -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else if (narrationPath) {
       cmd = `ffmpeg -i "${videoPath}" -i "${narrationPath}" -map 0:v -map 1:a -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else if (musicPath) {
       cmd = `ffmpeg -i "${videoPath}" -i "${musicPath}" -filter_complex ` +
-        `"[1:a]volume=0.35,aloop=loop=${MUSIC_LOOP_COUNT}:size=2e9[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
+        `"[1:a]volume=0.22,aloop=loop=${MUSIC_LOOP_COUNT}:size=2e9[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]" ` +
         `-map 0:v -map "[aout]" -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else {
       throw new Error('composeVideoAudio needs narrationPath and/or musicBuffer');
