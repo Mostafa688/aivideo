@@ -62,6 +62,18 @@ function getResolution(filePath) {
   }
 }
 
+function getDuration(filePath) {
+  try {
+    const out = execSync(
+      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    ).trim();
+    return parseFloat(out) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Merges multiple already-generated video URLs (any model, any resolution/ratio)
  * into one file, in the given order, returning its permanent R2 URL.
@@ -87,6 +99,15 @@ export async function mergeVideos(videoUrls) {
     // ✅ كل الفيديوهات الحقيقية بترقيم -i من 0..N-1 الأول، وبعدين أي صوت صامت اصطناعي
     // (anullsrc) للفيديوهات الناقصة صوت بيتضاف بعد كده بترتيب ثابت — عشان ترقيم المدخلات
     // الحقيقي في ffmpeg يتوقع بالظبط
+    // ✅ FIX (باج حقيقي في الإنتاج — الدمج بيفشل، ffmpeg بيتقتل بـ"Killed" بعد "buffers queued
+    // in out_#0:1, something may be wrong" متصاعدة لحد 100000): "anullsrc" (مصدر الصمت
+    // الاصطناعي للفيديوهات اللي مالهاش صوت — شائع جدًا في فيديوهات Replicate المولّدة بالذكاء
+    // الاصطناعي) هو مصدر lavfi **لا نهائي بطبيعته** لو من غير "-t" صريح — بيولّد صمت للأبد.
+    // فيلتر concat بيحتاج كل مقطع (فيديو+صوت) يخلص عند نفس النقطة، فلو الفيديو انتهى (مدة
+    // حقيقية محدودة) بينما الصوت الصامت المقابل له لسه بيطلّع frames للأبد، الـmuxer بيفضل
+    // يستنى/يكدّس صوت مالوش نهاية طبيعية، والبفر بتاع مسار الصوت في المخرج بيكبر من غير حد لحد
+    // ما الـprocess يتقتل. الحل: كل "anullsrc" بيتقيّد بمدة الفيديو الحقيقي المقابل له بالظبط
+    // (بـffprobe)، مش لانهائي خالص
     const audioNeeds = localFiles.map(f => !hasAudioStream(f));
     const inputArgs = [];
     localFiles.forEach(f => { inputArgs.push('-i', f); });
@@ -94,7 +115,8 @@ export async function mergeVideos(videoUrls) {
     const silentIndexByVideo = {};
     audioNeeds.forEach((needsSilent, i) => {
       if (needsSilent) {
-        inputArgs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+        const silentDurationSec = getDuration(localFiles[i]) || 30; // احتياطي محدود لو فشل القياس، مش لانهائي أبدًا
+        inputArgs.push('-f', 'lavfi', '-t', silentDurationSec.toFixed(2), '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
         silentIndexByVideo[i] = silentCounter;
         silentCounter++;
       }
