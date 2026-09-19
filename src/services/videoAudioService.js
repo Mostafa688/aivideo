@@ -277,23 +277,32 @@ export async function composeVideoAudio({ videoUrl, narrationPath = null, musicB
     // بس فرع الموسيقى فيه "aloop=loop=-1" (تكرار لا نهائي)، والفيديو ماشي بـ"-c:v copy" (نسخ
     // مباشر من غير ما يعدي على الـfilter graph خالص) — التركيبة دي معروفة إنها مش دايمًا بتدّي
     // للـmuxer إشارة EOF واضحة، فبيفضل فرع الموسيقى اللانهائي يطلّع صوت من غير ما حد يوقفه،
-    // والبفر بتاع مسار الصوت في المخرج بيكبر من غير حد لحد ما الـprocess يتقتل (OOM). الحل:
-    // نقيس المدة الحقيقية المستهدفة بـffprobe (مدة السرد، أو مدة الفيديو لو موسيقى بس) ونديها
-    // كـ"-t" صريح بدل ما نتوكل على "-shortest" يكتشفها لوحده
+    // والبفر بتاع مسار الصوت في المخرج بيكبر من غير حد لحد ما الـprocess يتقتل (OOM).
+    // ✅ FIX (المحاولة الأولى بـ"-t" مش كانت كافية لوحدها): كانت بتعتمد على قياس مدة الفيديو
+    // الهدف بـffprobe (getMediaDuration) — بس الفيديو في المسار ده (دمج + سرد + كابشن محروق
+    // بموديل خارجي على Replicate) بيبقى عدى بمراحل معالجة كتير، وبعض الحاويات الناتجة من
+    // خدمات خارجية زي كده مفيهاش بيانات مدة واضحة في الـformat metadata، فـffprobe بيرجع "N/A"
+    // (بيترجم لـ0 في الكود)، فالكود كان بيرجع تلقائيًا لـ"-shortest" القديم المكسور — يعني
+    // نفس الباج بالظبط بيرجع في المسار ده تحديدًا. الحل الجذري الحقيقي: نشيل التكرار اللانهائي
+    // "loop=-1" خالص ونستبدله بعدد تكرار محدود وكبير بما يكفي (50 مرة — أي مقطوعة موسيقى حتى
+    // لو 400 ثانية هتتكرر لـ~5.5 ساعة، أكتر بكتير من أي فيديو حقيقي) — كده الـfilter graph
+    // بيبقى عنده مدة محدودة معروفة دايمًا، و"-shortest"/"-t" هيشتغلوا صح بغض النظر عن نجاح
+    // قياس المدة بـffprobe من عدمه
     const targetDurationSec = narrationPath ? getMediaDuration(narrationPath) : getMediaDuration(videoPath);
     const t = targetDurationSec > 0 ? targetDurationSec.toFixed(2) : null;
     const durationArg = t ? `-t ${t}` : '-shortest';
+    const MUSIC_LOOP_COUNT = 50; // محدود، مش لانهائي — كافي لأي فيديو حقيقي بأمان
     let cmd;
     if (narrationPath && musicPath) {
       // سرد (أساسي) + موسيقى (خافتة تحته طول الوقت، تتقطع لو أطول من الفيديو)
       cmd = `ffmpeg -i "${videoPath}" -i "${narrationPath}" -i "${musicPath}" -filter_complex ` +
-        `"[2:a]volume=0.18,aloop=loop=-1:size=2e9[music];[1:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
+        `"[2:a]volume=0.18,aloop=loop=${MUSIC_LOOP_COUNT}:size=2e9[music];[1:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
         `-map 0:v -map "[aout]" -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else if (narrationPath) {
       cmd = `ffmpeg -i "${videoPath}" -i "${narrationPath}" -map 0:v -map 1:a -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else if (musicPath) {
       cmd = `ffmpeg -i "${videoPath}" -i "${musicPath}" -filter_complex ` +
-        `"[1:a]volume=0.35,aloop=loop=-1:size=2e9[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
+        `"[1:a]volume=0.35,aloop=loop=${MUSIC_LOOP_COUNT}:size=2e9[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
         `-map 0:v -map "[aout]" -c:v copy -c:a aac ${durationArg} -y "${outputPath}"`;
     } else {
       throw new Error('composeVideoAudio needs narrationPath and/or musicBuffer');
