@@ -49,14 +49,32 @@ function hasAudioStream(filePath) {
   }
 }
 
+// ✅ FIX (باج حقيقي في الإنتاج: مشاهد اتعملت 9:16 (طولي)، والفيديو المدموج النهائي طلع 16:9
+// (عرضي)): ffprobe's "width"/"height" fields بترجع أبعاد الفريم المشفّرة الخام، مش الأبعاد
+// "المعروضة" الحقيقية — لو الفيديو فيه علامة دوران (rotation metadata، 90 أو 270 درجة، شائعة
+// في فيديوهات معالجة/مولّدة بالذكاء الاصطناعي)، الفيديو ممكن يتشفّر أفقيًا (landscape) فعليًا
+// بس يتعرض طولي (portrait) بفضل علامة الدوران دي — وأي مشغّل فيديو عادي بيحترمها فبيبين صح،
+// لكن ffprobe (وبالتبعية getResolution القديمة هنا) كانت بتتجاهلها تمامًا وترجّع الأبعاد
+// الخام المعكوسة. النتيجة: فيديو المرجع (أول فيديو في القائمة) اتقاس غلط كـ"عرضي" رغم إنه
+// طولي فعليًا، فكل الفيديوهات في الدمج اتحطت غصب في قالب عرضي. دلوقتي بنقرا علامة الدوران
+// (القديمة "rotate" tag، أو الحديثة "side_data_list[].rotation") ونبدّل العرض/الارتفاع لو
+// الدوران 90 أو 270 درجة، عشان الأبعاد الحقيقية المعروضة تبقى هي المستخدمة فعلاً
 function getResolution(filePath) {
   try {
     const out = execSync(
-      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${filePath}"`,
+      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height:stream_tags=rotate:stream_side_data=rotation -of json "${filePath}"`,
       { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
     ).trim();
-    const [w, h] = out.split(',').map(n => parseInt(n, 10));
-    return (w > 0 && h > 0) ? { w, h } : null;
+    const stream = JSON.parse(out)?.streams?.[0];
+    if (!stream) return null;
+    let w = parseInt(stream.width, 10);
+    let h = parseInt(stream.height, 10);
+    if (!(w > 0 && h > 0)) return null;
+    const rotateTag = parseInt(stream.tags?.rotate || '0', 10) || 0;
+    const sideDataRotation = stream.side_data_list?.find(s => typeof s.rotation === 'number')?.rotation || 0;
+    const rotation = ((rotateTag || sideDataRotation) % 360 + 360) % 360;
+    if (rotation === 90 || rotation === 270) { [w, h] = [h, w]; }
+    return { w, h };
   } catch {
     return null;
   }
