@@ -245,21 +245,54 @@ export async function getBackgroundMusicBuffer(musicStyle = 'general', mood = nu
     return fs.readFileSync(path.join(LOCAL_MUSIC_DIR, pick));
   }
   if (!FREESOUND_API_KEY) throw new Error('FREESOUND_API_KEY not set');
-  const query = mood ? `${mood} music` : 'background music';
-  const params = new URLSearchParams({
-    query, token: FREESOUND_API_KEY, page_size: '20', sort: 'rating_desc',
-    fields: 'id,name,previews,duration,license',
-    filter: 'license:"Creative Commons 0" duration:[25 TO 400]',
-  });
-  const res = await fetch(`https://freesound.org/apiv2/search/text/?${params}`);
-  if (!res.ok) throw new Error(`Freesound API error ${res.status}`);
-  const data = await res.json();
-  const tracks = (data.results || []).filter(t => t.previews?.['preview-hq-mp3']);
-  if (!tracks.length) throw new Error('Freesound returned no CC0 tracks for this mood');
-  const pick = tracks[Math.floor(Math.random() * tracks.length)];
-  const audioRes = await fetch(pick.previews['preview-hq-mp3']);
-  if (!audioRes.ok) throw new Error(`failed to download Freesound track: ${audioRes.status}`);
-  return Buffer.from(await audioRes.arrayBuffer());
+  // ✅ FIX (باج حقيقي في الإنتاج: خطوة الموسيقى — آخر خطوة في مسار طويل (دمج + سرد + كابشن
+  // اتنجحوا كلهم بالفعل) — كانت بتفشل المسار كله وترجّع الكريديت بسبب 502 عابر من Freesound
+  // (عطل جانبهم، مش باج في الكود عندنا)، من غير أي محاولة تانية خالص. عطل مؤقت في خدمة خارجية
+  // ملهوش داعي يضيّع نتيجة خطوات نجحت فعلاً ودفع فيها العميل وقت ومعالجة. بنعيد المحاولة كذا
+  // مرة (تأخير بسيط بينهم)، ولو لسه فاشل بعد المحاولات كلها ومكتبة اليوتيوب المحلية متاحة،
+  // نستخدمها كبديل بدل ما نفشّل المسار كله من غير أي موسيقى خالص — أهم حاجة الفيديو يوصل
+  // بالنتيجة، مش نوع الموسيقى بالظبط
+  const fetchWithRetry = async (url, maxRetries = 3) => {
+    let lastErr;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) return res;
+        lastErr = new Error(`HTTP ${res.status}`);
+      } catch (e) {
+        lastErr = e;
+      }
+      if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+    }
+    throw lastErr;
+  };
+  const localFallback = () => {
+    if (!fs.existsSync(LOCAL_MUSIC_DIR)) return null;
+    const files = fs.readdirSync(LOCAL_MUSIC_DIR).filter(f => f.toLowerCase().endsWith('.mp3'));
+    if (!files.length) return null;
+    const pick = files[Math.floor(Math.random() * files.length)];
+    console.warn('[VideoAudio] Freesound failed after retries, falling back to local music library');
+    return fs.readFileSync(path.join(LOCAL_MUSIC_DIR, pick));
+  };
+  try {
+    const query = mood ? `${mood} music` : 'background music';
+    const params = new URLSearchParams({
+      query, token: FREESOUND_API_KEY, page_size: '20', sort: 'rating_desc',
+      fields: 'id,name,previews,duration,license',
+      filter: 'license:"Creative Commons 0" duration:[25 TO 400]',
+    });
+    const res = await fetchWithRetry(`https://freesound.org/apiv2/search/text/?${params}`);
+    const data = await res.json();
+    const tracks = (data.results || []).filter(t => t.previews?.['preview-hq-mp3']);
+    if (!tracks.length) throw new Error('Freesound returned no CC0 tracks for this mood');
+    const pick = tracks[Math.floor(Math.random() * tracks.length)];
+    const audioRes = await fetchWithRetry(pick.previews['preview-hq-mp3']);
+    return Buffer.from(await audioRes.arrayBuffer());
+  } catch (e) {
+    const fallback = localFallback();
+    if (fallback) return fallback;
+    throw new Error(`Freesound API error: ${e.message}`);
+  }
 }
 
 // ── 5. الدمج النهائي (ffmpeg): سرد + موسيقى فوق الفيديو ─────────────────────
