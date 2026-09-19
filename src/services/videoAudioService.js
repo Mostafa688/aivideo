@@ -74,9 +74,19 @@ async function pollPrediction(predictionId, label, timeoutMs = 5 * 60 * 1000) {
   throw new Error(`${label} timed out`);
 }
 
-async function runReplicatePrediction(slug, input, label) {
-  const res = await fetch(`https://api.replicate.com/v1/models/${slug}/predictions`, {
-    method: 'POST', headers: replicateHeaders(), body: JSON.stringify({ input }),
+// ✅ FIX (باج حقيقي في الإنتاج — حرق الكابشن بيفشل بـ404 "resource could not be found"):
+// شكل الـ"models/{owner}/{slug}/predictions" (من غير "version") ده بيشتغل بس للموديلات
+// اللي بتدعم "latest version" الرسمية عن طريق الشورت-هاند ده — مش كل الموديلات على Replicate
+// بتدعمه (تأكد من العميل نفسه من صفحة الـAPI الحقيقية لـfictions-ai/autocaption: الاستخدام
+// الرسمي المطلوب بتاعه هو endpoint عام "/v1/predictions" + حقل "version" صريح (هاش مثبّت)،
+// مش الشورت-هاند بالاسم). بنضيف باراميتر "version" اختياري هنا: لو موجود، نستخدم الـendpoint
+// العام بالهاش المثبّت (زي fictions-ai/autocaption)؛ لو مش موجود، نفضل نستخدم الشورت-هاند
+// بالاسم زي ما هو (شغال فعلاً للموديلات التانية زي google/gemini-3.1-flash-tts)
+async function runReplicatePrediction(slug, input, label, version = null) {
+  const url = version ? 'https://api.replicate.com/v1/predictions' : `https://api.replicate.com/v1/models/${slug}/predictions`;
+  const body = version ? { version, input } : { input };
+  const res = await fetch(url, {
+    method: 'POST', headers: replicateHeaders(), body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`${label} ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
@@ -203,7 +213,9 @@ export async function burnCaptions(videoUrl, words, { rightToLeft = false } = {}
     subs_position: 'bottom75',
     right_to_left: rightToLeft,
   };
-  const output = await runReplicatePrediction('fictions-ai/autocaption', input, 'Caption burning');
+  // ✅ الهاش ده مأخوذ من كود الـAPI الرسمي الحقيقي لصفحة الموديل نفسها (Node.js/HTTP tabs) —
+  // الموديل ده تحديدًا بيتطلب هاش نسخة مثبّت، مش الشورت-هاند بالاسم بس (راجع تعليق runReplicatePrediction فوق)
+  const output = await runReplicatePrediction('fictions-ai/autocaption', input, 'Caption burning', '18a45ff0d95feb4449d192bbdc06b4a6df168fa33def76dfc51b78ae224b599b');
   const captionedUrl = Array.isArray(output) ? output[0] : (output?.output_video || output);
   return captionedUrl;
 }
