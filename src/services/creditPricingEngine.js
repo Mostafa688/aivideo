@@ -171,9 +171,14 @@ export const REPLICATE_MODEL_COSTS = {
   // ── Video analysis (real external API, standard 3x margin — not internal ffmpeg) ──────
   // ✅ NEW (طلب العميل: "حتى لو رخيصة، حطها" — بحث ويب حقيقي، مش تخمين): zsxkib/talknet-asd —
   // موديل حقيقي على Replicate بيكشف "مين بيتكلم إمتى" في فيديو (active speaker detection،
-  // صوت+حركة الشفايف)، بيرجع توقيتات حقيقية. ~$0.036/تشغيلة (GPU T4، حوالي 27 تشغيلة بدولار)
-  // — سعر حقيقي مؤكد. ده استدعاء API خارجي حقيقي (مش معالجة ffmpeg داخلية بحتة زي تحت)، فبياخد
-  // نفس هامش الـ3x العادي زي أي موديل Replicate تاني، مش AUX_PROFIT_MULTIPLIER
+  // صوت+حركة الشفايف)، بيرجع توقيتات حقيقية. ~$0.036/تشغيلة (GPU T4) — بس ده رقم "نموذجي" بس،
+  // مش سعر ثابت فعلي: الموديل ده مُسعّر بوقت معالجة GPU حقيقي (hardware-time billing) بيختلف
+  // فعليًا حسب مدخلاته (طول الفيديو المُحلَّل) — العميل نبّه على ده صراحة ("أسعاره هتختلف كل
+  // مرة... لازم نعمل حساب عشان منخسرش"). ⚠️ USD COST HERE FOR REFERENCE ONLY، مش المصدر
+  // الحقيقي للتحصيل الفعلي — التحصيل الحقيقي (تقدير سخي مقدمًا + رد الفرق بعد التشغيل الحقيقي
+  // من metrics.predict_time الحقيقي اللي Replicate نفسه بيرجعه) في videoAnalysisService.js's
+  // estimateAnalysisCreditCost()/analyzeActiveSpeaker() — دول المصدر الحقيقي للحساب، مش
+  // getFlatCreditCost('talknet_asd') هنا (لو حد استخدمها غلط هتدي رقم ثابت مش دقيق)
   talknet_asd:      { label: 'Active Speaker Detection', unit: 'video', usdCost: 0.036 },
 
   // ── Internal post-processing (server-side ffmpeg only — near-cost pricing) ────────────
