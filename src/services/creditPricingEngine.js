@@ -35,6 +35,14 @@
 
 export const USD_PER_CREDIT = 0.0133;
 export const PROFIT_MULTIPLIER = 3;
+// ✅ NEW (قرار بزنس صريح من العميل): PROFIT_MULTIPLIER (3x) مخصص لتوليد حقيقي بمحرك AI خارجي
+// (Replicate بيتقاضى فلوس حقيقية مننا لكل استدعاء) — الربح الحقيقي للمنصة المفروض يجي من هنا.
+// عمليات المعالجة الداخلية البحتة (دمج فيديوهات بـffmpeg، خلط صوت/موسيقى فوق فيديو، تعديل
+// توقيت مشهد) مفيهاش أي تكلفة API خارجية خالص — إحنا بس بندفع compute/تخزين/bandwidth بتاعنا
+// إحنا (رخيص جدًا). العميل صريح: "عايزين الكريديت يكون على قد التكلفة بالظبط او اعلى شوية" —
+// يعني هامش صغير بس (يغطي الاستضافة)، مش هامش 3x زي التوليد الحقيقي. AUX_PROFIT_MULTIPLIER
+// ده مخصص للعمليات دي بالتحديد (مش موديلات Replicate حقيقية بتكلفة خارجية — تلك تفضل بـ3x زي العادة)
+export const AUX_PROFIT_MULTIPLIER = 1.25;
 
 // Every model here charges per generated unit — most images are "per image",
 // most video/audio models are "per second of output".
@@ -159,6 +167,23 @@ export const REPLICATE_MODEL_COSTS = {
   // ✅ NEW: fictions-ai/autocaption على Replicate — حرق كابشن حقيقي على فيديو، سعر ثابت لكل
   // فيديو (مش لكل ثانية) بغض النظر عن مدته — ~$0.12/تشغيلة (مصدر: aggregator، غير مؤكد مباشرة)
   autocaption:      { label: 'Caption Burning',    unit: 'video', usdCost: 0.12 },
+
+  // ── Video analysis (real external API, standard 3x margin — not internal ffmpeg) ──────
+  // ✅ NEW (طلب العميل: "حتى لو رخيصة، حطها" — بحث ويب حقيقي، مش تخمين): zsxkib/talknet-asd —
+  // موديل حقيقي على Replicate بيكشف "مين بيتكلم إمتى" في فيديو (active speaker detection،
+  // صوت+حركة الشفايف)، بيرجع توقيتات حقيقية. ~$0.036/تشغيلة (GPU T4، حوالي 27 تشغيلة بدولار)
+  // — سعر حقيقي مؤكد. ده استدعاء API خارجي حقيقي (مش معالجة ffmpeg داخلية بحتة زي تحت)، فبياخد
+  // نفس هامش الـ3x العادي زي أي موديل Replicate تاني، مش AUX_PROFIT_MULTIPLIER
+  talknet_asd:      { label: 'Active Speaker Detection', unit: 'video', usdCost: 0.036 },
+
+  // ── Internal post-processing (server-side ffmpeg only — near-cost pricing) ────────────
+  // ✅ NEW (قرار بزنس صريح من العميل): العمليات دي كلها ffmpeg محلي على السيرفر بتاعنا، مفيهاش
+  // أي فاتورة API خارجية حقيقية — بنقدّر تكلفة الـcompute/التخزين/الـbandwidth بتاعتنا إحنا
+  // بشكل متحفظ (تقدير داخلي، مش رقم من صفحة تسعير خارجية زي باقي الجدول ده) وبنطبّق
+  // AUX_PROFIT_MULTIPLIER (1.25x) بدل الـ3x العادي، عشان الكريديت يبقى قريب من التكلفة الحقيقية
+  merge_videos:     { label: 'Merge Videos (per clip)', unit: 'video', usdCost: 0.02 },
+  compose_audio:    { label: 'Mix Narration/Dialogue Audio', unit: 'video', usdCost: 0.015 },
+  conform_duration: { label: 'Conform Scene Duration', unit: 'video', usdCost: 0.015 },
 };
 
 /**
@@ -207,11 +232,16 @@ export function getMaxClipSeconds(modelKey) {
   return REPLICATE_MODEL_COSTS[modelKey]?.maxClipSec ?? null;
 }
 
+// عمليات ffmpeg الداخلية البحتة (مفيهاش أي فاتورة API خارجية) — بتاخد AUX_PROFIT_MULTIPLIER
+// (هامش صغير قريب من التكلفة) بدل الـ3x العادي المخصص لتوليد AI حقيقي بتكلفة خارجية فعلية
+const INTERNAL_PROCESSING_KEYS = new Set(['merge_videos', 'compose_audio', 'conform_duration']);
+
 /** Flat per-run credit cost for a "unit: 'video'" model (e.g. caption burning) — doesn't scale with duration/count. */
 export function getFlatCreditCost(modelKey) {
   const model = REPLICATE_MODEL_COSTS[modelKey];
   if (!model || model.unit !== 'video') throw new Error(`Unknown flat-cost model: ${modelKey}`);
-  return usdToCredits(model.usdCost);
+  const multiplier = INTERNAL_PROCESSING_KEYS.has(modelKey) ? AUX_PROFIT_MULTIPLIER : PROFIT_MULTIPLIER;
+  return usdToCredits(model.usdCost, { multiplier });
 }
 
 /** List of real quality tiers (e.g. ["480p","720p"]) a video model supports, or null if it only has one flat rate. */
@@ -233,7 +263,7 @@ export function buildFullPricingTable() {
     label: model.label,
     unit: model.unit,
     usdCost: model.usdCost,
-    creditCost: usdToCredits(model.usdCost),
+    creditCost: usdToCredits(model.usdCost, { multiplier: INTERNAL_PROCESSING_KEYS.has(key) ? AUX_PROFIT_MULTIPLIER : PROFIT_MULTIPLIER }),
     maxClipSec: model.maxClipSec ?? null,
     tiers: model.tiers
       ? Object.fromEntries(Object.entries(model.tiers).map(([tier, usd]) => [tier, { usdCost: usd, creditCost: usdToCredits(usd) }]))

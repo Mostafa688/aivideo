@@ -2947,7 +2947,10 @@ app.get('/api/videos/credit-cost', authMiddleware, (req, res) => {
 // ('youtube' = ملف حقيقي من assets/music/، غير كده = Freesound API، مقاطع CC0 فقط). كل خطوة اختيارية،
 // وبتتحسب في التكلفة بس لو اتطلبت فعليًا.
 const CAPTION_CREDIT_FLAT = getFlatCreditCost('autocaption');
-const MUSIC_CREDIT_FLAT = 10; // معالجة سيرفر حقيقية (ffmpeg mix) + مصدر موسيقى — مش سعر Replicate
+// ✅ FIX (نفس قرار البزنس بتاع MERGE_CREDIT_PER_VIDEO فوق): كانت 10 كريديت ثابتة — معالجة
+// ffmpeg داخلية بحتة (مصدر الموسيقى نفسه مجاني، Freesound/ملف محلي)، فبقت بتتحسب بهامش
+// AUX_PROFIT_MULTIPLIER القريب من التكلفة بدل رقم ثابت مفصول عن أي مصدر حقيقة
+const MUSIC_CREDIT_FLAT = getFlatCreditCost('compose_audio');
 
 app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res) => {
   let { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood } = req.body;
@@ -3078,9 +3081,12 @@ app.get('/api/videos/generate-status/:jobId', authMiddleware, (req, res) => {
 
 // ✅ NEW (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد بـ ffmpeg"): دمج أي مجموعة
 // فيديوهات اتعملت بالفعل (أي موديل) في فيديو واحد بالترتيب المطلوب. ده مش توليد AI جديد —
-// معالجة على السيرفر نفسه بـ ffmpeg، فمفيش تكلفة API حقيقية زي باقي الموديلات، فسعره سعر ثابت
-// (مش مبني على usdCost×3) بيغطي وقت المعالجة والتخزين بس: 15 كريديت لكل فيديو بيتم دمجه
-const MERGE_CREDIT_PER_VIDEO = 15;
+// معالجة على السيرفر نفسه بـ ffmpeg، فمفيش تكلفة API حقيقية زي باقي الموديلات.
+// ✅ FIX (قرار بزنس صريح من العميل: "عايزين الكريديت يكون على قد التكلفة بالظبط او اعلى شوية"
+// للعمليات دي بالتحديد — كانت 15 كريديت ثابتة هنا بهامش زيادة مش مبرر لعملية ffmpeg داخلية
+// بحتة مفيهاش أي تكلفة API خارجية): بقت بتتحسب من creditPricingEngine.js's merge_videos entry
+// بهامش AUX_PROFIT_MULTIPLIER (1.25x، قريب من التكلفة الحقيقية) بدل رقم ثابت مفصول عن أي مصدر حقيقة
+const MERGE_CREDIT_PER_VIDEO = getFlatCreditCost('merge_videos');
 // ✅ NEW (طلب العميل الصريح المتكرر: "اجمع الفيديوهات في فيديو واحد وحط عليه موسيقى وكابشن
 // وفويس أوفر بسكريبت جديد" — قبل كده الايجنت كان بيحسب سعر السرد/الكابشن/الموسيقى ويوعد
 // بعملهم فعلاً، لكن ماركر الدمج ماكانش بيقبل أي حقل غيرهم خالص، فمفيش أي حاجة كانت بتتعمل
