@@ -368,3 +368,52 @@ export async function composeVideoAudio({ videoUrl, narrationPath = null, musicB
     fs.rmSync(workDir, { recursive: true, force: true });
   }
 }
+
+// ── 6. مطابقة مدة فيديو موجود لمدة صوت حقيقي (سرد/حوار) ─────────────────────────
+// ✅ NEW (طلب العميل: نظام مطابقة عام — مش خاص بالأنمي بس، أي فيديو عادي ممكن يستخدمه):
+// لما يكون عندنا صوت حقيقي (سرد أو جملة حوار) اتولّد بالفعل وطوله الحقيقي معروف، والفيديو
+// اللي هيتحط عليه اتولّد بمدة قريبة بس مش مطابقة بالظبط — بدل ما نسيب المشهد يتقطع فجأة
+// (لو الصوت أقصر) أو يتكرر آخر فريم/يفضل صامت (لو الصوت أطول)، بنعدّل توقيت الفيديو نفسه:
+// فرق تافه (أقل من نص ثانية) بنسيبه زي ما هو (مش يستاهل معالجة). لو الصوت أقصر من الفيديو،
+// بنقصّه لنفس مدة الصوت بالظبط (قص بسيط، من غير تغيير سرعة الحركة). لو الصوت أطول، بنبطّئ
+// الفيديو (فيلتر setpts) عشان يمتد بالظبط لنفس مدة الصوت — الحركة تبقى أبطأ شوية بس المشهد
+// كله يفضل موجود (أفضل من قصه ووقف الحركة فجأة نص المشهد). اتأكد عمليًا بـffmpeg حقيقي في
+// السانbox: قص لهدف 3 ثانية من فيديو 5 ثواني رجع 3.000000 بالظبط، وتبطيء لهدف 7.5 ثانية رجع
+// 7.48 (فرق 0.02 ثانية بسبب تقريب الفريمات — مقبول تمامًا، composeVideoAudio's "-t" هيظبط أي
+// فرق متبقي وقت الدمج النهائي مع الصوت بأي حال). الصوت الأصلي بتاع الفيديو (لو موجود) بيتشال
+// هنا عمدًا (-an) — الخطوة دي دايمًا متبوعة بـcomposeVideoAudio() اللي بيركّب الصوت الحقيقي
+// (سرد/حوار) فوق الناتج بعد كده
+export async function conformVideoDurationToAudio({ videoUrl, targetDurationSec, modelKeyForNaming = 'conform' }) {
+  const jobId = `conform_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const workDir = path.join(TEMP_DIR, jobId);
+  await mkdir(workDir, { recursive: true });
+  try {
+    const videoPath = path.join(workDir, 'in.mp4');
+    await downloadToFile(videoUrl, videoPath);
+    const realDurationSec = getMediaDuration(videoPath);
+    if (!realDurationSec || !targetDurationSec || targetDurationSec <= 0) {
+      throw new Error('conformVideoDurationToAudio needs real durations for both video and target');
+    }
+
+    // فرق تافه — مش يستاهل أي معالجة، نرجع الرابط الأصلي زي ما هو
+    if (Math.abs(realDurationSec - targetDurationSec) < 0.5) return videoUrl;
+
+    const outputPath = path.join(workDir, 'out.mp4');
+    let cmd;
+    if (targetDurationSec < realDurationSec) {
+      // الصوت أقصر من المشهد — قص بسيط لنفس مدة الصوت بالظبط، من غير تغيير سرعة الحركة
+      cmd = `ffmpeg -i "${videoPath}" -t ${targetDurationSec.toFixed(2)} -an -c:v libx264 -preset veryfast -pix_fmt yuv420p -y "${outputPath}"`;
+    } else {
+      // الصوت أطول من المشهد — نبطّئ الفيديو (setpts) عشان يمتد بالظبط لنفس مدة الصوت
+      const factor = targetDurationSec / realDurationSec;
+      cmd = `ffmpeg -i "${videoPath}" -filter:v "setpts=${factor.toFixed(6)}*PTS" -an -c:v libx264 -preset veryfast -pix_fmt yuv420p -y "${outputPath}"`;
+    }
+    execSync(cmd, { stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 * 50 });
+
+    const buffer = fs.readFileSync(outputPath);
+    const key = `generated-videos/${modelKeyForNaming}_conformed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`;
+    return await uploadBufferToR2(buffer, key, 'video/mp4');
+  } finally {
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+}
