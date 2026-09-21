@@ -194,6 +194,37 @@ function stripStrayMarkers(text) {
   return out;
 }
 
+// ✅ NEW (باج حقيقي متكرر في الإنتاج — شكاوى عملاء متكررة رغم قواعد صريحة "ممنوع تمامًا"
+// في البرومبت): تعليمات البرومبت وحدها إثبتت إنها مش موثوق فيها 100% — الايجنت لسه بيذكر
+// "Model 8"/"موديل ٥" وأسماء موديلات قديمة تانية للعميل صراحة، وبيسيب "**نجمتين**" ماركداون
+// خام في الرد رغم قاعدة "NO MARKDOWN" الصريحة. الحل الحاسم: حارس حتمي في الكود نفسه (regex)
+// بيشيل أي ذكر لموديل قديم بالاسم/الرقم وأي ماركداون خام من الرد النهائي قبل ما يوصل للعميل
+// خالص — بغض النظر عن التزام الموديل بالتعليمات من عدمه، هذا يضمن العميل محيشوفش الحاجات دي تاني
+function stripLegacyModelMentions(text) {
+  if (!text) return text;
+  let out = text;
+  // "Model 8" / "model no. 5" / "Model5" (إنجليزي، أي رقم من 1 لـ8)
+  out = out.replace(/\b(the\s+)?model\s*(no\.?|number|#)?\s*[1-8]\b/gi, '');
+  // "موديل 8" / "موديل رقم 5" / أرقام عربية
+  out = out.replace(/موديل\s*(رقم\s*)?[١-٨1-8]/g, '');
+  // "الموديل الثامن" / "الموديل التاني" وكل الصيغ الترتيبية
+  out = out.replace(/الموديل\s*(ال)?(أول|أولى|تاني|ثاني|ثانية|تالت|ثالث|ثالثة|رابع|رابعة|خامس|خامسة|سادس|سادسة|سابع|سابعة|تامن|ثامن|ثامنة)/g, '');
+  // تنضيف أي فراغات مزدوجة/أقواس فاضية/فواصل يتيمة نتجت عن الحذف فوق
+  out = out.replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').replace(/\s+([.,،؟!:])/g, '$1').trim();
+  return out;
+}
+
+// ✅ NEW (نفس السبب فوق): "NO MARKDOWN FORMATTING" قاعدة موجودة صراحة في البرومبت من زمان،
+// بس الرد لسه بيوصل فيه "**نجمتين**" خام أحيانًا — حارس حتمي بديل بدل الاعتماد على الالتزام بس
+function stripMarkdownFormatting(text) {
+  if (!text) return text;
+  let out = text;
+  out = out.replace(/\*\*(.+?)\*\*/g, '$1'); // **bold**
+  out = out.replace(/^#{1,6}\s+/gm, ''); // # headings
+  out = out.replace(/^[*-]\s+/gm, ''); // - bullets / * bullets في أول السطر
+  return out;
+}
+
 // ✅ NEW (باج حقيقي في الإنتاج): repairTruncatedJson القديمة كانت بتقفل أي string/قوس مفتوح
 // وتخلي الطلب "ينجح" حتى لو اللي اتقطع كان نفس محتوى الـ"prompt" — يعني بروبمت العميل بيوصل
 // مبتور نص كلمة/نص جملة لـReplicate من غير أي تحذير، فالصورة بتطلع غلط تمامًا (باج شافه
@@ -744,6 +775,28 @@ router.post('/chat', authMiddleware, async (req, res) => {
       if (distinctPrompts.length >= 2) generateImage.prompts = distinctPrompts;
       else delete generateImage.prompts;
     }
+    // ✅ NEW (باج حقيقي متكرر رغم rule 8b الصريحة "انسخ برومبت العميل الجاهز حرفيًا"): تعليمات
+    // البرومبت وحدها مش موثوق فيها 100% — الايجنت لسه بيختصر/يعيد صياغة برومبت جاهز بعته
+    // العميل نفسه (بدل النسخ الحرفي)، بالظبط زي مشكلة أسماء الموديلات فوق. حاجز حتمي في الكود:
+    // لو رسالة العميل الحالية نفسها بتبان إنها برومبت جاهز كامل (علامات صريحة زي "STYLE:"/
+    // "CHARACTER 1:"/"COLOR PALETTE:"/"COMPOSITION:"، أو مجرد نص طويل وصفي جدًا)، وبرومبت
+    // الايجنت المتولد أقصر بكتير من رسالة العميل (أقل من 70% من طولها)، يبقى الايجنت اختصره
+    // غصب رغم التعليمة — نستبدله برسالة العميل الخام بالكامل بدل ما نثق في نسخته المختصرة
+    const looksLikeCompleteGenerationPrompt = (text) => {
+      if (!text || text.trim().length < 200) return false;
+      return /\b(STYLE|CHARACTER\s*\d|COLOR PALETTE|COMPOSITION)\s*:/i.test(text);
+    };
+    if (looksLikeCompleteGenerationPrompt(message)) {
+      const rawPrompt = message.trim();
+      if (generateImage && typeof generateImage.prompt === 'string' && generateImage.prompt.trim().length < rawPrompt.length * 0.7) {
+        console.warn('[Agent] GENERATE_IMAGE prompt looked shortened vs a customer-supplied complete prompt — overriding with the raw message');
+        generateImage.prompt = rawPrompt;
+      }
+      if (generateVideo && typeof generateVideo.prompt === 'string' && generateVideo.prompt.trim().length < rawPrompt.length * 0.7) {
+        console.warn('[Agent] GENERATE_VIDEO prompt looked shortened vs a customer-supplied complete prompt — overriding with the raw message');
+        generateVideo.prompt = rawPrompt;
+      }
+    }
     // ✅ حاجز إضافي في الكود نفسه: لو المستخدم فرض موديل يدويًا، نضمن استخدامه بالظبط حتى
     // لو الايجنت (الموديل نفسه) تجاهل التعليمة اللي فوق لأي سبب
     if (generateImage && forcedImageModel && NEW_IMAGE_MODELS[forcedImageModel]) {
@@ -900,6 +953,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
     } else if (accountActionPayload?.action === 'update_name' && accountActionPayload.value) {
       updateUserName(userId, accountActionPayload.value).catch(e => console.warn('[Agent] account_action update_name failed:', e.message));
     }
+
+    // ✅ حارس حتمي أخير قبل ما الرد يوصل للعميل خالص — راجع تعريف الدالتين فوق لسبب وجودهم.
+    // الترتيب مهم: لازم نفك أي **نجمتين** الأول قبل ما نشيل اسم الموديل اللي جواهم، وإلا
+    // بيفضل "****" يتيمة مكسورة (اتأكد فعليًا: لو عكسنا الترتيب، "**Model 8**" بترجع "****")
+    reply = stripLegacyModelMentions(stripMarkdownFormatting(reply));
 
     // ✅ NEW (طلب العميل: أزرار سريعة "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة): لو الرد ده
     // مجرد سؤال تأكيد قبل التوليد (مفيش أي ماركر نفّذ فعليًا في الرد ده)، بنعلّم الفرونت إند
