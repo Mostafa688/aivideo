@@ -57,6 +57,11 @@ export const REPLICATE_MODEL_COSTS = {
   // العادي) — الموديل كان معطّل فعليًا من غير ما نلاحظ. رقم مرجعي بس لحد ما يتحل ده كقرار بزنس
   // (سعر OpenAI الحقيقي المؤكد: low=$0.02, medium=$0.07, high=$0.19 لصورة 1024×1024)
   gpt_image:        { label: 'GPT-Image',          unit: 'image', usdCost: 0.07, tiers: { low: 0.02, medium: 0.07, high: 0.19 } },
+  // ✅ NEW (طلب العميل، سعره وschema مؤكدين من صفحة الموديل مباشرة — سكرين شوت العميل): موديل
+  // مختلف تمامًا عن gpt_image (v1) فوق — ده وشغال فعليًا (راجع newImageModelsService.js ليه).
+  // usdCost الافتراضي = تكلفة "auto" (نفس سعر "high" بالظبط حسب صفحة الموديل)
+  gpt_image_2:      { label: 'GPT-Image 2',        unit: 'image', usdCost: 0.128,
+                       tiers: { low: 0.012, medium: 0.047, high: 0.128, auto: 0.128 } },
   seedream_4:       { label: 'Seedream 4',         unit: 'image', usdCost: 0.030 },
   // ✅ FIX: تدرجات حقيقية حسب دقة الصورة، مؤكدة من صفحة الموديل مباشرة — مش رقم متوسط تقديري تاني
   seedream_5:       { label: 'Seedream 5',         unit: 'image', usdCost: 0.045, tiers: { '1K': 0.045, '2K': 0.090 } },

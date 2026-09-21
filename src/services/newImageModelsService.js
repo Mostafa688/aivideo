@@ -161,6 +161,27 @@ export const NEW_IMAGE_MODELS = {
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 10) } : {}),
     }),
   },
+  // ✅ NEW (طلب العميل، سعره وschema مؤكدين من صفحة الموديل مباشرة — سكرين شوت العميل): openai/
+  // gpt-image-2 — نسخة جديدة، مش نفس gpt_image (v1) اللي اتشال قبل كده. الفرق الجوهري اللي بيحل
+  // المشكلة القديمة: حقل "openai_api_key" هنا اتوصف صراحة "optional - uses proxy if not provided"
+  // — يعني من غير ما نبعت مفتاح OpenAI خاص بينا، Replicate نفسه بيبروكسي الطلب ويحاسبنا بكريديت
+  // Replicate العادي زي أي موديل تاني (مش bring-your-own-key زي v1) — فمفيش أي بلوكر هنا،
+  // بنسيب "openai_api_key" فاضي/محذوف تمامًا عمدًا عشان نستخدم البروكسي. حقل الدقة اسمه "quality"
+  // (low/medium/high/auto) مش "tier" زي باقي الموديلات، وحقل النسبة "aspect_ratio" مباشرة (مش
+  // "size" زي v1 القديم). "number_of_images" هو حقل الدفعة الأصلي بتاعه (1-10)
+  gpt_image_2: {
+    slug: 'openai/gpt-image-2',
+    nativeBatchParam: 'number_of_images',
+    maxNativeBatch: 10,
+    buildInput: ({ prompt, referenceImageUrls, aspectRatio, tier, count }) => ({
+      prompt,
+      quality: tier || 'auto',
+      aspect_ratio: aspectRatio || '1:1',
+      output_format: 'jpg',
+      number_of_images: Math.min(Math.max(1, count || 1), 10),
+      ...(referenceImageUrls?.length ? { input_images: referenceImageUrls.slice(0, 14) } : {}),
+    }),
+  },
 };
 
 async function withRetry429(fn, maxRetries = 4) {
