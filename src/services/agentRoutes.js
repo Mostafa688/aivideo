@@ -207,10 +207,11 @@ function stripLegacyModelMentions(text) {
   // اللي بتوصف نظام توليد الصور/الفيديوهات الجديد ككل — مفيدة بالذات لما نشرح لحساب مجاني قديم
   // ليه الموديلات القديمة مش ظاهرة له تاني، من غير ما نسمي أي موديل بعينه)
   const REPLACEMENT = 'النظام الجديد';
-  // "Model 8" / "model no. 5" / "Model5" (إنجليزي، أي رقم من 1 لـ8)
-  out = out.replace(/\b(the\s+)?model\s*(no\.?|number|#)?\s*[1-8]\b/gi, REPLACEMENT);
-  // "موديل 8" / "موديل رقم 5" / أرقام عربية
-  out = out.replace(/موديل\s*(رقم\s*)?[١-٨1-8]/g, REPLACEMENT);
+  // "Model 8" / "model no. 5" / "Model5" / "Model 1/2" (إنجليزي، أي رقم من 1 لـ8، مع دعم صيغة
+  // "1/2" المدمجة اللي بيتشارك فيها موديلين نفس الكريديت — من غير كده كان بيسيب "/2" يتيمة)
+  out = out.replace(/\b(the\s+)?model\s*(no\.?|number|#)?\s*[1-8](?:\s*\/\s*[1-8])?\b/gi, REPLACEMENT);
+  // "موديل 8" / "موديل رقم 5" / "موديل 1/2" / أرقام عربية
+  out = out.replace(/موديل\s*(رقم\s*)?[١-٨1-8](?:\s*\/\s*[١-٨1-8])?/g, REPLACEMENT);
   // "الموديل الثامن" / "الموديل التاني" وكل الصيغ الترتيبية
   out = out.replace(/الموديل\s*(ال)?(أول|أولى|تاني|ثاني|ثانية|تالت|ثالث|ثالثة|رابع|رابعة|خامس|خامسة|سادس|سادسة|سابع|سابعة|تامن|ثامن|ثامنة)/g, REPLACEMENT);
   // ✅ NEW (باج حقيقي شافه العميل: "نوع المحرك (Model)" وصلت للعميل — مفيش رقم قديم هنا خالص،
@@ -218,6 +219,11 @@ function stripLegacyModelMentions(text) {
   // لكلمة "Model/موديل" كمصطلح داخلي (حتى كـ"توضيح" بين قوسين) ممنوع يوصل للعميل خالص) — هنا
   // القوس نفسه زيادة عن الحاجة (زي "المحرك (Model)")، فبنمسحه بالكامل بدل الاستبدال
   out = out.replace(/\(\s*(ai\s+)?models?\s*\)/gi, '');
+  // ✅ NEW (طلب العميل: مش بس كلمة "Model" ممنوعة — أسماء النظام القديم الوصفية نفسها زي
+  // "AI Images"/"Cinematic"/"Budget Cinematic"/"Real Footage"/"AI Slices"/"AI Video clips"
+  // كانت لسه بتوصل للعميل كـ"توضيح" بين قوسين حتى بعد ما اتشال رقم الموديل منها — دول
+  // بالظبط أسماء الموديلات 1-8 القديمة الوصفية، لازم يتشالوا زيها بالظبط)
+  out = out.replace(/\(\s*(ai\s+)?(images|video\s*clips|slices|budget\s*cinematic|cinematic|real\s*footage|seedance\s*video|atlas\s*map\s*video)\b[^)]*\)/gi, '');
   out = out.replace(/\bmodels?\b/gi, REPLACEMENT);
   // ⚠️ باج حقيقي كان هنا: "موديلات?" بيخلي الـ"ا" إجبارية والـ"?" بتنطبق بس على الـ"ت" ("ات?" =
   // "ا" إجبارية + "ت" اختيارية) — يعني "موديل" المفردة من غير أي لاحقة كانت بتفوت من غير ما
@@ -235,6 +241,17 @@ function stripLegacyModelMentions(text) {
 function stripMarkdownFormatting(text) {
   if (!text) return text;
   let out = text;
+  // ✅ NEW (باج حقيقي شافه العميل: جدول ماركداون خام بالكامل — سطور "|...|...|" وسطر فاصل
+  // "---|---|---" وصلوا للعميل زي ما هم، حرفيًا، بنفس مشكلة "**نجمتين**" القديمة بس بصيغة جدول.
+  // الشات ده plain text بس، مفيش رندر جداول خالص — نحول أي جدول لسطور عادية مقروءة قبل أي حاجة تانية)
+  out = out.split('\n')
+    .filter(line => !/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line)) // سطر الفاصل "|---|---|"
+    .map(line => {
+      if (!line.includes('|')) return line;
+      const cells = line.split('|').map(c => c.trim()).filter(Boolean);
+      return cells.join(' — ');
+    })
+    .join('\n');
   out = out.replace(/\*\*(.+?)\*\*/g, '$1'); // **bold**
   out = out.replace(/^#{1,6}\s+/gm, ''); // # headings
   out = out.replace(/^[*-]\s+/gm, ''); // - bullets / * bullets في أول السطر
