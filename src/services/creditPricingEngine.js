@@ -73,6 +73,12 @@ export const REPLICATE_MODEL_COSTS = {
                        tiers: { '720p': 0.15, '1080p': 0.15 } }, // مؤكد: with_audio=$0.15/s (without_audio=$0.10/s، مش مستخدم عندنا لأننا دايمًا بنولّد بصوت)
   veo3_standard:    { label: 'Veo 3',              unit: 'second', usdCost: 0.40, maxClipSec: 8,
                        tiers: { '720p': 0.40, '1080p': 0.40 } }, // مؤكد: with_audio=$0.40/s (without_audio=$0.20/s)
+  // ✅ NEW (طلب العميل، مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل): Veo 3.1 Lite —
+  // نسخة أرخص من عيلة Veo 3.1، بتسعّر حسب الدقة بس (مفيش تقسيم with_audio/without_audio
+  // ظاهر في السكرين شوت، فالرقمين دول هما السعر الكامل). maxClipSec/الـslug مبنيين على القياس
+  // بعيلة veo3_fast/veo3_standard (نفس المدد 4/6/8 ثانية) — يحتاجوا تأكيد حي قبل الاعتماد عليهم
+  veo3_lite:        { label: 'Veo 3.1 Lite',       unit: 'second', usdCost: 0.05, maxClipSec: 8,
+                       tiers: { '720p': 0.05, '1080p': 0.08 } },
   // ✅ FIX: مؤكد من صفحة الموديل — kwaivgi/kling-v2.1 بيسعّر بـ"standard"=$0.05/s أو
   // "pro"=$0.09/s؛ إحنا مستخدمين النسخة العادية (standard)
   kling_2_1:        { label: 'Kling 2.1',          unit: 'second', usdCost: 0.05, maxClipSec: 10 },
@@ -117,6 +123,37 @@ export const REPLICATE_MODEL_COSTS = {
   // newVideoModelsService.js) — السعر $0.04/ثانية من تصريح العميل نفسه، لسه مش مؤكد من صفحة
   // الـPricing مباشرة (مفيش سكرين شوت لصفحة السعر بالتحديد)
   decart_lucy_edit_2: { label: 'Lucy Edit 2', unit: 'second', usdCost: 0.04, maxClipSec: 1800 },
+
+  // ✅ NEW (طلب العميل، مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل): Kling Video 3.0
+  // Omni — "unified multimodal video model that generates and edits video from text, images,
+  // reference images, and existing videos" حسب الـreadme، يعني عيلة/قدرات مختلفة عن kling_2_1/2_5
+  // العاديين. الأسعار الحقيقية معروضة بأسماء فئات "standard/pro/fourk" (كل واحدة بنسخة
+  // with_audio/without_audio) مش "720p/1080p/4k" صراحة — حولتهم هنا لنفس تسمية الدقة المستخدمة
+  // في باقي الموديلات (standard→720p, pro→1080p, fourk→4k) كافتراض معقول (على الأغلب فروق جودة/
+  // دقة) بس ده افتراض مش مؤكد 100% لحد ما نشوف الـinput schema الحقيقي. الأرقام هنا بسعر
+  // "مع صوت" (audio variants) نفس قرارنا التاريخي إننا دايمًا نولّد بصوت.
+  // ⚠️ PRICING ONLY — لسه مش متوصل في NEW_VIDEO_MODELS (newVideoModelsService.js): الموديل ده
+  // "unified multimodal" ممكن يحتاج حقول input مختلفة تمامًا عن kling_2_5/2_1 (تعديل فيديو موجود،
+  // صور مرجعية متعددة، إلخ) — محتاجين سكرين شوت لصفحة الـAPI schema الحقيقية قبل ما نكتب
+  // buildInput ونضيفه فعليًا كمحرك يقدر الايجنت يستخدمه
+  kling_3_0_omni:   { label: 'Kling 3.0 Omni',     unit: 'second', usdCost: 0.224, maxClipSec: 10,
+                       tiers: { '720p': 0.224, '1080p': 0.28, '4k': 0.42 } },
+
+  // ✅ NEW (طلب العميل، مؤكد من صفحة الموديل مباشرة — سكرين شوت العميل): PixVerse v4.5 —
+  // عيلة موديلات جديدة تمامًا عندنا (أول مرة). السعر الحقيقي هنا معقد وغير خطي مع المدة:
+  // بيتسعّر بـ"units" ($0.01/unit) حسب تركيبة (المدة × الدقة × وضع الحركة normal/smooth) —
+  // مش مجرد سعر/ثانية ثابت بيتضرب في المدة زي باقي الموديلات هنا. مثال حقيقي من نفس صفحة
+  // السعر: 5 ثواني/720p/normal = 40 units = $0.40 (= $0.08/ثانية)، لكن 8 ثواني/720p/normal =
+  // 80 units = $0.80 (= $0.10/ثانية فعليًا، مش $0.08 لو ضربنا في المدة زي العادة) — يعني
+  // المدة الأطول بتاخد سعر/ثانية أعلى، مش أوفر زي المتوقع. ووضع "smooth" بيدفع بالظبط ضعف
+  // سعر "normal" على نفس الدقة/المدة (نمط ثابت لاحظناه في كل صف بالجدول). الأرقام تحت هي
+  // بسعر "5 ثواني + normal motion" (أبسط حالة لكل دقة) — استخدامها كسعر/ثانية ثابت لمدد
+  // تانية (8 ثواني) أو وضع smooth هيقلل عن السعر الحقيقي (undercharge)، مش زيادة، فلازم أي
+  // wiring فعلي يحسب السعر الحقيقي حسب المدة+الدقة+الوضع مباشرة من الجدول، مش بضرب بسيط
+  // ⚠️ PRICING ONLY — لسه مش متوصل في NEW_VIDEO_MODELS: عيلة جديدة تمامًا، محتاجين سكرين شوت
+  // لصفحة الـAPI schema الحقيقية (أسماء حقول المدة/الدقة/وضع الحركة) قبل ما نكتب buildInput
+  pixverse_v4_5:    { label: 'PixVerse v4.5',      unit: 'second', usdCost: 0.06, maxClipSec: 8,
+                       tiers: { '360p': 0.06, '540p': 0.06, '720p': 0.08, '1080p': 0.16 } },
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   // ✅ NEW: الموديل الحقيقي المستخدم فعليًا (videoAudioService.js) هو google/gemini-3.1-flash-tts —

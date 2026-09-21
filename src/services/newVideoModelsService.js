@@ -120,6 +120,22 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
+  // ✅ NEW (طلب العميل، سعره مؤكد من صفحة الموديل مباشرة — راجع creditPricingEngine.js): نسخة
+  // أرخص من عيلة Veo 3.1 — افترضنا نفس الـinput schema بالظبط زي veo3_fast/veo3_standard
+  // (نفس العيلة، من غير أي فرق معلن في الحقول)، وده افتراض معقول بس الـslug نفسه ("lite") تخمين
+  // مبني على نمط تسمية الإصدارين التانيين، محتاج تأكيد حي قبل الاعتماد عليه في الإنتاج
+  veo3_lite: {
+    slug: 'google/veo-3.1-lite',
+    supportsImageInput: true,
+    allowedDurations: [4, 6, 8],
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      aspect_ratio: aspectRatio || '16:9',
+      resolution: tier || '720p',
+      duration_seconds: [4, 6, 8].includes(durationSec) ? durationSec : 8,
+      ...(imageUrl ? { image: imageUrl } : {}),
+    }),
+  },
   kling_2_5: {
     slug: 'kwaivgi/kling-v2.5-turbo-pro',
     supportsImageInput: true,
@@ -334,6 +350,12 @@ export const NEW_VIDEO_MODELS = {
       enhance_prompt: true,
     }),
   },
+  // ⏸ INTENTIONALLY NOT WIRED YET: kling_3_0_omni و pixverse_v4_5 — سعرهم مؤكد وموجود فعلاً
+  // في creditPricingEngine.js (REPLICATE_MODEL_COSTS)، بس مضافينش هنا لسه لأننا محتاجين سكرين
+  // شوت لصفحة الـinput schema الحقيقية بتاعتهم الأول (خصوصًا Kling 3.0 Omni اللي بيوصف نفسه
+  // "unified multimodal... يعدّل فيديوهات موجودة" — يعني على الأغلب حقول مختلفة تمامًا عن
+  // kling_2_5/2_1 العاديين، وPixVerse عيلة جديدة عندنا بالكامل). محدش من الاتنين هيظهر للايجنت
+  // (fmtVideoModels بيقرا مفاتيح الأوبجكت ده بس) لحد ما نتأكد من الـschema ونضيفهم صح
 };
 
 async function withRetry429(fn, maxRetries = 4) {
