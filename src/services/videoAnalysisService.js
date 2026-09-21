@@ -5,10 +5,13 @@
 //   2. كخطوة تمهيدية قبل مونتاج فيديو أطول من 10 ثواني (decart/lucy-edit-2) — نتيجة التحليل
 //      بتدي الايجنت معلومات حقيقية (مين بيتكلم وإمتى) يقدر يبني منها تعليمة تعديل أذكى وأدق.
 //
-// ⚠️ SCHEMA UNCONFIRMED: لسه معندناش سكرين شوت حقيقي لصفحة الـInput schema بتاعت الموديل ده
-// (على عكس كل موديل تاني في المشروع ده). الحقل "video" (uri) هو أرجح تخمين بناءً على تسمية
-// كل موديلات تحليل الفيديو التانية على Replicate ووصف الـreadme بتاعه، لازم يتأكد حي قبل
-// الاعتماد عليه في الإنتاج الحقيقي بشكل كامل.
+// ✅ CONFIRMED (سكرين شوت العميل الحقيقي لصفحة الـInput schema): الحقول الحقيقية هي "video"
+// (uri — تخميننا الأول كان صح فعلاً)، "start" (integer — بداية التحليل بالثانية)، "duration"
+// (integer — طول الجزء المُحلَّل، -1 = الفيديو كامل، ده الافتراضي)، "return_json" (bool،
+// الافتراضي true — لازم يفضل true عشان نقدر نبني ملاحظة نصية مفهومة للايجنت من النتيجة)،
+// وباقي الحقول (min_track/crop_scale/min_face_size/face_det_scale/num_failed_det/
+// return_boundingbox_percentages) بتتحكم في دقة/حساسية الكشف نفسه — سايبينها بالافتراضي بتاعها
+// (معقولة لحالتنا)، مش محتاجين bounding boxes (بس التوقيتات)
 //
 // ✅ تسعير آمن (طلب العميل الصريح: "أسعاره هتختلف كل مرة... لازم نعمل حساب عشان منخسرش"):
 // الموديل ده مُسعّر بالوقت الحقيقي لمعالجة GPU (T4 hardware-time billing)، مش سعر مخرجات ثابت
@@ -53,7 +56,7 @@ export async function analyzeActiveSpeaker(videoUrl) {
   const res = await fetch('https://api.replicate.com/v1/models/zsxkib/talknet-asd/predictions', {
     method: 'POST',
     headers: { ...replicateHeaders(), Prefer: 'wait' },
-    body: JSON.stringify({ input: { video: videoUrl } }),
+    body: JSON.stringify({ input: { video: videoUrl, start: 0, duration: -1, return_json: true } }),
   });
   if (!res.ok) throw new Error(`talknet-asd ${res.status}: ${(await res.text()).slice(0, 300)}`);
   let data = await res.json();
