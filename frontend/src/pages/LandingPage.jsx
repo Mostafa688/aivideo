@@ -59,9 +59,17 @@ export function AppFooter({ onNavigate, onGetStarted }) {
               <span style={{ fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-0.5px' }}>Erivion</span>
             </div>
             <p style={{ fontSize:13, color:'#4b5563', lineHeight:1.8, maxWidth:240 }}>AI-powered video creation for creators, educators, and storytellers worldwide.</p>
-            <div style={{ display:'flex', gap:12, marginTop:20 }}>
-              {['TikTok','YouTube','Instagram'].map(s=>(
-                <div key={s} style={{ padding:'6px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,0.08)', fontSize:11, color:'#6b7280', cursor:'pointer' }}>{s}</div>
+            <div style={{ display:'flex', gap:12, marginTop:20, flexWrap:'wrap' }}>
+              {[
+                { label:'TikTok', href:'https://www.tiktok.com/@erivion?is_from_webapp=1&sender_device=pc' },
+                { label:'YouTube', href:'https://youtube.com/@erivionaivideocreator?si=GEaDYOSsXgzChXNX' },
+                { label:'Instagram', href:'https://www.instagram.com/erivionai/' },
+                { label:'Facebook', href:'https://www.facebook.com/profile.php?id=61589115720431' },
+              ].map(s=>(
+                <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer"
+                  style={{ padding:'6px 12px', borderRadius:8, border:'1px solid rgba(255,255,255,0.08)', fontSize:11, color:'#6b7280', cursor:'pointer', textDecoration:'none', transition:'all 0.2s' }}
+                  onMouseEnter={e=>{e.currentTarget.style.color='#fff';e.currentTarget.style.borderColor='rgba(255,255,255,0.2)'}}
+                  onMouseLeave={e=>{e.currentTarget.style.color='#6b7280';e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'}}>{s.label}</a>
               ))}
             </div>
           </div>
