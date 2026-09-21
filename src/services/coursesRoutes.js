@@ -132,6 +132,38 @@ router.post('/admin', adminAuth, async (req, res) => {
   }
 });
 
+// ⚠️ باج حقيقي شافه العميل: "invalid input syntax for type integer: intro-video" — الروتات
+// دي كانت متسجلة تحت (بعد "/admin/:id") فكان Express بيطابق "/admin/:id" الأعم الأول لأي
+// PUT على "/admin/intro-video"، وبيبعت "intro-video" كـid لعمود INTEGER في جدول courses.
+// الحل: أي مسار محدد (زي intro-video) لازم يتسجل قبل أي مسار عام بباراميتر (زي :id) في
+// Express، عشان الترتيب هو اللي بيحدد الأولوية مش التخصيص
+router.get('/admin/intro-video', adminAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM site_intro_video WHERE id = 1');
+    res.json({ intro: rows[0] || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/admin/intro-video', adminAuth, async (req, res) => {
+  try {
+    const { title_ar, title_en, description_ar, description_en, thumbnail_url, video_url } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO site_intro_video (id, title_ar, title_en, description_ar, description_en, thumbnail_url, video_url, updated_at)
+       VALUES (1, $1,$2,$3,$4,$5,$6, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         title_ar = $1, title_en = $2, description_ar = $3, description_en = $4,
+         thumbnail_url = $5, video_url = $6, updated_at = NOW()
+       RETURNING *`,
+      [title_ar || null, title_en || null, description_ar || null, description_en || null, thumbnail_url || null, video_url || null]
+    );
+    res.json({ intro: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.put('/admin/:id', adminAuth, async (req, res) => {
   try {
     const { title, description, thumbnail_url, intro_video_url, attachment_url, attachment_label, is_free, sort_order, language } = req.body;
@@ -237,33 +269,6 @@ router.post('/admin/upload', adminAuth, upload.single('file'), async (req, res) 
     const key = `courses/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const url = await uploadCourseFileToR2(req.file.buffer, key, req.file.mimetype || 'application/octet-stream');
     res.json({ url });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/admin/intro-video', adminAuth, async (req, res) => {
-  try {
-    const { rows } = await pool.query('SELECT * FROM site_intro_video WHERE id = 1');
-    res.json({ intro: rows[0] || null });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.put('/admin/intro-video', adminAuth, async (req, res) => {
-  try {
-    const { title_ar, title_en, description_ar, description_en, thumbnail_url, video_url } = req.body;
-    const { rows } = await pool.query(
-      `INSERT INTO site_intro_video (id, title_ar, title_en, description_ar, description_en, thumbnail_url, video_url, updated_at)
-       VALUES (1, $1,$2,$3,$4,$5,$6, NOW())
-       ON CONFLICT (id) DO UPDATE SET
-         title_ar = $1, title_en = $2, description_ar = $3, description_en = $4,
-         thumbnail_url = $5, video_url = $6, updated_at = NOW()
-       RETURNING *`,
-      [title_ar || null, title_en || null, description_ar || null, description_en || null, thumbnail_url || null, video_url || null]
-    );
-    res.json({ intro: rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
