@@ -96,6 +96,11 @@ async function persistVideoToR2(url, modelKey) {
 // كل مفتاح هنا بيطابق نفس المفتاح في creditPricingEngine.js's REPLICATE_MODEL_COSTS —
 // عشان حساب السعر والتوليد الفعلي يفضلوا مصدر واحد للحقيقة
 export const NEW_VIDEO_MODELS = {
+  // ✅ FIX (باج حقيقي في الإنتاج، اتأكد من سكرين شوت العميل لصفحة الـinput schema الحقيقية
+  // للثلاثة موديلات Veo 3.1 دول): حقل المدة اسمه "duration" مش "duration_seconds" — الاسم
+  // القديم ده كان غالبًا بيتجاهله Replicate تمامًا (حقل مش معروف)، يعني كل فيديو Veo كان على
+  // الأرجح بيتولّد بالمدة الافتراضية للموديل نفسه (8 ثواني) بصرف النظر عن المدة اللي العميل
+  // طلبها فعليًا — باج صامت (مفيش error، بس المدة كانت بتتجاهل). اتصلح دلوقتي للثلاثة الموديلات
   veo3_fast: {
     slug: 'google/veo-3.1-fast',
     supportsImageInput: true,
@@ -104,7 +109,7 @@ export const NEW_VIDEO_MODELS = {
       prompt,
       aspect_ratio: aspectRatio || '16:9',
       resolution: tier || '720p',
-      duration_seconds: [4, 6, 8].includes(durationSec) ? durationSec : 8,
+      duration: [4, 6, 8].includes(durationSec) ? durationSec : 8,
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
@@ -116,25 +121,32 @@ export const NEW_VIDEO_MODELS = {
       prompt,
       aspect_ratio: aspectRatio || '16:9',
       resolution: tier || '720p',
-      duration_seconds: [4, 6, 8].includes(durationSec) ? durationSec : 8,
+      duration: [4, 6, 8].includes(durationSec) ? durationSec : 8,
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
-  // ✅ NEW (طلب العميل، سعره مؤكد من صفحة الموديل مباشرة — راجع creditPricingEngine.js): نسخة
-  // أرخص من عيلة Veo 3.1 — افترضنا نفس الـinput schema بالظبط زي veo3_fast/veo3_standard
-  // (نفس العيلة، من غير أي فرق معلن في الحقول)، وده افتراض معقول بس الـslug نفسه ("lite") تخمين
-  // مبني على نمط تسمية الإصدارين التانيين، محتاج تأكيد حي قبل الاعتماد عليه في الإنتاج
+  // ✅ CONFIRMED (سكرين شوت العميل لصفحة الـinput schema الحقيقية): نفس حقول veo3_fast/
+  // veo3_standard بالظبط (seed/image/prompt/duration/last_frame/resolution/aspect_ratio) — الفرق
+  // الوحيد المذكور صراحة: مفيش "generate_audio" في نسخة Lite، و"4k مش مدعومة"، و"duration لازم
+  // تبقى 8 لو resolution=1080p" — القيد ده اتطبّق تحت (نفرض duration=8 لو الدقة 1080p، حتى لو
+  // العميل طلب مدة تانية، عشان مانبعتش تركيبة الموديل هيرفضها). السعر مؤكد ($0.05/s@720p،
+  // $0.08/s@1080p) في creditPricingEngine.js. الـslug نفسه ("lite") لسه تخمين على نمط التسمية
   veo3_lite: {
     slug: 'google/veo-3.1-lite',
     supportsImageInput: true,
     allowedDurations: [4, 6, 8],
-    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
-      prompt,
-      aspect_ratio: aspectRatio || '16:9',
-      resolution: tier || '720p',
-      duration_seconds: [4, 6, 8].includes(durationSec) ? durationSec : 8,
-      ...(imageUrl ? { image: imageUrl } : {}),
-    }),
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => {
+      const resolution = tier || '720p';
+      // 1080p only supports an 8s clip on Lite — force it rather than send a combo the model rejects
+      const duration = resolution === '1080p' ? 8 : ([4, 6, 8].includes(durationSec) ? durationSec : 8);
+      return {
+        prompt,
+        aspect_ratio: aspectRatio || '16:9',
+        resolution,
+        duration,
+        ...(imageUrl ? { image: imageUrl } : {}),
+      };
+    },
   },
   kling_2_5: {
     slug: 'kwaivgi/kling-v2.5-turbo-pro',
@@ -350,12 +362,53 @@ export const NEW_VIDEO_MODELS = {
       enhance_prompt: true,
     }),
   },
-  // ⏸ INTENTIONALLY NOT WIRED YET: kling_3_0_omni و pixverse_v4_5 — سعرهم مؤكد وموجود فعلاً
-  // في creditPricingEngine.js (REPLICATE_MODEL_COSTS)، بس مضافينش هنا لسه لأننا محتاجين سكرين
-  // شوت لصفحة الـinput schema الحقيقية بتاعتهم الأول (خصوصًا Kling 3.0 Omni اللي بيوصف نفسه
-  // "unified multimodal... يعدّل فيديوهات موجودة" — يعني على الأغلب حقول مختلفة تمامًا عن
-  // kling_2_5/2_1 العاديين، وPixVerse عيلة جديدة عندنا بالكامل). محدش من الاتنين هيظهر للايجنت
-  // (fmtVideoModels بيقرا مفاتيح الأوبجكت ده بس) لحد ما نتأكد من الـschema ونضيفهم صح
+  // ✅ CONFIRMED (سكرين شوت العميل لصفحة الـinput schema الحقيقية): Kling Video 3.0 Omni —
+  // "unified multimodal" فعلاً زي ما توقعنا: نفس الموديل بيغطي text-to-video/image-to-video
+  // عادي (start_image/end_image) وكمان تعديل فيديو موجود (reference_video + video_reference_type:
+  // "base") وreference-to-video بالصور (reference_images). الحقول الحقيقية: mode ('standard'=720p,
+  // 'pro'=1080p, '4k'=4K — بيؤكد افتراضنا القديم كان صح)، prompt، duration (3-15، اتجاهل في وضع
+  // التعديل)، start_image/end_image، aspect_ratio، generate_audio، reference_video/reference_images
+  // (تعديل/مرجعية — مش موصولين هنا، خارج نطاق الاستخدام العادي الأساسي). الـslug اتأكد من بحث
+  // ويب حقيقي (عنوان الـreadme طابق سكرين شوت العميل حرفيًا): kwaivgi/kling-v3-omni-video
+  kling_3_0_omni: {
+    slug: 'kwaivgi/kling-v3-omni-video',
+    supportsImageInput: true,
+    minDurationSec: 3,
+    maxDurationSec: 15,
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      mode: tier === '4k' ? '4k' : tier === '1080p' ? 'pro' : 'standard',
+      duration: Math.min(Math.max(durationSec || 5, 3), 15),
+      aspect_ratio: aspectRatio || '16:9',
+      generate_audio: true,
+      ...(imageUrl ? { start_image: imageUrl } : {}),
+    }),
+  },
+  // ✅ CONFIRMED (سكرين شوت العميل لصفحة الـinput schema الحقيقية — أول تكامل لعيلة PixVerse
+  // عندنا): الحقول الحقيقية: image، prompt، quality ('360p'/'540p'/'720p'/'1080p' — مش "resolution")،
+  // duration (5 أو 8 بس — 1080p ميدعمش 8)، motion_mode ('normal'/'smooth' — smooth بيكلف ضعف
+  // السعر ومتاح بس مع duration=5)، aspect_ratio، last_frame_image، negative_prompt،
+  // sound_effect_switch/content. بنستخدم motion_mode:"normal" دايمًا هنا (نفس السعر المسعّر في
+  // creditPricingEngine.js بالظبط) — "smooth" غير مفعّل حاليًا، محتاج حساب سعر منفصل (ضعف)
+  // لو هيتفعّل لاحقًا. الـslug مؤكد فعليًا (اتلقى في بحث ويب حقيقي لصفحة الموديل نفسها)
+  pixverse_v4_5: {
+    slug: 'pixverse/pixverse-v4.5',
+    supportsImageInput: true,
+    allowedDurations: [5, 8],
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => {
+      const quality = tier || '540p';
+      // 1080p only supports a 5s clip per the model's own schema note — force it
+      const duration = quality === '1080p' ? 5 : (durationSec >= 8 ? 8 : 5);
+      return {
+        prompt,
+        quality,
+        duration,
+        motion_mode: 'normal',
+        aspect_ratio: aspectRatio || '16:9',
+        ...(imageUrl ? { image: imageUrl } : {}),
+      };
+    },
+  },
 };
 
 async function withRetry429(fn, maxRetries = 4) {
