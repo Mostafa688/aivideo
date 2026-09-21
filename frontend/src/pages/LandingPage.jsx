@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SubPage from './SubPage.jsx';
 import {
-  CheckCircle2, Clapperboard, ImageIcon, Film, Drama, Map, Brain, Mic,
-  Smartphone, Scissors, Zap, Star,
+  CheckCircle2, ImageIcon, Film, Drama, Map, Mic,
+  Smartphone, Scissors, Zap, Star, ShoppingBag, MessageSquare, Sparkles,
 } from 'lucide-react';
 
 // ─── Support Page ─────────────────────────────────────────────────────────────
@@ -244,17 +244,18 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
   ];
 
   const MODELS = [
-    { key:'model2', tag:'MODEL 2', name:'Real Footage', icon:Clapperboard, desc:'HD stock footage matched to your script. Documentary-quality output instantly.', color:'#818cf8', tags:['Real HD clips','8+ languages','Captions & Music','Fast render'] },
-    { key:'model3', tag:'MODEL 3', name:'AI Images', icon:ImageIcon, desc:'Unique AI-generated image per scene with cinematic Ken Burns effects.', color:'#f59e0b', tags:['Stable Diffusion','6 visual styles','Ken Burns zoom','Premium quality'] },
-    { key:'model4', tag:'MODEL 4', name:'Seedance Video', icon:Film, desc:'Real AI-generated video clips. Not images — true cinematic motion.', color:'#a855f7', tags:['Seedance v1 Pro','Real AI video','Any idea or script','Captions & Music'] },
-    { key:'model5', tag:'CINEMATIC', name:'Character AI', icon:Drama, desc:'Upload your character photos. AI keeps them consistent across every scene.', color:'#e11d48', tags:['Photo reference','5 characters','Seedance 2.0','No voiceover'] },
-    { key:'model6', tag:'ATLAS', name:'Map Videos', icon:Map, desc:'Animated geographic maps — countries highlight and zoom with your story.', color:'#a78bfa', tags:['170+ countries','Auto zoom','Dynamic colors','Free to use'] },
+    { key:'characters', tag:'CHARACTERS', name:'AI Character Videos', icon:Drama, desc:'Upload a reference photo or just describe your character — the Agent keeps them perfectly consistent across every single scene.', color:'#e11d48', tags:['Seedance Motion','Photo or text reference','Consistent across scenes','Real narration'] },
+    { key:'cinematic', tag:'CINEMATIC', name:'Real AI Video Motion', icon:Film, desc:'Not static images — genuine AI-generated video clips with real cinematic movement, built from any idea or script.', color:'#a855f7', tags:['Seedance Video','True motion','Any idea or script','Captions & music'] },
+    { key:'images', tag:'IMAGES', name:'Standalone AI Images', icon:ImageIcon, desc:'Generate stunning images on their own — perfect for thumbnails, posters, or product shots, no video needed.', color:'#f59e0b', tags:['Nano Banana','Grok Imagine','Sharp text & logos','Batches up to 20'] },
+    { key:'ads', tag:'ADS', name:'Product & Brand Ads', icon:ShoppingBag, desc:'Upload one product photo and get a scroll-stopping ad — worn/shown automatically, voiceover and captions included.', color:'#10b981', tags:['One photo → full ad','Auto voiceover','Product link banner','Smooth transitions'] },
+    { key:'maps', tag:'MAPS', name:'Map & Documentary Videos', icon:Map, desc:'Viral map-explainer style videos — real borders, flags, and narration for history, geography, and geopolitics.', color:'#a78bfa', tags:['170+ countries','Auto narration','Cinematic zoom','One continuous shot'] },
+    { key:'editing', tag:'EDITING', name:'AI Video Editing', icon:Scissors, desc:'Already have a video? Change it with a plain-language instruction — colors, scenes, effects — while keeping the original motion.', color:'#06b6d4', tags:['Gemini Omni Flash','Lucy Edit 2','Plain-language edits','Keeps original motion'] },
   ];
 
   const FEATURES = [
-    { icon:Brain, title:'Idea to Video in Minutes', desc:'Type any topic and watch AI transform it into a fully produced video — script, visuals, voice, music, captions.' },
+    { icon:MessageSquare, title:'One Agent, Full Production', desc:'Just chat what you want. The Agent writes the script, picks the right AI engine, and assembles the finished video for you.' },
     { icon:Mic, title:'8+ Languages & Voices', desc:'Generate videos in English, Arabic (Egyptian/Gulf/Formal), French, German, Spanish, Russian, Japanese, and more.' },
-    { icon:Clapperboard, title:'5 Powerful AI Models', desc:'Real footage, AI images, Seedance video, character consistency, and animated maps — all in one platform.' },
+    { icon:Sparkles, title:'Multiple AI Engines, One Platform', desc:'Real cinematic motion, consistent characters, product ads, and animated maps — the Agent picks the right engine automatically.' },
     { icon:Smartphone, title:'Any Format, Any Platform', desc:'9:16 for TikTok & Reels, 16:9 for YouTube, 1:1 for Instagram. Export-ready for every platform.' },
     { icon:Scissors, title:'Scene-by-Scene Control', desc:'Review and edit every scene before rendering. Full creative control with AI doing the heavy lifting.' },
     { icon:Zap, title:'Production-Ready Output', desc:'Auto-synced captions, background music, sound effects, video transitions, and cinematic color grading.' },
@@ -370,7 +371,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
             Log in
           </button>
           <button onClick={() => onGetStarted?.()} className="ev-cta-btn" style={{ padding:'8px 16px', borderRadius:10, border:'none', background:'linear-gradient(135deg,#7c6af7,#6d28d9)', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', boxShadow:'0 4px 20px rgba(124,106,247,0.4)', fontFamily:'inherit', whiteSpace:'nowrap' }}>
-            Get Started Free
+            Get Started
           </button>
         </div>
       </nav>
@@ -388,7 +389,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         {/* Badge */}
         <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 16px', borderRadius:999, border:'1px solid rgba(124,106,247,0.3)', background:'rgba(124,106,247,0.08)', marginBottom:28, animation:'fadeUp 0.6s ease both' }}>
           <div style={{ width:6, height:6, borderRadius:'50%', background:'#7c6af7', animation:'glow 2s ease infinite' }} />
-          <span style={{ fontSize:12, fontWeight:600, color:'#a78bfa', letterSpacing:'0.05em' }}>5 AI Video Models · New: Character Reference</span>
+          <span style={{ fontSize:12, fontWeight:600, color:'#a78bfa', letterSpacing:'0.05em' }}>The AI Agent That Plans, Generates & Assembles Your Video</span>
         </div>
 
         {/* Headline */}
@@ -402,8 +403,8 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         </h1>
 
         {/* Subhead */}
-        <p style={{ fontSize:'clamp(16px,2.5vw,20px)', color:'#6b7280', maxWidth:600, lineHeight:1.7, marginBottom:48, animation:'fadeUp 0.7s ease 0.2s both', fontWeight:400 }}>
-          The #1 AI video generator — writes the script, generates visuals, adds voiceover in 8+ languages, and renders a production-ready video in minutes. Free to start.
+        <p style={{ fontSize:'clamp(16px,2.5vw,20px)', color:'#6b7280', maxWidth:620, lineHeight:1.7, marginBottom:48, animation:'fadeUp 0.7s ease 0.2s both', fontWeight:400 }}>
+          Chat with Erivion's AI Agent — it writes the script, picks the right AI engine, generates every scene with a consistent character, and assembles a finished video with real narration, captions, and music in 8+ languages.
         </p>
 
         {/* Prompt Input */}
@@ -426,7 +427,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         </div>
 
         <p style={{ fontSize:12, color:'rgba(255,255,255,0.2)', animation:'fadeUp 0.6s ease 0.4s both' }}>
-          No credit card required · Free plan available · 5 AI models
+          No credit card required to sign up · Powered by Nano Banana, Seedance & Gemini
         </p>
 
         {/* Social proof */}
@@ -446,6 +447,22 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         </div>
       </section>
 
+      {/* ── POWERED BY BAR ─────────────────────────────────────────────────── */}
+      <section className="ev-reveal" style={{ padding:'0 24px 90px', maxWidth:1000, margin:'0 auto' }}>
+        <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.18em', color:'#374151', textTransform:'uppercase', textAlign:'center', marginBottom:22 }}>
+          Powered by industry-leading AI
+        </div>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'20px 44px', flexWrap:'wrap' }}>
+          {['Google Gemini', 'Nano Banana', 'Seedance', 'Grok Imagine', 'Lucy Edit'].map(name => (
+            <span key={name} style={{ fontSize:17, fontWeight:800, color:'#374151', letterSpacing:'-0.3px', fontFamily:"'Bricolage Grotesque', sans-serif", opacity:0.9, transition:'color 0.2s, opacity 0.2s', cursor:'default' }}
+              onMouseEnter={e=>{e.target.style.color='#9ca3af';e.target.style.opacity=1}}
+              onMouseLeave={e=>{e.target.style.color='#374151';e.target.style.opacity=0.9}}>
+              {name}
+            </span>
+          ))}
+        </div>
+      </section>
+
       {/* ── REAL VIDEO SHOWCASE ──────────────────────────────────────────────── */}
       <section style={{ padding:'0 24px 100px', maxWidth:1200, margin:'0 auto' }}>
         <div className="ev-reveal" style={{ textAlign:'center', marginBottom:48 }}>
@@ -458,9 +475,9 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
 
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20 }}>
           {[
-            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780696103015.mp4', label:'Historical · Arabic', tag:'MODEL 2' },
-            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780699995271.mp4', label:'Educational · English', tag:'MODEL 2' },
-            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780956846973.mp4', label:'Motivational · Arabic', tag:'MODEL 2' },
+            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780696103015.mp4', label:'Historical · Arabic', tag:'HISTORY' },
+            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780699995271.mp4', label:'Educational · English', tag:'EDUCATION' },
+            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780956846973.mp4', label:'Motivational · Arabic', tag:'MOTIVATION' },
           ].map((v,i) => (
             <RealVideoCard key={i} {...v} delay={i*100} />
           ))}
@@ -480,7 +497,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         <div className="ev-reveal" style={{ maxWidth:900, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(4,1fr)', borderRadius:24, border:'1px solid rgba(255,255,255,0.06)', background:'rgba(255,255,255,0.02)', overflow:'hidden' }}>
           <StatCard value="10000+" label="Videos Generated" color="#7c6af7" />
           <StatCard value="8+" label="Languages Supported" color="#06b6d4" />
-          <StatCard value="5" label="AI Models" color="#f59e0b" />
+          <StatCard value="5" label="AI Engines" color="#f59e0b" />
           <StatCard value="50" label="Countries" color="#10b981" />
         </div>
       </section>
@@ -508,9 +525,9 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
       {/* ── AI MODELS SECTION ──────────────────────────────────────────────── */}
       <section style={{ padding:'80px 24px', maxWidth:1200, margin:'0 auto' }}>
         <div className="ev-reveal" style={{ textAlign:'center', marginBottom:60 }}>
-          <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.15em', color:'#7c6af7', textTransform:'uppercase', marginBottom:16 }}>AI Models</div>
-          <h2 style={{ fontSize:'clamp(32px,5vw,52px)', fontWeight:900, letterSpacing:'-2px', fontFamily:"'Bricolage Grotesque', sans-serif", lineHeight:1.1 }}>Five ways to create<br />your perfect video</h2>
-          <p style={{ fontSize:16, color:'#6b7280', marginTop:16, maxWidth:500, margin:'16px auto 0' }}>Each model is purpose-built for a different creative style. Use one or combine them all.</p>
+          <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.15em', color:'#7c6af7', textTransform:'uppercase', marginBottom:16 }}>One Agent, Every Kind of Video</div>
+          <h2 style={{ fontSize:'clamp(32px,5vw,52px)', fontWeight:900, letterSpacing:'-2px', fontFamily:"'Bricolage Grotesque', sans-serif", lineHeight:1.1 }}>Just describe it.<br />The Agent builds it.</h2>
+          <p style={{ fontSize:16, color:'#6b7280', marginTop:16, maxWidth:520, margin:'16px auto 0' }}>Chat with the Agent and it silently picks the right AI engine for what you're making — no menus, no guesswork.</p>
         </div>
 
         <div className="ev-models-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16 }}>
@@ -535,7 +552,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
                 ))}
               </div>
               <div style={{ marginTop:20, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontSize:12, fontWeight:700, color:m.color, opacity: hovModel===m.key?1:0, transition:'opacity 0.2s' }}>Try this model →</span>
+                <span style={{ fontSize:12, fontWeight:700, color:m.color, opacity: hovModel===m.key?1:0, transition:'opacity 0.2s' }}>Try this →</span>
                 <div style={{ width:32, height:32, borderRadius:10, background:`${m.color}18`, border:`1px solid ${m.color}28`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>→</div>
               </div>
             </div>
@@ -582,7 +599,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
           {[
             { name:'Ahmed K.', role:'YouTube Creator · 120K subs', text:'I make 3 videos a week now instead of one. Erivion handles the heavy work while I focus on ideas. Genuinely changed my workflow.', color:'#7c6af7' },
             { name:'Sara M.', role:'Education Content Creator', text:'The Arabic voiceover quality is unmatched. My students love the videos and engagement went up 60% since I started using Erivion.', color:'#06b6d4' },
-            { name:'Omar T.', role:'Digital Marketing Agency', text:'We use Model 4 for client content. The AI video quality looks genuinely cinematic. Clients are amazed we produce this in-house.', color:'#f59e0b' },
+            { name:'Omar T.', role:'Digital Marketing Agency', text:'We use Erivion for client content now. The AI video quality looks genuinely cinematic. Clients are amazed we produce this in-house.', color:'#f59e0b' },
             { name:'Khalid A.', role:'Islamic History Channel · 45K subs', text:'Creating historical videos used to take me days. Now I produce a full episode in under an hour. The quality is incredible for the price.', color:'#10b981' },
             { name:'Nour H.', role:'Freelance Video Producer', text:'I offer AI video services to clients using Erivion. It\'s been a game changer for my business — clients get premium quality fast.', color:'#e11d48' },
             { name:'Ramy S.', role:'Motivational Content Creator', text:'The Arabic Egyptian voiceover sounds completely natural. My audience can\'t believe it\'s AI. Best investment I\'ve made for my channel.', color:'#a855f7' },
@@ -688,9 +705,9 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
           <div style={{ position:'absolute', top:'-50%', left:'50%', transform:'translateX(-50%)', width:600, height:400, borderRadius:'50%', background:'radial-gradient(ellipse, rgba(124,106,247,0.12),transparent 70%)', pointerEvents:'none' }} />
           <h2 style={{ fontSize:'clamp(32px,5vw,56px)', fontWeight:900, letterSpacing:'-2px', marginBottom:16, fontFamily:"'Bricolage Grotesque', sans-serif", position:'relative' }}>
             Start creating today.<br />
-            <span style={{ background:'linear-gradient(135deg,#7c6af7,#06b6d4)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>Your first video is free.</span>
+            <span style={{ background:'linear-gradient(135deg,#7c6af7,#06b6d4)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>The Agent does the rest.</span>
           </h2>
-          <p style={{ fontSize:17, color:'#9ca3af', marginBottom:40, position:'relative' }}>No credit card required. No design skills needed. Just an idea.</p>
+          <p style={{ fontSize:17, color:'#9ca3af', marginBottom:40, position:'relative' }}>No credit card required to sign up. No design skills needed. Just an idea.</p>
           <div style={{ display:'flex', gap:16, justifyContent:'center', flexWrap:'wrap', position:'relative' }}>
             <button onClick={() => onGetStarted?.()} className="ev-cta-btn" style={{ padding:'16px 40px', borderRadius:14, border:'none', background:'linear-gradient(135deg,#7c6af7,#6d28d9)', color:'#fff', fontWeight:800, fontSize:16, cursor:'pointer', boxShadow:'0 8px 32px rgba(124,106,247,0.5)', fontFamily:'inherit' }}>
               Create Your First Video →
