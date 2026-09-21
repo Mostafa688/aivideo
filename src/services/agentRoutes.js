@@ -853,11 +853,21 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
     ({ text: reply, payload: whiteboardVideoPayload } = extractTrailingMarker(reply, '###WHITEBOARD_VIDEO###'));
+    // ✅ NEW (طلب العميل: أداة تحليل فيديو مستقلة — "مين بيتكلم إمتى" — متاحة لأي فيديو العميل
+    // يرفعه، وكمان خطوة تمهيدية قبل مونتاج فيديو أطول من 10 ثواني): ماركر بسيط (URL واحد بس)
+    // فبياخد نفس مسار الماركرز الثانوية الصغيرة زي WHITEBOARD_VIDEO، مش المسار المعقد بتاع
+    // GENERATE_IMAGE/VIDEO — التكلفة الحقيقية (متغيرة، مش ثابتة) بتتحسب فعليًا في
+    // /api/videos/analyze نفسه، مش هنا
+    ({ text: reply, payload: analyzeVideoPayload } = extractTrailingMarker(reply, '###ANALYZE_VIDEO###'));
+    if (analyzeVideoPayload && (typeof analyzeVideoPayload.videoUrl !== 'string' || !analyzeVideoPayload.videoUrl.trim() || !isKnownUrl(analyzeVideoPayload.videoUrl))) {
+      console.warn('[Agent] ANALYZE_VIDEO marker rejected — missing/unknown videoUrl:', JSON.stringify(analyzeVideoPayload).slice(0, 300));
+      analyzeVideoPayload = null;
+    }
 
     // ✅ NEW (طلب العميل: "اربط كل ده بالايجنت ... يظهر في شات الايجنت كمّل الفيديو"):
     // فيديو Whiteboard مجاني (مش بيحتاج كريديت خالص، رصيد 10 دقايق مدى الحياة بس) — الايجنت
@@ -894,11 +904,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ NEW (طلب العميل: أزرار سريعة "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة): لو الرد ده
     // مجرد سؤال تأكيد قبل التوليد (مفيش أي ماركر نفّذ فعليًا في الرد ده)، بنعلّم الفرونت إند
     // بعلم صريح عشان يعرض زرار "ابدأ"/"لأ" (أو "Yes"/"No") تحت الرسالة مباشرة
-    const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload &&
+    const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !analyzeVideoPayload &&
       looksLikeConfirmationQuestion(reply);
 
     res.json({
       reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl,
+      analyzeVideo: analyzeVideoPayload,
       awaitingConfirmation,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
       subscribe: subscribePayload, showcaseVideos, whiteboardVideo,

@@ -29,6 +29,7 @@ import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, a
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
 import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureVideoDurationSec } from './services/newVideoModelsService.js';
 import { mergeVideos } from './services/videoMergeService.js';
+import { analyzeActiveSpeaker, estimateAnalysisCreditCost } from './services/videoAnalysisService.js';
 import { synthesizeNarration, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer, composeVideoAudio } from './services/videoAudioService.js';
 import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getFlatCreditCost, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
@@ -2969,6 +2970,25 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       return res.status(400).json({ error: 'source_video_probe_failed', message: `Could not read the source video: ${e.message}` });
     }
     model = sourceVideoDurationSec <= 10 ? 'omni_flash_1_1' : 'decart_lucy_edit_2';
+    // ✅ NEW (طلب العميل: "الفيديو يكون أقل من 200 ميجا زي ما Replicate بيقول وتأكد من كده"):
+    // decart/lucy-edit-2's الحد الحقيقي المعلن هو حجم الملف (200MB)، مش مدة زمنية — نتحقق
+    // فعليًا بـHEAD request قبل ما نبدأ أي حاجة (تحصيل كريديت أو تحليل)، مش بس نذكره كلام
+    if (model === 'decart_lucy_edit_2') {
+      try {
+        const headRes = await fetch(sourceVideoUrl, { method: 'HEAD' });
+        const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
+        const MAX_LUCY_EDIT_BYTES = 200 * 1024 * 1024;
+        if (contentLength > MAX_LUCY_EDIT_BYTES) {
+          return res.status(400).json({
+            error: 'source_video_too_large',
+            message: `This video is ${(contentLength / (1024 * 1024)).toFixed(0)}MB — video editing for clips over 10s (Lucy Edit 2) only supports files up to 200MB.`,
+          });
+        }
+      } catch {
+        // فشل الـHEAD نفسه (شبكة متقطعة) — مش نمنع الطلب من أجله، هنكتشف أي مشكلة حقيقية
+        // في التوليد نفسه لاحقًا؛ ده تحقق إضافي احترازي مش الحارس الوحيد
+      }
+    }
   }
   const vidUser = await getUserById(req.user.userId);
   if ((vidUser?.plan || 'free') === 'free') {
@@ -3072,6 +3092,64 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
 });
 
 app.get('/api/videos/generate-status/:jobId', authMiddleware, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const job = getRenderJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job_not_found' });
+  if (job.userId && job.userId !== req.user.userId) return res.status(404).json({ error: 'job_not_found' });
+  res.json(job);
+});
+
+// ✅ NEW (طلب العميل: أداة تحليل فيديو مستقلة — أي حد يرفع أي فيديو ويطلب تحليله (مين بيتكلم
+// إمتى)، وكمان بتتستخدم كخطوة تمهيدية قبل مونتاج فيديو أطول من 10 ثواني عشان الايجنت يبني
+// تعليمة تعديل أذكى من التوقيتات الحقيقية دي): zsxkib/talknet-asd — راجع
+// videoAnalysisService.js لتفاصيل التسعير الآمن (تقدير سخي مقدمًا + رد الفرق من التكلفة
+// الحقيقية بعد التشغيل، لأن الموديل ده مُسعّر بوقت GPU حقيقي متغير مش سعر ثابت)
+app.post('/api/videos/analyze', authMiddleware, renderLimiter, async (req, res) => {
+  const { videoUrl } = req.body;
+  if (!videoUrl?.trim()) return res.status(400).json({ error: 'videoUrl is required' });
+  let durationSec;
+  try {
+    durationSec = await measureVideoDurationSec(videoUrl);
+  } catch (e) {
+    return res.status(400).json({ error: 'video_probe_failed', message: `Could not read the video: ${e.message}` });
+  }
+  const estimatedCost = estimateAnalysisCreditCost(durationSec);
+  const balance = await getCreditsBalance(req.user.userId);
+  if (balance < estimatedCost) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This analysis needs up to ${estimatedCost} credits, you have ${balance}.`, cost: estimatedCost, remaining: balance });
+  }
+  const charge = await chargeCredits(req.user.userId, estimatedCost);
+  if (!charge.success) {
+    return res.status(403).json({ error: 'quota_exceeded', message: `This analysis needs up to ${estimatedCost} credits, you have ${charge.remaining}.`, cost: estimatedCost, remaining: charge.remaining });
+  }
+  const jobId = `videoanalysis_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  setRenderJob(jobId, { status: 'processing', userId: req.user.userId, createdAt: Date.now() });
+  res.status(202).json({ jobId, status: 'processing', creditCost: estimatedCost, remaining: charge.remaining });
+
+  (async () => {
+    try {
+      const { output, realCreditCost } = await analyzeActiveSpeaker(videoUrl);
+      // ✅ نرجع أي فرق بين اللي حصّلناه مقدمًا واللي اتحسب فعليًا بعد التشغيل الحقيقي — لو
+      // مقدرناش نقرا التكلفة الحقيقية (realCreditCost === null)، نسيب التقدير المسبق زي ما هو
+      // (أفضل من نرجع فرق مبني على تخمين تاني فوق تخمين)
+      let finalCreditCost = estimatedCost;
+      if (realCreditCost != null && realCreditCost < estimatedCost) {
+        const refund = estimatedCost - realCreditCost;
+        await addCreditsBalance(req.user.userId, refund);
+        finalCreditCost = realCreditCost;
+      }
+      setRenderJob(jobId, { status: 'done', analysis: output, creditCost: finalCreditCost, completedAt: Date.now() });
+    } catch (genErr) {
+      console.error('[VideoAnalysis] analysis failed:', genErr.message);
+      await addCreditsBalance(req.user.userId, estimatedCost);
+      setRenderJob(jobId, { status: 'failed', error: 'Video analysis failed, your credits were refunded.', completedAt: Date.now() });
+    } finally {
+      scheduleRenderJobCleanup(jobId);
+    }
+  })();
+});
+
+app.get('/api/videos/analyze-status/:jobId', authMiddleware, (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   const job = getRenderJob(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'job_not_found' });

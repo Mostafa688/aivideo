@@ -50,7 +50,7 @@ async function safeJson(res, lang) {
 // \u0628\u064A\u0631\u062F \u0641\u0648\u0631\u064B\u0627 \u0628\u0640jobId (202) \u0628\u062F\u0644 \u0645\u0627 \u064A\u0633\u062A\u0646\u0649 \u0627\u0644\u062A\u0648\u0644\u064A\u062F \u0643\u0627\u0645\u0644 \u0639\u0644\u0649 \u0646\u0641\u0633 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0637\u0648\u064A\u0644 (\u0646\u0641\u0633 \u0641\u0643\u0631\u0629
 // /api/render \u0627\u0644\u0642\u062F\u064A\u0645 \u0628\u0627\u0644\u0638\u0628\u0637) \u2014 \u0627\u0644\u062F\u0627\u0644\u0629 \u062F\u064A \u0628\u062A\u0639\u0645\u0644 poll \u0639\u0644\u0649 \u062D\u0627\u0644\u0629 \u0627\u0644\u0640job \u0644\u062D\u062F \u0645\u0627 \u064A\u062E\u0644\u0635 (done/failed)
 function pollGenerationJob(kind, jobId, lang) {
-  const statusUrl = kind === 'image' ? `/api/images/generate-status/${jobId}` : kind === 'video-merge' ? `/api/videos/merge-status/${jobId}` : `/api/videos/generate-status/${jobId}`;
+  const statusUrl = kind === 'image' ? `/api/images/generate-status/${jobId}` : kind === 'video-merge' ? `/api/videos/merge-status/${jobId}` : kind === 'video-analysis' ? `/api/videos/analyze-status/${jobId}` : `/api/videos/generate-status/${jobId}`;
   return new Promise((resolve) => {
     const iv = setInterval(async () => {
       try {
@@ -971,6 +971,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       return `[${lang === 'ar' ? 'فيديو قيد التوليد' : 'A video is currently being generated'}]`;
     }
     if (m.type === 'video') return `[${lang === 'ar' ? 'فيديو مثال' : 'Example video'}]`;
+    if (m.type === 'videoAnalysis') {
+      if (m.job?.status === 'done') {
+        const analysisText = typeof m.job.analysis === 'string' ? m.job.analysis : JSON.stringify(m.job.analysis ?? {});
+        return `[${lang === 'ar' ? 'نتيجة تحليل الفيديو' : 'Video analysis result'} (${m.job.videoUrl || ''}): ${analysisText.slice(0, 2000)}]`;
+      }
+      if (m.job?.status === 'failed') {
+        return failedNote(lang === 'ar' ? 'تحليل فيديو سابق فشل ولم يكتمل' : 'A previous video analysis FAILED and did not complete');
+      }
+      return `[${lang === 'ar' ? 'جاري تحليل الفيديو' : 'A video is currently being analyzed'}]`;
+    }
     return '';
   };
 
@@ -1141,6 +1151,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         startVideoModelGeneration(data.generateVideo);
       } else if (data.mergeVideos) {
         startVideoMerge(data.mergeVideos);
+      } else if (data.analyzeVideo) {
+        startVideoAnalysis(data.analyzeVideo);
       }
 
       // ✅ NEW (طلب العميل: "اربط ده بالايجنت... يظهر في شات الايجنت كمّل الفيديو"): فيديو
@@ -1442,6 +1454,40 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         const sd = await pollGenerationJob('video-merge', data.jobId, lang);
         if (sd.status === 'failed') updateJob({ status: 'failed', error: sd.error });
         else updateJob({ status: 'done', videoUrl: sd.videoUrl, cost: data.creditCost });
+      }
+    } catch (e) {
+      updateJob({ status: 'failed', error: e.message });
+    }
+  };
+
+  // ✅ NEW (طلب العميل: أداة تحليل فيديو مستقلة — zsxkib/talknet-asd، "مين بيتكلم إمتى" —
+  // متاحة كخاصية مستقلة، وكمان خطوة تمهيدية قبل مونتاج فيديو أطول من 10 ثواني). ⚠️ شكل
+  // "output" الحقيقي الراجع من الموديل ده لسه مش مؤكد (سكرين شوت الـschema مش موجود عندنا
+  // زي باقي الموديلات) — بنخزنه زي ما هو ونعرضه كنص خام في ملاحظة الـhistory لحد ما يتأكد حي
+  const startVideoAnalysis = async (analyze) => {
+    const jobUid = `analysis_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const job = { uid: jobUid, status: 'generating', videoUrl: analyze.videoUrl };
+    setMessages(m => [...m, { role: 'assistant', type: 'videoAnalysis', job }]);
+    const updateJob = (patch) => {
+      setMessages(m => {
+        const copy = [...m];
+        const idx = copy.findIndex(x => x.type === 'videoAnalysis' && x.job?.uid === jobUid);
+        if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
+        return copy;
+      });
+    };
+    try {
+      const res = await fetch('/api/videos/analyze', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ videoUrl: analyze.videoUrl }),
+      });
+      const data = await safeJson(res, lang);
+      if (!res.ok) {
+        updateJob({ status: 'failed', error: data.message || data.error });
+      } else {
+        const sd = await pollGenerationJob('video-analysis', data.jobId, lang);
+        if (sd.status === 'failed') updateJob({ status: 'failed', error: sd.error });
+        else updateJob({ status: 'done', analysis: sd.analysis, cost: sd.creditCost ?? data.creditCost });
       }
     } catch (e) {
       updateJob({ status: 'failed', error: e.message });
@@ -2142,7 +2188,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
   // ✅ NEW (Workspace redesign, Phase 2): الشات بقى شريط جانبي نص فقط — أي ميديا متولدة
   // (فيديو/whiteboard/دفعة صور) بتتشال من قائمة رسائل الشات وتتعرض في canvas النص بدل كده
-  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel'];
+  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis'];
   const mediaItems = messages
     .map((m, i) => ({ ...m, _i: i }))
     .filter(m => MEDIA_TYPES.includes(m.type));
@@ -2154,7 +2200,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     return !!m.job?.favorited;
   };
   const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
-    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel')
+    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis')
     : rightTab === 'favorites' ? mediaItems.filter(isMediaFavorited)
     : mediaItems;
 
@@ -2388,6 +2434,21 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     onOpenDetail={() => setDetailView({ jobUid: m.job.uid, kind: 'videoModel' })}
                     onToast={showToast}
                   />}
+                  {m.type === 'videoAnalysis' && (
+                    <div style={{ padding: 16, borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', fontSize: 13, color: '#fff' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontWeight: 700 }}>
+                        <Mic size={14} strokeWidth={2} />
+                        {lang === 'ar' ? 'تحليل الفيديو' : 'Video Analysis'}
+                      </div>
+                      {m.job?.status === 'generating' && <div style={{ color: 'var(--text2)' }}>{lang === 'ar' ? 'جاري التحليل...' : 'Analyzing...'}</div>}
+                      {m.job?.status === 'failed' && <div style={{ color: '#ef4444' }}>{m.job.error || (lang === 'ar' ? 'فشل التحليل' : 'Analysis failed')}</div>}
+                      {m.job?.status === 'done' && (
+                        <div style={{ color: 'var(--text2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 160, overflowY: 'auto' }}>
+                          {typeof m.job.analysis === 'string' ? m.job.analysis : JSON.stringify(m.job.analysis, null, 2)}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
