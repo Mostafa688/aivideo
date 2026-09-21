@@ -194,15 +194,39 @@ function stripStrayMarkers(text) {
   return out;
 }
 
-function repairTruncatedJson(text) {
+// ✅ NEW (باج حقيقي في الإنتاج): repairTruncatedJson القديمة كانت بتقفل أي string/قوس مفتوح
+// وتخلي الطلب "ينجح" حتى لو اللي اتقطع كان نفس محتوى الـ"prompt" — يعني بروبمت العميل بيوصل
+// مبتور نص كلمة/نص جملة لـReplicate من غير أي تحذير، فالصورة بتطلع غلط تمامًا (باج شافه
+// العميل بنفسه: بروبمت طويل مفصّل اتقطع فجأة عند "no fingers detailed)." وسط الوصف، والصورة
+// طلعت مش مطابقة للوصف الكامل خالص). الحل: نتتبع كمان آخر "key" JSON كانت قيمته لسه مفتوحة
+// وقت القطع (curKey — بيتحدّث كل مرة نقرا string متبوعة بـ":" باعتبارها مفتاح جديد؛ لو مفيش
+// ":" بعدها فهي value عادية والمفتاح الحالي فاضل زي ما هو، وده بالظبط اللي بيخلي عناصر مصفوفة
+// زي "prompts" تفضل مرتبطة بمفتاحها "prompts" طول ما إحنا جواها). لو القطع حصل والمفتاح
+// المفتوح وقتها كان حقل محتوى حقيقي طويل (prompt/prompts/rawPrompt/description/editPrompt/
+// script)، الكود اللي بينادي الدالة دي بيرفض يكمل بدل ما يبعت بروبمت مبتور لموديل مدفوع
+function repairTruncatedJsonWithInfo(text) {
   let inString = false, escape = false;
   const stack = [];
+  let curKey = null;
+  let keyBuf = '';
+  let collectingKey = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (escape) { escape = false; continue; }
+    if (escape) { escape = false; if (collectingKey) keyBuf += ch; continue; }
     if (ch === '\\') { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
+    if (ch === '"') {
+      if (!inString) { inString = true; collectingKey = true; keyBuf = ''; }
+      else {
+        inString = false;
+        // لو اللي قفل دلوقتي string متبوعة بـ":" (بعد أي مسافات) يبقى كانت مفتاح، مش قيمة
+        let j = i + 1;
+        while (j < text.length && /\s/.test(text[j])) j++;
+        if (text[j] === ':') curKey = keyBuf;
+        collectingKey = false;
+      }
+      continue;
+    }
+    if (inString) { if (collectingKey) keyBuf += ch; continue; }
     if (ch === '{' || ch === '[') stack.push(ch);
     else if (ch === '}') { if (stack[stack.length - 1] === '{') stack.pop(); }
     else if (ch === ']') { if (stack[stack.length - 1] === '[') stack.pop(); }
@@ -210,8 +234,16 @@ function repairTruncatedJson(text) {
   let repaired = text;
   if (inString) repaired += '"';
   for (let i = stack.length - 1; i >= 0; i--) repaired += stack[i] === '{' ? '}' : ']';
-  return repaired;
+  return { repaired, truncatedField: inString ? curKey : null };
 }
+
+function repairTruncatedJson(text) {
+  return repairTruncatedJsonWithInfo(text).repaired;
+}
+
+// حقول محتوى حقيقي (وصف/بروبمت) بتتقطع بشكل خطير لو القيمة بتاعتها اتقطعت نص الكتابة —
+// لازم نرفض الطلب بدل ما نكمله ببروبمت مبتور مضمون يفشل/يطلع غلط
+const CONTENT_FIELDS_UNSAFE_IF_TRUNCATED = new Set(['prompt', 'prompts', 'rawPrompt', 'description', 'editPrompt', 'script', 'mapVideoTopic']);
 
 // ✅ NEW: منطق فصل الأمر التقني (###READY###/###EDIT_SCENE###/###GENERATE_IMAGE###/...) عن
 // رسالة الشات نفسها — اتنقل هنا كدالة مستقلة (كان جوه الراوت مباشرة) عشان نقدر نعيد استخدامه
@@ -283,7 +315,11 @@ function parseAgentMarkers(rawReply) {
       // التوكنز في تفكير مش ظاهر). دلوقتي بنحاول نصلّح الـ JSON المقطوع قبل ما نستسلم.
       console.warn(`[Agent] Could not parse ${markerName} marker, attempting repair:`, e.message);
       try {
-        const repaired = JSON.parse(repairTruncatedJson(jsonText));
+        const { repaired: repairedText, truncatedField } = repairTruncatedJsonWithInfo(jsonText);
+        if (truncatedField && CONTENT_FIELDS_UNSAFE_IF_TRUNCATED.has(truncatedField)) {
+          throw new Error(`unsafe repair — "${truncatedField}" content was cut off mid-value, refusing to send a truncated prompt`);
+        }
+        const repaired = JSON.parse(repairedText);
         if (isEditMarker) {
           if (Number.isInteger(repaired.sceneIndex) && typeof repaired.description === 'string') {
             editScene = repaired;
