@@ -715,6 +715,18 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // العميل أكّد فعلاً في الرسالة دي، والرد رجع سؤال تأكيد تاني من غير أي ماركر — نفس عرض
     // "مفيش تنفيذ حقيقي حصل" اللي soundsLikeAnActionPromise بيكشفه، بس بشكل مختلف
     const stuckReaskingConfirmation = (text) => userJustConfirmed && looksLikeConfirmationQuestion(text);
+    // ✅ NEW (باج حقيقي جديد شافه العميل بالسكرين شوت — العميل زهق تمامًا منه): بالظبط نفس رد
+    // "تمام، هبدأ أعمل الصورة الأولى من القصة (مشهد الفجر) بنفس الشخصية." اتكرر حرفيًا مرتين
+    // متتاليتين بعد ضغط "ابدأ" مرتين، من غير أي ماركر خالص. الجملة دي أفلتت من كل الكواشف
+    // الموجودة فوق: مالهاش "دلوقتي/الآن" (فمتصادتش بـ soundsLikeAnActionPromise) ومالهاش علامة
+    // استفهام (فمتصادتش بـ stuckReaskingConfirmation) — يعني وعد فاضي بالتنفيذ يفضل يتكرر حرفيًا
+    // من غير ما يتكشف كباج خالص. الكشف هنا مختلف عمدًا: مش محتاج "دلوقتي" ولا "؟"، بس العميل يكون
+    // أكّد فعلاً (userJustConfirmed) والرد يبدأ بجملة وعد صريحة بالتنفيذ
+    // ⚠️ باج حقيقي كان هنا وقت الكتابة: \b في الآخر مش شغال مع العربي خالص — الحروف العربية
+    // مش \w في JS، فـ\b بين حرف عربي وأي حاجة تانية (مسافة/نهاية السترينج) مبيتحققش أبدًا،
+    // فالـregex كان بيفشل يمسك حتى "هبدأ" لوحدها. الحل: شلنا الـ\b تمامًا (مش محتاجينه، إحنا
+    // بس بنتأكد إن الرد يبدأ بالكلمة دي، مش إنها كلمة منفصلة بالظبط)
+    const saysStartingDeclaratively = (text) => userJustConfirmed && /^\s*(تمام[،,]?\s*)?(ه(بدأ|عمل|ولّد|جهز|حرك|ركب)|سأ(بدأ|عمل)|starting|i'?ll start|i will start|let'?s start)/i.test(String(text || '').trim());
     // ✅ FIX (باج حقيقي — طلب العميل: إعلان مفصّل بـ4 مشاهد ثابتة المنتج/المكان اتقفل برسالة
     // "مش قادر أبدأ التوليد" من غير أي محاولة retry خالص): كان شرط الحلقة تحت بيتطلب
     // reply.length < 300 عشان يعتبر الرد "وعد فاضي" — بس رد مفصّل لطلب معقد (زي إعادة صياغة
@@ -727,7 +739,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     let nudgeAttempts = 0;
     while (
       !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload &&
-      (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply)) && nudgeAttempts < MAX_NUDGE_RETRIES
+      (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply)) && nudgeAttempts < MAX_NUDGE_RETRIES
     ) {
       nudgeAttempts++;
       console.warn(`[Agent] Reply promised to start generating (or re-asked for confirmation the customer already gave) but included no technical marker — retry ${nudgeAttempts}/${MAX_NUDGE_RETRIES} with an explicit nudge`);
@@ -755,7 +767,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ FIX: لو بعد كل المحاولات لسه مفيش أي ماركر ناجح والرد لسه بيوعد بالتنفيذ — منسيبش
     // العميل يفتكر إن التوليد بدأ فعلاً وهو ما بدأش. رسالة صريحة بدل الوعد الكاذب، عشان
     // العميل يعرف يعيد صياغة الطلب بدل ما يستنى نتيجة مش هتيجي
-    if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply))) {
+    if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply))) {
       // ✅ NEW: بنسجل الرد الخام كامل هنا (مش بس تحذير عام) — عشان لو المشكلة رجعت تاني نقدر
       // نشوف بالظبط الموديل كان قاعد يقول ايه في Railway logs، بدل ما نخمّن السبب من غير أي
       // دليل حقيقي (زي ما حصل مع فيكس سابق اتضح إنه مش بيغطي كل الحالات)
