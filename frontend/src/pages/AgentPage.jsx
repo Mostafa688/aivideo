@@ -974,7 +974,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (m.type === 'videoAnalysis') {
       if (m.job?.status === 'done') {
         const analysisText = typeof m.job.analysis === 'string' ? m.job.analysis : JSON.stringify(m.job.analysis ?? {});
-        return `[${lang === 'ar' ? 'نتيجة تحليل الفيديو' : 'Video analysis result'} (${m.job.videoUrl || ''}): ${analysisText.slice(0, 2000)}]`;
+        // ✅ NEW (طلب العميل: أداة تحليل الفيديو): "media_path" في الرد الحقيقي على الأرجح
+        // فيديو تصور مرئي لنتيجة الكشف (مربعات حوالين اللي بيتكلم) — مفيد نديه للعميل كدليل
+        // حقيقي مش بس نص، فبنسيبه معروف في الملاحظة عشان الايجنت يقدر يعرضه لو حابب
+        const mediaNote = Array.isArray(m.job.mediaUrls) && m.job.mediaUrls.length
+          ? ` — ${lang === 'ar' ? 'ملفات ناتجة' : 'output media'}: ${m.job.mediaUrls.join(', ')}`
+          : '';
+        return `[${lang === 'ar' ? 'نتيجة تحليل الفيديو' : 'Video analysis result'} (${m.job.videoUrl || ''}): ${analysisText.slice(0, 2000)}${mediaNote}]`;
       }
       if (m.job?.status === 'failed') {
         return failedNote(lang === 'ar' ? 'تحليل فيديو سابق فشل ولم يكتمل' : 'A previous video analysis FAILED and did not complete');
@@ -1487,7 +1493,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       } else {
         const sd = await pollGenerationJob('video-analysis', data.jobId, lang);
         if (sd.status === 'failed') updateJob({ status: 'failed', error: sd.error });
-        else updateJob({ status: 'done', analysis: sd.analysis, cost: sd.creditCost ?? data.creditCost });
+        else updateJob({ status: 'done', analysis: sd.analysis, mediaUrls: sd.mediaUrls || [], cost: sd.creditCost ?? data.creditCost });
       }
     } catch (e) {
       updateJob({ status: 'failed', error: e.message });
@@ -2443,9 +2449,20 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                       {m.job?.status === 'generating' && <div style={{ color: 'var(--text2)' }}>{lang === 'ar' ? 'جاري التحليل...' : 'Analyzing...'}</div>}
                       {m.job?.status === 'failed' && <div style={{ color: '#ef4444' }}>{m.job.error || (lang === 'ar' ? 'فشل التحليل' : 'Analysis failed')}</div>}
                       {m.job?.status === 'done' && (
-                        <div style={{ color: 'var(--text2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 160, overflowY: 'auto' }}>
-                          {typeof m.job.analysis === 'string' ? m.job.analysis : JSON.stringify(m.job.analysis, null, 2)}
-                        </div>
+                        <>
+                          {/* ✅ NEW: "media_path" على الأرجح فيديو تصور مرئي (مربعات حوالين
+                              اللي بيتكلم/مش بيتكلم) — نعرضه كفيديو حقيقي مش مجرد رابط نصي */}
+                          {Array.isArray(m.job.mediaUrls) && m.job.mediaUrls.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+                              {m.job.mediaUrls.map((u, idx) => (
+                                <video key={idx} src={u} controls playsInline style={{ width: '100%', borderRadius: 10, background: '#000' }} />
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ color: 'var(--text2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 160, overflowY: 'auto' }}>
+                            {typeof m.job.analysis === 'string' ? m.job.analysis : JSON.stringify(m.job.analysis, null, 2)}
+                          </div>
+                        </>
                       )}
                     </div>
                   )}
