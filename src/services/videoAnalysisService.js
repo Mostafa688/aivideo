@@ -78,8 +78,22 @@ export async function analyzeActiveSpeaker(videoUrl) {
     ? usdToCredits(realPredictTimeSec * T4_USD_PER_SEC, { multiplier: PROFIT_MULTIPLIER })
     : null; // null = مقدرناش نقرا التكلفة الحقيقية، الكولر يفضل محتفظ بالتقدير المسبق كامل
 
+  // ✅ CONFIRMED (سكرين شوت العميل الحقيقي لصفحة الـOutput schema): الشكل الحقيقي للمخرج هو
+  // {"json_str": "...", "media_path": ["<uri>", ...]} — "json_str" سترينج JSON متداخل (مش
+  // أوبجكت جاهز)، لازم نعمله JSON.parse تاني قبل ما نقدر نقرا منه. "media_path" على الأرجح
+  // فيديو التصور المرئي بتاع نتيجة الكشف (مربعات خضرا/حمرا حوالين اللي بيتكلم/مش بيتكلم) حسب
+  // الـpipeline الأصلي مفتوح المصدر — مفيدة تتعرض للعميل كدليل مرئي مش بس نص. ⚠️ الشكل الداخلي
+  // الدقيق لمحتوى الـJSON بعد الـparse (أسماء حقول التراك/الفريم/التوقيت بالظبط) لسه مش موثّق
+  // في أي مكان علني نقدر نتأكد منه (حتى الـGitHub الأصلي بيستخدم pickle مش JSON مباشر) — بنعمل
+  // parse ونمرره زي ما هو من غير افتراض أسماء حقول محددة، ولو الـparse فشل بنرجّع السترينج الخام
+  let parsedSegments = data.output?.json_str ?? null;
+  if (typeof parsedSegments === 'string') {
+    try { parsedSegments = JSON.parse(parsedSegments); } catch { /* نسيبها سترينج خام لو مش JSON صالح */ }
+  }
+
   return {
-    output: data.output,
+    segments: parsedSegments,
+    mediaUrls: Array.isArray(data.output?.media_path) ? data.output.media_path : [],
     realPredictTimeSec,
     realCreditCost,
   };

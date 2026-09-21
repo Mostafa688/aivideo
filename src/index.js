@@ -3128,7 +3128,7 @@ app.post('/api/videos/analyze', authMiddleware, renderLimiter, async (req, res) 
 
   (async () => {
     try {
-      const { output, realCreditCost } = await analyzeActiveSpeaker(videoUrl);
+      const { segments, mediaUrls, realCreditCost } = await analyzeActiveSpeaker(videoUrl);
       // ✅ نرجع أي فرق بين اللي حصّلناه مقدمًا واللي اتحسب فعليًا بعد التشغيل الحقيقي — لو
       // مقدرناش نقرا التكلفة الحقيقية (realCreditCost === null)، نسيب التقدير المسبق زي ما هو
       // (أفضل من نرجع فرق مبني على تخمين تاني فوق تخمين)
@@ -3138,7 +3138,7 @@ app.post('/api/videos/analyze', authMiddleware, renderLimiter, async (req, res) 
         await addCreditsBalance(req.user.userId, refund);
         finalCreditCost = realCreditCost;
       }
-      setRenderJob(jobId, { status: 'done', analysis: output, creditCost: finalCreditCost, completedAt: Date.now() });
+      setRenderJob(jobId, { status: 'done', analysis: segments, mediaUrls, creditCost: finalCreditCost, completedAt: Date.now() });
     } catch (genErr) {
       console.error('[VideoAnalysis] analysis failed:', genErr.message);
       await addCreditsBalance(req.user.userId, estimatedCost);
