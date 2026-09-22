@@ -31,6 +31,7 @@ import CoursesPage from './pages/CoursesPage.jsx';
 import ChangelogPage from './pages/ChangelogPage.jsx';
 import RoadmapPage from './pages/RoadmapPage.jsx';
 import StatusPage from './pages/StatusPage.jsx';
+import ApiDocsPage from './pages/ApiDocsPage.jsx';
 import ChannelsPage from './pages/ChannelsPage.jsx';
 import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
 
@@ -343,6 +344,7 @@ export default function App() {
     if (window.location.pathname === '/changelog') { setPage('changelog'); setAuthChecked(true); return; }
     if (window.location.pathname === '/roadmap') { setPage('roadmap'); setAuthChecked(true); return; }
     if (window.location.pathname === '/status') { setPage('status'); setAuthChecked(true); return; }
+    if (window.location.pathname === '/api-docs') { setPage('api-docs'); setAuthChecked(true); return; }
     if (window.location.pathname === '/blog') { setAuthChecked(true); return; }
     const blogMatch = window.location.pathname.match(/^\/blog\/([a-z0-9-]+)$/);
     if (blogMatch) { setBlogPostId(blogMatch[1]); setAuthChecked(true); return; }
@@ -374,7 +376,7 @@ export default function App() {
     }
     if (params.get('admin') === '1') { window.history.replaceState({}, '', '/'); setPage('admin'); setAuthChecked(true); return; }
     // ✅ أي رابط مش معروف خالص (مش من القايمة دي) → صفحة 404 بدل ما يترجع للصفحة الرئيسية بصمت
-    const KNOWN_PATHS = ['/', '/login', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/changelog', '/roadmap', '/status', '/blog', '/affiliate', '/community', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
+    const KNOWN_PATHS = ['/', '/login', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/changelog', '/roadmap', '/status', '/api-docs', '/blog', '/affiliate', '/community', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
     if (!KNOWN_PATHS.includes(window.location.pathname) && !googleToken && !authError && params.get('admin') !== '1') {
       setPage('notfound'); setAuthChecked(true); return;
     }
@@ -490,6 +492,7 @@ export default function App() {
       case 'changelog':  setPage('changelog'); break;
       case 'roadmap':    setPage('roadmap'); break;
       case 'status':     setPage('status'); break;
+      case 'api-docs':   setPage('api-docs'); break;
       case 'channels':   setPage('channels'); break;
       case 'whiteboard': setPage('whiteboard'); break;
       case 'home':       setPage('agent'); break;
@@ -534,13 +537,14 @@ export default function App() {
     // نفسه متاح من غير تسجيل دخول أصلاً في الباك إند (/api/courses بلا Authorization header) —
     // نفس استثناء الكوميونيتي/الدعم فوق، عشان زائر مش مسجل دخول يقدر يتصفح الكورسات المتاحة
     // مباشرة (فتح تفاصيل كورس مقفول لسه بيطلب تسجيل دخول من جوه الصفحة نفسها)
-    if (page === 'courses') return <CoursesPage onBack={() => setPage('input')} onNavigate={(k) => { if(k==='support'||k==='community'||k==='courses'||k==='changelog'||k==='roadmap'||k==='status') setPage(k); else setShowAuth(true); }} userRegion={userRegion} />;
+    if (page === 'courses') return <CoursesPage onBack={() => setPage('input')} onNavigate={(k) => { if(k==='support'||k==='community'||k==='courses'||k==='changelog'||k==='roadmap'||k==='status'||k==='api-docs') setPage(k); else setShowAuth(true); }} userRegion={userRegion} />;
     // ✅ NEW (طلب العميل: صفحة "إيه الجديد" عامة زي الكورسات — تعرض التزامنا المستمر بتطوير
     // المنتج حتى لزائر مش مسجل دخول لسه)
     if (page === 'changelog') return <ChangelogPage onBack={() => setPage('input')} userRegion={userRegion} />;
     if (page === 'roadmap') return <RoadmapPage onBack={() => setPage('input')} userRegion={userRegion} isLoggedIn={false} onRequireLogin={() => setShowAuth(true)} />;
     if (page === 'status') return <StatusPage onBack={() => setPage('input')} userRegion={userRegion} />;
-    return <LandingPage onGetStarted={() => setShowAuth(true)} onOpenBlog={(id) => setBlogPostId(id)} onNavigate={(k) => { if(k==='support'||k==='community'||k==='courses'||k==='changelog'||k==='roadmap'||k==='status') setPage(k); else setShowAuth(true); }} />;
+    if (page === 'api-docs') return <ApiDocsPage onBack={() => setPage('input')} userRegion={userRegion} onNavigate={() => setShowAuth(true)} />;
+    return <LandingPage onGetStarted={() => setShowAuth(true)} onOpenBlog={(id) => setBlogPostId(id)} onNavigate={(k) => { if(k==='support'||k==='community'||k==='courses'||k==='changelog'||k==='roadmap'||k==='status'||k==='api-docs') setPage(k); else setShowAuth(true); }} />;
   }
 
   if (showAuth) return <AuthPage onAuth={(data) => {
@@ -729,6 +733,7 @@ export default function App() {
         {page === 'changelog' && <ChangelogPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'roadmap' && <RoadmapPage onBack={() => setPage('dashboard')} userRegion={userRegion} isLoggedIn={true} />}
         {page === 'status' && <StatusPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
+        {page === 'api-docs' && <ApiDocsPage onBack={() => setPage('dashboard')} userRegion={userRegion} onNavigate={handleNavigate} />}
         {page === 'channels' && <ChannelsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('dashboard')} />}
         {page === 'community' && <CommunityPage onBack={() => setPage('dashboard')} user={user} onNavigate={handleNavigate} />}
