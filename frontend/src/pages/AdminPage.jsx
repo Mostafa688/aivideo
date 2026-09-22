@@ -2533,6 +2533,156 @@ function ChangelogTab({ s }) {
   );
 }
 
+// ── Roadmap Tab ───────────────────────────────────────────────────────────────
+// ✅ NEW (طلب العميل: صفحة "الجاي" عامة بتصويت حقيقي من العملاء): عكس الـchangelog، الأدمن هنا
+// بيتحكم في الحالة (مخطط له/شغالين عليه/خلص) بس، وعدد الأصوات بيتحسب أوتوماتيك من تصويت
+// العملاء الحقيقي (مش قابل للتعديل يدويًا هنا)
+const ROADMAP_STATUSES = [
+  { key: 'planned', label: '⚪ Planned', color: '#6b7280' },
+  { key: 'in_progress', label: '🔵 In Progress', color: '#3b82f6' },
+  { key: 'done', label: '🟢 Done', color: '#22c55e' },
+];
+
+function RoadmapTab({ s }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState('');
+  const showToastMsg = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  const emptyForm = { id: null, status: 'planned', title_ar: '', title_en: '', description_ar: '', description_en: '', is_published: true, sort_order: 0 };
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+
+  const loadItems = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/roadmap/admin/list', { headers });
+      const d = await r.json();
+      setItems(d.items || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+  useEffect(() => { loadItems(); }, []);
+
+  const handleSave = async () => {
+    if (!form.title_ar.trim() || !form.title_en.trim()) { showToastMsg('❌ Title (AR + EN) is required'); return; }
+    setSaving(true);
+    try {
+      const url = form.id ? `/api/roadmap/admin/${form.id}` : '/api/roadmap/admin';
+      const method = form.id ? 'PUT' : 'POST';
+      const r = await fetch(url, { method, headers, body: JSON.stringify(form) });
+      const d = await r.json();
+      if (d.item) {
+        showToastMsg(form.id ? '✅ Item updated' : '✅ Item added');
+        setForm(emptyForm);
+        setShowForm(false);
+        loadItems();
+      } else showToastMsg('❌ ' + (d.error || 'Failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setSaving(false);
+  };
+
+  const handleEdit = (item) => {
+    setForm({
+      id: item.id, status: item.status || 'planned',
+      title_ar: item.title_ar || '', title_en: item.title_en || '',
+      description_ar: item.description_ar || '', description_en: item.description_en || '',
+      is_published: item.is_published !== 0, sort_order: item.sort_order || 0,
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this roadmap item (and all its votes)?')) return;
+    try {
+      const r = await fetch(`/api/roadmap/admin/${id}`, { method: 'DELETE', headers });
+      const d = await r.json();
+      if (d.success) { showToastMsg('✅ Deleted'); loadItems(); }
+      else showToastMsg('❌ ' + d.error);
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+  };
+
+  return (
+    <div>
+      {toast && (
+        <div style={{ position: 'fixed', top: 16, right: 16, background: toast.startsWith('✅') ? '#166534' : '#7f1d1d', border: '1px solid ' + (toast.startsWith('✅') ? '#22c55e' : '#ef4444'), borderRadius: 10, padding: '12px 20px', color: '#fff', fontWeight: 600, fontSize: 14, zIndex: 9999, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>{toast}</div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>🗺️ Roadmap</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={s.btn()} onClick={loadItems}>🔄 Refresh</button>
+          <button style={s.btn('#22c55e')} onClick={() => { setForm(emptyForm); setShowForm(v => !v); }}>{showForm ? '✕ Cancel' : '+ Add Item'}</button>
+        </div>
+      </div>
+
+      {showForm && (
+        <div style={s.card}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Status</div>
+              <select style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+                {ROADMAP_STATUSES.map(st => <option key={st.key} value={st.key}>{st.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Sort Order</div>
+              <input type="number" style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.sort_order} onChange={e => setForm(p => ({ ...p, sort_order: e.target.value }))} />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Title (Arabic)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.title_ar} onChange={e => setForm(p => ({ ...p, title_ar: e.target.value }))} placeholder="عنوان قصير..." />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Title (English)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.title_en} onChange={e => setForm(p => ({ ...p, title_en: e.target.value }))} placeholder="Short title..." />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Description (Arabic)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.description_ar} onChange={e => setForm(p => ({ ...p, description_ar: e.target.value }))} placeholder="وصف قصير (اختياري)..." />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Description (English)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.description_en} onChange={e => setForm(p => ({ ...p, description_en: e.target.value }))} placeholder="Short description (optional)..." />
+            </div>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#9ca3af', marginBottom: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={form.is_published} onChange={e => setForm(p => ({ ...p, is_published: e.target.checked }))} />
+            Published (visible on the public /roadmap page)
+          </label>
+          <button style={s.btn('#166534')} onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : (form.id ? '💾 Save Changes' : '💾 Add Item')}</button>
+        </div>
+      )}
+
+      {loading && <div style={{ textAlign: 'center', padding: '20px 0', color: '#4b5563' }}>Loading...</div>}
+      {!loading && items.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#4b5563' }}>No items yet. Add the first one above.</div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map(it => {
+          const statusInfo = ROADMAP_STATUSES.find(st => st.key === it.status) || ROADMAP_STATUSES[0];
+          return (
+            <div key={it.id} style={{ ...s.card, marginBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: statusInfo.color, background: `${statusInfo.color}22`, border: `1px solid ${statusInfo.color}55`, borderRadius: 999, padding: '3px 10px', flexShrink: 0 }}>{statusInfo.label}</span>
+                <span style={{ fontSize: 12, color: '#a78bfa', flexShrink: 0 }}>▲ {it.vote_count}</span>
+                <span style={{ fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title_en}</span>
+                {!it.is_published && <span style={{ fontSize: 11, color: '#f59e0b', flexShrink: 0 }}>(draft)</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button style={s.btn('#374151')} onClick={() => handleEdit(it)}>✏️ Edit</button>
+                <button style={s.btn('#7f1d1d')} onClick={() => handleDelete(it.id)}>🗑️</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   // ✅ محتاجين الاتنين (فلاج + توكن حقيقي فعلاً موجود) — لو الجلسة قديمة وفيها الفلاج بس
   // التوكن خلص/اتشال، مينفعش نعتبره "داخل" وهو أي طلب API هيرجعله 401
@@ -2947,6 +3097,7 @@ export default function AdminPage() {
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'courses',    label: '🎓 Courses'     },
     { key: 'changelog',  label: '📰 Changelog'   },
+    { key: 'roadmap',    label: '🗺️ Roadmap'     },
     { key: 'answers',    label: '📋 Answers'     },
     { key: 'community',  label: '🌍 Community'   },
     { key: 'channels',   label: '📺 Channels'    },
@@ -3455,6 +3606,7 @@ export default function AdminPage() {
         {tab === 'templates' && <TemplatesTab s={s} />}
         {tab === 'courses' && <CoursesTab s={s} />}
         {tab === 'changelog' && <ChangelogTab s={s} />}
+        {tab === 'roadmap' && <RoadmapTab s={s} />}
 
         {/* ── STUDIO ── */}
         {/* ── ANSWERS ── */}
