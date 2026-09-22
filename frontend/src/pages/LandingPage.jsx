@@ -74,7 +74,7 @@ export function AppFooter({ onNavigate, onGetStarted }) {
             </div>
           </div>
           {[
-            { title:'Product', links:[{label:'Get Started',action:()=>onGetStarted?.()},{label:'Pricing',action:()=>onGetStarted?.()},{label:'Templates',action:()=>onNavigate?.('templates')},{label:'Courses',action:()=>onNavigate?.('courses')},{label:"What's New",action:()=>onNavigate?.('changelog')},{label:'Roadmap',action:()=>onNavigate?.('roadmap')},{label:'Status',action:()=>onNavigate?.('status')},{label:'Community',action:()=>onNavigate?.('community')}] },
+            { title:'Product', links:[{label:'Get Started',action:()=>onGetStarted?.()},{label:'Pricing',action:()=>onGetStarted?.()},{label:'Templates',action:()=>onNavigate?.('templates')},{label:'Courses',action:()=>onNavigate?.('courses')},{label:"What's New",action:()=>onNavigate?.('changelog')},{label:'Roadmap',action:()=>onNavigate?.('roadmap')},{label:'Status',action:()=>onNavigate?.('status')},{label:'API & MCP',action:()=>onNavigate?.('api-docs')},{label:'Community',action:()=>onNavigate?.('community')}] },
             { title:'Company', links:[{label:'About Us',action:()=>onNavigate?.('about')},{label:'Blog',action:()=>onNavigate?.('blog')},{label:'Support',action:()=>onNavigate?.('support')}] },
             { title:'Legal', links:[{label:'Terms of Service',action:()=>onNavigate?.('terms')},{label:'Privacy Policy',action:()=>onNavigate?.('privacy')},{label:'Refund Policy',action:()=>onNavigate?.('refund')}] },
           ].map(col=>(
