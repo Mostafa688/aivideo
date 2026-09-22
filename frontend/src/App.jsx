@@ -275,6 +275,7 @@ export default function App() {
     if (window.location.pathname === '/support') { setPage('support'); setAuthChecked(true); return; }
     if (window.location.pathname === '/faq') { setPage('faq'); setAuthChecked(true); return; }
     if (window.location.pathname === '/templates') { setPage('templates'); setAuthChecked(true); return; }
+    if (window.location.pathname === '/courses') { setPage('courses'); setAuthChecked(true); return; }
     if (window.location.pathname === '/blog') { setAuthChecked(true); return; }
     const blogMatch = window.location.pathname.match(/^\/blog\/([a-z0-9-]+)$/);
     if (blogMatch) { setBlogPostId(blogMatch[1]); setAuthChecked(true); return; }
@@ -306,7 +307,7 @@ export default function App() {
     }
     if (params.get('admin') === '1') { window.history.replaceState({}, '', '/'); setPage('admin'); setAuthChecked(true); return; }
     // ✅ أي رابط مش معروف خالص (مش من القايمة دي) → صفحة 404 بدل ما يترجع للصفحة الرئيسية بصمت
-    const KNOWN_PATHS = ['/', '/login', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/blog', '/affiliate', '/community', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
+    const KNOWN_PATHS = ['/', '/login', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/blog', '/affiliate', '/community', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
     if (!KNOWN_PATHS.includes(window.location.pathname) && !googleToken && !authError && params.get('admin') !== '1') {
       setPage('notfound'); setAuthChecked(true); return;
     }
