@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Circle, Zap, Rocket, Crown, X, Check, Clapperboard, ImageIcon, Video, Drama, Coins,
   BookOpen, Tv, HandCoins, Settings as SettingsIcon, Info, FileText, Lock, Wallet, LogOut,
-  Home, Gem, GraduationCap, Globe, MessageCircle, HelpCircle, Sparkles, Mail, Smartphone, Megaphone, Map,
+  Home, Gem, GraduationCap, Globe, MessageCircle, HelpCircle, Sparkles, Mail, Smartphone, Megaphone, Map, Activity,
   PartyPopper, Copy, ArrowRight, ChevronRight, Loader2,
 } from 'lucide-react';
 
@@ -283,6 +283,7 @@ export default function UserMenu({ user, plan = 'free', credits = null, onLogout
     { key:'templates', Icon: Clapperboard, label:'Templates' }, { key:'courses', Icon: GraduationCap, label:'Courses' },
     { key:'changelog', Icon: Megaphone, label:"What's New" },
     { key:'roadmap', Icon: Map, label:'Roadmap' },
+    { key:'status', Icon: Activity, label:'Status' },
     { key:'community', Icon: Globe, label:'Community' }, { key:'about', Icon: Info, label:'About Us' },
     { key:'support', Icon: MessageCircle, label:'Support' }, { key:'faq', Icon: HelpCircle, label:'FAQ' },
     { key:'affiliate', Icon: HandCoins, label:'Affiliate' },
