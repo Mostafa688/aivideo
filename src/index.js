@@ -24,6 +24,7 @@ import voiceCloneRouter from './services/voiceCloneRoutes.js';
 import audioVideoRouter from './services/audioVideoRoutes.js';
 import whiteboardVideoRouter from './services/whiteboardVideoRoutes.js';
 import coursesRouter from './services/coursesRoutes.js';
+import changelogRouter from './services/changelogRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
@@ -256,6 +257,7 @@ app.use('/api/voice-clone', voiceCloneRouter);
 app.use('/api/admin/audio-video', audioVideoRouter);
 app.use('/api/whiteboard-video', whiteboardVideoRouter);
 app.use('/api/courses', coursesRouter);
+app.use('/api/changelog', changelogRouter);
 app.use('/mcp', mcpRouter);
 app.use(oauthRouter); // ✅ NEW: على الروت مباشرة — مسارات /.well-known و/oauth/* لازم تكون هنا
 
