@@ -27,6 +27,7 @@ import coursesRouter from './services/coursesRoutes.js';
 import changelogRouter from './services/changelogRoutes.js';
 import roadmapRouter from './services/roadmapRoutes.js';
 import statusRouter from './services/statusRoutes.js';
+import statsRouter, { logGeneration } from './services/statsRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
@@ -262,6 +263,7 @@ app.use('/api/courses', coursesRouter);
 app.use('/api/changelog', changelogRouter);
 app.use('/api/roadmap', roadmapRouter);
 app.use('/api/system-status', statusRouter);
+app.use('/api/stats', statsRouter);
 app.use('/mcp', mcpRouter);
 app.use(oauthRouter); // ✅ NEW: على الروت مباشرة — مسارات /.well-known و/oauth/* لازم تكون هنا
 
@@ -1374,6 +1376,7 @@ app.post('/api/video-edit', authMiddleware, renderLimiter, videoUpload.single('v
           jobId: renderJobId,
         });
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: veCreditCost });
+        logGeneration({ userId: req.user.userId, kind: 'edit', modelKey: 'decart_lucy_edit_2', creditCost: veCreditCost });
       } catch (jobErr) {
         console.error('[VideoEdit] Failed:', jobErr.message);
         setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Video edit failed.', completedAt: Date.now() });
@@ -1542,6 +1545,7 @@ app.post('/api/video-edit-by-url', authMiddleware, renderLimiter, async (req, re
           jobId: renderJobId,
         });
         setRenderJob(renderJobId, { status: 'done', videoUrl: '/outputs/' + videoPath, completedAt: Date.now(), creditCost: veCreditCost });
+        logGeneration({ userId: req.user.userId, kind: 'edit', modelKey: 'decart_lucy_edit_2', creditCost: veCreditCost });
       } catch (jobErr) {
         console.error('[VideoEditByUrl] Failed:', jobErr.message);
         setRenderJob(renderJobId, { status: 'failed', error: jobErr.message || 'Video edit failed.', completedAt: Date.now() });
@@ -2904,6 +2908,7 @@ app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res)
         tier: tier || null,
       });
       setRenderJob(jobId, { status: 'done', images, creditCost: imgCreditCost, completedAt: Date.now() });
+      logGeneration({ userId: req.user.userId, kind: 'image', modelKey: model, creditCost: imgCreditCost });
     } catch (genErr) {
       console.error('[NewImageModels] generation failed:', genErr.message);
       await addCreditsBalance(req.user.userId, imgCreditCost);
@@ -3086,6 +3091,7 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
         videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: model });
       }
       setRenderJob(jobId, { status: 'done', videoUrl, creditCost: vidCreditCost, completedAt: Date.now() });
+      logGeneration({ userId: req.user.userId, kind: sourceVideoUrl ? 'edit' : 'video', modelKey: model, creditCost: vidCreditCost });
     } catch (genErr) {
       console.error('[NewVideoModels] generation failed:', genErr.message);
       if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
@@ -3145,6 +3151,7 @@ app.post('/api/videos/analyze', authMiddleware, renderLimiter, async (req, res) 
         finalCreditCost = realCreditCost;
       }
       setRenderJob(jobId, { status: 'done', analysis: segments, mediaUrls, creditCost: finalCreditCost, completedAt: Date.now() });
+      logGeneration({ userId: req.user.userId, kind: 'analyze', modelKey: 'talknet_asd', creditCost: finalCreditCost });
     } catch (genErr) {
       console.error('[VideoAnalysis] analysis failed:', genErr.message);
       await addCreditsBalance(req.user.userId, estimatedCost);
@@ -3241,6 +3248,7 @@ app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) =>
         videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'merged' });
       }
       setRenderJob(jobId, { status: 'done', videoUrl, creditCost: mergeCreditCost, completedAt: Date.now() });
+      logGeneration({ userId: req.user.userId, kind: 'merge', modelKey: 'merge_videos', creditCost: mergeCreditCost });
     } catch (genErr) {
       console.error('[VideoMerge] merge failed:', genErr.message);
       if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });

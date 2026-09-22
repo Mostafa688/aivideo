@@ -32,6 +32,7 @@ import ChangelogPage from './pages/ChangelogPage.jsx';
 import RoadmapPage from './pages/RoadmapPage.jsx';
 import StatusPage from './pages/StatusPage.jsx';
 import ApiDocsPage from './pages/ApiDocsPage.jsx';
+import StatsPage from './pages/StatsPage.jsx';
 import ChannelsPage from './pages/ChannelsPage.jsx';
 import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
 
@@ -493,6 +494,7 @@ export default function App() {
       case 'roadmap':    setPage('roadmap'); break;
       case 'status':     setPage('status'); break;
       case 'api-docs':   setPage('api-docs'); break;
+      case 'stats':      setPage('stats'); break;
       case 'channels':   setPage('channels'); break;
       case 'whiteboard': setPage('whiteboard'); break;
       case 'home':       setPage('agent'); break;
@@ -734,6 +736,7 @@ export default function App() {
         {page === 'roadmap' && <RoadmapPage onBack={() => setPage('dashboard')} userRegion={userRegion} isLoggedIn={true} />}
         {page === 'status' && <StatusPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'api-docs' && <ApiDocsPage onBack={() => setPage('dashboard')} userRegion={userRegion} onNavigate={handleNavigate} />}
+        {page === 'stats' && <StatsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'channels' && <ChannelsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('dashboard')} />}
         {page === 'community' && <CommunityPage onBack={() => setPage('dashboard')} user={user} onNavigate={handleNavigate} />}
