@@ -96,6 +96,57 @@ function ModelWelcomeModal({ modelKey, userRegion, onContinue }) {
   );
 }
 
+// ── Welcome Tour Modal (first-time onboarding, once per browser) ────────────
+function WelcomeTourModal({ userRegion, onDone }) {
+  const [visible, setVisible] = useState(false);
+  const [step, setStep] = useState(0);
+  useEffect(() => { setTimeout(() => setVisible(true), 50); }, []);
+  const isAr = (userRegion || localStorage.getItem('erivion_region') || 'eg') !== 'intl';
+
+  const steps = isAr ? [
+    { icon: '👋', title: 'أهلاً بيك في Erivion', body: 'بنساعدك تحول أي فكرة لفيديو احترافي بالذكاء الاصطناعي في دقايق — من غير خبرة مونتاج أو تصوير.' },
+    { icon: '💬', title: 'قوللنا فكرتك وبس', body: 'اكتب فكرتك أو الصق سكريبت جاهز في الشات، ارفق صورة أو تسجيل صوتي لو حابب، وسيبنا نكتب البرومبت الاحترافي ونختار أفضل موديل.' },
+    { icon: '💰', title: 'التكلفة واضحة قبل ما تأكد', body: 'أي خطوة بتتم بتوريك تكلفتها بالكريديت الأول، ومفيش أي خصم من غير ما توافق صراحة.' },
+    { icon: '🚀', title: 'جاهز تبدأ؟', body: 'دوس ابدأ وقوللنا أول فكرة عندك — إحنا هنا لو احتجت أي مساعدة في أي وقت.' },
+  ] : [
+    { icon: '👋', title: 'Welcome to Erivion', body: "We help you turn any idea into a professional AI video in minutes — no editing or filming experience needed." },
+    { icon: '💬', title: 'Just tell us your idea', body: 'Type your idea or paste a ready script in the chat, attach a photo or voice recording if you like, and we write the expert prompt and pick the best engine for you.' },
+    { icon: '💰', title: 'Cost is clear before you confirm', body: 'Every step shows its real credit cost upfront, and nothing is ever charged without your explicit confirmation.' },
+    { icon: '🚀', title: 'Ready to start?', body: "Hit start and tell us your first idea — we're here if you need any help along the way." },
+  ];
+  const s = steps[step];
+  const isLast = step === steps.length - 1;
+
+  const finish = () => { localStorage.setItem('onboarding_tour_shown', 'true'); onDone?.(); };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, backdropFilter: 'blur(8px)', opacity: visible ? 1 : 0, transition: 'opacity 0.3s' }}>
+      <div style={{ background: '#09090f', border: '1px solid rgba(124,106,247,0.3)', borderRadius: 24, padding: '36px 32px', width: '100%', maxWidth: 460, boxShadow: '0 32px 80px rgba(0,0,0,0.8)', transform: visible ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(16px)', transition: 'all 0.4s cubic-bezier(0.34,1.56,0.64,1)', direction: isAr ? 'rtl' : 'ltr', textAlign: isAr ? 'right' : 'left' }}>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>{s.icon}</div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#fff', margin: '0 0 10px' }}>{s.title}</h2>
+          <p style={{ fontSize: 14, color: '#d1d5db', lineHeight: 1.8, margin: 0 }}>{s.body}</p>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 24 }}>
+          {steps.map((_, i) => (
+            <div key={i} style={{ width: i === step ? 20 : 6, height: 6, borderRadius: 3, background: i === step ? '#7c6af7' : 'rgba(255,255,255,0.15)', transition: 'all 0.3s' }} />
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {!isLast && (
+            <button onClick={finish} style={{ flex: 1, padding: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+              {isAr ? 'تخطي' : 'Skip'}
+            </button>
+          )}
+          <button onClick={() => (isLast ? finish() : setStep(v => v + 1))} style={{ flex: 2, padding: '13px', background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: '0 4px 20px rgba(124,106,247,0.4)' }}>
+            {isLast ? (isAr ? 'ابدأ ←' : 'Start →') : (isAr ? 'التالي' : 'Next')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 404 Not Found Page ───────────────────────────────────────────────────────
 function NotFoundPage({ onNavigate }) {
   const region = localStorage.getItem('erivion_region') || 'eg';
@@ -218,6 +269,16 @@ export default function App() {
   const [pendingModelKey, setPendingModelKey] = useState(null); // for welcome modal
   const [pendingModelAction, setPendingModelAction] = useState(null);
   const [googlePendingData, setGooglePendingData] = useState(null); // for google new user onboarding
+  // ✅ NEW (طلب العميل: "onboarding تفاعلي لأول مرة" — جزء من "إيه الناقص عشان نبقى زي
+  // المواقع الكبيرة"): جولة ترحيبية قصيرة (4 خطوات) تظهر مرة واحدة بس لكل متصفح، أول ما
+  // العميل يدخل تجربة المنتج الحقيقية (بعد تسجيل الدخول) — نفس نمط "welcome_shown_" الموجود
+  // بالفعل لكل موديل، بس مرة واحدة عامة للمنتج ككل مش لموديل بعينه
+  const [showWelcomeTour, setShowWelcomeTour] = useState(false);
+  useEffect(() => {
+    if (user && localStorage.getItem('onboarding_tour_shown') !== 'true') {
+      setShowWelcomeTour(true);
+    }
+  }, [user]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -612,6 +673,11 @@ export default function App() {
         <SupportPage embedded onNavigate={(k) => { setShowSupportPanel(false); handleNavigate(k); }} />
       </SidePanel>
       {showAffiliateModal && <AffiliateModal user={user} onClose={() => setShowAffiliateModal(false)} onNavigateAffiliate={() => { setShowAffiliateModal(false); handleNavigate('affiliate'); }} />}
+
+      {/* First-time onboarding tour — once per browser, right after login */}
+      {showWelcomeTour && (
+        <WelcomeTourModal userRegion={userRegion} onDone={() => setShowWelcomeTour(false)} />
+      )}
 
       {/* Model Welcome Modal */}
       {pendingModelKey && (
