@@ -2683,6 +2683,147 @@ function RoadmapTab({ s }) {
   );
 }
 
+// ── Status Incidents Tab ─────────────────────────────────────────────────────
+// ✅ NEW (طلب العميل: صفحة "System Status" عامة زي المواقع الكبيرة): الأدمن هنا بس بيدير
+// بلاغات الأعطال اليدوية — الفحوصات الحية (DB/تخزين/محركات AI) بتتحسب تلقائي من غير تدخل هنا
+const INCIDENT_SEVERITIES = [
+  { key: 'info', label: 'ℹ️ Info', color: '#3b82f6' },
+  { key: 'degraded', label: '🟡 Degraded', color: '#f59e0b' },
+  { key: 'outage', label: '🔴 Outage', color: '#ef4444' },
+];
+
+function StatusIncidentsTab({ s }) {
+  const [incidents, setIncidents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState('');
+  const showToastMsg = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  const emptyForm = { severity: 'degraded', title_ar: '', title_en: '', description_ar: '', description_en: '' };
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [posting, setPosting] = useState(false);
+
+  const loadIncidents = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/system-status/admin/list', { headers });
+      const d = await r.json();
+      setIncidents(d.incidents || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+  useEffect(() => { loadIncidents(); }, []);
+
+  const handlePost = async () => {
+    if (!form.title_ar.trim() || !form.title_en.trim()) { showToastMsg('❌ Title (AR + EN) is required'); return; }
+    setPosting(true);
+    try {
+      const r = await fetch('/api/system-status/admin', { method: 'POST', headers, body: JSON.stringify(form) });
+      const d = await r.json();
+      if (d.incident) {
+        showToastMsg('✅ Incident posted');
+        setForm(emptyForm);
+        setShowForm(false);
+        loadIncidents();
+      } else showToastMsg('❌ ' + (d.error || 'Failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setPosting(false);
+  };
+
+  const handleResolve = async (id) => {
+    try {
+      const r = await fetch(`/api/system-status/admin/${id}/resolve`, { method: 'PUT', headers });
+      const d = await r.json();
+      if (d.incident) { showToastMsg('✅ Marked resolved'); loadIncidents(); }
+      else showToastMsg('❌ ' + d.error);
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this incident permanently?')) return;
+    try {
+      const r = await fetch(`/api/system-status/admin/${id}`, { method: 'DELETE', headers });
+      const d = await r.json();
+      if (d.success) { showToastMsg('✅ Deleted'); loadIncidents(); }
+      else showToastMsg('❌ ' + d.error);
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+  };
+
+  return (
+    <div>
+      {toast && (
+        <div style={{ position: 'fixed', top: 16, right: 16, background: toast.startsWith('✅') ? '#166534' : '#7f1d1d', border: '1px solid ' + (toast.startsWith('✅') ? '#22c55e' : '#ef4444'), borderRadius: 10, padding: '12px 20px', color: '#fff', fontWeight: 600, fontSize: 14, zIndex: 9999, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>{toast}</div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>📡 System Status</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={s.btn()} onClick={loadIncidents}>🔄 Refresh</button>
+          <button style={s.btn('#f59e0b')} onClick={() => { setForm(emptyForm); setShowForm(v => !v); }}>{showForm ? '✕ Cancel' : '+ Post Incident'}</button>
+        </div>
+      </div>
+
+      <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 20 }}>
+        The public /status page's component checks (Database, Media Storage, AI Generation Engines, Agent Chat) run live automatically — nothing to manage here. This tab is only for posting/resolving manual incident reports.
+      </p>
+
+      {showForm && (
+        <div style={s.card}>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Severity</div>
+            <select style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.severity} onChange={e => setForm(p => ({ ...p, severity: e.target.value }))}>
+              {INCIDENT_SEVERITIES.map(sv => <option key={sv.key} value={sv.key}>{sv.label}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Title (Arabic)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.title_ar} onChange={e => setForm(p => ({ ...p, title_ar: e.target.value }))} placeholder="مثال: بطء في توليد الفيديوهات" />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Title (English)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.title_en} onChange={e => setForm(p => ({ ...p, title_en: e.target.value }))} placeholder="e.g. Slower video generation" />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Description (Arabic)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.description_ar} onChange={e => setForm(p => ({ ...p, description_ar: e.target.value }))} placeholder="تفاصيل (اختياري)..." />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Description (English)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.description_en} onChange={e => setForm(p => ({ ...p, description_en: e.target.value }))} placeholder="Details (optional)..." />
+            </div>
+          </div>
+          <button style={s.btn('#f59e0b')} onClick={handlePost} disabled={posting}>{posting ? 'Posting...' : '📢 Post Incident'}</button>
+        </div>
+      )}
+
+      {loading && <div style={{ textAlign: 'center', padding: '20px 0', color: '#4b5563' }}>Loading...</div>}
+      {!loading && incidents.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#4b5563' }}>No incidents ever posted. Good sign.</div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {incidents.map(inc => {
+          const sevInfo = INCIDENT_SEVERITIES.find(sv => sv.key === inc.severity) || INCIDENT_SEVERITIES[1];
+          return (
+            <div key={inc.id} style={{ ...s.card, marginBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: sevInfo.color, background: `${sevInfo.color}22`, border: `1px solid ${sevInfo.color}55`, borderRadius: 999, padding: '3px 10px', flexShrink: 0 }}>{sevInfo.label}</span>
+                <span style={{ fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inc.title_en}</span>
+                {inc.resolved ? <span style={{ fontSize: 11, color: '#22c55e', flexShrink: 0 }}>✓ resolved</span> : <span style={{ fontSize: 11, color: '#ef4444', flexShrink: 0 }}>● ongoing</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                {!inc.resolved && <button style={s.btn('#166534')} onClick={() => handleResolve(inc.id)}>✓ Resolve</button>}
+                <button style={s.btn('#7f1d1d')} onClick={() => handleDelete(inc.id)}>🗑️</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   // ✅ محتاجين الاتنين (فلاج + توكن حقيقي فعلاً موجود) — لو الجلسة قديمة وفيها الفلاج بس
   // التوكن خلص/اتشال، مينفعش نعتبره "داخل" وهو أي طلب API هيرجعله 401
@@ -3098,6 +3239,7 @@ export default function AdminPage() {
     { key: 'courses',    label: '🎓 Courses'     },
     { key: 'changelog',  label: '📰 Changelog'   },
     { key: 'roadmap',    label: '🗺️ Roadmap'     },
+    { key: 'statusIncidents', label: '📡 Status' },
     { key: 'answers',    label: '📋 Answers'     },
     { key: 'community',  label: '🌍 Community'   },
     { key: 'channels',   label: '📺 Channels'    },
@@ -3607,6 +3749,7 @@ export default function AdminPage() {
         {tab === 'courses' && <CoursesTab s={s} />}
         {tab === 'changelog' && <ChangelogTab s={s} />}
         {tab === 'roadmap' && <RoadmapTab s={s} />}
+        {tab === 'statusIncidents' && <StatusIncidentsTab s={s} />}
 
         {/* ── STUDIO ── */}
         {/* ── ANSWERS ── */}
