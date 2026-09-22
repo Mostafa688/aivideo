@@ -33,6 +33,8 @@ import RoadmapPage from './pages/RoadmapPage.jsx';
 import StatusPage from './pages/StatusPage.jsx';
 import ApiDocsPage from './pages/ApiDocsPage.jsx';
 import StatsPage from './pages/StatsPage.jsx';
+import TeamPage from './pages/TeamPage.jsx';
+import TeamInvitePage from './pages/TeamInvitePage.jsx';
 import ChannelsPage from './pages/ChannelsPage.jsx';
 import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
 
@@ -256,6 +258,7 @@ export default function App() {
   const [planSelected, setPlanSelected] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [blogPostId, setBlogPostId] = useState(null);
+  const [teamInviteToken, setTeamInviteToken] = useState(null);
   const [model3Access, setModel3Access] = useState(false);
   const [model3Plan, setModel3Plan] = useState('m3_starter');
   const [model4Access, setModel4Access] = useState(false);
@@ -349,6 +352,18 @@ export default function App() {
     if (window.location.pathname === '/blog') { setAuthChecked(true); return; }
     const blogMatch = window.location.pathname.match(/^\/blog\/([a-z0-9-]+)$/);
     if (blogMatch) { setBlogPostId(blogMatch[1]); setAuthChecked(true); return; }
+    const teamInviteMatch = window.location.pathname.match(/^\/team-invite\/([A-Za-z0-9_-]+)$/);
+    if (teamInviteMatch) {
+      setTeamInviteToken(teamInviteMatch[1]);
+      const tiToken = localStorage.getItem('token');
+      const tiEmail = localStorage.getItem('email');
+      if (tiToken && tiEmail) {
+        setUser({ token: tiToken, email: tiEmail });
+        setUserPlan(localStorage.getItem('plan') || 'free');
+        setPlanSelected(localStorage.getItem('planSelected') === 'true');
+      }
+      setAuthChecked(true); return;
+    }
     if (window.location.pathname === '/affiliate') { setPage('affiliate'); setAuthChecked(true); return; }
     if (window.location.pathname === '/community') { setPage('community'); setAuthChecked(true); return; }
     if (window.location.pathname === '/pricing') {
@@ -495,6 +510,7 @@ export default function App() {
       case 'status':     setPage('status'); break;
       case 'api-docs':   setPage('api-docs'); break;
       case 'stats':      setPage('stats'); break;
+      case 'team':       setPage('team'); break;
       case 'channels':   setPage('channels'); break;
       case 'whiteboard': setPage('whiteboard'); break;
       case 'home':       setPage('agent'); break;
@@ -530,6 +546,7 @@ export default function App() {
       if (!planChosenBefore) setShowLogoTransition(true);
     }} onBrowseCourses={() => { setShowAuth(false); setPage('courses'); }} />;
     if (blogPostId) return <BlogPostPage postId={blogPostId} onBack={() => setBlogPostId(null)} />;
+    if (teamInviteToken) return <TeamInvitePage token={teamInviteToken} isLoggedIn={false} onRequireLogin={() => setShowAuth(true)} userRegion={userRegion} />;
     if (page === 'community') return <CommunityPage onBack={() => setPage('input')} user={null} onNavigate={(k) => { if(k==='auth') setShowAuth(true); else if(k==='community') {} else setShowAuth(true); }} />;
     // ✅ FIX: صفحة الدعم أصلاً بتشتغل من غير تسجيل دخول (فورم اسم+إيميل بسيطة)، فلازم تبقى
     // استثناء زي الكوميونيتي بالظبط — قبل الفيكس ده، أي زائر مش مسجل دخول (زي عميل بيدوس على
@@ -579,6 +596,14 @@ export default function App() {
     }}
     onNavigate={handleNavigate}
     onRegionSelect={(r) => setUserRegion(r)}
+  />;
+
+  if (teamInviteToken) return <TeamInvitePage
+    token={teamInviteToken}
+    isLoggedIn={true}
+    currentUserEmail={user.email}
+    onAccepted={() => { setTeamInviteToken(null); window.history.replaceState({}, '', '/'); setPage('team'); }}
+    userRegion={userRegion}
   />;
 
   const creditsColor = () => {
@@ -737,6 +762,7 @@ export default function App() {
         {page === 'status' && <StatusPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'api-docs' && <ApiDocsPage onBack={() => setPage('dashboard')} userRegion={userRegion} onNavigate={handleNavigate} />}
         {page === 'stats' && <StatsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
+        {page === 'team' && <TeamPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'channels' && <ChannelsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('dashboard')} />}
         {page === 'community' && <CommunityPage onBack={() => setPage('dashboard')} user={user} onNavigate={handleNavigate} />}

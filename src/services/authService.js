@@ -713,9 +713,27 @@ export const CREDITS_PACKAGES = {
   credits_agency:  { name: 'Agency',  credits: 12000, usd: 336 },
 };
 
+// ✅ NEW (طلب العميل: مساحة عمل جماعية/Team — أكتر من حساب يستخدموا نفس رصيد الكريديت):
+// الجداول الحقيقية (teams/team_members/team_invites) بتتنشئ في teamRoutes.js، هنا بس بنقرا
+// منها. عضو الفريق (role='member') بيحصّل/يُخصم من رصيد صاحب الفريق (owner) بدل رصيده هو —
+// أي فشل في القراءة دي (زي الجدول لسه مبنيش وقت الإقلاع) بيرجع نفس الـuserId زي ما هو، أمان
+// أولاً، عشان الفيتشر ده لازم يفشل بأمان (سلوك عادي لكل يوزر) مش يكسر نظام الكريديت كله
+export async function resolveBillingUserId(userId) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT t.owner_user_id FROM team_members tm JOIN teams t ON t.id = tm.team_id WHERE tm.user_id = $1 AND tm.role = 'member'`,
+      [userId]
+    );
+    return rows[0]?.owner_user_id || userId;
+  } catch {
+    return userId;
+  }
+}
+
 export async function getCreditsBalance(userId) {
-  await maybeRenewFreeWeeklyCredits(userId);
-  const { rows } = await pool.query('SELECT COALESCE(credits_balance, 0) as balance FROM users WHERE id = $1', [userId]);
+  const billingUserId = await resolveBillingUserId(userId);
+  await maybeRenewFreeWeeklyCredits(billingUserId);
+  const { rows } = await pool.query('SELECT COALESCE(credits_balance, 0) as balance FROM users WHERE id = $1', [billingUserId]);
   return rows[0]?.balance || 0;
 }
 
@@ -836,14 +854,16 @@ export async function maybeSendUpgradeEmail(userId, email, name) {
 }
 
 export async function addCreditsBalance(userId, amount) {
-  const { rows } = await pool.query('UPDATE users SET credits_balance = COALESCE(credits_balance, 0) + $1 WHERE id = $2 RETURNING credits_balance', [amount, userId]);
+  const billingUserId = await resolveBillingUserId(userId);
+  const { rows } = await pool.query('UPDATE users SET credits_balance = COALESCE(credits_balance, 0) + $1 WHERE id = $2 RETURNING credits_balance', [amount, billingUserId]);
   return rows[0]?.credits_balance || 0;
 }
 
 export async function deductCreditsBalance(userId, amount) {
-  const current = await getCreditsBalance(userId);
+  const billingUserId = await resolveBillingUserId(userId);
+  const current = await getCreditsBalance(billingUserId);
   if (current < amount) return { success: false, balance: current };
-  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 RETURNING credits_balance', [amount, userId]);
+  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 RETURNING credits_balance', [amount, billingUserId]);
   return { success: true, balance: rows[0]?.credits_balance || 0 };
 }
 
@@ -1395,9 +1415,10 @@ export const ADS_CREDIT_COST = 240;
 // بيتأكد إن الرصيد كافي، يخصم، ويرجع النتيجة. لو الرصيد مش كافي بيرجع remaining
 // عشان الفرونت إند يقدر يقول للعميل "محتاج X كريديت ومعاك Y بس"
 export async function chargeCredits(userId, cost) {
-  const balance = await getCreditsBalance(userId);
+  const billingUserId = await resolveBillingUserId(userId);
+  const balance = await getCreditsBalance(billingUserId);
   if (balance < cost) return { success: false, reason: 'quota_exceeded', remaining: balance, cost };
-  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 RETURNING credits_balance', [cost, userId]);
+  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 RETURNING credits_balance', [cost, billingUserId]);
   return { success: true, remaining: rows[0]?.credits_balance ?? (balance - cost), cost };
 }
 
