@@ -452,14 +452,19 @@ export default function App() {
       setPage('dashboard');
       const planChosenBefore = localStorage.getItem('planSelected') === 'true';
       if (!planChosenBefore) setShowLogoTransition(true);
-    }} />;
+    }} onBrowseCourses={() => { setShowAuth(false); setPage('courses'); }} />;
     if (blogPostId) return <BlogPostPage postId={blogPostId} onBack={() => setBlogPostId(null)} />;
     if (page === 'community') return <CommunityPage onBack={() => setPage('input')} user={null} onNavigate={(k) => { if(k==='auth') setShowAuth(true); else if(k==='community') {} else setShowAuth(true); }} />;
     // ✅ FIX: صفحة الدعم أصلاً بتشتغل من غير تسجيل دخول (فورم اسم+إيميل بسيطة)، فلازم تبقى
     // استثناء زي الكوميونيتي بالظبط — قبل الفيكس ده، أي زائر مش مسجل دخول (زي عميل بيدوس على
     // رابط الشات من الإيميل من متصفح تاني) كان بيترجعله اللاندنج بيدج بدل الشات مباشرة
     if (page === 'support') return <SupportPage onBack={() => setPage('input')} onNavigate={(k) => { if(k==='community') setPage(k); else setShowAuth(true); }} />;
-    return <LandingPage onGetStarted={() => setShowAuth(true)} onOpenBlog={(id) => setBlogPostId(id)} onNavigate={(k) => { if(k==='support'||k==='community') setPage(k); else setShowAuth(true); }} />;
+    // ✅ NEW (طلب العميل: لينك لصفحة الكورسات من اللاندنج بيدج/تسجيل الدخول): كتالوج الكورسات
+    // نفسه متاح من غير تسجيل دخول أصلاً في الباك إند (/api/courses بلا Authorization header) —
+    // نفس استثناء الكوميونيتي/الدعم فوق، عشان زائر مش مسجل دخول يقدر يتصفح الكورسات المتاحة
+    // مباشرة (فتح تفاصيل كورس مقفول لسه بيطلب تسجيل دخول من جوه الصفحة نفسها)
+    if (page === 'courses') return <CoursesPage onBack={() => setPage('input')} onNavigate={(k) => { if(k==='support'||k==='community'||k==='courses') setPage(k); else setShowAuth(true); }} userRegion={userRegion} />;
+    return <LandingPage onGetStarted={() => setShowAuth(true)} onOpenBlog={(id) => setBlogPostId(id)} onNavigate={(k) => { if(k==='support'||k==='community'||k==='courses') setPage(k); else setShowAuth(true); }} />;
   }
 
   if (showAuth) return <AuthPage onAuth={(data) => {

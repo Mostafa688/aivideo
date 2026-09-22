@@ -589,7 +589,7 @@ function LegalModal({ type, onClose }) {
 }
 
 // ─── Main AuthPage ────────────────────────────────────────────────────────────
-export default function AuthPage({ onAuth, googlePendingData }) {
+export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses }) {
   const [mode, setMode]           = useState('login');
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
@@ -841,6 +841,12 @@ export default function AuthPage({ onAuth, googlePendingData }) {
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>by creators worldwide</div>
               </div>
             </div>
+
+            {onBrowseCourses && (
+              <button onClick={onBrowseCourses} style={{ marginTop: 20, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, color: 'rgba(255,255,255,0.45)', fontFamily: "'Plus Jakarta Sans', sans-serif", textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                Just want to browse our courses first? →
+              </button>
+            )}
           </div>
         </div>
 
