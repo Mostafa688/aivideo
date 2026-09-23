@@ -162,6 +162,14 @@ async function initDB() {
       model_used TEXT,
       created_at TEXT DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      expires_at BIGINT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agent_conversations (
@@ -1060,6 +1068,34 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
 
 export function verifyToken(token) {
   return jwt.verify(token, JWT_SECRET);
+}
+
+// ── Forgot / reset password ─────────────────────────────────────────────────
+// ✅ NEW (طلب العميل: خاصية "نسيت كلمة السر" كانت مش موجودة خالص، لا فرونت ولا باك إند)
+// التوكن عشوائي 32 بايت (64 حرف hex)، صالح لساعة واحدة بس، وبيتحذف/يتلغى بعد أول استخدام.
+// createPasswordResetToken بترجع null بهدوء لو الإيميل مش موجود — الراوت بيرجع نفس رسالة
+// النجاح العامة في الحالتين (منع email enumeration: محدش يقدر يعرف مين مسجل عندنا وميه لأ)
+export async function createPasswordResetToken(email) {
+  const { rows } = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+  if (!rows.length) return null;
+  const userId = rows[0].id;
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + 60 * 60 * 1000; // ساعة واحدة
+  await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
+  await pool.query('INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)', [userId, token, expiresAt]);
+  return token;
+}
+
+export async function resetPasswordWithToken(token, newPassword) {
+  const { rows } = await pool.query('SELECT * FROM password_reset_tokens WHERE token = $1 AND used = 0', [token]);
+  if (!rows.length) throw new Error('This reset link is invalid or has already been used — please request a new one.');
+  const record = rows[0];
+  if (Number(record.expires_at) < Date.now()) throw new Error('This reset link has expired — please request a new one.');
+  const hash = await bcrypt.hash(newPassword, 10);
+  await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hash, record.user_id]);
+  await pool.query('UPDATE password_reset_tokens SET used = 1 WHERE id = $1', [record.id]);
+  const { rows: userRows } = await pool.query('SELECT email FROM users WHERE id = $1', [record.user_id]);
+  return { email: userRows[0]?.email };
 }
 
 export async function saveVideo(userId, filename, title) {

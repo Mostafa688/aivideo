@@ -16,6 +16,7 @@ import {
   resetModel3Usage, resetModel4Usage, resetModel5Usage,
   EGP_PER_CREDIT, CREDITS_PACKAGES, getCreditsBalance, approveCreditsPayment,
   generateApiKey, listApiKeys, revokeApiKey, setUserRegion,
+  createPasswordResetToken, resetPasswordWithToken,
 } from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
@@ -119,6 +120,59 @@ router.post('/login', async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ── Forgot / reset password ──────────────────────────────────────────────
+// ✅ NEW (طلب العميل: "معندناش forget my password في صفحة تسجيل الدخول"): فورم بسيط
+// بيبعت إيميل فيه لينك صالح لساعة واحدة (نفس نمط دعوة الفريق في teamRoutes.js — Resend)
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'A valid email is required' });
+  try {
+    const token = await createPasswordResetToken(email.trim().toLowerCase());
+    // ✅ رسالة النجاح نفسها سواء الإيميل موجود أو لأ — منع email enumeration
+    if (token) {
+      const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+      const link = `${frontendUrl}/reset-password?token=${token}`;
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Erivion <noreply@erivion.net>',
+          to: email.trim(),
+          subject: 'Reset your Erivion password',
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center"><div style="font-size:48px;margin-bottom:12px">🔑</div><h2 style="color:#a78bfa;font-size:20px;margin:0 0 8px">Reset your password</h2><p style="color:#9ca3af;font-size:14px;line-height:1.7">Click below to set a new password. This link works once and expires in 1 hour. If you didn't request this, you can safely ignore this email.</p><a href="${link}" style="display:inline-block;margin-top:20px;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700">Reset Password →</a></div></div>`,
+        }),
+      }).then(async r => { if (!r.ok) console.error('[ForgotPassword] Resend failed:', r.status, await r.text().catch(() => '')); })
+        .catch(e => console.error('[ForgotPassword] Resend request failed:', e.message));
+    }
+    res.json({ ok: true, message: 'If an account exists for that email, a reset link has been sent.' });
+  } catch (e) {
+    console.error('[ForgotPassword] Error:', e.message);
+    res.status(500).json({ error: 'Something went wrong — please try again.' });
+  }
+});
+
+router.post('/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) return res.status(400).json({ error: 'Token and new password are required' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  try {
+    const { email } = await resetPasswordWithToken(token, newPassword);
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Erivion <noreply@erivion.net>',
+        to: email,
+        subject: 'Your Erivion password was changed',
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:36px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center"><div style="font-size:48px;margin-bottom:12px">✅</div><h2 style="color:#22c55e;font-size:20px;margin:0 0 8px">Password changed</h2><p style="color:#9ca3af;font-size:14px;line-height:1.7">Your Erivion password was just reset. If this wasn't you, contact support immediately.</p></div></div>`,
+      }),
+    }).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 
