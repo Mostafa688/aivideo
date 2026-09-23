@@ -41,8 +41,32 @@ function buildMcpServer(userId, email) {
   //  ما يبقى لينك نص عادي. لو الـ host (Claude) بيدعم الإضافة دي، هيرندر الـ HTML
   //  ده جوه iframe محمي ويغذّيه بنتيجة الأداة تلقائيًا. لو مش بيدعمها، بيرجع
   //  تلقائيًا للنص العادي (fallback مضمون، مفيش خطر كسر أي حاجة).
-  // ══════════════════════════════════════════════════════════════════════════
+  //
+  //  ✅ FIX (باج حقيقي — سبب فشل الاتصال بالكونكتور بالكامل): registerAppTool/
+  //  registerAppResource جايين من مكتبة تجريبية منفصلة (@modelcontextprotocol/ext-apps)
+  //  بتنفّذ مواصفة لسه مش مستقرة (SEP-1865). لو أي نسخة منها اترفعت تلقائيًا وقت
+  //  الديبلوي وبقت مش متوافقة مع نسخة الـSDK الأساسية، أي استدعاء ليها كان بيرمي
+  //  استثناء فوري — وده بيحصل جوه buildMcpServer() اللي بينادَى في كل طلب متسجل
+  //  دخول عليه، يعني كل محاولة اتصال حقيقية كانت بتفشل بـ500 حتى لو الـauth تمام.
+  //  الحل: كل استدعاء لواجهة الـWidget التجريبية دي محاط بـtry/catch وبيرجع
+  //  تلقائيًا لـserver.registerTool العادي المستقر (بدون widget، نص عادي بس)
+  //  لو المكتبة التجريبية فشلت — عشان فشل feature تجريبي واحد ميكسرش الكونكتور كله
   const videoPlayerResourceUri = 'ui://erivion/video-player.html';
+  let appsWidgetOk = true;
+  const safeRegisterAppTool = (name, config, handler) => {
+    if (appsWidgetOk) {
+      try {
+        registerAppTool(server, name, config, handler);
+        return;
+      } catch (e) {
+        appsWidgetOk = false;
+        console.error('[MCP] registerAppTool failed, falling back to plain tool:', e.message);
+      }
+    }
+    const { _meta, ...plainConfig } = config;
+    server.registerTool(name, plainConfig, handler);
+  };
+  try {
   registerAppResource(server, videoPlayerResourceUri, videoPlayerResourceUri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
     contents: [{
       uri: videoPlayerResourceUri,
@@ -82,6 +106,10 @@ function buildMcpServer(userId, email) {
 </body></html>`,
     }],
   }));
+  } catch (e) {
+    appsWidgetOk = false;
+    console.error('[MCP] registerAppResource failed, tools will fall back to plain text:', e.message);
+  }
 
   // ── list_models ──────────────────────────────────────────────────────────
   // ✅ FIX (طلب العميل: "ظبط الـMCP على النظام الجديد"): كانت بترجع نص ثابت (hardcoded) لوصف
@@ -148,8 +176,7 @@ function buildMcpServer(userId, email) {
   // ✅ NEW (طلب العميل: "ظبط الـMCP على النظام الجديد"): النظام الجديد بيفصل توليد الصورة عن
   // تحريكها لفيديو (زي GENERATE_IMAGE/GENERATE_VIDEO في شات الايجنت بالظبط) — أداة مستقلة هنا
   const IMAGE_MODEL_KEYS = Object.keys(NEW_IMAGE_MODELS);
-  registerAppTool(
-    server,
+  safeRegisterAppTool(
     'generate_image',
     {
       title: 'Generate an image',
@@ -212,8 +239,7 @@ function buildMcpServer(userId, email) {
   // الجلسة (راجع "MODELS AVAILABLE ON ERIVION" اللي اتشالت من agentService.js). بقت دلوقتي
   // بتنادي /api/videos/generate الحقيقي بنفس المحركات (Veo/Nano Banana/Seedance/Kling...)
   const VIDEO_MODEL_KEYS = Object.keys(NEW_VIDEO_MODELS);
-  registerAppTool(
-    server,
+  safeRegisterAppTool(
     'generate_video',
     {
       title: 'Generate a video',
@@ -294,8 +320,7 @@ function buildMcpServer(userId, email) {
   // دايمًا حتى لو كان أصلاً رابط https كامل من R2 (مخرجات النظام الجديد) — رابط مكسور مزدوج.
   // كمان jobId بتاع generate_image (بادئة "newimg_") مختلف كليًا (بيرجع "images" مش
   // "videoUrl")، فبنميّز بينهم عشان نستعلم على الـendpoint الصح
-  registerAppTool(
-    server,
+  safeRegisterAppTool(
     'check_render_status',
     {
       title: 'Check a generation job status',
@@ -344,8 +369,7 @@ function buildMcpServer(userId, email) {
   // ✅ NEW: تعديل video-to-video (Lucy Edit 2) لفيديو خارجي — MCP مفيهوش قناة رفع
   // ملفات حقيقية لسه، فبناخد رابط عام للفيديو بدل الملف نفسه. العميل يقدر ياخد اللينك
   // ده من صفحة Erivion → Settings → API & MCP → "Upload video, get link"
-  registerAppTool(
-    server,
+  safeRegisterAppTool(
     'edit_video',
     {
       title: 'Edit a video (video-to-video)',
@@ -420,7 +444,14 @@ async function resolveUserFromToken(token) {
   return decoded?.userId || null;
 }
 
-router.post('/', express.json(), async (req, res) => {
+// ✅ FIX: بنستقبل GET وDELETE كمان جنب POST (مش POST بس زي قبل كده) — الـSDK نفسه
+// (transport.handleRequest) بيفرّق بين الطرق التلاتة ويرجع رد متوافق مع مواصفة
+// Streamable HTTP لكل واحدة فيهم (405 لو GET/DELETE مش مدعومين في وضعنا الـstateless
+// مثلاً). لو الطلب كان بيوصل لـExpress أصلاً بس مسجل على POST بس، أي عميل (زي
+// كونكتور Claude.ai) بيبعت GET/DELETE في أي مرحلة من فحص/الاتصال كان بياخد صفحة
+// 404 عادية من Express نفسه بدل رد MCP سليم — وده بالظبط اللي بيفسّر رسالة
+// "Check that the URL points to a valid MCP server"
+async function handleMcpRequest(req, res) {
   try {
     const authHeader = req.headers['authorization'] || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
@@ -446,11 +477,18 @@ router.post('/', express.json(), async (req, res) => {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   } catch (e) {
-    console.error('[MCP] Error:', e.message);
+    // ✅ FIX: e.stack بدل e.message بس — عشان أي فشل في بناء السيرفر (زي مكتبة
+    // MCP Apps التجريبية لو رمت استثناء مش متوقع) يبان مكانه بالظبط في لوجات
+    // Railway بدل ما نشوف رسالة عامة مالهاش أي فايدة في تشخيص المشكلة
+    console.error('[MCP] Error:', e.stack || e.message);
     if (!res.headersSent) {
       res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
     }
   }
-});
+}
+
+router.post('/', express.json(), handleMcpRequest);
+router.get('/', handleMcpRequest);
+router.delete('/', handleMcpRequest);
 
 export default router;
