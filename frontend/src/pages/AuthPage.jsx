@@ -589,14 +589,18 @@ function LegalModal({ type, onClose }) {
 }
 
 // ─── Main AuthPage ────────────────────────────────────────────────────────────
-export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses }) {
+export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, resetToken }) {
   const [mode, setMode]           = useState('login');
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
   const [code, setCode]           = useState('');
-  const [step, setStep]           = useState(googlePendingData ? 'terms' : 'form');
+  const [step, setStep]           = useState(googlePendingData ? 'terms' : (resetToken ? 'reset' : 'form'));
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetDone, setResetDone] = useState(false);
   const [legalModal, setLegalModal] = useState(null);
   const [pendingAuthData, setPendingAuthData] = useState(googlePendingData || null);
   const [surveySource, setSurveySource] = useState(null);
@@ -670,6 +674,29 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses })
       localStorage.setItem('erivion_show_courses_welcome', '1');
       setPendingAuthData(data);
       setStep('terms');
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  const handleForgotPassword = async () => {
+    setError(''); setLoading(true);
+    try {
+      const res  = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setForgotSent(true);
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  const handleResetPassword = async () => {
+    setError('');
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (newPassword !== confirmPassword) { setError('Passwords do not match'); return; }
+    setLoading(true);
+    try {
+      const res  = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: resetToken, newPassword }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setResetDone(true);
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   };
 
@@ -897,6 +924,12 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses })
                     style={{ padding: '13px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: 14, transition: 'all 0.15s' }} />
                   <input type="password" placeholder="Password (min. 6 characters)" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} className="auth-input"
                     style={{ padding: '13px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: 14, transition: 'all 0.15s' }} />
+                  {mode === 'login' && (
+                    <button onClick={() => { setStep('forgot'); setError(''); setForgotSent(false); }}
+                      style={{ alignSelf: 'flex-end', background: 'none', border: 'none', padding: 0, marginTop: -2, cursor: 'pointer', fontSize: 12.5, color: 'var(--text3)', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      Forgot password?
+                    </button>
+                  )}
                 </div>
 
                 {error && <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.3)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
@@ -935,6 +968,72 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses })
                   style={{ width: '100%', marginTop: 10, padding: '10px', background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 13, cursor: 'pointer' }}>
                   ← Back to sign in
                 </button>
+              </div>
+            )}
+
+            {/* ── Forgot password ── */}
+            {step === 'forgot' && (
+              <div style={{ animation: 'fadeUp 0.4s ease forwards' }}>
+                {!forgotSent ? (
+                  <>
+                    <div style={{ marginBottom: 24 }}>
+                      <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: '#fff', fontFamily: "'Syne', sans-serif" }}>Reset your password</h2>
+                      <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>Enter your email and we'll send you a link to reset it.</p>
+                    </div>
+                    <input type="email" placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleForgotPassword()} className="auth-input"
+                      style={{ padding: '13px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: 14 }} />
+                    {error && <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.3)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
+                    <button onClick={handleForgotPassword} disabled={loading || !email} className="submit-btn"
+                      style={{ width: '100%', marginTop: 16, padding: '13px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+                      {loading ? 'Sending...' : 'Send Reset Link →'}
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: 64, height: 64, borderRadius: 20, margin: '0 auto 16px', background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent2)' }}><Mail size={28} strokeWidth={1.5} /></div>
+                    <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: '#fff' }}>Check your email</h2>
+                    <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.6 }}>If an account exists for <strong style={{ color: 'var(--accent2)' }}>{email}</strong>, a reset link is on its way. The link works once and expires in 1 hour.</p>
+                  </div>
+                )}
+                <button onClick={() => { setStep('form'); setError(''); setForgotSent(false); }}
+                  style={{ width: '100%', marginTop: 16, padding: '10px', background: 'transparent', border: 'none', color: 'var(--text3)', fontSize: 13, cursor: 'pointer' }}>
+                  ← Back to sign in
+                </button>
+              </div>
+            )}
+
+            {/* ── Reset password (from emailed link) ── */}
+            {step === 'reset' && (
+              <div style={{ animation: 'fadeUp 0.4s ease forwards' }}>
+                {!resetDone ? (
+                  <>
+                    <div style={{ marginBottom: 24 }}>
+                      <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: '#fff', fontFamily: "'Syne', sans-serif" }}>Set a new password</h2>
+                      <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Choose a new password for your account.</p>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <input type="password" placeholder="New password (min. 6 characters)" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="auth-input"
+                        style={{ padding: '13px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: 14 }} />
+                      <input type="password" placeholder="Confirm new password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleResetPassword()} className="auth-input"
+                        style={{ padding: '13px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: 14 }} />
+                    </div>
+                    {error && <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.3)', color: 'var(--red)', fontSize: 13 }}>{error}</div>}
+                    <button onClick={handleResetPassword} disabled={loading} className="submit-btn"
+                      style={{ width: '100%', marginTop: 16, padding: '13px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+                      {loading ? 'Saving...' : 'Reset Password →'}
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
+                    <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: '#fff' }}>Password updated</h2>
+                    <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>You can now sign in with your new password.</p>
+                    <button onClick={() => { window.history.replaceState({}, '', '/'); setMode('login'); setStep('form'); setPassword(''); setError(''); }} className="submit-btn"
+                      style={{ width: '100%', padding: '13px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+                      Go to Sign In →
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

@@ -259,6 +259,7 @@ export default function App() {
   const [showAuth, setShowAuth] = useState(false);
   const [blogPostId, setBlogPostId] = useState(null);
   const [teamInviteToken, setTeamInviteToken] = useState(null);
+  const [resetToken, setResetToken] = useState(null);
   const [model3Access, setModel3Access] = useState(false);
   const [model3Plan, setModel3Plan] = useState('m3_starter');
   const [model4Access, setModel4Access] = useState(false);
@@ -337,6 +338,11 @@ export default function App() {
       else { setShowAuth(true); }
       setAuthChecked(true); return;
     }
+    if (window.location.pathname === '/reset-password') {
+      setResetToken(params.get('token') || null);
+      setShowAuth(true);
+      setAuthChecked(true); return;
+    }
     if (window.location.pathname === '/terms') { window.history.replaceState({}, '', '/terms'); setPage('terms'); setAuthChecked(true); return; }
     if (window.location.pathname === '/privacy') { window.history.replaceState({}, '', '/privacy'); setPage('privacy'); setAuthChecked(true); return; }
     if (window.location.pathname === '/refund') { window.history.replaceState({}, '', '/refund'); setPage('refund'); setAuthChecked(true); return; }
@@ -392,7 +398,7 @@ export default function App() {
     }
     if (params.get('admin') === '1') { window.history.replaceState({}, '', '/'); setPage('admin'); setAuthChecked(true); return; }
     // ✅ أي رابط مش معروف خالص (مش من القايمة دي) → صفحة 404 بدل ما يترجع للصفحة الرئيسية بصمت
-    const KNOWN_PATHS = ['/', '/login', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/changelog', '/roadmap', '/status', '/api-docs', '/blog', '/affiliate', '/community', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
+    const KNOWN_PATHS = ['/', '/login', '/reset-password', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/changelog', '/roadmap', '/status', '/api-docs', '/blog', '/affiliate', '/community', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
     if (!KNOWN_PATHS.includes(window.location.pathname) && !googleToken && !authError && params.get('admin') !== '1') {
       setPage('notfound'); setAuthChecked(true); return;
     }
@@ -535,7 +541,7 @@ export default function App() {
   if (['terms','privacy','refund'].includes(page) && !user) return <SubPage page={page} onBack={() => { setPage('input'); window.history.replaceState({}, '', '/'); }} />;
 
   if (!user) {
-    if (showAuth) return <AuthPage googlePendingData={googlePendingData} onAuth={(data) => {
+    if (showAuth) return <AuthPage googlePendingData={googlePendingData} resetToken={resetToken} onAuth={(data) => {
       localStorage.setItem('token', data.token); localStorage.setItem('email', data.email); localStorage.setItem('plan', data.plan || 'free');
       setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false); setGooglePendingData(null);
       // ✅ FIX (طلب العميل: "الغي الموضوع بتاع اني ارجع لصفحة الموديلات خالص — الرجوع للمشاريع"):
@@ -566,7 +572,7 @@ export default function App() {
     return <LandingPage onGetStarted={() => setShowAuth(true)} onOpenBlog={(id) => setBlogPostId(id)} onNavigate={(k) => { if(k==='support'||k==='community'||k==='courses'||k==='changelog'||k==='roadmap'||k==='status'||k==='api-docs') setPage(k); else setShowAuth(true); }} />;
   }
 
-  if (showAuth) return <AuthPage onAuth={(data) => {
+  if (showAuth) return <AuthPage resetToken={resetToken} onAuth={(data) => {
     localStorage.setItem('token', data.token); localStorage.setItem('email', data.email); localStorage.setItem('plan', data.plan || 'free');
     setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false);
     // ✅ FIX (نفس الفيكس فوق): يضمن إن أي جلسة تسجيل دخول تبدأ من صفحة المشاريع دايمًا
