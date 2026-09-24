@@ -883,6 +883,33 @@ router.post('/chat', authMiddleware, async (req, res) => {
         if (cleanedScenes.length >= 2) generateImage.scenes = cleanedScenes;
         else delete generateImage.scenes;
       }
+      // ✅ FIX (باج حقيقي — سكرين شوت العميل: طلب مشاهد عن قطز، مشهد 3 طلع عن هولاكو ومشهد 4
+      // عن "شخص غريب"، وسطر عربي على لفافة في مشهد تاني طلع نص مختلف تمامًا عما كتبه العميل):
+      // لما فيه سكريبت متقسم حقيقي اتلقط بكود عادي (structuredScenesResult — راجع تعليق
+      // "PURE PARSER" فوق)، الـstructuredNote كان بس بيقول للموديل "فيه N مشهد، متلخصهمش" من
+      // غير ما يديله نص المشاهد الحقيقي أصلاً يقرا/ينسخ منه — فكان لسه مضطر يرجع لرسالة العميل
+      // الخام ويحاول "يستخرج"/يعيد كتابة كل مشهد بنفسه، وده بالظبط السلوك الغير موثوق اللي
+      // الـparser اتعمل أصلاً عشان يتجنبه (تلخيص/هلوسة/استبدال محتوى بمحتوى تاني تمامًا).
+      // الحل الحقيقي: بعد ما الماركر يتحلل بالكامل، نستبدل نص كل مشهد بالنص الحقيقي المستخرج
+      // بالـregex مباشرة (حاجز حتمي في الكود، زي أي حاجز تاني في الملف ده) — مش نثق في نسخة
+      // الموديل خالص حتى لو شكلها صح، لأن مفيش ضمان إنها مطابقة للأصل فعلاً
+      if (generateImage && structuredScenesResult && structuredScenesResult.length >= 2) {
+        const realPrompts = structuredScenesResult.map(s => s.visual).filter(v => v && v.trim());
+        if (realPrompts.length >= 2) {
+          if (Array.isArray(generateImage.scenes) && generateImage.scenes.length) {
+            const n = Math.min(generateImage.scenes.length, realPrompts.length);
+            if (generateImage.scenes.length !== realPrompts.length) {
+              console.warn(`[Agent] GENERATE_IMAGE "scenes" count (${generateImage.scenes.length}) didn't match the real parsed script scene count (${realPrompts.length}) — overriding prompt text for the first ${n} matching entries only`);
+            }
+            for (let i = 0; i < n; i++) generateImage.scenes[i].prompt = realPrompts[i];
+          } else if (Array.isArray(generateImage.prompts)) {
+            if (generateImage.prompts.length !== realPrompts.length) {
+              console.warn(`[Agent] GENERATE_IMAGE "prompts" count (${generateImage.prompts.length}) didn't match the real parsed script scene count (${realPrompts.length}) — replacing entirely with the real parsed scenes`);
+            }
+            generateImage.prompts = realPrompts;
+          }
+        }
+      }
     }
     // ✅ NEW (باج حقيقي متكرر رغم rule 8b الصريحة "انسخ برومبت العميل الجاهز حرفيًا"): تعليمات
     // البرومبت وحدها مش موثوق فيها 100% — الايجنت لسه بيختصر/يعيد صياغة برومبت جاهز بعته

@@ -577,6 +577,19 @@ export function parseStructuredScript(rawText) {
     const visual = (visualMatch ? visualMatch[1] : '').replace(/\s+/g, ' ').trim();
     const narration = (narrationMatch ? narrationMatch[1] : '').replace(/\s+/g, ' ').trim();
 
+    // ✅ FIX (باج حقيقي — سكرين شوت العميل: سكريبت مقسّم "Scene N: <برومبت كامل>" من غير أي
+    // label فرعي "Visual Prompt:"/"Narration:" كان بيترفض تمامًا هنا (مفيش visual ولا
+    // narration اتلقطوا)، فالمشهد كله كان بيتجاهل بصمت وميوصلش أصلاً لـhasStructuredScript —
+    // فالايجنت كان يرجع يعتمد على نفسه في استخراج/إعادة كتابة كل مشهد من الرسالة الخام، وده
+    // بالظبط السلوك الغير موثوق اللي البارسر ده اتعمل أصلاً عشان يتجنبه (تلخيص/هلوسة/استبدال
+    // محتوى). لو مفيش أي label فرعي اتلقط خالص، بنعتبر باقي الـblock بعد الهيدر نفسه مباشرة
+    // (لحد أول فاصل ":"‏/"-" لو موجود) هو نص المشهد الكامل
+    let fallbackVisual = '';
+    if (!visual && !narration) {
+      const afterHeader = block.slice(headers[i][0].length).replace(/^[\s:.\-–—]+/, '');
+      fallbackVisual = afterHeader.replace(/\s+/g, ' ').trim();
+    }
+
     // ✅ NEW: مدة المشهد ده لوحده من التوقيت بتاعه (مثلاً "Scene 3 (0:24-0:36)" = 12 ثانية) —
     // مهمة لموديل 8 اللي بيقبل مدة مختلفة لكل مشهد (لحد 20 ثانية)، عكس باقي الموديلات اللي
     // مدة كل مشهد فيها ثابتة أصلًا
@@ -586,7 +599,7 @@ export function parseStructuredScript(rawText) {
       ? Math.max(1, (parseInt(tsMatch[3], 10) * 60 + parseInt(tsMatch[4], 10)) - (parseInt(tsMatch[1], 10) * 60 + parseInt(tsMatch[2], 10)))
       : null;
 
-    if (narration || visual) scenes.push({ text: narration, visual: visual || narration, sceneDurationSec });
+    if (narration || visual || fallbackVisual) scenes.push({ text: narration, visual: visual || narration || fallbackVisual, sceneDurationSec });
   }
   if (scenes.length < 2) return null;
 
