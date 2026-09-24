@@ -2857,24 +2857,31 @@ app.get('/api/images/credit-cost', authMiddleware, (req, res) => {
 });
 
 app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res) => {
-  const { model, prompt, prompts, referenceImageUrls, aspectRatio, count, tier } = req.body;
+  const { model, prompt, prompts, scenes, referenceImageUrls, aspectRatio, count, tier } = req.body;
   if (!model || !NEW_IMAGE_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
   // ✅ NEW: "prompts" (مصفوفة برومبتات مختلفة لمشاهد مختلفة) بديل عن prompt+count لما العميل
   // يطلب صور مختلفة "مرة واحدة" — لو موجودة ومظبوطة بنستخدمها بدل الفحص العادي لـ prompt
   const distinctPrompts = Array.isArray(prompts) ? prompts.filter(p => typeof p === 'string' && p.trim()).slice(0, 20) : [];
-  const usingPrompts = distinctPrompts.length >= 2;
-  if (!usingPrompts && !prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  // ✅ NEW (طلب العميل: "لازم يكون في ذكاء" في مين محتاج مرجع ومين لأ): "scenes" شكل بديل
+  // لـ"prompts" بيدي كل مشهد referenceImageUrls/useScenesAsReference خاصة بيه — راجع
+  // newImageModelsService.js's generateNewModelImages للتفاصيل الكاملة
+  const distinctScenes = Array.isArray(scenes)
+    ? scenes.filter(s => s && typeof s.prompt === 'string' && s.prompt.trim()).slice(0, 20)
+    : [];
+  const usingScenes = distinctScenes.length >= 2;
+  const usingPrompts = !usingScenes && distinctPrompts.length >= 2;
+  if (!usingScenes && !usingPrompts && !prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
   const imgUser = await getUserById(req.user.userId);
   if ((imgUser?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock image generation.', show_upgrade: true });
   }
   // ✅ فحص أمان المحتوى قبل أي توليد — نفس الفحص المستخدم في كل الموديلات التانية
-  const contentToCheck = usingPrompts ? distinctPrompts.join(' \n ') : prompt;
+  const contentToCheck = usingScenes ? distinctScenes.map(s => s.prompt).join(' \n ') : usingPrompts ? distinctPrompts.join(' \n ') : prompt;
   const modCheck = await checkContentSafety(contentToCheck);
   if (modCheck.unsafe) {
     return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
   }
-  const n = usingPrompts ? distinctPrompts.length : Math.min(Math.max(1, parseInt(count, 10) || 1), 20);
+  const n = usingScenes ? distinctScenes.length : usingPrompts ? distinctPrompts.length : Math.min(Math.max(1, parseInt(count, 10) || 1), 20);
   let imgCreditCost;
   try {
     imgCreditCost = getImageCreditCost(model, n, tier || null);
@@ -2904,6 +2911,7 @@ app.post('/api/images/generate', authMiddleware, renderLimiter, async (req, res)
         modelKey: model,
         prompt,
         prompts: usingPrompts ? distinctPrompts : null,
+        scenes: usingScenes ? distinctScenes : null,
         referenceImageUrls: Array.isArray(referenceImageUrls) ? referenceImageUrls.slice(0, 14) : [],
         aspectRatio: aspectRatio || '9:16',
         count: n,
