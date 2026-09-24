@@ -7,6 +7,15 @@ function authHeaders() {
 const T = {
   ar: {
     title: 'قنواتي', sub: 'وصّل قناتك بـ VidIQ وخلّي Erivion يقترحلك فيديو كل يوم، وانت توافق أو ترفض.',
+    howTitle: 'إزاي تربط قناتك؟ (3 خطوات وخلصت)',
+    step1Title: '1. اعمل حساب VidIQ (لو مالكش واحد)',
+    step1Desc: 'VidIQ هو اللي بيوصّل Erivion بقناتك على يوتيوب وبيجيب الإحصائيات والأفكار الحقيقية. لو لسه معملتش حساب، اعمله من هنا (فيه خطة مجانية):',
+    step1Btn: '🔗 افتح vidiq.com',
+    step2Title: '2. جيب مفتاح الـAPI الشخصي بتاعك',
+    step2Desc: 'بعد ما تسجّل دخول في VidIQ، افتح الرابط ده وانسخ المفتاح اللي هيظهر لك — ده مفتاحك الخاص، مش هيشوفه غيرك:',
+    step2Btn: '🔑 افتح صفحة المفتاح',
+    step3Title: '3. الصق المفتاح تحت وضيف القناة',
+    step3Desc: 'هنتأكد إن المفتاح شغال ومربوط بقناتك على يوتيوب أوتوماتيك. وبعد ما تضيف القناة، تقدر (اختياري) تضغط "اربط يوتيوب" عشان الرفع يبقى تلقائي بالكامل من غير ما تلمس حاجة.',
     addTitle: 'إضافة قناة جديدة', label: 'اسم مميز للقناة (اختياري)', vidiqKey: 'مفتاح VidIQ الشخصي',
     vidiqHelp: 'جيبه من app.vidiq.com/account/settings/mcp — مفيش OAuth بضغطة زرار، لازم تلصق المفتاح بنفسك.',
     format: 'شكل الفيديوهات', formatAuto: 'تلقائي (حسب القناة)', formatLong: 'طويل', formatShort: 'قصير',
@@ -22,6 +31,15 @@ const T = {
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
+    howTitle: 'How to connect your channel (3 quick steps)',
+    step1Title: '1. Create a VidIQ account (if you don’t have one)',
+    step1Desc: 'VidIQ is what links Erivion to your YouTube channel and pulls real stats and video ideas. If you don’t have an account yet, create one here (there’s a free plan):',
+    step1Btn: '🔗 Open vidiq.com',
+    step2Title: '2. Get your personal API key',
+    step2Desc: 'After logging into VidIQ, open this link and copy the key shown there — it’s your own private key, no one else can see it:',
+    step2Btn: '🔑 Open the key page',
+    step3Title: '3. Paste the key below and connect',
+    step3Desc: 'We’ll verify the key works and is linked to a real YouTube channel automatically. After connecting, you can optionally click "Connect YouTube" so future videos upload fully automatically.',
     addTitle: 'Connect a new channel', label: 'A friendly label (optional)', vidiqKey: 'Your personal VidIQ API key',
     vidiqHelp: 'Get it from app.vidiq.com/account/settings/mcp — no one-click OAuth, paste the key yourself.',
     format: 'Video format', formatAuto: 'Auto (from channel)', formatLong: 'Long-form', formatShort: 'Short',
@@ -186,6 +204,32 @@ export default function ChannelsPage({ onBack, userRegion }) {
           <div style={{ fontSize: 40, marginBottom: 12 }}>📺</div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t.title}</h1>
           <p style={{ color: 'rgba(255,255,255,0.45)', marginTop: 8, fontSize: 13.5, maxWidth: 440, marginInline: 'auto', lineHeight: 1.7 }}>{t.sub}</p>
+        </div>
+
+        <div style={{ background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.18)', borderRadius: 16, padding: 22, marginBottom: 20 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 16, color: '#c4b5fd' }}>{t.howTitle}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{t.step1Title}</div>
+              <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', margin: '0 0 8px', lineHeight: 1.7 }}>{t.step1Desc}</p>
+              <a href="https://vidiq.com" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '6px 14px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', color: '#a78bfa', textDecoration: 'none', border: '1px solid rgba(124,106,247,0.3)' }}>
+                {t.step1Btn}
+              </a>
+            </div>
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{t.step2Title}</div>
+              <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', margin: '0 0 8px', lineHeight: 1.7 }}>{t.step2Desc}</p>
+              <a href="https://app.vidiq.com/account/settings/mcp" target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '6px 14px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', color: '#a78bfa', textDecoration: 'none', border: '1px solid rgba(124,106,247,0.3)' }}>
+                {t.step2Btn}
+              </a>
+            </div>
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{t.step3Title}</div>
+              <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', margin: 0, lineHeight: 1.7 }}>{t.step3Desc}</p>
+            </div>
+          </div>
         </div>
 
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 24, marginBottom: 24 }}>
