@@ -1591,6 +1591,11 @@ export async function deleteManagedChannel(id, userId) {
   await pool.query('DELETE FROM managed_channels WHERE id = $1 AND user_id = $2', [id, userId]);
 }
 
+// ✅ نفس الحذف بس للأدمن — من غير التحقق من user_id، عشان الأدمن يقدر يحذف قناة أي عميل
+export async function deleteManagedChannelAsAdmin(id) {
+  await pool.query('DELETE FROM managed_channels WHERE id = $1', [id]);
+}
+
 // قنوات "مستحقة" اليوم — آخر تشغيل من أكتر من 20 ساعة (أو معملهاش أول مرة أصلاً)
 export async function getDueManagedChannels() {
   const { rows } = await pool.query(

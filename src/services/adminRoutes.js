@@ -3,7 +3,7 @@ import pkg from 'pg';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, listRecentDailyRunsForAdmin, listClonedVoicesForAdmin } from './authService.js';
+import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, deleteManagedChannelAsAdmin, listRecentDailyRunsForAdmin, listClonedVoicesForAdmin } from './authService.js';
 import { isGA4Configured, getGA4Overview } from './googleAnalyticsService.js';
 import { adminAuth, verifyAdminCredentials, issueAdminToken, checkLoginRateLimit } from './adminAuthMiddleware.js';
 import { generateNewModelVideo } from './newVideoModelsService.js';
@@ -291,6 +291,14 @@ router.get('/channels', adminAuth, async (req, res) => {
   try {
     const channels = await listManagedChannelsForAdmin();
     res.json({ channels });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.delete('/channels/:id', adminAuth, async (req, res) => {
+  try {
+    await deleteManagedChannelAsAdmin(req.params.id);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
