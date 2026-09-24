@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   User, Bell, Lock, Plug, AlertTriangle, Settings as SettingsIcon, CreditCard,
   Globe, Mail, Monitor, LogOut, Key, Package, Trash2, Check, X, Copy, Film,
-  Loader2,
+  Loader2, ImageIcon,
 } from 'lucide-react';
 
 function authHeaders() {
@@ -91,6 +91,12 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
   const [videoLinkResult, setVideoLinkResult]       = useState(null); // { videoUrl, durationSec }
   const [videoLinkError, setVideoLinkError]         = useState('');
   const [copiedVideoLink, setCopiedVideoLink]       = useState(false);
+  // ✅ NEW (طلب العميل: "حرك الصورة دي" لصورة مرفقة في Claude/MCP كان بيخترع فيديو تاني
+  // بدل ما يقول محتاج رابط) — نفس فكرة رفع الفيديو فوق بالظبط، بس للصور
+  const [imageLinkUploading, setImageLinkUploading] = useState(false);
+  const [imageLinkResult, setImageLinkResult]       = useState(null); // { imageUrl }
+  const [imageLinkError, setImageLinkError]         = useState('');
+  const [copiedImageLink, setCopiedImageLink]       = useState(false);
 
   // persist notifications & region
   useEffect(() => { localStorage.setItem('erivion_notif_email', emailNotif); }, [emailNotif]);
@@ -154,6 +160,26 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
     }
     setVideoLinkUploading(false);
     e.target.value = ''; // يسمح برفع نفس الملف تاني لو حبيت
+  };
+
+  // ✅ NEW: رفع صورة → رابط عام — نفس فكرة الفيديو فوق بالظبط، لاستخدام generate_video's
+  // "imageUrl" في MCP
+  const handleImageLinkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImageLinkError(''); setImageLinkResult(null); setImageLinkUploading(true);
+    try {
+      const form = new FormData();
+      form.append('image', file, file.name || 'image.jpg');
+      const res = await fetch('/api/upload-image-link', { method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }, body: form });
+      const data = await res.json();
+      if (!res.ok) { setImageLinkError(data.message || data.error || 'Upload failed'); }
+      else { setImageLinkResult(data); }
+    } catch (err) {
+      setImageLinkError(err.message || 'Upload failed');
+    }
+    setImageLinkUploading(false);
+    e.target.value = '';
   };
 
   // ── Save name ──
@@ -462,6 +488,38 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
                       <button onClick={() => copyToClipboard(videoLinkResult.videoUrl, setCopiedVideoLink)}
                         style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                         {copiedVideoLink ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} strokeWidth={2} />} {copiedVideoLink ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Section>
+
+              <Section title="Upload image, get link" icon={<ImageIcon size={14} strokeWidth={2} />}>
+                <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
+                  MCP tools (like in Claude) can't accept an attached photo directly — they can only work with a public link. Upload a photo here to get a direct link, then paste that link when asking Claude to animate it into a video.
+                </p>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                  {imageLinkUploading ? <Loader2 size={14} className="spinning" /> : <ImageIcon size={14} strokeWidth={2} />} {imageLinkUploading ? 'Uploading...' : 'Choose image file'}
+                  <input type="file" accept="image/*" onChange={handleImageLinkUpload} disabled={imageLinkUploading} style={{ display: 'none' }} />
+                </label>
+
+                {imageLinkError && (
+                  <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, color: '#f87171', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={14} strokeWidth={2} /> {imageLinkError}
+                  </div>
+                )}
+
+                {imageLinkResult && (
+                  <div style={{ marginTop: 14, padding: '14px 16px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#22c55e', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Check size={14} strokeWidth={2.5} /> Uploaded — copy this link
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input readOnly value={imageLinkResult.imageUrl}
+                        style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.3)', background: 'var(--bg3)', color: 'var(--text)', fontSize: 12, fontFamily: 'monospace', outline: 'none' }} />
+                      <button onClick={() => copyToClipboard(imageLinkResult.imageUrl, setCopiedImageLink)}
+                        style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {copiedImageLink ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} strokeWidth={2} />} {copiedImageLink ? 'Copied' : 'Copy'}
                       </button>
                     </div>
                   </div>
