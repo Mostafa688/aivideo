@@ -720,6 +720,16 @@ function ChannelsTab({ s }) {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  const handleDeleteChannel = async (c) => {
+    if (!confirm(`Delete channel "${c.label || c.channel_id}" (${c.user_email})? This cannot be undone.`)) return;
+    try {
+      const r = await fetch(`/api/admin/channels/${c.id}`, { method: 'DELETE', headers });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || 'Failed');
+      setChannels(prev => prev.filter(ch => ch.id !== c.id));
+    } catch (e) { alert('❌ ' + e.message); }
+  };
+
   return (
     <div>
       <div style={s.topbar} className="admin-header">
@@ -737,7 +747,10 @@ function ChannelsTab({ s }) {
               <div style={{ fontWeight: 700, color: '#fff' }}>{c.label || c.channel_id} <span style={{ color: '#6b7280', fontWeight: 400 }}>— {c.user_email}</span></div>
               <div style={{ color: '#6b7280', marginTop: 2 }}>{c.format_pref} · {c.uses_voice ? '🎙️ voice' : '🔇 no voice'} · model {c.model_pref} · last run: {c.last_run_at ? new Date(c.last_run_at).toLocaleString() : 'never'}</div>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: c.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)', color: c.status === 'active' ? '#22c55e' : '#f59e0b' }}>{c.status}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: c.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)', color: c.status === 'active' ? '#22c55e' : '#f59e0b' }}>{c.status}</span>
+              <button onClick={() => handleDeleteChannel(c)} style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '5px 10px' }}>🗑️ Delete</button>
+            </div>
           </div>
         ))}
       </div>
