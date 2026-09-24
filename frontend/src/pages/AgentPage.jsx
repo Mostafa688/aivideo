@@ -1350,8 +1350,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     // الوصف تحت الكارت، وبنسيب job.prompts عشان "إعادة الاستخدام/نسخ" لكل صورة تاخد
     // البرومبت بتاعها هي مش برومبت صورة تانية
     const distinctPrompts = Array.isArray(gen.prompts) ? gen.prompts.filter(p => typeof p === 'string' && p.trim()) : [];
-    const usingPrompts = distinctPrompts.length >= 2;
-    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: usingPrompts ? distinctPrompts[0] : gen.prompt, prompts: usingPrompts ? distinctPrompts : null, aspectRatio: gen.aspectRatio || '9:16', tier: gen.tier || null };
+    // ✅ NEW (طلب العميل: "لازم يكون في ذكاء" — كل مشهد يقرر مرجعه الخاص): "scenes" شكل بديل
+    // لـ"prompts" — كل عنصر معاه referenceImageUrls/useScenesAsReference خاصة بيه. بنستخرج
+    // نص البرومبتات بس هنا لعرض/إعادة استخدام كل صورة (job.prompts زي أي دفعة تانية)، والشكل
+    // الكامل (gen.scenes) بيتبعت زي ما هو للباك إند تحت
+    const distinctScenes = Array.isArray(gen.scenes) ? gen.scenes.filter(s => s && typeof s.prompt === 'string' && s.prompt.trim()) : [];
+    const usingScenes = distinctScenes.length >= 2;
+    const usingPrompts = !usingScenes && distinctPrompts.length >= 2;
+    const displayPrompts = usingScenes ? distinctScenes.map(s => s.prompt) : usingPrompts ? distinctPrompts : null;
+    const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: displayPrompts ? displayPrompts[0] : gen.prompt, prompts: displayPrompts, aspectRatio: gen.aspectRatio || '9:16', tier: gen.tier || null };
     setMessages(m => [...m, { role: 'assistant', type: 'imageBatch', job }]);
     const updateJob = (patch) => {
       setMessages(m => {
@@ -1365,7 +1372,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       const res = await fetch('/api/images/generate', {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({
-          model: gen.model, prompt: gen.prompt, prompts: usingPrompts ? distinctPrompts : undefined, aspectRatio: gen.aspectRatio || '9:16', count: gen.count || 1,
+          model: gen.model, prompt: gen.prompt, prompts: usingPrompts ? distinctPrompts : undefined, scenes: usingScenes ? distinctScenes : undefined, aspectRatio: gen.aspectRatio || '9:16', count: gen.count || 1,
           referenceImageUrls: Array.isArray(gen.referenceImageUrls) ? gen.referenceImageUrls : undefined,
           tier: gen.tier || undefined,
         }),

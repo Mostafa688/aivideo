@@ -257,11 +257,40 @@ async function runWithConcurrency(tasks, limit = 4) {
  * عنده native batch param، عشان ده بيولّد N نسخة من نفس البرومبت مش N برومبت مختلف)،
  * والنتيجة بترجع بنفس ترتيب الـ prompts.
  */
-export async function generateNewModelImages({ modelKey, prompt, prompts = null, referenceImageUrls = [], aspectRatio = '9:16', count = 1, tier = null }) {
+export async function generateNewModelImages({ modelKey, prompt, prompts = null, scenes = null, referenceImageUrls = [], aspectRatio = '9:16', count = 1, tier = null }) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const model = NEW_IMAGE_MODELS[modelKey];
   if (!model) throw new Error(`Unknown image model: ${modelKey}`);
   const label = `${modelKey} image generation`;
+
+  // ✅ NEW (طلب العميل: "لازم يكون في ذكاء" — سكرين شوت + مثال حقيقي: مشهد قطز بيقرا الرسالة
+  // ثم بيصرخ للمغول ثم بيامر بإعدامهم لازم كل واحد فيهم ياخد اللي قبله كمرجع عشان المكان
+  // والشخصية يفضلوا ثابتين، بس مشهد "المرسال ماشي على حصان للشام" (مشهد منفصل تمامًا بعده)
+  // مش محتاج أي مرجع خالص). المسار القديم تحت (distinctPrompts + referenceImageUrls) بيطبّق
+  // نفس المرجع (ومتسلسل تلقائي) على كل المشاهد سوا — مفيش طريقة لمشهد واحد يقول "أنا مش
+  // محتاج مرجع" أو "أنا محتاج مرجع مشهد رقم 1 بس مش رقم 2". "scenes" هنا شكل بديل بيدي كل
+  // مشهد قراره الخاص: referenceImageUrls (روابط معروفة من الـhistory، ممكن تبقى فاضية تمامًا)
+  // و/أو useScenesAsReference (مؤشرات لمشاهد سابقة في نفس الدفعة — بنستبدلها بالصورة الحقيقية
+  // اللي اتولدت لها فعليًا بعد التوليد). بيتعمل بالتسلسل (زي المسار القديم) عشان أي مشهد
+  // يحتاج مرجع مشهد سابق يلاقيه جاهز فعلاً وقت دوره.
+  const distinctScenes = Array.isArray(scenes) ? scenes.filter(s => s && typeof s.prompt === 'string' && s.prompt.trim()) : [];
+  if (distinctScenes.length >= 2) {
+    const capped = distinctScenes.slice(0, MAX_BATCH);
+    const outputs = [];
+    const sceneOutputUrls = []; // كل عنصر: مصفوفة روابط الصور الحقيقية اللي اتولدت لهذا المشهد
+    for (let i = 0; i < capped.length; i++) {
+      const scene = capped[i];
+      const ownRefs = Array.isArray(scene.referenceImageUrls) ? scene.referenceImageUrls.filter(u => typeof u === 'string' && u.trim()) : [];
+      const chainIdxs = Array.isArray(scene.useScenesAsReference) ? scene.useScenesAsReference.filter(idx => Number.isInteger(idx) && idx >= 0 && idx < i) : [];
+      const chainRefs = chainIdxs.flatMap(idx => sceneOutputUrls[idx] || []);
+      const effectiveRefs = [...ownRefs, ...chainRefs].slice(0, 14);
+      const stepOutput = await runPrediction(model.slug, model.buildInput({ prompt: scene.prompt, referenceImageUrls: effectiveRefs, aspectRatio, count: 1, tier }), label);
+      const persisted = await persistImagesToR2(stepOutput, modelKey);
+      outputs.push(...persisted);
+      sceneOutputUrls[i] = persisted;
+    }
+    return outputs;
+  }
 
   const distinctPrompts = Array.isArray(prompts) ? prompts.filter(p => typeof p === 'string' && p.trim()) : [];
   if (distinctPrompts.length >= 2) {

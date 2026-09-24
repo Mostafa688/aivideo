@@ -307,7 +307,7 @@ function repairTruncatedJson(text) {
 
 // حقول محتوى حقيقي (وصف/بروبمت) بتتقطع بشكل خطير لو القيمة بتاعتها اتقطعت نص الكتابة —
 // لازم نرفض الطلب بدل ما نكمله ببروبمت مبتور مضمون يفشل/يطلع غلط
-const CONTENT_FIELDS_UNSAFE_IF_TRUNCATED = new Set(['prompt', 'prompts', 'rawPrompt', 'description', 'editPrompt', 'script', 'mapVideoTopic']);
+const CONTENT_FIELDS_UNSAFE_IF_TRUNCATED = new Set(['prompt', 'prompts', 'scenes', 'rawPrompt', 'description', 'editPrompt', 'script', 'mapVideoTopic']);
 
 // ✅ NEW: منطق فصل الأمر التقني (###READY###/###EDIT_SCENE###/###GENERATE_IMAGE###/...) عن
 // رسالة الشات نفسها — اتنقل هنا كدالة مستقلة (كان جوه الراوت مباشرة) عشان نقدر نعيد استخدامه
@@ -350,8 +350,11 @@ function parseAgentMarkers(rawReply) {
         else console.warn('[Agent] VIDEO_EDIT marker parsed but failed validation:', JSON.stringify(parsed).slice(0, 500));
       } else if (isImageGenMarker) {
         const hasDistinctPrompts = Array.isArray(parsed.prompts) && parsed.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
-        if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && ((typeof parsed.prompt === 'string' && parsed.prompt.trim()) || hasDistinctPrompts)) generateImage = parsed;
-        else console.warn('[Agent] GENERATE_IMAGE marker parsed but failed validation (missing/invalid model, or no usable prompt/prompts):', JSON.stringify(parsed).slice(0, 800));
+        // ✅ NEW: "scenes" — شكل بديل بيدي كل مشهد تحكم مستقل في مرجعه الخاص (راجع تعليق
+        // "لازم يكون في ذكاء" تحت)، بدل مصفوفة برومبتات فلات كلها بتاخد نفس المرجع
+        const hasDistinctScenes = Array.isArray(parsed.scenes) && parsed.scenes.filter(s => s && typeof s.prompt === 'string' && s.prompt.trim()).length >= 2;
+        if (typeof parsed.model === 'string' && NEW_IMAGE_MODELS[parsed.model] && ((typeof parsed.prompt === 'string' && parsed.prompt.trim()) || hasDistinctPrompts || hasDistinctScenes)) generateImage = parsed;
+        else console.warn('[Agent] GENERATE_IMAGE marker parsed but failed validation (missing/invalid model, or no usable prompt/prompts/scenes):', JSON.stringify(parsed).slice(0, 800));
       } else if (isVideoGenMarker) {
         if (typeof parsed.model === 'string' && NEW_VIDEO_MODELS[parsed.model] && typeof parsed.prompt === 'string' && parsed.prompt.trim()) {
           const maxSec = getMaxClipSeconds(parsed.model);
@@ -402,7 +405,8 @@ function parseAgentMarkers(rawReply) {
           }
         } else if (isImageGenMarker) {
           const hasDistinctPrompts = Array.isArray(repaired.prompts) && repaired.prompts.filter(p => typeof p === 'string' && p.trim()).length >= 2;
-          if (typeof repaired.model === 'string' && NEW_IMAGE_MODELS[repaired.model] && ((typeof repaired.prompt === 'string' && repaired.prompt.trim()) || hasDistinctPrompts)) {
+          const hasDistinctScenes = Array.isArray(repaired.scenes) && repaired.scenes.filter(s => s && typeof s.prompt === 'string' && s.prompt.trim()).length >= 2;
+          if (typeof repaired.model === 'string' && NEW_IMAGE_MODELS[repaired.model] && ((typeof repaired.prompt === 'string' && repaired.prompt.trim()) || hasDistinctPrompts || hasDistinctScenes)) {
             generateImage = repaired;
             console.warn('[Agent] ✅ Repaired truncated GENERATE_IMAGE JSON successfully');
           }
@@ -855,6 +859,30 @@ router.post('/chat', authMiddleware, async (req, res) => {
       const distinctPrompts = Array.isArray(generateImage.prompts) ? generateImage.prompts.filter(p => typeof p === 'string' && p.trim()).slice(0, 20) : [];
       if (distinctPrompts.length >= 2) generateImage.prompts = distinctPrompts;
       else delete generateImage.prompts;
+      // ✅ NEW (طلب العميل: "لازم يكون في ذكاء" — كل مشهد يقرر لوحده محتاج مرجع ولا لأ، وأي
+      // مرجع بالظبط، بدل ما كل المشاهد تاخد نفس المرجع/تتسلسل تلقائيًا على بعضها): "scenes"
+      // شكل بديل لـ"prompts" — كل عنصر بيحدد referenceImageUrls الخاصة بيه (ممكن تبقى فاضية
+      // تمامًا لو المشهد مش محتاج أي ثبات بصري) و/أو useScenesAsReference (مؤشرات لمشاهد
+      // سابقة في نفس الدفعة، الصورة الحقيقية اللي اتولدتلها بتتضاف كمرجع إضافي — مش كل
+      // المشاهد اللي قبلها تلقائيًا زي المسار القديم، بس اللي الايجنت شافها فعلاً لازمة).
+      // تنضيف مشابه لـ"prompts" فوق بالظبط: لو أقل من مشهدين نشيلها، وكل referenceImageUrls
+      // بره الدفعة (روابط من الـhistory) لازم تتأكد إنها روابط حقيقية زي أي حتة تانية
+      if (Array.isArray(generateImage.scenes)) {
+        const cleanedScenes = generateImage.scenes
+          .filter(s => s && typeof s.prompt === 'string' && s.prompt.trim())
+          .slice(0, 20)
+          .map((s, idx) => {
+            const ownRefs = Array.isArray(s.referenceImageUrls)
+              ? s.referenceImageUrls.filter(u => typeof u === 'string' && u.trim() && isKnownUrl(u))
+              : [];
+            const chainIdxs = Array.isArray(s.useScenesAsReference)
+              ? s.useScenesAsReference.filter(i => Number.isInteger(i) && i >= 0 && i < idx)
+              : [];
+            return { prompt: s.prompt.trim(), referenceImageUrls: ownRefs, useScenesAsReference: chainIdxs };
+          });
+        if (cleanedScenes.length >= 2) generateImage.scenes = cleanedScenes;
+        else delete generateImage.scenes;
+      }
     }
     // ✅ NEW (باج حقيقي متكرر رغم rule 8b الصريحة "انسخ برومبت العميل الجاهز حرفيًا"): تعليمات
     // البرومبت وحدها مش موثوق فيها 100% — الايجنت لسه بيختصر/يعيد صياغة برومبت جاهز بعته
