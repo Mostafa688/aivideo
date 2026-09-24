@@ -898,7 +898,36 @@ router.post('/chat', authMiddleware, async (req, res) => {
         // يتخطى سقف الـMAX_BATCH العادي حتى لو السكريبت الملزوق فيه فقرات/مشاهد أكتر من 20
         const realPrompts = structuredScenesResult.map(s => s.visual).filter(v => v && v.trim()).slice(0, 20);
         if (realPrompts.length >= 2) {
-          if (Array.isArray(generateImage.scenes) && generateImage.scenes.length) {
+          // ✅ NEW (طلب العميل — سكرين شوت: آخر مشهدين المفروض يكونوا نفس المكان والشخصية بس
+          // طلعوا مختلفين بصريًا، والعميل قال "ده الي بيتطلب اضافة مشهد كمرجع"): سكريبتات
+          // زي دي غالبًا بتوصف الشخصية/المكان بالكامل في أول مشهد بس، وبعدين تكتفي بعبارة
+          // زي "(full description as above)" في المشاهد اللي بعدها بدل ما تعيد الوصف — يعني
+          // السكريبت نفسه بيقول بوضوح إن المشاهد دي لازم ترجع لمشهد سابق. وصف نصي متكرر لوحده
+          // مش كفاية للثبات البصري (صورتين مستقلتين من نفس الوصف ممكن يطلعوا مختلفين) — لازم
+          // مرجع صورة حقيقي. بنكشف عبارات "رجوع لوصف سابق" هنا (إنجليزي/عربي)، ولو لقينا، بنبني
+          // "scenes" (بدل "prompts" المسطحة) بربط تلقائي (useScenesAsReference) لآخر "مشهد
+          // مرساة" (anchor) قبله — آخر مشهد وصف حاجة بالكامل من غير ما يرجع هو نفسه لحاجة قبله.
+          // كده كل مشهد بيرجع؛ للوصف الأصلي الصح (مش بالضرورة المشهد اللي قبله مباشرة لو فيه
+          // أكتر من شخصية/مكان في نفس السكريبت)
+          const REUSE_MARKER_RE = /\(?\s*(?:full |exact |same )?description\s+as\s+above\s*\)?|\bas\s+(?:described|shown|mentioned)\s+(?:earlier|above|before)\b|\bsame\s+(?:character|person|subject|location|place|setting|scene)\b|\b(?:same as|identical to)\s+(?:before|earlier|above)\b|نفس\s*(?:الشخصية|المكان|الوصف|القاعة|المشهد)|زي\s*ما\s*(?:اتوصف|قلنا|ذكرنا)\s*(?:فوق|قبل\s*كده|سابقًا)|كما\s*(?:وصفنا|ذكرنا)\s*(?:سابقًا|فوق)/i;
+          let anchorIdx = null;
+          const chains = realPrompts.map((p, i) => {
+            const isReuse = REUSE_MARKER_RE.test(p);
+            const useScenesAsReference = (isReuse && anchorIdx !== null) ? [anchorIdx] : [];
+            if (!isReuse) anchorIdx = i;
+            return useScenesAsReference;
+          });
+          const anyChaining = chains.some(c => c.length > 0);
+
+          if (anyChaining) {
+            generateImage.scenes = realPrompts.map((p, i) => {
+              const existing = Array.isArray(generateImage.scenes) ? generateImage.scenes[i] : null;
+              const ownRefs = existing && Array.isArray(existing.referenceImageUrls) ? existing.referenceImageUrls.filter(u => typeof u === 'string' && u.trim() && isKnownUrl(u)) : [];
+              return { prompt: p, referenceImageUrls: ownRefs, useScenesAsReference: chains[i] };
+            });
+            delete generateImage.prompts;
+            console.warn(`[Agent] Auto-detected recurring character/location reuse phrasing in the pasted script — auto-chained ${chains.filter(c => c.length).length} scene(s) to their anchor scene for visual consistency`);
+          } else if (Array.isArray(generateImage.scenes) && generateImage.scenes.length) {
             const n = Math.min(generateImage.scenes.length, realPrompts.length);
             if (generateImage.scenes.length !== realPrompts.length) {
               console.warn(`[Agent] GENERATE_IMAGE "scenes" count (${generateImage.scenes.length}) didn't match the real parsed script scene count (${realPrompts.length}) — overriding prompt text for the first ${n} matching entries only`);
