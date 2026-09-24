@@ -28,6 +28,7 @@ const T = {
     notLinkedYet: 'لسه ما اترفعش/اترباط بيوتيوب', loadingStats: 'بيجيب الأداء...',
     connectYoutube: 'اربط يوتيوب (رفع تلقائي)', connectedAs: 'متصل — رفع تلقائي مفعّل',
     disconnect: 'فصل الربط', youtubeConnectedToast: 'تم ربط يوتيوب بنجاح! الفيديوهات الجاية هترفع تلقائي.',
+    channelAddedToast: '✅ تمام! القناة اتضافت — تقدر تشوفها تحت في "قنواتك".',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -52,6 +53,7 @@ const T = {
     notLinkedYet: 'Not linked to a YouTube video yet', loadingStats: 'Loading stats...',
     connectYoutube: 'Connect YouTube (auto-upload)', connectedAs: 'Connected — auto-upload enabled',
     disconnect: 'Disconnect', youtubeConnectedToast: 'YouTube connected! Future videos will upload automatically.',
+    channelAddedToast: '✅ Done! Your channel was added — check it below under "Your channels".',
   },
 };
 
@@ -171,6 +173,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setLabel(''); setVidiqKey(''); setFormatPref('auto'); setUsesVoice(false);
+      setToast({ type: 'success', text: t.channelAddedToast });
       load();
     } catch (e) { setError(e.message); } finally { setAdding(false); }
   };
@@ -256,7 +259,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
 
           {error && <p style={{ color: '#ef4444', fontSize: 12.5, marginBottom: 12 }}>{error}</p>}
           <button onClick={addChannel} disabled={adding || !vidiqKey.trim()}
-            style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: adding ? 'rgba(124,106,247,0.3)' : '#7c6af7', color: '#fff', fontWeight: 700, fontSize: 14, cursor: adding ? 'not-allowed' : 'pointer' }}>
+            style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: (adding || !vidiqKey.trim()) ? 'rgba(124,106,247,0.3)' : '#7c6af7', color: '#fff', fontWeight: 700, fontSize: 14, cursor: (adding || !vidiqKey.trim()) ? 'not-allowed' : 'pointer' }}>
             {adding ? t.adding : t.add}
           </button>
         </div>
