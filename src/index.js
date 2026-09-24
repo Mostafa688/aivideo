@@ -1455,6 +1455,42 @@ app.post('/api/upload-video-link', authMiddleware, renderLimiter, videoUpload.si
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW (طلب العميل — سكرين شوت: قال "حرك الصورة دي" لصورة مرفقة في محادثة Claude/MCP،
+//  ولقى الايجنت مقدرش يستخدمها فعليًا واخترع فيديو تاني بدل ما يقوله محتاج رابط): نفس فكرة
+//  /api/upload-video-link فوق بالظبط، بس للصور — رابط عام دائم عشان يستخدم مع generate_video's
+//  "imageUrl" على MCP، لأن الأداة مش بتقدر تستقبل ملف مرفق مباشرة من المحادثة.
+// ══════════════════════════════════════════════════════════════════════════
+app.post('/api/upload-image-link', authMiddleware, renderLimiter, upload.single('image'), async (req, res) => {
+  try {
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    if ((user.plan || 'free') === 'free') {
+      return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock this feature.', show_upgrade: true });
+    }
+    const imageFile = req.file;
+    if (!imageFile) return res.status(400).json({ error: 'image file is required' });
+    if (!/^image\//.test(imageFile.mimetype || '')) {
+      return res.status(400).json({ error: 'File must be an image.' });
+    }
+    if (!imageFile.buffer || imageFile.buffer.length < 100) {
+      return res.status(400).json({ error: `Upload failed — received only ${imageFile.buffer?.length || 0} bytes. Please try uploading the image again.` });
+    }
+
+    const ext = (imageFile.mimetype.split('/')[1] || 'jpg').replace('jpeg', 'jpg').slice(0, 4);
+    const publicDir = join(process.cwd(), 'outputs', 'user_uploads');
+    fs.mkdirSync(publicDir, { recursive: true });
+    const publicFilename = `link_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    fs.writeFileSync(join(publicDir, publicFilename), imageFile.buffer);
+
+    const siteUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';
+    res.json({ imageUrl: `${siteUrl}/outputs/user_uploads/${publicFilename}` });
+  } catch (err) {
+    console.error('[UploadImageLink] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Upload failed.' });
+  }
+});
+
 // ✅ NEW: نفس تعديل الفيديو (Lucy Edit 2)، بس بيستقبل رابط فيديو جاهز بدل ملف مرفوع
 // مباشرة — ده اللي MCP (Claude) بيستخدمه، لأن الأدوات مش بتقدر ترفع ملفات فيديو فعلية
 app.post('/api/video-edit-by-url', authMiddleware, renderLimiter, async (req, res) => {
