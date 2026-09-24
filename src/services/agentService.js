@@ -17,13 +17,18 @@ const EG_CREDIT_PACKAGES = {
 };
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-// ✅ FIX (طلب العميل): qwen/qwen3.8-27b أذكى بكتير من gpt-oss-120b (Intelligence Index ~52
-// مقابل ~24) بس أغلى شوية على Groq (~$0.60 إدخال/$3 إخراج لكل مليون توكن، مقابل ~$0.15/$0.60
-// لـ gpt-oss-120b) — العميل قرر يخصص الموديل الأقوى للمشتركين المدفوعين بس، وترجع الخطة
-// المجانية لـ gpt-oss-120b القديم (رخيص جدًا، مناسب لحجم استخدام أكبر من غير تكلفة). الفرق ده
-// كله لسه على Groq نفسها، مفيش أي تكلفة زي Claude خالص في الحالتين.
+// ✅ FIX (طلب العميل: "qwen غالي جدًا، من شخص واحد بس وصل الاستخدام لـ8 دولار، شوف حاجة كويسة
+// بس أرخص"): السعر الحقيقي الحالي لـqwen/qwen3.8-27b على Groq طلع أعلى بكتير من التقدير القديم
+// فوق ($0.80 إدخال/$4.00 إخراج لكل مليون توكن فعليًا، مش $0.60/$3 زي ما كان متوقع) — والإخراج
+// تحديدًا هو الأغلى بمراحل، وده بالظبط اللي بيتصرف بكتير هنا (ردود طويلة بماركرات JSON مفصّلة).
+// بحثنا عن بديل "متوسط" أرخص بس لسه كويس على Groq (llama-4-maverick/scout، qwen3-32b،
+// qwen3.6-27b، llama-3.3-70b) — كل البدائل دي اتقفلت (deprecated) خلال 2026 لصالح gpt-oss-120b
+// نفسه أو qwen3.8-27b الغالي، فمفيش درجة وسطى حقيقية باقية على Groq خالص. الحل: رجّعنا الخطة
+// المدفوعة لنفس gpt-oss-120b الرخيص (إخراج $0.60/مليون — أرخص من qwen بحوالي 6.7 مرة)، بس
+// بمجهود تفكير أعلى (reasoning_effort: 'medium' بدل 'low' للمجانية) عشان يبقى أدق من غير ما
+// نرجع لتكلفة qwen العالية. لسه على Groq، مفيش أي تكلفة زي Claude خالص في الحالتين.
 const AGENT_MODEL_FREE = 'openai/gpt-oss-120b';
-const AGENT_MODEL_PAID = 'qwen/qwen3.8-27b';
+const AGENT_MODEL_PAID = 'openai/gpt-oss-120b';
 
 // ✅ FIX: العميل قرر إن Claude غالي أوي بالنسبة للاستخدام المتوقع (شافه بيتكلف $0.06 لرد واحد
 // بسيط على Replicate) — رجّعنا الايجنت بالكامل (كل الخطط، مش بس المجانية) لـ Groq (بالموديل
@@ -371,12 +376,12 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
     { role: 'user', content: trimmedUserContent },
   ];
 
-  // ✅ NEW: قوين للمشتركين المدفوعين بس، gpt-oss-120b (رخيص جدًا) للخطة المجانية
+  // ✅ NEW: نفس gpt-oss-120b للكل (فوق) — الفرق بين المجاني والمدفوع بقى مستوى مجهود التفكير
+  // (reasoning_effort) بدل موديل تاني أغلى تمامًا. المشتركين المدفوعين بياخدوا 'medium' (أدق
+  // من غير ما نرجع لتكلفة qwen)، الخطة المجانية 'low' (رخيص جدًا، مناسب لحجم استخدام أكبر)
   // ✅ NEW (طلب العميل: "ممنوع الايجينت يرفض او ميعملش المشاهد"): forceStrongerModel بيتفعّل
-  // بس من agentRoutes.js في محاولة إنقاذ أخيرة واحدة لما كل الـnudges العادية فشلت — الموديل
-  // المجاني (gpt-oss-120b) أضعف بكتير في الالتزام بصيغة الماركر JSON مع طلبات مشاهد متعددة
-  // معقدة، فبنرفعه مؤقتًا لنفس موديل الخطط المدفوعة (لسه على Groq، مفيش أي تكلفة Claude) بس
-  // لمحاولة واحدة نادرة، مش تفعيل دائم لموديل أغلى للخطة المجانية
+  // بس من agentRoutes.js في محاولة إنقاذ أخيرة واحدة لما كل الـnudges العادية فشلت — بيرفع
+  // مجهود التفكير لنفس مستوى الخطط المدفوعة مؤقتًا لمحاولة واحدة نادرة بس، مش تفعيل دائم
   const isPaidPlan = userPlan !== 'free';
   const useStrongerModel = isPaidPlan || forceStrongerModel;
   const groqModel = useStrongerModel ? AGENT_MODEL_PAID : AGENT_MODEL_FREE;
@@ -388,9 +393,9 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
       messages,
       max_tokens: MAX_REPLY_TOKENS,
       temperature: 0.4,
-      // ✅ "reasoning_effort" خاص بـ gpt-oss تحديدًا (مش مؤكد إنه مدعوم لـ qwen3.8-27b بنفس
-      // الاسم) — بيتبعت بس لما الموديل يبقى gpt-oss (الخطة المجانية)
-      ...(useStrongerModel ? {} : { reasoning_effort: 'low' }),
+      // ✅ "reasoning_effort" خاص بـ gpt-oss — الموديلين دلوقتي نفس العائلة، فبيتبعت في
+      // الحالتين، بس بمستوى مختلف
+      reasoning_effort: useStrongerModel ? 'medium' : 'low',
     }),
   });
 
