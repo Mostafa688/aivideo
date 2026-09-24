@@ -92,6 +92,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [performanceByRun, setPerformanceByRun] = useState({});
   const [toast, setToast] = useState(null);
   const [connectingId, setConnectingId] = useState(null);
+  const [connectUrls, setConnectUrls] = useState({});
 
   // ✅ NEW: بعد ما العميل يوافق (أو يلغي) ربط يوتيوب، App.jsx بيحط علامة هنا قبل ما
   // يوجهنا للصفحة دي — نقراها مرة واحدة بس ونمسحها
@@ -103,17 +104,30 @@ export default function ChannelsPage({ onBack, userRegion }) {
     else if (flag.startsWith('error:')) setToast({ type: 'error', text: flag.slice(6) || 'Connection failed' });
   }, []);
 
-  const connectYoutube = async (channelId) => {
+  // ✅ بيجيب رابط ربط يوتيوب مقدمًا (مش وقت الكليك) — المتصفحات الصارمة (خصوصًا Safari
+  // على الموبايل) بتلغي صلاحية "user gesture" لو حصل await قبل تغيير location.href، يعني
+  // الريدايركت لجوجل بيفشل صامت من غير أي error وحتى من غير أي تغيير في اللينك. الحل إننا
+  // نجيب اللينك من الأول من غير أي انتظار وقت الضغطة نفسها.
+  const prefetchConnectUrl = (channelId) => {
+    fetch(`/api/channels/${channelId}/youtube-connect`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(data => { if (data.url) setConnectUrls(prev => ({ ...prev, [channelId]: data.url })); })
+      .catch(() => {});
+  };
+
+  const connectYoutube = (channelId) => {
+    const url = connectUrls[channelId];
+    if (url) { window.location.href = url; return; }
+    // ✅ fallback نادر لو الرابط لسه ما جهزش (مثلاً القناة اتضافت لتوها) — هنا لازم await
+    // فبيفضل احتمال ضعيف إن المتصفح يلغي الـgesture، لكن ده أفضل من عدم عمل حاجة خالص
     setConnectingId(channelId);
-    try {
-      const res = await fetch(`/api/channels/${channelId}/youtube-connect`, { headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      window.location.href = data.url;
-    } catch (e) {
-      setToast({ type: 'error', text: e.message });
-      setConnectingId(null);
-    }
+    fetch(`/api/channels/${channelId}/youtube-connect`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.url) throw new Error(data.error || 'Failed');
+        window.location.href = data.url;
+      })
+      .catch(e => { setToast({ type: 'error', text: e.message }); setConnectingId(null); });
   };
 
   const disconnectYoutube = async (channelId) => {
@@ -161,7 +175,11 @@ export default function ChannelsPage({ onBack, userRegion }) {
 
   const load = () => {
     setLoading(true);
-    fetch('/api/channels', { headers: authHeaders() }).then(r => r.json()).then(d => setChannels(d.channels || [])).catch(() => {}).finally(() => setLoading(false));
+    fetch('/api/channels', { headers: authHeaders() }).then(r => r.json()).then(d => {
+      const chs = d.channels || [];
+      setChannels(chs);
+      chs.filter(ch => !ch.youtube_channel_title).forEach(ch => prefetchConnectUrl(ch.id));
+    }).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(load, []);
 
