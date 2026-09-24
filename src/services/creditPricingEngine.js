@@ -107,6 +107,11 @@ export const REPLICATE_MODEL_COSTS = {
                        tiers: { '480p': 0.08, '720p': 0.18, '1080p': 0.45, '4k': 1.00 } },
   seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30,
                        tiers: { '480p': 0.1028, '720p': 0.2312 } }, // مؤكد من Replicate مباشرة (non_video_in). 1080p/4K مش native output حقيقي (upscale بس)، متضافين هنا
+  // ✅ NEW (طلب العميل، سعره وschema مؤكدين من سكرين شوت العميل مباشرة لصفحة الموديل الحقيقية):
+  // alibaba/wan-3 — لحد 30 ثانية زي seedance_2_5 بالظبط. usdCost الافتراضي = 1080p (الدقة
+  // الافتراضية فعليًا في الـschema نفسه)
+  wan_3:            { label: 'Wan 3',              unit: 'second', usdCost: 0.10, maxClipSec: 30,
+                       tiers: { '480p': 0.025, '720p': 0.05, '1080p': 0.10 } },
   // ✅ FIX: الاتنين مؤكدين من صفحة الموديل مباشرة دلوقتي (540p=$0.10/s، 720p=$0.18/s) — الترتيب
   // المنطقي اتظبط (دقة أعلى = سعر أعلى)، التناقض القديم كان بسبب رقم 720p القديم غير المؤكد
   luma_ray2_540p:   { label: 'Luma Ray 2 (540p)',   unit: 'second', usdCost: 0.10, maxClipSec: 9 },

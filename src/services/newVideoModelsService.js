@@ -217,6 +217,25 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
+  // ✅ NEW (طلب العميل، سعره وschema مؤكدين من سكرين شوت العميل مباشرة لصفحة الموديل الحقيقية):
+  // alibaba/wan-3 — لحد 30 ثانية زي seedance_2_5 بالظبط. الحقول الحقيقية: "duration" (Default 5،
+  // Minimum 2، Maximum 30)، "resolution" (Default "1080p")، "aspect_ratio" (Default "adaptive" —
+  // العميل صرّح إنها بتتجاهل لو "image" موجودة، فبنسيبها زي ما هي، مش هتأثر). "negative_prompt"
+  // و"enable_prompt_expansion" (Default true) موجودين في الـschema بس مش مستخدمين هنا — قيمهم
+  // الافتراضية كويسة (تحسين تلقائي للبرومبت) ومفيش داعي نديها من عندنا
+  wan_3: {
+    slug: 'alibaba/wan-3',
+    supportsImageInput: true,
+    minDurationSec: 2,
+    maxDurationSec: 30,
+    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      resolution: tier || '1080p',
+      aspect_ratio: aspectRatio || '16:9',
+      duration: Math.min(Math.max(durationSec || 5, 2), 30),
+      ...(imageUrl ? { image: imageUrl } : {}),
+    }),
+  },
   // ✅ FIX (طلب العميل — سكرين شوت حقيقي لصفحة الـInput schema بعد الإطلاق): الحقول الحقيقية
   // مؤكدة دلوقتي — duration (Default 5, Minimum -1 "auto", Maximum 15)، resolution
   // (Default 720p)، aspect_ratio (Default 16:9، وفيه خيار "adaptive")، generate_audio
