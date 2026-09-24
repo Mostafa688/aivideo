@@ -314,7 +314,7 @@ async function callClaudeDirectAPI(systemPrompt, historyMessages, userContent) {
 // ✅ FIX: hasPhoto/hasVoice بيوصلوا من الراوت كـ "حالة دائمة" مش بس ملاحظة لحظية —
 // لو العميل رفع صورة/صوت قبل كده في المحادثة (حتى لو خرجت بره نافذة الـ history)،
 // بنفضل نذكّر الموديل بيها في كل رسالة جاية عشان ميطلبش رفعها تاني أبدًا.
-export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', isAdminUser = false, hasPhoto = false, hasVoice = false, hasVideo = false, videoDurationSec = null, hasStructuredScript = false, hasAdsScenePlan = false, userRegion = null, memoryNote = null, userChannels = [], hasClonedVoice = false, userCredits = null, mediaLedger = null }) {
+export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', isAdminUser = false, hasPhoto = false, hasVoice = false, hasVideo = false, videoDurationSec = null, hasStructuredScript = false, hasAdsScenePlan = false, userRegion = null, memoryNote = null, userChannels = [], hasClonedVoice = false, userCredits = null, mediaLedger = null, forceStrongerModel = false }) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
   const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES).map(m => {
@@ -372,8 +372,14 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
   ];
 
   // ✅ NEW: قوين للمشتركين المدفوعين بس، gpt-oss-120b (رخيص جدًا) للخطة المجانية
+  // ✅ NEW (طلب العميل: "ممنوع الايجينت يرفض او ميعملش المشاهد"): forceStrongerModel بيتفعّل
+  // بس من agentRoutes.js في محاولة إنقاذ أخيرة واحدة لما كل الـnudges العادية فشلت — الموديل
+  // المجاني (gpt-oss-120b) أضعف بكتير في الالتزام بصيغة الماركر JSON مع طلبات مشاهد متعددة
+  // معقدة، فبنرفعه مؤقتًا لنفس موديل الخطط المدفوعة (لسه على Groq، مفيش أي تكلفة Claude) بس
+  // لمحاولة واحدة نادرة، مش تفعيل دائم لموديل أغلى للخطة المجانية
   const isPaidPlan = userPlan !== 'free';
-  const groqModel = isPaidPlan ? AGENT_MODEL_PAID : AGENT_MODEL_FREE;
+  const useStrongerModel = isPaidPlan || forceStrongerModel;
+  const groqModel = useStrongerModel ? AGENT_MODEL_PAID : AGENT_MODEL_FREE;
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: authHeaders(),
@@ -384,7 +390,7 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
       temperature: 0.4,
       // ✅ "reasoning_effort" خاص بـ gpt-oss تحديدًا (مش مؤكد إنه مدعوم لـ qwen3.8-27b بنفس
       // الاسم) — بيتبعت بس لما الموديل يبقى gpt-oss (الخطة المجانية)
-      ...(isPaidPlan ? {} : { reasoning_effort: 'low' }),
+      ...(useStrongerModel ? {} : { reasoning_effort: 'low' }),
     }),
   });
 

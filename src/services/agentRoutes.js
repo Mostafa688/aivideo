@@ -372,6 +372,12 @@ function parseAgentMarkers(rawReply) {
         }
       } else if ([1, 2, 3, 4, 5, 7, 8].includes(parsed.model)) {
         ready = parsed;
+      } else {
+        // ✅ FIX: كان بيتم تجاهل ###READY### بصمت تام لو "model" مش رقم من القايمة القديمة —
+        // من غير ولا سطر لوج واحد، عكس كل الماركرات التانية فوق. الماركر ده متقاعد فعليًا (الرد
+        // الافتراضي الجديد بيمر بـGENERATE_IMAGE/GENERATE_VIDEO)، بس لو الموديل حطه غلط بدل
+        // كده لازم نشوف ده في اللوجز عشان نفرّقه عن حالة "مفيش ماركر خالص"
+        console.warn('[Agent] READY marker parsed but "model" is not a recognized legacy model number:', JSON.stringify(parsed).slice(0, 500));
       }
     } catch (e) {
       // ✅ FIX: كان بيسيب الطلب كله يفشل من غير فيديو ولا رسالة خطأ واضحة لو الموديل
@@ -762,6 +768,35 @@ router.post('/chat', authMiddleware, async (req, res) => {
       } catch (e) {
         console.warn('[Agent] Retry-with-nudge failed:', e.message);
         break;
+      }
+    }
+    // ✅ NEW (طلب العميل: "ممنوع الايجينت يقول رسالة الاعتذار تاني — لازم اجباري المشاهد
+    // تتعمل"): لو كل الـMAX_NUDGE_RETRIES العادية فشلت ولسه مفيش أي ماركر، قبل ما نستسلم
+    // خالص لرسالة الاعتذار، بنجرب محاولة إنقاذ أخيرة واحدة بس بموديل Groq أقوى (qwen3.8-27b
+    // بدل gpt-oss-120b للخطة المجانية — لسه على Groq، مفيش أي تكلفة Claude، وده نفس الموديل
+    // المستخدم أصلاً للمشتركين المدفوعين) مع تعليمة حاسمة إنه يخترع أي تفصيلة إبداعية ناقصة
+    // بنفسه (موضوع مشهد، ستايل، إلخ) بدل ما يسأل أو يوعد وعد فاضي تاني. الموديل الأضعف هو
+    // السبب الأغلب لفشل الالتزام بصيغة الماركر JSON مع طلبات مشاهد متعددة معقدة — محاولة واحدة
+    // نادرة بس (مش تفعيل دائم لموديل أغلى للخطة المجانية) قبل أي رسالة اعتذار
+    if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply))) {
+      console.warn('[Agent] All nudge retries exhausted with the normal model — attempting one final rescue with the stronger model');
+      try {
+        const rescueHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: reply }];
+        const rescueMessage = '(system reminder: you have now failed multiple times in a row to include the required technical marker, even after being told explicitly to include it. The customer is frustrated and has been waiting with nothing happening. This is your absolute last chance in this exchange — you must emit the real marker right now with everything it needs to execute. If any creative detail is still genuinely missing (e.g. the exact subject/style of a scene), invent a specific, reasonable one yourself right now instead of asking — never ask another clarifying question and never repeat a "starting now" acknowledgement without the marker again. Output the marker now.)';
+        const rescueRawReply = await agentChat({
+          message: rescueMessage, history: rescueHistory, attachmentNote, userPlan, isAdminUser,
+          hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
+          hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
+          hasVideo: !!videoAlreadyUploaded,
+          videoDurationSec: videoDurationSec || null,
+          hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits, mediaLedger,
+          forceStrongerModel: true,
+        });
+        if (rescueRawReply && rescueRawReply.trim()) {
+          ({ reply, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideosPayload } = parseAgentMarkers(rescueRawReply));
+        }
+      } catch (e) {
+        console.warn('[Agent] Final rescue attempt (stronger model) failed:', e.message);
       }
     }
     // ✅ FIX: لو بعد كل المحاولات لسه مفيش أي ماركر ناجح والرد لسه بيوعد بالتنفيذ — منسيبش
