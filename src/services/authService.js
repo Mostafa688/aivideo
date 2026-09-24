@@ -313,6 +313,20 @@ async function initDB() {
     );
   `);
   await pool.query('ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS youtube_video_id TEXT').catch(() => {});
+  // ✅ FIX: managed_channels كان موجود فعلاً في الإنتاج قبل ما الأعمدة دي تتضاف لجملة
+  // CREATE TABLE IF NOT EXISTS فوق — وده معناه إن IF NOT EXISTS اعتبر الجدول موجود
+  // وماضافش الأعمدة دي خالص، فأي SELECT بيطلبها (زي listManagedChannelsForUser) كان
+  // بيفشل بصمت (يرجع خطأ يتلبلع في catch الفرونت إند)، فبتظهر رسالة "القناة اتضافت"
+  // (لأن الـINSERT مش بيلمس الأعمدة دي أصلاً) بس قائمة "قنواتك" فاضية دايمًا
+  await pool.query(`
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS voice_id TEXT DEFAULT NULL;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_access_token TEXT;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_refresh_token TEXT;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_token_expires_at TIMESTAMPTZ;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_channel_id TEXT;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_channel_title TEXT;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_privacy_status TEXT DEFAULT 'public';
+  `).catch(() => {});
   // ── مصنع فيديو الصوت الأدمن — رفع فويس أوفر جاهز، والموقع يفرّغه (Whisper) ويستخرج
   // العناصر (LLM) ويجيب/يولّد صورهم ويعمل الفيديو النهائي. Pipeline بمراحل، كل مرحلة
   // بتحدث نفس الـ job بحالتها الجديدة عشان الأدمن يشوف التقدم ─────────────────────────
