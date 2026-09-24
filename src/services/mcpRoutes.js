@@ -32,6 +32,19 @@ const INTERNAL_BASE = process.env.INTERNAL_API_URL || `http://127.0.0.1:${proces
 // ("https://erivion.nethttps://...")
 const resolveUrl = (raw) => (raw && /^https?:\/\//i.test(raw) ? raw : `${SITE_URL}${raw || ''}`);
 
+// ✅ NEW (طلب العميل: "ازاي بيظهر من higgsfield" — سؤاله بعد ما اتأكد إن الـwidget التجريبي
+// (MCP Apps/SEP-1865) مش السبب): "resource_link" ده نوع محتوى قياسي فعليًا في نص مواصفة MCP
+// نفسها (مش إضافة تجريبية زي registerAppTool فوق) — أي عميل MCP (زي Higgsfield على الأرجح)
+// بيرجّعه بيقدر يرندره كـ<video>/<img> حقيقي جوه المحادثة من غير أي دعم تجريبي إضافي مطلوب من
+// الـhost. بنضيفه هنا كـcontent block إضافي (مع النص العادي، مش بدل منه — احتياط مضمون لو
+// العميل مش بيدعمه، بيتجاهله ببساطة ويفضل النص شغال زي ما هو)
+const videoResourceLink = (url, name = 'Generated video') => ({
+  type: 'resource_link', uri: url, name, mimeType: 'video/mp4', description: name,
+});
+const imageResourceLink = (url, name = 'Generated image') => ({
+  type: 'resource_link', uri: url, name, mimeType: 'image/jpeg', description: name,
+});
+
 function buildMcpServer(userId, email) {
   const server = new McpServer({ name: 'erivion', version: '1.0.0' });
   const authHeaders = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(userId, email) });
@@ -215,7 +228,10 @@ function buildMcpServer(userId, email) {
             if (statusData.status === 'done') {
               const imageUrls = (statusData.images || []).map(resolveUrl);
               return {
-                content: [{ type: 'text', text: `✅ Image(s) ready:\n${imageUrls.join('\n')}\nCredits charged: ${genData.creditCost ?? 'see check_credits'}` }],
+                content: [
+                  { type: 'text', text: `✅ Image(s) ready:\n${imageUrls.join('\n')}\nCredits charged: ${genData.creditCost ?? 'see check_credits'}` },
+                  ...imageUrls.map((u, i) => imageResourceLink(u, imageUrls.length > 1 ? `Generated image ${i + 1}` : 'Generated image')),
+                ],
                 structuredContent: { status: 'done', imageUrls, jobId },
               };
             }
@@ -291,7 +307,10 @@ function buildMcpServer(userId, email) {
             if (statusData.status === 'done') {
               const videoUrl = resolveUrl(statusData.videoUrl);
               return {
-                content: [{ type: 'text', text: `✅ Video ready: ${videoUrl}\nCredits charged: ${genData.creditCost ?? 'see check_credits'}` }],
+                content: [
+                  { type: 'text', text: `✅ Video ready: ${videoUrl}\nCredits charged: ${genData.creditCost ?? 'see check_credits'}` },
+                  videoResourceLink(videoUrl),
+                ],
                 structuredContent: { status: 'done', videoUrl, jobId },
               };
             }
@@ -342,13 +361,19 @@ function buildMcpServer(userId, email) {
           if (isImageJob) {
             const imageUrls = (data.images || []).map(resolveUrl);
             return {
-              content: [{ type: 'text', text: `✅ Image(s) ready:\n${imageUrls.join('\n')}` }],
+              content: [
+                { type: 'text', text: `✅ Image(s) ready:\n${imageUrls.join('\n')}` },
+                ...imageUrls.map((u, i) => imageResourceLink(u, imageUrls.length > 1 ? `Generated image ${i + 1}` : 'Generated image')),
+              ],
               structuredContent: { status: 'done', imageUrls },
             };
           }
           const videoUrl = resolveUrl(data.videoUrl);
           return {
-            content: [{ type: 'text', text: `✅ Video ready: ${videoUrl}` }],
+            content: [
+              { type: 'text', text: `✅ Video ready: ${videoUrl}` },
+              videoResourceLink(videoUrl),
+            ],
             structuredContent: { status: 'done', videoUrl },
           };
         }
@@ -410,7 +435,10 @@ function buildMcpServer(userId, email) {
             if (statusData.status === 'done') {
               const finalUrl = resolveUrl(statusData.videoUrl);
               return {
-                content: [{ type: 'text', text: `✅ Edited video ready: ${finalUrl}\nCredits charged: ${editData.creditCost}` }],
+                content: [
+                  { type: 'text', text: `✅ Edited video ready: ${finalUrl}\nCredits charged: ${editData.creditCost}` },
+                  videoResourceLink(finalUrl),
+                ],
                 structuredContent: { status: 'done', videoUrl: finalUrl, jobId },
               };
             }
