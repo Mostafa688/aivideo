@@ -25,7 +25,11 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 // ✅ مسار جديد منفصل تمامًا عن /api/auth/google/callback (بتاع تسجيل الدخول العادي —
 // صلاحيات email/profile بس) — لازم يتضاف لقايمة "Authorized redirect URIs" في نفس
 // الـOAuth Client من Google Cloud Console → Clients
-const YOUTUBE_CALLBACK_URL = process.env.YOUTUBE_CALLBACK_URL || `${(process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net').replace(/\/$/, '')}/api/channels/youtube-callback`;
+// ⚠️ لازم FRONTEND_URL يجي الأول هنا (مش SITE_URL) — SITE_URL في Railway بيشاور على
+// دومين Railway الخام (aivideo-production-xxxx.up.railway.app) مش الدومين الحقيقي
+// (erivion.net) المسجّل فعليًا في Google كـredirect URI، فلو SITE_URL جه الأول كان
+// بيبعت redirect_uri مختلف عن المسجّل ويرجّع "Error 400: redirect_uri_mismatch"
+const YOUTUBE_CALLBACK_URL = process.env.YOUTUBE_CALLBACK_URL || `${(process.env.FRONTEND_URL || process.env.SITE_URL || 'https://erivion.net').replace(/\/$/, '')}/api/channels/youtube-callback`;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://erivion.net';
 const YOUTUBE_SCOPES = 'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload';
 
