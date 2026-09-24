@@ -330,6 +330,22 @@ export default function App() {
     const googleAvatar = params.get('avatar');
     const authError   = params.get('auth_error');
 
+    // ✅ NEW: يوتيوب بيرجّع هنا بعد ما العميل يوافق (أو يلغي) ربط قناته للرفع التلقائي —
+    // راجع youtubeUploadService.js/channelRoutes.js's /youtube-callback بالباك إند
+    const youtubeConnected = params.get('youtube_connected');
+    const youtubeError = params.get('youtube_error');
+    if (youtubeConnected || youtubeError) {
+      window.history.replaceState({}, '', '/');
+      const token = localStorage.getItem('token');
+      const email = localStorage.getItem('email');
+      if (token && email) {
+        setUser({ token, email }); setUserPlan(localStorage.getItem('plan') || 'free'); setPlanSelected(true);
+        setPage('channels');
+        sessionStorage.setItem('erivion_youtube_toast', youtubeConnected ? 'connected' : `error:${youtubeError}`);
+      }
+      setAuthChecked(true); return;
+    }
+
     if (window.location.pathname === '/login') {
       window.history.replaceState({}, '', '/');
       const token = localStorage.getItem('token');

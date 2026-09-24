@@ -7,6 +7,7 @@ import {
 } from './authService.js';
 import { verifyVidiqKey, getVideoPerformance } from './vidiqClientService.js';
 import { triggerApprovedGeneration, sendDailyResultEmail } from './channelSchedulerService.js';
+import { getYoutubeConnectUrl, handleYoutubeOAuthCallback, disconnectYoutubeForChannel, uploadVideoToYoutube } from './youtubeUploadService.js';
 
 const router = express.Router();
 
@@ -71,6 +72,47 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+//  ✅ NEW: الرفع التلقائي على يوتيوب — الحلقة الناقصة (راجع youtubeUploadService.js
+//  للشرح الكامل). لسه مش هيشتغل فعليًا لأي عميل حقيقي لحد ما جوجل يوثّق صلاحية
+//  youtube.upload — الكود جاهز وهيشتغل تلقائي أول ما التوثيق يخلص.
+// ══════════════════════════════════════════════════════════════════════════
+router.get('/:id/youtube-connect', authMiddleware, async (req, res) => {
+  try {
+    const channel = await getManagedChannelById(req.params.id);
+    if (!channel || channel.user_id !== req.user.userId) return res.status(404).json({ error: 'Channel not found' });
+    res.json({ url: getYoutubeConnectUrl(channel.id, req.user.userId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ✅ Google بيرجع هنا مباشرة (من غير Authorization header) — بنتحقق من هوية العميل/القناة
+// من الـstate الموقّع بنفسنا (JWT) بدل authMiddleware العادي
+router.get('/youtube-callback', async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'https://erivion.net';
+  const { code, state, error } = req.query;
+  if (error || !code || !state) {
+    return res.redirect(`${frontendUrl}?page=channels&youtube_error=${encodeURIComponent(error || 'missing_code')}`);
+  }
+  try {
+    await handleYoutubeOAuthCallback(code, state);
+    res.redirect(`${frontendUrl}?page=channels&youtube_connected=1`);
+  } catch (e) {
+    console.error('[ChannelRoutes] YouTube OAuth callback failed:', e.message);
+    res.redirect(`${frontendUrl}?page=channels&youtube_error=${encodeURIComponent(e.message)}`);
+  }
+});
+
+router.post('/:id/youtube-disconnect', authMiddleware, async (req, res) => {
+  try {
+    await disconnectYoutubeForChannel(req.params.id, req.user.userId);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── تحليلات الأداء — سجل فيديوهات القناة، ربط كل واحد بلينك اليوتيوب الحقيقي بعد الرفع
 // اليدوي، وجلب أداءه الفعلي (مشاهدات/لايكات/كومنتات) من VidIQ عند الطلب ────────────────
 router.get('/:id/runs', authMiddleware, async (req, res) => {
@@ -128,6 +170,21 @@ router.get('/daily-approve', async (req, res) => {
       const videoUrl = await triggerApprovedGeneration(run);
       await updateDailyVideoRunStatus(run.id, 'done', { videoUrl });
       const user = await getUserById(run.user_id);
+
+      // ✅ NEW: لو القناة متربطة بيوتيوب (youtube-connect)، نرفع الفيديو تلقائي هنا —
+      // بدل ما نسيب العميل يرفعه بإيده ويلصق اللينك. لو الرفع فشل لأي سبب (زي التوثيق
+      // لسه ما خلصش من جوجل)، منوقفش حاجة — الفيديو خلص فعلاً والعميل لسه يقدر يرفعه
+      // يدوي بنفس المسار القديم بالظبط، بس هيبان تحذير في اللوجز يوضح السبب
+      try {
+        const channel = await getManagedChannelById(run.channel_id);
+        if (channel?.youtube_refresh_token) {
+          const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl, title: idea.title, description: idea.brief || '' });
+          await linkYoutubeVideoToRun(run.id, run.user_id, youtubeVideoId);
+        }
+      } catch (uploadErr) {
+        console.warn(`[ChannelRoutes] Auto-upload to YouTube failed for run ${run.id} (customer can still upload manually):`, uploadErr.message);
+      }
+
       await sendDailyResultEmail(user.email, idea, videoUrl, true);
     } catch (e) {
       console.error('[ChannelRoutes] Approved generation failed:', e.message);

@@ -288,7 +288,13 @@ async function initDB() {
       model_pref INTEGER DEFAULT 4,
       status TEXT DEFAULT 'active',
       last_run_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ DEFAULT NOW()
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      youtube_access_token TEXT,
+      youtube_refresh_token TEXT,
+      youtube_token_expires_at TIMESTAMPTZ,
+      youtube_channel_id TEXT,
+      youtube_channel_title TEXT,
+      youtube_privacy_status TEXT DEFAULT 'public'
     );
     CREATE TABLE IF NOT EXISTS daily_video_runs (
       id SERIAL PRIMARY KEY,
@@ -1528,11 +1534,36 @@ export async function createManagedChannel(userId, { label, channelId, vidiqApiK
 
 export async function listManagedChannelsForUser(userId) {
   const { rows } = await pool.query(
-    `SELECT id, platform, label, channel_id, format_pref, uses_voice, voice_id, model_pref, status, last_run_at, created_at
+    `SELECT id, platform, label, channel_id, format_pref, uses_voice, voice_id, model_pref, status, last_run_at, created_at,
+            youtube_channel_title, youtube_privacy_status
      FROM managed_channels WHERE user_id = $1 ORDER BY id DESC`,
     [userId]
   );
   return rows;
+}
+
+// ✅ NEW: رفع تلقائي على يوتيوب — بعد ما العميل يوافق على صلاحيات youtube.readonly/
+// youtube.upload لقناة معينة، بنحفظ التوكنز هنا (راجع youtubeUploadService.js للتفاصيل
+// الكاملة). refreshToken بيرجع من جوجل مرة واحدة بس (أول موافقة، أو لو فرضنا prompt=consent) —
+// COALESCE بيحافظ على القديم لو مش راجع توكن جديد في إعادة الربط
+export async function saveYoutubeAuthForChannel(channelId, { accessToken, refreshToken, expiresAt, youtubeChannelId, youtubeChannelTitle }) {
+  await pool.query(
+    `UPDATE managed_channels SET youtube_access_token = $1, youtube_refresh_token = COALESCE($2, youtube_refresh_token),
+     youtube_token_expires_at = $3, youtube_channel_id = $4, youtube_channel_title = $5 WHERE id = $6`,
+    [accessToken, refreshToken || null, expiresAt, youtubeChannelId, youtubeChannelTitle, channelId]
+  );
+}
+
+export async function updateYoutubeAccessToken(channelId, accessToken, expiresAt) {
+  await pool.query('UPDATE managed_channels SET youtube_access_token = $1, youtube_token_expires_at = $2 WHERE id = $3', [accessToken, expiresAt, channelId]);
+}
+
+export async function clearYoutubeAuthForChannel(channelId, userId) {
+  await pool.query(
+    `UPDATE managed_channels SET youtube_access_token = NULL, youtube_refresh_token = NULL,
+     youtube_token_expires_at = NULL, youtube_channel_id = NULL, youtube_channel_title = NULL WHERE id = $1 AND user_id = $2`,
+    [channelId, userId]
+  );
 }
 
 export async function getManagedChannelById(id) {

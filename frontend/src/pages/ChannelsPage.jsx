@@ -17,6 +17,8 @@ const T = {
     linkPlaceholder: 'الصق رابط اليوتيوب بعد الرفع', link: 'اربط', refreshStats: 'حدّث الأداء',
     views: 'مشاهدة', likes: 'لايك', comments: 'كومنت', avgView: 'متوسط وقت المشاهدة',
     notLinkedYet: 'لسه ما اترفعش/اترباط بيوتيوب', loadingStats: 'بيجيب الأداء...',
+    connectYoutube: 'اربط يوتيوب (رفع تلقائي)', connectedAs: 'متصل — رفع تلقائي مفعّل',
+    disconnect: 'فصل الربط', youtubeConnectedToast: 'تم ربط يوتيوب بنجاح! الفيديوهات الجاية هترفع تلقائي.',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -30,6 +32,8 @@ const T = {
     linkPlaceholder: 'Paste the YouTube link after uploading', link: 'Link', refreshStats: 'Refresh stats',
     views: 'views', likes: 'likes', comments: 'comments', avgView: 'avg. view duration',
     notLinkedYet: 'Not linked to a YouTube video yet', loadingStats: 'Loading stats...',
+    connectYoutube: 'Connect YouTube (auto-upload)', connectedAs: 'Connected — auto-upload enabled',
+    disconnect: 'Disconnect', youtubeConnectedToast: 'YouTube connected! Future videos will upload automatically.',
   },
 };
 
@@ -66,6 +70,38 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [runsByChannel, setRunsByChannel] = useState({});
   const [linkInputs, setLinkInputs] = useState({});
   const [performanceByRun, setPerformanceByRun] = useState({});
+  const [toast, setToast] = useState(null);
+  const [connectingId, setConnectingId] = useState(null);
+
+  // ✅ NEW: بعد ما العميل يوافق (أو يلغي) ربط يوتيوب، App.jsx بيحط علامة هنا قبل ما
+  // يوجهنا للصفحة دي — نقراها مرة واحدة بس ونمسحها
+  useEffect(() => {
+    const flag = sessionStorage.getItem('erivion_youtube_toast');
+    if (!flag) return;
+    sessionStorage.removeItem('erivion_youtube_toast');
+    if (flag === 'connected') setToast({ type: 'success', text: t.youtubeConnectedToast });
+    else if (flag.startsWith('error:')) setToast({ type: 'error', text: flag.slice(6) || 'Connection failed' });
+  }, []);
+
+  const connectYoutube = async (channelId) => {
+    setConnectingId(channelId);
+    try {
+      const res = await fetch(`/api/channels/${channelId}/youtube-connect`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      window.location.href = data.url;
+    } catch (e) {
+      setToast({ type: 'error', text: e.message });
+      setConnectingId(null);
+    }
+  };
+
+  const disconnectYoutube = async (channelId) => {
+    try {
+      await fetch(`/api/channels/${channelId}/youtube-disconnect`, { method: 'POST', headers: authHeaders() });
+      load();
+    } catch (e) { setToast({ type: 'error', text: e.message }); }
+  };
 
   const toggleAnalytics = async (channelId) => {
     if (expandedChannelId === channelId) { setExpandedChannelId(null); return; }
@@ -139,6 +175,13 @@ export default function ChannelsPage({ onBack, userRegion }) {
           </button>
         )}
 
+        {toast && (
+          <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 10, background: toast.type === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${toast.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: toast.type === 'success' ? '#22c55e' : '#f87171', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <span>{toast.text}</span>
+            <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+          </div>
+        )}
+
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📺</div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t.title}</h1>
@@ -189,6 +232,21 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 </div>
                 <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', marginBottom: 12 }}>
                   {t.lastRun}: {ch.last_run_at ? new Date(ch.last_run_at).toLocaleString() : t.never} · {ch.format_pref} · {ch.uses_voice ? '🎙️' : '🔇'}
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  {ch.youtube_channel_title ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11.5, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 5 }}>✅ {t.connectedAs} ({ch.youtube_channel_title})</span>
+                      <button onClick={() => disconnectYoutube(ch.id)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.25)', background: 'transparent', color: '#ef4444', fontSize: 11, cursor: 'pointer' }}>
+                        {t.disconnect}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => connectYoutube(ch.id)} disabled={connectingId === ch.id}
+                      style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,0,0,0.25)', background: 'rgba(255,0,0,0.06)', color: '#ff6b6b', fontSize: 12, cursor: connectingId === ch.id ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      ▶️ {connectingId === ch.id ? '...' : t.connectYoutube}
+                    </button>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => toggleStatus(ch)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#d1d5db', fontSize: 12, cursor: 'pointer' }}>
