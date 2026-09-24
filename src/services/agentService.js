@@ -559,10 +559,51 @@ export const AGENT_LIMITS = { MAX_AUDIO_SEC, MAX_AUDIO_MB, MAX_IMAGE_MB };
 //  كل حاجة حرفيًا". الاستخراج بكود عادي هنا مضمون 100% — مفيش نموذج لغوي حتى
 //  يقرب من النص، فمفيش أي احتمال تلخيص أو حذف أو هلوسة مهما كان عدد المشاهد.
 // ══════════════════════════════════════════════════════════════════════════
+// ✅ FIX (طلب العميل: "مش كل الناس هترقم المشاهد، والسرعة هي ميزة الموقع" — سكرين شوت
+// سابق كان أول فيكس بس لصيغة "Scene N" الإنجليزية): مش كل عميل هيكتب "Scene 1"/"Scene 2"
+// بالظبط — بعضهم هيكتب "مشهد 1" بالعربي، بعضهم هيكتب ليستة أرقام عادية ("1." أو "1)")،
+// وبعضهم (الأسرع) هيلزق كل مشهد في فقرة منفصلة من غير أي رقم أو كلمة خالص. بدل نمط واحد
+// بس، بنجرب كذا نمط ترتيبًا من الأكثر تحديدًا للأقل (أول نمط يلاقي مشهدين فعليين هو
+// المستخدم)، عشان نغطي أكبر عدد ممكن من عادات الكتابة الحقيقية من غير ما نحتاج نعلّم
+// العميل صيغة معينة يلتزم بيها — وده بالظبط اللي بيحافظ على "السرعة" المطلوبة
+function detectSceneBlocks(text) {
+  // 1) "Scene N" إنجليزي (زي الأول بالظبط) — بيحافظ على التقاط التوقيت الاختياري
+  //    "(0:12-0:24)" لمدة المشهد (مستخدم في موديل 8 القديم)
+  const englishRe = /Scene\s+(\d+)\s*(?:\(([^)]*)\))?/gi;
+  const englishHeaders = [...text.matchAll(englishRe)];
+  if (englishHeaders.length >= 2) return englishHeaders;
+
+  // 2) "مشهد N" عربي (زي "مشهد 1" أو "مشهد رقم 2")
+  const arabicRe = /مشهد\s*(?:رقم\s*)?(\d+)/gi;
+  const arabicHeaders = [...text.matchAll(arabicRe)];
+  if (arabicHeaders.length >= 2) return arabicHeaders;
+
+  // 3) ليستة أرقام عادية في أول السطر ("1. "، "1) "، "1- "، وكمان أرقام عربية "١." )
+  const numberedListRe = /^[ \t]*[\d١٢٣٤٥٦٧٨٩٠]+[\.\)\-][ \t]+/gm;
+  const numberedHeaders = [...text.matchAll(numberedListRe)];
+  if (numberedHeaders.length >= 2) return numberedHeaders;
+
+  // 4) آخر حل (الأسرع للعميل، بدون أي رقم أو كلمة خالص): فقرات منفصلة بسطر فاضي — بنطلبها
+  // 3 فقرات على الأقل (مش 2) وكل فقرة لازم تكون طويلة بما يكفي (30 حرف+) عشان نقلل احتمال
+  // إننا نقسّم رسالة عادية (سؤال قصير + رد قصير) على إنها "مشاهد" غلط. كل فقرة هنا كلها
+  // "الهيدر" بحد ذاته (مفيش جزء منها اسمه هيدر منفصل عن المحتوى — الفقرة كلها هي المحتوى)
+  const paraSplitRe = /\n\s*\n+/g;
+  const paraStarts = [0, ...[...text.matchAll(paraSplitRe)].map(m => m.index + m[0].length)];
+  const paragraphs = paraStarts
+    .map((start, i) => ({ start, text: text.slice(start, i + 1 < paraStarts.length ? paraStarts[i + 1] : text.length).trim() }))
+    .filter(p => p.text.length >= 30);
+  if (paragraphs.length >= 3) {
+    // بنرجّع "هيدر" وهمي بطول صفر في أول كل فقرة (index بس، مفيش نص هيدر فعلي نشيله) —
+    // نفس الشكل اللي باقي الأنماط فوق بترجعه (match-like object بـ[0] فاضي و.index)
+    return paragraphs.map(p => Object.assign([''], { index: p.start }));
+  }
+
+  return [];
+}
+
 export function parseStructuredScript(rawText) {
   const text = String(rawText || '');
-  const sceneHeaderRe = /Scene\s+(\d+)\s*(?:\(([^)]*)\))?/gi;
-  const headers = [...text.matchAll(sceneHeaderRe)];
+  const headers = detectSceneBlocks(text);
   if (headers.length < 2) return null; // لازم على الأقل مشهدين متقسمين صراحة عشان نعتبره تقسيم حقيقي
 
   const scenes = [];
@@ -592,7 +633,8 @@ export function parseStructuredScript(rawText) {
 
     // ✅ NEW: مدة المشهد ده لوحده من التوقيت بتاعه (مثلاً "Scene 3 (0:24-0:36)" = 12 ثانية) —
     // مهمة لموديل 8 اللي بيقبل مدة مختلفة لكل مشهد (لحد 20 ثانية)، عكس باقي الموديلات اللي
-    // مدة كل مشهد فيها ثابتة أصلًا
+    // مدة كل مشهد فيها ثابتة أصلًا. بيتفعّل بس مع نمط "Scene N" الإنجليزي (النمط الوحيد اللي
+    // بيدعم كتابة توقيت جوه الهيدر أصلاً)
     const headerTimestamp = headers[i][2] || '';
     const tsMatch = headerTimestamp.match(/(\d+):(\d+)\s*-\s*(\d+):(\d+)/);
     const sceneDurationSec = tsMatch

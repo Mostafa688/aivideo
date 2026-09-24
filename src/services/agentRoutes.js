@@ -894,7 +894,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
       // بالـregex مباشرة (حاجز حتمي في الكود، زي أي حاجز تاني في الملف ده) — مش نثق في نسخة
       // الموديل خالص حتى لو شكلها صح، لأن مفيش ضمان إنها مطابقة للأصل فعلاً
       if (generateImage && structuredScenesResult && structuredScenesResult.length >= 2) {
-        const realPrompts = structuredScenesResult.map(s => s.visual).filter(v => v && v.trim());
+        // ✅ سقف 20 هنا كمان (زي أي حتة تانية في الملف ده بتحط سقف الدفعة) — الاستبدال ده ميقدرش
+        // يتخطى سقف الـMAX_BATCH العادي حتى لو السكريبت الملزوق فيه فقرات/مشاهد أكتر من 20
+        const realPrompts = structuredScenesResult.map(s => s.visual).filter(v => v && v.trim()).slice(0, 20);
         if (realPrompts.length >= 2) {
           if (Array.isArray(generateImage.scenes) && generateImage.scenes.length) {
             const n = Math.min(generateImage.scenes.length, realPrompts.length);
