@@ -9,9 +9,11 @@ import {
   getDueManagedChannels, markManagedChannelRun, createDailyVideoRun,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
   mintInternalToken, getUserById, getCreditsBalance, chargeCredits, saveVideo, saveChannelAnalysis,
+  getCharacterReferenceById,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { renderModel8Video } from './pvideoService.js';
+import { getMaxClipSeconds } from './creditPricingEngine.js';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const AGENT_MODEL = 'openai/gpt-oss-120b';
@@ -66,6 +68,22 @@ async function pollRenderJob(jobId, headers, { timeoutMs = 10 * 60 * 1000, inter
     if (data.status === 'failed') throw new Error(data.error || 'Render failed');
   }
   throw new Error('Render timed out');
+}
+
+// ✅ نفس فكرة pollRenderJob فوق بالظبط، بس لأي job endpoint/result field تاني (زي
+// /api/images/generate-status اللي بيرجّع "images" مش "videoUrl") — عشان نعيد استخدام نفس
+// منطق الـpolling من غير تكرار
+async function pollJobGeneric(url, headers, resultKey, { timeoutMs = 10 * 60 * 1000, intervalMs = 5000 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    const res = await fetch(url, { headers });
+    if (!res.ok) continue;
+    const data = await res.json();
+    if (data.status === 'done') return data[resultKey];
+    if (data.status === 'failed') throw new Error(data.error || 'Job failed');
+  }
+  throw new Error('Job timed out');
 }
 
 const SHORT_FORM = { sceneCount: 6, sceneDurationSec: 5, ratio: '9:16' };   // ~30s
@@ -169,7 +187,7 @@ export async function analyzeChannelAutomatically(channel) {
 
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
   const recentList = (profile.recentTitles || []).map(t => `- ${t}`).join('\n') || '(no recent videos)';
-  const system = `You analyze a real YouTube channel once, to configure automated video generation for it going forward. Output ONLY valid JSON: {"usesVoice": true|false, "contentStyle": "realistic"|"map"|"animated", "videoStyle": "realistic"|"anime"|"cartoon"|"cinematic", ${realAvgDurationSec ? '' : '"estimatedDurationSec": number, '}"reasoning": "one short sentence explaining the main signal you used"}. "usesVoice": true if the channel's videos have a spoken narrator/voiceover (a transcript sample is provided when available — real spoken content, not just on-screen text or music); false for purely visual/silent content. "contentStyle": "realistic" for real-world stock-footage-style content (documentary, real places/objects/everyday life, product/lifestyle); "map" for geography/country/region/route-focused content; "animated" (default) for anything else (stories, tutorials, abstract topics). "videoStyle" describes the actual visual look this channel already uses or would suit: "realistic" (live-action look), "anime", "cartoon", or "cinematic" (stylized but not cartoonish).${realAvgDurationSec ? '' : ' "estimatedDurationSec": a realistic average video length in seconds for this channel/niche/format if you had to guess.'}`;
+  const system = `You analyze a real YouTube channel once, to configure automated video generation for it going forward. Output ONLY valid JSON: {"usesVoice": true|false, "contentStyle": "realistic"|"map"|"animated"|"character_adventure", "videoStyle": "realistic"|"anime"|"cartoon"|"cinematic", ${realAvgDurationSec ? '' : '"estimatedDurationSec": number, '}"reasoning": "one short sentence explaining the main signal you used"}. "usesVoice": true if the channel's videos have a spoken narrator/voiceover (a transcript sample is provided when available — real spoken content, not just on-screen text or music); false for purely visual/silent content. "contentStyle": "realistic" for real-world stock-footage-style content (documentary, real places/objects/everyday life, product/lifestyle); "map" for geography/country/region/route-focused content; "character_adventure" ONLY for a very specific, distinctive format: the SAME single recurring character (a person, "you", a mascot) appears throughout every video living through a different scenario/era/story each time (e.g. "what if you lived during Prophet Noah's time" style channels) — pick this only if the recent titles clearly show this exact one-character-per-episode pattern, not just any story content; "animated" (default) for any other story/tutorial/abstract content that doesn't fit the other three. "videoStyle" describes the actual visual look this channel already uses or would suit: "realistic" (live-action look), "anime", "cartoon", or "cinematic" (stylized but not cartoonish).${realAvgDurationSec ? '' : ' "estimatedDurationSec": a realistic average video length in seconds for this channel/niche/format if you had to guess.'}`;
   const user = `Channel recent titles:\n${recentList}\n\nChannel topics: ${(profile.topics || []).join(', ') || 'unknown'}.\n\nFormat: ${format === 'short' ? 'Shorts' : 'long-form'}.${realAvgDurationSec ? ` Real measured average video length: ${realAvgDurationSec} seconds.` : ''}${transcriptSample ? `\n\nSample transcript excerpt(s) from ${transcriptSample.split('---').length - 1} recent video(s):${transcriptSample}` : '\n\nNo transcript could be sampled — infer usesVoice from the titles/topics as best you can.'}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -191,7 +209,7 @@ export async function analyzeChannelAutomatically(channel) {
   const targetSceneCount = Math.min(150, Math.max(4, Math.round(targetDurationSec / secPerScene)));
 
   const result = {
-    contentStyle: ['realistic', 'map', 'animated'].includes(analysis.contentStyle) ? analysis.contentStyle : 'animated',
+    contentStyle: ['realistic', 'map', 'animated', 'character_adventure'].includes(analysis.contentStyle) ? analysis.contentStyle : 'animated',
     videoStyle: ['realistic', 'anime', 'cartoon', 'cinematic'].includes(analysis.videoStyle) ? analysis.videoStyle : 'cinematic',
     usesVoice: !!analysis.usesVoice,
     targetDurationSec,
@@ -362,6 +380,91 @@ async function generateMapVideo(run, channel, idea, shape, headers) {
   }
 }
 
+// ✅ NEW: مشاهد بصرية لفيديو "شخصية واحدة تعيش مغامرة" — كل مشهد لحظة/بيت مختلف في نفس
+// القصة (زي "لو عشت في زمن سيدنا نوح"). منستخدمش وصف مظهر الشخصية خالص هنا لأن الصورة
+// المرجعية المحفوظة هي اللي بتحدد الشكل — الـprompt بيركز على الحدث/المكان/الإحساس بس
+async function draftCharacterAdventureScenes(idea, sceneCount, videoStyle) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+  const system = `You write ${sceneCount} distinct visual scene descriptions (in English) for a single-character adventure video. The SAME one character (already shown in a reference photo the image generator has — never describe their face, body, or clothing, only their actions and expressions) experiences this story across all ${sceneCount} scenes, each a different moment/beat of the adventure, in clear visual chronological order (setup, rising action, climax, resolution). Video idea: "${idea.title}" — ${idea.brief || ''}. Visual style: ${videoStyle || 'cinematic'}. Output ONLY a valid JSON array of exactly ${sceneCount} strings, each one a single vivid scene description (setting, action, mood, camera angle) — no character appearance details, no dialogue, no scene numbers/labels.`;
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: AGENT_MODEL,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: 'JSON array only:' }],
+      max_tokens: 1500, temperature: 0.8, reasoning_effort: 'low',
+    }),
+  });
+  if (!res.ok) throw new Error(`Groq error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+  const scenes = JSON.parse(raw);
+  if (!Array.isArray(scenes) || scenes.length < 2) throw new Error('Scene generation returned an invalid list');
+  return scenes.slice(0, sceneCount).map(s => String(s));
+}
+
+// ── محتوى "شخصية واحدة تعيش مغامرة" (character_adventure) — بيستخدم صورة مرجعية محفوظة
+// من مكتبة الشخصيات عشان نفس الشخصية تفضل ثابتة في كل مشاهد الفيديو:
+// 1) صور مشاهد بمرجع الشخصية (نانو بنانا 2، متسلسلة زي أي مرجع تناسق في generateNewModelImages)
+// 2) تحريك كل صورة لكليب فيديو قصير (Seedance 2.5)
+// 3) دمج الكليبات + فويس أوفر (لو القناة بتستخدم صوت) + كابشن في فيديو واحد نهائي
+// ⚠️ محدود بحد أقصى 10 مشاهد/كليبات — /api/videos/merge بيقبل لحد 10 فيديوهات بس في الدمج
+// الواحد، فمهما كان طول الفيديو المستهدف أكبر، ده أقصى حد ممكن للمسار ده حاليًا
+async function generateCharacterAdventureVideo(run, channel, idea, shape, headers) {
+  if (!channel.character_reference_id) throw new Error('No character reference set for this channel — pick one from the Characters library first.');
+  const character = await getCharacterReferenceById(channel.character_reference_id);
+  if (!character) throw new Error('Saved character reference not found');
+
+  const MAX_SCENES = 10; // حد /api/videos/merge
+  const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, MAX_SCENES);
+  const maxClip = getMaxClipSeconds('seedance_2_5') || 30;
+  const sceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
+
+  const scenePrompts = await draftCharacterAdventureScenes(idea, sceneCount, channel.video_style);
+
+  // ── 1) صور المشاهد، الشخصية ثابتة عبرهم كلهم ────────────────────────────────
+  const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ model: 'nano_banana_2', prompts: scenePrompts, referenceImageUrls: [character.image_url], aspectRatio: shape.ratio }),
+  });
+  const imgJobData = await imgRes.json();
+  if (!imgRes.ok) throw new Error(imgJobData.error || 'Character scene image generation failed'); // لسه قبل خصم أي حاجة تانية
+  const images = await pollJobGeneric(`${INTERNAL_BASE}/api/images/generate-status/${imgJobData.jobId}`, headers, 'images');
+  if (!Array.isArray(images) || images.length < 2) { const e = new Error('Image generation returned too few images'); e.committed = true; throw e; }
+
+  // ── 2) كل صورة تتحرك لكليب فيديو قصير ────────────────────────────────────────
+  const clipUrls = [];
+  for (const imgUrl of images) {
+    const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ model: 'seedance_2_5', prompt: 'subtle natural motion, cinematic camera movement', imageUrl: imgUrl, aspectRatio: shape.ratio, durationSec: sceneDurationSec }),
+    });
+    const vidJobData = await vidRes.json();
+    // ✅ الصور خلاص اتولدت واتخصم تمنها — أي فشل من هنا وطالع "committed" عشان منرجعش
+    // للمسار الافتراضي ونخصم كريديت الحركة تاني على مسار تاني
+    if (!vidRes.ok) { const e = new Error(vidJobData.error || 'Scene animation failed'); e.committed = true; throw e; }
+    const clipUrl = await pollRenderJob(vidJobData.jobId, headers);
+    clipUrls.push(clipUrl);
+  }
+
+  // ── 3) دمج كل الكليبات + فويس أوفر (لو مطلوب) + كابشن ─────────────────────────
+  const mergeRes = await fetch(`${INTERNAL_BASE}/api/videos/merge`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      videoUrls: clipUrls,
+      narrationScript: channel.uses_voice ? (idea.voiceoverScript || idea.brief || idea.title) : undefined,
+      voiceKey: (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise',
+      narrationLanguage: idea.videoLanguage || 'en',
+      addCaptions: !!channel.uses_voice,
+    }),
+  });
+  const mergeJobData = await mergeRes.json();
+  if (!mergeRes.ok) { const e = new Error(mergeJobData.error || 'Merge failed'); e.committed = true; throw e; }
+  const videoUrl = await pollRenderJob(mergeJobData.jobId, headers);
+  await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
+  return videoUrl;
+}
+
 // ── لو العميل وافق: الموقع يقرر أنسب موديل لمحتوى القناة (contentStyle من draftDailyIdea)
 // ويولّد بيه. لو المسار الذكي (واقعي/خريطة) فشل قبل أي خصم كريديت، بنرجع تلقائيًا للمسار
 // الافتراضي (موديل 8) بدل ما يوم العميل يضيع بالكامل بسبب باج في مسار جديد
@@ -373,7 +476,7 @@ export async function triggerApprovedGeneration(run) {
   const shape = run.format === 'short' ? SHORT_FORM : LONG_FORM;
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(run.user_id, user.email) };
 
-  const contentStyle = idea.contentStyle === 'map' || idea.contentStyle === 'realistic' ? idea.contentStyle : 'animated';
+  const contentStyle = ['map', 'realistic', 'character_adventure'].includes(idea.contentStyle) ? idea.contentStyle : 'animated';
 
   if (contentStyle === 'map') {
     try { return await generateMapVideo(run, channel, idea, shape, headers); }
@@ -386,6 +489,12 @@ export async function triggerApprovedGeneration(run) {
     catch (e) {
       if (e.committed) throw e;
       console.warn(`[ChannelScheduler] realistic pipeline failed before charging for run ${run.id}, falling back to animated:`, e.message);
+    }
+  } else if (contentStyle === 'character_adventure' && channel.character_reference_id) {
+    try { return await generateCharacterAdventureVideo(run, channel, idea, shape, headers); }
+    catch (e) {
+      if (e.committed) throw e;
+      console.warn(`[ChannelScheduler] character_adventure pipeline failed before charging for run ${run.id}, falling back to animated:`, e.message);
     }
   }
   return await generateAnimatedVideo(run, channel, idea, shape, headers);

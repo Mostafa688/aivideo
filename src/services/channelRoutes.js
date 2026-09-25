@@ -4,6 +4,7 @@ import {
   createManagedChannel, listManagedChannelsForUser, updateManagedChannel, deleteManagedChannel,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getUserById, getManagedChannelById,
   listDailyVideoRunsForChannel, getDailyVideoRunById, linkYoutubeVideoToRun,
+  getCharacterReferenceForUser, setChannelCharacter,
 } from './authService.js';
 import { verifyVidiqKey, getVideoPerformance } from './vidiqClientService.js';
 import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically } from './channelSchedulerService.js';
@@ -61,15 +62,35 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ NEW: ربط قناة بشخصية محفوظة من مكتبة الشخصيات — لازم للـ"character_adventure" content
+// style. نتأكد إن الشخصية دي بتاعة نفس العميل قبل ما نربطها (مش أي id عشوائي من عميل تاني)
+router.post('/:id/character', authMiddleware, async (req, res) => {
+  try {
+    const { characterReferenceId } = req.body;
+    if (characterReferenceId) {
+      const character = await getCharacterReferenceForUser(characterReferenceId, req.user.userId);
+      if (!character) return res.status(404).json({ error: 'Character not found or not yours' });
+    }
+    const channel = await setChannelCharacter(req.params.id, req.user.userId, characterReferenceId || null);
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    res.json({ channel });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 router.patch('/:id', authMiddleware, async (req, res) => {
   try {
-    const { label, formatPref, usesVoice, modelPref, status } = req.body;
+    const { label, formatPref, usesVoice, modelPref, status, contentStyle } = req.body;
     const patch = {};
     if (label !== undefined) patch.label = label;
     if (formatPref !== undefined) patch.format_pref = formatPref;
     if (usesVoice !== undefined) patch.uses_voice = usesVoice;
     if (modelPref !== undefined) patch.model_pref = modelPref;
     if (status !== undefined) patch.status = status;
+    // ✅ NEW: اختيار يدوي لنوع المحتوى (بما فيه "character_adventure") — لو العميل في وضع
+    // "يدوي" وعايز يحدد النوع بنفسه بدل ما ينتظر تحليل أوتوماتيك
+    if (contentStyle !== undefined) patch.content_style = ['realistic', 'map', 'animated', 'character_adventure', ''].includes(contentStyle) ? (contentStyle || null) : undefined;
     const channel = await updateManagedChannel(req.params.id, req.user.userId, patch);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     res.json({ channel });
