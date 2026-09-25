@@ -8,9 +8,9 @@ import crypto from 'crypto';
 import {
   getDueManagedChannels, markManagedChannelRun, createDailyVideoRun,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
-  mintInternalToken, getUserById, getCreditsBalance, chargeCredits, saveVideo,
+  mintInternalToken, getUserById, getCreditsBalance, chargeCredits, saveVideo, saveChannelAnalysis,
 } from './authService.js';
-import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey } from './vidiqClientService.js';
+import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { renderModel8Video } from './pvideoService.js';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -71,11 +71,15 @@ async function pollRenderJob(jobId, headers, { timeoutMs = 10 * 60 * 1000, inter
 const SHORT_FORM = { sceneCount: 6, sceneDurationSec: 5, ratio: '9:16' };   // ~30s
 const LONG_FORM = { sceneCount: 18, sceneDurationSec: 10, ratio: '16:9' }; // ~3min
 
-async function draftDailyIdea(profile, candidates, format, uses_voice) {
+async function draftDailyIdea(profile, candidates, format, uses_voice, persistedContentStyle = null) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
   const titlesList = candidates.map(c => `- ${c.title}`).join('\n') || '(none found)';
   const recentList = (profile.recentTitles || []).map(t => `- ${t}`).join('\n') || '(no recent videos)';
-  const system = `You plan ONE new YouTube video idea per day for a real channel, based on real data, AND write its full upload metadata (this metadata is used as-is for the real YouTube upload — it must be genuinely strong, not a placeholder). You are given the channel's own recent video titles (so you can match its established language, dialect, and tone) and a list of currently-breaking-out videos in its niche (for inspiration only — never copy a title/idea verbatim, always make something original and specific). Output ONLY valid JSON: {"title":"...", "brief":"1-2 sentence description of what the video covers, used internally for planning", "description":"the FULL YouTube video description, 3-5 short paragraphs, written for real viewers: open with a compelling 1-2 sentence hook that naturally includes the main keyword/topic (this part shows in search results before 'more'), then expand on what the video covers, and end with a soft call-to-action to subscribe — written in the same language as the title, never generic filler", "tags":["8 to 15 real, specific, relevant search keywords/phrases a viewer would actually type, no hashtags, no duplicates, ordered most-important first"], "videoLanguage":"en"|"ar"|"ar_eg"|"ar_gulf"|etc, "voiceoverScript":"if voice is requested, a short natural narration opening line in the channel's own language/dialect matching its recent titles, else omit", "contentStyle":"realistic"|"map"|"animated"}. The title itself must be strong and SEO-friendly: specific (not vague/clickbait-empty), front-loads the main keyword, and matches how real viewers in this niche actually search. Match the channel's actual language and dialect (e.g. Egyptian Arabic vs Gulf Arabic vs MSA vs English) based on its recent titles — do not default to English or MSA if the channel clearly writes in a dialect. The video format is ${format === 'short' ? 'a SHORT (under 60s, punchy, single hook)' : 'a LONG-FORM video (several minutes, more narrative depth)'}. Pick contentStyle based on what actually fits the channel's real content (its recent titles, not just this one idea): "realistic" for content best shown with real-world stock footage (documentary-style, real places/objects/everyday life, product or lifestyle content — not a cartoonish or stylized look); "map" for content centered on geography, a specific country/region/historical territory, or a route/journey across places; "animated" (default) for anything else — stories, tutorials, abstract topics, or content that suits AI-generated stylized visuals better than real footage.`;
+  // ✅ لو القناة اتحللت أوتوماتيك قبل كده، contentStyle بقى قرار ثابت محفوظ على القناة —
+  // منسيبش الـLLM يعيد تخمينه كل يوم من عنوين قليلة، ده بيضمن ثبات نوع المحتوى يوم بعد يوم
+  const contentStyleField = persistedContentStyle
+    ? `"contentStyle":"${persistedContentStyle}"` : `"contentStyle":"realistic"|"map"|"animated"`;
+  const system = `You plan ONE new YouTube video idea per day for a real channel, based on real data, AND write its full upload metadata (this metadata is used as-is for the real YouTube upload — it must be genuinely strong, not a placeholder). You are given the channel's own recent video titles (so you can match its established language, dialect, and tone) and a list of currently-breaking-out videos in its niche (for inspiration only — never copy a title/idea verbatim, always make something original and specific). Output ONLY valid JSON: {"title":"...", "brief":"1-2 sentence description of what the video covers, used internally for planning", "description":"the FULL YouTube video description, 3-5 short paragraphs, written for real viewers: open with a compelling 1-2 sentence hook that naturally includes the main keyword/topic (this part shows in search results before 'more'), then expand on what the video covers, and end with a soft call-to-action to subscribe — written in the same language as the title, never generic filler", "tags":["8 to 15 real, specific, relevant search keywords/phrases a viewer would actually type, no hashtags, no duplicates, ordered most-important first"], "videoLanguage":"en"|"ar"|"ar_eg"|"ar_gulf"|etc, "voiceoverScript":"if voice is requested, a short natural narration opening line in the channel's own language/dialect matching its recent titles, else omit", ${contentStyleField}}. The title itself must be strong and SEO-friendly: specific (not vague/clickbait-empty), front-loads the main keyword, and matches how real viewers in this niche actually search. Match the channel's actual language and dialect (e.g. Egyptian Arabic vs Gulf Arabic vs MSA vs English) based on its recent titles — do not default to English or MSA if the channel clearly writes in a dialect. The video format is ${format === 'short' ? 'a SHORT (under 60s, punchy, single hook)' : 'a LONG-FORM video (several minutes, more narrative depth)'}.${persistedContentStyle ? '' : ` Pick contentStyle based on what actually fits the channel's real content (its recent titles, not just this one idea): "realistic" for content best shown with real-world stock footage (documentary-style, real places/objects/everyday life, product or lifestyle content — not a cartoonish or stylized look); "map" for content centered on geography, a specific country/region/historical territory, or a route/journey across places; "animated" (default) for anything else — stories, tutorials, abstract topics, or content that suits AI-generated stylized visuals better than real footage.`}`;
   const user = `Channel recent titles:\n${recentList}\n\nCurrently trending/breakout titles in this niche (inspiration only, do not copy):\n${titlesList}\n\nChannel topics: ${(profile.topics || []).join(', ') || 'unknown'}. Voice narration wanted: ${uses_voice ? 'yes' : 'no'}.\n\nJSON only:`;
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -89,7 +93,9 @@ async function draftDailyIdea(profile, candidates, format, uses_voice) {
   if (!res.ok) throw new Error(`Groq error ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = await res.json();
   const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
-  return JSON.parse(raw);
+  const idea = JSON.parse(raw);
+  if (persistedContentStyle) idea.contentStyle = persistedContentStyle; // ✅ نضمن القيمة حتى لو الـLLM غيّرها غلط
+  return idea;
 }
 
 // ✅ NEW: نفس منطق جلب الفكرة، بس كدالة منفصلة قابلة لإعادة الاستخدام — الدورة اليومية
@@ -105,8 +111,94 @@ export async function getFreshChannelIdea(channel) {
   const profile = await buildChannelProfile(channel.vidiq_api_key, channelId);
   const candidates = await findVideoIdeaCandidates(channel.vidiq_api_key, profile);
   const format = channel.format_pref === 'auto' ? profile.format : channel.format_pref;
-  const idea = await draftDailyIdea(profile, candidates, format, !!channel.uses_voice);
+  const idea = await draftDailyIdea(profile, candidates, format, !!channel.uses_voice, channel.content_style || null);
   return { idea, format, profile };
+}
+
+// ✅ NEW: مدة فيديو حقيقية من VidIQ ممكن ترجع رقم ثواني عادي أو صيغة ISO 8601 (PT10M30S) —
+// نتعامل مع الاتنين لأننا مش متأكدين مين بالظبط اللي هيرجع من الـMCP الحقيقي
+function parseDurationToSeconds(v) {
+  if (v == null) return null;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const s = String(v).trim();
+  const iso = s.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (iso && (iso[1] || iso[2] || iso[3])) return (parseInt(iso[1] || 0, 10) * 3600) + (parseInt(iso[2] || 0, 10) * 60) + parseInt(iso[3] || 0, 10);
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+// ✅ NEW: تحليل تلقائي أعمق للقناة، مرة واحدة (وضع "أوتوماتيك" وقت الربط) — بيحدد فعليًا
+// هل فيه راوي/فويس أوفر في المحتوى الحالي، الستايل البصري (واقعي/انمي/كارتون)، ومتوسط طول
+// الفيديوهات الحقيقي للقناة (عشان الفيديوهات الجاية تبقى بنفس مقاسها مش مقاس ثابت افتراضي).
+// نتيجة التحليل بتتخزن على القناة نفسها (saveChannelAnalysis) وتتستخدم في كل تشغيلة يومية
+// جاية بدل ما نعيد كل القرارات دي كل مرة من الصفر
+export async function analyzeChannelAutomatically(channel) {
+  let channelId = channel.channel_id;
+  if (!channelId) {
+    const verified = await verifyVidiqKey(channel.vidiq_api_key).catch(() => null);
+    channelId = verified?.channels?.[0]?.channelId || null;
+    if (!channelId) throw new Error('No YouTube channel found for this VidIQ key');
+  }
+  const profile = await buildChannelProfile(channel.vidiq_api_key, channelId);
+  const format = channel.format_pref && channel.format_pref !== 'auto' ? channel.format_pref : profile.format;
+
+  // ✅ عينة صغيرة بس (فيديوهين) عشان منستهلكش رصيد VidIQ الشخصي بتاع العميل بزيادة — كل
+  // نداء لـvidiq_video_transcript بيتحاسب من رصيده هو، مش رصيد Erivion
+  let transcriptSample = '';
+  const durations = [];
+  try {
+    const videosData = await callVidiqTool(channel.vidiq_api_key, 'vidiq_channel_videos', { channelId, videoFormat: format === 'short' ? 'short' : 'long', popular: false });
+    const sampleVideos = (videosData?.videos || []).slice(0, 5);
+    for (const v of sampleVideos) {
+      const d = parseDurationToSeconds(v.duration ?? v.durationSeconds ?? v.lengthSeconds ?? v.length);
+      if (d) durations.push(d);
+    }
+    for (const v of sampleVideos.slice(0, 2)) {
+      const vid = v.videoId || v.id;
+      if (!vid) continue;
+      const t = await callVidiqTool(channel.vidiq_api_key, 'vidiq_video_transcript', { videoId: vid }).catch(() => null);
+      const text = typeof t === 'string' ? t : (t?.transcript || t?.text || '');
+      if (text) transcriptSample += `\n---\n${String(text).slice(0, 1500)}`;
+    }
+  } catch (e) {
+    console.warn(`[ChannelAnalysis] Sampling videos/transcripts failed for channel ${channel.id} (continuing with titles only):`, e.message);
+  }
+
+  // ✅ متوسط حقيقي لو قدرنا نحسبه، وإلا نسيب الـLLM يقدّر قيمة معقولة حسب الفورمات
+  const realAvgDurationSec = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
+
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+  const recentList = (profile.recentTitles || []).map(t => `- ${t}`).join('\n') || '(no recent videos)';
+  const system = `You analyze a real YouTube channel once, to configure automated video generation for it going forward. Output ONLY valid JSON: {"usesVoice": true|false, "contentStyle": "realistic"|"map"|"animated", "videoStyle": "realistic"|"anime"|"cartoon"|"cinematic", ${realAvgDurationSec ? '' : '"estimatedDurationSec": number, '}"reasoning": "one short sentence explaining the main signal you used"}. "usesVoice": true if the channel's videos have a spoken narrator/voiceover (a transcript sample is provided when available — real spoken content, not just on-screen text or music); false for purely visual/silent content. "contentStyle": "realistic" for real-world stock-footage-style content (documentary, real places/objects/everyday life, product/lifestyle); "map" for geography/country/region/route-focused content; "animated" (default) for anything else (stories, tutorials, abstract topics). "videoStyle" describes the actual visual look this channel already uses or would suit: "realistic" (live-action look), "anime", "cartoon", or "cinematic" (stylized but not cartoonish).${realAvgDurationSec ? '' : ' "estimatedDurationSec": a realistic average video length in seconds for this channel/niche/format if you had to guess.'}`;
+  const user = `Channel recent titles:\n${recentList}\n\nChannel topics: ${(profile.topics || []).join(', ') || 'unknown'}.\n\nFormat: ${format === 'short' ? 'Shorts' : 'long-form'}.${realAvgDurationSec ? ` Real measured average video length: ${realAvgDurationSec} seconds.` : ''}${transcriptSample ? `\n\nSample transcript excerpt(s) from ${transcriptSample.split('---').length - 1} recent video(s):${transcriptSample}` : '\n\nNo transcript could be sampled — infer usesVoice from the titles/topics as best you can.'}\n\nJSON only:`;
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: AGENT_MODEL,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      max_tokens: 400, temperature: 0.3, reasoning_effort: 'low',
+    }),
+  });
+  if (!res.ok) throw new Error(`Groq error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+  const analysis = JSON.parse(raw);
+
+  const targetDurationSec = realAvgDurationSec || Math.round(analysis.estimatedDurationSec) || (format === 'short' ? 30 : 180);
+  const secPerScene = format === 'short' ? 5 : 10;
+  const targetSceneCount = Math.min(150, Math.max(4, Math.round(targetDurationSec / secPerScene)));
+
+  const result = {
+    contentStyle: ['realistic', 'map', 'animated'].includes(analysis.contentStyle) ? analysis.contentStyle : 'animated',
+    videoStyle: ['realistic', 'anime', 'cartoon', 'cinematic'].includes(analysis.videoStyle) ? analysis.videoStyle : 'cinematic',
+    usesVoice: !!analysis.usesVoice,
+    targetDurationSec,
+    targetSceneCount,
+  };
+  await saveChannelAnalysis(channel.id, result);
+  return { ...result, reasoning: analysis.reasoning || null };
 }
 
 // ── الخطوة اليومية: تدور على القنوات المستحقة، تجيب فكرة، تبعت إيميل الموافقة ──────
@@ -171,16 +263,22 @@ async function sendDailyApprovalEmail(channel, idea, format, token) {
 
 // ── المسار الافتراضي (سابقًا الوحيد): مشاهد موديل 4 + رندر موديل 8 مباشرة ──────────
 async function generateAnimatedVideo(run, channel, idea, shape, headers) {
+  // ✅ لو القناة اتحللت أوتوماتيك وعندها طول مستهدف حقيقي (من متوسط فيديوهاتها الفعلي)،
+  // نستخدمه بدل المقاس الثابت الافتراضي — عشان الفيديو يطلع بنفس مقاس فيديوهات القناة
+  // الحقيقية (مثلاً قناة فيديوهاتها 10 دقايق منعملهاش فيديو 3 دقايق بس)
+  const sceneCount = channel.target_scene_count || shape.sceneCount;
+  const sceneDurationSec = channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec;
+
   const scenesRes = await fetch(`${INTERNAL_BASE}/api/model4/generate-scenes`, {
     method: 'POST', headers,
-    body: JSON.stringify({ idea: idea.title, script: undefined, inputMode: 'idea', sceneCount: shape.sceneCount, videoLanguage: idea.videoLanguage || 'en', videoStyle: 'cinematic' }),
+    body: JSON.stringify({ idea: idea.title, script: undefined, inputMode: 'idea', sceneCount, videoLanguage: idea.videoLanguage || 'en', videoStyle: channel.video_style || 'cinematic' }),
   });
   const scenesData = await scenesRes.json();
   if (!scenesRes.ok || !scenesData.scenes?.length) throw new Error(scenesData.error || 'Scene generation failed');
 
   const audioMode = channel.uses_voice ? 'voiceover' : 'none';
   const rate = audioMode === 'voiceover' ? MODEL8_RATE_VOICEOVER : MODEL8_RATE_NONE;
-  const totalSeconds = shape.sceneCount * shape.sceneDurationSec;
+  const totalSeconds = sceneCount * sceneDurationSec;
   const cost = totalSeconds * rate;
 
   const balance = await getCreditsBalance(run.user_id);
@@ -188,7 +286,7 @@ async function generateAnimatedVideo(run, channel, idea, shape, headers) {
   const charge = await chargeCredits(run.user_id, cost);
   if (!charge.success) throw new Error(`insufficient_credits:${cost}:${charge.remaining}`);
 
-  const scenes = scenesData.scenes.map(s => ({ ...s, sceneDurationSec: shape.sceneDurationSec }));
+  const scenes = scenesData.scenes.map(s => ({ ...s, sceneDurationSec }));
   const { outputFile } = await renderModel8Video({
     scenes, ratio: shape.ratio, audioMode, voiceKey: (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise',
     videoLanguage: idea.videoLanguage || 'en', captions: true, jobId: `daily_${run.id}`,

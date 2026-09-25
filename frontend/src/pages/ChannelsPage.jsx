@@ -29,6 +29,14 @@ const T = {
     connectYoutube: 'اربط يوتيوب (رفع تلقائي)', connectedAs: 'متصل — رفع تلقائي مفعّل',
     disconnect: 'فصل الربط', youtubeConnectedToast: 'تم ربط يوتيوب بنجاح! الفيديوهات الجاية هترفع تلقائي.',
     channelAddedToast: '✅ تمام! القناة اتضافت — تقدر تشوفها تحت في "قنواتك".',
+    setupModeLabel: 'طريقة إعداد القناة', setupAuto: '🤖 أوتوماتيك', setupManual: '✍️ يدوي',
+    setupAutoDesc: 'الموقع يحلل قناتك من يوتيوب و VidIQ ويحدد نوع المحتوى والستايل وهل فيه راوي وطول الفيديو بنفسه.',
+    setupManualDesc: 'انت اللي تحدد كل التفاصيل بنفسك — الأدق لو عايز تحكم كامل.',
+    autoDetected: 'هيتحدد تلقائيًا بعد التحليل',
+    analyzing: 'بيحلل القناة دلوقتي...', reanalyze: '🔄 إعادة التحليل', analyzeNow: '🔍 حلل القناة دلوقتي',
+    analysisLabel: '🤖 نتيجة التحليل التلقائي', contentStyleL: 'نوع المحتوى', videoStyleL: 'الستايل البصري',
+    usesVoiceL: 'راوي/صوت', targetDurationL: 'الطول المستهدف', yes: 'نعم', no: 'لأ',
+    analysisFailedToast: 'التحليل التلقائي فشل — تقدر تحاول تاني أو تختار يدوي.',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -54,6 +62,14 @@ const T = {
     connectYoutube: 'Connect YouTube (auto-upload)', connectedAs: 'Connected — auto-upload enabled',
     disconnect: 'Disconnect', youtubeConnectedToast: 'YouTube connected! Future videos will upload automatically.',
     channelAddedToast: '✅ Done! Your channel was added — check it below under "Your channels".',
+    setupModeLabel: 'Channel setup mode', setupAuto: '🤖 Automatic', setupManual: '✍️ Manual',
+    setupAutoDesc: 'Erivion analyzes your channel from YouTube and VidIQ to figure out content style, visual style, whether it uses narration, and video length on its own.',
+    setupManualDesc: "You set every detail yourself — most precise if you want full control.",
+    autoDetected: 'Will be detected automatically after analysis',
+    analyzing: 'Analyzing your channel...', reanalyze: '🔄 Re-analyze', analyzeNow: '🔍 Analyze channel now',
+    analysisLabel: '🤖 Automatic analysis result', contentStyleL: 'Content style', videoStyleL: 'Visual style',
+    usesVoiceL: 'Narration/voice', targetDurationL: 'Target length', yes: 'Yes', no: 'No',
+    analysisFailedToast: 'Automatic analysis failed — you can try again or switch to manual.',
   },
 };
 
@@ -83,8 +99,10 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [vidiqKey, setVidiqKey] = useState('');
   const [formatPref, setFormatPref] = useState('auto');
   const [usesVoice, setUsesVoice] = useState(false);
+  const [setupMode, setSetupMode] = useState('manual');
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
+  const [analyzingIds, setAnalyzingIds] = useState({});
 
   const [expandedChannelId, setExpandedChannelId] = useState(null);
   const [runsByChannel, setRunsByChannel] = useState({});
@@ -183,16 +201,33 @@ export default function ChannelsPage({ onBack, userRegion }) {
   };
   useEffect(load, []);
 
+  const analyzeChannel = async (channelId) => {
+    setAnalyzingIds(prev => ({ ...prev, [channelId]: true }));
+    try {
+      const res = await fetch(`/api/channels/${channelId}/analyze`, { method: 'POST', headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      load();
+    } catch (e) {
+      setToast({ type: 'error', text: t.analysisFailedToast + ' (' + e.message + ')' });
+    } finally {
+      setAnalyzingIds(prev => ({ ...prev, [channelId]: false }));
+    }
+  };
+
   const addChannel = async () => {
     if (!vidiqKey.trim()) return;
     setAdding(true); setError('');
     try {
-      const res = await fetch('/api/channels', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ label, vidiqApiKey: vidiqKey.trim(), formatPref, usesVoice }) });
+      const res = await fetch('/api/channels', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ label, vidiqApiKey: vidiqKey.trim(), formatPref, usesVoice, setupMode }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setLabel(''); setVidiqKey(''); setFormatPref('auto'); setUsesVoice(false);
       setToast({ type: 'success', text: t.channelAddedToast });
       load();
+      // ✅ لو اختار أوتوماتيك، نشغّل التحليل فورًا من غير ما يحتاج يدوس زرار تاني
+      if (setupMode === 'automatic' && data.channel?.id) analyzeChannel(data.channel.id);
+      setSetupMode('manual');
     } catch (e) { setError(e.message); } finally { setAdding(false); }
   };
 
@@ -261,6 +296,24 @@ export default function ChannelsPage({ onBack, userRegion }) {
             style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13.5, marginBottom: 6, boxSizing: 'border-box' }} />
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '0 0 14px', lineHeight: 1.6 }}>{t.vidiqHelp}</p>
 
+          <div style={{ padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ fontSize: 13, color: '#d1d5db', marginBottom: 10 }}>{t.setupModeLabel}</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              {['manual', 'automatic'].map(mode => (
+                <button key={mode} type="button" onClick={() => setSetupMode(mode)}
+                  style={{ flex: 1, padding: '9px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                    border: setupMode === mode ? '1px solid #7c6af7' : '1px solid rgba(255,255,255,0.1)',
+                    background: setupMode === mode ? 'rgba(124,106,247,0.15)' : 'rgba(255,255,255,0.03)',
+                    color: setupMode === mode ? '#c4b5fd' : '#9ca3af' }}>
+                  {mode === 'manual' ? t.setupManual : t.setupAuto}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: 0, lineHeight: 1.6 }}>
+              {setupMode === 'automatic' ? t.setupAutoDesc : t.setupManualDesc}
+            </p>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
             <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.format}</span>
             <select value={formatPref} onChange={e => setFormatPref(e.target.value)}
@@ -270,10 +323,17 @@ export default function ChannelsPage({ onBack, userRegion }) {
               <option value="short">{t.formatShort}</option>
             </select>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 16 }}>
-            <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.voice}</span>
-            <Toggle value={usesVoice} onChange={setUsesVoice} />
-          </div>
+          {setupMode === 'automatic' ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 16 }}>
+              <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.voice}</span>
+              <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>{t.autoDetected}</span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 16 }}>
+              <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.voice}</span>
+              <Toggle value={usesVoice} onChange={setUsesVoice} />
+            </div>
+          )}
 
           {error && <p style={{ color: '#ef4444', fontSize: 12.5, marginBottom: 12 }}>{error}</p>}
           <button onClick={addChannel} disabled={adding || !vidiqKey.trim()}
@@ -298,6 +358,32 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', marginBottom: 12 }}>
                   {t.lastRun}: {ch.last_run_at ? new Date(ch.last_run_at).toLocaleString() : t.never} · {ch.format_pref} · {ch.uses_voice ? '🎙️' : '🔇'}
                 </div>
+
+                {ch.setup_mode === 'automatic' && (
+                  <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.15)' }}>
+                    {analyzingIds[ch.id] ? (
+                      <span style={{ fontSize: 11.5, color: '#a78bfa' }}>⏳ {t.analyzing}</span>
+                    ) : ch.auto_analyzed_at ? (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', marginBottom: 6 }}>{t.analysisLabel}</div>
+                        <div style={{ fontSize: 11, color: '#d1d5db', display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+                          <span>{t.contentStyleL}: {ch.content_style || '–'}</span>
+                          <span>{t.videoStyleL}: {ch.video_style || '–'}</span>
+                          <span>{t.usesVoiceL}: {ch.uses_voice ? t.yes : t.no}</span>
+                          <span>{t.targetDurationL}: {ch.target_duration_sec ? `${ch.target_duration_sec}s (${ch.target_scene_count} scenes)` : '–'}</span>
+                        </div>
+                        <button onClick={() => analyzeChannel(ch.id)} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 10.5, cursor: 'pointer' }}>
+                          {t.reanalyze}
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => analyzeChannel(ch.id)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}>
+                        {t.analyzeNow}
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ marginBottom: 12 }}>
                   {ch.youtube_channel_title ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
