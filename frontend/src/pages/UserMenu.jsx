@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Circle, Zap, Rocket, Crown, X, Check, Clapperboard, ImageIcon, Video, Drama, Coins,
   BookOpen, Tv, HandCoins, Settings as SettingsIcon, Info, FileText, Lock, Wallet, LogOut,
@@ -75,7 +76,12 @@ export function HowToModal({ onClose }) {
 
   const tab = TABS[activeTab];
 
-  return (
+  // ✅ FIX (باج حقيقي: النافذة بتظهر مرفوعة/مقصوصة لفوق مش في نص الشاشة): position:fixed
+  // بيبقى نسبي لأقرب "ancestor" عنده transform (زي .workspace-transition's animation، اللي
+  // بتفضل transform:translateY(0) scale(1) مطبقة حتى بعد ما الانيميشن يخلص بسبب "forwards")
+  // بدل الـviewport الحقيقي — فبنعمل render للمودال جوه document.body مباشرة (Portal) عشان
+  // يهرب من أي ancestor زي ده تمامًا، مهما كانت الصفحة اللي فاتحينه منها
+  return createPortal((
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:99999, padding:16 }}>
       <style>{`@keyframes htIn{from{opacity:0;transform:scale(0.95) translateY(14px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
       <div style={{ background:'#09090f', border:'1px solid rgba(6,182,212,0.2)', borderRadius:24, width:'100%', maxWidth:520, maxHeight:'88vh', overflowY:'auto', boxShadow:'0 32px 80px rgba(0,0,0,0.9)', animation:'htIn 0.25s cubic-bezier(0.16,1,0.3,1)' }}>
@@ -140,7 +146,7 @@ export function HowToModal({ onClose }) {
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
@@ -169,7 +175,9 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
 
   const copyLink = () => result?.ref_link && navigator.clipboard.writeText(result.ref_link);
 
-  return (
+  // ✅ FIX: نفس الباج/الحل بتاع HowToModal فوق (Portal لـdocument.body عشان نهرب من ancestor
+  // فيه transform)
+  return createPortal((
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.88)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:99999, padding:16 }}>
       <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.94) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
       <div style={{ background:'#09090f', border:'1px solid rgba(124,106,247,0.25)', borderRadius:24, padding:32, width:'100%', maxWidth:420, boxShadow:'0 32px 80px rgba(0,0,0,0.9), 0 0 0 1px rgba(124,106,247,0.08)', animation:'modalIn 0.25s cubic-bezier(0.16,1,0.3,1)' }}>
@@ -240,7 +248,7 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
         )}
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 // ✅ NEW (طلب العميل: منيو المستخدم بقت طويلة جدًا) — نافذة "More" بتحتوي على القائمة الكاملة
@@ -287,7 +295,8 @@ function MoreMenuModal({ onClose, onNavigate, onShowAffiliate, onShowHowTo, curr
     else onNavigate?.(key);
   };
 
-  return (
+  // ✅ FIX: نفس الباج/الحل بتاع HowToModal فوق بالظبط (Portal لـdocument.body)
+  return createPortal((
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:99999, padding:16 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <style>{`@keyframes moreIn{from{opacity:0;transform:scale(0.95) translateY(14px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
       <div style={{ background:'#09090f', border:'1px solid rgba(255,255,255,0.08)', borderRadius:20, width:'100%', maxWidth:420, maxHeight:'85vh', overflowY:'auto', boxShadow:'0 32px 80px rgba(0,0,0,0.9)', animation:'moreIn 0.2s cubic-bezier(0.16,1,0.3,1)' }}>
@@ -343,7 +352,7 @@ function MoreMenuModal({ onClose, onNavigate, onShowAffiliate, onShowHowTo, curr
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 export default function UserMenu({ user, plan = 'free', credits = null, onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '', onShowHowTo, onShowAffiliate }) {
