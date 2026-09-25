@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ImageIcon, Video, Cookie, GraduationCap, Globe, HandCoins, Bot } from 'lucide-react';
+import PageTransition from './components/PageTransition.jsx';
 import InputPage from './pages/InputPage.jsx';
 import MapVideoPage from './pages/MapVideoPage.jsx';
 import ScenesPage from './pages/ScenesPage.jsx';
@@ -750,6 +751,7 @@ export default function App() {
       )}
 
       <div id="app-main" style={{ paddingTop: 54, paddingBottom: 20 }}>
+      <PageTransition pageKey={page}>
         {page === 'scenes' && <ScenesPage formData={formData} onBack={() => setPage('input')} onRender={(finalScenes, voiceOptions) => { setScenes(finalScenes); if (voiceOptions) setFormData(prev => ({ ...prev, ...voiceOptions })); setPage('render'); }} onScenesGenerated={fetchCredits} />}
         {page === 'render' && <RenderPage scenes={scenes} formData={formData} user={user} onBack={() => setPage('scenes')} onReset={() => { setPage('input'); setFormData(null); setScenes([]); }} />}
         {page === 'dashboard' && <div key="dashboard" className="workspace-transition"><ProjectsDashboardPage lang={(userRegion || localStorage.getItem('erivion_region') || 'eg') === 'eg' ? 'ar' : 'en'} onOpenProject={(project) => { setActiveProject(project); setPage('agent'); }} onNavigate={handleNavigate} /></div>}
@@ -793,6 +795,7 @@ export default function App() {
         {page === 'community' && <CommunityPage onBack={() => setPage('dashboard')} user={user} onNavigate={handleNavigate} />}
         {page === 'faq' && <FAQPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}
         {page === 'notfound' && <NotFoundPage onNavigate={handleNavigate} />}
+      </PageTransition>
       </div>
       <CookieConsentBanner />
     </>
