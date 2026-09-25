@@ -345,6 +345,7 @@ async function initDB() {
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS target_scene_count INTEGER DEFAULT NULL;
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS auto_analyzed_at TIMESTAMPTZ DEFAULT NULL;
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS character_reference_id INTEGER REFERENCES character_references(id) ON DELETE SET NULL;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS content_brief TEXT DEFAULT NULL;
   `).catch(() => {});
   // ── مصنع فيديو الصوت الأدمن — رفع فويس أوفر جاهز، والموقع يفرّغه (Whisper) ويستخرج
   // العناصر (LLM) ويجيب/يولّد صورهم ويعمل الفيديو النهائي. Pipeline بمراحل، كل مرحلة
@@ -1572,7 +1573,7 @@ export async function createManagedChannel(userId, { label, channelId, vidiqApiK
 export async function listManagedChannelsForUser(userId) {
   const { rows } = await pool.query(
     `SELECT mc.id, mc.platform, mc.label, mc.channel_id, mc.format_pref, mc.uses_voice, mc.voice_id, mc.model_pref, mc.status, mc.last_run_at, mc.created_at,
-            mc.youtube_channel_title, mc.youtube_privacy_status, mc.setup_mode, mc.content_style, mc.video_style,
+            mc.youtube_channel_title, mc.youtube_privacy_status, mc.setup_mode, mc.content_style, mc.video_style, mc.content_brief,
             mc.target_duration_sec, mc.target_scene_count, mc.auto_analyzed_at, mc.character_reference_id, cr.image_url as character_image_url, cr.label as character_label
      FROM managed_channels mc LEFT JOIN character_references cr ON cr.id = mc.character_reference_id
      WHERE mc.user_id = $1 ORDER BY mc.id DESC`,
@@ -1632,7 +1633,7 @@ export async function getManagedChannelById(id) {
 }
 
 export async function updateManagedChannel(id, userId, patch) {
-  const allowed = ['label', 'channel_id', 'format_pref', 'uses_voice', 'voice_id', 'model_pref', 'status', 'setup_mode', 'content_style', 'video_style'];
+  const allowed = ['label', 'channel_id', 'format_pref', 'uses_voice', 'voice_id', 'model_pref', 'status', 'setup_mode', 'content_style', 'video_style', 'content_brief'];
   const sets = [], params = [];
   let idx = 1;
   for (const key of allowed) {

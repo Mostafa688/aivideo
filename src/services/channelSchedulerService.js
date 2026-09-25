@@ -119,7 +119,7 @@ async function pollJobGeneric(url, headers, resultKey, { timeoutMs = 10 * 60 * 1
 const SHORT_FORM = { sceneCount: 6, sceneDurationSec: 5, ratio: '9:16' };   // ~30s
 const LONG_FORM = { sceneCount: 18, sceneDurationSec: 10, ratio: '16:9' }; // ~3min
 
-async function draftDailyIdea(profile, candidates, format, uses_voice, persistedContentStyle = null) {
+async function draftDailyIdea(profile, candidates, format, uses_voice, persistedContentStyle = null, contentBrief = null) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
   const titlesList = candidates.map(c => `- ${c.title}`).join('\n') || '(none found)';
   const recentList = (profile.recentTitles || []).map(t => `- ${t}`).join('\n') || '(no recent videos)';
@@ -128,7 +128,7 @@ async function draftDailyIdea(profile, candidates, format, uses_voice, persisted
   const contentStyleField = persistedContentStyle
     ? `"contentStyle":"${persistedContentStyle}"` : `"contentStyle":"realistic"|"map"|"animated"`;
   const system = `You plan ONE new YouTube video idea per day for a real channel, based on real data, AND write its full upload metadata (this metadata is used as-is for the real YouTube upload — it must be genuinely strong, not a placeholder). You are given the channel's own recent video titles (so you can match its established language, dialect, and tone) and a list of currently-breaking-out videos in its niche (for inspiration only — never copy a title/idea verbatim, always make something original and specific). Output ONLY valid JSON: {"title":"...", "brief":"1-2 sentence description of what the video covers, used internally for planning", "description":"the FULL YouTube video description, 3-5 short paragraphs, written for real viewers: open with a compelling 1-2 sentence hook that naturally includes the main keyword/topic (this part shows in search results before 'more'), then expand on what the video covers, and end with a soft call-to-action to subscribe — written in the same language as the title, never generic filler", "tags":["8 to 15 real, specific, relevant search keywords/phrases a viewer would actually type, no hashtags, no duplicates, ordered most-important first"], "videoLanguage":"en"|"ar"|"ar_eg"|"ar_gulf"|etc, "voiceoverScript":"if voice is requested, a short natural narration opening line in the channel's own language/dialect matching its recent titles, else omit", ${contentStyleField}}. The title itself must be strong and SEO-friendly: specific (not vague/clickbait-empty), front-loads the main keyword, and matches how real viewers in this niche actually search. Match the channel's actual language and dialect (e.g. Egyptian Arabic vs Gulf Arabic vs MSA vs English) based on its recent titles — do not default to English or MSA if the channel clearly writes in a dialect. The video format is ${format === 'short' ? 'a SHORT (under 60s, punchy, single hook)' : 'a LONG-FORM video (several minutes, more narrative depth)'}.${persistedContentStyle ? '' : ` Pick contentStyle based on what actually fits the channel's real content (its recent titles, not just this one idea): "realistic" for content best shown with real-world stock footage (documentary-style, real places/objects/everyday life, product or lifestyle content — not a cartoonish or stylized look); "map" for content centered on geography, a specific country/region/historical territory, or a route/journey across places; "animated" (default) for anything else — stories, tutorials, abstract topics, or content that suits AI-generated stylized visuals better than real footage.`}`;
-  const user = `Channel recent titles:\n${recentList}\n\nCurrently trending/breakout titles in this niche (inspiration only, do not copy):\n${titlesList}\n\nChannel topics: ${(profile.topics || []).join(', ') || 'unknown'}. Voice narration wanted: ${uses_voice ? 'yes' : 'no'}.\n\nJSON only:`;
+  const user = `Channel recent titles:\n${recentList}\n\nCurrently trending/breakout titles in this niche (inspiration only, do not copy):\n${titlesList}\n\nChannel topics: ${(profile.topics || []).join(', ') || 'unknown'}. Voice narration wanted: ${uses_voice ? 'yes' : 'no'}.${contentBrief ? `\n\nThe channel owner gave this specific instruction for how their videos should be made — follow it closely, it overrides your own default judgement wherever it applies: "${contentBrief}"` : ''}\n\nJSON only:`;
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
@@ -159,7 +159,7 @@ export async function getFreshChannelIdea(channel) {
   const profile = await buildChannelProfile(channel.vidiq_api_key, channelId);
   const candidates = await findVideoIdeaCandidates(channel.vidiq_api_key, profile);
   const format = channel.format_pref === 'auto' ? profile.format : channel.format_pref;
-  const idea = await draftDailyIdea(profile, candidates, format, !!channel.uses_voice, channel.content_style || null);
+  const idea = await draftDailyIdea(profile, candidates, format, !!channel.uses_voice, channel.content_style || null, channel.content_brief || null);
   return { idea, format, profile };
 }
 

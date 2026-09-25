@@ -48,6 +48,9 @@ const T = {
     contentStyleWhiteboard: 'سكتش على سبورة بيضاء',
     characterPickLabel: 'اختار الشخصية', characterPickNone: 'لسه معملتش أي شخصية —',
     characterPickLink: 'روح لمكتبة الشخصيات وضيف واحدة الأول', characterRequired: 'لازم تختار شخصية عشان النوع ده يشتغل',
+    contentBriefLabel: 'وصف المحتوى وطريقة العمل (اختياري)',
+    contentBriefPlaceholder: 'اكتب هنا أي تفاصيل عايز الفيديوهات تلتزم بيها: نوع المحتوى بالظبط، طريقة السرد، الأدوات/الموديلات اللي عايز تتستخدم، حاجات تتجنبها... أي حاجة هتساعد الايجنت يفهم إزاي تحب فيديوهاتك تتعمل.',
+    contentBriefSaved: 'اتحفظ.', save: 'حفظ',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -87,6 +90,9 @@ const T = {
     contentStyleWhiteboard: 'Whiteboard sketch',
     characterPickLabel: 'Choose the character', characterPickNone: "You haven't added a character yet —",
     characterPickLink: 'go to the Characters library and add one first', characterRequired: 'You must pick a character for this content style to work',
+    contentBriefLabel: 'Content description & how to make it (optional)',
+    contentBriefPlaceholder: "Write any details you want every video to follow: the exact type of content, narration style, tools/models you want used, things to avoid... anything that helps the Agent understand how you want your videos made.",
+    contentBriefSaved: 'Saved.', save: 'Save',
   },
 };
 
@@ -118,11 +124,14 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [usesVoice, setUsesVoice] = useState(false);
   const [setupMode, setSetupMode] = useState('manual');
   const [contentStyle, setContentStyle] = useState('');
+  const [contentBrief, setContentBrief] = useState('');
   const [characterReferenceId, setCharacterReferenceId] = useState('');
   const [characters, setCharacters] = useState([]);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const [analyzingIds, setAnalyzingIds] = useState({});
+  const [briefDrafts, setBriefDrafts] = useState({});
+  const [savingBriefId, setSavingBriefId] = useState(null);
 
   useEffect(() => {
     fetch('/api/characters', { headers: authHeaders() }).then(r => r.json()).then(d => setCharacters(d.characters || [])).catch(() => {});
@@ -232,6 +241,15 @@ export default function ChannelsPage({ onBack, userRegion }) {
     } catch (e) { setToast({ type: 'error', text: e.message }); }
   };
 
+  const saveBrief = async (channelId) => {
+    setSavingBriefId(channelId);
+    try {
+      await fetch(`/api/channels/${channelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ contentBrief: (briefDrafts[channelId] || '').trim() }) });
+      setToast({ type: 'success', text: t.contentBriefSaved });
+      load();
+    } catch (e) { setToast({ type: 'error', text: e.message }); } finally { setSavingBriefId(null); }
+  };
+
   const analyzeChannel = async (channelId) => {
     setAnalyzingIds(prev => ({ ...prev, [channelId]: true }));
     try {
@@ -259,13 +277,18 @@ export default function ChannelsPage({ onBack, userRegion }) {
       const newChannelId = data.channel?.id;
       // ✅ في وضع "يدوي" فقط — لو العميل اختار نوع محتوى بنفسه (مش سايبها تلقائي)، نحفظه
       // فورًا بعد إنشاء القناة، ولو اختار "شخصية واحدة تعيش مغامرة" نربطها بالشخصية المختارة
-      if (setupMode === 'manual' && contentStyle && newChannelId) {
-        await fetch(`/api/channels/${newChannelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ contentStyle }) }).catch(() => {});
-        if (contentStyle === 'character_adventure' && characterReferenceId) {
-          await fetch(`/api/channels/${newChannelId}/character`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ characterReferenceId }) }).catch(() => {});
+      if (setupMode === 'manual' && newChannelId) {
+        if (contentStyle) {
+          await fetch(`/api/channels/${newChannelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ contentStyle }) }).catch(() => {});
+          if (contentStyle === 'character_adventure' && characterReferenceId) {
+            await fetch(`/api/channels/${newChannelId}/character`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ characterReferenceId }) }).catch(() => {});
+          }
+        }
+        if (contentBrief.trim()) {
+          await fetch(`/api/channels/${newChannelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ contentBrief: contentBrief.trim() }) }).catch(() => {});
         }
       }
-      setLabel(''); setVidiqKey(''); setFormatPref('auto'); setUsesVoice(false); setContentStyle(''); setCharacterReferenceId('');
+      setLabel(''); setVidiqKey(''); setFormatPref('auto'); setUsesVoice(false); setContentStyle(''); setContentBrief(''); setCharacterReferenceId('');
       setToast({ type: 'success', text: t.channelAddedToast });
       load();
       // ✅ لو اختار أوتوماتيك، نشغّل التحليل فورًا من غير ما يحتاج يدوس زرار تاني
@@ -413,6 +436,11 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   )}
                 </div>
               )}
+              <div style={{ padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 18 }}>
+                <div style={{ fontSize: 13, color: '#d1d5db', marginBottom: 8 }}>{t.contentBriefLabel}</div>
+                <textarea value={contentBrief} onChange={e => setContentBrief(e.target.value)} placeholder={t.contentBriefPlaceholder} rows={4} maxLength={2000}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.6 }} />
+              </div>
               {contentStyle !== 'character_adventure' && <div style={{ marginBottom: 18 }} />}
             </>
           )}
@@ -487,6 +515,21 @@ export default function ChannelsPage({ onBack, userRegion }) {
                         </select>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {ch.setup_mode !== 'automatic' && (
+                  <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(124,106,247,0.05)', border: '1px solid rgba(124,106,247,0.12)' }}>
+                    <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.contentBriefLabel}</div>
+                    <textarea
+                      value={briefDrafts[ch.id] !== undefined ? briefDrafts[ch.id] : (ch.content_brief || '')}
+                      onChange={e => setBriefDrafts(prev => ({ ...prev, [ch.id]: e.target.value }))}
+                      placeholder={t.contentBriefPlaceholder} rows={3} maxLength={2000}
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '8px 10px', fontSize: 12, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.6, marginBottom: 8 }} />
+                    <button onClick={() => saveBrief(ch.id)} disabled={savingBriefId === ch.id}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 11.5, cursor: savingBriefId === ch.id ? 'not-allowed' : 'pointer' }}>
+                      {savingBriefId === ch.id ? <Loader2 size={11} className="spinning" /> : <CheckCircle2 size={11} />} {t.save}
+                    </button>
                   </div>
                 )}
 
