@@ -81,7 +81,7 @@ router.post('/:id/character', authMiddleware, async (req, res) => {
 
 router.patch('/:id', authMiddleware, async (req, res) => {
   try {
-    const { label, formatPref, usesVoice, modelPref, status, contentStyle } = req.body;
+    const { label, formatPref, usesVoice, modelPref, status, contentStyle, contentBrief } = req.body;
     const patch = {};
     if (label !== undefined) patch.label = label;
     if (formatPref !== undefined) patch.format_pref = formatPref;
@@ -91,6 +91,9 @@ router.patch('/:id', authMiddleware, async (req, res) => {
     // ✅ NEW: اختيار يدوي لنوع المحتوى (بما فيه "character_adventure") — لو العميل في وضع
     // "يدوي" وعايز يحدد النوع بنفسه بدل ما ينتظر تحليل أوتوماتيك
     if (contentStyle !== undefined) patch.content_style = ['realistic', 'map', 'animated', 'character_adventure', 'whiteboard_sketch', ''].includes(contentStyle) ? (contentStyle || null) : undefined;
+    // ✅ NEW: بريف حر بالنص من العميل (وضع يدوي) — وصف المحتوى/طريقة عمل الفيديو/الأدوات
+    // المطلوبة، بيتضاف كتوجيه إضافي لكل فكرة يومية بتتعمل للقناة دي (راجع draftDailyIdea)
+    if (contentBrief !== undefined) patch.content_brief = String(contentBrief || '').slice(0, 2000) || null;
     const channel = await updateManagedChannel(req.params.id, req.user.userId, patch);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     res.json({ channel });
