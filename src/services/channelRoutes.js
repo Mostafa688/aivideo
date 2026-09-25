@@ -178,7 +178,7 @@ router.get('/daily-approve', async (req, res) => {
       try {
         const channel = await getManagedChannelById(run.channel_id);
         if (channel?.youtube_refresh_token) {
-          const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl, title: idea.title, description: idea.brief || '' });
+          const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
           await linkYoutubeVideoToRun(run.id, run.user_id, youtubeVideoId);
         }
       } catch (uploadErr) {

@@ -116,7 +116,7 @@ async function ensureFreshAccessToken(channel) {
 // ✅ الرفع الفعلي — بينزّل الفيديو (رابط داخلي "/outputs/..." أو رابط R2 كامل) لملف مؤقت،
 // وبعدين resumable upload حقيقي لـYouTube Data API v3. بيرجّع الـvideo ID الحقيقي (نفس
 // الشكل اللي linkYoutubeVideoToRun المستخدمة أصلاً في المسار اليدوي بتتوقعه)
-export async function uploadVideoToYoutube(channel, { videoUrl, title, description }) {
+export async function uploadVideoToYoutube(channel, { videoUrl, title, description, tags }) {
   const accessToken = await ensureFreshAccessToken(channel);
 
   const absoluteUrl = /^https?:\/\//i.test(videoUrl) ? videoUrl : `${(process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net').replace(/\/$/, '')}${videoUrl}`;
@@ -127,10 +127,24 @@ export async function uploadVideoToYoutube(channel, { videoUrl, title, descripti
   const buffer = Buffer.from(await dlRes.arrayBuffer());
   fs.writeFileSync(tmpPath, buffer);
 
+  // ✅ YouTube tags: حد أقصى 500 حرف مجمّعة كلها مع بعض — بنقص لحد ما نضمن إننا تحت الحد
+  const cappedTags = [];
+  let tagsCharCount = 0;
+  for (const t of Array.isArray(tags) ? tags : []) {
+    const clean = String(t || '').trim();
+    if (!clean) continue;
+    tagsCharCount += clean.length + 1;
+    if (tagsCharCount > 480) break;
+    cappedTags.push(clean);
+  }
+
   try {
     const metadata = {
-      snippet: { title: (title || 'Erivion video').slice(0, 100), description: (description || '').slice(0, 4900), categoryId: '22' },
-      status: { privacyStatus: channel.youtube_privacy_status || 'public', selfDeclaredMadeForKids: false },
+      snippet: { title: (title || 'Erivion video').slice(0, 100), description: (description || '').slice(0, 4900), tags: cappedTags, categoryId: '22' },
+      // ✅ NEW: الإفصاح الرسمي عن المحتوى المصنوع بالذكاء الاصطناعي (containsSyntheticMedia،
+      // مضافة لـYouTube Data API v3 في أكتوبر 2024) — كل فيديو بيتعمل من Erivion محتوى
+      // مولّد بالذكاء الاصطناعي فعليًا، فبنعلّمه true دايمًا، مفيش استثناء
+      status: { privacyStatus: channel.youtube_privacy_status || 'public', selfDeclaredMadeForKids: false, containsSyntheticMedia: true },
     };
 
     // الخطوة 1: نبدأ الـresumable session (بيانات الفيديو (metadata) بس، من غير الملف نفسه)
