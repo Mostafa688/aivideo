@@ -265,6 +265,7 @@ function MoreMenuModal({ onClose, onNavigate, onShowAffiliate, onShowHowTo, curr
       items: [
         { Icon: BookOpen, label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
         { Icon: Tv, label: 'My Channels', sub: 'Daily auto-video via VidIQ', key: 'channels', accent: '#7c6af7', badge: 'BETA' },
+        { Icon: Drama, label: 'Characters', sub: 'Reference images for story videos', key: 'characters', accent: '#ec4899' },
         { Icon: HandCoins, label: 'Earn with Erivion', sub: 'Affiliate — 20% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
         ...(model3Access ? [{ Icon: ImageIcon, label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
       ]
