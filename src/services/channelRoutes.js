@@ -90,7 +90,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
     if (status !== undefined) patch.status = status;
     // ✅ NEW: اختيار يدوي لنوع المحتوى (بما فيه "character_adventure") — لو العميل في وضع
     // "يدوي" وعايز يحدد النوع بنفسه بدل ما ينتظر تحليل أوتوماتيك
-    if (contentStyle !== undefined) patch.content_style = ['realistic', 'map', 'animated', 'character_adventure', ''].includes(contentStyle) ? (contentStyle || null) : undefined;
+    if (contentStyle !== undefined) patch.content_style = ['realistic', 'map', 'animated', 'character_adventure', 'whiteboard_sketch', ''].includes(contentStyle) ? (contentStyle || null) : undefined;
     const channel = await updateManagedChannel(req.params.id, req.user.userId, patch);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     res.json({ channel });

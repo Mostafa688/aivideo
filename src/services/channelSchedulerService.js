@@ -22,6 +22,29 @@ import { mergeVideos } from './videoMergeService.js';
 
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
+const S3_ENDPOINT_URL = process.env.S3_ENDPOINT_URL;
+const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY;
+const S3_SECRET_KEY = process.env.S3_SECRET_KEY;
+const S3_BUCKET = process.env.S3_BUCKET || 'erivion-videos';
+const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
+
+async function uploadBufferToR2(buffer, key, contentType) {
+  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+  const s3 = new S3Client({
+    region: 'auto',
+    endpoint: S3_ENDPOINT_URL,
+    credentials: { accessKeyId: S3_ACCESS_KEY, secretAccessKey: S3_SECRET_KEY },
+  });
+  await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: buffer, ContentType: contentType }));
+  return `${R2_PUBLIC_URL}/${key}`;
+}
+
+async function downloadToFile(url, outPath) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`failed to download ${url}: ${res.status}`);
+  fs.writeFileSync(outPath, Buffer.from(await res.arrayBuffer()));
+}
+
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const AGENT_MODEL = 'openai/gpt-oss-120b';
 const INTERNAL_BASE = process.env.INTERNAL_API_URL || `http://127.0.0.1:${process.env.PORT || 3000}`;
@@ -194,7 +217,7 @@ export async function analyzeChannelAutomatically(channel) {
 
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
   const recentList = (profile.recentTitles || []).map(t => `- ${t}`).join('\n') || '(no recent videos)';
-  const system = `You analyze a real YouTube channel once, to configure automated video generation for it going forward. Output ONLY valid JSON: {"usesVoice": true|false, "contentStyle": "realistic"|"map"|"animated"|"character_adventure", "videoStyle": "realistic"|"anime"|"cartoon"|"cinematic", ${realAvgDurationSec ? '' : '"estimatedDurationSec": number, '}"reasoning": "one short sentence explaining the main signal you used"}. "usesVoice": true if the channel's videos have a spoken narrator/voiceover (a transcript sample is provided when available — real spoken content, not just on-screen text or music); false for purely visual/silent content. "contentStyle": "realistic" for real-world stock-footage-style content (documentary, real places/objects/everyday life, product/lifestyle); "map" for geography/country/region/route-focused content; "character_adventure" ONLY for a very specific, distinctive format: the SAME single recurring character (a person, "you", a mascot) appears throughout every video living through a different scenario/era/story each time (e.g. "what if you lived during Prophet Noah's time" style channels) — pick this only if the recent titles clearly show this exact one-character-per-episode pattern, not just any story content; "animated" (default) for any other story/tutorial/abstract content that doesn't fit the other three. "videoStyle" describes the actual visual look this channel already uses or would suit: "realistic" (live-action look), "anime", "cartoon", or "cinematic" (stylized but not cartoonish).${realAvgDurationSec ? '' : ' "estimatedDurationSec": a realistic average video length in seconds for this channel/niche/format if you had to guess.'}`;
+  const system = `You analyze a real YouTube channel once, to configure automated video generation for it going forward. Output ONLY valid JSON: {"usesVoice": true|false, "contentStyle": "realistic"|"map"|"animated"|"character_adventure"|"whiteboard_sketch", "videoStyle": "realistic"|"anime"|"cartoon"|"cinematic", ${realAvgDurationSec ? '' : '"estimatedDurationSec": number, '}"reasoning": "one short sentence explaining the main signal you used"}. "usesVoice": true if the channel's videos have a spoken narrator/voiceover (a transcript sample is provided when available — real spoken content, not just on-screen text or music); false for purely visual/silent content. "contentStyle": "realistic" for real-world stock-footage-style content (documentary, real places/objects/everyday life, product/lifestyle); "map" for geography/country/region/route-focused content; "character_adventure" ONLY for a very specific, distinctive format: the SAME single recurring character (a person, "you", a mascot) appears throughout every video living through a different scenario/era/story each time (e.g. "what if you lived during Prophet Noah's time" style channels) — pick this only if the recent titles clearly show this exact one-character-per-episode pattern, not just any story content; "whiteboard_sketch" for hand-drawn/doodle/whiteboard-animation explainer channels (simple black-and-white sketch illustrations, common for educational or "explained" content); "animated" (default) for any other story/tutorial/abstract content that doesn't fit the other three. "videoStyle" describes the actual visual look this channel already uses or would suit: "realistic" (live-action look), "anime", "cartoon", or "cinematic" (stylized but not cartoonish).${realAvgDurationSec ? '' : ' "estimatedDurationSec": a realistic average video length in seconds for this channel/niche/format if you had to guess.'}`;
   const user = `Channel recent titles:\n${recentList}\n\nChannel topics: ${(profile.topics || []).join(', ') || 'unknown'}.\n\nFormat: ${format === 'short' ? 'Shorts' : 'long-form'}.${realAvgDurationSec ? ` Real measured average video length: ${realAvgDurationSec} seconds.` : ''}${transcriptSample ? `\n\nSample transcript excerpt(s) from ${transcriptSample.split('---').length - 1} recent video(s):${transcriptSample}` : '\n\nNo transcript could be sampled — infer usesVoice from the titles/topics as best you can.'}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -216,7 +239,7 @@ export async function analyzeChannelAutomatically(channel) {
   const targetSceneCount = Math.min(150, Math.max(4, Math.round(targetDurationSec / secPerScene)));
 
   const result = {
-    contentStyle: ['realistic', 'map', 'animated', 'character_adventure'].includes(analysis.contentStyle) ? analysis.contentStyle : 'animated',
+    contentStyle: ['realistic', 'map', 'animated', 'character_adventure', 'whiteboard_sketch'].includes(analysis.contentStyle) ? analysis.contentStyle : 'animated',
     videoStyle: ['realistic', 'anime', 'cartoon', 'cinematic'].includes(analysis.videoStyle) ? analysis.videoStyle : 'cinematic',
     usesVoice: !!analysis.usesVoice,
     targetDurationSec,
@@ -437,13 +460,16 @@ function concatAudioFiles(audioPaths, outPath) {
 //    مدموج ومنقصوش/يتمطط عشوائي زي المسار القديم
 // 3) دمج الكليبات (كل واحد فيها صوته الخاص متزامن بالفعل قبل الدمج) وحرق كابشن حقيقي لو
 //    مطلوب (بكريديت — التكلفة الحقيقية الوحيدة المتبقية غير توليد الفيديو نفسه)
-// ⚠️ محدود بحد أقصى 10 مشاهد/كليبات (حد mergeVideos العملي لمنتج بهذا الحجم)
+// ⚠️ محدود بحد أقصى 20 مشهد/كليب — نفس MAX_BATCH بتاع generateNewModelImages (مش قيد
+// mergeVideos نفسه، ده بيقبل أي عدد — القيد الحقيقي هنا هو توليد الصور دفعة واحدة).
+// قنوات محتواها الطويل جدًا (100+ مشهد) لسه محتاجة تصميم منفصل (batching على أكتر من نداء)،
+// خارج نطاق النسخة دي
 async function generateCharacterAdventureVideo(run, channel, idea, shape, headers) {
   if (!channel.character_reference_id) throw new Error('No character reference set for this channel — pick one from the Characters library first.');
   const character = await getCharacterReferenceById(channel.character_reference_id);
   if (!character) throw new Error('Saved character reference not found');
 
-  const MAX_SCENES = 10;
+  const MAX_SCENES = 20;
   const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, MAX_SCENES);
   const maxClip = getMaxClipSeconds('seedance_2_5') || 30;
   const defaultSceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
@@ -547,6 +573,150 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
   }
 }
 
+// ✅ NEW: مشاهد "سكتش على سبورة بيضاء" (whiteboard_sketch) — نفس فكرة draftCharacterAdventureScenes
+// (visual + narration لكل مشهد) بس من غير أي قيد شخصية ثابتة — كل مشهد مستقل بصريًا، ومفيش
+// وصف مظهر ممنوع هنا لأن مفيش صورة مرجعية أصلاً
+async function draftWhiteboardScenes(idea, sceneCount, needsNarration) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+  const narrationField = needsNarration ? `, "narration": "one short natural narration sentence for this exact scene, in ${idea.videoLanguage?.startsWith('ar') ? 'the same Arabic dialect as the video' : 'English'}, continuing the story/explanation from the previous scene's narration"` : '';
+  const system = `You write ${sceneCount} distinct scene beats (in English for "visual"${needsNarration ? ', matching-language narration for "narration"' : ''}) for a whiteboard-style explainer/story video. Each scene is a different moment/step/idea, in clear chronological or logical order${needsNarration ? ', with the narration forming one continuous script when read scene by scene' : ''}. Video idea: "${idea.title}" — ${idea.brief || ''}. Output ONLY a valid JSON array of exactly ${sceneCount} objects: [{"visual": "what to draw for this scene — the subject, objects, and any figures involved, described plainly (the drawing style itself is applied separately, do not mention style/medium here)"${narrationField}}, ...].`;
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: AGENT_MODEL,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: 'JSON array only:' }],
+      max_tokens: 2000, temperature: 0.8, reasoning_effort: 'low',
+    }),
+  });
+  if (!res.ok) throw new Error(`Groq error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
+  const scenes = JSON.parse(raw);
+  if (!Array.isArray(scenes) || scenes.length < 2) throw new Error('Scene generation returned an invalid list');
+  return scenes.slice(0, sceneCount).map(s => ({ visual: String(s.visual || s), narration: needsNarration ? String(s.narration || '') : null }));
+}
+
+// ✅ NEW: تحريك بسيط (Ken Burns — زوم بطيء ثابت) لصورة واحدة بـffmpeg، من غير أي موديل AI —
+// ده أساس رخص محتوى الـwhiteboard (صور بس + تحريك مجاني، مش رندر فيديو AI لكل مشهد). بيرجع
+// المدة المطلوبة بالظبط دايمًا (على عكس موديلات الفيديو اللي بتقرّب المدة)، فمحتاجين conform
+// بعد كده خالص
+function animateImageKenBurns(imagePath, W, H, durationSec, outPath, fps = 25) {
+  const vf = `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
+    `zoompan=z='min(zoom+0.0012,1.15)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${fps}`;
+  execSync(
+    `ffmpeg -y -loop 1 -framerate ${fps} -i "${imagePath}" -vf "${vf}" -t ${durationSec.toFixed(3)} -c:v libx264 -pix_fmt yuv420p -movflags +faststart "${outPath}"`,
+    { stdio: 'pipe' }
+  );
+}
+
+// ── محتوى "سكتش على سبورة بيضاء" (whiteboard_sketch) — أرخص أنواع المحتوى في النظام الجديد:
+// 1) صور مشاهد بستايل رسم سكتش أبيض وأسود على خلفية بيضاء (نانو بنانا 2، من غير أي مرجع
+//    شخصية — كل مشهد مستقل ومتوازي، أسرع من character_adventure)
+// 2) (لو القناة بتستخدم صوت) نفس منطق التزامن بالظبط بتاع character_adventure: سرد منفصل
+//    لكل مشهد، وبعدين تحريك الصورة (Ken Burns) بمدة الصوت الحقيقي بالظبط — بما إن ffmpeg
+//    بيطلّع المدة المطلوبة بالظبط دايمًا، مفيش حاجة لـconformVideoDurationToAudio هنا خالص
+// 3) دمج الكليبات + كابشن (بكريديت) + موسيقى (مجانية)
+async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers) {
+  const MAX_SCENES = 20;
+  const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, MAX_SCENES);
+  const defaultSceneDurationSec = channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec;
+  const usesVoice = !!channel.uses_voice;
+  const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise';
+  const [W, H] = shape.ratio === '16:9' ? [1920, 1080] : [1080, 1920];
+
+  const scenes = await draftWhiteboardScenes(idea, sceneCount, usesVoice);
+
+  // ── 1) صور السكتش — كل مشهد مستقل، مفيش تناسق شخصية مطلوب هنا ────────────────────
+  const sketchStyleSuffix = 'Style: simple black-and-white hand-drawn whiteboard sketch/doodle animation style, clean thin line art, on a plain white background, no color, no shading, no text.';
+  const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ model: 'nano_banana_2', prompts: scenes.map(s => `${s.visual}. ${sketchStyleSuffix}`), aspectRatio: shape.ratio }),
+  });
+  const imgJobData = await imgRes.json();
+  if (!imgRes.ok) throw new Error(imgJobData.error || 'Whiteboard scene image generation failed'); // لسه قبل خصم أي حاجة تانية
+  const images = await pollJobGeneric(`${INTERNAL_BASE}/api/images/generate-status/${imgJobData.jobId}`, headers, 'images');
+  if (!Array.isArray(images) || images.length < 2) { const e = new Error('Image generation returned too few images'); e.committed = true; throw e; }
+
+  const narrations = [];
+  try {
+    // ── 2) لو القناة بتستخدم صوت: سرد كل مشهد لوحده الأول عشان نعرف مدته الحقيقية ────────
+    if (usesVoice) {
+      for (const s of scenes) {
+        const text = s.narration?.trim() || idea.title;
+        narrations.push(await synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' }));
+      }
+    }
+
+    // ── 3) كل صورة تتحرك (Ken Burns) بمدة سرد نفس المشهد بالظبط (أو المدة الافتراضية) ───
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
+    const clipUrls = [];
+    for (let i = 0; i < images.length; i++) {
+      const targetDurationSec = usesVoice ? Math.max(3, narrations[i].durationSec) : defaultSceneDurationSec;
+      const jobId = `wb_${run.id}_${i}_${Date.now()}`;
+      const imgPath = path.join(TEMP_DIR, `${jobId}.jpg`);
+      const clipPath = path.join(TEMP_DIR, `${jobId}.mp4`);
+      try {
+        await downloadToFile(images[i], imgPath);
+        animateImageKenBurns(imgPath, W, H, targetDurationSec, clipPath);
+        let clipUrl = await uploadBufferToR2(fs.readFileSync(clipPath), `generated-videos/whiteboard_${jobId}.mp4`, 'video/mp4');
+        // ✅ ffmpeg بيطلّع المدة المطلوبة بالظبط دايمًا (على عكس موديلات فيديو AI) — التزامن
+        // هنا أبسط، بس نركّب سرد المشهد على المشهد نفسه بنفس الطريقة
+        if (usesVoice) clipUrl = await composeVideoAudio({ videoUrl: clipUrl, narrationPath: narrations[i].audioPath, modelKeyForNaming: 'whiteboard' });
+        clipUrls.push(clipUrl);
+      } finally {
+        try { fs.unlinkSync(imgPath); } catch {}
+        try { fs.unlinkSync(clipPath); } catch {}
+      }
+    }
+
+    // ── 4) دمج كل الكليبات (كل واحد صوته متزامن بالفعل) ────────────────────────────
+    let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
+
+    // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
+    if (usesVoice) {
+      const captionCost = getFlatCreditCost('autocaption');
+      const balance = await getCreditsBalance(run.user_id);
+      if (balance >= captionCost) {
+        const charge = await chargeCredits(run.user_id, captionCost);
+        if (charge.success) {
+          try {
+            const combinedAudioPath = path.join(TEMP_DIR, `whiteboard_narr_${run.id}_${Date.now()}.mp3`);
+            concatAudioFiles(narrations.map(n => n.audioPath), combinedAudioPath);
+            const words = await transcribeWithTimestamps(combinedAudioPath);
+            const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(idea.videoLanguage);
+            videoUrl = await burnCaptions(videoUrl, words, { rightToLeft: isRtl });
+            try { fs.unlinkSync(combinedAudioPath); } catch {}
+          } catch (capErr) {
+            console.warn(`[ChannelScheduler] Whiteboard captions failed for run ${run.id} (video still delivered without captions, credits refunded):`, capErr.message);
+            await addCreditsBalance(run.user_id, captionCost);
+          }
+        }
+      }
+    }
+
+    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا ─────────────────────────────────────
+    if (usesVoice) {
+      try {
+        const musicBuffer = await getBackgroundMusicBuffer('general');
+        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'whiteboard' });
+      } catch (musicErr) {
+        console.warn(`[ChannelScheduler] Whiteboard background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
+      }
+    }
+
+    await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
+    return videoUrl;
+  } catch (e) {
+    // ✅ الصور خلاص اتولدت واتخصم تمنها قبل ما ندخل الكتلة دي — أي فشل من هنا لازم يبقى
+    // "committed" عشان triggerApprovedGeneration منيرجعش للمسار الافتراضي ويخصم كريديت تاني
+    e.committed = true;
+    throw e;
+  } finally {
+    narrations.forEach(n => { try { fs.rmSync(n.workDir, { recursive: true, force: true }); } catch {} });
+  }
+}
+
 // ── لو العميل وافق: الموقع يقرر أنسب موديل لمحتوى القناة (contentStyle من draftDailyIdea)
 // ويولّد بيه. لو المسار الذكي (واقعي/خريطة) فشل قبل أي خصم كريديت، بنرجع تلقائيًا للمسار
 // الافتراضي (موديل 8) بدل ما يوم العميل يضيع بالكامل بسبب باج في مسار جديد
@@ -561,7 +731,7 @@ export async function triggerApprovedGeneration(run) {
   // الفيديو نفسه) للعملاء الرابطين قنواتهم بالموقع — ميزة تميّز خاصة بيهم
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(run.user_id, user.email, { channelRun: true }) };
 
-  const contentStyle = ['map', 'realistic', 'character_adventure'].includes(idea.contentStyle) ? idea.contentStyle : 'animated';
+  const contentStyle = ['map', 'realistic', 'character_adventure', 'whiteboard_sketch'].includes(idea.contentStyle) ? idea.contentStyle : 'animated';
 
   if (contentStyle === 'map') {
     try { return await generateMapVideo(run, channel, idea, shape, headers); }
@@ -580,6 +750,12 @@ export async function triggerApprovedGeneration(run) {
     catch (e) {
       if (e.committed) throw e;
       console.warn(`[ChannelScheduler] character_adventure pipeline failed before charging for run ${run.id}, falling back to animated:`, e.message);
+    }
+  } else if (contentStyle === 'whiteboard_sketch') {
+    try { return await generateWhiteboardSketchVideo(run, channel, idea, shape, headers); }
+    catch (e) {
+      if (e.committed) throw e;
+      console.warn(`[ChannelScheduler] whiteboard_sketch pipeline failed before charging for run ${run.id}, falling back to animated:`, e.message);
     }
   }
   return await generateAnimatedVideo(run, channel, idea, shape, headers);
