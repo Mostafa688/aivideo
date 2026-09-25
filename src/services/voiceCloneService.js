@@ -66,7 +66,7 @@ const CHATTERBOX_TEXT_LIMIT = 300; // ✅ حد الموديل الرسمي (شو
 
 // النص بيتقسم على حدود الجمل (. ! ? أو . ! ؟ العربي) لقطع أقل من الحد، من غير ما تتقطع
 // جملة نص نص. لو جملة واحدة أطول من الحد لوحدها، بتتقطع بالمسافات كحل أخير.
-function splitTextIntoChunks(text, maxLen = CHATTERBOX_TEXT_LIMIT) {
+export function splitTextIntoChunks(text, maxLen = CHATTERBOX_TEXT_LIMIT) {
   const sentences = (text || '').match(/[^.!?؟]+[.!?؟]*/g) || [text || ''];
   const chunks = [];
   let current = '';
