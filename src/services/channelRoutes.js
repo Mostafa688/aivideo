@@ -4,11 +4,11 @@ import {
   createManagedChannel, listManagedChannelsForUser, updateManagedChannel, deleteManagedChannel,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getUserById, getManagedChannelById,
   listDailyVideoRunsForChannel, getDailyVideoRunById, linkYoutubeVideoToRun,
-  getCharacterReferenceForUser, setChannelCharacter,
+  getCharacterReferenceForUser, setChannelCharacter, getDailyVideoRunByReviewToken,
 } from './authService.js';
 import { verifyVidiqKey, getVideoPerformance } from './vidiqClientService.js';
-import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically } from './channelSchedulerService.js';
-import { getYoutubeConnectUrl, handleYoutubeOAuthCallback, disconnectYoutubeForChannel, uploadVideoToYoutube } from './youtubeUploadService.js';
+import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically, finalizeChannelRunAfterGeneration, resolveChannelRunReviewAction } from './channelSchedulerService.js';
+import { getYoutubeConnectUrl, handleYoutubeOAuthCallback, disconnectYoutubeForChannel } from './youtubeUploadService.js';
 
 const router = express.Router();
 
@@ -193,6 +193,31 @@ router.get('/runs/:runId/status', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ NEW (طلب العميل: "تمت المراجعة"/"نشر الآن" لازم تكون موجودة جوه الموقع نفسه كمان،
+// مش بس في الإيميل، "عشان قوة المصداقية والمراجعة الدقيقة") — نفس فعل resolveChannelRunReviewAction
+// المستخدم في مسار التوكن (/review-action تحت)، بس هنا العميل داخل حسابه فعلاً
+router.post('/runs/:runId/review', authMiddleware, async (req, res) => {
+  try {
+    const run = await getDailyVideoRunById(req.params.runId, req.user.userId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    const result = await resolveChannelRunReviewAction(run, 'reviewed');
+    res.json({ success: true, ...result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.post('/runs/:runId/publish', authMiddleware, async (req, res) => {
+  try {
+    const run = await getDailyVideoRunById(req.params.runId, req.user.userId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    const result = await resolveChannelRunReviewAction(run, 'publish');
+    res.json({ success: true, ...result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 router.get('/runs/:runId/performance', authMiddleware, async (req, res) => {
   try {
     const run = await getDailyVideoRunById(req.params.runId, req.user.userId);
@@ -223,24 +248,13 @@ router.get('/daily-approve', async (req, res) => {
     const idea = JSON.parse(run.idea_brief || '{}');
     try {
       const videoUrl = await triggerApprovedGeneration(run);
-      await updateDailyVideoRunStatus(run.id, 'done', { videoUrl });
-      const user = await getUserById(run.user_id);
-
-      // ✅ NEW: لو القناة متربطة بيوتيوب (youtube-connect)، نرفع الفيديو تلقائي هنا —
-      // بدل ما نسيب العميل يرفعه بإيده ويلصق اللينك. لو الرفع فشل لأي سبب (زي التوثيق
-      // لسه ما خلصش من جوجل)، منوقفش حاجة — الفيديو خلص فعلاً والعميل لسه يقدر يرفعه
-      // يدوي بنفس المسار القديم بالظبط، بس هيبان تحذير في اللوجز يوضح السبب
-      try {
-        const channel = await getManagedChannelById(run.channel_id);
-        if (channel?.youtube_refresh_token) {
-          const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
-          await linkYoutubeVideoToRun(run.id, run.user_id, youtubeVideoId);
-        }
-      } catch (uploadErr) {
-        console.warn(`[ChannelRoutes] Auto-upload to YouTube failed for run ${run.id} (customer can still upload manually):`, uploadErr.message);
-      }
-
-      await sendDailyResultEmail(user.email, idea, videoUrl, true);
+      // ✅ FIX (طلب العميل: "العميل يراجع الفيديو الأول وبعد كده يوافق على النشر او لا"):
+      // مفيش رفع تلقائي فوري ليوتيوب هنا تاني — finalizeChannelRunAfterGeneration بتحط
+      // التشغيلة في حالة "محتاجة مراجعة"، تضيفها كفيديو حقيقي في مشروع القناة، وتبعت إيميل
+      // مراجعة فيه زرارين ("تمت المراجعة"/"نشر الآن") — نفس الدالة المستخدمة في المسار
+      // التاني (triggerChannelRunNow، الشات) عشان المسارين يفضلوا متطابقين
+      const channel = await getManagedChannelById(run.channel_id);
+      await finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, null);
     } catch (e) {
       console.error('[ChannelRoutes] Approved generation failed:', e.message);
       const isCredits = e.message.startsWith('insufficient_credits');
@@ -258,6 +272,24 @@ router.get('/daily-reject', async (req, res) => {
   if (!run) return res.status(404).send('Link not found or expired.');
   if (run.status === 'pending') await updateDailyVideoRunStatus(run.id, 'rejected', { decided: true });
   res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><div style="font-size:56px">👍</div><h2>No problem — skipped for today.</h2></body></html>`);
+});
+
+// ✅ NEW: "تمت المراجعة"/"نشر الآن" من زرارين الإيميل — من غير تسجيل دخول، بتوكن مراجعة
+// منفصل عن approve_token (راجع review_token في authService.js وsendDailyResultEmail فوق)
+router.get('/review-action', async (req, res) => {
+  const { token, action } = req.query;
+  const run = await getDailyVideoRunByReviewToken(token).catch(() => null);
+  if (!run) return res.status(404).send('Link not found or expired.');
+  if (!['reviewed', 'publish'].includes(action)) return res.status(400).send('Invalid action.');
+  try {
+    const result = await resolveChannelRunReviewAction(run, action);
+    const html = action === 'publish'
+      ? `<div style="font-size:56px">🚀</div><h2 style="color:#22c55e">Published!</h2><p style="color:#9ca3af">Your video is now live on YouTube${result.youtubeVideoId ? `: <a href="https://youtube.com/watch?v=${result.youtubeVideoId}" style="color:#7c6af7">watch it</a>` : ''}.</p>`
+      : `<div style="font-size:56px">✅</div><h2 style="color:#22c55e">Marked as reviewed</h2><p style="color:#9ca3af">You can publish it to YouTube anytime from the video's project on Erivion.</p>`;
+    res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff">${html}</body></html>`);
+  } catch (e) {
+    res.status(400).send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><div style="font-size:56px">⚠️</div><h2 style="color:#ef4444">Couldn't do that</h2><p style="color:#9ca3af">${e.message}</p></body></html>`);
+  }
 });
 
 export default router;

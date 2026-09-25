@@ -320,10 +320,10 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
 // الشات (channelSchedulerService.js's triggerChannelRunNow) — نفس فكرة WhiteboardCard فوق
 // بالظبط (poll لحد done/failed)، بس بيتابع daily_video_runs مش audio_video_jobs، وبيوريّ
 // التكلفة الحقيقية النهائية + لينك يوتيوب لو اترفع تلقائي
-function ChannelRunCard({ job: initialJob, lang }) {
+function ChannelRunCard({ job: initialJob, lang, onNavigate }) {
   const tt = lang === 'ar'
-    ? { generating: 'بيعمل الفيديو دلوقتي...', failed: 'حصلت مشكلة وأنا بعمل الفيديو', done: 'خلص!', cost: 'كريديت', watchYoutube: 'شوفه على يوتيوب' }
-    : { generating: 'Making the video now...', failed: 'Something went wrong making the video', done: 'Done!', cost: 'credits', watchYoutube: 'Watch on YouTube' };
+    ? { generating: 'بيعمل الفيديو دلوقتي...', failed: 'حصلت مشكلة وأنا بعمل الفيديو', done: 'خلص! جاهز للمراجعة', cost: 'كريديت', goReview: 'روح راجعه وانشره' }
+    : { generating: 'Making the video now...', failed: 'Something went wrong making the video', done: 'Done! Ready for review', cost: 'credits', goReview: 'Go review & publish it' };
   const [job, setJob] = useState(initialJob);
   const pollRef = useRef(null);
 
@@ -334,7 +334,7 @@ function ChannelRunCard({ job: initialJob, lang }) {
         const r = await fetch(`/api/channels/runs/${job.runId}/status`, { headers: tokenHeader() });
         const d = await r.json();
         if (r.ok && d.run) {
-          setJob(prev => ({ ...prev, status: d.run.status, videoUrl: d.run.videoUrl, youtubeVideoId: d.run.youtubeVideoId, error: d.run.error, creditsCharged: d.run.creditsCharged }));
+          setJob(prev => ({ ...prev, status: d.run.status, videoUrl: d.run.videoUrl, error: d.run.error, creditsCharged: d.run.creditsCharged }));
           if (['done', 'failed'].includes(d.run.status)) clearInterval(pollRef.current);
         }
       } catch { /* keep polling */ }
@@ -350,6 +350,10 @@ function ChannelRunCard({ job: initialJob, lang }) {
     );
   }
 
+  // ✅ FIX (طلب العميل: "العميل يراجع الفيديو الأول وبعد كده يوافق على النشر او لا" — قبل
+  // كده الكارت ده كان بيوريّ لينك يوتيوب هنا كأنه اترفع تلقائي): مفيش نشر تلقائي تاني —
+  // الكارت الحقيقي القابل للمراجعة/النشر (ChannelReviewCard) بيتضاف لمشروع القناة الدائم،
+  // مش هنا في المحادثة اللي طلب فيها العميل الفيديو (ممكن تبقى محادثة تانية خالص)
   if (job.status === 'done') {
     return (
       <div style={{ width: 240 }}>
@@ -358,12 +362,10 @@ function ChannelRunCard({ job: initialJob, lang }) {
           <div style={{ fontSize: 12.5, color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={13} color="#22c55e" /> {tt.done}</div>
           {job.ideaTitle && <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)' }}>{job.ideaTitle}</div>}
           {job.creditsCharged != null && <div style={{ fontSize: 11.5, color: '#a78bfa' }}>{job.creditsCharged} {tt.cost}</div>}
-          {job.youtubeVideoId && (
-            <a href={`https://youtube.com/watch?v=${job.youtubeVideoId}`} target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: 11.5, color: '#ef4444', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <Video size={12} /> {tt.watchYoutube}
-            </a>
-          )}
+          <button onClick={() => onNavigate?.('dashboard')}
+            style={{ marginTop: 4, fontSize: 11.5, color: '#a78bfa', background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, width: 'fit-content' }}>
+            <LayoutGrid size={12} /> {tt.goReview}
+          </button>
         </div>
       </div>
     );
@@ -376,6 +378,78 @@ function ChannelRunCard({ job: initialJob, lang }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#fff' }}><Clapperboard size={14} strokeWidth={2} /> {tt.generating}</span>
       </div>
       {job.ideaTitle && <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', marginTop: 6 }}>{job.ideaTitle}</div>}
+    </div>
+  );
+}
+
+// ✅ NEW (طلب العميل: "العميل يراجع الفيديو الأول وبعد كده يوافق على النشر او لا... زر تمت
+// المراجعة وبعد كده زر نشر الان"): كارت المراجعة/النشر الحقيقي — بيعيش في مشروع القناة
+// الدائم (مش في المحادثة اللي طلب فيها العميل الفيديو)، وبيظهر سواء العميل فتح المشروع من
+// الداشبورد أو من لينك المشروع في الإيميل. فيديو حقيقي قابل للعب + زرارين حقيقيين: "تمت
+// المراجعة" (تأكيد بس، من غير نشر) و"نشر الآن" (رفع فعلي على يوتيوب). كل تحديث بيتحفظ في
+// نفس مشروع المحادثة (onUpdateJob) عشان لو العميل قفل وفتح المشروع تاني يلاقي الحالة الصح
+function ChannelReviewCard({ job, lang, onUpdateJob, onMessage }) {
+  const tt = lang === 'ar'
+    ? { cost: 'كريديت', reviewedBadge: 'تمت المراجعة', publishedBadge: 'منشور على يوتيوب', reviewBtn: 'تمت المراجعة', publishBtn: 'نشر الآن', notConnected: 'القناة مش متربطة بيوتيوب', watchYoutube: 'شوفه على يوتيوب' }
+    : { cost: 'credits', reviewedBadge: 'Reviewed', publishedBadge: 'Published on YouTube', reviewBtn: 'Mark Reviewed', publishBtn: 'Publish Now', notConnected: 'This channel is not connected to YouTube', watchYoutube: 'Watch on YouTube' };
+  const [busy, setBusy] = useState(null);
+
+  const markReviewed = async () => {
+    setBusy('review');
+    try {
+      const r = await fetch(`/api/channels/runs/${job.runId}/review`, { method: 'POST', headers: authHeaders() });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Failed');
+      onUpdateJob({ reviewState: 'reviewed' });
+      onMessage?.(lang === 'ar' ? 'تمام، اتسجل إنك راجعت الفيديو — تقدر تنشره على يوتيوب في أي وقت من هنا.' : "Got it — marked as reviewed. You can publish it to YouTube anytime from here.");
+    } catch (e) {
+      onMessage?.((lang === 'ar' ? 'حصلت مشكلة: ' : 'Something went wrong: ') + e.message);
+    } finally { setBusy(null); }
+  };
+
+  const publishNow = async () => {
+    setBusy('publish');
+    onMessage?.(lang === 'ar' ? 'تمام، بينشر الفيديو دلوقتي على يوتيوب...' : 'On it — publishing the video to YouTube now...');
+    try {
+      const r = await fetch(`/api/channels/runs/${job.runId}/publish`, { method: 'POST', headers: authHeaders() });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed');
+      onUpdateJob({ reviewState: 'published', youtubeVideoId: d.youtubeVideoId });
+      onMessage?.((lang === 'ar' ? 'تم النشر ✅ ' : 'Published ✅ ') + (d.youtubeVideoId ? `https://youtube.com/watch?v=${d.youtubeVideoId}` : ''));
+    } catch (e) {
+      onMessage?.((lang === 'ar' ? 'فشل النشر: ' : 'Publish failed: ') + e.message);
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <div style={{ width: 260 }}>
+      <video src={job.videoUrl} controls playsInline style={{ width: 260, borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {job.ideaTitle && <div style={{ fontSize: 12.5, color: '#fff', fontWeight: 700 }}>{job.ideaTitle}</div>}
+        {job.creditsCharged != null && <div style={{ fontSize: 11.5, color: '#a78bfa' }}>{job.creditsCharged} {tt.cost}</div>}
+        {job.reviewState === 'published' ? (
+          <div style={{ fontSize: 12, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <CheckCircle2 size={13} /> {tt.publishedBadge}
+            {job.youtubeVideoId && (
+              <a href={`https://youtube.com/watch?v=${job.youtubeVideoId}`} target="_blank" rel="noopener noreferrer" style={{ color: '#ef4444', textDecoration: 'none' }}>{tt.watchYoutube}</a>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {job.reviewState === 'reviewed' ? (
+              <div style={{ fontSize: 11.5, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle2 size={12} color="#22c55e" /> {tt.reviewedBadge}</div>
+            ) : (
+              <button onClick={markReviewed} disabled={!!busy}
+                style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: '#d1d5db', cursor: busy ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                {busy === 'review' ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : tt.reviewBtn}
+              </button>
+            )}
+            <button onClick={publishNow} disabled={!!busy || !job.canPublish} title={!job.canPublish ? tt.notConnected : ''}
+              style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: 'none', background: job.canPublish ? 'linear-gradient(135deg,#ef4444,#b91c1c)' : 'rgba(239,68,68,0.2)', color: '#fff', cursor: (busy || !job.canPublish) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+              {busy === 'publish' ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : tt.publishBtn}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1004,13 +1078,21 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (m.type === 'channelRun') {
       if (m.job?.status === 'done') {
         const costTag = m.job.creditsCharged != null ? `, cost: ${m.job.creditsCharged} credits` : '';
-        const ytTag = m.job.youtubeVideoId ? `, published to YouTube: https://youtube.com/watch?v=${m.job.youtubeVideoId}` : '';
-        return `[${lang === 'ar' ? 'تم عمل ونشر فيديو القناة بنجاح' : 'The channel video was successfully made'} — "${m.job.ideaTitle || ''}" — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}${costTag}${ytTag}]`;
+        return `[${lang === 'ar' ? 'تم عمل فيديو القناة بنجاح، جاهز للمراجعة والنشر (مش منشور تلقائي)' : 'The channel video was successfully made and is awaiting the user\'s review before publishing (NOT auto-published)'} — "${m.job.ideaTitle || ''}" — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}${costTag}]`;
       }
       if (m.job?.status === 'failed') {
         return failedNote(lang === 'ar' ? 'فيديو قناة سابق فشل في التوليد ولم يكتمل' : 'A previous channel video FAILED and did not complete');
       }
       return `[${lang === 'ar' ? 'فيديو قناة قيد الإنشاء دلوقتي' : "A channel video is currently being generated"}]`;
+    }
+    if (m.type === 'channelReview') {
+      if (m.job?.reviewState === 'published') {
+        return `[${lang === 'ar' ? 'العميل وافق ونشر فيديو القناة على يوتيوب' : 'The user approved and published this channel video to YouTube'} — "${m.job.ideaTitle || ''}"${m.job.youtubeVideoId ? `, https://youtube.com/watch?v=${m.job.youtubeVideoId}` : ''}]`;
+      }
+      if (m.job?.reviewState === 'reviewed') {
+        return `[${lang === 'ar' ? 'العميل راجع فيديو القناة ده بس لسه ما نشرهوش' : 'The user reviewed this channel video but has not published it yet'} — "${m.job.ideaTitle || ''}"]`;
+      }
+      return `[${lang === 'ar' ? 'فيديو قناة جاهز ومستني مراجعة العميل قبل النشر' : "A channel video is ready and awaiting the user's review before publishing"} — "${m.job.ideaTitle || ''}"]`;
     }
     if (m.type === 'imageBatch') {
       if (m.job?.status === 'done') {
@@ -1292,6 +1374,17 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   };
   const removeMessageByJobUid = (uid) => {
     setMessages(m => m.filter(x => x.job?.uid !== uid));
+  };
+  // ✅ NEW: نفس فكرة updateJobByUid فوق بالظبط، بس مفتاحها runId (daily_video_runs) مش uid —
+  // مستخدمة لكارت مراجعة/نشر فيديو القناة (ChannelReviewCard) عشان ضغطة "تمت المراجعة"/"نشر
+  // الآن" تتحفظ فعليًا في المشروع (نفس آلية الحفظ الموجودة بالفعل لأي رسالة تانية)
+  const updateJobByRunId = (runId, patch) => {
+    setMessages(m => {
+      const copy = [...m];
+      const idx = copy.findIndex(x => x.job?.runId === runId);
+      if (idx !== -1) copy[idx] = { ...copy[idx], job: { ...copy[idx].job, ...patch } };
+      return copy;
+    });
   };
   // ✅ صورة واحدة جوه دفعة (batch) — لو دي آخر صورة في الدفعة، نمسح الرسالة كلها بدل ما نسيبها فاضية
   const removeImageFromBatch = (uid, idx) => {
@@ -2287,7 +2380,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
   // ✅ NEW (Workspace redesign, Phase 2): الشات بقى شريط جانبي نص فقط — أي ميديا متولدة
   // (فيديو/whiteboard/دفعة صور) بتتشال من قائمة رسائل الشات وتتعرض في canvas النص بدل كده
-  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis', 'channelRun'];
+  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis', 'channelRun', 'channelReview'];
   const mediaItems = messages
     .map((m, i) => ({ ...m, _i: i }))
     .filter(m => MEDIA_TYPES.includes(m.type));
@@ -2299,7 +2392,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     return !!m.job?.favorited;
   };
   const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
-    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun')
+    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun' || m.type === 'channelReview')
     : rightTab === 'favorites' ? mediaItems.filter(isMediaFavorited)
     : mediaItems;
 
@@ -2516,7 +2609,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 <div key={m._i} className="agent-bubble">
                   {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}
                   {m.type === 'whiteboard' && <WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} />}
-                  {m.type === 'channelRun' && <ChannelRunCard job={m.job} lang={lang} />}
+                  {m.type === 'channelRun' && <ChannelRunCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+                  {m.type === 'channelReview' && <ChannelReviewCard job={m.job} lang={lang}
+                    onUpdateJob={(patch) => updateJobByRunId(m.job.runId, patch)}
+                    onMessage={(text) => setMessages(mm => [...mm, { role: 'assistant', content: text }])}
+                  />}
                   {m.type === 'imageBatch' && <ImageBatchCard job={m.job} lang={lang}
                     onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
                     onRemoveImage={(idx) => removeImageFromBatch(m.job.uid, idx)}
