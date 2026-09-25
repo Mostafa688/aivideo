@@ -251,40 +251,43 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
   ), document.body);
 }
 
-// ✅ NEW (طلب العميل: منيو المستخدم بقت طويلة جدًا) — نافذة "More" بتحتوي على القائمة الكاملة
-// القديمة (كل روابط التنقل + مجموعات الإعدادات) زي ما كانت بالظبط، من غير ما نفقد أي عنصر —
-// بس دلوقتي مش ظاهرة كلها في المنيو الصغير على طول، وبس أهم 8 حاجات هي الظاهرة (شوف TOP_ITEMS)
+// ✅ NEW (طلب العميل: منيو المستخدم بقت طويلة جدًا) — نافذة "More" بتحتوي على باقي القائمة
+// ✅ FIX (طلب العميل: "فيه حاجات متكرره زي الافلييت وكده"): قبل كده كان فيه تكرار حقيقي —
+// "Affiliate" كان ظاهر مرتين (مرة عادية في SITE_NAV ومرة كارت مميز)، وhome/pricing/about/support
+// كانوا متكررين مع TOP_ITEMS في المنيو الرئيسي، وsettings/terms/privacy/refund كان ليهم قسم
+// كامل هنا برغم إنهم أصلاً من الـ8 حاجات المثبتة. بعد التنظيف: كل عنصر موجود مرة واحدة بس،
+// ومقسّمين لأقسام واضحة (مميز / مساحة العمل / مصادر) بدل قايمة واحدة طويلة مبعثرة
 function MoreMenuModal({ onClose, onNavigate, onShowAffiliate, onShowHowTo, currentPage, model3Access }) {
-  const SITE_NAV = [
-    { key:'home', Icon: Home, label:'Home' }, { key:'stats', Icon: BarChart3, label:'My Activity' },
-    { key:'team', Icon: Users, label:'Team' },
-    { key:'pricing', Icon: Gem, label:'Pricing' },
-    { key:'templates', Icon: Clapperboard, label:'Templates' }, { key:'courses', Icon: GraduationCap, label:'Courses' },
-    { key:'changelog', Icon: Megaphone, label:"What's New" },
-    { key:'roadmap', Icon: Map, label:'Roadmap' },
-    { key:'status', Icon: Activity, label:'Status' },
-    { key:'api-docs', Icon: Plug, label:'API & MCP' },
-    { key:'community', Icon: Globe, label:'Community' }, { key:'about', Icon: Info, label:'About Us' },
-    { key:'support', Icon: MessageCircle, label:'Support' }, { key:'faq', Icon: HelpCircle, label:'FAQ' },
-    { key:'affiliate', Icon: HandCoins, label:'Affiliate' },
-  ];
-  const groups = [
+  const sections = [
     {
+      label: 'FEATURED',
       items: [
-        { Icon: BookOpen, label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4', badge: 'NEW' },
         { Icon: Tv, label: 'My Channels', sub: 'Daily auto-video via VidIQ', key: 'channels', accent: '#7c6af7', badge: 'BETA' },
         { Icon: Drama, label: 'Characters', sub: 'Reference images for story videos', key: 'characters', accent: '#ec4899' },
         { Icon: HandCoins, label: 'Earn with Erivion', sub: 'Affiliate — 20% commission', key: 'affiliate', accent: '#22c55e', badge: 'EARN' },
+        { Icon: BookOpen, label: 'How to Use Erivion', sub: 'Full platform guide', key: 'howto', accent: '#06b6d4' },
         ...(model3Access ? [{ Icon: ImageIcon, label: 'AI Image Video', sub: 'Model 3', key: 'model3', accent: '#f59e0b' }] : []),
-      ]
+      ],
     },
     {
+      label: 'WORKSPACE',
       items: [
-        { Icon: SettingsIcon, label: 'Settings', key: 'settings' },
-        { Icon: FileText, label: 'Terms of Service', key: 'terms' },
-        { Icon: Lock, label: 'Privacy Policy', key: 'privacy' },
-        { Icon: Wallet, label: 'Refund Policy', key: 'refund' },
-      ]
+        { Icon: BarChart3, label: 'My Activity', key: 'stats' },
+        { Icon: Users, label: 'Team', key: 'team' },
+        { Icon: Clapperboard, label: 'Templates', key: 'templates' },
+        { Icon: GraduationCap, label: 'Courses', key: 'courses' },
+      ],
+    },
+    {
+      label: 'RESOURCES',
+      items: [
+        { Icon: Megaphone, label: "What's New", key: 'changelog' },
+        { Icon: Map, label: 'Roadmap', key: 'roadmap' },
+        { Icon: Activity, label: 'Status', key: 'status' },
+        { Icon: Plug, label: 'API & MCP', key: 'api-docs' },
+        { Icon: Globe, label: 'Community', key: 'community' },
+        { Icon: HelpCircle, label: 'FAQ', key: 'faq' },
+      ],
     },
   ];
 
@@ -304,47 +307,36 @@ function MoreMenuModal({ onClose, onNavigate, onShowAffiliate, onShowHowTo, curr
           <h2 style={{ fontSize:16, fontWeight:800, color:'#fff', margin:0 }}>More</h2>
           <button onClick={onClose} style={{ width:30, height:30, borderRadius:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#6b7280', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><X size={15} /></button>
         </div>
-        <div style={{ padding:'8px 10px 10px' }}>
-          <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
-          {SITE_NAV.map(item=>(
-            <button key={item.key} onClick={()=>handleClick(item.key)} className="um-item"
-              style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:item.key==='affiliate'?'#22c55e':currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key||item.key==='affiliate'?700:500,textAlign:'left'}}>
-              <item.Icon size={15} strokeWidth={2} />
-              <span>{item.label}</span>
-              {currentPage===item.key&&<div style={{marginLeft:'auto',width:5,height:5,borderRadius:'50%',background:'#a78bfa'}}/>}
-            </button>
-          ))}
-          <div style={{height:1,background:'rgba(255,255,255,0.05)',margin:'6px 0'}}/>
-          {groups.map((group, gi) => (
-            <div key={gi}>
-              {gi > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }} />}
-              {group.items.map(item => (
+        <div style={{ padding:'4px 10px 12px' }}>
+          {sections.map((section, si) => (
+            <div key={section.label}>
+              {si > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'8px 4px' }} />}
+              <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'8px 10px 6px' }}>{section.label}</div>
+              {section.items.map(item => (
                 <button key={item.key}
                   className={item.accent ? 'um-item um-item-accent' : 'um-item'}
                   onClick={() => handleClick(item.key)}
                   style={{
                     width:'100%', display:'flex', alignItems:'center', gap:10,
                     padding:'9px 10px', borderRadius:10, border:'none',
-                    background: item.key === 'affiliate' ? 'rgba(34,197,94,0.06)' : item.key === 'howto' ? 'rgba(6,182,212,0.06)' : 'transparent',
-                    color: item.accent ? item.accent : '#9ca3af',
+                    background: item.accent ? `${item.accent}0f` : currentPage===item.key ? 'rgba(124,106,247,0.1)' : 'transparent',
                     cursor:'pointer', fontSize:13, fontWeight: item.accent ? 600 : 500,
                     textAlign:'left',
                   }}>
-                  <item.Icon size={15} strokeWidth={2} style={{ flexShrink:0 }} />
+                  <item.Icon size={15} strokeWidth={2} style={{ flexShrink:0, color: item.accent || (currentPage===item.key ? '#a78bfa' : '#9ca3af') }} />
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight: item.accent ? 600 : 500, color: item.accent ? item.accent : '#d1d5db', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.label}</div>
+                    <div style={{ fontSize:13, fontWeight: item.accent ? 600 : (currentPage===item.key ? 700 : 500), color: item.accent ? item.accent : (currentPage===item.key ? '#a78bfa' : '#d1d5db'), whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.label}</div>
                     {item.sub && <div style={{ fontSize:10, color: item.accent ? `${item.accent}99` : '#4b5563', marginTop:1 }}>{item.sub}</div>}
                   </div>
                   {item.badge && (
                     <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4,
-                      background: item.key === 'howto' ? 'rgba(6,182,212,0.15)' : 'rgba(34,197,94,0.15)',
-                      color: item.key === 'howto' ? '#06b6d4' : '#22c55e',
-                      letterSpacing:'0.06em',
-                      border: item.key === 'howto' ? '1px solid rgba(6,182,212,0.2)' : '1px solid rgba(34,197,94,0.2)',
+                      background: `${item.accent}22`, color: item.accent, letterSpacing:'0.06em',
+                      border: `1px solid ${item.accent}33`,
                     }}>
                       {item.badge}
                     </span>
                   )}
+                  {!item.accent && currentPage===item.key && <div style={{marginLeft:'auto',width:5,height:5,borderRadius:'50%',background:'#a78bfa'}}/>}
                 </button>
               ))}
             </div>
