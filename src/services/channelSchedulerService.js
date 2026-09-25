@@ -1,7 +1,8 @@
 // ── channelSchedulerService.js ───────────────────────────────────────────────
 // دورة "القناة اليومية": كل قناة نشطة بنجيبلها فكرة قوية (VidIQ + Groq) مرة كل يوم،
-// نبعت للعميل إيميل فيه Approve/Reject، ولو وافق بنعمل الفيديو فعليًا (موديل 8 —
-// نفس محرك المشاهد الرخيص، بصوت أو من غيره حسب تفضيل العميل) ونبعتله لينك الفيديو.
+// نبعت للعميل إيميل فيه Approve/Reject، ولو وافق بنعمل الفيديو فعليًا (صور مشاهد متسلسلة +
+// تحريك + تزامن صوت حقيقي مشهد بمشهد — راجع generateAnimatedVideo تحت) ونحطه في مشروعه
+// للمراجعة والنشر.
 
 import fetch from 'node-fetch';
 import crypto from 'crypto';
@@ -15,7 +16,6 @@ import {
   getCharacterReferenceById, linkYoutubeVideoToRun, setChannelProjectId,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
-import { renderModel8Video } from './pvideoService.js';
 import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
 import { mergeVideos } from './videoMergeService.js';
@@ -52,10 +52,6 @@ const AGENT_MODEL = 'openai/gpt-oss-120b';
 const INTERNAL_BASE = process.env.INTERNAL_API_URL || `http://127.0.0.1:${process.env.PORT || 3000}`;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://erivion.net';
 const BACKEND_URL = process.env.BACKEND_URL || process.env.SITE_URL || FRONTEND_URL;
-
-// نفس أسعار موديل 8 بالظبط (index.js) — لازم يفضلوا متطابقين لو اتغيروا هناك
-const MODEL8_RATE_NONE = 4;
-const MODEL8_RATE_VOICEOVER = 5;
 
 // ✅ /api/generate-scenes (موديل 1/2) بيرجّع Server-Sent Events مش JSON عادي — كل مشهد
 // بييجي كـ event منفصل. بنقرأ الـ stream يدويًا ونجمّع أحداث "scene" لحد "done"/"error"
@@ -311,39 +307,130 @@ async function sendDailyApprovalEmail(channel, idea, format, token) {
   }).catch(e => console.warn('[ChannelScheduler] Approval email failed:', e.message));
 }
 
-// ── المسار الافتراضي (سابقًا الوحيد): مشاهد موديل 4 + رندر موديل 8 مباشرة ──────────
+// ── المسار الافتراضي (animated) — سيناريو موديل 4 + النظام الجديد (صور متسلسلة + تحريك +
+// تزامن)، بديل تمامًا عن موديل 8 القديم ────────────────────────────────────────────
+// ✅ FIX (باج حقيقي بلّغ بيه العميل: فيديو بـ3 مشاهد طلع صوته 12 ثانية والفيديو 52 ثانية —
+// "الموقع لسه شغال بالنظام القديم موديل 8"): ده كان المسار الافتراضي (animated) الوحيد اللي
+// فضل شغال بمحرك موديل 8 القديم (renderModel8Video: نص فيديو مباشر بـprunaai/p-video، من
+// غير صور مرجعية ولا تسلسل اتساق حقيقي بين المشاهد) بعد ما character_adventure وwhiteboard_
+// sketch اتحولوا للنظام الجديد. دلوقتي بقى نفس البنية بالظبط: (1) صورة لكل مشهد (نانو بنانا 2)
+// وكل مشهد ياخد اللي قبله كمرجع (useScenesAsReference) عشان الستايل يفضل ثابت عبر القصة —
+// بدل ما كل مشهد يتولد لوحده من غير أي علاقة بالتاني، (2) لو القناة بتستخدم صوت: سرد كل مشهد
+// لوحده الأول (مدته الحقيقية بتتقاس)، (3) كل صورة تتحرك (seedance_2_5) بمدة = سرد نفس المشهد
+// بالظبط، (4) conformVideoDurationToAudio + composeVideoAudio لكل كليب لوحده قبل أي دمج —
+// تزامن مضمون مشهد بمشهد بدل سرد واحد فوق فيديو بمقاس ثابت غير متعلق بيه خالص
 async function generateAnimatedVideo(run, channel, idea, shape, headers) {
-  // ✅ لو القناة اتحللت أوتوماتيك وعندها طول مستهدف حقيقي (من متوسط فيديوهاتها الفعلي)،
-  // نستخدمه بدل المقاس الثابت الافتراضي — عشان الفيديو يطلع بنفس مقاس فيديوهات القناة
-  // الحقيقية (مثلاً قناة فيديوهاتها 10 دقايق منعملهاش فيديو 3 دقايق بس)
-  const sceneCount = channel.target_scene_count || shape.sceneCount;
-  const sceneDurationSec = channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec;
+  const MAX_SCENES = 20;
+  const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, MAX_SCENES);
+  const maxClip = getMaxClipSeconds('seedance_2_5') || 30;
+  const defaultSceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
+  const usesVoice = !!channel.uses_voice;
+  const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise';
 
+  // نفس كتابة السيناريو المستخدمة قبل كده بالظبط (جودة مثبتة: نص سرد + برومبت بصري لكل مشهد،
+  // مع قفل شخصية/مكان تلقائي لو القصة فيها) — التغيير الحقيقي في طريقة الرندر تحت بس
   const scenesRes = await fetch(`${INTERNAL_BASE}/api/model4/generate-scenes`, {
     method: 'POST', headers,
     body: JSON.stringify({ idea: idea.title, script: undefined, inputMode: 'idea', sceneCount, videoLanguage: idea.videoLanguage || 'en', videoStyle: channel.video_style || 'cinematic' }),
   });
   const scenesData = await scenesRes.json();
   if (!scenesRes.ok || !scenesData.scenes?.length) throw new Error(scenesData.error || 'Scene generation failed');
+  const scenes = scenesData.scenes;
 
-  const audioMode = channel.uses_voice ? 'voiceover' : 'none';
-  const rate = audioMode === 'voiceover' ? MODEL8_RATE_VOICEOVER : MODEL8_RATE_NONE;
-  const totalSeconds = sceneCount * sceneDurationSec;
-  const cost = totalSeconds * rate;
-
-  const balance = await getCreditsBalance(run.user_id);
-  if (balance < cost) throw new Error(`insufficient_credits:${cost}:${balance}`);
-  const charge = await chargeCredits(run.user_id, cost);
-  if (!charge.success) throw new Error(`insufficient_credits:${cost}:${charge.remaining}`);
-
-  const scenes = scenesData.scenes.map(s => ({ ...s, sceneDurationSec }));
-  const { outputFile } = await renderModel8Video({
-    scenes, ratio: shape.ratio, audioMode, voiceKey: (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise',
-    videoLanguage: idea.videoLanguage || 'en', captions: true, jobId: `daily_${run.id}`,
+  // ── 1) صور المشاهد — كل مشهد ياخد اللي قبله كمرجع (تسلسل)، عشان الستايل/العناصر تفضل
+  // ثابتة عبر القصة من غير ما نحتاج صورة شخصية مرجعية ثابتة (مفيش شخصية واحدة هنا أصلاً) ──
+  const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      model: 'nano_banana_2',
+      scenes: scenes.map((s, i) => ({ prompt: s.prompt, useScenesAsReference: i > 0 ? [i - 1] : [] })),
+      aspectRatio: shape.ratio,
+    }),
   });
-  const videoUrl = '/outputs/' + outputFile;
-  await saveVideo(run.user_id, outputFile, idea.title).catch(() => {});
-  return videoUrl;
+  const imgJobData = await imgRes.json();
+  if (!imgRes.ok) throw new Error(imgJobData.error || 'Scene image generation failed'); // لسه قبل خصم أي حاجة تانية
+  const images = await pollJobGeneric(`${INTERNAL_BASE}/api/images/generate-status/${imgJobData.jobId}`, headers, 'images');
+  if (!Array.isArray(images) || images.length < 2) { const e = new Error('Image generation returned too few images'); e.committed = true; throw e; }
+
+  const narrations = [];
+  try {
+    // ── 2) لو القناة بتستخدم صوت: سرد كل مشهد لوحده الأول عشان نعرف مدته الحقيقية ──────
+    if (usesVoice) {
+      for (const s of scenes) {
+        const text = (s.text || '').trim() || idea.title;
+        narrations.push(await synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' }));
+      }
+    }
+
+    // ── 3) كل صورة تتحرك لكليب، بمدة = مدة سرد نفس المشهد (لو فيه صوت) وإلا الافتراضية ──
+    const clipUrls = [];
+    for (let i = 0; i < images.length; i++) {
+      const targetDurationSec = usesVoice ? Math.max(3, Math.min(maxClip, narrations[i].durationSec)) : defaultSceneDurationSec;
+      const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ model: 'seedance_2_5', prompt: 'subtle natural motion, cinematic camera movement', imageUrl: images[i], aspectRatio: shape.ratio, durationSec: targetDurationSec }),
+      });
+      const vidJobData = await vidRes.json();
+      // ✅ الصور خلاص اتولدت واتخصم تمنها — أي فشل من هنا وطالع "committed" عشان منرجعش
+      // نخصم كريديت الصور تاني على أي محاولة تانية
+      if (!vidRes.ok) { const e = new Error(vidJobData.error || 'Scene animation failed'); e.committed = true; throw e; }
+      let clipUrl = await pollRenderJob(vidJobData.jobId, headers);
+
+      if (usesVoice) {
+        // ✅ مطابقة دقيقة لمدة المشهد لمدة سرده الحقيقية (الموديل نادرًا ما بيطلع المدة
+        // المطلوبة بالظبط) — ده اللي بيضمن التزامن الحقيقي مشهد بمشهد، مش تقريب عام لاحقًا
+        clipUrl = await conformVideoDurationToAudio({ videoUrl: clipUrl, targetDurationSec: narrations[i].durationSec, modelKeyForNaming: 'animated' });
+        clipUrl = await composeVideoAudio({ videoUrl: clipUrl, narrationPath: narrations[i].audioPath, modelKeyForNaming: 'animated' });
+      }
+      clipUrls.push(clipUrl);
+    }
+
+    // ── 4) دمج كل الكليبات (كل واحد صوته متزامن بالفعل) ──────────────────────────────
+    let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
+
+    // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
+    if (usesVoice) {
+      const captionCost = getFlatCreditCost('autocaption');
+      const balance = await getCreditsBalance(run.user_id);
+      if (balance >= captionCost) {
+        const charge = await chargeCredits(run.user_id, captionCost);
+        if (charge.success) {
+          try {
+            const combinedAudioPath = path.join(TEMP_DIR, `animated_narr_${run.id}_${Date.now()}.mp3`);
+            fs.mkdirSync(TEMP_DIR, { recursive: true });
+            concatAudioFiles(narrations.map(n => n.audioPath), combinedAudioPath);
+            const words = await transcribeWithTimestamps(combinedAudioPath);
+            const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(idea.videoLanguage);
+            videoUrl = await burnCaptions(videoUrl, words, { rightToLeft: isRtl });
+            try { fs.unlinkSync(combinedAudioPath); } catch {}
+          } catch (capErr) {
+            console.warn(`[ChannelScheduler] Captions failed for run ${run.id} (video still delivered without captions, credits refunded):`, capErr.message);
+            await addCreditsBalance(run.user_id, captionCost);
+          }
+        }
+      }
+    }
+
+    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا (نفس ميزة التميّز لعملاء القنوات) ────────
+    if (usesVoice) {
+      try {
+        const musicBuffer = await getBackgroundMusicBuffer('youtube', channel.video_style === 'cinematic' ? 'epic cinematic dramatic' : 'calm storytelling narration');
+        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'animated' });
+      } catch (musicErr) {
+        console.warn(`[ChannelScheduler] Background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
+      }
+    }
+
+    await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
+    return videoUrl;
+  } catch (e) {
+    // ✅ الصور خلاص اتولدت واتخصم تمنها قبل ما ندخل الكتلة دي — أي فشل من هنا (سرد، تحريك،
+    // دمج، كابشن) لازم يبقى "committed" عشان triggerApprovedGeneration ميحاولش أي مسار تاني
+    e.committed = true;
+    throw e;
+  } finally {
+    narrations.forEach(n => { try { fs.rmSync(n.workDir, { recursive: true, force: true }); } catch {} });
+  }
 }
 
 // ── محتوى واقعي (موديل 2 — لقطات حقيقية من Pexels، مش رسوم بالذكاء الاصطناعي) ──────
@@ -569,7 +656,7 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
   } catch (e) {
     // ✅ الصور خلاص اتولدت واتخصم تمنها قبل ما ندخل الكتلة دي — أي فشل من هنا وطالع (سرد،
     // تحريك، دمج، كابشن) لازم يبقى "committed" عشان triggerApprovedGeneration منيرجعش
-    // للمسار الافتراضي (موديل 8) ويخصم كريديت تاني على مسار تاني فوق اللي خلاص اتصرف
+    // للمسار الافتراضي (generateAnimatedVideo) ويخصم كريديت تاني على مسار تاني فوق اللي خلاص اتصرف
     e.committed = true;
     throw e;
   } finally {
@@ -723,7 +810,7 @@ async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers)
 
 // ── لو العميل وافق: الموقع يقرر أنسب موديل لمحتوى القناة (contentStyle من draftDailyIdea)
 // ويولّد بيه. لو المسار الذكي (واقعي/خريطة) فشل قبل أي خصم كريديت، بنرجع تلقائيًا للمسار
-// الافتراضي (موديل 8) بدل ما يوم العميل يضيع بالكامل بسبب باج في مسار جديد
+// الافتراضي (generateAnimatedVideo) بدل ما يوم العميل يضيع بالكامل بسبب باج في مسار جديد
 export async function triggerApprovedGeneration(run) {
   const channel = await getManagedChannelById(run.channel_id);
   if (!channel) throw new Error('Channel not found');
@@ -772,17 +859,14 @@ export async function triggerApprovedGeneration(run) {
 // في الخلفية (IIFE منفصل، بالظبط زي مسار الإيميل) — التقدّم بيتابَع عن طريق
 // GET /api/channels/runs/:id/status، والتكلفة الحقيقية النهائية بتتحسب بفرق الرصيد قبل/بعد
 // (أدق من محاولة نجمّع كل خصم كريديت يدويًا عبر كل مسارات المحتوى الخمسة المختلفة)
+// ✅ FIX (طلب العميل: "المفروض الصور بتتعمل ورفرنس، النظام الجديد كله" — النمط الافتراضي
+// "animated" بقى بيستخدم نفس بنية الصور+تحريك+تزامن الجديدة زي character_adventure/
+// whiteboard_sketch بالظبط، مش موديل 8 القديم تاني — راجع generateAnimatedVideo تحت):
+// دلوقتي كل أنماط المحتوى الخمسة بتكلفتها من موديلات خارجية متنوعة (صور + تحريك) مش معروفة
+// إلا بعد التوليد فعليًا، فمفيش تقدير دقيق مقدمًا لأي نمط تاني — نرجع null زي الباقي كلهم،
+// والتكلفة الحقيقية بتتحسب بفرق الرصيد قبل/بعد (triggerChannelRunNow) وتتقال للعميل بعد ما يخلص
 export function estimateChannelRunCost(channel, format) {
-  // ✅ تقدير دقيق بس للمسار الافتراضي (animated) لأنه الوحيد بتكلفة ثابتة معروفة مقدمًا
-  // (نفس معادلة generateAnimatedVideo بالظبط) — باقي الأنماط (map/realistic/character_adventure/
-  // whiteboard_sketch) تكلفتها بتتحدد من موديلات خارجية متنوعة، مش معروفة إلا بعد التوليد فعليًا
-  const contentStyle = ['map', 'realistic', 'character_adventure', 'whiteboard_sketch'].includes(channel.content_style) ? channel.content_style : 'animated';
-  if (contentStyle !== 'animated') return null;
-  const shape = format === 'short' ? SHORT_FORM : LONG_FORM;
-  const sceneCount = channel.target_scene_count || shape.sceneCount;
-  const sceneDurationSec = channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec;
-  const rate = channel.uses_voice ? MODEL8_RATE_VOICEOVER : MODEL8_RATE_NONE;
-  return sceneCount * sceneDurationSec * rate;
+  return null;
 }
 
 // ✅ NEW: مشروع دائم واحد لكل قناة — بيتعمل تلقائيًا أول مرة بس، وبيتحفظ على القناة نفسها
