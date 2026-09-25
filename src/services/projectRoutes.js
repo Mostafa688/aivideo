@@ -40,6 +40,57 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejec
 
 const router = express.Router();
 
+// ✅ NEW (طلب العميل: فيديو القناة — سواء اليومي أو "دلوقتي" من الشات — لازم يكون له مشروع
+// حقيقي جوه الموقع يظهر فيه كفيديو حقيقي، مش بس رابط، عشان العميل يراجعه بدقة قبل النشر):
+// نفس منطق POST / فوق بالظبط، بس قابل للنداء من كود تاني (channelSchedulerService.js) مش
+// بس من الراوت — القناة بتعمل مشروعها الدائم مرة واحدة بس (راجع getOrCreateChannelProject)
+export async function createProjectForUser(userId, name) {
+  const { rows } = await pool.query(
+    'INSERT INTO projects (user_id, name) VALUES ($1, $2) RETURNING id, name, created_at, updated_at',
+    [userId, (name || '').trim().slice(0, 120) || 'Untitled Project']
+  );
+  return rows[0];
+}
+
+// ✅ NEW: بيضيف رسالة/رسايل جديدة لمحادثة مشروع من كود سيرفر مش من تاب فرونت إند مفتوح
+// (زي job يومي شغال في الخلفية بعد ما العميل يكون قافل الموقع من ساعات) — بيستخدم SQL
+// append حقيقي (jsonb || jsonb) بدل قراءة-تعديل-كتابة عشان يفضل atomic على مستوى الداتابيز
+// نفسها. ⚠️ خطر معروف (موثّق هنا بدل ما يتجاهل): لو العميل فاتح نفس المشروع في تاب حي في
+// نفس اللحظة، الـsave المؤجل بتاع الفرونت إند (PUT /:id/messages فوق) بيكتب فوق أي حاجة
+// جديدة بالـstate القديم اللي عنده هو — نادر جدًا عمليًا (محتاج يكون التاب مفتوح ومستخدم في
+// نفس اللحظة اللي الـjob بيخلص فيها) بس مش مستحيل؛ حل جذري كامل (versioning/merge) خارج
+// نطاق النسخة دي
+export async function appendProjectMessages(projectId, userId, newMessages) {
+  const json = JSON.stringify(Array.isArray(newMessages) ? newMessages : [newMessages]);
+  await pool.query(
+    `INSERT INTO project_chat_state (project_id, user_id, messages, updated_at) VALUES ($1, $2, $3::jsonb, NOW())
+     ON CONFLICT (project_id) DO UPDATE SET messages = project_chat_state.messages || $3::jsonb, updated_at = NOW()`,
+    [projectId, userId, json]
+  );
+  await pool.query('UPDATE projects SET updated_at = NOW() WHERE id = $1', [projectId]);
+}
+
+// ✅ NEW: بتلاقي وتعدّل رسالة واحدة بعينها جوه محادثة مشروع (بحالة job.runId) — مستخدمة لما
+// حالة المراجعة/النشر تتغيّر (تمت المراجعة / نشر الآن) عشان لو العميل فتح المشروع تاني يلاقي
+// الكارت محدّث، مش لسه "محتاج مراجعة". Read-modify-write عادي (مش atomic زي فوق) لأنها بترد
+// فعل مباشر على ضغطة زرار حقيقية من نفس العميل، مش job خلفية مستقل
+export async function updateProjectMessageByRunId(projectId, runId, patchJob) {
+  const { rows } = await pool.query('SELECT messages FROM project_chat_state WHERE project_id = $1', [projectId]);
+  const messages = rows[0]?.messages;
+  if (!Array.isArray(messages)) return false;
+  let changed = false;
+  const updated = messages.map(m => {
+    if (m?.job?.runId === runId) { changed = true; return { ...m, job: { ...m.job, ...patchJob } }; }
+    return m;
+  });
+  if (!changed) return false;
+  await pool.query(
+    `UPDATE project_chat_state SET messages = $2::jsonb, updated_at = NOW() WHERE project_id = $1`,
+    [projectId, JSON.stringify(updated)]
+  );
+  return true;
+}
+
 // ✅ NEW (طلب العميل: "لازم المشاريع تكون من بار عليها صورة او فيديو من الي اتعمل فيها"):
 // بيدوّر في رسايل المشروع (نفس الـ JSON المحفوظ في project_chat_state) من الآخر لقدام، وبيرجع
 // أول ميديا حقيقية (صورة أو فيديو) لقاها — دي بقى بتتعرض كغلاف الكارت في الداشبورد
@@ -60,6 +111,12 @@ function findCoverFromMessages(messages) {
     }
     if (m.type === 'whiteboard' && job.status === 'done' && job.video_url) {
       return { url: job.video_url, type: 'video' };
+    }
+    // ✅ NEW: مشاريع القنوات الدائمة (channelSchedulerService.js's getOrCreateChannelProject)
+    // بتتحط فيها فيديوهات channelReview (وchannelRun لو ظهرت في نفس المشروع يومًا ما) —
+    // بدونها الكارت في الداشبورد كان هيفضل من غير غلاف خالص
+    if ((m.type === 'channelReview' || m.type === 'channelRun') && job.videoUrl) {
+      return { url: job.videoUrl, type: 'video' };
     }
   }
   return null;

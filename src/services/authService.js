@@ -351,6 +351,23 @@ async function initDB() {
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS character_reference_id INTEGER REFERENCES character_references(id) ON DELETE SET NULL;
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS content_brief TEXT DEFAULT NULL;
   `).catch(() => {});
+  // ✅ NEW (طلب العميل: "لازم يكون في مشروع حقيقي جوا الموقع عشان الفيديو يكون ظاهر"):
+  // مشروع دائم واحد لكل قناة (بيتعمل أول مرة تلقائيًا) بيتجمّع فيه كل فيديو بيتعمل للقناة دي
+  // (يومي أو دلوقتي من الشات) عشان يكون له مكان ثابت للمراجعة والنشر — بدون FK صريح لجدول
+  // projects (بيتعمل في ملف تاني، projectRoutes.js، ومفيش ضمان ترتيب تحميل الموديولين وقت
+  // تشغيل السيرفر، فـFK عبر ملفين ممكن يفشل لو managed_channels اتعمل قبل projects)
+  await pool.query(`
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS project_id INTEGER DEFAULT NULL;
+  `).catch(() => {});
+  // ✅ NEW (طلب العميل: "العميل يراجع الفيديو الأول وبعد كده يوافق على النشر او لا"): مفيش
+  // رفع تلقائي فوري ليوتيوب بعد التوليد تاني — بدل كده review_state بيفضل 'awaiting_review'
+  // (الافتراضي) لحد ما العميل يضغط "تمت المراجعة" أو "نشر الآن" (من الإيميل بتوكن، أو من
+  // المشروع نفسه وهو داخل حسابه). review_token زي approve_token بالظبط بس لفعل مختلف
+  await pool.query(`
+    ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS review_state TEXT DEFAULT 'awaiting_review';
+    ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS review_token TEXT UNIQUE;
+    ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ DEFAULT NULL;
+  `).catch(() => {});
   // ── مصنع فيديو الصوت الأدمن — رفع فويس أوفر جاهز، والموقع يفرّغه (Whisper) ويستخرج
   // العناصر (LLM) ويجيب/يولّد صورهم ويعمل الفيديو النهائي. Pipeline بمراحل، كل مرحلة
   // بتحدث نفس الـ job بحالتها الجديدة عشان الأدمن يشوف التقدم ─────────────────────────
@@ -1695,8 +1712,25 @@ export async function updateDailyVideoRunStatus(id, status, extra = {}) {
   if (extra.videoUrl !== undefined) { sets.push(`video_url = $${idx++}`); params.push(extra.videoUrl); }
   if (extra.error !== undefined) { sets.push(`error = $${idx++}`); params.push(extra.error); }
   if (extra.creditsCharged !== undefined) { sets.push(`credits_charged = $${idx++}`); params.push(extra.creditsCharged); }
+  if (extra.reviewState !== undefined) { sets.push(`review_state = $${idx++}`); params.push(extra.reviewState); }
+  if (extra.reviewToken !== undefined) { sets.push(`review_token = $${idx++}`); params.push(extra.reviewToken); }
+  if (extra.reviewed) sets.push('reviewed_at = NOW()');
   if (extra.decided) sets.push('decided_at = NOW()');
   await pool.query(`UPDATE daily_video_runs SET ${sets.join(', ')} WHERE id = $1`, params);
+}
+
+// ✅ NEW: بحث بالتوكن الخاص بأفعال المراجعة/النشر (تمت المراجعة / نشر الآن) — نفس فكرة
+// getDailyVideoRunByToken فوق (approve_token) بالظبط، بس لتوكن مختلف ولمرحلة مختلفة من عمر
+// التشغيلة (بعد ما التوليد خلص، مش قبله)
+export async function getDailyVideoRunByReviewToken(token) {
+  const { rows } = await pool.query('SELECT * FROM daily_video_runs WHERE review_token = $1', [token]);
+  return rows[0] || null;
+}
+
+// ✅ NEW: مشروع القناة الدائم (بيتعمل مرة واحدة، أول تشغيلة، ويتحفظ هنا عشان كل تشغيلة
+// جاية تلاقيه جاهز بدل ما تعمل مشروع جديد كل مرة)
+export async function setChannelProjectId(channelId, projectId) {
+  await pool.query('UPDATE managed_channels SET project_id = $1 WHERE id = $2', [projectId, channelId]);
 }
 
 // ✅ العميل نفسه (مش الأدمن) — سجل فيديوهات القناة بتاعته، عشان يقدر يربط كل واحد بلينك

@@ -12,7 +12,7 @@ import {
   getDueManagedChannels, markManagedChannelRun, createDailyVideoRun,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
   mintInternalToken, getUserById, getCreditsBalance, chargeCredits, addCreditsBalance, saveVideo, saveChannelAnalysis,
-  getCharacterReferenceById, linkYoutubeVideoToRun,
+  getCharacterReferenceById, linkYoutubeVideoToRun, setChannelProjectId,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { renderModel8Video } from './pvideoService.js';
@@ -20,6 +20,7 @@ import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
 import { mergeVideos } from './videoMergeService.js';
 import { uploadVideoToYoutube } from './youtubeUploadService.js';
+import { createProjectForUser, appendProjectMessages, updateProjectMessageByRunId } from './projectRoutes.js';
 
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
@@ -784,6 +785,74 @@ export function estimateChannelRunCost(channel, format) {
   return sceneCount * sceneDurationSec * rate;
 }
 
+// ✅ NEW: مشروع دائم واحد لكل قناة — بيتعمل تلقائيًا أول مرة بس، وبيتحفظ على القناة نفسها
+// (managed_channels.project_id) عشان كل تشغيلة جاية (يومية أو من الشات) تستخدم نفس المشروع،
+// فسجل مراجعة/نشر الفيديوهات لقناة معينة يفضل مكان واحد ثابت العميل يعرف يرجعله
+export async function getOrCreateChannelProject(channel) {
+  if (channel.project_id) return channel.project_id;
+  const project = await createProjectForUser(channel.user_id, `🎬 ${channel.label || channel.channel_id || 'Channel'} — Auto Videos`);
+  await setChannelProjectId(channel.id, project.id);
+  return project.id;
+}
+
+// ✅ NEW (طلب العميل: "العميل يراجع الفيديو الأول وبعد كده يوافق على النشر او لا" — قبل
+// كده كان في رفع تلقائي فوري ليوتيوب من غير أي مراجعة بشرية): بعد ما التوليد يخلص بنجاح
+// (سواء من الإيميل اليومي أو من الشات دلوقتي)، مشترك بين المسارين الاتنين (channelRoutes.js's
+// /daily-approve وtriggerChannelRunNow تحت) — بيحط التشغيلة في حالة "محتاجة مراجعة"، يولّد
+// توكن مراجعة، يضيف كارت فيديو حقيقي (قابل للعب) في مشروع القناة الدائم، ويبعت إيميل مراجعة
+// فيه زرارين حقيقيين. النشر الفعلي بيحصل بس لما العميل يضغط "نشر الآن" (resolveChannelRunReview)
+export async function finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, creditsCharged) {
+  const reviewToken = crypto.randomBytes(24).toString('hex');
+  await updateDailyVideoRunStatus(run.id, 'done', { videoUrl, creditsCharged, reviewState: 'awaiting_review', reviewToken });
+
+  let projectId = null;
+  try {
+    projectId = await getOrCreateChannelProject(channel);
+    await appendProjectMessages(projectId, channel.user_id, [{
+      role: 'assistant', type: 'channelReview',
+      job: {
+        runId: run.id, channelId: channel.id, videoUrl, ideaTitle: idea.title,
+        creditsCharged: creditsCharged ?? null, reviewState: 'awaiting_review',
+        canPublish: !!channel.youtube_refresh_token,
+      },
+    }]);
+  } catch (e) {
+    console.warn(`[ChannelScheduler] Could not add review card to channel project for run ${run.id} (video is still safe, just not shown in a project):`, e.message);
+  }
+
+  const user = await getUserById(channel.user_id);
+  if (user?.email) {
+    await sendDailyResultEmail(user.email, idea, videoUrl, true, null, { reviewToken, projectId }).catch(() => {});
+  }
+}
+
+// ✅ NEW: التنفيذ الفعلي لضغطة "تمت المراجعة" أو "نشر الآن" — مشترك بين مسار الإيميل
+// (توكن، من غير تسجيل دخول) ومسار الموقع (المستخدم داخل حسابه) في channelRoutes.js
+export async function resolveChannelRunReviewAction(run, action) {
+  const channel = await getManagedChannelById(run.channel_id);
+  if (action === 'reviewed') {
+    await updateDailyVideoRunStatus(run.id, 'done', { reviewState: 'reviewed', reviewed: true });
+    if (channel?.project_id) {
+      await updateProjectMessageByRunId(channel.project_id, run.id, { reviewState: 'reviewed' }).catch(() => {});
+    }
+    return {};
+  }
+  if (action === 'publish') {
+    if (!channel) throw new Error('Channel not found');
+    if (!channel.youtube_refresh_token) throw new Error('This channel is not connected to YouTube yet — connect it first from "My Channels".');
+    if (run.youtube_video_id) throw new Error('This video was already published.');
+    const idea = JSON.parse(run.idea_brief || '{}');
+    const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl: run.video_url, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
+    await linkYoutubeVideoToRun(run.id, run.user_id, youtubeVideoId);
+    await updateDailyVideoRunStatus(run.id, 'done', { reviewState: 'published', reviewed: true });
+    if (channel.project_id) {
+      await updateProjectMessageByRunId(channel.project_id, run.id, { reviewState: 'published', youtubeVideoId }).catch(() => {});
+    }
+    return { youtubeVideoId };
+  }
+  throw new Error(`Unknown review action: ${action}`);
+}
+
 export async function triggerChannelRunNow(channel) {
   const { idea, format } = await getFreshChannelIdea(channel);
   const estimatedCost = estimateChannelRunCost(channel, format);
@@ -800,17 +869,7 @@ export async function triggerChannelRunNow(channel) {
       const videoUrl = await triggerApprovedGeneration(run);
       const balanceAfter = await getCreditsBalance(channel.user_id).catch(() => null);
       const creditsCharged = (balanceBefore != null && balanceAfter != null) ? Math.max(0, balanceBefore - balanceAfter) : null;
-      await updateDailyVideoRunStatus(runId, 'done', { videoUrl, creditsCharged });
-
-      // ✅ رفع تلقائي على يوتيوب لو القناة متربطة — نفس منطق /daily-approve بالظبط
-      try {
-        if (channel.youtube_refresh_token) {
-          const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
-          await linkYoutubeVideoToRun(runId, channel.user_id, youtubeVideoId);
-        }
-      } catch (uploadErr) {
-        console.warn(`[ChannelScheduler] Auto-upload to YouTube failed for on-demand run ${runId} (customer can still upload manually):`, uploadErr.message);
-      }
+      await finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, creditsCharged);
     } catch (e) {
       const isCredits = e.message.startsWith('insufficient_credits');
       const errorMsg = isCredits ? 'Not enough credits to make this video — top up your balance and try again.' : e.message;
@@ -822,13 +881,27 @@ export async function triggerChannelRunNow(channel) {
   return { runId, idea, format, estimatedCost };
 }
 
-export async function sendDailyResultEmail(userEmail, idea, videoUrl, success, errorMessage) {
-  const html = success
-    ? `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px">🎬</div><h2 style="color:#22c55e">Your video is ready!</h2><p style="color:#9ca3af">${idea.title}</p><a href="${FRONTEND_URL}${videoUrl}" style="display:inline-block;margin-top:16px;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700">Watch / Download →</a></div>`
-    : `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px">⚠️</div><h2 style="color:#ef4444">Today's video couldn't be made</h2><p style="color:#9ca3af">${errorMessage || 'Something went wrong.'}</p></div>`;
+// ✅ FIX (طلب العميل: "العميل يراجع الفيديو الأول وبعد كده يوافق على النشر او لا" — قبل كده
+// كان الفيديو بيترفع على يوتيوب تلقائي فورًا من غير أي مراجعة بشرية، والإيميل كان بس بيقول
+// "جاهز" مع رابط تحميل): لما success=true دلوقتي، الإيميل بيوضح إن الفيديو جاهز للمراجعة
+// (مش منشور لسه) وفيه زرارين حقيقيين (بتوكن review_token، من غير تسجيل دخول): "تمت المراجعة"
+// (يأكد بس، من غير نشر) و"نشر الآن" (ينشر فعليًا على يوتيوب لو القناة متربطة). لو مش هيضغط
+// أي زرار من الإيميل، نفس الزرارين موجودين جوه مشروع القناة نفسه على الموقع (reviewInfo.projectId)
+export async function sendDailyResultEmail(userEmail, idea, videoUrl, success, errorMessage, reviewInfo = null) {
+  let html;
+  if (success && reviewInfo?.reviewToken) {
+    const reviewedUrl = `${BACKEND_URL}/api/channels/review-action?token=${reviewInfo.reviewToken}&action=reviewed`;
+    const publishUrl = `${BACKEND_URL}/api/channels/review-action?token=${reviewInfo.reviewToken}&action=publish`;
+    const projectNote = reviewInfo.projectId ? `<p style="color:#6b7280;font-size:13px">You can also do this anytime from the video's project on Erivion.</p>` : '';
+    html = `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px">🎬</div><h2 style="color:#22c55e">Your video is ready for review!</h2><p style="color:#9ca3af">${idea.title}</p><a href="${FRONTEND_URL}${videoUrl}" style="display:inline-block;margin-top:12px;color:#7c6af7;text-decoration:none;font-weight:600">Watch the full video first →</a><div style="margin-top:20px;display:flex;gap:12px;justify-content:center"><a href="${reviewedUrl}" style="background:#374151;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">✅ Reviewed</a><a href="${publishUrl}" style="background:#ef4444;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700">🚀 Publish Now</a></div>${projectNote}</div>`;
+  } else if (success) {
+    html = `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px">🎬</div><h2 style="color:#22c55e">Your video is ready!</h2><p style="color:#9ca3af">${idea.title}</p><a href="${FRONTEND_URL}${videoUrl}" style="display:inline-block;margin-top:16px;background:#7c6af7;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700">Watch / Download →</a></div>`;
+  } else {
+    html = `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px">⚠️</div><h2 style="color:#ef4444">Today's video couldn't be made</h2><p style="color:#9ca3af">${errorMessage || 'Something went wrong.'}</p></div>`;
+  }
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'Erivion <noreply@erivion.net>', to: userEmail, subject: success ? `✅ ${idea.title} is ready!` : `⚠️ Today's video failed`, html }),
+    body: JSON.stringify({ from: 'Erivion <noreply@erivion.net>', to: userEmail, subject: success ? `✅ ${idea.title} is ready to review!` : `⚠️ Today's video failed`, html }),
   }).catch(() => {});
 }
