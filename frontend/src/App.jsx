@@ -535,7 +535,7 @@ export default function App() {
       case 'team':       setPage('team'); break;
       case 'channels':   setPage('channels'); break;
       case 'whiteboard': setPage('whiteboard'); break;
-      case 'home':       setPage('agent'); break;
+      case 'home':       setPage('dashboard'); break;
       default:           setPage('input'); break;
     }
   };

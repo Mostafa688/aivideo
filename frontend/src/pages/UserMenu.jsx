@@ -3,7 +3,7 @@ import {
   Circle, Zap, Rocket, Crown, X, Check, Clapperboard, ImageIcon, Video, Drama, Coins,
   BookOpen, Tv, HandCoins, Settings as SettingsIcon, Info, FileText, Lock, Wallet, LogOut,
   Home, Gem, GraduationCap, Globe, MessageCircle, HelpCircle, Sparkles, Mail, Smartphone, Megaphone, Map, Activity, Plug, BarChart3, Users,
-  PartyPopper, Copy, ArrowRight, ChevronRight, Loader2,
+  PartyPopper, Copy, ArrowRight, ChevronRight, Loader2, MoreHorizontal,
 } from 'lucide-react';
 
 // ✅ FIX (طلب العميل: "احذف اي ايموجي، خليك ذكي وشوف المواقع الكبيرة بتعمل اي واعمل زيهم"):
@@ -243,19 +243,23 @@ export function AffiliateModal({ user, onClose, onNavigateAffiliate }) {
   );
 }
 
-export default function UserMenu({ user, plan = 'free', credits = null, onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '', onShowHowTo, onShowAffiliate }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const meta = PLAN_META[plan] || PLAN_META.free;
-  const firstLetter = (user?.name || user?.email || 'U')[0].toUpperCase();
-
+// ✅ NEW (طلب العميل: منيو المستخدم بقت طويلة جدًا) — نافذة "More" بتحتوي على القائمة الكاملة
+// القديمة (كل روابط التنقل + مجموعات الإعدادات) زي ما كانت بالظبط، من غير ما نفقد أي عنصر —
+// بس دلوقتي مش ظاهرة كلها في المنيو الصغير على طول، وبس أهم 8 حاجات هي الظاهرة (شوف TOP_ITEMS)
+function MoreMenuModal({ onClose, onNavigate, onShowAffiliate, onShowHowTo, currentPage, model3Access }) {
+  const SITE_NAV = [
+    { key:'home', Icon: Home, label:'Home' }, { key:'stats', Icon: BarChart3, label:'My Activity' },
+    { key:'team', Icon: Users, label:'Team' },
+    { key:'pricing', Icon: Gem, label:'Pricing' },
+    { key:'templates', Icon: Clapperboard, label:'Templates' }, { key:'courses', Icon: GraduationCap, label:'Courses' },
+    { key:'changelog', Icon: Megaphone, label:"What's New" },
+    { key:'roadmap', Icon: Map, label:'Roadmap' },
+    { key:'status', Icon: Activity, label:'Status' },
+    { key:'api-docs', Icon: Plug, label:'API & MCP' },
+    { key:'community', Icon: Globe, label:'Community' }, { key:'about', Icon: Info, label:'About Us' },
+    { key:'support', Icon: MessageCircle, label:'Support' }, { key:'faq', Icon: HelpCircle, label:'FAQ' },
+    { key:'affiliate', Icon: HandCoins, label:'Affiliate' },
+  ];
   const groups = [
     {
       items: [
@@ -275,21 +279,97 @@ export default function UserMenu({ user, plan = 'free', credits = null, onLogout
     },
   ];
 
-  // ✅ NEW (طلب العميل: حذف الشريط العلوي بالكامل ونقل كل حاجة فيه لليوز منيو): القائمة دي
-  // كانت خاصة بالموبايل بس (الشريط العلوي كان بيغطيها على الديسكتوب) — دلوقتي هي المكان
-  // الوحيد لكل روابط التنقل الرئيسية، على كل أحجام الشاشات
-  const SITE_NAV = [
-    { key:'home', Icon: Home, label:'Home' }, { key:'stats', Icon: BarChart3, label:'My Activity' },
-    { key:'team', Icon: Users, label:'Team' },
+  const handleClick = (key) => {
+    onClose();
+    if (key === 'affiliate') onShowAffiliate?.();
+    else if (key === 'howto') onShowHowTo?.();
+    else onNavigate?.(key);
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:99999, padding:16 }} onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <style>{`@keyframes moreIn{from{opacity:0;transform:scale(0.95) translateY(14px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+      <div style={{ background:'#09090f', border:'1px solid rgba(255,255,255,0.08)', borderRadius:20, width:'100%', maxWidth:420, maxHeight:'85vh', overflowY:'auto', boxShadow:'0 32px 80px rgba(0,0,0,0.9)', animation:'moreIn 0.2s cubic-bezier(0.16,1,0.3,1)' }}>
+        <div style={{ padding:'20px 20px 8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <h2 style={{ fontSize:16, fontWeight:800, color:'#fff', margin:0 }}>More</h2>
+          <button onClick={onClose} style={{ width:30, height:30, borderRadius:8, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', color:'#6b7280', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><X size={15} /></button>
+        </div>
+        <div style={{ padding:'8px 10px 10px' }}>
+          <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
+          {SITE_NAV.map(item=>(
+            <button key={item.key} onClick={()=>handleClick(item.key)} className="um-item"
+              style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:item.key==='affiliate'?'#22c55e':currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key||item.key==='affiliate'?700:500,textAlign:'left'}}>
+              <item.Icon size={15} strokeWidth={2} />
+              <span>{item.label}</span>
+              {currentPage===item.key&&<div style={{marginLeft:'auto',width:5,height:5,borderRadius:'50%',background:'#a78bfa'}}/>}
+            </button>
+          ))}
+          <div style={{height:1,background:'rgba(255,255,255,0.05)',margin:'6px 0'}}/>
+          {groups.map((group, gi) => (
+            <div key={gi}>
+              {gi > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }} />}
+              {group.items.map(item => (
+                <button key={item.key}
+                  className={item.accent ? 'um-item um-item-accent' : 'um-item'}
+                  onClick={() => handleClick(item.key)}
+                  style={{
+                    width:'100%', display:'flex', alignItems:'center', gap:10,
+                    padding:'9px 10px', borderRadius:10, border:'none',
+                    background: item.key === 'affiliate' ? 'rgba(34,197,94,0.06)' : item.key === 'howto' ? 'rgba(6,182,212,0.06)' : 'transparent',
+                    color: item.accent ? item.accent : '#9ca3af',
+                    cursor:'pointer', fontSize:13, fontWeight: item.accent ? 600 : 500,
+                    textAlign:'left',
+                  }}>
+                  <item.Icon size={15} strokeWidth={2} style={{ flexShrink:0 }} />
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight: item.accent ? 600 : 500, color: item.accent ? item.accent : '#d1d5db', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.label}</div>
+                    {item.sub && <div style={{ fontSize:10, color: item.accent ? `${item.accent}99` : '#4b5563', marginTop:1 }}>{item.sub}</div>}
+                  </div>
+                  {item.badge && (
+                    <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                      background: item.key === 'howto' ? 'rgba(6,182,212,0.15)' : 'rgba(34,197,94,0.15)',
+                      color: item.key === 'howto' ? '#06b6d4' : '#22c55e',
+                      letterSpacing:'0.06em',
+                      border: item.key === 'howto' ? '1px solid rgba(6,182,212,0.2)' : '1px solid rgba(34,197,94,0.2)',
+                    }}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function UserMenu({ user, plan = 'free', credits = null, onLogout, onNavigate, model3Access = false, model4Access = false, model5Access = false, model6Access = false, avatar = null, currentPage = '', onShowHowTo, onShowAffiliate }) {
+  const [open, setOpen] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const meta = PLAN_META[plan] || PLAN_META.free;
+  const firstLetter = (user?.name || user?.email || 'U')[0].toUpperCase();
+
+  // ✅ NEW (طلب العميل: منيو المستخدم بقت طويلة جدًا): أهم 8 حاجات بس ظاهرة على طول —
+  // الباقي (القنوات، الأفيليت، How to Use، الفرق، إلخ) اتنقل لنافذة "More" (MoreMenuModal فوق)
+  const TOP_ITEMS = [
+    { key:'home', Icon: Home, label:'Home' },
     { key:'pricing', Icon: Gem, label:'Pricing' },
-    { key:'templates', Icon: Clapperboard, label:'Templates' }, { key:'courses', Icon: GraduationCap, label:'Courses' },
-    { key:'changelog', Icon: Megaphone, label:"What's New" },
-    { key:'roadmap', Icon: Map, label:'Roadmap' },
-    { key:'status', Icon: Activity, label:'Status' },
-    { key:'api-docs', Icon: Plug, label:'API & MCP' },
-    { key:'community', Icon: Globe, label:'Community' }, { key:'about', Icon: Info, label:'About Us' },
-    { key:'support', Icon: MessageCircle, label:'Support' }, { key:'faq', Icon: HelpCircle, label:'FAQ' },
-    { key:'affiliate', Icon: HandCoins, label:'Affiliate' },
+    { key:'terms', Icon: FileText, label:'Terms of Service' },
+    { key:'privacy', Icon: Lock, label:'Privacy Policy' },
+    { key:'about', Icon: Info, label:'About Us' },
+    { key:'support', Icon: MessageCircle, label:'Support' },
+    { key:'settings', Icon: SettingsIcon, label:'Settings' },
+    { key:'refund', Icon: Wallet, label:'Refund Policy' },
   ];
 
   const handleItemClick = (key) => {
@@ -391,58 +471,21 @@ export default function UserMenu({ user, plan = 'free', credits = null, onLogout
               </button>
             )}
 
-            {/* ✅ روابط التنقل الرئيسية — كانت قبل كده في شريط علوي منفصل على الديسكتوب، دلوقتي هنا بس */}
-            <div style={{ padding:'6px 6px 0' }}>
-              <div>
-                <div style={{ fontSize:9, fontWeight:700, color:'#374151', letterSpacing:'0.1em', textTransform:'uppercase', padding:'4px 10px 6px' }}>NAVIGATE</div>
-                {SITE_NAV.map(item=>(
-                  <button key={item.key} onClick={()=>{setOpen(false); if(item.key==='affiliate'){onShowAffiliate?.();}else{onNavigate?.(item.key);}}} className="um-item"
-                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:item.key==='affiliate'?'#22c55e':currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key||item.key==='affiliate'?700:500,textAlign:'left'}}>
-                    <item.Icon size={15} strokeWidth={2} />
-                    <span>{item.label}</span>
-                    {currentPage===item.key&&<div style={{marginLeft:'auto',width:5,height:5,borderRadius:'50%',background:'#a78bfa'}}/>}
-                  </button>
-                ))}
-                <div style={{height:1,background:'rgba(255,255,255,0.05)',margin:'4px 0'}}/>
-              </div>
-            </div>
-
-            {/* Groups */}
+            {/* ✅ أهم 8 حاجات بس ظاهرة على طول — الباقي في نافذة "More" (طلب العميل: المنيو كانت طويلة) */}
             <div style={{ padding:'6px' }}>
-              {groups.map((group, gi) => (
-                <div key={gi}>
-                  {gi > 0 && <div style={{ height:1, background:'rgba(255,255,255,0.05)', margin:'4px 0' }} />}
-                  {group.items.map(item => (
-                    <button key={item.key}
-                      className={item.accent ? 'um-item um-item-accent' : 'um-item'}
-                      onClick={() => handleItemClick(item.key)}
-                      style={{
-                        width:'100%', display:'flex', alignItems:'center', gap:10,
-                        padding:'9px 10px', borderRadius:10, border:'none',
-                        background: item.key === 'affiliate' ? 'rgba(34,197,94,0.06)' : item.key === 'howto' ? 'rgba(6,182,212,0.06)' : 'transparent',
-                        color: item.accent ? item.accent : '#9ca3af',
-                        cursor:'pointer', fontSize:13, fontWeight: item.accent ? 600 : 500,
-                        textAlign:'left',
-                      }}>
-                      <item.Icon size={15} strokeWidth={2} style={{ flexShrink:0 }} />
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight: item.accent ? 600 : 500, color: item.accent ? item.accent : '#d1d5db', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.label}</div>
-                        {item.sub && <div style={{ fontSize:10, color: item.accent ? `${item.accent}99` : '#4b5563', marginTop:1 }}>{item.sub}</div>}
-                      </div>
-                      {item.badge && (
-                        <span style={{ fontSize:9, fontWeight:700, padding:'2px 7px', borderRadius:4,
-                          background: item.key === 'howto' ? 'rgba(6,182,212,0.15)' : 'rgba(34,197,94,0.15)',
-                          color: item.key === 'howto' ? '#06b6d4' : '#22c55e',
-                          letterSpacing:'0.06em',
-                          border: item.key === 'howto' ? '1px solid rgba(6,182,212,0.2)' : '1px solid rgba(34,197,94,0.2)',
-                        }}>
-                          {item.badge}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
+              {TOP_ITEMS.map(item=>(
+                <button key={item.key} onClick={()=>handleItemClick(item.key)} className="um-item"
+                  style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:currentPage===item.key?'rgba(124,106,247,0.1)':'transparent',color:currentPage===item.key?'#a78bfa':'#d1d5db',cursor:'pointer',fontSize:13,fontWeight:currentPage===item.key?700:500,textAlign:'left'}}>
+                  <item.Icon size={15} strokeWidth={2} />
+                  <span>{item.label}</span>
+                  {currentPage===item.key&&<div style={{marginLeft:'auto',width:5,height:5,borderRadius:'50%',background:'#a78bfa'}}/>}
+                </button>
               ))}
+              <button onClick={() => { setOpen(false); setShowMore(true); }} className="um-item"
+                style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,border:'none',background:'transparent',color:'#9ca3af',cursor:'pointer',fontSize:13,fontWeight:600,textAlign:'left'}}>
+                <MoreHorizontal size={15} strokeWidth={2} />
+                <span>More</span>
+              </button>
             </div>
 
             {/* Sign out */}
@@ -459,6 +502,16 @@ export default function UserMenu({ user, plan = 'free', credits = null, onLogout
         )}
       </div>
 
+      {showMore && (
+        <MoreMenuModal
+          onClose={() => setShowMore(false)}
+          onNavigate={onNavigate}
+          onShowAffiliate={onShowAffiliate}
+          onShowHowTo={onShowHowTo}
+          currentPage={currentPage}
+          model3Access={model3Access}
+        />
+      )}
     </>
   );
 }
