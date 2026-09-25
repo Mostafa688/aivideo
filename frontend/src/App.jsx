@@ -36,6 +36,7 @@ import StatsPage from './pages/StatsPage.jsx';
 import TeamPage from './pages/TeamPage.jsx';
 import TeamInvitePage from './pages/TeamInvitePage.jsx';
 import ChannelsPage from './pages/ChannelsPage.jsx';
+import CharactersPage from './pages/CharactersPage.jsx';
 import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
 
 const LOGO = '/logo.png';
@@ -534,6 +535,7 @@ export default function App() {
       case 'stats':      setPage('stats'); break;
       case 'team':       setPage('team'); break;
       case 'channels':   setPage('channels'); break;
+      case 'characters': setPage('characters'); break;
       case 'whiteboard': setPage('whiteboard'); break;
       case 'home':       setPage('dashboard'); break;
       default:           setPage('input'); break;
@@ -786,6 +788,7 @@ export default function App() {
         {page === 'stats' && <StatsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'team' && <TeamPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'channels' && <ChannelsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
+        {page === 'characters' && <CharactersPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('dashboard')} />}
         {page === 'community' && <CommunityPage onBack={() => setPage('dashboard')} user={user} onNavigate={handleNavigate} />}
         {page === 'faq' && <FAQPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}

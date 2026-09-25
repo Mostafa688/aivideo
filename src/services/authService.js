@@ -272,6 +272,18 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  // ── مكتبة الشخصيات — صور مرجعية للعميل يرفعها عشان تُستخدم كمرجع تناسق (نفس الشخصية في
+  // كل مشاهد الفيديو) في محتوى القصص/المغامرات (زي "لو عشت في زمن سيدنا نوح") — عميل ممكن
+  // يكون عنده أكتر من شخصية محفوظة، مش زي الفويس كلون (واحدة بس) ─────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS character_references (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      label TEXT,
+      image_url TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
   // ── إدارة قناة العميل يوميًا: مفتاح VidIQ الشخصي بتاعه + تفضيلاته، وسجل كل يوم
   // اقترحنا فيه فكرة وانتظرنا موافقته قبل ما نعمل الفيديو ────────────────────────
   await pool.query(`
@@ -1724,6 +1736,26 @@ export async function listClonedVoicesForAdmin() {
      FROM cloned_voices cv JOIN users u ON u.id = cv.user_id ORDER BY cv.id DESC LIMIT 200`
   );
   return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// مكتبة الشخصيات — صور مرجعية متعددة لكل عميل (مش واحدة زي الفويس كلون)
+// ═══════════════════════════════════════════════════════════════════════════
+export async function saveCharacterReference(userId, { label, imageUrl }) {
+  const { rows } = await pool.query(
+    `INSERT INTO character_references (user_id, label, image_url) VALUES ($1, $2, $3) RETURNING id, label, image_url, created_at`,
+    [userId, label || null, imageUrl]
+  );
+  return rows[0];
+}
+
+export async function listCharacterReferencesForUser(userId) {
+  const { rows } = await pool.query('SELECT id, label, image_url, created_at FROM character_references WHERE user_id = $1 ORDER BY id DESC', [userId]);
+  return rows;
+}
+
+export async function deleteCharacterReference(id, userId) {
+  await pool.query('DELETE FROM character_references WHERE id = $1 AND user_id = $2', [id, userId]);
 }
 
 export async function listRecentDailyRunsForAdmin(limit = 100) {
