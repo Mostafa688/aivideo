@@ -6,7 +6,7 @@ import {
   listDailyVideoRunsForChannel, getDailyVideoRunById, linkYoutubeVideoToRun,
 } from './authService.js';
 import { verifyVidiqKey, getVideoPerformance } from './vidiqClientService.js';
-import { triggerApprovedGeneration, sendDailyResultEmail } from './channelSchedulerService.js';
+import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically } from './channelSchedulerService.js';
 import { getYoutubeConnectUrl, handleYoutubeOAuthCallback, disconnectYoutubeForChannel, uploadVideoToYoutube } from './youtubeUploadService.js';
 
 const router = express.Router();
@@ -21,7 +21,7 @@ function extractYoutubeVideoId(input) {
 
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { label, vidiqApiKey, formatPref, usesVoice, modelPref } = req.body;
+    const { label, vidiqApiKey, formatPref, usesVoice, modelPref, setupMode } = req.body;
     if (!vidiqApiKey?.trim()) return res.status(400).json({ error: 'vidiqApiKey is required' });
     // ✅ نتأكد إن المفتاح شغال فعلاً قبل ما نحفظه — نطلع نجيب أول قناة مرتبطة بيه
     const verified = await verifyVidiqKey(vidiqApiKey.trim()).catch(e => { throw new Error('Could not verify VidIQ key: ' + e.message); });
@@ -30,8 +30,23 @@ router.post('/', authMiddleware, async (req, res) => {
     const channel = await createManagedChannel(req.user.userId, {
       label: label || null, channelId, vidiqApiKey: vidiqApiKey.trim(),
       formatPref: formatPref || 'auto', usesVoice: !!usesVoice, modelPref: modelPref || 4,
+      setupMode: setupMode === 'automatic' ? 'automatic' : 'manual',
     });
     res.json({ channel });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ✅ NEW: تحليل تلقائي للقناة (وضع "أوتوماتيك") — بيحدد نوع المحتوى/الستايل/هل فيه راوي/طول
+// الفيديو المستهدف من بيانات القناة الحقيقية على يوتيوب+VidIQ، ويحفظهم على القناة عشان
+// تتستخدم في كل تشغيلة يومية جاية (بدل ما نفترض قيم ثابتة لكل القنوات)
+router.post('/:id/analyze', authMiddleware, async (req, res) => {
+  try {
+    const channel = await getManagedChannelById(req.params.id);
+    if (!channel || channel.user_id !== req.user.userId) return res.status(404).json({ error: 'Channel not found' });
+    const result = await analyzeChannelAutomatically(channel);
+    res.json({ result });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

@@ -326,6 +326,12 @@ async function initDB() {
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_channel_id TEXT;
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_channel_title TEXT;
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_privacy_status TEXT DEFAULT 'public';
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS setup_mode TEXT DEFAULT 'manual';
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS content_style TEXT DEFAULT NULL;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS video_style TEXT DEFAULT NULL;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS target_duration_sec INTEGER DEFAULT NULL;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS target_scene_count INTEGER DEFAULT NULL;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS auto_analyzed_at TIMESTAMPTZ DEFAULT NULL;
   `).catch(() => {});
   // ── مصنع فيديو الصوت الأدمن — رفع فويس أوفر جاهز، والموقع يفرّغه (Whisper) ويستخرج
   // العناصر (LLM) ويجيب/يولّد صورهم ويعمل الفيديو النهائي. Pipeline بمراحل، كل مرحلة
@@ -1537,11 +1543,11 @@ export async function incrementModel7Video(userId) {
 // ═══════════════════════════════════════════════════════════════════════════
 // إدارة قنوات العملاء — VidIQ (مفتاح شخصي لكل عميل) + دورة "اقتراح يومي → موافقة/رفض"
 // ═══════════════════════════════════════════════════════════════════════════
-export async function createManagedChannel(userId, { label, channelId, vidiqApiKey, platform = 'youtube', formatPref = 'auto', usesVoice = false, modelPref = 4 }) {
+export async function createManagedChannel(userId, { label, channelId, vidiqApiKey, platform = 'youtube', formatPref = 'auto', usesVoice = false, modelPref = 4, setupMode = 'manual' }) {
   const { rows } = await pool.query(
-    `INSERT INTO managed_channels (user_id, platform, label, channel_id, vidiq_api_key, format_pref, uses_voice, model_pref)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, label, channel_id, format_pref, uses_voice, model_pref, status, created_at`,
-    [userId, platform, label || null, channelId || null, vidiqApiKey, formatPref, usesVoice ? 1 : 0, modelPref]
+    `INSERT INTO managed_channels (user_id, platform, label, channel_id, vidiq_api_key, format_pref, uses_voice, model_pref, setup_mode)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, label, channel_id, format_pref, uses_voice, model_pref, status, setup_mode, created_at`,
+    [userId, platform, label || null, channelId || null, vidiqApiKey, formatPref, usesVoice ? 1 : 0, modelPref, setupMode === 'automatic' ? 'automatic' : 'manual']
   );
   return rows[0];
 }
@@ -1549,11 +1555,23 @@ export async function createManagedChannel(userId, { label, channelId, vidiqApiK
 export async function listManagedChannelsForUser(userId) {
   const { rows } = await pool.query(
     `SELECT id, platform, label, channel_id, format_pref, uses_voice, voice_id, model_pref, status, last_run_at, created_at,
-            youtube_channel_title, youtube_privacy_status
+            youtube_channel_title, youtube_privacy_status, setup_mode, content_style, video_style,
+            target_duration_sec, target_scene_count, auto_analyzed_at
      FROM managed_channels WHERE user_id = $1 ORDER BY id DESC`,
     [userId]
   );
   return rows;
+}
+
+// ✅ NEW: نتيجة التحليل التلقائي للقناة (وضع "أوتوماتيك") — بتتخزن مرة واحدة وتفضل تتستخدم
+// في كل تشغيلة يومية جاية بدل ما نعيد تخمين نفس القرارات (نوع المحتوى/الستايل/الطول) كل يوم
+export async function saveChannelAnalysis(channelId, { contentStyle, videoStyle, usesVoice, targetDurationSec, targetSceneCount }) {
+  const { rows } = await pool.query(
+    `UPDATE managed_channels SET content_style = $1, video_style = $2, uses_voice = $3,
+     target_duration_sec = $4, target_scene_count = $5, auto_analyzed_at = NOW() WHERE id = $6 RETURNING *`,
+    [contentStyle || null, videoStyle || null, usesVoice ? 1 : 0, targetDurationSec || null, targetSceneCount || null, channelId]
+  );
+  return rows[0] || null;
 }
 
 // ✅ NEW: رفع تلقائي على يوتيوب — بعد ما العميل يوافق على صلاحيات youtube.readonly/
@@ -1586,7 +1604,7 @@ export async function getManagedChannelById(id) {
 }
 
 export async function updateManagedChannel(id, userId, patch) {
-  const allowed = ['label', 'channel_id', 'format_pref', 'uses_voice', 'voice_id', 'model_pref', 'status'];
+  const allowed = ['label', 'channel_id', 'format_pref', 'uses_voice', 'voice_id', 'model_pref', 'status', 'setup_mode', 'content_style', 'video_style'];
   const sets = [], params = [];
   let idx = 1;
   for (const key of allowed) {
