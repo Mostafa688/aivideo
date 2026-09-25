@@ -230,9 +230,50 @@ export async function burnCaptions(videoUrl, words, { rightToLeft = false } = {}
 // زي Jamendo، فجودة/كثافة "موسيقى خلفية" حقيقية فيها أقل — بنفلتر على مدة أطول (30-400 ثانية)
 // وكلمة "music" في التاج عشان نستبعد المؤثرات القصيرة قدر الإمكان، بس النتيجة مش مضمونة نفس
 // جودة موسيقى Jamendo المُلحّنة بالكامل
+// ✅ NEW (طلب العميل: "لازم يكون فيه فن اختيار موسيقى مش أي موسيقى على أي فيديو"): اختيار
+// عشوائي بحت كان بيحط موسيقى هادية على فيديو أكشن أو العكس. بنوصف كل تراك بكلمات مود/جو عام
+// (مبنية على اسم التراك/الفنان — مش سماع فعلي للملف، ده أفضل تقدير متاح من غير أداة تحليل صوت)
+// وبنطابقها مع الـmood النصي اللي بيوصف بيه محتوى الفيديو (حر — مش enum ثابت، زي ما بيتبعت
+// فعليًا لـFreesound تحت). لو مفيش تطابق أو مفيش mood أصلاً، بيرجع للاختيار العشوائي القديم
+// كـfallback آمن — أهم حاجة الموسيقى تتحط، مش نرفض توليد الفيديو لو مفيش تراك مثالي
+const YOUTUBE_MUSIC_MOOD_TAGS = {
+  'American Frontiers - Aaron Kenny.mp3': ['adventure', 'exploration', 'hopeful', 'journey', 'travel', 'discovery'],
+  'Defying Gravity - Density & Time.mp3': ['epic', 'uplifting', 'triumphant', 'motivational', 'inspiring', 'positive'],
+  'Duty Calls - Rod Kim.mp3': ['dramatic', 'serious', 'military', 'tense', 'determined', 'action'],
+  'Final Soliloquy - Asher Fulero.mp3': ['emotional', 'somber', 'reflective', 'sad', 'piano', 'melancholy', 'calm'],
+  'How To Train Your Dragnet - Ezra Lipp.mp3': ['playful', 'quirky', 'comedic', 'whimsical', 'lighthearted', 'funny'],
+  'Images of Tomorrow - Unicorn Heads.mp3': ['futuristic', 'hopeful', 'tech', 'inspiring', 'modern'],
+  'Lullabye No.108 - The Mini Vandals.mp3': ['calm', 'gentle', 'soft', 'peaceful', 'relaxing', 'quiet'],
+  'Monument - TrackTribe.mp3': ['epic', 'grand', 'historical', 'cinematic', 'majestic', 'royal'],
+  'Oceans, Rivers, Canyons - ELPHNT.mp3': ['nature', 'documentary', 'calm', 'exploration', 'ambient'],
+  'On The Flip - The Grey Room _ Density & Time.mp3': ['tense', 'mysterious', 'suspenseful', 'dark', 'thriller'],
+  'Standoff - Density & Time.mp3': ['tense', 'dramatic', 'conflict', 'action', 'suspense'],
+  'The Dance Before - Nathan Moore.mp3': ['light', 'whimsical', 'fun', 'quirky', 'playful', 'cheerful'],
+  "We'll Meet Again - Jeremy Blake.mp3": ['nostalgic', 'emotional', 'hopeful', 'warm', 'reflective'],
+  'Final Boss - Myuu.mp3': ['intense', 'dark', 'dramatic', 'battle', 'tense', 'epic', 'horror', 'scary'],
+  'Chase The Sun - Bel Tempo.mp3': ['upbeat', 'adventure', 'energetic', 'uplifting', 'journey', 'positive'],
+  'Civic - The Grey Room & Density & Time.mp3': ['tense', 'serious', 'corporate', 'dramatic', 'modern'],
+  'Claim of Thrones - RKVC.mp3': ['epic', 'grand', 'historical', 'royal', 'dramatic', 'battle', 'medieval'],
+};
+
+function pickYoutubeMusicFile(files, mood) {
+  if (!mood?.trim()) return files[Math.floor(Math.random() * files.length)];
+  const moodWords = mood.toLowerCase().split(/\W+/).filter(Boolean);
+  let best = [], bestScore = 0;
+  for (const f of files) {
+    const tags = YOUTUBE_MUSIC_MOOD_TAGS[f] || [];
+    const score = moodWords.reduce((acc, w) => acc + (tags.some(t => t.includes(w) || w.includes(t)) ? 1 : 0), 0);
+    if (score > bestScore) { bestScore = score; best = [f]; }
+    else if (score === bestScore && score > 0) best.push(f);
+  }
+  const pool = bestScore > 0 ? best : files; // مفيش تطابق — رجوع آمن للعشوائي بدل ما نفشل
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 /**
- * "ستايل يوتيوب" (musicStyle === 'youtube'): بيختار ملف عشوائي من assets/music/
- * (مكتبة يوتيوب حقيقية العميل حاططها بنفسه) — من غير أي API خارجي.
+ * "ستايل يوتيوب" (musicStyle === 'youtube'): بيختار ملف من assets/music/ (مكتبة يوتيوب
+ * حقيقية العميل حاططها بنفسه) — من غير أي API خارجي. لو فيه mood نصي، بيدوّر على أنسب
+ * تراك بناءً على تاجات المود (YOUTUBE_MUSIC_MOOD_TAGS فوق) بدل اختيار عشوائي بحت.
  * غير كده: بيجيب مقطوعة CC0 حقيقية من Freesound (يحتاج FREESOUND_API_KEY في env —
  * مفتاح فوري ومجاني من freesound.org/apiv2/apply).
  */
@@ -241,7 +282,7 @@ export async function getBackgroundMusicBuffer(musicStyle = 'general', mood = nu
     if (!fs.existsSync(LOCAL_MUSIC_DIR)) throw new Error('local YouTube music library not found');
     const files = fs.readdirSync(LOCAL_MUSIC_DIR).filter(f => f.toLowerCase().endsWith('.mp3'));
     if (!files.length) throw new Error('local YouTube music library is empty');
-    const pick = files[Math.floor(Math.random() * files.length)];
+    const pick = pickYoutubeMusicFile(files, mood);
     return fs.readFileSync(path.join(LOCAL_MUSIC_DIR, pick));
   }
   if (!FREESOUND_API_KEY) throw new Error('FREESOUND_API_KEY not set');

@@ -549,11 +549,13 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
       }
     }
 
-    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا (نفس ميزة التميّز)، بنسيبها تفشل بهدوء لو
-    // فشلت (مصدرها الخارجي وقتي مثلًا) بدل ما توقف تسليم الفيديو نفسه
+    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا (نفس ميزة التميّز). بنستخدم المكتبة المحلية
+    // (assets/music/) بدل Freesound هنا تحديدًا — أهون، مضمونة الترخيص بالكامل، وبقى فيها
+    // اختيار "ذكي" حسب مود القصة (epic/dramatic/adventure) بدل عشوائي بحت. بنسيبها تفشل
+    // بهدوء لو فشلت بدل ما توقف تسليم الفيديو نفسه
     if (usesVoice) {
       try {
-        const musicBuffer = await getBackgroundMusicBuffer('general');
+        const musicBuffer = await getBackgroundMusicBuffer('youtube', 'epic dramatic historical adventure');
         videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'char_adv' });
       } catch (musicErr) {
         console.warn(`[ChannelScheduler] Background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
@@ -695,10 +697,10 @@ async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers)
       }
     }
 
-    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا ─────────────────────────────────────
+    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا، من المكتبة المحلية بمود يناسب محتوى تعليمي/سكتش
     if (usesVoice) {
       try {
-        const musicBuffer = await getBackgroundMusicBuffer('general');
+        const musicBuffer = await getBackgroundMusicBuffer('youtube', 'calm playful lighthearted educational');
         videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'whiteboard' });
       } catch (musicErr) {
         console.warn(`[ChannelScheduler] Whiteboard background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
