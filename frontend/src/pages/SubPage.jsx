@@ -89,7 +89,7 @@ const TERMS_TOC = [
 const PRIVACY_TOC = [
   'Introduction', 'Information We Collect', 'How We Use Your Information', 'Ad-Free Platform',
   'Gumroad (International Payments)', 'Cookies & Tracking', 'Third-Party Services',
-  'Data Storage & Security', 'Your Rights', 'Contact Us',
+  'YouTube API Services & Google User Data', 'Data Storage & Security', 'Your Rights', 'Contact Us',
 ];
 
 function TermsContent() {
@@ -124,9 +124,10 @@ function PrivacyContent() {
     <Section title="5. Gumroad (International Payments)">For international users, payments are processed by Gumroad. We receive only transaction confirmation — no card details are shared with us.</Section>
     <Section title="6. Cookies & Tracking">We use essential cookies for login session management and analytics cookies to understand usage. You can control cookie preferences through your browser settings.</Section>
     <Section title="7. Third-Party Services">Erivion integrates with: Google OAuth, Groq AI, Pexels, Stability AI, Replicate (Seedance, FLUX), Google Gemini, ElevenLabs (voice generation), Tavily (live web search used by the AI Agent to verify facts for real historical/current-event videos), and Gumroad. Each has their own privacy policies.</Section>
-    <Section title="8. Data Storage & Security">Your data is stored on secure servers with industry-standard encryption and HTTPS connections. We do not sell, rent, or trade your personal information.</Section>
-    <Section title="9. Your Rights">You have the right to access, correct, or delete your personal data. Contact us at digidelight33@gmail.com.</Section>
-    <Section title="10. Contact Us">digidelight33@gmail.com or through the Support page on the platform.</Section>
+    <Section title="8. YouTube API Services & Google User Data">If you choose to connect a YouTube channel (in the Channels page), Erivion uses the YouTube Data API and requests two Google OAuth scopes: (a) read-only access to your channel's basic info (channel name, ID, and thumbnail) so we can confirm which channel is connected and show it in your dashboard, and (b) upload access, used only to publish the videos Erivion generates for you to that channel — only when you have explicitly enabled auto-upload for that channel, and only for that channel. We never read, modify, or delete your existing videos, comments, playlists, or subscriber data, and we never post, comment, or take any other action on your behalf beyond uploading the videos you asked Erivion to create. Your Google OAuth tokens are stored encrypted and are used solely to perform these actions; you can revoke access at any time from the Channels page ("Disconnect") or directly from your Google Account's third-party access settings, which immediately deletes the stored tokens from our servers. Erivion's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Google API Services User Data Policy</a>, including the Limited Use requirements.</Section>
+    <Section title="9. Data Storage & Security">Your data is stored on secure servers with industry-standard encryption and HTTPS connections. We do not sell, rent, or trade your personal information.</Section>
+    <Section title="10. Your Rights">You have the right to access, correct, or delete your personal data. Contact us at digidelight33@gmail.com.</Section>
+    <Section title="11. Contact Us">digidelight33@gmail.com or through the Support page on the platform.</Section>
   </>;
 }
 
