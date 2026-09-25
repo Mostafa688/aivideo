@@ -325,6 +325,10 @@ async function initDB() {
     );
   `);
   await pool.query('ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS youtube_video_id TEXT').catch(() => {});
+  // ✅ NEW: التكلفة الحقيقية بالكريديت لتشغيلة اتعملت "دلوقتي" من الشات (مش من الإيميل
+  // اليومي) — بتتحسب بفرق الرصيد قبل/بعد التوليد (راجع triggerChannelRunNow في
+  // channelSchedulerService.js) عشان الايجنت يقدر يقول للعميل اتخصم كام بالظبط لما يخلص
+  await pool.query('ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS credits_charged INTEGER DEFAULT NULL').catch(() => {});
   // ✅ FIX: managed_channels كان موجود فعلاً في الإنتاج قبل ما الأعمدة دي تتضاف لجملة
   // CREATE TABLE IF NOT EXISTS فوق — وده معناه إن IF NOT EXISTS اعتبر الجدول موجود
   // وماضافش الأعمدة دي خالص، فأي SELECT بيطلبها (زي listManagedChannelsForUser) كان
@@ -1690,6 +1694,7 @@ export async function updateDailyVideoRunStatus(id, status, extra = {}) {
   let idx = 3;
   if (extra.videoUrl !== undefined) { sets.push(`video_url = $${idx++}`); params.push(extra.videoUrl); }
   if (extra.error !== undefined) { sets.push(`error = $${idx++}`); params.push(extra.error); }
+  if (extra.creditsCharged !== undefined) { sets.push(`credits_charged = $${idx++}`); params.push(extra.creditsCharged); }
   if (extra.decided) sets.push('decided_at = NOW()');
   await pool.query(`UPDATE daily_video_runs SET ${sets.join(', ')} WHERE id = $1`, params);
 }

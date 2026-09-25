@@ -6,7 +6,7 @@ import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
-import { getFreshChannelIdea } from './channelSchedulerService.js';
+import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
@@ -670,7 +670,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
         } else {
           const fullChannel = await getManagedChannelById(channelId);
           const { idea, format } = await getFreshChannelIdea(fullChannel);
-          channelNote = `Fresh idea sourced from VidIQ for channel "${channel.label || channel.channel_id}": title="${idea.title}", brief="${idea.brief || ''}", videoLanguage="${idea.videoLanguage || 'en'}", format="${format}" (${format === 'short' ? 'short, punchy, ~30s' : 'long-form, several minutes'}), voice="${channel.uses_voice ? 'yes — include narration' : 'no — silent, no narration'}". Present this idea warmly to the user, then confirm and generate through the normal GENERATE_IMAGE/GENERATE_VIDEO pipeline using this idea (translated/refined into English per the rule above), matching the format/voice above — do not ask the user for details you already have here.`;
+          const estimatedCost = estimateChannelRunCost(fullChannel, format);
+          const costNote = estimatedCost != null
+            ? `estimated cost: ~${estimatedCost} credits (final cost may vary slightly, charged from their real balance)`
+            : `cost: depends on this channel's content style — you'll be told the exact amount once it's done, charged from their real balance like any other video`;
+          channelNote = `Fresh idea sourced from VidIQ for channel "${channel.label || channel.channel_id}" (id ${channelId}): title="${idea.title}", brief="${idea.brief || ''}", videoLanguage="${idea.videoLanguage || 'en'}", format="${format}" (${format === 'short' ? 'short, punchy, ~30s' : 'long-form, several minutes'}), voice="${channel.uses_voice ? 'yes — include narration' : 'no — silent, no narration'}", ${costNote}. Present this idea warmly to the user (title, brief, and the cost note above), then per rule 13b step 2, wait for their explicit go-ahead before ending a reply with ###CHANNEL_GENERATE###{"channelId":${channelId}} — do not use the generic image/video pipeline for this, and do not ask the user for details you already have here.`;
         }
         rawReply = await agentChat({
           message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + channelNote, userPlan, isAdminUser,
@@ -1073,11 +1077,19 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
     ({ text: reply, payload: whiteboardVideoPayload } = extractTrailingMarker(reply, '###WHITEBOARD_VIDEO###'));
+    ({ text: reply, payload: channelGeneratePayload } = extractTrailingMarker(reply, '###CHANNEL_GENERATE###'));
+    // ✅ خطوة موافقة حقيقية بتكلفة كريديت حقيقية زي أي فيديو تاني — نفس حاجز الخطة المجانية
+    // المستخدم فوق لـREADY/GENERATE_IMAGE/... بالظبط، بس منفصل لأنه ماركر ثانوي (بعد الحاجز
+    // الأساسي فوق) مش من عيلة READY
+    if (channelGeneratePayload && userPlan === 'free') {
+      channelGeneratePayload = null;
+      reply += (reply ? '\n\n' : '') + 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ فيديو القناة قبل ما تشترك.';
+    }
     // ✅ NEW (طلب العميل: أداة تحليل فيديو مستقلة — "مين بيتكلم إمتى" — متاحة لأي فيديو العميل
     // يرفعه، وكمان خطوة تمهيدية قبل مونتاج فيديو أطول من 10 ثواني): ماركر بسيط (URL واحد بس)
     // فبياخد نفس مسار الماركرز الثانوية الصغيرة زي WHITEBOARD_VIDEO، مش المسار المعقد بتاع
@@ -1112,6 +1124,31 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
 
+    // ✅ NEW (طلب العميل: "اقدر اقول للايجنت اعمل فيديو وانشره على القناة دلوقتي"): يشغّل
+    // نفس خط الأتوبايلوت الحقيقي (نفس توجيه نوع المحتوى + تزامن السرد + الرفع التلقائي
+    // ليوتيوب) في الخلفية — راجع rule 13b في agentService.js وtriggerChannelRunNow في
+    // channelSchedulerService.js. الرد الفوري هنا بس بيأكد إنه بدأ؛ النتيجة الحقيقية (لينك
+    // الفيديو + التكلفة الفعلية) بتوصل الشات لاحقًا عن طريق كارت بيعمل poll (زي WhiteboardCard)
+    let channelGenerate = null;
+    if (channelGeneratePayload) {
+      const channelId = Number(channelGeneratePayload.channelId);
+      const channel = userChannels.find(c => c.id === channelId);
+      if (!channel) {
+        reply += (reply ? '\n\n' : '') + 'معلش، القناة دي مش من قنواتك المتربطة — جرب تاني.';
+      } else if (channel.status !== 'active') {
+        reply += (reply ? '\n\n' : '') + 'القناة دي متوقفة مؤقتًا (Paused) — شغّلها الأول من صفحة "قنواتي" عشان أقدر أعمل فيديو ليها.';
+      } else {
+        try {
+          const fullChannel = await getManagedChannelById(channelId);
+          const { runId, idea, format, estimatedCost } = await triggerChannelRunNow(fullChannel);
+          channelGenerate = { runId, channelId, ideaTitle: idea.title, format, estimatedCost };
+        } catch (e) {
+          console.warn('[Agent] CHANNEL_GENERATE marker failed:', e.message);
+          reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ فيديو القناة — جرب تاني بعد شوية.';
+        }
+      }
+    }
+
     if (setRegionPayload?.region) {
       setUserRegion(userId, setRegionPayload.region).catch(e => console.warn('[Agent] set_region failed:', e.message));
     }
@@ -1129,7 +1166,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ NEW (طلب العميل: أزرار سريعة "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة): لو الرد ده
     // مجرد سؤال تأكيد قبل التوليد (مفيش أي ماركر نفّذ فعليًا في الرد ده)، بنعلّم الفرونت إند
     // بعلم صريح عشان يعرض زرار "ابدأ"/"لأ" (أو "Yes"/"No") تحت الرسالة مباشرة
-    const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !analyzeVideoPayload &&
+    const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !analyzeVideoPayload && !channelGeneratePayload &&
       looksLikeConfirmationQuestion(reply);
 
     res.json({
@@ -1137,7 +1174,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       analyzeVideo: analyzeVideoPayload,
       awaitingConfirmation,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
-      subscribe: subscribePayload, showcaseVideos, whiteboardVideo,
+      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate,
       // ✅ NEW: الروابط الدائمة (R2) لأي صورة العميل رفعها في الرسالة دي — الفرونت إند بيحفظها
       // مع رسالة العميل نفسها عشان تفضل قابلة للاستشهاد بيها في أي رسالة جاية (راجع
       // uploadUserPhotoToR2 فوق)

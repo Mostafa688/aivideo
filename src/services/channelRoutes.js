@@ -177,6 +177,22 @@ router.post('/runs/:runId/link-youtube', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ NEW: بيتابع حالة تشغيلة "دلوقتي" اللي الايجنت بدأها من الشات (راجع triggerChannelRunNow
+// في channelSchedulerService.js) — نفس الـrow المستخدم في التشغيل اليومي العادي، بس هنا
+// الفرونت إند (كارت في الشات، زي WhiteboardCard) بيعمله poll لحد ما يخلص أو يفشل
+router.get('/runs/:runId/status', authMiddleware, async (req, res) => {
+  try {
+    const run = await getDailyVideoRunById(req.params.runId, req.user.userId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    res.json({ run: {
+      id: run.id, status: run.status, ideaTitle: run.idea_title, videoUrl: run.video_url,
+      youtubeVideoId: run.youtube_video_id, error: run.error, creditsCharged: run.credits_charged,
+    } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/runs/:runId/performance', authMiddleware, async (req, res) => {
   try {
     const run = await getDailyVideoRunById(req.params.runId, req.user.userId);
