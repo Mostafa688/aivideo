@@ -573,8 +573,12 @@ export async function verifyApiKey(raw) {
 // ✅ بيتنادى من mcpRoutes.js عشان يبني JWT قصير العمر (10 دقايق) للمستخدم اللي معاه API key
 // صحيح، عشان يقدر يستخدم نفس الـ REST endpoints الداخلية الموجودة أصلاً (authMiddleware
 // بيتعامل مع الـ JWT ده زي أي JWT عادي) — من غير ما نكرر منطق الكريديت/الفحص من الصفر
-export function mintInternalToken(userId, email) {
-  return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '10m' });
+// ✅ NEW: claim إضافي اختياري (channelRun) — مبني في التوكن نفسه فمينفعش أي عميل يزوّره
+// (JWT_SECRET سيرفر فقط)، بيستخدمه channelSchedulerService.js عشان يعلّم إن الطلب ده جاي
+// من الأتوبايلوت اليومي للقنوات، فبعض الروايتس (زي /api/videos/merge) تقدر تعفي رسوم إضافية
+// معينة (تجميع/فويس أوفر/موسيقى) للعملاء الرابطين قنواتهم بالموقع
+export function mintInternalToken(userId, email, extraClaims = {}) {
+  return jwt.sign({ userId, email, ...extraClaims }, JWT_SECRET, { expiresIn: '10m' });
 }
 
 // ══════════════════════════════════════════════════════════════════════════

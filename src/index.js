@@ -3258,10 +3258,15 @@ app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) =>
       return res.status(500).json({ error: 'narration_failed', message: `Narration generation failed: ${e.message}` });
     }
   }
-  let mergeCreditCost = MERGE_CREDIT_PER_VIDEO * videoUrls.length;
-  if (narration) mergeCreditCost += getPerSecondCreditCost('gemini_flash_tts', Math.ceil(narration.durationSec));
+  // ✅ NEW (طلب العميل — ميزة تميّز للرابطين قنواتهم بالموقع): تجميع المشاهد + الفويس أوفر +
+  // الموسيقى مجانيين تمامًا لطلبات الأتوبايلوت اليومي (channelRun claim من mintInternalToken،
+  // مبني في التوكن نفسه فمينفعش أي عميل عادي يزوّره) — الكابشن لسه بكريديت لأن له تكلفة حقيقية
+  // منفصلة (Whisper/transcription)، وتوليد الفيديو نفسه (قبل الدمج) لسه بيتحاسب زي أي حد تاني
+  const isFreeChannelRun = !!req.user.channelRun;
+  let mergeCreditCost = isFreeChannelRun ? 0 : MERGE_CREDIT_PER_VIDEO * videoUrls.length;
+  if (narration && !isFreeChannelRun) mergeCreditCost += getPerSecondCreditCost('gemini_flash_tts', Math.ceil(narration.durationSec));
   if (addCaptions) mergeCreditCost += CAPTION_CREDIT_FLAT;
-  if (musicStyle) mergeCreditCost += MUSIC_CREDIT_FLAT;
+  if (musicStyle && !isFreeChannelRun) mergeCreditCost += MUSIC_CREDIT_FLAT;
   const mergeBalance = await getCreditsBalance(req.user.userId);
   if (mergeBalance < mergeCreditCost) {
     if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });

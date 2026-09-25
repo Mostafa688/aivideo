@@ -474,7 +474,10 @@ export async function triggerApprovedGeneration(run) {
   const user = await getUserById(run.user_id);
   const idea = JSON.parse(run.idea_brief || '{}');
   const shape = run.format === 'short' ? SHORT_FORM : LONG_FORM;
-  const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(run.user_id, user.email) };
+  // ✅ NEW: claim "channelRun" بيعلّم كل طلب داخلي جاي من الأتوبايلوت اليومي — بيستخدمه
+  // /api/videos/merge عشان يعفي رسوم التجميع/الفويس أوفر/الموسيقى (مش الكابشن، ولا توليد
+  // الفيديو نفسه) للعملاء الرابطين قنواتهم بالموقع — ميزة تميّز خاصة بيهم
+  const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(run.user_id, user.email, { channelRun: true }) };
 
   const contentStyle = ['map', 'realistic', 'character_adventure'].includes(idea.contentStyle) ? idea.contentStyle : 'animated';
 
