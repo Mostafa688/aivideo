@@ -323,7 +323,12 @@ async function sendDailyApprovalEmail(channel, idea, format, token) {
 async function generateAnimatedVideo(run, channel, idea, shape, headers) {
   const MAX_SCENES = 20;
   const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, MAX_SCENES);
-  const maxClip = getMaxClipSeconds('seedance_2_5') || 30;
+  // ✅ NEW (طلب العميل: يختار بنفسه موديل الصور/التحريك بدل ما نفرض الأغلى دايمًا) —
+  // channel.image_model/animation_model بيتفلتروا مسبقًا في channelRoutes.js's PATCH handler
+  // (مينفعش يوصلوا هنا بموديل مش موجود أو مش بيقبل صورة كمدخل)
+  const imageModel = channel.image_model || 'nano_banana_2';
+  const animationModel = channel.animation_model || 'seedance_2_5';
+  const maxClip = getMaxClipSeconds(animationModel) || 30;
   const defaultSceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
   const usesVoice = !!channel.uses_voice;
   const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise';
@@ -343,7 +348,7 @@ async function generateAnimatedVideo(run, channel, idea, shape, headers) {
   const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
     method: 'POST', headers,
     body: JSON.stringify({
-      model: 'nano_banana_2',
+      model: imageModel,
       scenes: scenes.map((s, i) => ({ prompt: s.prompt, useScenesAsReference: i > 0 ? [i - 1] : [] })),
       aspectRatio: shape.ratio,
     }),
@@ -369,7 +374,7 @@ async function generateAnimatedVideo(run, channel, idea, shape, headers) {
       const targetDurationSec = usesVoice ? Math.max(3, Math.min(maxClip, narrations[i].durationSec)) : defaultSceneDurationSec;
       const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
         method: 'POST', headers,
-        body: JSON.stringify({ model: 'seedance_2_5', prompt: 'subtle natural motion, cinematic camera movement', imageUrl: images[i], aspectRatio: shape.ratio, durationSec: targetDurationSec }),
+        body: JSON.stringify({ model: animationModel, prompt: 'subtle natural motion, cinematic camera movement', imageUrl: images[i], aspectRatio: shape.ratio, durationSec: targetDurationSec }),
       });
       const vidJobData = await vidRes.json();
       // ✅ الصور خلاص اتولدت واتخصم تمنها — أي فشل من هنا وطالع "committed" عشان منرجعش
@@ -580,7 +585,10 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
 
   const MAX_SCENES = 20;
   const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, MAX_SCENES);
-  const maxClip = getMaxClipSeconds('seedance_2_5') || 30;
+  // ✅ NEW (طلب العميل: يختار بنفسه موديل الصور/التحريك — راجع generateAnimatedVideo)
+  const imageModel = channel.image_model || 'nano_banana_2';
+  const animationModel = channel.animation_model || 'seedance_2_5';
+  const maxClip = getMaxClipSeconds(animationModel) || 30;
   const defaultSceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
   const usesVoice = !!channel.uses_voice;
   const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise';
@@ -590,7 +598,7 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
   // ── 1) صور المشاهد، الشخصية ثابتة عبرهم كلهم ────────────────────────────────
   const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
     method: 'POST', headers,
-    body: JSON.stringify({ model: 'nano_banana_2', prompts: scenes.map(s => s.visual), referenceImageUrls: [character.image_url], aspectRatio: shape.ratio }),
+    body: JSON.stringify({ model: imageModel, prompts: scenes.map(s => s.visual), referenceImageUrls: [character.image_url], aspectRatio: shape.ratio }),
   });
   const imgJobData = await imgRes.json();
   if (!imgRes.ok) throw new Error(imgJobData.error || 'Character scene image generation failed'); // لسه قبل خصم أي حاجة تانية
@@ -613,7 +621,7 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
       const targetDurationSec = usesVoice ? Math.max(3, Math.min(maxClip, narrations[i].durationSec)) : defaultSceneDurationSec;
       const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
         method: 'POST', headers,
-        body: JSON.stringify({ model: 'seedance_2_5', prompt: 'subtle natural motion, cinematic camera movement', imageUrl: images[i], aspectRatio: shape.ratio, durationSec: targetDurationSec }),
+        body: JSON.stringify({ model: animationModel, prompt: 'subtle natural motion, cinematic camera movement', imageUrl: images[i], aspectRatio: shape.ratio, durationSec: targetDurationSec }),
       });
       const vidJobData = await vidRes.json();
       // ✅ الصور خلاص اتولدت واتخصم تمنها — أي فشل من هنا وطالع "committed" عشان منرجعش
@@ -740,9 +748,12 @@ async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers)
 
   // ── 1) صور السكتش — كل مشهد مستقل، مفيش تناسق شخصية مطلوب هنا ────────────────────
   const sketchStyleSuffix = 'Style: simple black-and-white hand-drawn whiteboard sketch/doodle animation style, clean thin line art, on a plain white background, no color, no shading, no text.';
+  // ✅ NEW (طلب العميل: يختار بنفسه موديل الصور — راجع generateAnimatedVideo). مفيش موديل
+  // تحريك هنا خالص (Ken Burns بـffmpeg مجاني، مش موديل AI) فمفيش animation_model يتطبق
+  const imageModel = channel.image_model || 'nano_banana_2';
   const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
     method: 'POST', headers,
-    body: JSON.stringify({ model: 'nano_banana_2', prompts: scenes.map(s => `${s.visual}. ${sketchStyleSuffix}`), aspectRatio: shape.ratio }),
+    body: JSON.stringify({ model: imageModel, prompts: scenes.map(s => `${s.visual}. ${sketchStyleSuffix}`), aspectRatio: shape.ratio }),
   });
   const imgJobData = await imgRes.json();
   if (!imgRes.ok) throw new Error(imgJobData.error || 'Whiteboard scene image generation failed'); // لسه قبل خصم أي حاجة تانية

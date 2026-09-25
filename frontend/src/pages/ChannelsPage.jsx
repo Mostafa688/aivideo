@@ -51,6 +51,9 @@ const T = {
     contentBriefLabel: 'وصف المحتوى وطريقة العمل (اختياري)',
     contentBriefPlaceholder: 'اكتب هنا أي تفاصيل عايز الفيديوهات تلتزم بيها: نوع المحتوى بالظبط، طريقة السرد، الأدوات/الموديلات اللي عايز تتستخدم، حاجات تتجنبها... أي حاجة هتساعد الايجنت يفهم إزاي تحب فيديوهاتك تتعمل.',
     contentBriefSaved: 'اتحفظ.', save: 'حفظ',
+    imageModelLabel: 'موديل توليد الصور', animationModelLabel: 'موديل تحريك المشاهد',
+    modelDefaultOption: 'افتراضي (أفضل جودة)', perImage: 'كريديت/صورة', perSecond: 'كريديت/ثانية',
+    modelChangedToast: 'اتحفظ اختيار الموديل.',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -93,6 +96,9 @@ const T = {
     contentBriefLabel: 'Content description & how to make it (optional)',
     contentBriefPlaceholder: "Write any details you want every video to follow: the exact type of content, narration style, tools/models you want used, things to avoid... anything that helps the Agent understand how you want your videos made.",
     contentBriefSaved: 'Saved.', save: 'Save',
+    imageModelLabel: 'Image generation model', animationModelLabel: 'Scene animation model',
+    modelDefaultOption: 'Default (best quality)', perImage: 'credits/image', perSecond: 'credits/sec',
+    modelChangedToast: 'Model choice saved.',
   },
 };
 
@@ -132,9 +138,20 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [analyzingIds, setAnalyzingIds] = useState({});
   const [briefDrafts, setBriefDrafts] = useState({});
   const [savingBriefId, setSavingBriefId] = useState(null);
+  // ✅ NEW (طلب العميل: شاف Seedance 2.5 بيكلف $3.01 لكليب وسأل ليه التحريك بأغلى الموديلات —
+  // اقترح إن كل موديلات الصور/التحريك وأسعارها تتعرض عليه وهو يختار بنفسه) — نجيب قايمة
+  // الموديلات مرة واحدة من نفس الراوتات الموجودة فعلاً (/api/images/models، /api/videos/models)
+  const [imageModels, setImageModels] = useState([]);
+  const [videoModels, setVideoModels] = useState([]);
 
   useEffect(() => {
     fetch('/api/characters', { headers: authHeaders() }).then(r => r.json()).then(d => setCharacters(d.characters || [])).catch(() => {});
+    fetch('/api/images/models', { headers: authHeaders() }).then(r => r.json()).then(d => setImageModels(d.models || [])).catch(() => {});
+    // بس الموديلات اللي بتقبل صورة كمدخل صالحة كـ"موديل تحريك" هنا (البايبلاين بيبعتلها صورة
+    // مشهد)، ومرتبة بالأرخص الأول عشان يبان الفرق في السعر بسهولة
+    fetch('/api/videos/models', { headers: authHeaders() }).then(r => r.json())
+      .then(d => setVideoModels((d.models || []).filter(m => m.supportsImageInput).sort((a, b) => a.creditCostPerSecond - b.creditCostPerSecond)))
+      .catch(() => {});
   }, []);
 
   const [expandedChannelId, setExpandedChannelId] = useState(null);
@@ -237,6 +254,16 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const assignCharacter = async (channelId, charId) => {
     try {
       await fetch(`/api/channels/${channelId}/character`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ characterReferenceId: charId || null }) });
+      load();
+    } catch (e) { setToast({ type: 'error', text: e.message }); }
+  };
+
+  // ✅ NEW: يحفظ فورًا لما العميل يغيّر اختيار الموديل (زي assignCharacter بالظبط) — مفيش
+  // زرار حفظ منفصل هنا، القيمة فاضية = رجوع للافتراضي القديم (راجع channelRoutes.js's PATCH)
+  const assignModel = async (channelId, field, value) => {
+    try {
+      await fetch(`/api/channels/${channelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ [field]: value || null }) });
+      setToast({ type: 'success', text: t.modelChangedToast });
       load();
     } catch (e) { setToast({ type: 'error', text: e.message }); }
   };
@@ -512,6 +539,31 @@ export default function ChannelsPage({ onBack, userRegion }) {
                           style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
                           <option value="">—</option>
                           {characters.map(c => <option key={c.id} value={c.id}>{c.label || `#${c.id}`}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!['realistic', 'map'].includes(ch.content_style) && (imageModels.length > 0 || videoModels.length > 0) && (
+                  <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {imageModels.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.imageModelLabel}</div>
+                        <select value={ch.image_model || ''} onChange={e => assignModel(ch.id, 'imageModel', e.target.value)}
+                          style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
+                          <option value="">{t.modelDefaultOption}</option>
+                          {imageModels.map(m => <option key={m.key} value={m.key}>{m.label} — {m.creditCostPerImage} {t.perImage}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    {!['whiteboard_sketch'].includes(ch.content_style) && videoModels.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.animationModelLabel}</div>
+                        <select value={ch.animation_model || ''} onChange={e => assignModel(ch.id, 'animationModel', e.target.value)}
+                          style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
+                          <option value="">{t.modelDefaultOption}</option>
+                          {videoModels.map(m => <option key={m.key} value={m.key}>{m.label} — {m.creditCostPerSecond} {t.perSecond}</option>)}
                         </select>
                       </div>
                     )}
