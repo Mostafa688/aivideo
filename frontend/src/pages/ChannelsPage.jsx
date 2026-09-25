@@ -40,6 +40,7 @@ const T = {
     contentStyleLabel: 'نوع المحتوى', contentStyleAuto: 'تلقائي (يتحدد يوميًا)', contentStyleRealistic: 'واقعي (لقطات حقيقية)',
     contentStyleMap: 'خرائط/جغرافيا', contentStyleAnimated: 'قصص/رسوم بالذكاء الاصطناعي',
     contentStyleCharacter: '🎭 شخصية واحدة تعيش مغامرة',
+    contentStyleWhiteboard: '✏️ سكتش على سبورة بيضاء',
     characterPickLabel: 'اختار الشخصية', characterPickNone: 'لسه معملتش أي شخصية —',
     characterPickLink: 'روح لمكتبة الشخصيات وضيف واحدة الأول', characterRequired: 'لازم تختار شخصية عشان النوع ده يشتغل',
   },
@@ -78,6 +79,7 @@ const T = {
     contentStyleLabel: 'Content style', contentStyleAuto: 'Auto (decided daily)', contentStyleRealistic: 'Realistic (stock footage)',
     contentStyleMap: 'Map/Geography', contentStyleAnimated: 'Story/AI-animated',
     contentStyleCharacter: '🎭 Single character adventure',
+    contentStyleWhiteboard: '✏️ Whiteboard sketch',
     characterPickLabel: 'Choose the character', characterPickNone: "You haven't added a character yet —",
     characterPickLink: 'go to the Characters library and add one first', characterRequired: 'You must pick a character for this content style to work',
   },
@@ -379,6 +381,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   <option value="map">{t.contentStyleMap}</option>
                   <option value="animated">{t.contentStyleAnimated}</option>
                   <option value="character_adventure">{t.contentStyleCharacter}</option>
+                  <option value="whiteboard_sketch">{t.contentStyleWhiteboard}</option>
                 </select>
               </div>
               {contentStyle === 'character_adventure' && (
