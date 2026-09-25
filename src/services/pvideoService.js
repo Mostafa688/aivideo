@@ -73,7 +73,7 @@ async function generatePVideoClipOnce({ prompt, duration = 5, imageUrl = null, g
 // مؤقت من عندهم (E004 "Service is temporarily unavailable") مش له علاقة بالبرومبت، وبيعدي
 // لو حاولنا تاني. مهم جدًا هنا تحديدًا لأن فيديو طويل ممكن يحتاج عشرات المشاهد المتتالية —
 // لو مشهد واحد فشل بسبب مؤقت من غير إعادة محاولة، الفيديو كله هيفشل من غير داعي
-const TRANSIENT_ERROR_PATTERNS = /temporarily unavailable|E004|E005|service unavailable|internal server error|ECONNRESET|ETIMEDOUT/i;
+const TRANSIENT_ERROR_PATTERNS = /temporarily unavailable|E004|E005|service unavailable|internal server error|ECONNRESET|ETIMEDOUT|429|throttled|rate limit/i;
 async function generatePVideoClip(params) {
   const MAX_ATTEMPTS = 3;
   let lastErr;
@@ -89,6 +89,31 @@ async function generatePVideoClip(params) {
     }
   }
   throw lastErr;
+}
+
+// ✅ FIX (باج حقيقي حقيقي: 3 مشاهد وصوت السرد طلع الفيديو 52 ثانية والصوت 12 ثانية بس —
+// يعني الفيديو خرج بمقاسه الافتراضي الثابت من غير أي علاقة بمدة الصوت الحقيقية): نداءات
+// Gemini TTS/فويس كلون لكل مشهد لوحده (Step 0 تحت) كانت من غير أي إعادة محاولة عند 429 —
+// بعكس adsVideoService.js اللي بيلف كل نداء Replicate (صور/صوت/تحريك) بـwithRetry429 بالظبط
+// عشان قيد Replicate الموثّق (رصيد أقل من $5 بيرجّع 429/throttled). 3 نداءات TTS متتالية في
+// نفس اللوب هي بالظبط الحالة اللي بتضرب الحد ده — النداء بيفشل بصمت (catch جوه اللوب)،
+// المشهد بيفضل بمدته الثابتة المفروضة مسبقًا (مش الحقيقية)، وكل السرد بيرجع لمسار احتياطي
+// واحد قديم (سرد كامل واحد فوق فيديو مقاسه ثابت وغير متزامن خالص) — بالظبط أعراض "النظام
+// القديم" اللي العميل بيشتكي منها. نفس الحل المستخدم فعليًا في adsVideoService.js
+async function withRetry429(fn, maxRetries = 4) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const is429 = /429|throttled|rate limit/i.test(err.message || '');
+      if (!is429 || attempt === maxRetries) throw err;
+      let waitSec = 18;
+      const m = /retry_after["\s:]+(\d+(\.\d+)?)/i.exec(err.message || '');
+      if (m) waitSec = Math.max(parseFloat(m[1]) + 3, 8);
+      console.warn(`[Model8] 429 rate limited on voiceover, retrying in ${waitSec}s (attempt ${attempt + 1}/${maxRetries})...`);
+      await new Promise(r => setTimeout(r, waitSec * 1000));
+    }
+  }
 }
 
 async function downloadVideo(url, outputPath) {
@@ -130,8 +155,8 @@ export async function renderModel8Video({
       if (!text) { perSceneVoicePaths.push(null); continue; }
       try {
         const audioPath = voiceCloneSampleUrl
-          ? await cloneVoiceNarration(voiceCloneSampleUrl, text, videoLanguage)
-          : await generateAdsVoiceover(text, voiceKey || 'male_wise', videoLanguage, null, null, MODEL8_NARRATOR_PROMPT);
+          ? await withRetry429(() => cloneVoiceNarration(voiceCloneSampleUrl, text, videoLanguage))
+          : await withRetry429(() => generateAdsVoiceover(text, voiceKey || 'male_wise', videoLanguage, null, null, MODEL8_NARRATOR_PROMPT));
         let dur = null;
         try {
           dur = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`, { encoding: 'utf8' }).trim());
@@ -307,8 +332,8 @@ export async function renderModel8Video({
       if (fullText.trim()) {
         const totalDur = sceneDurations.reduce((a, b) => a + b, 0) - (numClips - 1) * FADE_DUR;
         const audioPath = voiceCloneSampleUrl
-          ? await cloneVoiceNarration(voiceCloneSampleUrl, fullText, videoLanguage)
-          : await generateAdsVoiceover(fullText, voiceKey || 'male_wise', videoLanguage, totalDur, null, MODEL8_NARRATOR_PROMPT);
+          ? await withRetry429(() => cloneVoiceNarration(voiceCloneSampleUrl, fullText, videoLanguage))
+          : await withRetry429(() => generateAdsVoiceover(fullText, voiceKey || 'male_wise', videoLanguage, totalDur, null, MODEL8_NARRATOR_PROMPT));
         if (audioPath) {
           audioPathForCaptions = audioPath;
           const withAudioPath = path.join(TEMP_DIR, `m8_voice_${id}.mp4`);
