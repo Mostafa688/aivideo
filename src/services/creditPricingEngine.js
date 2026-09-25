@@ -172,6 +172,12 @@ export const REPLICATE_MODEL_COSTS = {
   // ✅ NEW: fictions-ai/autocaption على Replicate — حرق كابشن حقيقي على فيديو، سعر ثابت لكل
   // فيديو (مش لكل ثانية) بغض النظر عن مدته — ~$0.12/تشغيلة (مصدر: aggregator، غير مؤكد مباشرة)
   autocaption:      { label: 'Caption Burning',    unit: 'video', usdCost: 0.12 },
+  // ✅ NEW (باج حقيقي: التوليد ده كان مجاني بالكامل من غير أي خصم كريديت رغم إنه بينادي
+  // Replicate فعليًا) — resemble-ai/chatterbox-multilingual، سعر ثابت تقريبي لكل نداء/قطعة
+  // نص (≤300 حرف، الحد الرسمي للموديل) — ~$0.0042/تشغيلة (مصدر: aggregator، غير مؤكد مباشرة
+  // من صفحة Replicate نفسها). سكريبت طويل بيتقسم لقطع (splitTextIntoChunks) وكل قطعة نداء
+  // منفصل، فالتكلفة الحقيقية بتتضاعف مع عدد القطع — بيتحسب صراحة في voiceCloneRoutes.js
+  chatterbox_voice_clone: { label: 'Voice Clone Narration (per chunk)', unit: 'video', usdCost: 0.0042 },
 
   // ── Video analysis (real external API, standard 3x margin — not internal ffmpeg) ──────
   // ✅ NEW (طلب العميل: "حتى لو رخيصة، حطها" — بحث ويب حقيقي، مش تخمين): zsxkib/talknet-asd —
