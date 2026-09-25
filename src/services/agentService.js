@@ -196,7 +196,7 @@ function buildSystemPrompt(userPlan, isAdminUser = false, userRegion = null, mem
     : userRegion === 'intl' ? 'This user\'s region is already known: International (Gumroad). Never ask again.'
     : 'This user\'s region is NOT known yet — ask if a subscribe/payment intent comes up (see rule 9).';
   const channelsLine = userChannels.length
-    ? `This user has connected these channel(s) via the "My Channels" feature (VidIQ-powered daily video automation): ${userChannels.map(c => `#${c.id} "${c.label || c.channel_id}" (format: ${c.format_pref}, voice: ${c.uses_voice ? 'yes' : 'no'}, status: ${c.status})`).join('; ')}. See rule 13 below for how to use this.`
+    ? `This user has connected these channel(s) via the "My Channels" feature (VidIQ-powered daily video automation): ${userChannels.map(c => `#${c.id} "${c.label || c.channel_id}" (format: ${c.format_pref}, voice: ${c.uses_voice ? 'yes' : 'no'}, status: ${c.status}, YouTube auto-upload: ${c.youtube_channel_title ? `connected to "${c.youtube_channel_title}"` : 'not connected yet'})`).join('; ')}. See rule 13 below for how to use this.`
     : 'This user has no connected channels yet. If they ask for "a video for my channel" in a way that implies ongoing/automated channel management (not just a one-off video), briefly mention the "My Channels" feature (connects to VidIQ, suggests a video daily) and point them there — but you can still just make them a one-off video normally if that\'s really what they want.';
   const voiceCloneLine = hasClonedVoice
     ? 'This user has a saved cloned voice sample already (via the "Save my voice" attach option). See rule 14 below — you can offer to use it for narration in any video with voice.'
