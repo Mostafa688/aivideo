@@ -315,6 +315,71 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
   );
 }
 
+// ✅ NEW (طلب العميل: "اقدر اقول للايجنت اعمل فيديو وانشره على القناة دلوقتي وهو بيدا ويعمل
+// كل حاجه ... ويقولي عمل اي وكده وتكلفة الكريديت"): كارت تشغيلة قناة حقيقية بدأها الايجنت من
+// الشات (channelSchedulerService.js's triggerChannelRunNow) — نفس فكرة WhiteboardCard فوق
+// بالظبط (poll لحد done/failed)، بس بيتابع daily_video_runs مش audio_video_jobs، وبيوريّ
+// التكلفة الحقيقية النهائية + لينك يوتيوب لو اترفع تلقائي
+function ChannelRunCard({ job: initialJob, lang }) {
+  const tt = lang === 'ar'
+    ? { generating: 'بيعمل الفيديو دلوقتي...', failed: 'حصلت مشكلة وأنا بعمل الفيديو', done: 'خلص!', cost: 'كريديت', watchYoutube: 'شوفه على يوتيوب' }
+    : { generating: 'Making the video now...', failed: 'Something went wrong making the video', done: 'Done!', cost: 'credits', watchYoutube: 'Watch on YouTube' };
+  const [job, setJob] = useState(initialJob);
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    if (['done', 'failed'].includes(job.status)) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/channels/runs/${job.runId}/status`, { headers: tokenHeader() });
+        const d = await r.json();
+        if (r.ok && d.run) {
+          setJob(prev => ({ ...prev, status: d.run.status, videoUrl: d.run.videoUrl, youtubeVideoId: d.run.youtubeVideoId, error: d.run.error, creditsCharged: d.run.creditsCharged }));
+          if (['done', 'failed'].includes(d.run.status)) clearInterval(pollRef.current);
+        }
+      } catch { /* keep polling */ }
+    }, 4000);
+    return () => clearInterval(pollRef.current);
+  }, [job.status, job.runId]);
+
+  if (job.status === 'failed') {
+    return (
+      <div style={{ maxWidth: 280, padding: '12px 16px', borderRadius: 14, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#ef4444' }}><AlertTriangle size={14} strokeWidth={2.25} /> {job.error || tt.failed}</div>
+      </div>
+    );
+  }
+
+  if (job.status === 'done') {
+    return (
+      <div style={{ width: 240 }}>
+        <video src={job.videoUrl} controls playsInline style={{ width: 240, borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 12.5, color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={13} color="#22c55e" /> {tt.done}</div>
+          {job.ideaTitle && <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)' }}>{job.ideaTitle}</div>}
+          {job.creditsCharged != null && <div style={{ fontSize: 11.5, color: '#a78bfa' }}>{job.creditsCharged} {tt.cost}</div>}
+          {job.youtubeVideoId && (
+            <a href={`https://youtube.com/watch?v=${job.youtubeVideoId}`} target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: 11.5, color: '#ef4444', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Video size={12} /> {tt.watchYoutube}
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: 240, padding: '14px 16px', borderRadius: 14, background: 'linear-gradient(135deg, rgba(124,106,247,0.18), rgba(0,0,0,0.6))', border: '1px solid rgba(124,106,247,0.3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="spinning" style={{ display: 'inline-block', fontSize: 18 }}>◐</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#fff' }}><Clapperboard size={14} strokeWidth={2} /> {tt.generating}</span>
+      </div>
+      {job.ideaTitle && <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', marginTop: 6 }}>{job.ideaTitle}</div>}
+    </div>
+  );
+}
+
 // ✅ NEW (Flow-style context menu — طلب العميل: "ضيف موضوع النقط الي كان في flow"): قائمة
 // نقط (⋮) عامة تتستخدم فوق أي عنصر ميديا (صورة مفردة جوه دفعة، أو كارت فيديو) — إضافة
 // للمفضلة، إعادة استخدام البرومبت، تحريك (صور بس)، تحميل، نسخ البرومبت، إعادة تسمية،
@@ -936,6 +1001,17 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (m.type === 'whiteboard') {
       return `[${lang === 'ar' ? 'تم إنشاء فيديو whiteboard' : 'A whiteboard video was generated'}]`;
     }
+    if (m.type === 'channelRun') {
+      if (m.job?.status === 'done') {
+        const costTag = m.job.creditsCharged != null ? `, cost: ${m.job.creditsCharged} credits` : '';
+        const ytTag = m.job.youtubeVideoId ? `, published to YouTube: https://youtube.com/watch?v=${m.job.youtubeVideoId}` : '';
+        return `[${lang === 'ar' ? 'تم عمل ونشر فيديو القناة بنجاح' : 'The channel video was successfully made'} — "${m.job.ideaTitle || ''}" — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}${costTag}${ytTag}]`;
+      }
+      if (m.job?.status === 'failed') {
+        return failedNote(lang === 'ar' ? 'فيديو قناة سابق فشل في التوليد ولم يكتمل' : 'A previous channel video FAILED and did not complete');
+      }
+      return `[${lang === 'ar' ? 'فيديو قناة قيد الإنشاء دلوقتي' : "A channel video is currently being generated"}]`;
+    }
     if (m.type === 'imageBatch') {
       if (m.job?.status === 'done') {
         // ✅ FIX (باج حقيقي: صورة اتعملت 16:9، والعميل قال "حرّك الصورة دي" من غير ما يكرر
@@ -1169,6 +1245,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // لحالته، وبعد ما يخلص بيظهر زرار "كمّل الفيديو" بيودّي لصفحة Whiteboard العامة
       if (data.whiteboardVideo?.job) {
         setMessages(m => [...m, { role: 'assistant', type: 'whiteboard', job: data.whiteboardVideo.job }]);
+      }
+
+      // ✅ NEW (طلب العميل: "اقدر اقول للايجنت اعمل فيديو وانشره على القناة دلوقتي"): بنفس
+      // فكرة كارت الـwhiteboard فوق بالظبط — بيعمل poll لحالة تشغيلة القناة الحقيقية اللي
+      // بدأت في الخلفية (channelSchedulerService.js's triggerChannelRunNow) لحد ما تخلص
+      if (data.channelGenerate?.runId) {
+        setMessages(m => [...m, { role: 'assistant', type: 'channelRun', job: { ...data.channelGenerate, status: 'generating' } }]);
       }
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message);
@@ -2204,7 +2287,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
   // ✅ NEW (Workspace redesign, Phase 2): الشات بقى شريط جانبي نص فقط — أي ميديا متولدة
   // (فيديو/whiteboard/دفعة صور) بتتشال من قائمة رسائل الشات وتتعرض في canvas النص بدل كده
-  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis'];
+  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis', 'channelRun'];
   const mediaItems = messages
     .map((m, i) => ({ ...m, _i: i }))
     .filter(m => MEDIA_TYPES.includes(m.type));
@@ -2216,7 +2299,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     return !!m.job?.favorited;
   };
   const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
-    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis')
+    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun')
     : rightTab === 'favorites' ? mediaItems.filter(isMediaFavorited)
     : mediaItems;
 
@@ -2433,6 +2516,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 <div key={m._i} className="agent-bubble">
                   {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}
                   {m.type === 'whiteboard' && <WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+                  {m.type === 'channelRun' && <ChannelRunCard job={m.job} lang={lang} />}
                   {m.type === 'imageBatch' && <ImageBatchCard job={m.job} lang={lang}
                     onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
                     onRemoveImage={(idx) => removeImageFromBatch(m.job.uid, idx)}

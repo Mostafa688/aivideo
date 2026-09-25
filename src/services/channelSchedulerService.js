@@ -12,13 +12,14 @@ import {
   getDueManagedChannels, markManagedChannelRun, createDailyVideoRun,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
   mintInternalToken, getUserById, getCreditsBalance, chargeCredits, addCreditsBalance, saveVideo, saveChannelAnalysis,
-  getCharacterReferenceById,
+  getCharacterReferenceById, linkYoutubeVideoToRun,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { renderModel8Video } from './pvideoService.js';
 import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
 import { mergeVideos } from './videoMergeService.js';
+import { uploadVideoToYoutube } from './youtubeUploadService.js';
 
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
@@ -761,6 +762,64 @@ export async function triggerApprovedGeneration(run) {
     }
   }
   return await generateAnimatedVideo(run, channel, idea, shape, headers);
+}
+
+// ✅ NEW (طلب العميل: "اقدر اقول للايجنت اعمل فيديو وانشره على القناة دلوقتي"): نسخة "دلوقتي"
+// من نفس مسار /daily-approve بالظبط (channelRoutes.js) — بس الموافقة بتحصل حية في المحادثة
+// نفسها بدل إيميل، فمفيش approve_token ولا إيميل موافقة. بترجع فورًا (runId + idea + تكلفة
+// تقديرية لو أمكن حسابها) عشان الايجنت يرد على العميل في نفس اللحظة، والتوليد الفعلي بيشتغل
+// في الخلفية (IIFE منفصل، بالظبط زي مسار الإيميل) — التقدّم بيتابَع عن طريق
+// GET /api/channels/runs/:id/status، والتكلفة الحقيقية النهائية بتتحسب بفرق الرصيد قبل/بعد
+// (أدق من محاولة نجمّع كل خصم كريديت يدويًا عبر كل مسارات المحتوى الخمسة المختلفة)
+export function estimateChannelRunCost(channel, format) {
+  // ✅ تقدير دقيق بس للمسار الافتراضي (animated) لأنه الوحيد بتكلفة ثابتة معروفة مقدمًا
+  // (نفس معادلة generateAnimatedVideo بالظبط) — باقي الأنماط (map/realistic/character_adventure/
+  // whiteboard_sketch) تكلفتها بتتحدد من موديلات خارجية متنوعة، مش معروفة إلا بعد التوليد فعليًا
+  const contentStyle = ['map', 'realistic', 'character_adventure', 'whiteboard_sketch'].includes(channel.content_style) ? channel.content_style : 'animated';
+  if (contentStyle !== 'animated') return null;
+  const shape = format === 'short' ? SHORT_FORM : LONG_FORM;
+  const sceneCount = channel.target_scene_count || shape.sceneCount;
+  const sceneDurationSec = channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec;
+  const rate = channel.uses_voice ? MODEL8_RATE_VOICEOVER : MODEL8_RATE_NONE;
+  return sceneCount * sceneDurationSec * rate;
+}
+
+export async function triggerChannelRunNow(channel) {
+  const { idea, format } = await getFreshChannelIdea(channel);
+  const estimatedCost = estimateChannelRunCost(channel, format);
+  const runId = await createDailyVideoRun({
+    channelId: channel.id, userId: channel.user_id,
+    ideaTitle: idea.title, ideaBrief: JSON.stringify(idea), format, approveToken: null,
+  });
+  await updateDailyVideoRunStatus(runId, 'generating', { decided: true });
+
+  (async () => {
+    const balanceBefore = await getCreditsBalance(channel.user_id).catch(() => null);
+    try {
+      const run = { id: runId, channel_id: channel.id, user_id: channel.user_id, idea_brief: JSON.stringify(idea), format };
+      const videoUrl = await triggerApprovedGeneration(run);
+      const balanceAfter = await getCreditsBalance(channel.user_id).catch(() => null);
+      const creditsCharged = (balanceBefore != null && balanceAfter != null) ? Math.max(0, balanceBefore - balanceAfter) : null;
+      await updateDailyVideoRunStatus(runId, 'done', { videoUrl, creditsCharged });
+
+      // ✅ رفع تلقائي على يوتيوب لو القناة متربطة — نفس منطق /daily-approve بالظبط
+      try {
+        if (channel.youtube_refresh_token) {
+          const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
+          await linkYoutubeVideoToRun(runId, channel.user_id, youtubeVideoId);
+        }
+      } catch (uploadErr) {
+        console.warn(`[ChannelScheduler] Auto-upload to YouTube failed for on-demand run ${runId} (customer can still upload manually):`, uploadErr.message);
+      }
+    } catch (e) {
+      const isCredits = e.message.startsWith('insufficient_credits');
+      const errorMsg = isCredits ? 'Not enough credits to make this video — top up your balance and try again.' : e.message;
+      await updateDailyVideoRunStatus(runId, 'failed', { error: errorMsg });
+      console.error(`[ChannelScheduler] On-demand (agent-triggered) generation failed for run ${runId}:`, e.message);
+    }
+  })();
+
+  return { runId, idea, format, estimatedCost };
 }
 
 export async function sendDailyResultEmail(userEmail, idea, videoUrl, success, errorMessage) {
