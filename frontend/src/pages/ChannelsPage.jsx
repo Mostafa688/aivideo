@@ -37,6 +37,11 @@ const T = {
     analysisLabel: '🤖 نتيجة التحليل التلقائي', contentStyleL: 'نوع المحتوى', videoStyleL: 'الستايل البصري',
     usesVoiceL: 'راوي/صوت', targetDurationL: 'الطول المستهدف', yes: 'نعم', no: 'لأ',
     analysisFailedToast: 'التحليل التلقائي فشل — تقدر تحاول تاني أو تختار يدوي.',
+    contentStyleLabel: 'نوع المحتوى', contentStyleAuto: 'تلقائي (يتحدد يوميًا)', contentStyleRealistic: 'واقعي (لقطات حقيقية)',
+    contentStyleMap: 'خرائط/جغرافيا', contentStyleAnimated: 'قصص/رسوم بالذكاء الاصطناعي',
+    contentStyleCharacter: '🎭 شخصية واحدة تعيش مغامرة',
+    characterPickLabel: 'اختار الشخصية', characterPickNone: 'لسه معملتش أي شخصية —',
+    characterPickLink: 'روح لمكتبة الشخصيات وضيف واحدة الأول', characterRequired: 'لازم تختار شخصية عشان النوع ده يشتغل',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -70,6 +75,11 @@ const T = {
     analysisLabel: '🤖 Automatic analysis result', contentStyleL: 'Content style', videoStyleL: 'Visual style',
     usesVoiceL: 'Narration/voice', targetDurationL: 'Target length', yes: 'Yes', no: 'No',
     analysisFailedToast: 'Automatic analysis failed — you can try again or switch to manual.',
+    contentStyleLabel: 'Content style', contentStyleAuto: 'Auto (decided daily)', contentStyleRealistic: 'Realistic (stock footage)',
+    contentStyleMap: 'Map/Geography', contentStyleAnimated: 'Story/AI-animated',
+    contentStyleCharacter: '🎭 Single character adventure',
+    characterPickLabel: 'Choose the character', characterPickNone: "You haven't added a character yet —",
+    characterPickLink: 'go to the Characters library and add one first', characterRequired: 'You must pick a character for this content style to work',
   },
 };
 
@@ -100,9 +110,16 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [formatPref, setFormatPref] = useState('auto');
   const [usesVoice, setUsesVoice] = useState(false);
   const [setupMode, setSetupMode] = useState('manual');
+  const [contentStyle, setContentStyle] = useState('');
+  const [characterReferenceId, setCharacterReferenceId] = useState('');
+  const [characters, setCharacters] = useState([]);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
   const [analyzingIds, setAnalyzingIds] = useState({});
+
+  useEffect(() => {
+    fetch('/api/characters', { headers: authHeaders() }).then(r => r.json()).then(d => setCharacters(d.characters || [])).catch(() => {});
+  }, []);
 
   const [expandedChannelId, setExpandedChannelId] = useState(null);
   const [runsByChannel, setRunsByChannel] = useState({});
@@ -201,6 +218,13 @@ export default function ChannelsPage({ onBack, userRegion }) {
   };
   useEffect(load, []);
 
+  const assignCharacter = async (channelId, charId) => {
+    try {
+      await fetch(`/api/channels/${channelId}/character`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ characterReferenceId: charId || null }) });
+      load();
+    } catch (e) { setToast({ type: 'error', text: e.message }); }
+  };
+
   const analyzeChannel = async (channelId) => {
     setAnalyzingIds(prev => ({ ...prev, [channelId]: true }));
     try {
@@ -217,16 +241,28 @@ export default function ChannelsPage({ onBack, userRegion }) {
 
   const addChannel = async () => {
     if (!vidiqKey.trim()) return;
+    if (setupMode === 'manual' && contentStyle === 'character_adventure' && !characterReferenceId) {
+      setError(t.characterRequired); return;
+    }
     setAdding(true); setError('');
     try {
       const res = await fetch('/api/channels', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ label, vidiqApiKey: vidiqKey.trim(), formatPref, usesVoice, setupMode }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
-      setLabel(''); setVidiqKey(''); setFormatPref('auto'); setUsesVoice(false);
+      const newChannelId = data.channel?.id;
+      // ✅ في وضع "يدوي" فقط — لو العميل اختار نوع محتوى بنفسه (مش سايبها تلقائي)، نحفظه
+      // فورًا بعد إنشاء القناة، ولو اختار "شخصية واحدة تعيش مغامرة" نربطها بالشخصية المختارة
+      if (setupMode === 'manual' && contentStyle && newChannelId) {
+        await fetch(`/api/channels/${newChannelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ contentStyle }) }).catch(() => {});
+        if (contentStyle === 'character_adventure' && characterReferenceId) {
+          await fetch(`/api/channels/${newChannelId}/character`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ characterReferenceId }) }).catch(() => {});
+        }
+      }
+      setLabel(''); setVidiqKey(''); setFormatPref('auto'); setUsesVoice(false); setContentStyle(''); setCharacterReferenceId('');
       setToast({ type: 'success', text: t.channelAddedToast });
       load();
       // ✅ لو اختار أوتوماتيك، نشغّل التحليل فورًا من غير ما يحتاج يدوس زرار تاني
-      if (setupMode === 'automatic' && data.channel?.id) analyzeChannel(data.channel.id);
+      if (setupMode === 'automatic' && newChannelId) analyzeChannel(newChannelId);
       setSetupMode('manual');
     } catch (e) { setError(e.message); } finally { setAdding(false); }
   };
@@ -329,10 +365,38 @@ export default function ChannelsPage({ onBack, userRegion }) {
               <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>{t.autoDetected}</span>
             </div>
           ) : (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 16 }}>
-              <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.voice}</span>
-              <Toggle value={usesVoice} onChange={setUsesVoice} />
-            </div>
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.voice}</span>
+                <Toggle value={usesVoice} onChange={setUsesVoice} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.contentStyleLabel}</span>
+                <select value={contentStyle} onChange={e => setContentStyle(e.target.value)}
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }}>
+                  <option value="">{t.contentStyleAuto}</option>
+                  <option value="realistic">{t.contentStyleRealistic}</option>
+                  <option value="map">{t.contentStyleMap}</option>
+                  <option value="animated">{t.contentStyleAnimated}</option>
+                  <option value="character_adventure">{t.contentStyleCharacter}</option>
+                </select>
+              </div>
+              {contentStyle === 'character_adventure' && (
+                <div style={{ padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, color: '#d1d5db', marginBottom: 8 }}>{t.characterPickLabel}</div>
+                  {characters.length === 0 ? (
+                    <p style={{ fontSize: 11.5, color: '#f59e0b', margin: 0 }}>{t.characterPickNone} <span style={{ textDecoration: 'underline', cursor: 'default' }}>{t.characterPickLink}</span></p>
+                  ) : (
+                    <select value={characterReferenceId} onChange={e => setCharacterReferenceId(e.target.value)}
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '9px 10px', fontSize: 12.5, boxSizing: 'border-box' }}>
+                      <option value="">—</option>
+                      {characters.map(c => <option key={c.id} value={c.id}>{c.label || `#${c.id}`}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
+              {contentStyle !== 'character_adventure' && <div style={{ marginBottom: 16 }} />}
+            </>
           )}
 
           {error && <p style={{ color: '#ef4444', fontSize: 12.5, marginBottom: 12 }}>{error}</p>}
@@ -380,6 +444,25 @@ export default function ChannelsPage({ onBack, userRegion }) {
                       <button onClick={() => analyzeChannel(ch.id)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}>
                         {t.analyzeNow}
                       </button>
+                    )}
+                  </div>
+                )}
+
+                {ch.content_style === 'character_adventure' && (
+                  <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(236,72,153,0.06)', border: '1px solid rgba(236,72,153,0.18)' }}>
+                    {ch.character_reference_id ? (
+                      <span style={{ fontSize: 11.5, color: '#ec4899', display: 'flex', alignItems: 'center', gap: 6 }}>🎭 {ch.character_label || `#${ch.character_reference_id}`}</span>
+                    ) : characters.length === 0 ? (
+                      <p style={{ fontSize: 11, color: '#f59e0b', margin: 0 }}>{t.characterPickNone} {t.characterPickLink}</p>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.characterPickLabel}</div>
+                        <select onChange={e => assignCharacter(ch.id, e.target.value)} defaultValue=""
+                          style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
+                          <option value="">—</option>
+                          {characters.map(c => <option key={c.id} value={c.id}>{c.label || `#${c.id}`}</option>)}
+                        </select>
+                      </div>
                     )}
                   </div>
                 )}

@@ -344,6 +344,7 @@ async function initDB() {
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS target_duration_sec INTEGER DEFAULT NULL;
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS target_scene_count INTEGER DEFAULT NULL;
     ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS auto_analyzed_at TIMESTAMPTZ DEFAULT NULL;
+    ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS character_reference_id INTEGER REFERENCES character_references(id) ON DELETE SET NULL;
   `).catch(() => {});
   // ── مصنع فيديو الصوت الأدمن — رفع فويس أوفر جاهز، والموقع يفرّغه (Whisper) ويستخرج
   // العناصر (LLM) ويجيب/يولّد صورهم ويعمل الفيديو النهائي. Pipeline بمراحل، كل مرحلة
@@ -1566,13 +1567,24 @@ export async function createManagedChannel(userId, { label, channelId, vidiqApiK
 
 export async function listManagedChannelsForUser(userId) {
   const { rows } = await pool.query(
-    `SELECT id, platform, label, channel_id, format_pref, uses_voice, voice_id, model_pref, status, last_run_at, created_at,
-            youtube_channel_title, youtube_privacy_status, setup_mode, content_style, video_style,
-            target_duration_sec, target_scene_count, auto_analyzed_at
-     FROM managed_channels WHERE user_id = $1 ORDER BY id DESC`,
+    `SELECT mc.id, mc.platform, mc.label, mc.channel_id, mc.format_pref, mc.uses_voice, mc.voice_id, mc.model_pref, mc.status, mc.last_run_at, mc.created_at,
+            mc.youtube_channel_title, mc.youtube_privacy_status, mc.setup_mode, mc.content_style, mc.video_style,
+            mc.target_duration_sec, mc.target_scene_count, mc.auto_analyzed_at, mc.character_reference_id, cr.image_url as character_image_url, cr.label as character_label
+     FROM managed_channels mc LEFT JOIN character_references cr ON cr.id = mc.character_reference_id
+     WHERE mc.user_id = $1 ORDER BY mc.id DESC`,
     [userId]
   );
   return rows;
+}
+
+// ✅ بيتأكد إن الشخصية دي بتاعة نفس العميل قبل ما يربطها بالقناة (اتأكد في الراوت أصلاً، بس
+// بنتأكد تاني هنا كحاجز أمان إضافي) — وممكن يبعت null عشان يفك الربط
+export async function setChannelCharacter(channelId, userId, characterReferenceId) {
+  const { rows } = await pool.query(
+    'UPDATE managed_channels SET character_reference_id = $1 WHERE id = $2 AND user_id = $3 RETURNING *',
+    [characterReferenceId || null, channelId, userId]
+  );
+  return rows[0] || null;
 }
 
 // ✅ NEW: نتيجة التحليل التلقائي للقناة (وضع "أوتوماتيك") — بتتخزن مرة واحدة وتفضل تتستخدم
@@ -1756,6 +1768,17 @@ export async function listCharacterReferencesForUser(userId) {
 
 export async function deleteCharacterReference(id, userId) {
   await pool.query('DELETE FROM character_references WHERE id = $1 AND user_id = $2', [id, userId]);
+}
+
+// ✅ بيتأكد إن الشخصية دي فعلاً بتاعة نفس العميل قبل ما نديها لأي مكان تاني (زي ربطها بقناة)
+export async function getCharacterReferenceForUser(id, userId) {
+  const { rows } = await pool.query('SELECT * FROM character_references WHERE id = $1 AND user_id = $2', [id, userId]);
+  return rows[0] || null;
+}
+
+export async function getCharacterReferenceById(id) {
+  const { rows } = await pool.query('SELECT * FROM character_references WHERE id = $1', [id]);
+  return rows[0] || null;
 }
 
 export async function listRecentDailyRunsForAdmin(limit = 100) {
