@@ -82,19 +82,43 @@ async function pollPrediction(predictionId, label, timeoutMs = 5 * 60 * 1000) {
 // مش الشورت-هاند بالاسم). بنضيف باراميتر "version" اختياري هنا: لو موجود، نستخدم الـendpoint
 // العام بالهاش المثبّت (زي fictions-ai/autocaption)؛ لو مش موجود، نفضل نستخدم الشورت-هاند
 // بالاسم زي ما هو (شغال فعلاً للموديلات التانية زي google/gemini-3.1-flash-tts)
+// ✅ FIX (باج حقيقي حقيقي شبيه باللي اتصلح في pvideoService.js — نفس السبب بالظبط): نداء
+// إنشاء الـprediction هنا (السرد بالصوت، والكابشن) كان من غير أي إعادة محاولة عند 429 —
+// بعكس adsVideoService.js اللي بيلف كل نداء Replicate بـwithRetry429 عشان قيد Replicate
+// الموثّق (رصيد أقل من $5 بيرجّع 429/throttled). synthesizeNarration بتتنادى مرة لكل مشهد
+// لوحده في character_adventure/whiteboard_sketch/generateAnimatedVideo — نفس النمط اللي
+// بيضرب الحد ده بالظبط. هنا في مكان واحد (الدالة المشتركة) بدل ما نلف كل نداء لوحده
+async function withRetry429(fn, maxRetries = 4) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const is429 = /429|throttled|rate limit/i.test(err.message || '');
+      if (!is429 || attempt === maxRetries) throw err;
+      let waitSec = 18;
+      const m = /retry_after["\s:]+(\d+(\.\d+)?)/i.exec(err.message || '');
+      if (m) waitSec = Math.max(parseFloat(m[1]) + 3, 8);
+      console.warn(`[VideoAudio] 429 rate limited on Replicate call, retrying in ${waitSec}s (attempt ${attempt + 1}/${maxRetries})...`);
+      await new Promise(r => setTimeout(r, waitSec * 1000));
+    }
+  }
+}
+
 async function runReplicatePrediction(slug, input, label, version = null) {
-  const url = version ? 'https://api.replicate.com/v1/predictions' : `https://api.replicate.com/v1/models/${slug}/predictions`;
-  const body = version ? { version, input } : { input };
-  const res = await fetch(url, {
-    method: 'POST', headers: replicateHeaders(), body: JSON.stringify(body),
+  return withRetry429(async () => {
+    const url = version ? 'https://api.replicate.com/v1/predictions' : `https://api.replicate.com/v1/models/${slug}/predictions`;
+    const body = version ? { version, input } : { input };
+    const res = await fetch(url, {
+      method: 'POST', headers: replicateHeaders(), body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${label} ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const data = await res.json();
+    if (data.error) throw new Error(`${label}: ${data.error}`);
+    let output = data.status === 'succeeded' ? data.output : null;
+    if (!output && data.id) output = await pollPrediction(data.id, label);
+    if (!output) throw new Error(`${label} returned no output`);
+    return output;
   });
-  if (!res.ok) throw new Error(`${label} ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const data = await res.json();
-  if (data.error) throw new Error(`${label}: ${data.error}`);
-  let output = data.status === 'succeeded' ? data.output : null;
-  if (!output && data.id) output = await pollPrediction(data.id, label);
-  if (!output) throw new Error(`${label} returned no output`);
-  return output;
 }
 
 function getMediaDuration(filePath) {

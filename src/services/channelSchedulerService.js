@@ -23,6 +23,7 @@ import { uploadVideoToYoutube } from './youtubeUploadService.js';
 import { createProjectForUser, appendProjectMessages, updateProjectMessageByRunId } from './projectRoutes.js';
 
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
+const OUTPUTS_DIR = 'outputs';
 
 const S3_ENDPOINT_URL = process.env.S3_ENDPOINT_URL;
 const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY;
@@ -436,6 +437,11 @@ async function generateAnimatedVideo(run, channel, idea, shape, headers) {
 // ── محتوى واقعي (موديل 2 — لقطات حقيقية من Pexels، مش رسوم بالذكاء الاصطناعي) ──────
 // بيستخدم /api/render بـ videoType:'pexels_clips' (نفس المسار اللي بيستخدمه أي عميل عادي
 // لموديل 2)، فبيتحاسب بنفس MODEL12_CREDIT_COSTS ذاتها تلقائيًا — مفيش حساب كريديت يدوي هنا
+// ✅ FIX (طلب العميل الصريح: "أي حاجة فيها صوت تتعمل بـReplicate/Gemini" في نظام القنوات):
+// الصوت هنا كان بيتعمل بـEdge TTS (/api/generate-voice، مجاني بس مش Replicate/Gemini) —
+// دلوقتي بيستخدم synthesizeNarration (Gemini TTS الحقيقي على Replicate) لكل مشهد لوحده،
+// بالظبط زي باقي أنماط المحتوى الجديدة كلها، ونلحمهم في ملف واحد (نفس شكل audioUrl+
+// sceneDurations اللي /api/render محتاجه، فباقي الدالة من غير أي تغيير)
 async function generateRealisticVideo(run, channel, idea, shape, headers) {
   const duration = shape === LONG_FORM ? '3min' : '30s';
   const scenes = await consumeScenesSSE(`${INTERNAL_BASE}/api/generate-scenes`, headers, {
@@ -444,13 +450,27 @@ async function generateRealisticVideo(run, channel, idea, shape, headers) {
 
   let audioUrl = null, sceneDurations = null;
   if (channel.uses_voice) {
-    const voiceRes = await fetch(`${INTERNAL_BASE}/api/generate-voice`, {
-      method: 'POST', headers,
-      body: JSON.stringify({ scenes, voice: (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_american', videoLanguage: idea.videoLanguage || 'en' }),
-    });
-    const voiceData = await voiceRes.json().catch(() => null);
-    // ✅ لو توليد الصوت فشل، منوقفش الفيديو كله — بيكمل بدون صوت بدل ما يوم العميل يضيع
-    if (voiceRes.ok && voiceData?.audioUrl) { audioUrl = voiceData.audioUrl; sceneDurations = voiceData.sceneDurations; }
+    const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_american';
+    const narrations = [];
+    try {
+      for (const s of scenes) {
+        const text = (s.text || '').trim();
+        if (!text) continue;
+        narrations.push(await synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' }));
+      }
+      if (narrations.length) {
+        fs.mkdirSync(OUTPUTS_DIR, { recursive: true });
+        const filename = `realistic_voice_${run.id}_${Date.now()}.mp3`;
+        concatAudioFiles(narrations.map(n => n.audioPath), path.join(OUTPUTS_DIR, filename));
+        audioUrl = '/outputs/' + filename;
+        sceneDurations = narrations.map(n => n.durationSec);
+      }
+    } catch (e) {
+      // ✅ لو توليد الصوت فشل، منوقفش الفيديو كله — بيكمل بدون صوت بدل ما يوم العميل يضيع
+      console.warn(`[ChannelScheduler] Gemini narration failed for realistic run ${run.id}, continuing without voice:`, e.message);
+    } finally {
+      narrations.forEach(n => { try { fs.rmSync(n.workDir, { recursive: true, force: true }); } catch {} });
+    }
   }
 
   const mediaRes = await fetch(`${INTERNAL_BASE}/api/fetch-media`, {
