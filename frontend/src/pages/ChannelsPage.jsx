@@ -1,4 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Tv, ArrowLeft, ExternalLink, KeyRound, Bot, Pencil, Mic, MicOff, RefreshCw, Search,
+  Sparkles, Drama, Play, CheckCircle2, XCircle, Pause, PlayCircle, Trash2, BarChart3,
+  ChevronDown, Link2, Eye, ThumbsUp, MessageSquare, Clock, Loader2, TriangleAlert,
+} from 'lucide-react';
 
 function authHeaders() {
   return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') };
@@ -10,10 +15,10 @@ const T = {
     howTitle: 'إزاي تربط قناتك؟ (3 خطوات وخلصت)',
     step1Title: '1. اعمل حساب VidIQ (لو مالكش واحد)',
     step1Desc: 'VidIQ هو اللي بيوصّل Erivion بقناتك على يوتيوب وبيجيب الإحصائيات والأفكار الحقيقية. لو لسه معملتش حساب، اعمله من هنا (فيه خطة مجانية):',
-    step1Btn: '🔗 افتح vidiq.com',
+    step1Btn: 'افتح vidiq.com',
     step2Title: '2. جيب مفتاح الـAPI الشخصي بتاعك',
     step2Desc: 'بعد ما تسجّل دخول في VidIQ، افتح الرابط ده وانسخ المفتاح اللي هيظهر لك — ده مفتاحك الخاص، مش هيشوفه غيرك:',
-    step2Btn: '🔑 افتح صفحة المفتاح',
+    step2Btn: 'افتح صفحة المفتاح',
     step3Title: '3. الصق المفتاح تحت وضيف القناة',
     step3Desc: 'هنتأكد إن المفتاح شغال ومربوط بقناتك على يوتيوب أوتوماتيك. وبعد ما تضيف القناة، تقدر (اختياري) تضغط "اربط يوتيوب" عشان الرفع يبقى تلقائي بالكامل من غير ما تلمس حاجة.',
     addTitle: 'إضافة قناة جديدة', label: 'اسم مميز للقناة (اختياري)', vidiqKey: 'مفتاح VidIQ الشخصي',
@@ -28,19 +33,19 @@ const T = {
     notLinkedYet: 'لسه ما اترفعش/اترباط بيوتيوب', loadingStats: 'بيجيب الأداء...',
     connectYoutube: 'اربط يوتيوب (رفع تلقائي)', connectedAs: 'متصل — رفع تلقائي مفعّل',
     disconnect: 'فصل الربط', youtubeConnectedToast: 'تم ربط يوتيوب بنجاح! الفيديوهات الجاية هترفع تلقائي.',
-    channelAddedToast: '✅ تمام! القناة اتضافت — تقدر تشوفها تحت في "قنواتك".',
-    setupModeLabel: 'طريقة إعداد القناة', setupAuto: '🤖 أوتوماتيك', setupManual: '✍️ يدوي',
+    channelAddedToast: 'تمام! القناة اتضافت — تقدر تشوفها تحت في "قنواتك".',
+    setupModeLabel: 'طريقة إعداد القناة', setupAuto: 'أوتوماتيك', setupManual: 'يدوي',
     setupAutoDesc: 'الموقع يحلل قناتك من يوتيوب و VidIQ ويحدد نوع المحتوى والستايل وهل فيه راوي وطول الفيديو بنفسه.',
     setupManualDesc: 'انت اللي تحدد كل التفاصيل بنفسك — الأدق لو عايز تحكم كامل.',
     autoDetected: 'هيتحدد تلقائيًا بعد التحليل',
-    analyzing: 'بيحلل القناة دلوقتي...', reanalyze: '🔄 إعادة التحليل', analyzeNow: '🔍 حلل القناة دلوقتي',
-    analysisLabel: '🤖 نتيجة التحليل التلقائي', contentStyleL: 'نوع المحتوى', videoStyleL: 'الستايل البصري',
+    analyzing: 'بيحلل القناة دلوقتي...', reanalyze: 'إعادة التحليل', analyzeNow: 'حلل القناة دلوقتي',
+    analysisLabel: 'نتيجة التحليل التلقائي', contentStyleL: 'نوع المحتوى', videoStyleL: 'الستايل البصري',
     usesVoiceL: 'راوي/صوت', targetDurationL: 'الطول المستهدف', yes: 'نعم', no: 'لأ',
     analysisFailedToast: 'التحليل التلقائي فشل — تقدر تحاول تاني أو تختار يدوي.',
     contentStyleLabel: 'نوع المحتوى', contentStyleAuto: 'تلقائي (يتحدد يوميًا)', contentStyleRealistic: 'واقعي (لقطات حقيقية)',
     contentStyleMap: 'خرائط/جغرافيا', contentStyleAnimated: 'قصص/رسوم بالذكاء الاصطناعي',
-    contentStyleCharacter: '🎭 شخصية واحدة تعيش مغامرة',
-    contentStyleWhiteboard: '✏️ سكتش على سبورة بيضاء',
+    contentStyleCharacter: 'شخصية واحدة تعيش مغامرة',
+    contentStyleWhiteboard: 'سكتش على سبورة بيضاء',
     characterPickLabel: 'اختار الشخصية', characterPickNone: 'لسه معملتش أي شخصية —',
     characterPickLink: 'روح لمكتبة الشخصيات وضيف واحدة الأول', characterRequired: 'لازم تختار شخصية عشان النوع ده يشتغل',
   },
@@ -49,10 +54,10 @@ const T = {
     howTitle: 'How to connect your channel (3 quick steps)',
     step1Title: '1. Create a VidIQ account (if you don’t have one)',
     step1Desc: 'VidIQ is what links Erivion to your YouTube channel and pulls real stats and video ideas. If you don’t have an account yet, create one here (there’s a free plan):',
-    step1Btn: '🔗 Open vidiq.com',
+    step1Btn: 'Open vidiq.com',
     step2Title: '2. Get your personal API key',
     step2Desc: 'After logging into VidIQ, open this link and copy the key shown there — it’s your own private key, no one else can see it:',
-    step2Btn: '🔑 Open the key page',
+    step2Btn: 'Open the key page',
     step3Title: '3. Paste the key below and connect',
     step3Desc: 'We’ll verify the key works and is linked to a real YouTube channel automatically. After connecting, you can optionally click "Connect YouTube" so future videos upload fully automatically.',
     addTitle: 'Connect a new channel', label: 'A friendly label (optional)', vidiqKey: 'Your personal VidIQ API key',
@@ -67,19 +72,19 @@ const T = {
     notLinkedYet: 'Not linked to a YouTube video yet', loadingStats: 'Loading stats...',
     connectYoutube: 'Connect YouTube (auto-upload)', connectedAs: 'Connected — auto-upload enabled',
     disconnect: 'Disconnect', youtubeConnectedToast: 'YouTube connected! Future videos will upload automatically.',
-    channelAddedToast: '✅ Done! Your channel was added — check it below under "Your channels".',
-    setupModeLabel: 'Channel setup mode', setupAuto: '🤖 Automatic', setupManual: '✍️ Manual',
+    channelAddedToast: 'Done! Your channel was added — check it below under "Your channels".',
+    setupModeLabel: 'Channel setup mode', setupAuto: 'Automatic', setupManual: 'Manual',
     setupAutoDesc: 'Erivion analyzes your channel from YouTube and VidIQ to figure out content style, visual style, whether it uses narration, and video length on its own.',
     setupManualDesc: "You set every detail yourself — most precise if you want full control.",
     autoDetected: 'Will be detected automatically after analysis',
-    analyzing: 'Analyzing your channel...', reanalyze: '🔄 Re-analyze', analyzeNow: '🔍 Analyze channel now',
-    analysisLabel: '🤖 Automatic analysis result', contentStyleL: 'Content style', videoStyleL: 'Visual style',
+    analyzing: 'Analyzing your channel...', reanalyze: 'Re-analyze', analyzeNow: 'Analyze channel now',
+    analysisLabel: 'Automatic analysis result', contentStyleL: 'Content style', videoStyleL: 'Visual style',
     usesVoiceL: 'Narration/voice', targetDurationL: 'Target length', yes: 'Yes', no: 'No',
     analysisFailedToast: 'Automatic analysis failed — you can try again or switch to manual.',
     contentStyleLabel: 'Content style', contentStyleAuto: 'Auto (decided daily)', contentStyleRealistic: 'Realistic (stock footage)',
     contentStyleMap: 'Map/Geography', contentStyleAnimated: 'Story/AI-animated',
-    contentStyleCharacter: '🎭 Single character adventure',
-    contentStyleWhiteboard: '✏️ Whiteboard sketch',
+    contentStyleCharacter: 'Single character adventure',
+    contentStyleWhiteboard: 'Whiteboard sketch',
     characterPickLabel: 'Choose the character', characterPickNone: "You haven't added a character yet —",
     characterPickLink: 'go to the Characters library and add one first', characterRequired: 'You must pick a character for this content style to work',
   },
@@ -282,68 +287,78 @@ export default function ChannelsPage({ onBack, userRegion }) {
     <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0f)', color: '#fff', fontFamily: "'DM Sans', sans-serif", padding: '40px 20px', direction: dir }}>
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
         {onBack && (
-          <button onClick={onBack} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, marginBottom: 24 }}>
-            {isAr ? '← رجوع' : '← Back'}
+          <button onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, marginBottom: 24 }}>
+            <ArrowLeft size={13} style={{ transform: isAr ? 'scaleX(-1)' : 'none' }} /> {isAr ? 'رجوع' : 'Back'}
           </button>
         )}
 
         {toast && (
           <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 10, background: toast.type === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${toast.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: toast.type === 'success' ? '#22c55e' : '#f87171', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <span>{toast.text}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {toast.type === 'success' ? <CheckCircle2 size={15} /> : <XCircle size={15} />} {toast.text}
+            </span>
             <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
           </div>
         )}
 
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📺</div>
+          <div style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 16px', background: 'linear-gradient(135deg,rgba(124,106,247,0.18),rgba(124,106,247,0.05))', border: '1px solid rgba(124,106,247,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Tv size={26} color="#a78bfa" strokeWidth={1.75} />
+          </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t.title}</h1>
           <p style={{ color: 'rgba(255,255,255,0.45)', marginTop: 8, fontSize: 13.5, maxWidth: 440, marginInline: 'auto', lineHeight: 1.7 }}>{t.sub}</p>
         </div>
 
         <div style={{ background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.18)', borderRadius: 16, padding: 22, marginBottom: 20 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 16, color: '#c4b5fd' }}>{t.howTitle}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{t.step1Title}</div>
-              <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', margin: '0 0 8px', lineHeight: 1.7 }}>{t.step1Desc}</p>
-              <a href="https://vidiq.com" target="_blank" rel="noopener noreferrer"
-                style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '6px 14px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', color: '#a78bfa', textDecoration: 'none', border: '1px solid rgba(124,106,247,0.3)' }}>
-                {t.step1Btn}
-              </a>
-            </div>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{t.step2Title}</div>
-              <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', margin: '0 0 8px', lineHeight: 1.7 }}>{t.step2Desc}</p>
-              <a href="https://app.vidiq.com/account/settings/mcp" target="_blank" rel="noopener noreferrer"
-                style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '6px 14px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', color: '#a78bfa', textDecoration: 'none', border: '1px solid rgba(124,106,247,0.3)' }}>
-                {t.step2Btn}
-              </a>
-            </div>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{t.step3Title}</div>
-              <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', margin: 0, lineHeight: 1.7 }}>{t.step3Desc}</p>
-            </div>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 18, color: '#c4b5fd', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Sparkles size={15} /> {t.howTitle}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {[
+              { title: t.step1Title, desc: t.step1Desc, href: 'https://vidiq.com', btn: t.step1Btn },
+              { title: t.step2Title, desc: t.step2Desc, href: 'https://app.vidiq.com/account/settings/mcp', btn: t.step2Btn },
+              { title: t.step3Title, desc: t.step3Desc },
+            ].map((s, i) => (
+              <div key={i} style={{ display: 'flex', gap: 12 }}>
+                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.3)', color: '#a78bfa', fontSize: 11.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{s.title}</div>
+                  <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', margin: s.href ? '0 0 8px' : 0, lineHeight: 1.7 }}>{s.desc}</p>
+                  {s.href && (
+                    <a href={s.href} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, padding: '6px 14px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', color: '#a78bfa', textDecoration: 'none', border: '1px solid rgba(124,106,247,0.3)' }}>
+                      {i === 0 ? <ExternalLink size={12} /> : <KeyRound size={12} />} {s.btn}
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 24, marginBottom: 24 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 16 }}>{t.addTitle}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Tv size={15} color="#a78bfa" /> {t.addTitle}
+          </div>
           <input value={label} onChange={e => setLabel(e.target.value)} placeholder={t.label}
             style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13.5, marginBottom: 10, boxSizing: 'border-box' }} />
-          <input value={vidiqKey} onChange={e => setVidiqKey(e.target.value)} placeholder={t.vidiqKey} type="password"
-            style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13.5, marginBottom: 6, boxSizing: 'border-box' }} />
-          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '0 0 14px', lineHeight: 1.6 }}>{t.vidiqHelp}</p>
+          <div style={{ position: 'relative', marginBottom: 6 }}>
+            <KeyRound size={14} color="rgba(255,255,255,0.3)" style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', [isAr ? 'right' : 'left']: 14 }} />
+            <input value={vidiqKey} onChange={e => setVidiqKey(e.target.value)} placeholder={t.vidiqKey} type="password"
+              style={{ width: '100%', padding: isAr ? '11px 38px 11px 14px' : '11px 14px 11px 38px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13.5, boxSizing: 'border-box' }} />
+          </div>
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '0 0 18px', lineHeight: 1.6 }}>{t.vidiqHelp}</p>
 
-          <div style={{ padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontSize: 13, color: '#d1d5db', marginBottom: 10 }}>{t.setupModeLabel}</div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              {['manual', 'automatic'].map(mode => (
+          <div style={{ padding: '14px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ fontSize: 13, color: '#d1d5db', marginBottom: 10, fontWeight: 600 }}>{t.setupModeLabel}</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              {[['manual', Pencil, t.setupManual], ['automatic', Bot, t.setupAuto]].map(([mode, Ico, label2]) => (
                 <button key={mode} type="button" onClick={() => setSetupMode(mode)}
-                  style={{ flex: 1, padding: '9px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 10px', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                     border: setupMode === mode ? '1px solid #7c6af7' : '1px solid rgba(255,255,255,0.1)',
                     background: setupMode === mode ? 'rgba(124,106,247,0.15)' : 'rgba(255,255,255,0.03)',
                     color: setupMode === mode ? '#c4b5fd' : '#9ca3af' }}>
-                  {mode === 'manual' ? t.setupManual : t.setupAuto}
+                  <Ico size={14} /> {label2}
                 </button>
               ))}
             </div>
@@ -352,7 +367,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
             </p>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
             <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.format}</span>
             <select value={formatPref} onChange={e => setFormatPref(e.target.value)}
               style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }}>
@@ -362,17 +377,17 @@ export default function ChannelsPage({ onBack, userRegion }) {
             </select>
           </div>
           {setupMode === 'automatic' ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 16 }}>
-              <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.voice}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 18 }}>
+              <span style={{ fontSize: 13, color: '#d1d5db', display: 'flex', alignItems: 'center', gap: 7 }}><Mic size={13} /> {t.voice}</span>
               <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>{t.autoDetected}</span>
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.voice}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ fontSize: 13, color: '#d1d5db', display: 'flex', alignItems: 'center', gap: 7 }}>{usesVoice ? <Mic size={13} /> : <MicOff size={13} />} {t.voice}</span>
                 <Toggle value={usesVoice} onChange={setUsesVoice} />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <span style={{ fontSize: 13, color: '#d1d5db' }}>{t.contentStyleLabel}</span>
                 <select value={contentStyle} onChange={e => setContentStyle(e.target.value)}
                   style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }}>
@@ -385,10 +400,10 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 </select>
               </div>
               {contentStyle === 'character_adventure' && (
-                <div style={{ padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, color: '#d1d5db', marginBottom: 8 }}>{t.characterPickLabel}</div>
+                <div style={{ padding: '12px 12px', marginTop: 8, borderRadius: 10, background: 'rgba(236,72,153,0.06)', border: '1px solid rgba(236,72,153,0.18)', marginBottom: 18 }}>
+                  <div style={{ fontSize: 12.5, color: '#f0abfc', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Drama size={13} /> {t.characterPickLabel}</div>
                   {characters.length === 0 ? (
-                    <p style={{ fontSize: 11.5, color: '#f59e0b', margin: 0 }}>{t.characterPickNone} <span style={{ textDecoration: 'underline', cursor: 'default' }}>{t.characterPickLink}</span></p>
+                    <p style={{ fontSize: 11.5, color: '#f59e0b', margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}><TriangleAlert size={13} style={{ flexShrink: 0, marginTop: 1 }} /> {t.characterPickNone} <span style={{ textDecoration: 'underline', cursor: 'default' }}>{t.characterPickLink}</span></p>
                   ) : (
                     <select value={characterReferenceId} onChange={e => setCharacterReferenceId(e.target.value)}
                       style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '9px 10px', fontSize: 12.5, boxSizing: 'border-box' }}>
@@ -398,54 +413,59 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   )}
                 </div>
               )}
-              {contentStyle !== 'character_adventure' && <div style={{ marginBottom: 16 }} />}
+              {contentStyle !== 'character_adventure' && <div style={{ marginBottom: 18 }} />}
             </>
           )}
 
-          {error && <p style={{ color: '#ef4444', fontSize: 12.5, marginBottom: 12 }}>{error}</p>}
+          {error && <p style={{ color: '#ef4444', fontSize: 12.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><TriangleAlert size={13} /> {error}</p>}
           <button onClick={addChannel} disabled={adding || !vidiqKey.trim()}
-            style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: (adding || !vidiqKey.trim()) ? 'rgba(124,106,247,0.3)' : '#7c6af7', color: '#fff', fontWeight: 700, fontSize: 14, cursor: (adding || !vidiqKey.trim()) ? 'not-allowed' : 'pointer' }}>
-            {adding ? t.adding : t.add}
+            style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: (adding || !vidiqKey.trim()) ? 'rgba(124,106,247,0.3)' : 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: (adding || !vidiqKey.trim()) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            {adding ? <><Loader2 size={15} className="spinning" /> {t.adding}</> : t.add}
           </button>
         </div>
 
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, color: 'rgba(255,255,255,0.6)' }}>{t.yourChannels}</div>
         {loading ? null : channels.length === 0 ? (
-          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>{t.noChannels}</p>
+          <div style={{ textAlign: 'center', padding: '32px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+            <Tv size={22} color="rgba(255,255,255,0.25)" style={{ marginBottom: 8 }} />
+            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, margin: 0 }}>{t.noChannels}</p>
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {channels.map(ch => (
               <div key={ch.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '16px 18px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{ch.label || ch.channel_id}</div>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: ch.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)', color: ch.status === 'active' ? '#22c55e' : '#f59e0b' }}>
-                    {ch.status}
+                  <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Tv size={14} color="rgba(255,255,255,0.4)" /> {ch.label || ch.channel_id}
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 5, background: ch.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)', color: ch.status === 'active' ? '#22c55e' : '#f59e0b' }}>
+                    {ch.status === 'active' ? <PlayCircle size={11} /> : <Pause size={11} />} {ch.status}
                   </span>
                 </div>
-                <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', marginBottom: 12 }}>
-                  {t.lastRun}: {ch.last_run_at ? new Date(ch.last_run_at).toLocaleString() : t.never} · {ch.format_pref} · {ch.uses_voice ? '🎙️' : '🔇'}
+                <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Clock size={11} /> {t.lastRun}: {ch.last_run_at ? new Date(ch.last_run_at).toLocaleString() : t.never} · {ch.format_pref} · {ch.uses_voice ? <Mic size={11} /> : <MicOff size={11} />}
                 </div>
 
                 {ch.setup_mode === 'automatic' && (
                   <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.15)' }}>
                     {analyzingIds[ch.id] ? (
-                      <span style={{ fontSize: 11.5, color: '#a78bfa' }}>⏳ {t.analyzing}</span>
+                      <span style={{ fontSize: 11.5, color: '#a78bfa', display: 'flex', alignItems: 'center', gap: 6 }}><Loader2 size={12} className="spinning" /> {t.analyzing}</span>
                     ) : ch.auto_analyzed_at ? (
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', marginBottom: 6 }}>{t.analysisLabel}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Bot size={12} /> {t.analysisLabel}</div>
                         <div style={{ fontSize: 11, color: '#d1d5db', display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
                           <span>{t.contentStyleL}: {ch.content_style || '–'}</span>
                           <span>{t.videoStyleL}: {ch.video_style || '–'}</span>
                           <span>{t.usesVoiceL}: {ch.uses_voice ? t.yes : t.no}</span>
                           <span>{t.targetDurationL}: {ch.target_duration_sec ? `${ch.target_duration_sec}s (${ch.target_scene_count} scenes)` : '–'}</span>
                         </div>
-                        <button onClick={() => analyzeChannel(ch.id)} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 10.5, cursor: 'pointer' }}>
-                          {t.reanalyze}
+                        <button onClick={() => analyzeChannel(ch.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 10.5, cursor: 'pointer' }}>
+                          <RefreshCw size={10} /> {t.reanalyze}
                         </button>
                       </div>
                     ) : (
-                      <button onClick={() => analyzeChannel(ch.id)} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}>
-                        {t.analyzeNow}
+                      <button onClick={() => analyzeChannel(ch.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}>
+                        <Search size={12} /> {t.analyzeNow}
                       </button>
                     )}
                   </div>
@@ -454,12 +474,12 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 {ch.content_style === 'character_adventure' && (
                   <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(236,72,153,0.06)', border: '1px solid rgba(236,72,153,0.18)' }}>
                     {ch.character_reference_id ? (
-                      <span style={{ fontSize: 11.5, color: '#ec4899', display: 'flex', alignItems: 'center', gap: 6 }}>🎭 {ch.character_label || `#${ch.character_reference_id}`}</span>
+                      <span style={{ fontSize: 11.5, color: '#ec4899', display: 'flex', alignItems: 'center', gap: 6 }}><Drama size={13} /> {ch.character_label || `#${ch.character_reference_id}`}</span>
                     ) : characters.length === 0 ? (
-                      <p style={{ fontSize: 11, color: '#f59e0b', margin: 0 }}>{t.characterPickNone} {t.characterPickLink}</p>
+                      <p style={{ fontSize: 11, color: '#f59e0b', margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}><TriangleAlert size={12} style={{ flexShrink: 0, marginTop: 1 }} /> {t.characterPickNone} {t.characterPickLink}</p>
                     ) : (
                       <div>
-                        <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.characterPickLabel}</div>
+                        <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Drama size={12} /> {t.characterPickLabel}</div>
                         <select onChange={e => assignCharacter(ch.id, e.target.value)} defaultValue=""
                           style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
                           <option value="">—</option>
@@ -473,27 +493,28 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 <div style={{ marginBottom: 12 }}>
                   {ch.youtube_channel_title ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11.5, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 5 }}>✅ {t.connectedAs} ({ch.youtube_channel_title})</span>
+                      <span style={{ fontSize: 11.5, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle2 size={13} /> {t.connectedAs} ({ch.youtube_channel_title})</span>
                       <button onClick={() => disconnectYoutube(ch.id)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.25)', background: 'transparent', color: '#ef4444', fontSize: 11, cursor: 'pointer' }}>
                         {t.disconnect}
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => connectYoutube(ch.id)} disabled={connectingId === ch.id}
-                      style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,0,0,0.25)', background: 'rgba(255,0,0,0.06)', color: '#ff6b6b', fontSize: 12, cursor: connectingId === ch.id ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      ▶️ {connectingId === ch.id ? '...' : t.connectYoutube}
+                      style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#ff6b6b', fontSize: 12, cursor: connectingId === ch.id ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {connectingId === ch.id ? <Loader2 size={13} className="spinning" /> : <Play size={13} />} {connectingId === ch.id ? '...' : t.connectYoutube}
                     </button>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => toggleStatus(ch)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#d1d5db', fontSize: 12, cursor: 'pointer' }}>
-                    {ch.status === 'active' ? t.pause : t.resume}
+                  <button onClick={() => toggleStatus(ch)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#d1d5db', fontSize: 12, cursor: 'pointer' }}>
+                    {ch.status === 'active' ? <><Pause size={12} /> {t.pause}</> : <><PlayCircle size={12} /> {t.resume}</>}
                   </button>
-                  <button onClick={() => removeChannel(ch.id)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
-                    {t.remove}
+                  <button onClick={() => removeChannel(ch.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
+                    <Trash2 size={12} /> {t.remove}
                   </button>
-                  <button onClick={() => toggleAnalytics(ch.id)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.08)', color: '#a78bfa', fontSize: 12, cursor: 'pointer', marginInlineStart: 'auto' }}>
-                    {expandedChannelId === ch.id ? t.hideAnalytics : `📊 ${t.analytics}`}
+                  <button onClick={() => toggleAnalytics(ch.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.08)', color: '#a78bfa', fontSize: 12, cursor: 'pointer', marginInlineStart: 'auto' }}>
+                    {expandedChannelId === ch.id ? <>{t.hideAnalytics}</> : <><BarChart3 size={12} /> {t.analytics}</>}
+                    <ChevronDown size={12} style={{ transform: expandedChannelId === ch.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
                   </button>
                 </div>
 
@@ -512,20 +533,20 @@ export default function ChannelsPage({ onBack, userRegion }) {
                             <div style={{ display: 'flex', gap: 6 }}>
                               <input value={linkInputs[run.id] || ''} onChange={e => setLinkInputs(prev => ({ ...prev, [run.id]: e.target.value }))} placeholder={t.linkPlaceholder}
                                 style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 11.5 }} />
-                              <button onClick={() => linkYoutube(ch.id, run.id)} style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#7c6af7', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>{t.link}</button>
+                              <button onClick={() => linkYoutube(ch.id, run.id)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 7, border: 'none', background: '#7c6af7', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}><Link2 size={11} /> {t.link}</button>
                             </div>
                           ) : !perf ? (
-                            <button onClick={() => refreshPerformance(run.id)} style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}>{t.refreshStats}</button>
+                            <button onClick={() => refreshPerformance(run.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}><RefreshCw size={11} /> {t.refreshStats}</button>
                           ) : perf === 'loading' ? (
-                            <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)' }}>{t.loadingStats}</span>
+                            <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: 6 }}><Loader2 size={12} className="spinning" /> {t.loadingStats}</span>
                           ) : perf.error ? (
                             <span style={{ fontSize: 11.5, color: '#ef4444' }}>{perf.error}</span>
                           ) : (
                             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11.5, color: '#d1d5db' }}>
-                              <span>👁️ {perf.views ?? '–'} {t.views}</span>
-                              <span>👍 {perf.likes ?? '–'} {t.likes}</span>
-                              <span>💬 {perf.comments ?? '–'} {t.comments}</span>
-                              <span>⏱️ {formatDuration(perf.avgViewDurationSec)} {t.avgView}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Eye size={12} /> {perf.views ?? '–'} {t.views}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><ThumbsUp size={12} /> {perf.likes ?? '–'} {t.likes}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><MessageSquare size={12} /> {perf.comments ?? '–'} {t.comments}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Clock size={12} /> {formatDuration(perf.avgViewDurationSec)} {t.avgView}</span>
                             </div>
                           )}
                         </div>
