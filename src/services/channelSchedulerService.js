@@ -5,15 +5,22 @@
 
 import fetch from 'node-fetch';
 import crypto from 'crypto';
+import fs from 'fs';
+import { execSync } from 'child_process';
+import path from 'path';
 import {
   getDueManagedChannels, markManagedChannelRun, createDailyVideoRun,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
-  mintInternalToken, getUserById, getCreditsBalance, chargeCredits, saveVideo, saveChannelAnalysis,
+  mintInternalToken, getUserById, getCreditsBalance, chargeCredits, addCreditsBalance, saveVideo, saveChannelAnalysis,
   getCharacterReferenceById,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { renderModel8Video } from './pvideoService.js';
-import { getMaxClipSeconds } from './creditPricingEngine.js';
+import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
+import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
+import { mergeVideos } from './videoMergeService.js';
+
+const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const AGENT_MODEL = 'openai/gpt-oss-120b';
@@ -380,19 +387,23 @@ async function generateMapVideo(run, channel, idea, shape, headers) {
   }
 }
 
-// ✅ NEW: مشاهد بصرية لفيديو "شخصية واحدة تعيش مغامرة" — كل مشهد لحظة/بيت مختلف في نفس
-// القصة (زي "لو عشت في زمن سيدنا نوح"). منستخدمش وصف مظهر الشخصية خالص هنا لأن الصورة
-// المرجعية المحفوظة هي اللي بتحدد الشكل — الـprompt بيركز على الحدث/المكان/الإحساس بس
-async function draftCharacterAdventureScenes(idea, sceneCount, videoStyle) {
+// ✅ NEW: مشاهد بصرية + (لو القناة بتستخدم صوت) جملة سرد مقابلة لكل مشهد، لفيديو "شخصية
+// واحدة تعيش مغامرة" — كل مشهد لحظة/بيت مختلف في نفس القصة (زي "لو عشت في زمن سيدنا نوح").
+// منستخدمش وصف مظهر الشخصية خالص هنا لأن الصورة المرجعية المحفوظة هي اللي بتحدد الشكل —
+// الـvisual prompt بيركز على الحدث/المكان/الإحساس بس. جملة السرد مربوطة بنفس المشهد (مش
+// سكريبت واحد طويل منفصل) عشان نقدر نولّد صوتها لوحدها ونقيس مدتها الحقيقية ونظبط طول
+// المشهد عليها بالظبط بعد كده (راجع generateCharacterAdventureVideo تحت)
+async function draftCharacterAdventureScenes(idea, sceneCount, videoStyle, needsNarration) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
-  const system = `You write ${sceneCount} distinct visual scene descriptions (in English) for a single-character adventure video. The SAME one character (already shown in a reference photo the image generator has — never describe their face, body, or clothing, only their actions and expressions) experiences this story across all ${sceneCount} scenes, each a different moment/beat of the adventure, in clear visual chronological order (setup, rising action, climax, resolution). Video idea: "${idea.title}" — ${idea.brief || ''}. Visual style: ${videoStyle || 'cinematic'}. Output ONLY a valid JSON array of exactly ${sceneCount} strings, each one a single vivid scene description (setting, action, mood, camera angle) — no character appearance details, no dialogue, no scene numbers/labels.`;
+  const narrationField = needsNarration ? `, "narration": "one short natural narration sentence for this exact scene, in ${idea.videoLanguage?.startsWith('ar') ? 'the same Arabic dialect as the video' : 'English'}, continuing the story from the previous scene's narration"` : '';
+  const system = `You write ${sceneCount} distinct scene beats (in English for "visual"${needsNarration ? ', matching-language narration for "narration"' : ''}) for a single-character adventure video. The SAME one character (already shown in a reference photo the image generator has — never describe their face, body, or clothing in "visual", only their actions and expressions) experiences this story across all ${sceneCount} scenes, each a different moment/beat of the adventure, in clear chronological order (setup, rising action, climax, resolution)${needsNarration ? ', with the narration forming one continuous story when read scene by scene' : ''}. Video idea: "${idea.title}" — ${idea.brief || ''}. Visual style: ${videoStyle || 'cinematic'}. Output ONLY a valid JSON array of exactly ${sceneCount} objects: [{"visual": "a single vivid scene description (setting, action, mood, camera angle) — no character appearance details, no dialogue, no scene numbers/labels"${narrationField}}, ...].`;
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: AGENT_MODEL,
       messages: [{ role: 'system', content: system }, { role: 'user', content: 'JSON array only:' }],
-      max_tokens: 1500, temperature: 0.8, reasoning_effort: 'low',
+      max_tokens: 2000, temperature: 0.8, reasoning_effort: 'low',
     }),
   });
   if (!res.ok) throw new Error(`Groq error ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -400,69 +411,140 @@ async function draftCharacterAdventureScenes(idea, sceneCount, videoStyle) {
   const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
   const scenes = JSON.parse(raw);
   if (!Array.isArray(scenes) || scenes.length < 2) throw new Error('Scene generation returned an invalid list');
-  return scenes.slice(0, sceneCount).map(s => String(s));
+  return scenes.slice(0, sceneCount).map(s => ({ visual: String(s.visual || s), narration: needsNarration ? String(s.narration || '') : null }));
+}
+
+// ✅ NEW: بيلحم كام ملف صوت محلي (نفس التنسيق — كلهم ناتج synthesizeNarration، mp3) في
+// ملف واحد بالترتيب، عن طريق ffmpeg concat demuxer (نفس الأسلوب المستخدم فعليًا في
+// cloneVoiceNarration's chunk-stitching بـvoiceCloneService.js)
+function concatAudioFiles(audioPaths, outPath) {
+  const listPath = outPath + '.txt';
+  fs.writeFileSync(listPath, audioPaths.map(p => `file '${path.resolve(p)}'`).join('\n'));
+  try {
+    execSync(`ffmpeg -y -f concat -safe 0 -i "${listPath}" -c copy "${outPath}"`, { stdio: 'pipe' });
+  } finally {
+    try { fs.unlinkSync(listPath); } catch {}
+  }
 }
 
 // ── محتوى "شخصية واحدة تعيش مغامرة" (character_adventure) — بيستخدم صورة مرجعية محفوظة
 // من مكتبة الشخصيات عشان نفس الشخصية تفضل ثابتة في كل مشاهد الفيديو:
 // 1) صور مشاهد بمرجع الشخصية (نانو بنانا 2، متسلسلة زي أي مرجع تناسق في generateNewModelImages)
-// 2) تحريك كل صورة لكليب فيديو قصير (Seedance 2.5)
-// 3) دمج الكليبات + فويس أوفر (لو القناة بتستخدم صوت) + كابشن في فيديو واحد نهائي
-// ⚠️ محدود بحد أقصى 10 مشاهد/كليبات — /api/videos/merge بيقبل لحد 10 فيديوهات بس في الدمج
-// الواحد، فمهما كان طول الفيديو المستهدف أكبر، ده أقصى حد ممكن للمسار ده حاليًا
+// 2) (لو القناة بتستخدم صوت) سرد حقيقي منفصل لكل مشهد (Gemini TTS) — بنقيس مدته الحقيقية
+//    ونولّد/نظبط حركة المشهد على نفس المدة دي بالظبط (conformVideoDurationToAudio: لو
+//    الصوت أطول من الفيديو المتحرك، الفيديو "يتراجع"/يتباطأ عشان يمتد لنفس المدة؛ لو أقصر،
+//    بيتقص لمدة الصوت بالظبط) — تزامن مضمون مشهد بمشهد، مش سرد واحد طويل بيتحط فوق فيديو
+//    مدموج ومنقصوش/يتمطط عشوائي زي المسار القديم
+// 3) دمج الكليبات (كل واحد فيها صوته الخاص متزامن بالفعل قبل الدمج) وحرق كابشن حقيقي لو
+//    مطلوب (بكريديت — التكلفة الحقيقية الوحيدة المتبقية غير توليد الفيديو نفسه)
+// ⚠️ محدود بحد أقصى 10 مشاهد/كليبات (حد mergeVideos العملي لمنتج بهذا الحجم)
 async function generateCharacterAdventureVideo(run, channel, idea, shape, headers) {
   if (!channel.character_reference_id) throw new Error('No character reference set for this channel — pick one from the Characters library first.');
   const character = await getCharacterReferenceById(channel.character_reference_id);
   if (!character) throw new Error('Saved character reference not found');
 
-  const MAX_SCENES = 10; // حد /api/videos/merge
+  const MAX_SCENES = 10;
   const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, MAX_SCENES);
   const maxClip = getMaxClipSeconds('seedance_2_5') || 30;
-  const sceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
+  const defaultSceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
+  const usesVoice = !!channel.uses_voice;
+  const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise';
 
-  const scenePrompts = await draftCharacterAdventureScenes(idea, sceneCount, channel.video_style);
+  const scenes = await draftCharacterAdventureScenes(idea, sceneCount, channel.video_style, usesVoice);
 
   // ── 1) صور المشاهد، الشخصية ثابتة عبرهم كلهم ────────────────────────────────
   const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
     method: 'POST', headers,
-    body: JSON.stringify({ model: 'nano_banana_2', prompts: scenePrompts, referenceImageUrls: [character.image_url], aspectRatio: shape.ratio }),
+    body: JSON.stringify({ model: 'nano_banana_2', prompts: scenes.map(s => s.visual), referenceImageUrls: [character.image_url], aspectRatio: shape.ratio }),
   });
   const imgJobData = await imgRes.json();
   if (!imgRes.ok) throw new Error(imgJobData.error || 'Character scene image generation failed'); // لسه قبل خصم أي حاجة تانية
   const images = await pollJobGeneric(`${INTERNAL_BASE}/api/images/generate-status/${imgJobData.jobId}`, headers, 'images');
   if (!Array.isArray(images) || images.length < 2) { const e = new Error('Image generation returned too few images'); e.committed = true; throw e; }
 
-  // ── 2) كل صورة تتحرك لكليب فيديو قصير ────────────────────────────────────────
-  const clipUrls = [];
-  for (const imgUrl of images) {
-    const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
-      method: 'POST', headers,
-      body: JSON.stringify({ model: 'seedance_2_5', prompt: 'subtle natural motion, cinematic camera movement', imageUrl: imgUrl, aspectRatio: shape.ratio, durationSec: sceneDurationSec }),
-    });
-    const vidJobData = await vidRes.json();
-    // ✅ الصور خلاص اتولدت واتخصم تمنها — أي فشل من هنا وطالع "committed" عشان منرجعش
-    // للمسار الافتراضي ونخصم كريديت الحركة تاني على مسار تاني
-    if (!vidRes.ok) { const e = new Error(vidJobData.error || 'Scene animation failed'); e.committed = true; throw e; }
-    const clipUrl = await pollRenderJob(vidJobData.jobId, headers);
-    clipUrls.push(clipUrl);
-  }
+  // ── 2) لو القناة بتستخدم صوت: نولّد سرد كل مشهد لوحده الأول عشان نعرف مدته الحقيقية ──
+  const narrations = [];
+  try {
+    if (usesVoice) {
+      for (const s of scenes) {
+        const text = s.narration?.trim() || idea.title;
+        narrations.push(await synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' }));
+      }
+    }
 
-  // ── 3) دمج كل الكليبات + فويس أوفر (لو مطلوب) + كابشن ─────────────────────────
-  const mergeRes = await fetch(`${INTERNAL_BASE}/api/videos/merge`, {
-    method: 'POST', headers,
-    body: JSON.stringify({
-      videoUrls: clipUrls,
-      narrationScript: channel.uses_voice ? (idea.voiceoverScript || idea.brief || idea.title) : undefined,
-      voiceKey: (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise',
-      narrationLanguage: idea.videoLanguage || 'en',
-      addCaptions: !!channel.uses_voice,
-    }),
-  });
-  const mergeJobData = await mergeRes.json();
-  if (!mergeRes.ok) { const e = new Error(mergeJobData.error || 'Merge failed'); e.committed = true; throw e; }
-  const videoUrl = await pollRenderJob(mergeJobData.jobId, headers);
-  await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
-  return videoUrl;
+    // ── 3) كل صورة تتحرك لكليب، بمدة = مدة سرد نفس المشهد (لو فيه صوت) وإلا المدة الافتراضية ──
+    const clipUrls = [];
+    for (let i = 0; i < images.length; i++) {
+      const targetDurationSec = usesVoice ? Math.max(3, Math.min(maxClip, narrations[i].durationSec)) : defaultSceneDurationSec;
+      const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ model: 'seedance_2_5', prompt: 'subtle natural motion, cinematic camera movement', imageUrl: images[i], aspectRatio: shape.ratio, durationSec: targetDurationSec }),
+      });
+      const vidJobData = await vidRes.json();
+      // ✅ الصور خلاص اتولدت واتخصم تمنها — أي فشل من هنا وطالع "committed" عشان منرجعش
+      // للمسار الافتراضي ونخصم كريديت الحركة تاني على مسار تاني
+      if (!vidRes.ok) { const e = new Error(vidJobData.error || 'Scene animation failed'); e.committed = true; throw e; }
+      let clipUrl = await pollRenderJob(vidJobData.jobId, headers);
+
+      if (usesVoice) {
+        // ✅ مطابقة دقيقة لمدة المشهد لمدة سرده الحقيقية (الموديل نادرًا ما بيطلع المدة
+        // المطلوبة بالظبط) — ده اللي بيضمن التزامن الحقيقي مشهد بمشهد، مش تقريب عام
+        clipUrl = await conformVideoDurationToAudio({ videoUrl: clipUrl, targetDurationSec: narrations[i].durationSec, modelKeyForNaming: 'char_adv' });
+        // ✅ نركّب سرد المشهد ده بالذات على المشهد ده بالذات — كل كليب بيخرج من هنا وصوته
+        // متزامن بالفعل، فمفيش أي "قص/تمطيط" عام لاحقًا وقت الدمج النهائي
+        clipUrl = await composeVideoAudio({ videoUrl: clipUrl, narrationPath: narrations[i].audioPath, modelKeyForNaming: 'char_adv' });
+      }
+      clipUrls.push(clipUrl);
+    }
+
+    // ── 4) دمج كل الكليبات (كل واحد صوته متزامن بالفعل) ────────────────────────────
+    let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
+
+    // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
+    if (usesVoice) {
+      const captionCost = getFlatCreditCost('autocaption');
+      const balance = await getCreditsBalance(run.user_id);
+      if (balance >= captionCost) {
+        const charge = await chargeCredits(run.user_id, captionCost);
+        if (charge.success) {
+          try {
+            const combinedAudioPath = path.join(TEMP_DIR, `char_adv_narr_${run.id}_${Date.now()}.mp3`);
+            fs.mkdirSync(TEMP_DIR, { recursive: true });
+            concatAudioFiles(narrations.map(n => n.audioPath), combinedAudioPath);
+            const words = await transcribeWithTimestamps(combinedAudioPath);
+            const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(idea.videoLanguage);
+            videoUrl = await burnCaptions(videoUrl, words, { rightToLeft: isRtl });
+            try { fs.unlinkSync(combinedAudioPath); } catch {}
+          } catch (capErr) {
+            console.warn(`[ChannelScheduler] Captions failed for run ${run.id} (video still delivered without captions, credits refunded):`, capErr.message);
+            await addCreditsBalance(run.user_id, captionCost);
+          }
+        }
+      }
+    }
+
+    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا (نفس ميزة التميّز)، بنسيبها تفشل بهدوء لو
+    // فشلت (مصدرها الخارجي وقتي مثلًا) بدل ما توقف تسليم الفيديو نفسه
+    if (usesVoice) {
+      try {
+        const musicBuffer = await getBackgroundMusicBuffer('general');
+        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'char_adv' });
+      } catch (musicErr) {
+        console.warn(`[ChannelScheduler] Background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
+      }
+    }
+
+    await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
+    return videoUrl;
+  } catch (e) {
+    // ✅ الصور خلاص اتولدت واتخصم تمنها قبل ما ندخل الكتلة دي — أي فشل من هنا وطالع (سرد،
+    // تحريك، دمج، كابشن) لازم يبقى "committed" عشان triggerApprovedGeneration منيرجعش
+    // للمسار الافتراضي (موديل 8) ويخصم كريديت تاني على مسار تاني فوق اللي خلاص اتصرف
+    e.committed = true;
+    throw e;
+  } finally {
+    narrations.forEach(n => { try { fs.rmSync(n.workDir, { recursive: true, force: true }); } catch {} });
+  }
 }
 
 // ── لو العميل وافق: الموقع يقرر أنسب موديل لمحتوى القناة (contentStyle من draftDailyIdea)
