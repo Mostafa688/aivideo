@@ -175,3 +175,22 @@ export async function uploadVideoToYoutube(channel, { videoUrl, title, descripti
     try { fs.unlinkSync(tmpPath); } catch {}
   }
 }
+
+// ✅ NEW (طلب العميل: صورة مصغّرة تلقائية بموديل nano_banana_2 لكل فيديو قناة — راجع
+// generateAndUploadChannelThumbnail في channelSchedulerService.js لتوليد الصورة نفسها).
+// thumbnails.set بسيط (مش resumable زي رفع الفيديو — الصورة صغيرة أصلاً، وYouTube بحد أقصى
+// 2MB للصورة المصغّرة رسميًا)
+export async function uploadThumbnailToYoutube(channel, videoId, imageUrl) {
+  const accessToken = await ensureFreshAccessToken(channel);
+  const imgRes = await fetch(imageUrl);
+  if (!imgRes.ok) throw new Error(`Could not download the generated thumbnail (status ${imgRes.status})`);
+  const buffer = Buffer.from(await imgRes.arrayBuffer());
+  if (buffer.length > 2 * 1024 * 1024) throw new Error("Generated thumbnail exceeds YouTube's 2MB limit");
+  const contentType = imgRes.headers.get('content-type') || 'image/png';
+  const res = await fetch(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(videoId)}`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': contentType },
+    body: buffer,
+  });
+  if (!res.ok) throw new Error(`YouTube thumbnail upload failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+}
