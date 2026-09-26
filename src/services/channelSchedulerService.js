@@ -951,13 +951,42 @@ export async function finalizeChannelRunAfterGeneration(run, channel, idea, vide
   }
 }
 
+// ✅ FIX (طلب العميل: النص على الصورة المصغّرة كان بيحط العنوان كامل — طويل جدًا وميتقراش
+// كويس على thumbnail صغير. لازم يكون كلمة لـ3 كلمات بس، قوية ومرتبطة بموضوع الفيديو فعليًا،
+// ومش مخالفة لسياسات يوتيوب/الربح (مفيش clickbait وهمي أو إيحاءات عنيفة/جنسية/مضللة) — بنولّد
+// "hook" قصير بالـLLM بدل ما نستخدم العنوان الكامل زي ما كان
+async function draftThumbnailHookText(idea) {
+  if (!GROQ_API_KEY) return idea.title; // ✅ fallback آمن لو Groq مش متاح لأي سبب
+  const isArabic = (idea.videoLanguage || '').startsWith('ar');
+  const system = `You write extremely short YouTube thumbnail hook text — 1 to 3 words MAXIMUM, in ${isArabic ? 'the same Arabic dialect as the video title' : 'English'}. It must be a strong, punchy, attention-grabbing phrase that is genuinely and honestly related to the video's real content (never a vague or unrelated word just for shock value). It must comply with YouTube's Community Guidelines and monetization/ad-friendly content policies: no clickbait or misleading claims the video doesn't actually deliver, no violent/gory/sexual/hateful implications, no fake urgency or spam-style symbols. Output ONLY the short hook text itself, nothing else — no quotes, no explanation.`;
+  const user = `Video title: "${idea.title}"\nBrief: ${idea.brief || ''}\n\nShort hook text (1-3 words):`;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: AGENT_MODEL,
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+        max_tokens: 60, temperature: 0.7, reasoning_effort: 'low',
+      }),
+    });
+    if (!res.ok) return idea.title;
+    const data = await res.json();
+    const hook = (data.choices?.[0]?.message?.content || '').replace(/^["'\s]+|["'\s]+$/g, '').trim();
+    return hook || idea.title;
+  } catch {
+    return idea.title; // ✅ فشل توليد الـhook مايوقفش الصورة المصغّرة كلها — نرجع للعنوان
+  }
+}
+
 // ✅ NEW (طلب العميل: صورة مصغّرة تلقائية لكل فيديو قناة بموديل nano_banana_2 تحديدًا —
 // موصى بيه لأنه الأفضل حاليًا في كتابة نص عربي/إنجليزي واضح جوه الصورة نفسها، وده أهم عنصر
 // في صورة مصغّرة كويسة تجذب مشاهدات على يوتيوب). بيتحاسب بكريديت زي أي صورة عادية (نفس
 // مسار /api/images/generate العادي، مفيش تمييز خاص أو إعفاء)
 async function generateAndUploadChannelThumbnail(run, channel, idea, videoId, headers) {
   const isArabic = (idea.videoLanguage || '').startsWith('ar');
-  const prompt = `Create a bold, high-contrast, eye-catching YouTube thumbnail image for a video about: "${idea.title}". Include the exact title text as large, clearly readable ${isArabic ? 'Arabic' : 'English'} typography overlaid on the image, professional YouTube thumbnail style, dramatic lighting, vivid colors.`;
+  const hookText = await draftThumbnailHookText(idea);
+  const prompt = `Create a bold, high-contrast, eye-catching YouTube thumbnail image related to: "${idea.title}". Include this exact short text as large, clearly readable ${isArabic ? 'Arabic' : 'English'} typography overlaid on the image: "${hookText}". Professional YouTube thumbnail style, dramatic lighting, vivid colors. The thumbnail must comply with YouTube's Community Guidelines and monetization policies — no violent, gory, sexual, hateful, or misleading imagery.`;
   const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
     method: 'POST', headers,
     body: JSON.stringify({ model: 'nano_banana_2', prompt, aspectRatio: '16:9' }),
