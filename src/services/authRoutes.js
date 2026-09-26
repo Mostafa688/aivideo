@@ -2,7 +2,16 @@ import express from 'express';
 import fetch from 'node-fetch';
 import pkg from 'pg';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 const { Pool } = pkg;
+// ✅ FIX (باج أمان حقيقي — Google Cloud Console's "Project Checkup" رصد "Use secure flows"
+// كتحذير على مستوى المشروع كله: التحقق منه لقى إن فلو "Continue with Google" هنا، على عكس
+// فلو ربط اليوتيوب في youtubeUploadService.js، كان بيقرأ req.query.state بس من غير ما يبعته
+// أصلاً في رابط التوجيه، ومن غير ما يتحقق منه خالص — يعني عرضة لـ"Login CSRF": مهاجم يقدر
+// يبدأ الـOAuth بنفسه، ياخد code خاص بحسابه هو، ويخلي ضحية تفتح رابط الـcallback بالـcode ده،
+// فتتسجل دخول بحساب المهاجم من غير ما تلاحظ. نفس نمط JWT-state المستخدم فعليًا في
+// youtubeUploadService.js (نفس JWT_SECRET، بس محلي هنا برضو زي هناك)
+const GOOGLE_LOGIN_STATE_SECRET = process.env.JWT_SECRET || 'erivion_secret_2026';
 import {
   signUp, verifyCode, login, verifyToken,
   getUserVideos, saveVideo, getUserCredits, getUserById,
@@ -180,14 +189,23 @@ router.get('/google', (req, res) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const redirectUri = process.env.GOOGLE_CALLBACK_URL;
   const scope = 'openid email profile';
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=select_account`;
+  // ✅ FIX: state موقّع وقصير العمر (15 دقيقة) — بيثبت إن رد الـcallback ده فعلاً جاي من
+  // طلب بدأناه إحنا، مش code مهاجم مزروع في رابط
+  const state = jwt.sign({}, GOOGLE_LOGIN_STATE_SECRET, { expiresIn: '15m' });
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=select_account&state=${encodeURIComponent(state)}`;
   res.redirect(url);
 });
 
 router.get('/google/callback', async (req, res) => {
-  const { code, error } = req.query;
+  const { code, error, state } = req.query;
   const frontendUrl = process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
   if (error || !code) return res.redirect(`${frontendUrl}?auth_error=google_cancelled`);
+  // ✅ FIX: لازم state يتحقق منه قبل أي حاجة تانية — code من غير state صالح مرفوض فورًا
+  try {
+    jwt.verify(state, GOOGLE_LOGIN_STATE_SECRET);
+  } catch {
+    return res.redirect(`${frontendUrl}?auth_error=invalid_state`);
+  }
   try {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -206,15 +224,13 @@ router.get('/google/callback', async (req, res) => {
     if (!googleUser.email) throw new Error('Could not get user email from Google');
     const authData = await loginOrCreateGoogleUser({ googleId: googleUser.id, email: googleUser.email, name: googleUser.name, avatar: googleUser.picture });
     // ── Affiliate tracking للـ Google signup ─────────────────────────────
-    // ✅ FIX (باج حقيقي ثاني بجوار isNewUser الدايمًا false في authService.js): كان بيتفحص
-    // authData?.isNew بس الحقل الحقيقي اسمه isNewUser — يعني حتى لو الباج التاني اتصلح
-    // لوحده، السطر ده كان هيفضل ميعملش حاجة أبدًا لأنه بيدوّر على حقل مش موجود خالص
-    if (authData?.isNewUser && authData?.userId) {
-      const refCode = req.query.state || null;
-      if (refCode) {
-        trackAffiliateSignup(authData.userId, authData.email, refCode).catch(() => {});
-      }
-    }
+    // ✅ FIX (باج حقيقي كان موجود هنا قبل كده: authData?.isNew بدل authData?.isNewUser —
+    // بيتصلح دلوقتي، بس السطر ده كان أصلاً ميت من الأول لسبب تاني منفصل: "state" هنا كان بيتقرأ
+    // كـref code خام، لكن /google فوق ماكانتش بتبعت أي state خالص في رابط التوجيه، فكان دايمًا
+    // undefined. دلوقتي state بقى JWT حقيقي لحماية CSRF (راجع الكومنت فوق /google)، مش ref code —
+    // لو سبنا السطر القديم كان هيبعت الـJWT نفسه كـ"كود إحالة" غلط لكل عميل جديد بيسجل بجوجل.
+    // ربط الإحالة الحقيقي لتسجيل جوجل محتاج الفرونت إند يبعت erivion_ref (زي فلو الإيميل
+    // العادي) كـquery param منفصل لـ/google أصلاً — خارج نطاق فيكس الأمان ده
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
     const now = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: true });
     // ✅ FIX (طلب العميل: مش بيوصله إشعار لما حد يسجل جديد): كان في إشعار "User Logged In"
