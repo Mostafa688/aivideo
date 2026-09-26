@@ -842,9 +842,19 @@ async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers)
 // ── لو العميل وافق: الموقع يقرر أنسب موديل لمحتوى القناة (contentStyle من draftDailyIdea)
 // ويولّد بيه. لو المسار الذكي (واقعي/خريطة) فشل قبل أي خصم كريديت، بنرجع تلقائيًا للمسار
 // الافتراضي (generateAnimatedVideo) بدل ما يوم العميل يضيع بالكامل بسبب باج في مسار جديد
-export async function triggerApprovedGeneration(run) {
-  const channel = await getManagedChannelById(run.channel_id);
-  if (!channel) throw new Error('Channel not found');
+export async function triggerApprovedGeneration(run, overrides = {}) {
+  const dbChannel = await getManagedChannelById(run.channel_id);
+  if (!dbChannel) throw new Error('Channel not found');
+  // ✅ NEW (طلب العميل: تجاوز لمرة واحدة بس عن طريق الشات — "اعمل الفيديو 15 ثانية"/"3 مشاهد"/
+  // "من غير كابشن" — من غير ما يغيّر إعدادات القناة الدائمة في my channels). بيتفلتر/يتحقق
+  // منه في agentRoutes.js's CHANNEL_GENERATE handler قبل ما يوصل هنا، فمش بيوصل غير قيم سليمة.
+  // الافتراضي (overrides={}) هو المسار العادي (الإيميل اليومي)، مفيهوش أي تغيير
+  const channel = {
+    ...dbChannel,
+    target_scene_count: overrides.sceneCount ?? dbChannel.target_scene_count,
+    target_duration_sec: overrides.durationSec ?? dbChannel.target_duration_sec,
+    captions_enabled: overrides.captionsEnabled !== undefined ? (overrides.captionsEnabled ? 1 : 0) : dbChannel.captions_enabled,
+  };
   const user = await getUserById(run.user_id);
   const idea = JSON.parse(run.idea_brief || '{}');
   const shape = run.format === 'short' ? SHORT_FORM : LONG_FORM;
@@ -968,7 +978,7 @@ export async function resolveChannelRunReviewAction(run, action) {
   throw new Error(`Unknown review action: ${action}`);
 }
 
-export async function triggerChannelRunNow(channel) {
+export async function triggerChannelRunNow(channel, overrides = {}) {
   const { idea, format } = await getFreshChannelIdea(channel);
   const estimatedCost = estimateChannelRunCost(channel, format);
   const runId = await createDailyVideoRun({
@@ -981,7 +991,7 @@ export async function triggerChannelRunNow(channel) {
     const balanceBefore = await getCreditsBalance(channel.user_id).catch(() => null);
     try {
       const run = { id: runId, channel_id: channel.id, user_id: channel.user_id, idea_brief: JSON.stringify(idea), format };
-      const videoUrl = await triggerApprovedGeneration(run);
+      const videoUrl = await triggerApprovedGeneration(run, overrides);
       const balanceAfter = await getCreditsBalance(channel.user_id).catch(() => null);
       const creditsCharged = (balanceBefore != null && balanceAfter != null) ? Math.max(0, balanceBefore - balanceAfter) : null;
       await finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, creditsCharged);

@@ -1140,7 +1140,16 @@ router.post('/chat', authMiddleware, async (req, res) => {
       } else {
         try {
           const fullChannel = await getManagedChannelById(channelId);
-          const { runId, idea, format, estimatedCost } = await triggerChannelRunNow(fullChannel);
+          // ✅ NEW (طلب العميل: يقدر يقول "اعمل الفيديو 15 ثانية"/"3 مشاهد"/"من غير كابشن" في
+          // الشات نفسه، لمرة واحدة بس، من غير ما يغيّر إعدادات القناة الدائمة) — راجع rule 13b
+          // في agentService.js. بيتفلتر/يتحدد هنا (مش بيتوثق فيه أعمى) نفس حدود PATCH العادية
+          const sceneN = parseInt(channelGeneratePayload.sceneCountOverride, 10);
+          const durN = parseInt(channelGeneratePayload.durationSecOverride, 10);
+          const overrides = {};
+          if (Number.isInteger(sceneN) && sceneN >= 2 && sceneN <= 20) overrides.sceneCount = sceneN;
+          if (Number.isInteger(durN) && durN >= 5 && durN <= 1200) overrides.durationSec = durN;
+          if (typeof channelGeneratePayload.captionsOverride === 'boolean') overrides.captionsEnabled = channelGeneratePayload.captionsOverride;
+          const { runId, idea, format, estimatedCost } = await triggerChannelRunNow(fullChannel, overrides);
           channelGenerate = { runId, channelId, ideaTitle: idea.title, format, estimatedCost };
         } catch (e) {
           console.warn('[Agent] CHANNEL_GENERATE marker failed:', e.message);
