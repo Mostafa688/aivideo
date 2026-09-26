@@ -55,7 +55,7 @@ const T = {
     modelDefaultOption: 'افتراضي (أفضل جودة)', perImage: 'كريديت/صورة', perSecond: 'كريديت/ثانية',
     modelChangedToast: 'اتحفظ اختيار الموديل.',
     sceneCountLabel: 'عدد المشاهد المستهدف (اختياري)', sceneCountPlaceholder: 'افتراضي حسب الشكل (قصير/طويل)',
-    sceneCountSaved: 'اتحفظ عدد المشاهد.',
+    sceneCountSaved: 'اتحفظ عدد المشاهد.', captionsLabel: 'كابشن على الفيديو',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -102,7 +102,7 @@ const T = {
     modelDefaultOption: 'Default (best quality)', perImage: 'credits/image', perSecond: 'credits/sec',
     modelChangedToast: 'Model choice saved.',
     sceneCountLabel: 'Target scene count (optional)', sceneCountPlaceholder: 'Default based on format (short/long)',
-    sceneCountSaved: 'Scene count saved.',
+    sceneCountSaved: 'Scene count saved.', captionsLabel: 'Video captions',
   },
 };
 
@@ -290,6 +290,13 @@ export default function ChannelsPage({ onBack, userRegion }) {
     try {
       await fetch(`/api/channels/${channelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ targetSceneCount: value === '' ? null : value }) });
       setToast({ type: 'success', text: t.sceneCountSaved });
+      load();
+    } catch (e) { setToast({ type: 'error', text: e.message }); }
+  };
+
+  const toggleCaptions = async (channelId, value) => {
+    try {
+      await fetch(`/api/channels/${channelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ captionsEnabled: value }) });
       load();
     } catch (e) { setToast({ type: 'error', text: e.message }); }
   };
@@ -598,6 +605,12 @@ export default function ChannelsPage({ onBack, userRegion }) {
                         placeholder={t.sceneCountPlaceholder}
                         style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12, boxSizing: 'border-box' }} />
                     </div>
+                    {ch.uses_voice && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <span style={{ fontSize: 12 }}>{t.captionsLabel}</span>
+                        <Toggle value={ch.captions_enabled !== 0} onChange={v => toggleCaptions(ch.id, v)} />
+                      </div>
+                    )}
                   </div>
                 )}
 

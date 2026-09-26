@@ -89,7 +89,7 @@ router.post('/:id/character', authMiddleware, async (req, res) => {
 
 router.patch('/:id', authMiddleware, async (req, res) => {
   try {
-    const { label, formatPref, usesVoice, modelPref, status, contentStyle, contentBrief, imageModel, animationModel, targetSceneCount } = req.body;
+    const { label, formatPref, usesVoice, modelPref, status, contentStyle, contentBrief, imageModel, animationModel, targetSceneCount, captionsEnabled } = req.body;
     const patch = {};
     if (label !== undefined) patch.label = label;
     if (formatPref !== undefined) patch.format_pref = formatPref;
@@ -114,6 +114,9 @@ router.patch('/:id', authMiddleware, async (req, res) => {
       const n = parseInt(targetSceneCount, 10);
       patch.target_scene_count = (Number.isInteger(n) && n >= 2 && n <= 20) ? n : null;
     }
+    // ✅ NEW (طلب العميل: مش عايز كابشن على فيديو الديمو — captions كان بيتحط تلقائي على أي
+    // قناة بتستخدم صوت، مفيش toggle مستقل قبل كده)
+    if (captionsEnabled !== undefined) patch.captions_enabled = captionsEnabled ? 1 : 0;
     const channel = await updateManagedChannel(req.params.id, req.user.userId, patch);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     res.json({ channel });
