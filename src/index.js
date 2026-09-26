@@ -3324,7 +3324,7 @@ app.get('/api/videos/merge-status/:jobId', authMiddleware, (req, res) => {
 // ── Global Error Handler ───────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[Global Error]', err);
-  if (req.path.startsWith('/api')) return res.status(500).json({ error: err.message || 'Internal server error' });
+  if (req.path.startsWith('/api/')) return res.status(500).json({ error: err.message || 'Internal server error' });
   next(err);
 });
 
@@ -3768,7 +3768,7 @@ ${bodyHtml}
 }
 
 app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
+  if (req.path.startsWith('/api/')) return next();
   const ua = req.headers['user-agent'] || '';
   if (!BOT_UA_REGEX.test(ua)) return next();
   if (SEO_PAGES[req.path]) {
@@ -3862,7 +3862,7 @@ Erivion (${SITE_URL}) موقع سعودي-مصري بيشغّل مساعد مح�
 app.use(express.static(join(__dirname, '..', 'dist')));
 
 app.get('*', (req, res) => {
-  if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' });
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'API endpoint not found' });
   res.sendFile(join(__dirname, '..', 'dist', 'index.html'));
 });
 
