@@ -19,7 +19,7 @@ import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiq
 import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
 import { mergeVideos } from './videoMergeService.js';
-import { uploadVideoToYoutube } from './youtubeUploadService.js';
+import { uploadVideoToYoutube, uploadThumbnailToYoutube } from './youtubeUploadService.js';
 import { createProjectForUser, appendProjectMessages, updateProjectMessageByRunId } from './projectRoutes.js';
 
 const TEMP_DIR = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
@@ -951,6 +951,25 @@ export async function finalizeChannelRunAfterGeneration(run, channel, idea, vide
   }
 }
 
+// ✅ NEW (طلب العميل: صورة مصغّرة تلقائية لكل فيديو قناة بموديل nano_banana_2 تحديدًا —
+// موصى بيه لأنه الأفضل حاليًا في كتابة نص عربي/إنجليزي واضح جوه الصورة نفسها، وده أهم عنصر
+// في صورة مصغّرة كويسة تجذب مشاهدات على يوتيوب). بيتحاسب بكريديت زي أي صورة عادية (نفس
+// مسار /api/images/generate العادي، مفيش تمييز خاص أو إعفاء)
+async function generateAndUploadChannelThumbnail(run, channel, idea, videoId, headers) {
+  const isArabic = (idea.videoLanguage || '').startsWith('ar');
+  const prompt = `Create a bold, high-contrast, eye-catching YouTube thumbnail image for a video about: "${idea.title}". Include the exact title text as large, clearly readable ${isArabic ? 'Arabic' : 'English'} typography overlaid on the image, professional YouTube thumbnail style, dramatic lighting, vivid colors.`;
+  const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ model: 'nano_banana_2', prompt, aspectRatio: '16:9' }),
+  });
+  const imgJobData = await imgRes.json();
+  if (!imgRes.ok) throw new Error(imgJobData.error || 'Thumbnail image generation failed');
+  const images = await pollJobGeneric(`${INTERNAL_BASE}/api/images/generate-status/${imgJobData.jobId}`, headers, 'images');
+  const thumbnailUrl = Array.isArray(images) ? images[0] : null;
+  if (!thumbnailUrl) throw new Error('Thumbnail generation returned no image');
+  await uploadThumbnailToYoutube(channel, videoId, thumbnailUrl);
+}
+
 // ✅ NEW: التنفيذ الفعلي لضغطة "تمت المراجعة" أو "نشر الآن" — مشترك بين مسار الإيميل
 // (توكن، من غير تسجيل دخول) ومسار الموقع (المستخدم داخل حسابه) في channelRoutes.js
 export async function resolveChannelRunReviewAction(run, action) {
@@ -969,6 +988,16 @@ export async function resolveChannelRunReviewAction(run, action) {
     const idea = JSON.parse(run.idea_brief || '{}');
     const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl: run.video_url, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
     await linkYoutubeVideoToRun(run.id, run.user_id, youtubeVideoId);
+    // ✅ NEW (طلب العميل: صورة مصغّرة تلقائية بموديل nano_banana_2 — الأفضل حاليًا في كتابة
+    // نص عربي/إنجليزي واضح جوه الصورة، وده أهم حاجة في صورة مصغّرة كويسة على يوتيوب). فشلها
+    // مايوقفش النشر خالص — الفيديو خلاص لايف، يوتيوب هيسيب صورته الافتراضية بدلها بس
+    try {
+      const user = await getUserById(run.user_id);
+      const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(run.user_id, user.email, { channelRun: true }) };
+      await generateAndUploadChannelThumbnail(run, channel, idea, youtubeVideoId, headers);
+    } catch (e) {
+      console.warn(`[ChannelScheduler] Thumbnail generation/upload failed for run ${run.id} (video still published with YouTube's default thumbnail):`, e.message);
+    }
     await updateDailyVideoRunStatus(run.id, 'done', { reviewState: 'published', reviewed: true });
     if (channel.project_id) {
       await updateProjectMessageByRunId(channel.project_id, run.id, { reviewState: 'published', youtubeVideoId }).catch(() => {});
