@@ -395,7 +395,7 @@ async function generateAnimatedVideo(run, channel, idea, shape, headers) {
     let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
 
     // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
-    if (usesVoice) {
+    if (usesVoice && channel.captions_enabled !== 0) {
       const captionCost = getFlatCreditCost('autocaption');
       const balance = await getCreditsBalance(run.user_id);
       if (balance >= captionCost) {
@@ -644,7 +644,7 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
     let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
 
     // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
-    if (usesVoice) {
+    if (usesVoice && channel.captions_enabled !== 0) {
       const captionCost = getFlatCreditCost('autocaption');
       const balance = await getCreditsBalance(run.user_id);
       if (balance >= captionCost) {
@@ -796,7 +796,7 @@ async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers)
     let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
 
     // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
-    if (usesVoice) {
+    if (usesVoice && channel.captions_enabled !== 0) {
       const captionCost = getFlatCreditCost('autocaption');
       const balance = await getCreditsBalance(run.user_id);
       if (balance >= captionCost) {
