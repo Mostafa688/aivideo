@@ -1663,7 +1663,7 @@ export async function getManagedChannelById(id) {
 }
 
 export async function updateManagedChannel(id, userId, patch) {
-  const allowed = ['label', 'channel_id', 'format_pref', 'uses_voice', 'voice_id', 'model_pref', 'status', 'setup_mode', 'content_style', 'video_style', 'content_brief', 'image_model', 'animation_model'];
+  const allowed = ['label', 'channel_id', 'format_pref', 'uses_voice', 'voice_id', 'model_pref', 'status', 'setup_mode', 'content_style', 'video_style', 'content_brief', 'image_model', 'animation_model', 'target_scene_count'];
   const sets = [], params = [];
   let idx = 1;
   for (const key of allowed) {

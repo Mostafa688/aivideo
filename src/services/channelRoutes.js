@@ -89,7 +89,7 @@ router.post('/:id/character', authMiddleware, async (req, res) => {
 
 router.patch('/:id', authMiddleware, async (req, res) => {
   try {
-    const { label, formatPref, usesVoice, modelPref, status, contentStyle, contentBrief, imageModel, animationModel } = req.body;
+    const { label, formatPref, usesVoice, modelPref, status, contentStyle, contentBrief, imageModel, animationModel, targetSceneCount } = req.body;
     const patch = {};
     if (label !== undefined) patch.label = label;
     if (formatPref !== undefined) patch.format_pref = formatPref;
@@ -106,6 +106,14 @@ router.patch('/:id', authMiddleware, async (req, res) => {
     // دايمًا) — فاضي/null = يرجع للافتراضي القديم (nano_banana_2/seedance_2_5)
     if (imageModel !== undefined) patch.image_model = ALLOWED_IMAGE_MODELS.has(imageModel) ? imageModel : null;
     if (animationModel !== undefined) patch.animation_model = ALLOWED_ANIMATION_MODELS.has(animationModel) ? animationModel : null;
+    // ✅ NEW (طلب العميل: عايز يضمن عدد مشاهد محدد بالظبط، مش بس توجيه لطيف في content_brief
+    // ممكن الـAI يتجاهله) — رقم فاضي/0 = يرجع لتقدير الشكل الافتراضي (SHORT_FORM/LONG_FORM)
+    // زي ما كان. الحد الأقصى 20 نفس MAX_SCENES في channelSchedulerService.js، والحد الأدنى 2
+    // (توليد مشهد واحد بس بيترفض أصلاً في generate-scenes)
+    if (targetSceneCount !== undefined) {
+      const n = parseInt(targetSceneCount, 10);
+      patch.target_scene_count = (Number.isInteger(n) && n >= 2 && n <= 20) ? n : null;
+    }
     const channel = await updateManagedChannel(req.params.id, req.user.userId, patch);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     res.json({ channel });

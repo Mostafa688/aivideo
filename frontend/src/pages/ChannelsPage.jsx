@@ -54,6 +54,8 @@ const T = {
     imageModelLabel: 'موديل توليد الصور', animationModelLabel: 'موديل تحريك المشاهد',
     modelDefaultOption: 'افتراضي (أفضل جودة)', perImage: 'كريديت/صورة', perSecond: 'كريديت/ثانية',
     modelChangedToast: 'اتحفظ اختيار الموديل.',
+    sceneCountLabel: 'عدد المشاهد المستهدف (اختياري)', sceneCountPlaceholder: 'افتراضي حسب الشكل (قصير/طويل)',
+    sceneCountSaved: 'اتحفظ عدد المشاهد.',
   },
   en: {
     title: 'My Channels', sub: "Connect your channel to VidIQ and let Erivion suggest a video every day — you approve or reject.",
@@ -99,6 +101,8 @@ const T = {
     imageModelLabel: 'Image generation model', animationModelLabel: 'Scene animation model',
     modelDefaultOption: 'Default (best quality)', perImage: 'credits/image', perSecond: 'credits/sec',
     modelChangedToast: 'Model choice saved.',
+    sceneCountLabel: 'Target scene count (optional)', sceneCountPlaceholder: 'Default based on format (short/long)',
+    sceneCountSaved: 'Scene count saved.',
   },
 };
 
@@ -138,6 +142,9 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [analyzingIds, setAnalyzingIds] = useState({});
   const [briefDrafts, setBriefDrafts] = useState({});
   const [savingBriefId, setSavingBriefId] = useState(null);
+  // ✅ NEW (طلب العميل: عايز يضمن عدد مشاهد محدد بالظبط قبل تسجيل ديمو، مش بس توجيه نصي
+  // ممكن الـAI يتجاهله) — راجع channelRoutes.js's PATCH handler لتفاصيل الحد الأقصى/الأدنى
+  const [sceneCountDrafts, setSceneCountDrafts] = useState({});
   // ✅ NEW (طلب العميل: شاف Seedance 2.5 بيكلف $3.01 لكليب وسأل ليه التحريك بأغلى الموديلات —
   // اقترح إن كل موديلات الصور/التحريك وأسعارها تتعرض عليه وهو يختار بنفسه) — نجيب قايمة
   // الموديلات مرة واحدة من نفس الراوتات الموجودة فعلاً (/api/images/models، /api/videos/models)
@@ -275,6 +282,16 @@ export default function ChannelsPage({ onBack, userRegion }) {
       setToast({ type: 'success', text: t.contentBriefSaved });
       load();
     } catch (e) { setToast({ type: 'error', text: e.message }); } finally { setSavingBriefId(null); }
+  };
+
+  // ✅ NEW: بيتحفظ لما العميل يخرج من الخانة (onBlur) — مش على كل ضغطة كيبورد زي textarea
+  // البريف (رقم واحد بس، مفيش داعي لزرار حفظ منفصل)
+  const saveSceneCount = async (channelId, value) => {
+    try {
+      await fetch(`/api/channels/${channelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ targetSceneCount: value === '' ? null : value }) });
+      setToast({ type: 'success', text: t.sceneCountSaved });
+      load();
+    } catch (e) { setToast({ type: 'error', text: e.message }); }
   };
 
   const analyzeChannel = async (channelId) => {
@@ -567,6 +584,20 @@ export default function ChannelsPage({ onBack, userRegion }) {
                         </select>
                       </div>
                     )}
+                    <div>
+                      <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.sceneCountLabel}</div>
+                      <input type="number" min={2} max={20} step={1}
+                        value={sceneCountDrafts[ch.id] !== undefined ? sceneCountDrafts[ch.id] : (ch.target_scene_count || '')}
+                        onChange={e => setSceneCountDrafts(prev => ({ ...prev, [ch.id]: e.target.value }))}
+                        onBlur={e => {
+                          const raw = e.target.value.trim();
+                          const n = raw === '' ? '' : Math.min(20, Math.max(2, parseInt(raw, 10) || 2));
+                          setSceneCountDrafts(prev => ({ ...prev, [ch.id]: n }));
+                          saveSceneCount(ch.id, n);
+                        }}
+                        placeholder={t.sceneCountPlaceholder}
+                        style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12, boxSizing: 'border-box' }} />
+                    </div>
                   </div>
                 )}
 
