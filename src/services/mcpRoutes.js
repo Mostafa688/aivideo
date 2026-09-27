@@ -218,9 +218,15 @@ function buildMcpServer(userId, email) {
       // _meta مش موجودة أصلاً (زي هنا قبل الإصلاح) بترمي استثناء فورًا. وبما إن الأداة دي أول
       // حاجة بتتسجل في buildMcpServer()، الاستثناء ده كان بيسيب appsWidgetOk=false لبقية
       // الطلب كله، فـgenerate_video/check_render_status/edit_video اللي جايين بعدها كانوا
-      // بيتخطوا محاولة الـwidget تمامًا من غير ما حتى يتنفذوا. _meta فاضية هنا كفاية عشان
-      // مفيش widget أصلاً مربوط بالأداة دي (مفيهاش resourceUri)
-      _meta: {},
+      // بيتخطوا محاولة الـwidget تمامًا من غير ما حتى يتنفذوا
+      // ✅ FIX (طلب العميل — دليل قاطع: نفس حساب Claude.ai متصل بـ Higgsfield وبيعرض
+      // صورة/فيديو جوه المحادثة نفسها، فالمشكلة مش قصور في الـhost خالص): كنا سايبين _meta
+      // فاضية هنا افتراض إن generate_image "مالهاش widget أصلًا". ده كان غلط — لو Claude.ai
+      // فعليًا بيرندر بس المحتوى المرتبط بـwidget (MCP Apps الحقيقي) مش resource_link
+      // الأساسي وحده، فالصورة كانت هترجع لينك دايمًا مهما عملنا، لأن الأداة دي أصلًا مش
+      // مربوطة بأي widget. بنربطها دلوقتي بنفس الـwidget (اللي بقى يعرف يرندر صور برضو
+      // بعد إصلاح سابق)، مش بس فيديو
+      _meta: { ui: { resourceUri: videoPlayerResourceUri } },
     },
     async ({ model, prompt, referenceImageUrls, aspectRatio, count, tier }) => {
       try {
