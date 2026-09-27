@@ -2546,6 +2546,233 @@ function ChangelogTab({ s }) {
   );
 }
 
+// ── Finance Tab ───────────────────────────────────────────────────────────────
+// ✅ NEW (طلب العميل: "عايز اعمل نظام يحدد المصروفات والمدخولات... عشان لما اسجل الموقع
+// تجاري" — دفتر حسابات يدوي بحت، أدمن بس مفيش صفحة عامة): كل حركة (مصروف زي Replicate، أو
+// دخل زي InstaPay/Gumroad) بتاريخها وفئتها ومبلغها وعملتها، مع إيصال مرفق اختياري. الملخص
+// بيتحسب لكل عملة لوحدها (مفيش تحويل بسعر صرف ثابت هيبقى غلط بمرور الوقت)
+function FinanceTab({ s }) {
+  const [entries, setEntries] = useState([]);
+  const [summary, setSummary] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState('');
+  const showToastMsg = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  const [filter, setFilter] = useState({ from: '', to: '', type: '' });
+
+  const emptyForm = { id: null, entry_date: new Date().toISOString().slice(0, 10), type: 'expense', category: '', amount: '', currency: 'EGP', notes: '', receipt_url: '' };
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const queryString = () => {
+    const p = new URLSearchParams();
+    if (filter.from) p.set('from', filter.from);
+    if (filter.to) p.set('to', filter.to);
+    if (filter.type) p.set('type', filter.type);
+    return p.toString();
+  };
+
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const qs = queryString();
+      const [er, sr] = await Promise.all([
+        fetch(`/api/finance/admin/list?${qs}`, { headers }),
+        fetch(`/api/finance/admin/summary?${qs}`, { headers }),
+      ]);
+      const ed = await er.json();
+      const sd = await sr.json();
+      setEntries(ed.entries || []);
+      setSummary(sd.summary || []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+  useEffect(() => { loadAll(); }, [filter.from, filter.to, filter.type]);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch('/api/finance/admin/upload-receipt', { method: 'POST', headers: { Authorization: `Bearer ${adminToken}` }, body: fd });
+      const d = await r.json();
+      if (d.url) { setForm(p => ({ ...p, receipt_url: d.url })); showToastMsg('✅ Receipt uploaded'); }
+      else showToastMsg('❌ ' + (d.error || 'Upload failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setUploading(false);
+  };
+
+  const handleSave = async () => {
+    if (!form.category.trim()) { showToastMsg('❌ Category is required'); return; }
+    if (!form.amount || parseFloat(form.amount) <= 0) { showToastMsg('❌ Amount must be a positive number'); return; }
+    setSaving(true);
+    try {
+      const url = form.id ? `/api/finance/admin/${form.id}` : '/api/finance/admin';
+      const method = form.id ? 'PUT' : 'POST';
+      const r = await fetch(url, { method, headers, body: JSON.stringify(form) });
+      const d = await r.json();
+      if (d.entry) {
+        showToastMsg(form.id ? '✅ Entry updated' : '✅ Entry added');
+        setForm(emptyForm);
+        setShowForm(false);
+        loadAll();
+      } else showToastMsg('❌ ' + (d.error || 'Failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setSaving(false);
+  };
+
+  const handleEdit = (entry) => {
+    setForm({
+      id: entry.id, entry_date: (entry.entry_date || '').slice(0, 10), type: entry.type || 'expense',
+      category: entry.category || '', amount: String(entry.amount ?? ''), currency: entry.currency || 'EGP',
+      notes: entry.notes || '', receipt_url: entry.receipt_url || '',
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this entry?')) return;
+    try {
+      const r = await fetch(`/api/finance/admin/${id}`, { method: 'DELETE', headers });
+      const d = await r.json();
+      if (d.success) { showToastMsg('✅ Deleted'); loadAll(); }
+      else showToastMsg('❌ ' + d.error);
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+  };
+
+  return (
+    <div>
+      {toast && (
+        <div style={{ position: 'fixed', top: 16, right: 16, background: toast.startsWith('✅') ? '#166534' : '#7f1d1d', border: '1px solid ' + (toast.startsWith('✅') ? '#22c55e' : '#ef4444'), borderRadius: 10, padding: '12px 20px', color: '#fff', fontWeight: 600, fontSize: 14, zIndex: 9999, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>{toast}</div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>🧾 Finance</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={s.btn()} onClick={loadAll}>🔄 Refresh</button>
+          <button style={s.btn('#22c55e')} onClick={() => { setForm(emptyForm); setShowForm(v => !v); }}>{showForm ? '✕ Cancel' : '+ Add Entry'}</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        {summary.length === 0 && !loading && <div style={{ color: '#4b5563', fontSize: 13 }}>No entries in this range yet.</div>}
+        {summary.map(c => (
+          <div key={c.currency} style={{ ...s.card, marginBottom: 0, minWidth: 220, flex: '1 1 220px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#9ca3af', marginBottom: 8 }}>{c.currency}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+              <span style={{ color: '#6b7280' }}>Income</span><span style={{ color: '#22c55e', fontWeight: 700 }}>+{c.income.toLocaleString()}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
+              <span style={{ color: '#6b7280' }}>Expense</span><span style={{ color: '#ef4444', fontWeight: 700 }}>-{c.expense.toLocaleString()}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, borderTop: '1px solid #27272a', paddingTop: 8 }}>
+              <span style={{ color: '#d1d5db', fontWeight: 600 }}>Net</span>
+              <span style={{ color: c.net >= 0 ? '#22c55e' : '#ef4444', fontWeight: 800 }}>{c.net >= 0 ? '+' : ''}{c.net.toLocaleString()}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20, alignItems: 'flex-end' }}>
+        <div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>From</div>
+          <input type="date" style={s.input} value={filter.from} onChange={e => setFilter(p => ({ ...p, from: e.target.value }))} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>To</div>
+          <input type="date" style={s.input} value={filter.to} onChange={e => setFilter(p => ({ ...p, to: e.target.value }))} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Type</div>
+          <select style={s.input} value={filter.type} onChange={e => setFilter(p => ({ ...p, type: e.target.value }))}>
+            <option value="">All</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+        </div>
+        {(filter.from || filter.to || filter.type) && (
+          <button style={s.btn('#374151')} onClick={() => setFilter({ from: '', to: '', type: '' })}>✕ Clear filters</button>
+        )}
+      </div>
+
+      {showForm && (
+        <div style={s.card}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Date</div>
+              <input type="date" style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.entry_date} onChange={e => setForm(p => ({ ...p, entry_date: e.target.value }))} />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Type</div>
+              <select style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Category</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} placeholder="e.g. Replicate, Railway hosting, InstaPay payment..." />
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Amount</div>
+                <input type="number" step="0.01" style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} placeholder="0.00" />
+              </div>
+              <div style={{ width: 100 }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Currency</div>
+                <select style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.currency} onChange={e => setForm(p => ({ ...p, currency: e.target.value }))}>
+                  <option value="EGP">EGP</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Notes (optional)</div>
+              <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Any extra detail..." />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Receipt (optional)</div>
+              <input type="file" accept="image/*,.pdf" onChange={handleFileChange} disabled={uploading} />
+              {uploading && <span style={{ fontSize: 12, color: '#9ca3af', marginInlineStart: 8 }}>Uploading...</span>}
+              {form.receipt_url && <a href={form.receipt_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#3b82f6', marginInlineStart: 8 }}>📎 View uploaded receipt</a>}
+            </div>
+          </div>
+          <button style={s.btn('#166534')} onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : (form.id ? '💾 Save Changes' : '💾 Add Entry')}</button>
+        </div>
+      )}
+
+      {loading && <div style={{ textAlign: 'center', padding: '20px 0', color: '#4b5563' }}>Loading...</div>}
+      {!loading && entries.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#4b5563' }}>No entries yet. Add the first one above.</div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {entries.map(en => (
+          <div key={en.id} style={{ ...s.card, marginBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: en.type === 'income' ? '#22c55e' : '#ef4444', background: en.type === 'income' ? '#22c55e22' : '#ef444422', border: `1px solid ${en.type === 'income' ? '#22c55e55' : '#ef444455'}`, borderRadius: 999, padding: '3px 10px', flexShrink: 0 }}>
+                {en.type === 'income' ? '↑ Income' : '↓ Expense'}
+              </span>
+              <span style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>{(en.entry_date || '').slice(0, 10)}</span>
+              <span style={{ fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{en.category}</span>
+              <span style={{ fontWeight: 700, color: en.type === 'income' ? '#22c55e' : '#ef4444', flexShrink: 0 }}>{en.type === 'income' ? '+' : '-'}{Number(en.amount).toLocaleString()} {en.currency}</span>
+              {en.receipt_url && <a href={en.receipt_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#3b82f6', flexShrink: 0 }}>📎 Receipt</a>}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button style={s.btn('#374151')} onClick={() => handleEdit(en)}>✏️ Edit</button>
+              <button style={s.btn('#7f1d1d')} onClick={() => handleDelete(en.id)}>🗑️</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Roadmap Tab ───────────────────────────────────────────────────────────────
 // ✅ NEW (طلب العميل: صفحة "الجاي" عامة بتصويت حقيقي من العملاء): عكس الـchangelog، الأدمن هنا
 // بيتحكم في الحالة (مخطط له/شغالين عليه/خلص) بس، وعدد الأصوات بيتحسب أوتوماتيك من تصويت
@@ -3250,6 +3477,7 @@ export default function AdminPage() {
     { key: 'notifications', label: '🔔 Notifications' },
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'courses',    label: '🎓 Courses'     },
+    { key: 'finance',    label: '🧾 Finance'     },
     { key: 'changelog',  label: '📰 Changelog'   },
     { key: 'roadmap',    label: '🗺️ Roadmap'     },
     { key: 'statusIncidents', label: '📡 Status' },
@@ -3760,6 +3988,7 @@ export default function AdminPage() {
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}
         {tab === 'courses' && <CoursesTab s={s} />}
+        {tab === 'finance' && <FinanceTab s={s} />}
         {tab === 'changelog' && <ChangelogTab s={s} />}
         {tab === 'roadmap' && <RoadmapTab s={s} />}
         {tab === 'statusIncidents' && <StatusIncidentsTab s={s} />}
