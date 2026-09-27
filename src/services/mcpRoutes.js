@@ -84,33 +84,48 @@ function buildMcpServer(userId, email) {
     const { _meta, ...plainConfig } = config;
     server.registerTool(name, plainConfig, handler);
   };
+  // ✅ FIX (باج حقيقي جوهري — هو السبب الفعلي وراء "الـwidget مبيظهرش خالص" حتى بعد ما
+  // اتصلحت كل مشاكل الـ_meta): كان الكود القديم فوق بيبني bridge يدوي بـpostMessage خام
+  // (زي كتابة بروتوكول WebSocket من الصفر بدل استخدام مكتبة socket.io الرسمية)، مش
+  // مستخدم App class الحقيقية من مكتبة @modelcontextprotocol/ext-apps نفسها. توثيق
+  // Claude الرسمي (claude.com/docs/.../mcp-apps/troubleshooting) بيقول صراحة: "أشيع سبب
+  // إن الـwidget يبقى مش ظاهر خالص هو missing app.connect() call" — لازم نستورد App
+  // الحقيقية جوه الـiframe ونعمل .connect() فعلي (handshake حقيقي مع الـhost)، مش نبعت
+  // إشعار postMessage تخميني بننا فاهمين البروتوكول صح. الاستيراد ده لازم يجي من مصدر
+  // مسموح بالـCSP الافتراضي للـsandbox (سكريبت inline أو من نفس origin بس)، فمحتاجين
+  // كمان نسمح بـunpkg.com صراحة في _meta.ui.csp.resourceDomains — بالظبط زي quickstart
+  // الرسمي المتحقق منه على نفس النسخة 1.7.5 المثبتة عندنا بالظبط
   try {
   registerAppResource(server, videoPlayerResourceUri, videoPlayerResourceUri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
     contents: [{
       uri: videoPlayerResourceUri,
       mimeType: RESOURCE_MIME_TYPE,
+      // ✅ resourceDomains بتتحكم في img-src/script-src/media-src جوه الـsandbox مع بعض —
+      // مش سكريبت unpkg بس؛ لازم كمان نسمح بدومين R2 اللي بترفع عليه كل صور/فيديوهات
+      // Erivion فعليًا (نفس الدومين المسموح بيه في CSP الموقع نفسه، index.js:169)، وإلا
+      // الـ<img>/<video> جوه الـwidget هيتحظروا بصمت حتى لو الـApp اتصلت صح
+      _meta: { ui: { csp: { resourceDomains: ['https://unpkg.com', 'https://*.r2.dev'] } } },
       text: `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
+<html><head><meta charset="UTF-8"><meta name="color-scheme" content="light dark">
 <style>
   body { margin:0; padding:0; background:transparent; font-family:sans-serif; display:flex; align-items:center; justify-content:center; min-height:100px; }
   video { max-width:100%; max-height:480px; border-radius:12px; display:block; }
+  img { max-width:100%; max-height:480px; border-radius:12px; display:block; margin:4px 0; }
   #msg { color:#888; font-size:13px; padding:20px; text-align:center; }
 </style></head>
 <body>
-  <div id="root"><div id="msg">Loading video…</div></div>
-  <script>
-    // ✅ Bridge بسيط (JSON-RPC عن طريق postMessage) — بيسمع لإشعار نتيجة الأداة
-    // ويحط الفيديو لما يوصل، بالظبط زي النمط الموثق في مواصفات MCP Apps
+  <div id="root"><div id="msg">Loading…</div></div>
+  <script type="module">
+    // ✅ الـApp الحقيقية من نفس نسخة المكتبة المثبتة عندنا (1.7.5) — مش bridge يدوي
+    import { App } from "https://unpkg.com/@modelcontextprotocol/ext-apps@1.7.5/dist/src/app-with-deps.js";
+    const app = new App({ name: "Erivion Media Viewer", version: "1.0.0" });
     function render(structuredContent) {
       const root = document.getElementById('root');
       if (structuredContent && structuredContent.status === 'done' && structuredContent.videoUrl) {
         root.innerHTML = '<video src="' + structuredContent.videoUrl + '" controls autoplay muted playsinline></video>';
       } else if (structuredContent && structuredContent.status === 'done' && structuredContent.imageUrls && structuredContent.imageUrls.length) {
-        // ✅ FIX: check_render_status بيربط نفس الـwidget ده لأول الأداتين — بس كان بيعرف
-        // يرندر <video> بس. أي job صورة (imageUrls) كان بيفضل عالق على "Still processing"
-        // للأبد رغم إن التوليد خلص فعلًا (والنص العادي جنبه بيقول الرابط صح)
         root.innerHTML = structuredContent.imageUrls.map(function (u) {
-          return '<img src="' + u + '" style="max-width:100%;max-height:480px;border-radius:12px;display:block;margin:4px 0;">';
+          return '<img src="' + u + '">';
         }).join('');
       } else if (structuredContent && structuredContent.status === 'failed') {
         root.innerHTML = '<div id="msg">❌ Render failed</div>';
@@ -118,15 +133,9 @@ function buildMcpServer(userId, email) {
         root.innerHTML = '<div id="msg">⏳ Still processing…</div>';
       }
     }
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      if (!msg || msg.jsonrpc !== '2.0') return;
-      if (msg.method === 'ui/notifications/tool-result') {
-        render(msg.params?.structuredContent);
-      }
-    });
-    // نبلّغ الـ host إن الواجهة جاهزة تستقبل بيانات
-    try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/ready', params: {} }, '*'); } catch (e) {}
+    // ✅ لازم نسجل الـhandler قبل connect() عشان أول نتيجة توصل ميتفوتش
+    app.ontoolresult = ({ structuredContent }) => render(structuredContent);
+    await app.connect(); // ✅ الـhandshake الحقيقي مع الـhost — ده اللي كان ناقص بالكامل
   </script>
 </body></html>`,
     }],
