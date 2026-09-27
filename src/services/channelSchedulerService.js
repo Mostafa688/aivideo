@@ -14,6 +14,7 @@ import {
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
   mintInternalToken, getUserById, getCreditsBalance, chargeCredits, addCreditsBalance, saveVideo, saveChannelAnalysis,
   getCharacterReferenceById, linkYoutubeVideoToRun, setChannelProjectId,
+  claimRunForPublishing, releasePublishingClaim,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
@@ -458,9 +459,20 @@ async function generateRealisticVideo(run, channel, idea, shape, headers) {
     const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_american';
     const narrations = [];
     try {
+      fs.mkdirSync(TEMP_DIR, { recursive: true });
       for (const s of scenes) {
         const text = (s.text || '').trim();
-        if (!text) continue;
+        if (!text) {
+          // ✅ FIX (باج حقيقي رصدته مراجعة كود: كان بيتخطى (continue) المشهد الفاضي نصه تمامًا،
+          // فـnarrations/sceneDurations كانت بتبقى أقصر من عدد المشاهد الحقيقي. renderService.js
+          // بيرفض realSceneDurations كلها بصمت لو الطول مش متطابق بالظبط مع عدد المشاهد، فكل
+          // المشاهد كانت بترجع لتوقيت تقريبي غير دقيق — مش بس المشهد الفاضي ده. دلوقتي بنولّد
+          // مقطع صمت قصير بدل التخطي، عشان الطول يفضل مطابق تمامًا لعدد المشاهد دايمًا
+          const silentPath = path.join(TEMP_DIR, `realistic_silence_${run.id}_${narrations.length}_${Date.now()}.mp3`);
+          execSync(`ffmpeg -f lavfi -i anullsrc=r=48000:cl=mono -t 3 -c:a mp3 -y "${silentPath}"`, { stdio: 'pipe' });
+          narrations.push({ audioPath: silentPath, durationSec: 3, workDir: null });
+          continue;
+        }
         narrations.push(await synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' }));
       }
       if (narrations.length) {
@@ -474,7 +486,7 @@ async function generateRealisticVideo(run, channel, idea, shape, headers) {
       // ✅ لو توليد الصوت فشل، منوقفش الفيديو كله — بيكمل بدون صوت بدل ما يوم العميل يضيع
       console.warn(`[ChannelScheduler] Gemini narration failed for realistic run ${run.id}, continuing without voice:`, e.message);
     } finally {
-      narrations.forEach(n => { try { fs.rmSync(n.workDir, { recursive: true, force: true }); } catch {} });
+      narrations.forEach(n => { try { if (n.workDir) fs.rmSync(n.workDir, { recursive: true, force: true }); else if (n.audioPath) fs.unlinkSync(n.audioPath); } catch {} });
     }
   }
 
@@ -1014,8 +1026,22 @@ export async function resolveChannelRunReviewAction(run, action) {
     if (!channel) throw new Error('Channel not found');
     if (!channel.youtube_refresh_token) throw new Error('This channel is not connected to YouTube yet — connect it first from "My Channels".');
     if (run.youtube_video_id) throw new Error('This video was already published.');
+    // ✅ FIX (باج حقيقي رصدته مراجعة كود: مفيش قفل ذري هنا — طلبين "نشر الآن" متزامنين (double
+    // click، أو email link-scanner بيعمل prefetch) كانوا بيقروا youtube_video_id=null في نفس
+    // اللحظة قبل ما أي واحد يخلص الرفع، فبيرفعوا نفس الفيديو مرتين فعليًا على قناة يوتيوب
+    // الحقيقية. claimRunForPublishing بتعمل UPDATE ذري يقفل فورًا قبل أي نداء حقيقي لـYouTube —
+    // لو حد تاني كسب السباق أو الفيديو اتنشر فعلاً، مفيش صف يرجع فنوقف هنا
+    const claimed = await claimRunForPublishing(run.id);
+    if (!claimed) throw new Error('This video is already being published (or was already published).');
     const idea = JSON.parse(run.idea_brief || '{}');
-    const youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl: run.video_url, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
+    let youtubeVideoId;
+    try {
+      youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl: run.video_url, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
+    } catch (e) {
+      // ✅ فشل حقيقي (مش سباق) — نفك القفل عشان العميل يقدر يحاول "نشر الآن" تاني من غير ما يفضل عالق
+      await releasePublishingClaim(run.id).catch(() => {});
+      throw e;
+    }
     await linkYoutubeVideoToRun(run.id, run.user_id, youtubeVideoId);
     // ✅ NEW (طلب العميل: صورة مصغّرة تلقائية بموديل nano_banana_2 — الأفضل حاليًا في كتابة
     // نص عربي/إنجليزي واضح جوه الصورة، وده أهم حاجة في صورة مصغّرة كويسة على يوتيوب). فشلها
