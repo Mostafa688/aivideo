@@ -2591,6 +2591,26 @@ function FinanceTab({ s }) {
   };
   useEffect(() => { loadAll(); }, [filter.from, filter.to, filter.type]);
 
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const qs = queryString();
+      const r = await fetch(`/api/finance/admin/export?${qs}`, { headers: { Authorization: `Bearer ${adminToken}` } });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); showToastMsg('❌ ' + (d.error || 'Export failed')); return; }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `erivion-finance-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setExporting(false);
+  };
+
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2654,6 +2674,7 @@ function FinanceTab({ s }) {
         <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>🧾 Finance</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button style={s.btn()} onClick={loadAll}>🔄 Refresh</button>
+          <button style={s.btn('#374151')} onClick={handleExport} disabled={exporting}>{exporting ? 'Exporting...' : '⬇️ Export Excel'}</button>
           <button style={s.btn('#22c55e')} onClick={() => { setForm(emptyForm); setShowForm(v => !v); }}>{showForm ? '✕ Cancel' : '+ Add Entry'}</button>
         </div>
       </div>
