@@ -382,6 +382,13 @@ async function initDB() {
     ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS review_token TEXT UNIQUE;
     ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ DEFAULT NULL;
   `).catch(() => {});
+  // ✅ FIX (باج حقيقي رصدته مراجعة كود: مفيش أي قفل ذري وقت نشر فيديو على يوتيوب — لو حد ضغط
+  // "نشر الآن" مرتين بسرعة (أو email link-scanner عمل prefetch للينك)، الطلبين كانوا بيقروا
+  // youtube_video_id=null في نفس اللحظة قبل ما أي واحد يخلص الرفع، فالفيديو كان بيترفع مرتين
+  // فعليًا على قناة العميل الحقيقية. عمود قفل بسيط: NULL = مفيش نشر شغال، وقت = نشر شغال دلوقتي
+  await pool.query(`
+    ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS publishing_started_at TIMESTAMPTZ DEFAULT NULL;
+  `).catch(() => {});
   // ── مصنع فيديو الصوت الأدمن — رفع فويس أوفر جاهز، والموقع يفرّغه (Whisper) ويستخرج
   // العناصر (LLM) ويجيب/يولّد صورهم ويعمل الفيديو النهائي. Pipeline بمراحل، كل مرحلة
   // بتحدث نفس الـ job بحالتها الجديدة عشان الأدمن يشوف التقدم ─────────────────────────
@@ -1770,6 +1777,40 @@ export async function linkYoutubeVideoToRun(runId, userId, youtubeVideoId) {
     [youtubeVideoId, runId, userId]
   );
   return rows[0] || null;
+}
+
+// ✅ FIX (باج حقيقي: سباق حقيقي بين طلبين متزامنين على نفس اللينك — email link-scanner بيعمل
+// prefetch، أو العميل يضغط اللينك مرتين قبل ما الرد يوصل — read-then-write العادي (نقرا الحالة
+// في الكود، بعدين نكتب) بيسيب فترة حقيقية الاتنين فيها بيشوفوا نفس الحالة القديمة، فالتوليد
+// كان بيحصل مرتين ويتخصم كريديت مرتين لموافقة واحدة بس). UPDATE...WHERE status='pending' ذرّي
+// حقيقي بدل ما نعتمد على فحص status في الكود — لو حد تاني كسب السباق، مفيش صف يرجع، فنعرف
+// ونوقف من غير ما نكرر التوليد
+export async function claimDailyVideoRunForGeneration(id) {
+  const { rows } = await pool.query(
+    `UPDATE daily_video_runs SET status = 'generating', decided_at = NOW() WHERE id = $1 AND status = 'pending' RETURNING *`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+// ✅ FIX (نفس فئة الباج فوق، بس لحظة النشر على يوتيوب بدل التوليد): resolveChannelRunReviewAction
+// كان بيفحص run.youtube_video_id (جاي من نسخة اتقرت قبل كده) بدل ما يتأكد ذريًا وقت الكتابة —
+// طلبين "نشر الآن" متزامنين كانوا بيرفعوا نفس الفيديو مرتين فعليًا على قناة يوتيوب الحقيقية.
+// publishing_started_at بيشتغل كقفل: لو NULL يبقى مفيش نشر شغال، فنقفله فورًا (UPDATE ذري) قبل
+// أي استدعاء حقيقي لـYouTube API؛ العملية اللي بترجعلها صف تكمل، والتانية تعرف إنها خسرت السباق
+export async function claimRunForPublishing(id) {
+  const { rows } = await pool.query(
+    `UPDATE daily_video_runs SET publishing_started_at = NOW()
+     WHERE id = $1 AND youtube_video_id IS NULL AND publishing_started_at IS NULL RETURNING *`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+// ✅ بيفك القفل لو الرفع فشل فعليًا (مش نجح) — عشان العميل يقدر يحاول "نشر الآن" تاني من غير
+// ما يفضل القفل عالق للأبد بسبب فشل حقيقي (مش سباق) زي فشل مؤقت في اتصال يوتيوب
+export async function releasePublishingClaim(id) {
+  await pool.query('UPDATE daily_video_runs SET publishing_started_at = NULL WHERE id = $1', [id]);
 }
 
 export async function listManagedChannelsForAdmin() {

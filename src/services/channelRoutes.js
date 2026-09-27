@@ -3,6 +3,7 @@ import { authMiddleware } from './authRoutes.js';
 import {
   createManagedChannel, listManagedChannelsForUser, updateManagedChannel, deleteManagedChannel,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getUserById, getManagedChannelById,
+  claimDailyVideoRunForGeneration, claimRunForPublishing, releasePublishingClaim,
   listDailyVideoRunsForChannel, getDailyVideoRunById, linkYoutubeVideoToRun,
   getCharacterReferenceForUser, setChannelCharacter, getDailyVideoRunByReviewToken,
 } from './authService.js';
@@ -261,13 +262,18 @@ router.get('/daily-approve', async (req, res) => {
   const { token } = req.query;
   const run = await getDailyVideoRunByToken(token).catch(() => null);
   if (!run) return res.status(404).send('Link not found or expired.');
-  if (run.status !== 'pending') {
-    return res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2>This request was already ${run.status}.</h2></body></html>`);
+  // ✅ FIX (باج حقيقي: سباق بين طلبين متزامنين على نفس اللينك — مثلًا email link-scanner بيعمل
+  // prefetch للينك، أو العميل يضغط مرتين بسرعة — كان بيولّد الفيديو مرتين ويخصم كريديت مرتين
+  // لموافقة واحدة بس. claimDailyVideoRunForGeneration بتعمل UPDATE...WHERE status='pending'
+  // ذرّي حقيقي بدل فحص run.status في الكود؛ لو حد تاني كسب السباق، مفيش صف يرجع فنوقف هنا
+  const claimed = await claimDailyVideoRunForGeneration(run.id);
+  if (!claimed) {
+    return res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><h2>This request was already handled.</h2></body></html>`);
   }
-  await updateDailyVideoRunStatus(run.id, 'generating', { decided: true });
   res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0f0f1a;color:#fff"><div style="font-size:56px">🎬</div><h2 style="color:#22c55e">Got it — making your video now!</h2><p style="color:#9ca3af">You'll get an email when it's ready.</p></body></html>`);
 
   (async () => {
+    const run = claimed;
     const idea = JSON.parse(run.idea_brief || '{}');
     try {
       const videoUrl = await triggerApprovedGeneration(run);
