@@ -21,6 +21,11 @@ import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance, verify
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 
+// ✅ FIX: كانت بتتحسب من جديد جوه buildMcpServer() في كل طلب MCP رغم إنها ثابتة طول عمر
+// الـprocess — بنحسبها مرة واحدة هنا بدل ما نعيد بناء enum الـzod في كل نداء
+const IMAGE_MODEL_KEYS = Object.keys(NEW_IMAGE_MODELS);
+const VIDEO_MODEL_KEYS = Object.keys(NEW_VIDEO_MODELS);
+
 const router = express.Router();
 const SITE_URL = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';
 // ✅ نداء داخلي على نفس السيرفر (loopback) — مش نداء خارجي عبر الإنترنت
@@ -100,6 +105,13 @@ function buildMcpServer(userId, email) {
       const root = document.getElementById('root');
       if (structuredContent && structuredContent.status === 'done' && structuredContent.videoUrl) {
         root.innerHTML = '<video src="' + structuredContent.videoUrl + '" controls autoplay muted playsinline></video>';
+      } else if (structuredContent && structuredContent.status === 'done' && structuredContent.imageUrls && structuredContent.imageUrls.length) {
+        // ✅ FIX: check_render_status بيربط نفس الـwidget ده لأول الأداتين — بس كان بيعرف
+        // يرندر <video> بس. أي job صورة (imageUrls) كان بيفضل عالق على "Still processing"
+        // للأبد رغم إن التوليد خلص فعلًا (والنص العادي جنبه بيقول الرابط صح)
+        root.innerHTML = structuredContent.imageUrls.map(function (u) {
+          return '<img src="' + u + '" style="max-width:100%;max-height:480px;border-radius:12px;display:block;margin:4px 0;">';
+        }).join('');
       } else if (structuredContent && structuredContent.status === 'failed') {
         root.innerHTML = '<div id="msg">❌ Render failed</div>';
       } else {
@@ -188,7 +200,6 @@ function buildMcpServer(userId, email) {
   // ── generate_image ───────────────────────────────────────────────────────
   // ✅ NEW (طلب العميل: "ظبط الـMCP على النظام الجديد"): النظام الجديد بيفصل توليد الصورة عن
   // تحريكها لفيديو (زي GENERATE_IMAGE/GENERATE_VIDEO في شات الايجنت بالظبط) — أداة مستقلة هنا
-  const IMAGE_MODEL_KEYS = Object.keys(NEW_IMAGE_MODELS);
   safeRegisterAppTool(
     'generate_image',
     {
@@ -202,6 +213,14 @@ function buildMcpServer(userId, email) {
         count: z.number().int().min(1).max(20).default(1).describe('Number of images to generate from the same prompt.'),
         tier: z.string().optional().describe('Quality/resolution tier — only for engines that list "resolutions" in list_models. Omit otherwise.'),
       },
+      // ✅ FIX (باج حقيقي رصدته مراجعة كود، هو سبب اختفاء الـwidget بتاع الفيديو نهائيًا في كل
+      // طلب): registerAppTool() الحقيقية بتعمل "J._meta.ui" مباشرة من غير أي حماية — لو
+      // _meta مش موجودة أصلاً (زي هنا قبل الإصلاح) بترمي استثناء فورًا. وبما إن الأداة دي أول
+      // حاجة بتتسجل في buildMcpServer()، الاستثناء ده كان بيسيب appsWidgetOk=false لبقية
+      // الطلب كله، فـgenerate_video/check_render_status/edit_video اللي جايين بعدها كانوا
+      // بيتخطوا محاولة الـwidget تمامًا من غير ما حتى يتنفذوا. _meta فاضية هنا كفاية عشان
+      // مفيش widget أصلاً مربوط بالأداة دي (مفيهاش resourceUri)
+      _meta: {},
     },
     async ({ model, prompt, referenceImageUrls, aspectRatio, count, tier }) => {
       try {
@@ -254,7 +273,6 @@ function buildMcpServer(userId, email) {
   // model8/render) — نفس الموديلات اللي شات الايجنت نفسه اتقفل عليه خالص من زمان في هذا
   // الجلسة (راجع "MODELS AVAILABLE ON ERIVION" اللي اتشالت من agentService.js). بقت دلوقتي
   // بتنادي /api/videos/generate الحقيقي بنفس المحركات (Veo/Nano Banana/Seedance/Kling...)
-  const VIDEO_MODEL_KEYS = Object.keys(NEW_VIDEO_MODELS);
   safeRegisterAppTool(
     'generate_video',
     {

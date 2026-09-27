@@ -362,11 +362,17 @@ async function generateAnimatedVideo(run, channel, idea, shape, headers) {
   const narrations = [];
   try {
     // ── 2) لو القناة بتستخدم صوت: سرد كل مشهد لوحده الأول عشان نعرف مدته الحقيقية ──────
+    // ✅ FIX (تحسين أداء آمن رصدته مراجعة كود): كانت بتسرد المشاهد واحد ورا التاني بالتسلسل
+    // رغم إن synthesizeNarration نداء Replicate خارجي بحت (بدون أي خصم كريديت جواها) وكل
+    // مشهد بيكتب في مجلد مؤقت مستقل خاص بيه — فمفيش أي تعارض حالة بين المشاهد يمنع تنفيذهم
+    // بالتوازي. عكس كده تمامًا حلقة تحريك الفيديو تحت (كل نداء فيها بيخصم كريديت حقيقي)
+    // اللي سبناها بالتسلسل عمدًا عشان مفيش قفل ذري على خصم الكريديت لسه (باج تاني منفصل)
     if (usesVoice) {
-      for (const s of scenes) {
+      const synthesized = await Promise.all(scenes.map(s => {
         const text = (s.text || '').trim() || idea.title;
-        narrations.push(await synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' }));
-      }
+        return synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' });
+      }));
+      narrations.push(...synthesized);
     }
 
     // ── 3) كل صورة تتحرك لكليب، بمدة = مدة سرد نفس المشهد (لو فيه صوت) وإلا الافتراضية ──
@@ -618,13 +624,16 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
   if (!Array.isArray(images) || images.length < 2) { const e = new Error('Image generation returned too few images'); e.committed = true; throw e; }
 
   // ── 2) لو القناة بتستخدم صوت: نولّد سرد كل مشهد لوحده الأول عشان نعرف مدته الحقيقية ──
+  // ✅ FIX (تحسين أداء آمن رصدته مراجعة كود — راجع نفس التعليق في generateAnimatedVideo):
+  // synthesizeNarration نداء Replicate بحت من غير خصم كريديت، فآمن بالكامل يتنفذ بالتوازي
   const narrations = [];
   try {
     if (usesVoice) {
-      for (const s of scenes) {
+      const synthesized = await Promise.all(scenes.map(s => {
         const text = s.narration?.trim() || idea.title;
-        narrations.push(await synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' }));
-      }
+        return synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' });
+      }));
+      narrations.push(...synthesized);
     }
 
     // ── 3) كل صورة تتحرك لكليب، بمدة = مدة سرد نفس المشهد (لو فيه صوت) وإلا المدة الافتراضية ──
@@ -775,11 +784,14 @@ async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers)
   const narrations = [];
   try {
     // ── 2) لو القناة بتستخدم صوت: سرد كل مشهد لوحده الأول عشان نعرف مدته الحقيقية ────────
+    // ✅ FIX (تحسين أداء آمن رصدته مراجعة كود — راجع نفس التعليق في generateAnimatedVideo):
+    // synthesizeNarration نداء Replicate بحت من غير خصم كريديت، فآمن بالكامل يتنفذ بالتوازي
     if (usesVoice) {
-      for (const s of scenes) {
+      const synthesized = await Promise.all(scenes.map(s => {
         const text = s.narration?.trim() || idea.title;
-        narrations.push(await synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' }));
-      }
+        return synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' });
+      }));
+      narrations.push(...synthesized);
     }
 
     // ── 3) كل صورة تتحرك (Ken Burns) بمدة سرد نفس المشهد بالظبط (أو المدة الافتراضية) ───
