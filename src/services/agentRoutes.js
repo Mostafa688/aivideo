@@ -954,21 +954,28 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // مش في الرسالة الحالية. الحل: (1) توسيع الكشف لأي عنوان قسم "Word:" لوحده في سطر، أو
     // تايم لاين رقمي "N-Ns:"، أو نص طويل جدًا متعدد الفقرات (مش بس الكلمات الأربعة القديمة)،
     // (2) البحث كمان في آخر رسائل العميل في الـhistory لو الرسالة الحالية نفسها مش هي البرومبت
+    // ✅ FIX (باج حقيقي رصده مراجعة كود لاحقة لنفس الحاجز فوق): الشرط القديم كان بيكفي "عنوان
+    // قسم واحد بس" (زي "Note:" عرضية جوه رسالة عادية طويلة) عشان يصنّف رسالة كاملة عادية كأنها
+    // برومبت جاهز — دلوقتي محتاج عنوانين قسم (أو تايم لاين مرتين) على الأقل، مش واحد بس، عشان
+    // نتأكد إنه هيكل حقيقي متكرر (زي "Monster design:"/"Warriors design:"/"Timeline:") مش سطر عرضي
     const looksLikeCompleteGenerationPrompt = (text) => {
       if (!text || text.trim().length < 200) return false;
       if (/\b(STYLE|CHARACTER\s*\d|COLOR PALETTE|COMPOSITION)\s*:/i.test(text)) return true;
-      if (/^\s*[A-Za-z][A-Za-z '\/-]{2,30}:\s*$/m.test(text)) return true; // "Monster design:" alone on its line
-      if (/^\s*\d{1,3}\s*[-–]\s*\d{1,3}\s*s\s*:/m.test(text)) return true; // "0-5s:" timeline beats
+      if ((text.match(/^\s*[A-Za-z][A-Za-z '\/-]{2,30}:\s*$/gm) || []).length >= 2) return true; // 2+ section headings each alone on their line
+      if ((text.match(/^\s*\d{1,3}\s*[-–]\s*\d{1,3}\s*s\s*:/gm) || []).length >= 2) return true; // 2+ "0-5s:" timeline beats
       return text.trim().length >= 400 && (text.match(/\n/g) || []).length >= 3; // long, structured multi-paragraph text
     };
+    // ✅ FIX (باج حقيقي تاني من نفس المراجعة): كان بيدوّر 8 رسايل لورا من غير أي فحص صلة —
+    // برومبت قديم لمشهد سابق كان ممكن يتطبق غلط على طلب جديد مختلف تمامًا. دلوقتي بيوقف البحث
+    // فورًا أول ما يلاقي رسالة قديمة طويلة (>150 حرف) مش هي نفسها برومبت كامل — طول كده يبقى
+    // على الأغلب طلب تاني مختلف اتحط في النص، مش مجرد تأكيد قصير ("تمام"/"ابدأ"/"لا مش عايز صور")
     let rawPromptOverride = looksLikeCompleteGenerationPrompt(message) ? message.trim() : null;
     if (!rawPromptOverride && Array.isArray(history)) {
       for (let i = history.length - 1; i >= 0 && i >= history.length - 8; i--) {
         const h = history[i];
-        if (h?.role === 'user' && typeof h.content === 'string' && looksLikeCompleteGenerationPrompt(h.content)) {
-          rawPromptOverride = h.content.trim();
-          break;
-        }
+        if (h?.role !== 'user' || typeof h.content !== 'string') continue;
+        if (looksLikeCompleteGenerationPrompt(h.content)) { rawPromptOverride = h.content.trim(); break; }
+        if (h.content.trim().length > 150) break; // رسالة تانية جوهرية اتحطت في النص — بلاش نكمل لورا
       }
     }
     if (rawPromptOverride) {
@@ -993,32 +1000,49 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // الشات العامة دي، بس forcedVideoModel/forcedImageModel فوق بيتفعّلوا بس من قيمة جاية من
     // الفرونت إند (اختيار من واجهة)، مش من تحليل نص الرسالة. لو العميل اسم موديل صراحة بالنص
     // والايجنت استخدم موديل تاني، نصححها هنا بدل ما نصدّق اختيار الايجنت العشوائي)
+    // ✅ FIX (باج حقيقي تاني من نفس المراجعة): (1) "p[\s_-]*video" من غير \b قبل الـp كانت
+    // بتتطابق مع أي كلمة عادية بتخلص بحرف p ومتبوعة بـ"video" (زي "clip video 2")، دلوقتي
+    // محتاجة حدود كلمة حقيقية. (2) الدالة كانت بترجع أول تطابق بترتيب المصفوفة الثابت من غير
+    // فحص تعارض — لو العميل كتب "متستخدمش seedance، استخدم wan" كانت هترجع seedance (غلط) لأنه
+    // مذكور في نص الرسالة وترتيبه أسبق في المصفوفة. دلوقتي: لو لقينا أكتر من موديل مختلف مذكور
+    // في نفس النص، منرجعش حاجة خالص (نسيب اختيار الايجنت زي ما هو) بدل ما نخمّن أنهي واحد يقصد
     const detectExplicitVideoModelMention = (text) => {
       if (!text) return null;
       const t = text.toLowerCase();
+      // ✅ كل نمط ليه "عيلة" (نفس عيلة الموديل) — نماذج متداخلة زي seedance_2_0_fast/
+      // seedance_2_0 بيتطابقوا مع بعض عمدًا (ده مقصود، أول تطابق بترتيب المصفوفة بيحسم أنهي
+      // نسخة بالظبط)، فمش ده اللي بيعتبر "لبس" — اللبس الحقيقي هو لما عيلتين مختلفتين
+      // (زي seedance وwan) يتطابقوا مع بعض في نفس النص، هنا بس منرجعش حاجة (نسيب اختيار الايجنت)
       const patterns = [
-        [/seedance[\s_-]*2[.\s_-]*0[\s_-]*fast/, 'seedance_2_0_fast'],
-        [/seedance[\s_-]*1[\s_-]*pro[\s_-]*fast/, 'seedance_1_pro_fast'],
-        [/seedance[\s_-]*2[.\s_-]*5/, 'seedance_2_5'],
-        [/seedance[\s_-]*2[.\s_-]*0/, 'seedance_2_0'],
-        [/seedance[\s_-]*1[.\s_-]*5/, 'seedance_1_5'],
-        [/\bwan[\s_-]*3(\.0)?\b/, 'wan_3'],
-        [/veo[\s_-]*3?(\.1)?[\s_-]*fast/, 'veo3_fast'],
-        [/veo[\s_-]*3?(\.1)?[\s_-]*lite/, 'veo3_lite'],
-        [/\bveo[\s_-]*3\b/, 'veo3_standard'],
-        [/kling[\s_-]*2[.\s_-]*5/, 'kling_2_5'],
-        [/kling[\s_-]*2[.\s_-]*1/, 'kling_2_1'],
-        [/kling[\s_-]*3(\.0)?[\s_-]*omni/, 'kling_3_0_omni'],
-        [/luma[\s_-]*ray[\s_-]*2[\s_-]*540/, 'luma_ray2_540p'],
-        [/luma[\s_-]*ray[\s_-]*2[\s_-]*720/, 'luma_ray2_720p'],
-        [/pixverse/, 'pixverse_v4_5'],
-        [/p[\s_-]*video[\s_-]*2/, 'prunaai_p_video_2'],
-        [/(prunaai|p[\s_-]*video)/, 'prunaai_p_video'],
-        [/(omni[\s_-]*flash|gemini[\s_-]*omni)/, 'omni_flash_1_1'],
-        [/lucy[\s_-]*edit/, 'decart_lucy_edit_2'],
+        ['seedance', /seedance[\s_-]*2[.\s_-]*0[\s_-]*fast/, 'seedance_2_0_fast'],
+        ['seedance', /seedance[\s_-]*1[\s_-]*pro[\s_-]*fast/, 'seedance_1_pro_fast'],
+        ['seedance', /seedance[\s_-]*2[.\s_-]*5/, 'seedance_2_5'],
+        ['seedance', /seedance[\s_-]*2[.\s_-]*0/, 'seedance_2_0'],
+        ['seedance', /seedance[\s_-]*1[.\s_-]*5/, 'seedance_1_5'],
+        ['wan', /\bwan[\s_-]*3(\.0)?\b/, 'wan_3'],
+        ['veo', /veo[\s_-]*3?(\.1)?[\s_-]*fast/, 'veo3_fast'],
+        ['veo', /veo[\s_-]*3?(\.1)?[\s_-]*lite/, 'veo3_lite'],
+        ['veo', /\bveo[\s_-]*3\b/, 'veo3_standard'],
+        ['kling', /kling[\s_-]*2[.\s_-]*5/, 'kling_2_5'],
+        ['kling', /kling[\s_-]*2[.\s_-]*1/, 'kling_2_1'],
+        ['kling', /kling[\s_-]*3(\.0)?[\s_-]*omni/, 'kling_3_0_omni'],
+        ['luma', /luma[\s_-]*ray[\s_-]*2[\s_-]*540/, 'luma_ray2_540p'],
+        ['luma', /luma[\s_-]*ray[\s_-]*2[\s_-]*720/, 'luma_ray2_720p'],
+        ['pixverse', /pixverse/, 'pixverse_v4_5'],
+        ['pvideo', /\bp[\s_-]+video[\s_-]*2\b/, 'prunaai_p_video_2'],
+        ['pvideo', /(prunaai|\bp[\s_-]+video\b)/, 'prunaai_p_video'],
+        ['omni', /(omni[\s_-]*flash|gemini[\s_-]*omni)/, 'omni_flash_1_1'],
+        ['lucy', /lucy[\s_-]*edit/, 'decart_lucy_edit_2'],
       ];
-      for (const [re, key] of patterns) if (re.test(t) && NEW_VIDEO_MODELS[key]) return key;
-      return null;
+      const familiesFound = new Set();
+      let primaryKey = null;
+      for (const [family, re, key] of patterns) {
+        if (re.test(t) && NEW_VIDEO_MODELS[key]) {
+          familiesFound.add(family);
+          if (primaryKey === null) primaryKey = key;
+        }
+      }
+      return familiesFound.size === 1 ? primaryKey : null;
     };
     if (generateVideo && !forcedVideoModel) {
       const mentionedModel = detectExplicitVideoModelMention(message) || detectExplicitVideoModelMention(rawPromptOverride);
