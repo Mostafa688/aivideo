@@ -946,35 +946,86 @@ router.post('/chat', authMiddleware, async (req, res) => {
         }
       }
     }
-    // ✅ NEW (باج حقيقي متكرر رغم rule 8b الصريحة "انسخ برومبت العميل الجاهز حرفيًا"): تعليمات
-    // البرومبت وحدها مش موثوق فيها 100% — الايجنت لسه بيختصر/يعيد صياغة برومبت جاهز بعته
-    // العميل نفسه (بدل النسخ الحرفي)، بالظبط زي مشكلة أسماء الموديلات فوق. حاجز حتمي في الكود:
-    // لو رسالة العميل الحالية نفسها بتبان إنها برومبت جاهز كامل (علامات صريحة زي "STYLE:"/
-    // "CHARACTER 1:"/"COLOR PALETTE:"/"COMPOSITION:"، أو مجرد نص طويل وصفي جدًا)، وبرومبت
-    // الايجنت المتولد أقصر بكتير من رسالة العميل (أقل من 70% من طولها)، يبقى الايجنت اختصره
-    // غصب رغم التعليمة — نستبدله برسالة العميل الخام بالكامل بدل ما نثق في نسخته المختصرة
+    // ✅ FIX (باج حقيقي متكرر رغم الحاجز القديم هنا: عميل بعت برومبت كامل بعناوين "Monster
+    // design:"/"Warriors design:"/"Timeline:" وتايم لاين "0-5s:"/"5-10s:" — مكانش بيتلقط لأن
+    // الحاجز القديم كان بيدوّر بس على "STYLE:"/"CHARACTER N:"/"COLOR PALETTE:"/"COMPOSITION:"
+    // حرفيًا. كمان كان بيفحص رسالة العميل الحالية بس — لو العميل بعت البرومبت الكامل في رسالة،
+    // وبعدين وافق "تمام"/"ابدأ" في رسالة تانية، الحاجز القديم مكانش بيلاقي البرومبت خالص لأنه
+    // مش في الرسالة الحالية. الحل: (1) توسيع الكشف لأي عنوان قسم "Word:" لوحده في سطر، أو
+    // تايم لاين رقمي "N-Ns:"، أو نص طويل جدًا متعدد الفقرات (مش بس الكلمات الأربعة القديمة)،
+    // (2) البحث كمان في آخر رسائل العميل في الـhistory لو الرسالة الحالية نفسها مش هي البرومبت
     const looksLikeCompleteGenerationPrompt = (text) => {
       if (!text || text.trim().length < 200) return false;
-      return /\b(STYLE|CHARACTER\s*\d|COLOR PALETTE|COMPOSITION)\s*:/i.test(text);
+      if (/\b(STYLE|CHARACTER\s*\d|COLOR PALETTE|COMPOSITION)\s*:/i.test(text)) return true;
+      if (/^\s*[A-Za-z][A-Za-z '\/-]{2,30}:\s*$/m.test(text)) return true; // "Monster design:" alone on its line
+      if (/^\s*\d{1,3}\s*[-–]\s*\d{1,3}\s*s\s*:/m.test(text)) return true; // "0-5s:" timeline beats
+      return text.trim().length >= 400 && (text.match(/\n/g) || []).length >= 3; // long, structured multi-paragraph text
     };
-    if (looksLikeCompleteGenerationPrompt(message)) {
-      const rawPrompt = message.trim();
-      if (generateImage && typeof generateImage.prompt === 'string' && generateImage.prompt.trim().length < rawPrompt.length * 0.7) {
-        console.warn('[Agent] GENERATE_IMAGE prompt looked shortened vs a customer-supplied complete prompt — overriding with the raw message');
-        generateImage.prompt = rawPrompt;
-      }
-      if (generateVideo && typeof generateVideo.prompt === 'string' && generateVideo.prompt.trim().length < rawPrompt.length * 0.7) {
-        console.warn('[Agent] GENERATE_VIDEO prompt looked shortened vs a customer-supplied complete prompt — overriding with the raw message');
-        generateVideo.prompt = rawPrompt;
+    let rawPromptOverride = looksLikeCompleteGenerationPrompt(message) ? message.trim() : null;
+    if (!rawPromptOverride && Array.isArray(history)) {
+      for (let i = history.length - 1; i >= 0 && i >= history.length - 8; i--) {
+        const h = history[i];
+        if (h?.role === 'user' && typeof h.content === 'string' && looksLikeCompleteGenerationPrompt(h.content)) {
+          rawPromptOverride = h.content.trim();
+          break;
+        }
       }
     }
-    // ✅ حاجز إضافي في الكود نفسه: لو المستخدم فرض موديل يدويًا، نضمن استخدامه بالظبط حتى
+    if (rawPromptOverride) {
+      if (generateImage && typeof generateImage.prompt === 'string' && generateImage.prompt.trim().length < rawPromptOverride.length * 0.7) {
+        console.warn('[Agent] GENERATE_IMAGE prompt looked shortened vs a customer-supplied complete prompt — overriding with the raw message');
+        generateImage.prompt = rawPromptOverride;
+      }
+      if (generateVideo && typeof generateVideo.prompt === 'string' && generateVideo.prompt.trim().length < rawPromptOverride.length * 0.7) {
+        console.warn('[Agent] GENERATE_VIDEO prompt looked shortened vs a customer-supplied complete prompt — overriding with the raw message');
+        generateVideo.prompt = rawPromptOverride;
+      }
+    }
+    // ✅ حاجز إضافي في الكود نفسه: لو المستخدم فرض موديل يدويًا من picker، نضمن استخدامه بالظبط حتى
     // لو الايجنت (الموديل نفسه) تجاهل التعليمة اللي فوق لأي سبب
     if (generateImage && forcedImageModel && NEW_IMAGE_MODELS[forcedImageModel]) {
       generateImage.model = forcedImageModel;
     }
     if (generateVideo && forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]) {
       generateVideo.model = forcedVideoModel;
+    }
+    // ✅ NEW (باج حقيقي: عميل كتب "wan 3.0" بالنص العادي في الشات — مفيش أي picker في صفحة
+    // الشات العامة دي، بس forcedVideoModel/forcedImageModel فوق بيتفعّلوا بس من قيمة جاية من
+    // الفرونت إند (اختيار من واجهة)، مش من تحليل نص الرسالة. لو العميل اسم موديل صراحة بالنص
+    // والايجنت استخدم موديل تاني، نصححها هنا بدل ما نصدّق اختيار الايجنت العشوائي)
+    const detectExplicitVideoModelMention = (text) => {
+      if (!text) return null;
+      const t = text.toLowerCase();
+      const patterns = [
+        [/seedance[\s_-]*2[.\s_-]*0[\s_-]*fast/, 'seedance_2_0_fast'],
+        [/seedance[\s_-]*1[\s_-]*pro[\s_-]*fast/, 'seedance_1_pro_fast'],
+        [/seedance[\s_-]*2[.\s_-]*5/, 'seedance_2_5'],
+        [/seedance[\s_-]*2[.\s_-]*0/, 'seedance_2_0'],
+        [/seedance[\s_-]*1[.\s_-]*5/, 'seedance_1_5'],
+        [/\bwan[\s_-]*3(\.0)?\b/, 'wan_3'],
+        [/veo[\s_-]*3?(\.1)?[\s_-]*fast/, 'veo3_fast'],
+        [/veo[\s_-]*3?(\.1)?[\s_-]*lite/, 'veo3_lite'],
+        [/\bveo[\s_-]*3\b/, 'veo3_standard'],
+        [/kling[\s_-]*2[.\s_-]*5/, 'kling_2_5'],
+        [/kling[\s_-]*2[.\s_-]*1/, 'kling_2_1'],
+        [/kling[\s_-]*3(\.0)?[\s_-]*omni/, 'kling_3_0_omni'],
+        [/luma[\s_-]*ray[\s_-]*2[\s_-]*540/, 'luma_ray2_540p'],
+        [/luma[\s_-]*ray[\s_-]*2[\s_-]*720/, 'luma_ray2_720p'],
+        [/pixverse/, 'pixverse_v4_5'],
+        [/p[\s_-]*video[\s_-]*2/, 'prunaai_p_video_2'],
+        [/(prunaai|p[\s_-]*video)/, 'prunaai_p_video'],
+        [/(omni[\s_-]*flash|gemini[\s_-]*omni)/, 'omni_flash_1_1'],
+        [/lucy[\s_-]*edit/, 'decart_lucy_edit_2'],
+      ];
+      for (const [re, key] of patterns) if (re.test(t) && NEW_VIDEO_MODELS[key]) return key;
+      return null;
+    };
+    if (generateVideo && !forcedVideoModel) {
+      const mentionedModel = detectExplicitVideoModelMention(message) || detectExplicitVideoModelMention(rawPromptOverride);
+      if (mentionedModel && generateVideo.model !== mentionedModel) {
+        console.warn(`[Agent] Customer explicitly named "${mentionedModel}" in text but the agent picked "${generateVideo.model}" — overriding to the customer's real choice`);
+        generateVideo.model = mentionedModel;
+      }
     }
     // ✅ NEW: باقي الحقول اللي الايجنت بينسخها من الـ history حرفيًا (مش السيرفر هو اللي جابها) —
     // نفس التحقق: لو الرابط مش موجود بالظبط في الـ history، نرفضه بدل ما نبعته لـ API مضمون يفشل
