@@ -8,6 +8,7 @@
 import express from 'express';
 import pkg from 'pg';
 import multer from 'multer';
+import ExcelJS from 'exceljs';
 import { adminAuth } from './adminAuthMiddleware.js';
 
 const { Pool } = pkg;
@@ -113,6 +114,82 @@ router.get('/admin/summary', adminAuth, async (req, res) => {
     }
     const summary = Object.values(byCurrency).map(c => ({ ...c, net: c.income - c.expense }));
     res.json({ summary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW (طلب العميل: "لو حبيت تجميع لكل حاجة، اقدر احمله ملف Excel جاهز") — نفس فلاتر
+// list/summary بالظبط (from/to/type/currency)، ملف .xlsx حقيقي فيه ورقتين: "Entries" (كل
+// حركة بتفاصيلها) و"Summary" (نفس الملخص لكل عملة اللي بيبان في الصفحة)، جاهز للتسليم
+// المحاسبي المباشر
+router.get('/admin/export', adminAuth, async (req, res) => {
+  try {
+    const listParams = [];
+    const where = buildDateFilter(req, listParams);
+    const { rows: entries } = await pool.query(
+      `SELECT * FROM finance_entries ${where} ORDER BY entry_date ASC, id ASC`,
+      listParams
+    );
+
+    const summaryParams = [];
+    const summaryWhere = buildDateFilter(req, summaryParams);
+    const { rows: totalsRows } = await pool.query(
+      `SELECT currency, type, COALESCE(SUM(amount), 0)::float AS total
+       FROM finance_entries ${summaryWhere} GROUP BY currency, type`,
+      summaryParams
+    );
+    const byCurrency = {};
+    for (const r of totalsRows) {
+      byCurrency[r.currency] = byCurrency[r.currency] || { currency: r.currency, income: 0, expense: 0 };
+      byCurrency[r.currency][r.type] = r.total;
+    }
+    const summary = Object.values(byCurrency).map(c => ({ ...c, net: c.income - c.expense }));
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Erivion';
+    workbook.created = new Date();
+
+    const entriesSheet = workbook.addWorksheet('Entries');
+    entriesSheet.columns = [
+      { header: 'Date', key: 'entry_date', width: 14 },
+      { header: 'Type', key: 'type', width: 12 },
+      { header: 'Category', key: 'category', width: 28 },
+      { header: 'Amount', key: 'amount', width: 14 },
+      { header: 'Currency', key: 'currency', width: 10 },
+      { header: 'Notes', key: 'notes', width: 40 },
+      { header: 'Receipt', key: 'receipt_url', width: 40 },
+    ];
+    entriesSheet.getRow(1).font = { bold: true };
+    for (const e of entries) {
+      entriesSheet.addRow({
+        entry_date: e.entry_date ? new Date(e.entry_date).toISOString().slice(0, 10) : '',
+        type: e.type,
+        category: e.category,
+        amount: e.type === 'expense' ? -Number(e.amount) : Number(e.amount),
+        currency: e.currency,
+        notes: e.notes || '',
+        receipt_url: e.receipt_url || '',
+      });
+    }
+    entriesSheet.getColumn('amount').numFmt = '#,##0.00';
+
+    const summarySheet = workbook.addWorksheet('Summary');
+    summarySheet.columns = [
+      { header: 'Currency', key: 'currency', width: 12 },
+      { header: 'Income', key: 'income', width: 16 },
+      { header: 'Expense', key: 'expense', width: 16 },
+      { header: 'Net', key: 'net', width: 16 },
+    ];
+    summarySheet.getRow(1).font = { bold: true };
+    for (const c of summary) summarySheet.addRow(c);
+    ['income', 'expense', 'net'].forEach(k => { summarySheet.getColumn(k).numFmt = '#,##0.00'; });
+
+    const filename = `erivion-finance-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
