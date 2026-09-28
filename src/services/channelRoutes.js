@@ -8,6 +8,7 @@ import {
   getCharacterReferenceForUser, setChannelCharacter, getDailyVideoRunByReviewToken,
 } from './authService.js';
 import { verifyVidiqKey, getVideoPerformance } from './vidiqClientService.js';
+import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically, finalizeChannelRunAfterGeneration, resolveChannelRunReviewAction } from './channelSchedulerService.js';
 import { getYoutubeConnectUrl, handleYoutubeOAuthCallback, disconnectYoutubeForChannel } from './youtubeUploadService.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
@@ -65,7 +66,7 @@ router.post('/:id/analyze', authMiddleware, async (req, res) => {
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const channels = await listManagedChannelsForUser(req.user.userId);
-    res.json({ channels });
+    res.json({ channels, youtubePublishEnabled: YOUTUBE_PUBLISH_ENABLED });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -154,6 +155,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════
 router.get('/:id/youtube-connect', authMiddleware, async (req, res) => {
   try {
+    if (!YOUTUBE_PUBLISH_ENABLED) return res.status(403).json({ error: 'YouTube publishing from Erivion is turned off.' });
     const channel = await getManagedChannelById(req.params.id);
     if (!channel || channel.user_id !== req.user.userId) return res.status(404).json({ error: 'Channel not found' });
     res.json({ url: getYoutubeConnectUrl(channel.id, req.user.userId) });
@@ -232,6 +234,23 @@ router.get('/runs/:runId/status', authMiddleware, async (req, res) => {
 // ✅ NEW (طلب العميل: "تمت المراجعة"/"نشر الآن" لازم تكون موجودة جوه الموقع نفسه كمان،
 // مش بس في الإيميل، "عشان قوة المصداقية والمراجعة الدقيقة") — نفس فعل resolveChannelRunReviewAction
 // المستخدم في مسار التوكن (/review-action تحت)، بس هنا العميل داخل حسابه فعلاً
+// ✅ حزمة الرفع الجاهزة لفيديو قناة: العنوان والوصف والكلمات المفتاحية والصورة المصغرة والفيديو
+router.get('/runs/:runId/package', authMiddleware, async (req, res) => {
+  try {
+    const run = await getDailyVideoRunById(req.params.runId, req.user.userId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    const idea = JSON.parse(run.idea_brief || '{}');
+    res.json({
+      title: idea.title || '', description: idea.description || idea.brief || '',
+      tags: Array.isArray(idea.tags) ? idea.tags : [], language: idea.videoLanguage || null,
+      thumbnailUrl: run.thumbnail_url || null, videoUrl: run.video_url || null,
+      publishEnabled: YOUTUBE_PUBLISH_ENABLED,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post('/runs/:runId/review', authMiddleware, async (req, res) => {
   try {
     const run = await getDailyVideoRunById(req.params.runId, req.user.userId);

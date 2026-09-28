@@ -14,11 +14,12 @@ import {
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
   mintInternalToken, getUserById, getCreditsBalance, chargeCredits, addCreditsBalance, saveVideo, saveChannelAnalysis,
   getCharacterReferenceById, linkYoutubeVideoToRun, setChannelProjectId,
-  claimRunForPublishing, releasePublishingClaim, getNotificationPrefsByEmail, incrementYoutubePublishCount,
+  claimRunForPublishing, releasePublishingClaim, getNotificationPrefsByEmail, incrementYoutubePublishCount, setDailyVideoRunThumbnail,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
 import { supportsReferenceImages } from './newImageModelsService.js';
+import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
 import { mergeVideos } from './videoMergeService.js';
 import { uploadVideoToYoutube, uploadThumbnailToYoutube } from './youtubeUploadService.js';
@@ -971,6 +972,18 @@ export async function finalizeChannelRunAfterGeneration(run, channel, idea, vide
   const reviewToken = crypto.randomBytes(24).toString('hex');
   await updateDailyVideoRunStatus(run.id, 'done', { videoUrl, creditsCharged, reviewState: 'awaiting_review', reviewToken });
 
+  // ✅ حزمة الرفع الجاهزة: الصورة المصغّرة بتتولّد هنا مع الفيديو (فشلها مايوقفش أي حاجة —
+  // العنوان والوصف والكلمات موجودين أصلاً من فكرة اليوم)
+  let thumbnailUrl = null;
+  try {
+    const owner = await getUserById(channel.user_id);
+    const thumbHeaders = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(channel.user_id, owner.email, { channelRun: true }) };
+    thumbnailUrl = await generateChannelThumbnailImage(idea, thumbHeaders);
+    await setDailyVideoRunThumbnail(run.id, thumbnailUrl);
+  } catch (e) {
+    console.warn(`[ChannelScheduler] Thumbnail generation failed for run ${run.id} (the rest of the upload package is still delivered):`, e.message);
+  }
+
   let projectId = null;
   try {
     projectId = await getOrCreateChannelProject(channel);
@@ -979,7 +992,7 @@ export async function finalizeChannelRunAfterGeneration(run, channel, idea, vide
       job: {
         runId: run.id, channelId: channel.id, videoUrl, ideaTitle: idea.title,
         creditsCharged: creditsCharged ?? null, reviewState: 'awaiting_review',
-        canPublish: !!channel.youtube_refresh_token,
+        canPublish: YOUTUBE_PUBLISH_ENABLED && !!channel.youtube_refresh_token,
       },
     }]);
   } catch (e) {
@@ -988,7 +1001,7 @@ export async function finalizeChannelRunAfterGeneration(run, channel, idea, vide
 
   const user = await getUserById(channel.user_id);
   if (user?.email) {
-    await sendDailyResultEmail(user.email, idea, videoUrl, true, null, { reviewToken, projectId }).catch(() => {});
+    await sendDailyResultEmail(user.email, idea, videoUrl, true, null, { reviewToken, projectId, thumbnailUrl }).catch(() => {});
   }
 }
 
@@ -1024,7 +1037,9 @@ async function draftThumbnailHookText(idea) {
 // موصى بيه لأنه الأفضل حاليًا في كتابة نص عربي/إنجليزي واضح جوه الصورة نفسها، وده أهم عنصر
 // في صورة مصغّرة كويسة تجذب مشاهدات على يوتيوب). بيتحاسب بكريديت زي أي صورة عادية (نفس
 // مسار /api/images/generate العادي، مفيش تمييز خاص أو إعفاء)
-async function generateAndUploadChannelThumbnail(run, channel, idea, videoId, headers) {
+// توليد صورة الصورة المصغّرة فقط (بترجّع الرابط) — بتتولّد مع الفيديو نفسه عشان العميل يلاقيها
+// جاهزة ضمن حزمة الرفع، ومن غير رفع أي حاجة على يوتيوب
+async function generateChannelThumbnailImage(idea, headers) {
   const isArabic = (idea.videoLanguage || '').startsWith('ar');
   const hookText = await draftThumbnailHookText(idea);
   const prompt = `Create a bold, high-contrast, eye-catching YouTube thumbnail image related to: "${idea.title}". Include this exact short text as large, clearly readable ${isArabic ? 'Arabic' : 'English'} typography overlaid on the image: "${hookText}". Professional YouTube thumbnail style, dramatic lighting, vivid colors. The thumbnail must comply with YouTube's Community Guidelines and monetization policies — no violent, gory, sexual, hateful, or misleading imagery.`;
@@ -1037,6 +1052,11 @@ async function generateAndUploadChannelThumbnail(run, channel, idea, videoId, he
   const images = await pollJobGeneric(`${INTERNAL_BASE}/api/images/generate-status/${imgJobData.jobId}`, headers, 'images');
   const thumbnailUrl = Array.isArray(images) ? images[0] : null;
   if (!thumbnailUrl) throw new Error('Thumbnail generation returned no image');
+  return thumbnailUrl;
+}
+
+async function generateAndUploadChannelThumbnail(run, channel, idea, videoId, headers) {
+  const thumbnailUrl = run.thumbnail_url || await generateChannelThumbnailImage(idea, headers);
   await uploadThumbnailToYoutube(channel, videoId, thumbnailUrl);
 }
 
@@ -1052,6 +1072,7 @@ export async function resolveChannelRunReviewAction(run, action) {
     return {};
   }
   if (action === 'publish') {
+    if (!YOUTUBE_PUBLISH_ENABLED) throw new Error('Publishing to YouTube from Erivion is turned off. Download the video and upload it yourself from YouTube Studio — your title, description, tags and thumbnail are ready in the video card.');
     if (!channel) throw new Error('Channel not found');
     if (!channel.youtube_refresh_token) throw new Error('This channel is not connected to YouTube yet — connect it first from "My Channels".');
     if (run.youtube_video_id) throw new Error('This video was already published.');
@@ -1137,7 +1158,12 @@ export async function sendDailyResultEmail(userEmail, idea, videoUrl, success, e
   const prefs = await getNotificationPrefsByEmail(userEmail).catch(() => ({ emailEnabled: true, videoReady: true }));
   if (!prefs.emailEnabled || !prefs.videoReady) return;
   let html;
-  if (success && reviewInfo?.reviewToken) {
+  if (success && reviewInfo?.reviewToken && !YOUTUBE_PUBLISH_ENABLED) {
+    const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const tags = Array.isArray(idea.tags) ? idea.tags.join(', ') : '';
+    const projectNote = reviewInfo.projectId ? '<p style="color:#6b7280;font-size:12px">The same package is saved in the video\'s project on Erivion.</p>' : '';
+    html = `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;font-size:48px">🎬</div><h2 style="color:#22c55e;text-align:center;margin:8px 0">Your video is ready to upload</h2><p style="color:#9ca3af;text-align:center;margin:0 0 14px">Everything is prepared — you upload it yourself from YouTube Studio.</p><p style="text-align:center"><a href="${FRONTEND_URL}${videoUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Watch / Download the video →</a></p>${reviewInfo.thumbnailUrl ? `<p style="text-align:center"><img src="${reviewInfo.thumbnailUrl}" alt="thumbnail" style="max-width:100%;border-radius:10px"/><br/><a href="${reviewInfo.thumbnailUrl}" style="color:#7c6af7;font-size:12px">Download the thumbnail</a></p>` : ''}<div style="background:#16162a;border-radius:10px;padding:14px;margin-top:10px"><div style="color:#9ca3af;font-size:11px;margin-bottom:4px">TITLE</div><div style="font-weight:700">${esc(idea.title)}</div><div style="color:#9ca3af;font-size:11px;margin:12px 0 4px">DESCRIPTION</div><div style="white-space:pre-wrap;font-size:13px;color:#d1d5db">${esc(idea.description || idea.brief)}</div>${tags ? `<div style="color:#9ca3af;font-size:11px;margin:12px 0 4px">TAGS</div><div style="font-size:13px;color:#d1d5db">${esc(tags)}</div>` : ''}</div>${projectNote}</div>`;
+  } else if (success && reviewInfo?.reviewToken) {
     const reviewedUrl = `${BACKEND_URL}/api/channels/review-action?token=${reviewInfo.reviewToken}&action=reviewed`;
     const publishUrl = `${BACKEND_URL}/api/channels/review-action?token=${reviewInfo.reviewToken}&action=publish`;
     const projectNote = reviewInfo.projectId ? `<p style="color:#6b7280;font-size:13px">You can also do this anytime from the video's project on Erivion.</p>` : '';

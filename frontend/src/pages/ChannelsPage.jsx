@@ -20,7 +20,7 @@ const T = {
     step2Desc: 'بعد ما تسجّل دخول في VidIQ، افتح الرابط ده وانسخ المفتاح اللي هيظهر لك — ده مفتاحك الخاص، مش هيشوفه غيرك:',
     step2Btn: 'افتح صفحة المفتاح',
     step3Title: '3. الصق المفتاح تحت وضيف القناة',
-    step3Desc: 'هنتأكد إن المفتاح شغال ومربوط بقناتك على يوتيوب أوتوماتيك. وبعد ما تضيف القناة، تقدر (اختياري) تضغط "اربط يوتيوب" عشان الرفع يبقى تلقائي بالكامل من غير ما تلمس حاجة.',
+    step3Desc: 'هنتأكد إن المفتاح شغال ومربوط بقناتك على يوتيوب أوتوماتيك. بعد كده كل يوم هنجهزلك الفيديو + الصورة المصغرة + العنوان + الوصف + الكلمات المفتاحية، وانت بترفعها على قناتك بنفسك.',
     addTitle: 'إضافة قناة جديدة', label: 'اسم مميز للقناة (اختياري)', vidiqKey: 'مفتاح VidIQ الشخصي',
     vidiqHelp: 'جيبه من app.vidiq.com/account/settings/mcp — مفيش OAuth بضغطة زرار، لازم تلصق المفتاح بنفسك.',
     format: 'شكل الفيديوهات', formatAuto: 'تلقائي (حسب القناة)', formatLong: 'طويل', formatShort: 'قصير',
@@ -81,7 +81,7 @@ const T = {
     step2Desc: 'After logging into VidIQ, open this link and copy the key shown there — it’s your own private key, no one else can see it:',
     step2Btn: 'Open the key page',
     step3Title: '3. Paste the key below and connect',
-    step3Desc: 'We’ll verify the key works and is linked to a real YouTube channel automatically. After connecting, you can optionally click "Connect YouTube" so future videos upload fully automatically.',
+    step3Desc: 'We’ll verify the key works and is linked to a real YouTube channel automatically. Then each day we prepare the video + thumbnail + title + description + tags, and you upload them to your channel yourself.',
     addTitle: 'Connect a new channel', label: 'A friendly label (optional)', vidiqKey: 'Your personal VidIQ API key',
     vidiqHelp: 'Get it from app.vidiq.com/account/settings/mcp — no one-click OAuth, paste the key yourself.',
     format: 'Video format', formatAuto: 'Auto (from channel)', formatLong: 'Long-form', formatShort: 'Short',
@@ -155,6 +155,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const dir = isAr ? 'rtl' : 'ltr';
 
   const [channels, setChannels] = useState([]);
+  const [publishEnabled, setPublishEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState('');
   const [vidiqKey, setVidiqKey] = useState('');
@@ -300,7 +301,8 @@ export default function ChannelsPage({ onBack, userRegion }) {
     fetch('/api/channels', { headers: authHeaders() }).then(r => r.json()).then(d => {
       const chs = d.channels || [];
       setChannels(chs);
-      chs.filter(ch => !ch.youtube_channel_title).forEach(ch => prefetchConnectUrl(ch.id));
+      setPublishEnabled(!!d.youtubePublishEnabled);
+      if (d.youtubePublishEnabled) chs.filter(ch => !ch.youtube_channel_title).forEach(ch => prefetchConnectUrl(ch.id));
     }).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -700,7 +702,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   </div>
                 )}
 
-                <div style={{ marginBottom: 12 }}>
+                {publishEnabled && <div style={{ marginBottom: 12 }}>
                   {ch.youtube_channel_title ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 11.5, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle2 size={13} /> {t.connectedAs} ({ch.youtube_channel_title})</span>
@@ -719,7 +721,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                       {connectingId === ch.id ? <Loader2 size={13} className="spinning" /> : <Play size={13} />} {connectingId === ch.id ? '...' : t.connectYoutube}
                     </button>
                   )}
-                </div>
+                </div>}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => toggleStatus(ch)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#d1d5db', fontSize: 12, cursor: 'pointer' }}>
                     {ch.status === 'active' ? <><Pause size={12} /> {t.pause}</> : <><PlayCircle size={12} /> {t.resume}</>}
