@@ -14,7 +14,7 @@ import {
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
   mintInternalToken, getUserById, getCreditsBalance, chargeCredits, addCreditsBalance, saveVideo, saveChannelAnalysis,
   getCharacterReferenceById, linkYoutubeVideoToRun, setChannelProjectId,
-  claimRunForPublishing, releasePublishingClaim,
+  claimRunForPublishing, releasePublishingClaim, getNotificationPrefsByEmail,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
@@ -1109,6 +1109,11 @@ export async function triggerChannelRunNow(channel, overrides = {}) {
 // (يأكد بس، من غير نشر) و"نشر الآن" (ينشر فعليًا على يوتيوب لو القناة متربطة). لو مش هيضغط
 // أي زرار من الإيميل، نفس الزرارين موجودين جوه مشروع القناة نفسه على الموقع (reviewInfo.projectId)
 export async function sendDailyResultEmail(userEmail, idea, videoUrl, success, errorMessage, reviewInfo = null) {
+  // ✅ FIX: كان بيبعت الإيميل ده دايمًا من غير أي فحص لتفضيل "Video Ready Alerts" —
+  // العميل لسه يقدر يراجع/ينشر الفيديو من صفحة القناة نفسها (نفس النص جوه الإيميل بيقول
+  // كده)، فتفويت الإيميل بس آمن تمامًا لو العميل قافل التفضيل ده صراحة
+  const prefs = await getNotificationPrefsByEmail(userEmail).catch(() => ({ emailEnabled: true, videoReady: true }));
+  if (!prefs.emailEnabled || !prefs.videoReady) return;
   let html;
   if (success && reviewInfo?.reviewToken) {
     const reviewedUrl = `${BACKEND_URL}/api/channels/review-action?token=${reviewInfo.reviewToken}&action=reviewed`;

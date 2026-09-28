@@ -26,6 +26,7 @@ import {
   EGP_PER_CREDIT, CREDITS_PACKAGES, getCreditsBalance, approveCreditsPayment,
   generateApiKey, listApiKeys, revokeApiKey, setUserRegion,
   createPasswordResetToken, resetPasswordWithToken,
+  getNotificationPrefs, updateNotificationPrefs,
 } from './authService.js';
 import { trackAffiliateSignup, trackAffiliatePayment } from './affiliateRoutes.js';
 
@@ -1076,6 +1077,26 @@ router.post('/update-profile', authMiddleware, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update name' });
+  }
+});
+
+// ✅ FIX (باج حقيقي: مفاتيح الإشعارات في صفحة الإعدادات كانت بتتحفظ في localStorage بس،
+// مفيش أي endpoint يقراها/يحفظها في الباك اند، فتشغيلها/تقفيلها مالوش أي تأثير حقيقي)
+router.get('/notification-prefs', authMiddleware, async (req, res) => {
+  try {
+    res.json(await getNotificationPrefs(req.user.userId));
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load notification preferences' });
+  }
+});
+
+router.post('/notification-prefs', authMiddleware, async (req, res) => {
+  const { emailEnabled, videoReady, newsletter } = req.body;
+  try {
+    await updateNotificationPrefs(req.user.userId, { emailEnabled, videoReady, newsletter });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to save notification preferences' });
   }
 });
 

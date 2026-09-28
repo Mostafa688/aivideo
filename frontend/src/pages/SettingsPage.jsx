@@ -61,9 +61,14 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
   const [nameStatus, setNameStatus]       = useState(''); // '' | 'loading' | 'success' | 'error'
 
   // Notifications
+  // ✅ FIX (باج حقيقي: كانت بس بتتحفظ محليًا (localStorage) وبتفضل شكل بدون أي تأثير حقيقي
+  // — الباك اند مبقاش يتأكد منها خالص قبل ما يبعت أي إيميل). localStorage هنا بقى بس
+  // كاش سريع لأول عرض (يمنع "فلاش" من الديفولت)، والقيمة الحقيقية بتتحمل وبتتحفظ من/على
+  // الباك اند دلوقتي (loadNotificationPrefs/saveNotificationPrefs تحت)
   const [emailNotif, setEmailNotif]       = useState(() => localStorage.getItem('erivion_notif_email') !== 'false');
   const [videoReady, setVideoReady]       = useState(() => localStorage.getItem('erivion_notif_video') !== 'false');
-  const [newsletter, setNewsletter]       = useState(() => localStorage.getItem('erivion_notif_news') === 'true');
+  const [newsletter, setNewsletter]       = useState(() => localStorage.getItem('erivion_notif_news') !== 'false');
+  const [notifSaving, setNotifSaving]     = useState(false);
 
   // Region
   const [region, setRegion]               = useState(() => localStorage.getItem('erivion_region') || 'eg');
@@ -98,11 +103,44 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
   const [imageLinkError, setImageLinkError]         = useState('');
   const [copiedImageLink, setCopiedImageLink]       = useState(false);
 
-  // persist notifications & region
-  useEffect(() => { localStorage.setItem('erivion_notif_email', emailNotif); }, [emailNotif]);
-  useEffect(() => { localStorage.setItem('erivion_notif_video', videoReady); }, [videoReady]);
-  useEffect(() => { localStorage.setItem('erivion_notif_news',  newsletter);  }, [newsletter]);
+  // persist region (اختيار محلي بحت — مفيش داعي للباك اند، بيتحكم في العملة/اللغة بس)
   useEffect(() => { localStorage.setItem('erivion_region', region); }, [region]);
+
+  // ✅ FIX: نحمّل التفضيلات الحقيقية من الباك اند أول ما التاب يتفتح (localStorage كان
+  // المصدر الوحيد قبل كده — دلوقتي بس كاش سريع لحد ما يوصل رد الباك اند)
+  useEffect(() => {
+    if (active !== 'notifications') return;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/notification-prefs', { headers: authHeaders() });
+        const data = await res.json();
+        if (res.ok) {
+          setEmailNotif(data.emailEnabled);
+          setVideoReady(data.videoReady);
+          setNewsletter(data.newsletter);
+          localStorage.setItem('erivion_notif_email', data.emailEnabled);
+          localStorage.setItem('erivion_notif_video', data.videoReady);
+          localStorage.setItem('erivion_notif_news', data.newsletter);
+        }
+      } catch {}
+    })();
+  }, [active]);
+
+  // ✅ FIX: أي تغيير في أي مفتاح بيتبعت للباك اند فورًا (مش بس localStorage) — ده اللي
+  // بيخلي sendBroadcastEmail/sendDailyResultEmail يقدروا يتأكدوا منه فعليًا
+  const saveNotificationPrefs = async (next) => {
+    localStorage.setItem('erivion_notif_email', next.emailEnabled);
+    localStorage.setItem('erivion_notif_video', next.videoReady);
+    localStorage.setItem('erivion_notif_news', next.newsletter);
+    setNotifSaving(true);
+    try {
+      await fetch('/api/auth/notification-prefs', { method: 'POST', headers: authHeaders(), body: JSON.stringify(next) });
+    } catch {}
+    setNotifSaving(false);
+  };
+  const updateEmailNotif = (v) => { setEmailNotif(v); saveNotificationPrefs({ emailEnabled: v, videoReady, newsletter }); };
+  const updateVideoReady = (v) => { setVideoReady(v); saveNotificationPrefs({ emailEnabled: emailNotif, videoReady: v, newsletter }); };
+  const updateNewsletter = (v) => { setNewsletter(v); saveNotificationPrefs({ emailEnabled: emailNotif, videoReady, newsletter: v }); };
 
   // ✅ NEW: نحمّل مفاتيح الـ API لما التاب يتفتح
   useEffect(() => { if (active === 'developer') loadApiKeys(); }, [active]);
@@ -390,13 +428,13 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
           {active === 'notifications' && (
             <Section title="Notifications" icon={<Bell size={14} strokeWidth={2} />}>
               <Row label="Email Notifications" desc="Receive important account updates and alerts by email">
-                <Toggle value={emailNotif} onChange={setEmailNotif} />
+                <Toggle value={emailNotif} onChange={updateEmailNotif} />
               </Row>
               <Row label="Video Ready Alerts" desc="Get notified when your video finishes rendering">
-                <Toggle value={videoReady} onChange={setVideoReady} />
+                <Toggle value={videoReady} onChange={updateVideoReady} />
               </Row>
               <Row label="Product Updates" desc="News about new features, AI models, and improvements" last>
-                <Toggle value={newsletter} onChange={setNewsletter} />
+                <Toggle value={newsletter} onChange={updateNewsletter} />
               </Row>
               <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.15)', borderRadius: 10 }}>
                 <p style={{ fontSize: 12, color: 'var(--text3)', margin: 0, lineHeight: 1.6, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
