@@ -1,8 +1,8 @@
 node_modules
 .env
-outputs
-data
-tempdist/ 
+/outputs
+/data
+tempdist/
 temp/ 
 outputs/ node_modules/ 
 frontend/node_modules/ 

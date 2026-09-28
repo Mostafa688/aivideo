@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppFooter } from './LandingPage.jsx';
 import {
   Target, PenLine, Settings as SettingsIcon, Clapperboard, Sparkles, Flame,
   Smartphone, Lightbulb, Palette, Zap, Gem, CheckCircle2, FileText, Lock,
-  DollarSign, Info, LifeBuoy, BookOpen, Clock,
+  DollarSign, Info, LifeBuoy, BookOpen, Clock, Languages,
 } from 'lucide-react';
+import { TERMS_EN, TERMS_AR, PRIVACY_EN, PRIVACY_AR, ABOUT_EN, ABOUT_AR } from '../data/legalContent.js';
 
 // ✅ NEW: كل Section بقى كارت واضح بحدود خفيفة، ورقم دائري لو العنوان مبدوء بـ "N. " —
 // بيتقرا تلقائي من نص العنوان نفسه (زي "1. Acceptance of Terms") من غير ما نلمس أي مكان
 // بينادي Section، فكل الصفحات (Terms/Privacy/Refund/About) بتستفيد من الشكل الجديد أوتوماتيك
-function Section({ title, children }) {
+function Section({ title, children, isHtml }) {
   const match = String(title).match(/^(\d+)\.\s*(.+)$/);
   const num = match ? match[1] : null;
   const heading = match ? match[2] : title;
@@ -17,119 +18,72 @@ function Section({ title, children }) {
   return (
     <div id={anchorId} style={{
       marginBottom: 14,
-      padding: '20px 22px',
-      background: 'rgba(255,255,255,0.03)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      borderRadius: 14,
-      scrollMarginTop: 96,
+      padding: '22px 24px',
+      background: 'var(--bg2)',
+      border: '1px solid var(--border)',
+      borderRadius: 16,
+      scrollMarginTop: 100,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         {num && (
           <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            minWidth: 26, height: 26, borderRadius: '50%',
-            background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 800,
+            minWidth: 28, height: 28, borderRadius: '50%',
+            background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 800,
             flexShrink: 0,
           }}>{num}</span>
         )}
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{heading}</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', margin: 0 }}>{heading}</h3>
       </div>
-      <p style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.85, margin: 0, whiteSpace: 'pre-line' }}>{children}</p>
+      {isHtml
+        ? <p style={{ color: 'var(--text2)', fontSize: 14.5, lineHeight: 1.9, margin: 0, whiteSpace: 'pre-line' }} dangerouslySetInnerHTML={{ __html: children }} />
+        : <p style={{ color: 'var(--text2)', fontSize: 14.5, lineHeight: 1.9, margin: 0, whiteSpace: 'pre-line' }}>{children}</p>}
     </div>
   );
 }
 
-// ✅ NEW: قائمة "على هذه الصفحة" — شبكة أزرار صغيرة بتنط لأي قسم لما تدوس عليه، بدل ما
-// العميل يعمل scroll يدوي في صفحة طويلة. بتظهر بس للصفحات الطويلة (Terms/Privacy)
-function TableOfContents({ items }) {
-  const scrollTo = (id) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+// ✅ NEW: مصفوفة أقسام {title, body} → JSX أقسام + قائمة عناوين للـ TOC/الشريط الجانبي
+function renderSections(list) {
+  return list.map((s, i) => <Section key={i} title={s.title} isHtml={s.isHtml}>{s.body}</Section>);
+}
+function tocFromSections(list) {
+  return list.map(s => String(s.title).replace(/^\d+\.\s*/, ''));
+}
+
+// ✅ NEW: الشريط الجانبي الاحترافي — ثابت (sticky) على الشاشات الكبيرة زي مواقع التوثيق
+// الكبيرة، وبيتحول لقائمة أفقية قابلة للسحب على الموبايل (خلاص مفيش شريط جانبي في القراءة
+// عليه). بيسلط الضوء على القسم اللي بتتصفحه دلوقتي (IntersectionObserver بسيط)
+function SideNav({ items, activeIdx, onJump }) {
   return (
-    <div style={{
-      marginBottom: 28, padding: '16px 18px',
-      background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
-      borderRadius: 14,
-    }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-        On this page
+    <nav className="subpage-sidenav">
+      <div className="subpage-sidenav-inner">
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 4px 10px' }}>
+          On this page
+        </div>
+        {items.map((label, i) => (
+          <button key={i} onClick={() => onJump(i + 1)} className={`subpage-sidenav-item${activeIdx === i + 1 ? ' active' : ''}`}>
+            <span className="subpage-sidenav-num">{i + 1}</span>
+            <span className="subpage-sidenav-label">{label}</span>
+          </button>
+        ))}
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {items.map((label, i) => {
-          const n = i + 1;
-          return (
-            <button key={n} onClick={() => scrollTo('sec-' + n)} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '6px 12px', borderRadius: 999,
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-              color: 'var(--text2)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
-            }}>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                minWidth: 16, height: 16, borderRadius: '50%',
-                background: 'var(--accent)', color: '#fff', fontSize: 9.5, fontWeight: 800,
-              }}>{n}</span>
-              {label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    </nav>
   );
 }
 
-const TERMS_TOC = [
-  'Acceptance of Terms', 'Description of Service', 'User Accounts', 'Acceptable Use & Prohibited Content',
-  'Payments & Subscriptions', 'Cancellation & Refund Policy', 'Advertising', 'Intellectual Property',
-  'AI-Generated Content Disclaimer', 'Fair Use & Service Availability', 'Data & Video Retention',
-  'Disclaimers & Limitation of Liability', 'Termination', 'Governing Law', 'Changes to Terms', 'Contact Us',
-];
+const TERMS_TOC = tocFromSections(TERMS_EN);
+const PRIVACY_TOC = tocFromSections(PRIVACY_EN);
+const ABOUT_TOC = tocFromSections(ABOUT_EN);
+// ✅ FIX: الشريط الجانبي كان دايمًا بالإنجليزي حتى لو المحتوى اتحوّل عربي — نفس الترقيم
+// والترتيب في اللغتين، فبس بنختار مصفوفة العناوين المناسبة حسب اللغة الحالية
+const TOC_AR_BY_PAGE = {
+  terms: tocFromSections(TERMS_AR),
+  privacy: tocFromSections(PRIVACY_AR),
+  about: tocFromSections(ABOUT_AR),
+};
 
-const PRIVACY_TOC = [
-  'Introduction', 'Information We Collect', 'How We Use Your Information', 'Ad-Free Platform',
-  'Gumroad (International Payments)', 'Cookies & Tracking', 'Third-Party Services',
-  'YouTube API Services & Google User Data', 'Data Storage & Security', 'Your Rights', 'Contact Us',
-];
-
-function TermsContent() {
-  return <>
-    <Section title="1. Acceptance of Terms">By accessing or using Erivion ("the Service", "the Platform"), you confirm that you are at least 13 years of age and agree to be legally bound by these Terms of Service. If you do not agree to these Terms, you must not use the Service. Continued use of the Service after any changes constitutes your acceptance of the revised Terms.</Section>
-    <Section title="2. Description of Service">Erivion is an AI-powered video creation platform that allows users to generate videos from text ideas, scripts, voice recordings, or product photos (including AI video ads). The Service uses third-party AI and media providers including Groq, Pexels, Stability AI, Seedance, FLUX, Google Gemini, and ElevenLabs to deliver its functionality. The Service also includes an AI Agent (chat assistant) that can plan, refine, and generate videos on your behalf, help you subscribe or top up credits, make limited account changes at your explicit request (see Section 3), and — when you request a video about a real historical or current event — perform a live web search to verify facts before writing a script and provide you with the sources it used.</Section>
-    <Section title="3. User Accounts">You must provide accurate and complete information when creating an account. You are responsible for maintaining the confidentiality of your login credentials and for all activity under your account. You must notify us immediately of any unauthorized use at digidelight33@gmail.com. Through the AI Agent, you may ask for a small set of safe, limited account changes (such as updating your display name or your Egypt/international region) — these are only ever made after your explicit request in that conversation, and never include changes to your credit balance, plan, or billing, which always require a real payment or manual admin approval.</Section>
-    <Section title="4. Acceptable Use & Prohibited Content">You agree not to use the Service to create, distribute, or promote content that: (a) is sexually explicit, pornographic, or adult in nature; (b) depicts, glorifies, instructs, or incites graphic violence, murder, killing, or serious physical harm to real people or groups; (c) promotes racism, hatred, or discrimination based on race, ethnicity, religion, gender, nationality, sexual orientation, or disability; (d) facilitates illegal activities including fraud, piracy, or drug use; (e) constitutes misinformation, deepfakes intended to deceive, or impersonation; (f) involves or is directed at minors in an inappropriate or harmful manner; (g) infringes on third-party intellectual property rights. Erivion applies automated AI-based content screening to every generation request, in addition to manual review, to detect and block prohibited content before a video is created. Violations will result in immediate account suspension or termination without refund, and may be reported to relevant authorities where required by law.</Section>
-    <Section title="5. Payments & Subscriptions">Erivion does not offer a free plan — every account starts with a zero credit balance and must purchase credits before generating videos. Credit top-ups are one-time purchases (not a recurring subscription) and never expire. For Egyptian users, credit purchases are made via InstaPay and activated manually after payment verification, including a receipt screenshot. For international users, payments are processed via Gumroad, which handles card payment processing. You can complete either flow directly on the Pricing page or through the AI Agent chat, which will ask your region if unknown and open the matching payment flow for you.</Section>
-    <Section title="6. Cancellation & Refund Policy">Egyptian users (InstaPay): you may request cancellation and a refund within 4 hours of your purchase being approved only. Requests submitted after this 4-hour window will not be honored, except in verified cases of technical failure on our end. Refunds are NOT granted for dissatisfaction with AI-generated video quality, style, or output — this is not a valid refund reason. Refund requests must be submitted exclusively through the Support page.
-
-International users (Gumroad): there is currently no refund system available for international purchases. This is a temporary limitation while we build out our international payment infrastructure, and we are actively working to make refunds available to international users soon. If you experience a verified technical failure on our end, contact support and we will assess your case individually.</Section>
-    <Section title="7. Advertising">Erivion does not display third-party advertisements. The platform is entirely ad-free. Your experience will never be interrupted by ads.</Section>
-    <Section title="8. Intellectual Property">The Erivion platform, brand, and underlying technology are owned by Erivion and protected by intellectual property laws. Videos generated by users using their own original inputs are owned by the respective users, subject to these Terms and applicable law. Users grant Erivion a non-exclusive license to process submitted content solely for the purpose of delivering the Service.</Section>
-    <Section title="9. AI-Generated Content Disclaimer">Videos are generated using third-party AI models and may occasionally contain inaccuracies, visual artifacts, or unexpected results. Erivion does not guarantee the factual accuracy, appropriateness for a specific audience, or suitability of AI-generated content for any particular purpose. You are solely responsible for reviewing generated content before publishing, broadcasting, or otherwise distributing it.</Section>
-    <Section title="10. Fair Use & Service Availability">Erivion reserves the right to throttle, queue, rate-limit, or temporarily suspend access during periods of high demand or maintenance, and to suspend or terminate accounts exhibiting abusive, automated (bot), or fraudulent usage patterns inconsistent with normal individual use.</Section>
-    <Section title="11. Data & Video Retention">Generated videos and related job data are retained on our servers for a limited period. We recommend downloading and backing up any videos you wish to keep. Videos and associated data may be deleted after extended account inactivity (12 months or more) without further notice.</Section>
-    <Section title="12. Disclaimers & Limitation of Liability">The Service is provided "as is" without warranties of any kind. Erivion is not liable for any indirect, incidental, special, or consequential damages arising from your use of the Service. Our total liability to you shall not exceed the amounts you paid to Erivion in the 12 months preceding the claim.</Section>
-    <Section title="13. Termination">Erivion reserves the right to suspend or terminate your account at any time for violation of these Terms, without prior notice. You may terminate your account by contacting us at digidelight33@gmail.com.</Section>
-    <Section title="14. Governing Law">These Terms are governed by applicable law. Disputes shall be resolved through good-faith negotiation before any legal proceedings.</Section>
-    <Section title="15. Changes to Terms">We may update these Terms at any time. We will notify users of significant changes via email or a prominent notice on the platform. Continued use after changes constitutes acceptance.</Section>
-    <Section title="16. Contact Us">For any questions about these Terms, please contact us at digidelight33@gmail.com or through the Support page on the platform.</Section>
-  </>;
-}
-
-function PrivacyContent() {
-  return <>
-    <Section title="1. Introduction">Erivion ("we", "us", "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Service. By using Erivion, you consent to the practices described in this Policy.</Section>
-    <Section title="2. Information We Collect">We collect: (a) Account Information — email address, name, and password; (b) Profile Data — avatar and name from Google OAuth; (c) Usage Data — videos created, features used, credits consumed, and your Egypt/international region if provided; (d) Technical Data — IP address, browser type, device information; (e) Payment Information — plan type and payment confirmation (we do not store card numbers); (f) Agent Conversations — messages you send to the AI Agent and its replies are temporarily stored (kept for a maximum of 24 hours) so our support team can review issues; if a request required unusual or custom handling, an anonymized summary of how it was resolved may be kept longer to help the Agent handle similar future requests faster, without storing your raw message indefinitely; (g) How You Heard About Us — if you tell us during onboarding, so we can understand which channels bring us customers.</Section>
-    <Section title="3. How We Use Your Information">We use your information to provide and maintain the Service; process authentication; send transactional emails (including payment approvals and, occasionally, a platform-wide announcement email sent to all users); monitor compliance; analyze usage patterns including which channels bring us customers; and communicate service updates.</Section>
-    <Section title="4. Ad-Free Platform">Erivion is completely ad-free. We do not use any advertising network, track users for advertising purposes, or share your data with advertising companies.</Section>
-    <Section title="5. Gumroad (International Payments)">For international users, payments are processed by Gumroad. We receive only transaction confirmation — no card details are shared with us.</Section>
-    <Section title="6. Cookies & Tracking">We use essential cookies for login session management and analytics cookies to understand usage. You can control cookie preferences through your browser settings.</Section>
-    <Section title="7. Third-Party Services">Erivion integrates with: Google OAuth, Groq AI, Pexels, Stability AI, Replicate (Seedance, FLUX), Google Gemini, ElevenLabs (voice generation), Tavily (live web search used by the AI Agent to verify facts for real historical/current-event videos), and Gumroad. Each has their own privacy policies.</Section>
-    <Section title="8. YouTube API Services & Google User Data">If you choose to connect a YouTube channel (in the Channels page), Erivion uses the YouTube Data API and requests two Google OAuth scopes: (a) read-only access to your channel's basic info (channel name, ID, and thumbnail) so we can confirm which channel is connected and show it in your dashboard, and (b) upload access, used only to publish videos Erivion generates for that channel to YouTube. Every video is generated into a review project inside your Erivion account first — it is never uploaded automatically. Upload only happens after you personally review that specific video and explicitly approve it for publishing (either from the review project in your dashboard, or from a "Publish Now" link in the review email we send you), and only to the one channel that video was generated for. We never read, modify, or delete your existing videos, comments, playlists, or subscriber data, and we never post, comment, or take any other action on your behalf beyond uploading the exact video you reviewed and approved. Your Google OAuth tokens are stored encrypted and are used solely to perform these actions; you can revoke access at any time from the Channels page ("Disconnect") or directly from your Google Account's third-party access settings, which immediately deletes the stored tokens from our servers. Erivion's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Google API Services User Data Policy</a>, including the Limited Use requirements.</Section>
-    <Section title="9. Data Storage & Security">Your data is stored on secure servers with industry-standard encryption and HTTPS connections. We do not sell, rent, or trade your personal information.</Section>
-    <Section title="10. Your Rights">You have the right to access, correct, or delete your personal data. Contact us at digidelight33@gmail.com.</Section>
-    <Section title="11. Contact Us">digidelight33@gmail.com or through the Support page on the platform.</Section>
-  </>;
-}
+function TermsContent({ lang }) { return <>{renderSections(lang === 'ar' ? TERMS_AR : TERMS_EN)}</>; }
+function PrivacyContent({ lang }) { return <>{renderSections(lang === 'ar' ? PRIVACY_AR : PRIVACY_EN)}</>; }
 
 function RefundContent() {
   return <>
@@ -274,16 +228,7 @@ function HowToUseContent() {
   );
 }
 
-function AboutContent() {
-  return <>
-    <Section title="Who We Are">Erivion is proudly Egyptian-founded — and built from day one for a global audience. We're not a local-only product; creators and businesses use Erivion worldwide, in 8+ languages.</Section>
-    <Section title="Our Mission">To make professional video creation accessible to everyone — no expensive software or editing experience required.</Section>
-    <Section title="What We Do">Erivion is an AI-powered video generation platform. Provide an idea, a script, or a product photo, and we handle scenes, footage, character-consistent video, voiceovers, captions, music, and effects — including full AI video ads from a single product image.</Section>
-    <Section title="Our Technology">State-of-the-art language models for scripting, image and video generation models for visuals, neural text-to-speech for voiceovers, and a professional rendering pipeline built on FFmpeg. Supporting 8+ languages.</Section>
-    <Section title="Content Standards">We strictly prohibit sexually explicit, racist, or violent/harmful content. Every generation request passes through automated AI-based content screening in addition to manual review before a video is created.</Section>
-    <Section title="Contact">digidelight33@gmail.com — we read every message.</Section>
-  </>;
-}
+function AboutContent({ lang }) { return <>{renderSections(lang === 'ar' ? ABOUT_AR : ABOUT_EN)}</>; }
 
 function SupportContent() {
   const [name, setName] = useState('');
@@ -342,46 +287,134 @@ function SupportContent() {
 }
 
 const PAGE_CONFIG = {
-  terms:      { title: 'Terms of Service',        icon: FileText, lastUpdated: 'August 2026' },
-  privacy:    { title: 'Privacy Policy',           icon: Lock, lastUpdated: 'August 2026' },
+  terms:      { title: 'Terms of Service',        titleAr: 'شروط الخدمة',         icon: FileText, lastUpdated: 'August 2026', bilingual: true },
+  privacy:    { title: 'Privacy Policy',          titleAr: 'سياسة الخصوصية',      icon: Lock, lastUpdated: 'August 2026', bilingual: true },
   refund:     { title: 'Refund & Cancellation',    icon: DollarSign },
-  about:      { title: 'About Erivion',            icon: Info },
+  about:      { title: 'About Erivion',           titleAr: 'عن Erivion',          icon: Info, bilingual: true },
   support:    { title: 'Support',                  icon: LifeBuoy },
   howto:      { title: 'كيفية الاستخدام',          icon: BookOpen },
 };
 
+// الصفحات الطويلة اللي بتاخد الشريط الجانبي + قائمة "On this page"
+const TOC_BY_PAGE = { terms: TERMS_TOC, privacy: PRIVACY_TOC, about: ABOUT_TOC };
+
 export default function SubPage({ page, onBack }) {
   const config = PAGE_CONFIG[page] || { title: page, icon: FileText };
-  const toc = page === 'terms' ? TERMS_TOC : page === 'privacy' ? PRIVACY_TOC : null;
+
+  // ✅ NEW: لغة الصفحة — بس للصفحات ثنائية اللغة (terms/privacy/about). الديفولت بياخد
+  // نفس منطقة العميل المحفوظة أصلاً (مصر → عربي، دولي → إنجليزي) بدل ديفولت ثابت واحد
+  const [lang, setLang] = useState(() => {
+    if (!config.bilingual) return 'en';
+    return (localStorage.getItem('erivion_region') || 'eg') === 'eg' ? 'ar' : 'en';
+  });
+  const isRtl = config.bilingual && lang === 'ar';
+  const toc = (lang === 'ar' ? TOC_AR_BY_PAGE[page] : TOC_BY_PAGE[page]) || null;
+
+  // ✅ NEW: تتبّع القسم الظاهر دلوقتي في الشاشة عشان الشريط الجانبي يسلّط الضوء عليه —
+  // IntersectionObserver بسيط، بيتصفّر كل ما الصفحة (page) أو اللغة تتغيّر (أقسام جديدة)
+  const [activeIdx, setActiveIdx] = useState(1);
+  useEffect(() => {
+    if (!toc) return;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (visible[0]) setActiveIdx(Number(visible[0].target.id.replace('sec-', '')));
+    }, { rootMargin: '-100px 0px -70% 0px' });
+    const timer = setTimeout(() => {
+      toc.forEach((_, i) => {
+        const el = document.getElementById('sec-' + (i + 1));
+        if (el) observer.observe(el);
+      });
+    }, 50);
+    return () => { clearTimeout(timer); observer.disconnect(); };
+  }, [page, lang, toc]);
+
+  const jumpTo = (n) => {
+    const el = document.getElementById('sec-' + n);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px 20px 80px' }}>
-      <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14, marginBottom: 32, padding: 0 }}>
-          ← Back
-        </button>
-        <div style={{ marginBottom: config.lastUpdated ? 12 : 36 }}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 0, letterSpacing: '-0.5px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <config.icon size={26} strokeWidth={1.75} /> {config.title}
-          </h1>
-        </div>
-        {config.lastUpdated && (
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 28,
-            padding: '5px 12px', borderRadius: 999,
-            background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)',
-            color: 'var(--accent2)', fontSize: 12, fontWeight: 600,
-          }}>
-            <Clock size={13} strokeWidth={2} /> Last updated: {config.lastUpdated}
+    <div dir={isRtl ? 'rtl' : 'ltr'} style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      <style>{`
+        .subpage-shell { max-width: 1180px; margin: 0 auto; padding: 32px 24px 90px; display: flex; gap: 40px; align-items: flex-start; }
+        .subpage-main { flex: 1; min-width: 0; max-width: 760px; }
+        .subpage-sidenav { width: 240px; flex-shrink: 0; position: sticky; top: 32px; }
+        .subpage-sidenav-inner { display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 64px); overflow-y: auto; }
+        .subpage-sidenav-item {
+          display: flex; align-items: center; gap: 10px; text-align: ${isRtl ? 'right' : 'left'};
+          padding: 8px 10px; border-radius: 9px; border: none; background: transparent;
+          color: var(--text3); font-size: 13px; cursor: pointer; font-family: inherit; line-height: 1.4;
+          transition: background 0.15s, color 0.15s;
+        }
+        .subpage-sidenav-item:hover { background: var(--bg3); color: var(--text2); }
+        .subpage-sidenav-item.active { background: var(--accent-bg); color: var(--accent); font-weight: 700; }
+        .subpage-sidenav-num {
+          display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+          width: 18px; height: 18px; border-radius: 50%; font-size: 9.5px; font-weight: 800;
+          background: var(--bg4); color: var(--text3);
+        }
+        .subpage-sidenav-item.active .subpage-sidenav-num { background: var(--accent); color: #fff; }
+        @media (max-width: 880px) {
+          .subpage-shell { flex-direction: column; padding: 20px 16px 70px; gap: 20px; }
+          .subpage-sidenav { width: 100%; position: static; order: -1; }
+          .subpage-sidenav-inner {
+            flex-direction: row; overflow-x: auto; overflow-y: visible; max-height: none;
+            padding: 4px 2px; scrollbar-width: none; gap: 6px;
+          }
+          .subpage-sidenav-inner::-webkit-scrollbar { display: none; }
+          .subpage-sidenav-inner > div:first-child { display: none; }
+          .subpage-sidenav-item { flex-shrink: 0; white-space: nowrap; }
+        }
+      `}</style>
+
+      <div className="subpage-shell">
+        <div className="subpage-main">
+          <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14, marginBottom: 32, padding: 0 }}>
+            {isRtl ? '→' : '←'} {isRtl ? 'رجوع' : 'Back'}
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: config.lastUpdated ? 12 : 36, flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: 30, fontWeight: 800, margin: 0, letterSpacing: '-0.5px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <config.icon size={26} strokeWidth={1.75} /> {isRtl && config.titleAr ? config.titleAr : config.title}
+            </h1>
+
+            {/* ✅ NEW: مبدّل اللغة — يظهر بس للصفحات ثنائية اللغة (terms/privacy/about) */}
+            {config.bilingual && (
+              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
+                {['en', 'ar'].map(l => (
+                  <button key={l} onClick={() => setLang(l)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                    background: lang === l ? 'var(--accent)' : 'var(--bg2)',
+                    color: lang === l ? '#fff' : 'var(--text3)',
+                    border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
+                  }}>
+                    {l === 'en' ? <Languages size={13} strokeWidth={2} /> : null} {l === 'en' ? 'English' : 'العربية'}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-        {toc && <TableOfContents items={toc} />}
-        {page === 'terms'   && <TermsContent />}
-        {page === 'privacy' && <PrivacyContent />}
-        {page === 'refund'  && <RefundContent />}
-        {page === 'about'   && <AboutContent />}
-        {page === 'support' && <SupportContent />}
-        {page === 'howto'   && <HowToUseContent />}
+
+          {config.lastUpdated && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 28,
+              padding: '5px 12px', borderRadius: 999,
+              background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)',
+              color: 'var(--accent2)', fontSize: 12, fontWeight: 600,
+            }}>
+              <Clock size={13} strokeWidth={2} /> {isRtl ? 'آخر تحديث' : 'Last updated'}: {config.lastUpdated}
+            </div>
+          )}
+
+          {page === 'terms'   && <TermsContent lang={lang} />}
+          {page === 'privacy' && <PrivacyContent lang={lang} />}
+          {page === 'refund'  && <RefundContent />}
+          {page === 'about'   && <AboutContent lang={lang} />}
+          {page === 'support' && <SupportContent />}
+          {page === 'howto'   && <HowToUseContent />}
+        </div>
+
+        {toc && <SideNav items={toc} activeIdx={activeIdx} onJump={jumpTo} />}
       </div>
     </div>
   );
