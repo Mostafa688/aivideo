@@ -78,7 +78,7 @@ export const ABOUT_EN = [
   { title: '6. Consistent Characters, Every Scene', body: 'Building a story or an ad with a recurring character or product? Save a reference once, and Erivion keeps that exact look consistent across every scene and every video you generate afterward — no re-describing it each time.' },
   { title: '7. Bring Erivion Into Claude & ChatGPT', body: 'Erivion also works as an MCP connector, so you can generate images and videos directly from inside Claude or any compatible AI assistant — using your own Erivion account and credits, without leaving your conversation there.' },
   { title: '8. Built for Teams', body: 'Invite teammates to a shared Erivion workspace so a whole team — marketing, agencies, content studios — can create and manage videos together under one account.' },
-  { title: '9. Fair, Simple Pricing', body: 'No subscriptions, no forced monthly fees, and no ads — ever. Buy credits once, use them whenever you want, on any engine, and they never expire.' },
+  { title: '9. Fair, Simple Pricing', body: 'No subscriptions, no forced monthly fees, and no ads — ever. Buy credits once and use them whenever you want, on any engine. Unlike most platforms that reset your unused quota to zero at the end of each billing cycle, your Erivion credits stay in your account permanently — they never automatically expire or get taken away just because a month passed.' },
   { title: '10. Content Standards', body: 'We strictly prohibit sexually explicit, racist, or violent/harmful content. Every generation request passes through automated AI-based content screening in addition to manual review before a video is created.' },
   { title: '11. Contact', body: 'digidelight33@gmail.com — we read every message.' },
 ];
@@ -92,7 +92,7 @@ export const ABOUT_AR = [
   { title: '6. شخصيات ثابتة في كل مشهد', body: 'بتبني قصة أو إعلان بشخصية أو منتج بيتكرر؟ احفظ صورة مرجعية مرة واحدة، وErivion هتحافظ على نفس الشكل بالظبط ثابت في كل مشهد وكل فيديو تولّده بعد كده — من غير ما تعيد وصفه كل مرة.' },
   { title: '7. استخدم Erivion جوه Claude وChatGPT', body: 'Erivion كمان شغالة كموصل MCP، يعني تقدر تولّد صور وفيديوهات مباشرة من جوه Claude أو أي مساعد ذكاء اصطناعي متوافق — باستخدام حسابك وكريديتك في Erivion، من غير ما تسيب المحادثة هناك.' },
   { title: '8. مبنية للفرق', body: 'ادعُ زملاء فريقك لمساحة عمل مشتركة على Erivion عشان فريق كامل — تسويق، وكالات، استوديوهات محتوى — يقدروا يعملوا ويديروا الفيديوهات مع بعض تحت حساب واحد.' },
-  { title: '9. تسعير عادل وبسيط', body: 'من غير اشتراكات، من غير رسوم شهرية إجبارية، ومن غير إعلانات — أبدًا. اشتري كريديت مرة واحدة، استخدمه وقت ما عايز، على أي موديل، وهو مبيتصفرش أبدًا.' },
+  { title: '9. تسعير عادل وبسيط', body: 'من غير اشتراكات، من غير رسوم شهرية إجبارية، ومن غير إعلانات — أبدًا. اشتري كريديت مرة واحدة واستخدمه وقت ما عايز، على أي موديل. عكس أغلب المنصات اللي بترجّع الكوتة اللي ماستخدمتهاش صفر تلقائي آخر كل دورة فوترة، كريديتك في Erivion بيفضل في حسابك للأبد — مبيتصفرش تلقائيًا ومبيتاخدش منك لمجرد إن الشهر عدّى.' },
   { title: '10. معايير المحتوى', body: 'بنمنع بشكل صارم أي محتوى جنسي صريح أو عنصري أو عنيف/مؤذي. كل طلب توليد بيمر بفحص محتوى آلي بالذكاء الاصطناعي بالإضافة لمراجعة يدوية قبل ما الفيديو يتعمل.' },
   { title: '11. تواصل معنا', body: 'digidelight33@gmail.com — بنقرا كل رسالة.' },
 ];
