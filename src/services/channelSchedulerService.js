@@ -889,13 +889,18 @@ export async function triggerApprovedGeneration(run, overrides = {}) {
 
   const contentStyle = ['map', 'realistic', 'character_adventure', 'whiteboard_sketch'].includes(idea.contentStyle) ? idea.contentStyle : 'animated';
 
-  if (contentStyle === 'map') {
+  // ✅ لو العميل اختار صراحة موديل صور أو تحريك للقناة، نحترم اختياره حتى لو نوع المحتوى
+  // واقعي/خرائط (اللي أصلاً بيبني من لقطات Pexels الجاهزة ومفيهوش موديلات) — بنولّد بالمسار
+  // الذكي (generateAnimatedVideo) اللي بيستخدم الموديلات دي فعليًا. من غير اختيار صريح
+  // (الافتراضي) السلوك القديم زي ما هو بالظبط
+  const hasExplicitModel = !!(channel.image_model || channel.animation_model);
+  if (contentStyle === 'map' && !hasExplicitModel) {
     try { return await generateMapVideo(run, channel, idea, shape, headers); }
     catch (e) {
       if (e.committed) throw e;
       console.warn(`[ChannelScheduler] map pipeline failed before charging for run ${run.id}, falling back to animated:`, e.message);
     }
-  } else if (contentStyle === 'realistic') {
+  } else if (contentStyle === 'realistic' && !hasExplicitModel) {
     try { return await generateRealisticVideo(run, channel, idea, shape, headers); }
     catch (e) {
       if (e.committed) throw e;
