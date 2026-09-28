@@ -109,7 +109,7 @@ const MODEL3_PLANS = [
   },
 ];
 
-const INSTAPAY_NUMBER = '01091917832';
+const INSTAPAY_LINK = import.meta.env.VITE_INSTAPAY_LINK || 'https://ipn.eg/S/mostafabond51/instapay/75HKD8';
 
 function Model3PaymentModal({ onClose, onSuccess }) {
   const [step, setStep] = useState('plans');
@@ -130,7 +130,7 @@ function Model3PaymentModal({ onClose, onSuccess }) {
   };
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(INSTAPAY_NUMBER);
+    navigator.clipboard?.writeText(INSTAPAY_LINK);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -207,18 +207,23 @@ function Model3PaymentModal({ onClose, onSuccess }) {
             <div style={{ background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:14, padding:20, marginBottom:20 }}>
               <p style={{ fontSize:13, fontWeight:700, color:'#f59e0b', margin:'0 0 14px' }}>📱 خطوات الدفع</p>
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {['افتح تطبيق InstaPay', `حول ${selectedPlan?.price} جنيه على الرقم:`, 'خد screenshot للتحويل', 'ارفعه هنا تحت ⬇️'].map((s, i) => (
+                {[`افتح رابط InstaPay وحول ${selectedPlan?.price} جنيه`, 'خد screenshot للتحويل', 'ارفعه هنا تحت ⬇️'].map((s, i) => (
                   <div key={i} style={{ display:'flex', alignItems:'center', gap:10 }}>
                     <div style={{ width:22, height:22, borderRadius:'50%', background:'rgba(245,158,11,0.2)', border:'1px solid rgba(245,158,11,0.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#f59e0b', flexShrink:0 }}>{i+1}</div>
                     <span style={{ fontSize:13, color:'#d1d5db' }}>{s}</span>
                   </div>
                 ))}
               </div>
-              <div style={{ margin:'14px 0', padding:'12px 16px', background:'#1a1a2e', border:'1px solid rgba(245,158,11,0.3)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontSize:20, fontWeight:800, color:'#fff', letterSpacing:1 }}>{INSTAPAY_NUMBER}</span>
-                <button onClick={handleCopy} style={{ padding:'6px 14px', borderRadius:8, background: copied ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)', border:`1px solid ${copied ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}`, color: copied ? '#22c55e' : '#f59e0b', cursor:'pointer', fontSize:12, fontWeight:600 }}>
-                  {copied ? '✓ تم النسخ' : 'نسخ'}
-                </button>
+              <div style={{ margin:'14px 0', padding:'12px 16px', background:'#1a1a2e', border:'1px solid rgba(245,158,11,0.3)', borderRadius:10 }}>
+                {/* ✅ بنعرض الرابط كنص واضح (مش مخبّى وراء زرار بس) عشان العميل يتأكد بعينه إنه
+                    رابط InstaPay الرسمي (ipn.eg) قبل ما يدوس عليه */}
+                <p style={{ fontSize:11, color:'#f59e0b', margin:'0 0 10px', wordBreak:'break-all', fontFamily:'monospace' }}>{INSTAPAY_LINK}</p>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <a href={INSTAPAY_LINK} target="_blank" rel="noopener noreferrer" style={{ flex:1, textAlign:'center', padding:'10px 14px', borderRadius:8, background:'#f59e0b', color:'#000', fontSize:13, fontWeight:800, textDecoration:'none' }}>افتح رابط الدفع</a>
+                  <button onClick={handleCopy} style={{ padding:'10px 14px', borderRadius:8, background: copied ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)', border:`1px solid ${copied ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.4)'}`, color: copied ? '#22c55e' : '#f59e0b', cursor:'pointer', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>
+                    {copied ? '✓ اتنسخ' : 'نسخ الرابط'}
+                  </button>
+                </div>
               </div>
             </div>
             <div style={{ marginBottom:16 }}>

@@ -108,6 +108,9 @@ export function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
 
         <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 18, marginBottom: 18 }}>
           <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 10px' }}>حوّل {amountEgp.toLocaleString()} جنيه عن طريق InstaPay بالضغط على الزرار ده:</p>
+          {/* ✅ بنعرض الرابط الحقيقي كنص واضح (مش مخبّى وراء زرار بس) عشان العميل يتأكد بعينه إنه
+              رابط InstaPay الرسمي (ipn.eg) قبل ما يدوس عليه — يطمّن أكتر من زرار غامض */}
+          <p style={{ fontSize: 12, color: '#7c6af7', margin: '0 0 12px', wordBreak: 'break-all', fontFamily: 'monospace' }}>{INSTAPAY_LINK}</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <a href={INSTAPAY_LINK} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: 'center', padding: '12px 16px', borderRadius: 10, background: '#7c6af7', color: '#fff', fontSize: 14, fontWeight: 800, textDecoration: 'none' }}>افتح رابط الدفع</a>
             <button onClick={copyLink} style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.35)', color: '#a99bff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>{copied ? 'اتنسخ' : 'نسخ الرابط'}</button>
