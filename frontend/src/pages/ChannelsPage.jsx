@@ -53,6 +53,7 @@ const T = {
     contentBriefSaved: 'اتحفظ.', save: 'حفظ',
     imageModelLabel: 'موديل توليد الصور', animationModelLabel: 'موديل تحريك المشاهد',
     modelDefaultOption: 'افتراضي (أفضل جودة)', perImage: 'كريديت/صورة', perSecond: 'كريديت/ثانية',
+    contentStyleChangedToast: 'اتغيّر نوع المحتوى', noModelsForStyle: 'النوع ده بيستخدم لقطات جاهزة مش موديلات صور/تحريك، عشان كده مفيش اختيار موديلات. لو عايز تختار الموديلات، غيّر نوع المحتوى لـ«قصص/رسوم بالذكاء الاصطناعي» أو غيره من فوق.',
     modelChangedToast: 'اتحفظ اختيار الموديل.',
     sceneCountLabel: 'عدد المشاهد المستهدف (اختياري)', sceneCountPlaceholder: 'افتراضي حسب الشكل (قصير/طويل)',
     sceneCountSaved: 'اتحفظ عدد المشاهد.', captionsLabel: 'كابشن على الفيديو',
@@ -100,6 +101,7 @@ const T = {
     contentBriefSaved: 'Saved.', save: 'Save',
     imageModelLabel: 'Image generation model', animationModelLabel: 'Scene animation model',
     modelDefaultOption: 'Default (best quality)', perImage: 'credits/image', perSecond: 'credits/sec',
+    contentStyleChangedToast: 'Content style updated', noModelsForStyle: "This style uses stock footage, not AI image/animation models, so there are no models to pick. To choose models, switch the content style above to 'Story/AI-animated' or another AI style.",
     modelChangedToast: 'Model choice saved.',
     sceneCountLabel: 'Target scene count (optional)', sceneCountPlaceholder: 'Default based on format (short/long)',
     sceneCountSaved: 'Scene count saved.', captionsLabel: 'Video captions',
@@ -267,6 +269,15 @@ export default function ChannelsPage({ onBack, userRegion }) {
 
   // ✅ NEW: يحفظ فورًا لما العميل يغيّر اختيار الموديل (زي assignCharacter بالظبط) — مفيش
   // زرار حفظ منفصل هنا، القيمة فاضية = رجوع للافتراضي القديم (راجع channelRoutes.js's PATCH)
+  const changeContentStyle = async (channelId, value) => {
+    try {
+      const res = await fetch(`/api/channels/${channelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ contentStyle: value }) });
+      if (!res.ok) throw new Error('Failed');
+      setToast({ type: 'success', text: t.contentStyleChangedToast });
+      load();
+    } catch (e) { setToast({ type: 'error', text: e.message }); }
+  };
+
   const assignModel = async (channelId, field, value) => {
     try {
       await fetch(`/api/channels/${channelId}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ [field]: value || null }) });
@@ -568,6 +579,25 @@ export default function ChannelsPage({ onBack, userRegion }) {
                     )}
                   </div>
                 )}
+
+                {/* ✅ FIX: نوع المحتوى كان بيتحدد وقت إضافة القناة بس (أو بالتحليل التلقائي) وبعدها نص للقراءة
+                    فقط — فلو التحليل اختار "realistic" اختيار الموديلات كان بيختفي بالكامل من غير أي طريقة
+                    ترجّعه. دلوقتي نوع المحتوى قابل للتغيير من كارت القناة نفسه في أي وقت */}
+                <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.contentStyleLabel}</div>
+                  <select value={ch.content_style || ''} onChange={e => changeContentStyle(ch.id, e.target.value)}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
+                    <option value="">{t.contentStyleAuto}</option>
+                    <option value="realistic">{t.contentStyleRealistic}</option>
+                    <option value="map">{t.contentStyleMap}</option>
+                    <option value="animated">{t.contentStyleAnimated}</option>
+                    <option value="character_adventure">{t.contentStyleCharacter}</option>
+                    <option value="whiteboard_sketch">{t.contentStyleWhiteboard}</option>
+                  </select>
+                  {['realistic', 'map'].includes(ch.content_style) && (
+                    <p style={{ fontSize: 11, color: '#9ca3af', margin: '8px 0 0', lineHeight: 1.6 }}>{t.noModelsForStyle}</p>
+                  )}
+                </div>
 
                 {!['realistic', 'map'].includes(ch.content_style) && (imageModels.length > 0 || videoModels.length > 0) && (
                   <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
