@@ -54,6 +54,18 @@ const T = {
     imageModelLabel: 'موديل توليد الصور', animationModelLabel: 'موديل تحريك المشاهد',
     modelDefaultOption: 'افتراضي (أفضل جودة)', perImage: 'كريديت/صورة', perSecond: 'كريديت/ثانية',
     noRefTag: 'بدون مرجع', noRefWarning: 'الموديل ده مابياخدش صور مرجعية: كل مشهد بيتولّد لوحده، فمفيش ثبات للشخصيات أو الستايل بين المشاهد. لو محتاج شخصيات ثابتة اختار موديل غيره. (قناة "الشخصية الواحدة" بتستخدم موديل بيدعم المرجع تلقائيًا.)',
+    ptTitle: 'شروط النشر على يوتيوب',
+    ptIntro: 'قبل ما نربط أو ننشر على قناتك، لازم تكون فاهم الآتي:',
+    ptPoints: [
+      'النشر على يوتيوب بتحكمه سياسات يوتيوب (المحتوى المولّد بالذكاء الاصطناعي، المحتوى المتكرر أو غير الأصيل، البيانات المضللة، حقوق الملكية، والأرباح).',
+      'أنت اللي بتراجع كل فيديو وبتوافق على نشره، وأنت المسؤول عن قناتك وعن كل اللي بيتنشر عليها.',
+      'Erivion أداة للإنتاج والنشر، ومابتضمنش أرباح ولا مشاهدات ولا إن يوتيوب ما يتخذش إجراء ضد القناة أو الفيديو.',
+      'الأأمن دايمًا: تحمّل الفيديو وترفعه على يوتيوب بنفسك من غير أي نشر من عندنا.',
+      'أول فيديو بيتنشر عن طريقنا بيترفع "غير مدرج" (Unlisted)، وانت تحوّله لعام بعد ما تراجعه.',
+    ],
+    ptCheck: 'قرأت وفاهم، وموافق إن أي نشر من خلال Erivion على القناة دي بقراري وبمسؤوليتي.',
+    ptAccept: 'موافق', ptCancel: 'إلغاء', ptNeeded: 'محتاج توافق على شروط النشر قبل ما Erivion تنشر على القناة دي', ptButton: 'وافق على شروط النشر',
+    ptSaved: 'تم تسجيل موافقتك على شروط النشر',
     cheapestTag: 'الأرخص', stockModelHint: 'لو اخترت موديل هنا، القناة هتولّد الفيديو بالذكاء الاصطناعي بالموديل ده حتى لو نوع المحتوى واقعي/خرائط. سيبه افتراضي لو عايز اللقطات الجاهزة.',
     modelChangedToast: 'اتحفظ اختيار الموديل.',
     sceneCountLabel: 'عدد المشاهد المستهدف (اختياري)', sceneCountPlaceholder: 'افتراضي حسب الشكل (قصير/طويل)',
@@ -103,6 +115,18 @@ const T = {
     imageModelLabel: 'Image generation model', animationModelLabel: 'Scene animation model',
     modelDefaultOption: 'Default (best quality)', perImage: 'credits/image', perSecond: 'credits/sec',
     noRefTag: 'no reference', noRefWarning: "This model doesn't take reference images: every scene is generated on its own, so characters and style won't stay consistent between scenes. Pick another model if you need consistent characters. (Single-character channels automatically use a reference-capable model.)",
+    ptTitle: 'YouTube publishing terms',
+    ptIntro: 'Before we connect to or publish on your channel, please make sure you understand:',
+    ptPoints: [
+      "Publishing on YouTube is governed by YouTube's own policies (AI-generated content, repetitive or inauthentic content, misleading metadata, copyright, and monetization).",
+      'You review every video and approve its publishing, and you are responsible for your channel and everything published on it.',
+      'Erivion is a production and publishing tool; it does not guarantee views, monetization, or that YouTube will not take action against the channel or a video.',
+      'The safest option is always to download the video and upload it to YouTube yourself, with nothing published from our side.',
+      'The first video published through us is uploaded as Unlisted so you can check it before making it public.',
+    ],
+    ptCheck: 'I have read and understood this, and any publishing through Erivion on this channel is my decision and my responsibility.',
+    ptAccept: 'I agree', ptCancel: 'Cancel', ptNeeded: 'You need to accept the publishing terms before Erivion can publish to this channel', ptButton: 'Accept publishing terms',
+    ptSaved: 'Your acceptance of the publishing terms was recorded',
     cheapestTag: 'cheapest', stockModelHint: 'If you pick a model here, this channel generates its videos with AI using that model, even for realistic/map content. Leave it on default to keep using stock footage.',
     modelChangedToast: 'Model choice saved.',
     sceneCountLabel: 'Target scene count (optional)', sceneCountPlaceholder: 'Default based on format (short/long)',
@@ -171,6 +195,8 @@ export default function ChannelsPage({ onBack, userRegion }) {
   const [performanceByRun, setPerformanceByRun] = useState({});
   const [toast, setToast] = useState(null);
   const [connectingId, setConnectingId] = useState(null);
+  const [ackModal, setAckModal] = useState(null); // { channelId, thenConnect }
+  const [ackChecked, setAckChecked] = useState(false);
   const [connectUrls, setConnectUrls] = useState({});
 
   // ✅ NEW: بعد ما العميل يوافق (أو يلغي) ربط يوتيوب، App.jsx بيحط علامة هنا قبل ما
@@ -194,7 +220,24 @@ export default function ChannelsPage({ onBack, userRegion }) {
       .catch(() => {});
   };
 
+  // ✅ موافقة العميل على شروط النشر (مرة واحدة لكل قناة) قبل الربط أو أول نشر
+  const askPublishTerms = (channelId, thenConnect) => { setAckChecked(false); setAckModal({ channelId, thenConnect }); };
+  const acceptPublishTerms = async () => {
+    const { channelId, thenConnect } = ackModal;
+    setAckModal(null);
+    const req = fetch(`/api/channels/${channelId}/publish-ack`, { method: 'POST', headers: authHeaders(), keepalive: true });
+    if (thenConnect) { doConnectYoutube(channelId); return; } // keepalive بيخلي الطلب يكمل حتى لو الصفحة بتتحول لجوجل
+    try { const r = await req; if (!r.ok) throw new Error('Failed'); setToast({ type: 'success', text: t.ptSaved }); load(); }
+    catch (e) { setToast({ type: 'error', text: e.message }); }
+  };
+
   const connectYoutube = (channelId) => {
+    const ch = channels.find(c => c.id === channelId);
+    if (ch && !ch.youtube_publish_ack_at) { askPublishTerms(channelId, true); return; }
+    doConnectYoutube(channelId);
+  };
+
+  const doConnectYoutube = (channelId) => {
     const url = connectUrls[channelId];
     if (url) { window.location.href = url; return; }
     // ✅ fallback نادر لو الرابط لسه ما جهزش (مثلاً القناة اتضافت لتوها) — هنا لازم await
@@ -370,6 +413,24 @@ export default function ChannelsPage({ onBack, userRegion }) {
           </button>
         )}
 
+        {ackModal && (
+          <div onClick={() => setAckModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#0d0d14', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: 17, color: '#fff' }}>{t.ptTitle}</h3>
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: '#d1d5db' }}>{t.ptIntro}</p>
+              <ul style={{ margin: '0 0 14px', paddingInlineStart: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {t.ptPoints.map((p, i) => <li key={i} style={{ fontSize: 12.5, color: '#9ca3af', lineHeight: 1.7 }}>{p}</li>)}
+              </ul>
+              <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 12.5, color: '#e5e7eb', cursor: 'pointer', marginBottom: 16, lineHeight: 1.6 }}>
+                <input type="checkbox" checked={ackChecked} onChange={e => setAckChecked(e.target.checked)} style={{ marginTop: 3 }} /> {t.ptCheck}
+              </label>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => setAckModal(null)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: '#d1d5db', fontSize: 13, cursor: 'pointer' }}>{t.ptCancel}</button>
+                <button onClick={acceptPublishTerms} disabled={!ackChecked} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: ackChecked ? '#7c6af7' : 'rgba(124,106,247,0.3)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: ackChecked ? 'pointer' : 'not-allowed' }}>{t.ptAccept}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {toast && (
           <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 10, background: toast.type === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${toast.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: toast.type === 'success' ? '#22c55e' : '#f87171', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -643,6 +704,11 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   {ch.youtube_channel_title ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 11.5, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle2 size={13} /> {t.connectedAs} ({ch.youtube_channel_title})</span>
+                      {!ch.youtube_publish_ack_at && (
+                        <button onClick={() => askPublishTerms(ch.id, false)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: 11, cursor: 'pointer' }}>
+                          {t.ptButton}
+                        </button>
+                      )}
                       <button onClick={() => disconnectYoutube(ch.id)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.25)', background: 'transparent', color: '#ef4444', fontSize: 11, cursor: 'pointer' }}>
                         {t.disconnect}
                       </button>

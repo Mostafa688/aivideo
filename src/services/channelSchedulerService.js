@@ -14,7 +14,7 @@ import {
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getManagedChannelById,
   mintInternalToken, getUserById, getCreditsBalance, chargeCredits, addCreditsBalance, saveVideo, saveChannelAnalysis,
   getCharacterReferenceById, linkYoutubeVideoToRun, setChannelProjectId,
-  claimRunForPublishing, releasePublishingClaim, getNotificationPrefsByEmail,
+  claimRunForPublishing, releasePublishingClaim, getNotificationPrefsByEmail, incrementYoutubePublishCount,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
@@ -1055,6 +1055,8 @@ export async function resolveChannelRunReviewAction(run, action) {
     if (!channel) throw new Error('Channel not found');
     if (!channel.youtube_refresh_token) throw new Error('This channel is not connected to YouTube yet — connect it first from "My Channels".');
     if (run.youtube_video_id) throw new Error('This video was already published.');
+    // ✅ لازم العميل يكون وافق صراحة على شروط النشر عن طريق Erivion (مرة واحدة لكل قناة)
+    if (!channel.youtube_publish_ack_at) throw new Error('Before publishing through Erivion, please accept the publishing terms once: open Erivion → My Channels and press "Accept publishing terms" on this channel. (Publishing stays your decision and your responsibility — you can also just download the video and upload it to YouTube yourself.)');
     // ✅ FIX (باج حقيقي رصدته مراجعة كود: مفيش قفل ذري هنا — طلبين "نشر الآن" متزامنين (double
     // click، أو email link-scanner بيعمل prefetch) كانوا بيقروا youtube_video_id=null في نفس
     // اللحظة قبل ما أي واحد يخلص الرفع، فبيرفعوا نفس الفيديو مرتين فعليًا على قناة يوتيوب
@@ -1065,13 +1067,16 @@ export async function resolveChannelRunReviewAction(run, action) {
     const idea = JSON.parse(run.idea_brief || '{}');
     let youtubeVideoId;
     try {
-      youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl: run.video_url, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags });
+      // أول فيديو بيتنشر على القناة عن طريقنا بيطلع "غير مدرج" — العميل يحوّله لعام بنفسه بعد ما يتأكد
+      const isFirstPublish = (channel.youtube_publish_count || 0) === 0;
+      youtubeVideoId = await uploadVideoToYoutube(channel, { videoUrl: run.video_url, title: idea.title, description: idea.description || idea.brief || '', tags: idea.tags, ...(isFirstPublish ? { privacyStatus: 'unlisted' } : {}) });
     } catch (e) {
       // ✅ فشل حقيقي (مش سباق) — نفك القفل عشان العميل يقدر يحاول "نشر الآن" تاني من غير ما يفضل عالق
       await releasePublishingClaim(run.id).catch(() => {});
       throw e;
     }
     await linkYoutubeVideoToRun(run.id, run.user_id, youtubeVideoId);
+    await incrementYoutubePublishCount(channel.id).catch(() => {});
     // ✅ NEW (طلب العميل: صورة مصغّرة تلقائية بموديل nano_banana_2 — الأفضل حاليًا في كتابة
     // نص عربي/إنجليزي واضح جوه الصورة، وده أهم حاجة في صورة مصغّرة كويسة على يوتيوب). فشلها
     // مايوقفش النشر خالص — الفيديو خلاص لايف، يوتيوب هيسيب صورته الافتراضية بدلها بس

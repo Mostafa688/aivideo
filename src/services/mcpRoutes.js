@@ -14,7 +14,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
-import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance, verifyOAuthToken, listManagedChannelsForUser, getManagedChannelById } from './authService.js';
+import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance, verifyOAuthToken, listManagedChannelsForUser, getManagedChannelById, incrementYoutubePublishCount } from './authService.js';
 import { uploadVideoToYoutube, uploadThumbnailToYoutube } from './youtubeUploadService.js';
 // ✅ FIX (طلب العميل: "ظبط الـMCP على النظام الجديد"): مستوردين هنا بس أسماء المفاتيح الحقيقية
 // (مش أي منطق تسعير/توليد) عشان نبني منها enum الـzod الصحيح لأدوات generate_image/
@@ -551,7 +551,7 @@ function buildMcpServer(userId, email) {
     'publish_to_youtube',
     {
       title: 'Publish a video to the user\'s YouTube channel',
-      description: "Publish an Erivion-generated video (a videoUrl returned by generate_video / check_render_status / edit_video, or from Erivion's 'Upload video, get link') to one of the user's connected YouTube channels, with a title, description, tags, optional custom thumbnail, privacy/schedule, and the AI-content disclosure. THIS IS A REAL, PUBLIC ACTION on the user's real channel: before calling it, show the user the exact title, description, tags, thumbnail and privacy you intend to use and get their explicit go-ahead — never publish unprompted, and never call it twice for the same video. Recommended flow: (1) write a strong prompt and call generate_video, (2) optionally call generate_image (aspectRatio 16:9, a bold 1-3 word hook, no text that violates YouTube policy) for the thumbnail, (3) call list_youtube_channels for the channelId, (4) confirm metadata with the user, (5) call this tool. Metadata guidance: title ≤100 chars, front-loaded with the main keyword, honest (no misleading clickbait — YouTube demotes/removes it); description: the first 2 lines are what shows in search, include keywords naturally, 3-5 short paragraphs or bullets, no fake claims; 5-15 relevant tags; thumbnail must be a 16:9 image under 2MB (the channel must be phone-verified on YouTube to use custom thumbnails). madeForKids defaults to false; only ask the customer about it when the content looks aimed at children. aiDisclosure should stay true for realistic AI-generated/altered footage (YouTube's policy requires disclosing realistic synthetic content); only set it to false if the video is clearly animated/fantasy/unrealistic AND the user says so.",
+      description: "Publish an Erivion-generated video (a videoUrl returned by generate_video / check_render_status / edit_video, or from Erivion's 'Upload video, get link') to one of the user's connected YouTube channels, with a title, description, tags, optional custom thumbnail, privacy/schedule, and the AI-content disclosure. THIS IS A REAL, PUBLIC ACTION on the user's real channel. Before offering it, tell the user once that the SAFER option is to download the finished video (the videoUrl) and upload it to YouTube themselves — full control, no automation involved — and that if they still want Erivion to publish, it happens on their say-so and the channel stays their responsibility; the first video published through Erivion goes out Unlisted. Only proceed if they choose Erivion: before calling it, show the user the exact title, description, tags, thumbnail and privacy you intend to use and get their explicit go-ahead — never publish unprompted, and never call it twice for the same video. Recommended flow: (1) write a strong prompt and call generate_video, (2) optionally call generate_image (aspectRatio 16:9, a bold 1-3 word hook, no text that violates YouTube policy) for the thumbnail, (3) call list_youtube_channels for the channelId, (4) confirm metadata with the user, (5) call this tool. Metadata guidance: title ≤100 chars, front-loaded with the main keyword, honest (no misleading clickbait — YouTube demotes/removes it); description: the first 2 lines are what shows in search, include keywords naturally, 3-5 short paragraphs or bullets, no fake claims; 5-15 relevant tags; thumbnail must be a 16:9 image under 2MB (the channel must be phone-verified on YouTube to use custom thumbnails). madeForKids defaults to false; only ask the customer about it when the content looks aimed at children. aiDisclosure should stay true for realistic AI-generated/altered footage (YouTube's policy requires disclosing realistic synthetic content); only set it to false if the video is clearly animated/fantasy/unrealistic AND the user says so.",
       inputSchema: {
         channelId: z.number().int().describe('The numeric channelId from list_youtube_channels.'),
         videoUrl: z.string().url().describe("The Erivion video URL to upload (must be an Erivion-hosted link, e.g. from generate_video's result)."),
@@ -573,6 +573,7 @@ function buildMcpServer(userId, email) {
         const channel = await getManagedChannelById(channelId);
         if (!channel || channel.user_id !== userId) throw new Error('Channel not found on this account — call list_youtube_channels for valid channelIds.');
         if (!channel.youtube_refresh_token) throw new Error("This channel isn't connected to YouTube yet — the user must click Connect in Erivion → My Channels first.");
+        if (!channel.youtube_publish_ack_at) throw new Error('The user has not accepted the publishing terms for this channel yet — they must open Erivion → My Channels and press "Accept publishing terms" once. Do not work around this.');
         if (!isErivionMediaUrl(videoUrl)) throw new Error('videoUrl must be an Erivion-hosted video link (use the URL returned by generate_video / check_render_status / edit_video, or one from Erivion\'s "Upload video, get link").');
         if (thumbnailUrl && !isErivionMediaUrl(thumbnailUrl)) throw new Error('thumbnailUrl must be an Erivion-hosted image link (e.g. from generate_image or "Upload image, get link").');
         if (publishAt) {
@@ -592,7 +593,8 @@ function buildMcpServer(userId, email) {
         try {
           videoId = await uploadVideoToYoutube(channel, {
             videoUrl, title, description, tags,
-            privacyStatus, publishAt,
+            // أول فيديو عن طريقنا على القناة = غير مدرج (إلا لو Claude/العميل حدد خصوصية صراحة أو جدول النشر)
+            privacyStatus: privacyStatus || ((channel.youtube_publish_count || 0) === 0 && !publishAt ? 'unlisted' : undefined), publishAt,
             containsSyntheticMedia: aiDisclosure !== false,
             madeForKids: !!madeForKids, categoryId, defaultLanguage: language,
           });
@@ -601,6 +603,8 @@ function buildMcpServer(userId, email) {
           throw upErr;
         }
         ytPublishGuard.set(guardKey, { status: 'done', videoId, at: Date.now() });
+        await incrementYoutubePublishCount(channel.id).catch(() => {});
+        const firstUnlisted = !privacyStatus && !publishAt && (channel.youtube_publish_count || 0) === 0;
 
         let thumbNote = '';
         if (thumbnailUrl) {
@@ -608,7 +612,7 @@ function buildMcpServer(userId, email) {
           catch (tErr) { thumbNote = `\nThumbnail: NOT set (${tErr.message}). The video itself is published; the user can set a thumbnail manually in YouTube Studio.`; }
         }
         const url = `https://youtu.be/${videoId}`;
-        const when = publishAt ? `scheduled for ${new Date(publishAt).toISOString()} (private until then)` : `published as ${privacyStatus || channel.youtube_privacy_status || 'public'}`;
+        const when = publishAt ? `scheduled for ${new Date(publishAt).toISOString()} (private until then)` : `published as ${firstUnlisted ? 'UNLISTED (first video through Erivion — tell the user to switch it to Public in YouTube Studio once they have checked it)' : (privacyStatus || channel.youtube_privacy_status || 'public')}`;
         return {
           content: [{ type: 'text', text: `✅ Video ${when} on "${channel.youtube_channel_title || channel.label}": ${url}\nAI-content disclosure: ${aiDisclosure !== false ? 'on' : 'off'}.${thumbNote}` }],
           structuredContent: { status: publishAt ? 'scheduled' : 'published', videoId, url, thumbnailSet: !!thumbnailUrl && !thumbNote.includes('NOT set') },

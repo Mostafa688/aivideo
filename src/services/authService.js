@@ -1612,10 +1612,35 @@ export async function createManagedChannel(userId, { label, channelId, vidiqApiK
   return rows[0];
 }
 
+
+// ✅ (موافقة العميل على شروط النشر + أول فيديو غير مدرج) — youtube_publish_ack_at = وقت ما العميل
+// وافق صراحة على إن النشر عن طريق Erivion بمسؤوليته؛ youtube_publish_count = كام فيديو اتنشر
+// فعلاً على القناة عن طريقنا (الأول بيتنشر "غير مدرج" لحد ما العميل يحوّله بنفسه)
+(async () => {
+  await pool.query(`ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_publish_ack_at TIMESTAMPTZ DEFAULT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS youtube_publish_count INTEGER DEFAULT 0`).catch(() => {});
+  // قنوات نشرت فيديوهات قبل الإضافة دي: نحسب عددهم الحقيقي بدل ما يتعاملوا كأنهم أول مرة
+  await pool.query(`UPDATE managed_channels mc SET youtube_publish_count =
+    (SELECT COUNT(*) FROM daily_video_runs r WHERE r.channel_id = mc.id AND r.youtube_video_id IS NOT NULL)
+    WHERE COALESCE(mc.youtube_publish_count, 0) = 0`).catch(() => {});
+})();
+
+export async function acknowledgeYoutubePublish(channelId, userId) {
+  const { rowCount } = await pool.query(
+    'UPDATE managed_channels SET youtube_publish_ack_at = COALESCE(youtube_publish_ack_at, NOW()) WHERE id = $1 AND user_id = $2',
+    [channelId, userId]
+  );
+  return rowCount > 0;
+}
+
+export async function incrementYoutubePublishCount(channelId) {
+  await pool.query('UPDATE managed_channels SET youtube_publish_count = COALESCE(youtube_publish_count, 0) + 1 WHERE id = $1', [channelId]);
+}
+
 export async function listManagedChannelsForUser(userId) {
   const { rows } = await pool.query(
     `SELECT mc.id, mc.platform, mc.label, mc.channel_id, mc.format_pref, mc.uses_voice, mc.voice_id, mc.model_pref, mc.status, mc.last_run_at, mc.created_at,
-            mc.youtube_channel_title, mc.youtube_privacy_status, mc.setup_mode, mc.content_style, mc.video_style, mc.content_brief,
+            mc.youtube_channel_title, mc.youtube_privacy_status, mc.youtube_publish_ack_at, mc.youtube_publish_count, mc.setup_mode, mc.content_style, mc.video_style, mc.content_brief,
             mc.image_model, mc.animation_model, mc.captions_enabled,
             mc.target_duration_sec, mc.target_scene_count, mc.auto_analyzed_at, mc.character_reference_id, cr.image_url as character_image_url, cr.label as character_label
      FROM managed_channels mc LEFT JOIN character_references cr ON cr.id = mc.character_reference_id
