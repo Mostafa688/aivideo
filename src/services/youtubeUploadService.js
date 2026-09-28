@@ -116,7 +116,7 @@ async function ensureFreshAccessToken(channel) {
 // ✅ الرفع الفعلي — بينزّل الفيديو (رابط داخلي "/outputs/..." أو رابط R2 كامل) لملف مؤقت،
 // وبعدين resumable upload حقيقي لـYouTube Data API v3. بيرجّع الـvideo ID الحقيقي (نفس
 // الشكل اللي linkYoutubeVideoToRun المستخدمة أصلاً في المسار اليدوي بتتوقعه)
-export async function uploadVideoToYoutube(channel, { videoUrl, title, description, tags }) {
+export async function uploadVideoToYoutube(channel, { videoUrl, title, description, tags, privacyStatus, containsSyntheticMedia, madeForKids, categoryId, defaultLanguage, publishAt }) {
   const accessToken = await ensureFreshAccessToken(channel);
 
   const absoluteUrl = /^https?:\/\//i.test(videoUrl) ? videoUrl : `${(process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net').replace(/\/$/, '')}${videoUrl}`;
@@ -139,13 +139,17 @@ export async function uploadVideoToYoutube(channel, { videoUrl, title, descripti
   }
 
   try {
-    const metadata = {
-      snippet: { title: (title || 'Erivion video').slice(0, 100), description: (description || '').slice(0, 4900), tags: cappedTags, categoryId: '22' },
-      // ✅ NEW: الإفصاح الرسمي عن المحتوى المصنوع بالذكاء الاصطناعي (containsSyntheticMedia،
-      // مضافة لـYouTube Data API v3 في أكتوبر 2024) — كل فيديو بيتعمل من Erivion محتوى
-      // مولّد بالذكاء الاصطناعي فعليًا، فبنعلّمه true دايمًا، مفيش استثناء
-      status: { privacyStatus: channel.youtube_privacy_status || 'public', selfDeclaredMadeForKids: false, containsSyntheticMedia: true },
-    };
+    // ✅ المسار الآلي للقنوات (channelSchedulerService) بينادي من غير أي options تانية، فالافتراضيات
+    // هنا بتطابق سلوكه القديم بالظبط. مسار MCP (Claude بيكتب العنوان/الوصف/الخصوصية بنفسه) بيبعت
+    // القيم دي صراحة. الإفصاح عن المحتوى المولّد بالذكاء الاصطناعي (containsSyntheticMedia، مضاف
+    // لـYouTube Data API v3 في أكتوبر 2024) افتراضيه true — كل فيديو Erivion مولّد بالذكاء الاصطناعي
+    const privacy = ['public', 'unlisted', 'private'].includes(privacyStatus) ? privacyStatus : (channel.youtube_privacy_status || 'public');
+    const snippet = { title: (title || 'Erivion video').slice(0, 100), description: (description || '').slice(0, 4900), tags: cappedTags, categoryId: String(categoryId || '22') };
+    if (defaultLanguage) snippet.defaultLanguage = String(defaultLanguage).slice(0, 10);
+    const status = { privacyStatus: privacy, selfDeclaredMadeForKids: !!madeForKids, containsSyntheticMedia: containsSyntheticMedia !== false };
+    // جدولة النشر: YouTube بيشترط privacyStatus=private مع publishAt، وبيحوّله public تلقائيًا في الميعاد
+    if (publishAt) { status.privacyStatus = 'private'; status.publishAt = new Date(publishAt).toISOString(); }
+    const metadata = { snippet, status };
 
     // الخطوة 1: نبدأ الـresumable session (بيانات الفيديو (metadata) بس، من غير الملف نفسه)
     const initRes = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
