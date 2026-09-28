@@ -287,7 +287,7 @@ function SupportContent() {
 }
 
 const PAGE_CONFIG = {
-  terms:      { title: 'Terms of Service',        titleAr: 'شروط الخدمة',         icon: FileText, lastUpdated: 'August 2026', bilingual: true },
+  terms:      { title: 'Terms of Service',        titleAr: 'شروط الخدمة',         icon: FileText, lastUpdated: 'September 2026', bilingual: true },
   privacy:    { title: 'Privacy Policy',          titleAr: 'سياسة الخصوصية',      icon: Lock, lastUpdated: 'August 2026', bilingual: true },
   refund:     { title: 'Refund & Cancellation',    icon: DollarSign },
   about:      { title: 'About Erivion',           titleAr: 'عن Erivion',          icon: Info, bilingual: true },

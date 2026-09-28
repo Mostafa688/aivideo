@@ -3,7 +3,7 @@ import { authMiddleware } from './authRoutes.js';
 import {
   createManagedChannel, listManagedChannelsForUser, updateManagedChannel, deleteManagedChannel,
   getDailyVideoRunByToken, updateDailyVideoRunStatus, getUserById, getManagedChannelById,
-  claimDailyVideoRunForGeneration, claimRunForPublishing, releasePublishingClaim,
+  claimDailyVideoRunForGeneration, claimRunForPublishing, releasePublishingClaim, acknowledgeYoutubePublish,
   listDailyVideoRunsForChannel, getDailyVideoRunById, linkYoutubeVideoToRun,
   getCharacterReferenceForUser, setChannelCharacter, getDailyVideoRunByReviewToken,
 } from './authService.js';
@@ -121,6 +121,18 @@ router.patch('/:id', authMiddleware, async (req, res) => {
     const channel = await updateManagedChannel(req.params.id, req.user.userId, patch);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     res.json({ channel });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ✅ موافقة صريحة (مرة واحدة لكل قناة) على إن النشر على يوتيوب عن طريق Erivion بمسؤولية العميل —
+// بدونها النشر (من الإيميل/الداشبورد/MCP) مرفوض
+router.post('/:id/publish-ack', authMiddleware, async (req, res) => {
+  try {
+    const ok = await acknowledgeYoutubePublish(req.params.id, req.user.userId);
+    if (!ok) return res.status(404).json({ error: 'Channel not found' });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
