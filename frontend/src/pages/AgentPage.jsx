@@ -389,10 +389,33 @@ function ChannelRunCard({ job: initialJob, lang, onNavigate }) {
 // المراجعة" (تأكيد بس، من غير نشر) و"نشر الآن" (رفع فعلي على يوتيوب). كل تحديث بيتحفظ في
 // نفس مشروع المحادثة (onUpdateJob) عشان لو العميل قفل وفتح المشروع تاني يلاقي الحالة الصح
 function ChannelReviewCard({ job, lang, onUpdateJob, onMessage }) {
-  const tt = lang === 'ar'
-    ? { cost: 'كريديت', reviewedBadge: 'تمت المراجعة', publishedBadge: 'منشور على يوتيوب', reviewBtn: 'تمت المراجعة', publishBtn: 'نشر الآن', notConnected: 'القناة مش متربطة بيوتيوب', watchYoutube: 'شوفه على يوتيوب' }
-    : { cost: 'credits', reviewedBadge: 'Reviewed', publishedBadge: 'Published on YouTube', reviewBtn: 'Mark Reviewed', publishBtn: 'Publish Now', notConnected: 'This channel is not connected to YouTube', watchYoutube: 'Watch on YouTube' };
+  const ar = lang === 'ar';
+  const tt = ar
+    ? { cost: 'كريديت', reviewedBadge: 'تمت المراجعة', publishedBadge: 'منشور على يوتيوب', reviewBtn: 'تمت المراجعة', publishBtn: 'نشر الآن', notConnected: 'القناة مش متربطة بيوتيوب', watchYoutube: 'شوفه على يوتيوب',
+        pkgTitle: 'جاهز للرفع على قناتك', titleL: 'العنوان', descL: 'الوصف', tagsL: 'الكلمات المفتاحية', thumbL: 'الصورة المصغرة', copy: 'نسخ', copied: 'اتنسخ ✓', dlVideo: 'تحميل الفيديو', dlThumb: 'تحميل الصورة',
+        aiNote: 'وانت بترفع، اختار "المحتوى ده اتعدّل أو اتولّد بالذكاء الاصطناعي" في يوتيوب.' }
+    : { cost: 'credits', reviewedBadge: 'Reviewed', publishedBadge: 'Published on YouTube', reviewBtn: 'Mark Reviewed', publishBtn: 'Publish Now', notConnected: 'This channel is not connected to YouTube', watchYoutube: 'Watch on YouTube',
+        pkgTitle: 'Ready to upload to your channel', titleL: 'Title', descL: 'Description', tagsL: 'Tags', thumbL: 'Thumbnail', copy: 'Copy', copied: 'Copied ✓', dlVideo: 'Download video', dlThumb: 'Download thumbnail',
+        aiNote: 'When uploading, turn on "Altered or synthetic content" in YouTube.' };
   const [busy, setBusy] = useState(null);
+  const [pkg, setPkg] = useState(null);
+  const [copiedKey, setCopiedKey] = useState(null);
+
+  useEffect(() => {
+    if (!job.runId) return;
+    let alive = true;
+    fetch(`/api/channels/runs/${job.runId}/package`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (alive && d) setPkg(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [job.runId]);
+
+  const publishEnabled = !!pkg?.publishEnabled;
+  const copyText = async (key, text) => {
+    try { await navigator.clipboard.writeText(text || ''); setCopiedKey(key); setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 1500); } catch {}
+  };
+  const tagsText = (pkg?.tags || []).join(', ');
 
   const markReviewed = async () => {
     setBusy('review');
@@ -400,33 +423,65 @@ function ChannelReviewCard({ job, lang, onUpdateJob, onMessage }) {
       const r = await fetch(`/api/channels/runs/${job.runId}/review`, { method: 'POST', headers: authHeaders() });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Failed');
       onUpdateJob({ reviewState: 'reviewed' });
-      onMessage?.(lang === 'ar' ? 'تمام، اتسجل إنك راجعت الفيديو — تقدر تنشره على يوتيوب في أي وقت من هنا.' : "Got it — marked as reviewed. You can publish it to YouTube anytime from here.");
+      onMessage?.(publishEnabled
+        ? (ar ? 'تمام، اتسجل إنك راجعت الفيديو — تقدر تنشره على يوتيوب في أي وقت من هنا.' : "Got it — marked as reviewed. You can publish it to YouTube anytime from here.")
+        : (ar ? 'تمام، اتسجل إنك راجعت الفيديو — حمّله وارفعه على قناتك بالعنوان والوصف الجاهزين.' : 'Got it — marked as reviewed. Download it and upload it to your channel with the ready title and description.'));
     } catch (e) {
-      onMessage?.((lang === 'ar' ? 'حصلت مشكلة: ' : 'Something went wrong: ') + e.message);
+      onMessage?.((ar ? 'حصلت مشكلة: ' : 'Something went wrong: ') + e.message);
     } finally { setBusy(null); }
   };
 
   const publishNow = async () => {
     setBusy('publish');
-    onMessage?.(lang === 'ar' ? 'تمام، بينشر الفيديو دلوقتي على يوتيوب...' : 'On it — publishing the video to YouTube now...');
+    onMessage?.(ar ? 'تمام، بينشر الفيديو دلوقتي على يوتيوب...' : 'On it — publishing the video to YouTube now...');
     try {
       const r = await fetch(`/api/channels/runs/${job.runId}/publish`, { method: 'POST', headers: authHeaders() });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Failed');
       onUpdateJob({ reviewState: 'published', youtubeVideoId: d.youtubeVideoId });
-      onMessage?.((lang === 'ar' ? 'تم النشر ✅ ' : 'Published ✅ ') + (d.youtubeVideoId ? `https://youtube.com/watch?v=${d.youtubeVideoId}` : ''));
+      onMessage?.((ar ? 'تم النشر ✅ ' : 'Published ✅ ') + (d.youtubeVideoId ? `https://youtube.com/watch?v=${d.youtubeVideoId}` : ''));
     } catch (e) {
-      onMessage?.((lang === 'ar' ? 'فشل النشر: ' : 'Publish failed: ') + e.message);
+      onMessage?.((ar ? 'فشل النشر: ' : 'Publish failed: ') + e.message);
     } finally { setBusy(null); }
   };
 
+  const smallBtn = { fontSize: 11, padding: '4px 9px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: '#d1d5db', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' };
+  const field = (key, label, text, multiline) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', fontWeight: 700, letterSpacing: 0.4 }}>{label}</span>
+        <button onClick={() => copyText(key, text)} style={smallBtn}><Copy size={11} /> {copiedKey === key ? tt.copied : tt.copy}</button>
+      </div>
+      <div style={{ fontSize: 12, color: '#e5e7eb', lineHeight: 1.55, whiteSpace: multiline ? 'pre-wrap' : 'normal', wordBreak: 'break-word', maxHeight: multiline ? 110 : 'none', overflowY: multiline ? 'auto' : 'visible', padding: '6px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>{text}</div>
+    </div>
+  );
+
   return (
-    <div style={{ width: 260 }}>
-      <video src={job.videoUrl} controls playsInline style={{ width: 260, borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
-      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ width: 280 }}>
+      <video src={job.videoUrl} controls playsInline style={{ width: 280, borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {job.ideaTitle && <div style={{ fontSize: 12.5, color: '#fff', fontWeight: 700 }}>{job.ideaTitle}</div>}
         {job.creditsCharged != null && <div style={{ fontSize: 11.5, color: '#a78bfa' }}>{job.creditsCharged} {tt.cost}</div>}
-        {job.reviewState === 'published' ? (
+        {job.videoUrl && (
+          <a href={job.videoUrl} download target="_blank" rel="noopener noreferrer" style={{ ...smallBtn, width: 'fit-content' }}><Download size={12} /> {tt.dlVideo}</a>
+        )}
+        {pkg && !publishEnabled && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 12, background: 'rgba(124,106,247,0.07)', border: '1px solid rgba(124,106,247,0.25)' }}>
+            <div style={{ fontSize: 12, color: '#c4b5fd', fontWeight: 700 }}>{tt.pkgTitle}</div>
+            {pkg.thumbnailUrl && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', fontWeight: 700, letterSpacing: 0.4 }}>{tt.thumbL}</span>
+                <img src={pkg.thumbnailUrl} alt="" style={{ width: '100%', borderRadius: 8, display: 'block', border: '1px solid rgba(255,255,255,0.1)' }} />
+                <a href={pkg.thumbnailUrl} download target="_blank" rel="noopener noreferrer" style={{ ...smallBtn, width: 'fit-content' }}><Download size={11} /> {tt.dlThumb}</a>
+              </div>
+            )}
+            {pkg.title && field('title', tt.titleL, pkg.title, false)}
+            {pkg.description && field('desc', tt.descL, pkg.description, true)}
+            {tagsText && field('tags', tt.tagsL, tagsText, false)}
+            <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{tt.aiNote}</div>
+          </div>
+        )}
+        {publishEnabled && job.reviewState === 'published' ? (
           <div style={{ fontSize: 12, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <CheckCircle2 size={13} /> {tt.publishedBadge}
             {job.youtubeVideoId && (
@@ -443,10 +498,12 @@ function ChannelReviewCard({ job, lang, onUpdateJob, onMessage }) {
                 {busy === 'review' ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : tt.reviewBtn}
               </button>
             )}
-            <button onClick={publishNow} disabled={!!busy || !job.canPublish} title={!job.canPublish ? tt.notConnected : ''}
-              style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: 'none', background: job.canPublish ? 'linear-gradient(135deg,#ef4444,#b91c1c)' : 'rgba(239,68,68,0.2)', color: '#fff', cursor: (busy || !job.canPublish) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-              {busy === 'publish' ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : tt.publishBtn}
-            </button>
+            {publishEnabled && (
+              <button onClick={publishNow} disabled={!!busy || !job.canPublish} title={!job.canPublish ? tt.notConnected : ''}
+                style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: 'none', background: job.canPublish ? 'linear-gradient(135deg,#ef4444,#b91c1c)' : 'rgba(239,68,68,0.2)', color: '#fff', cursor: (busy || !job.canPublish) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                {busy === 'publish' ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : tt.publishBtn}
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -16,6 +16,7 @@ import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@model
 import { z } from 'zod';
 import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance, verifyOAuthToken, listManagedChannelsForUser, getManagedChannelById, incrementYoutubePublishCount } from './authService.js';
 import { uploadVideoToYoutube, uploadThumbnailToYoutube } from './youtubeUploadService.js';
+import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 // ✅ FIX (طلب العميل: "ظبط الـMCP على النظام الجديد"): مستوردين هنا بس أسماء المفاتيح الحقيقية
 // (مش أي منطق تسعير/توليد) عشان نبني منها enum الـzod الصحيح لأدوات generate_image/
 // generate_video — نفس الاستيراد المستخدم فعليًا في agentService.js لنفس الغرض بالظبط
@@ -214,7 +215,7 @@ function buildMcpServer(userId, email) {
             'VIDEO ENGINES (use with generate_video, "model" = the exact key in brackets):',
             ...vidLines,
             '',
-            'Typical flow: generate_image to create a scene/character image, then generate_video with "imageUrl" set to that image to animate it — or generate_video directly for pure text-to-video. edit_video applies a precise AI edit to an existing short (max 15s) video from a public URL. To publish a finished video: list_youtube_channels → (optional generate_image 16:9 thumbnail) → confirm title/description/tags/privacy with the user → publish_to_youtube.',
+            'Typical flow: generate_image to create a scene/character image, then generate_video with "imageUrl" set to that image to animate it — or generate_video directly for pure text-to-video. edit_video applies a precise AI edit to an existing short (max 15s) video from a public URL. ' + (YOUTUBE_PUBLISH_ENABLED ? 'To publish a finished video: list_youtube_channels → (optional generate_image 16:9 thumbnail) → confirm title/description/tags/privacy with the user → publish_to_youtube.' : 'Erivion does not publish to YouTube: after generating, give the user the video URL plus a strong title, description, tags and (via generate_image, 16:9) a thumbnail so they can upload it themselves in YouTube Studio.'),
           ].join('\n'),
         }],
       };
@@ -518,6 +519,7 @@ function buildMcpServer(userId, email) {
   );
 
 
+  if (YOUTUBE_PUBLISH_ENABLED) {
   // ── list_youtube_channels ────────────────────────────────────────────────
   server.registerTool(
     'list_youtube_channels',
@@ -622,6 +624,8 @@ function buildMcpServer(userId, email) {
       }
     }
   );
+
+  }
 
   return server;
 }

@@ -1625,6 +1625,14 @@ export async function createManagedChannel(userId, { label, channelId, vidiqApiK
     WHERE COALESCE(mc.youtube_publish_count, 0) = 0`).catch(() => {});
 })();
 
+(async () => {
+  await pool.query('ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS thumbnail_url TEXT').catch(() => {});
+})();
+
+export async function setDailyVideoRunThumbnail(runId, url) {
+  await pool.query('UPDATE daily_video_runs SET thumbnail_url = $1 WHERE id = $2', [url, runId]);
+}
+
 export async function acknowledgeYoutubePublish(channelId, userId) {
   const { rowCount } = await pool.query(
     'UPDATE managed_channels SET youtube_publish_ack_at = COALESCE(youtube_publish_ack_at, NOW()) WHERE id = $1 AND user_id = $2',
