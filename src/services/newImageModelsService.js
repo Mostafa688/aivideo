@@ -102,6 +102,11 @@ export const NEW_IMAGE_MODELS = {
   },
   grok_image: {
     slug: 'xai/grok-imagine-image',
+    // ⚠ buildInput بيتجاهل referenceImageUrls تمامًا (مفيش حقل مرجع متأكد منه للموديل ده) —
+    // يعني أي مشهد بيتولّد بيه مستقل عن اللي قبله ومن غير صورة شخصية مرجعية، فمفيش ثبات
+    // للشخصيات/الستايل بين المشاهد. الفلاج ده بيخلّي باقي الكود (واجهة القنوات، مسار
+    // character_adventure) يعرف ده صراحة بدل ما يفترض إن المرجع اتطبّق
+    noReferenceImages: true,
     buildInput: ({ prompt, aspectRatio }) => ({ prompt, aspect_ratio: aspectRatio || '9:16' }),
   },
   // ✅ NEW (طلب العميل — سعره مؤكد من العميل مباشرة $0.034/صورة، سعر واحد بلا دقات متعددة):
@@ -348,4 +353,9 @@ export async function generateNewModelImages({ modelKey, prompt, prompts = null,
     4
   );
   return persistImagesToR2(results.flat(), modelKey);
+}
+
+// ✅ هل الموديل ده بياخد صور مرجعية فعلاً (ثبات شخصية/ستايل بين المشاهد)؟
+export function supportsReferenceImages(modelKey) {
+  return !!NEW_IMAGE_MODELS[modelKey] && !NEW_IMAGE_MODELS[modelKey].noReferenceImages;
 }
