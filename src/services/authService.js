@@ -1987,7 +1987,11 @@ export async function getReferralSourceStats() {
 // بصمت (نفس نمط باج Pollinations اللي اتصلح النهاردة). دلوقتي فيه فاصل زمني بين كل chunk
 // وريتراي مع backoff تصاعدي لو رجع 429 بالذات، فباقي المستخدمين يوصلهم الإيميل فعلًا
 export async function sendBroadcastEmail(subject, html, excludeEmails = []) {
-  const { rows } = await pool.query('SELECT email FROM users WHERE email IS NOT NULL');
+  // ✅ FIX: كان بيبعت لكل المستخدمين من غير أي فحص لتفضيل "Product Updates" — نستبعد
+  // دلوقتي أي حد قافل الإشعارات دي (أو قافل الإشعارات كلها) صراحة من إعداداته
+  const { rows } = await pool.query(
+    'SELECT email FROM users WHERE email IS NOT NULL AND notif_newsletter = true AND notif_email_enabled != false'
+  );
   const excludeSet = new Set(excludeEmails.map(e => String(e).toLowerCase().trim()));
   const emails = rows.map(r => r.email).filter(Boolean).filter(e => !excludeSet.has(e.toLowerCase().trim()));
   const CHUNK = 100; // Resend بيقبل لحد 100 عنوان في نداء batch واحد
@@ -2126,4 +2130,98 @@ export async function getReferenceImagesMap() {
 
 export async function deleteReferenceImage(refKey) {
   await pool.query('DELETE FROM audio_video_reference_images WHERE ref_key = $1', [refKey]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ✅ FIX (باج حقيقي رصدته مراجعة صفحة الإعدادات: زرار "Delete My Account" كان بيفشل
+//  فعليًا بـ 500 error لأي حساب حقيقي استخدم الموقع). السبب: DELETE FROM users بيصطدم
+//  بقيود foreign key في كذا جدول (videos, user_usage, payment_requests, feedback_ratings،
+//  وجداول موديل 3/4/5 القديمة) كانت اتعملت من غير ON DELETE CASCADE أصلاً — فبوستجرس
+//  برفض الحذف تمامًا لو فيه أي صف مرتبط (يعني أي مستخدم عنده فيديو واحد بس). الدالة دي
+//  بتدور على الـconstraint الحقيقي لكل جدول وتضيفله CASCADE (أو SET NULL لجداول اللوج/الأودت
+//  زي login_events وaudio_video_jobs، عشان نحافظ على سجل الأمان بدل ما نمسحه بالكامل) —
+//  بتتخطى الجدول لو الإعداد صحيح بالفعل، فآمنة تتنفذ في كل تشغيل سيرفر من غير أي تكرار
+async function ensureUserFkDeleteBehavior(tableName, onDeleteAction) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT tc.constraint_name, rc.delete_rule
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       JOIN information_schema.constraint_column_usage ccu
+         ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+       JOIN information_schema.referential_constraints rc
+         ON tc.constraint_name = rc.constraint_name AND tc.constraint_schema = rc.constraint_schema
+       WHERE tc.table_name = $1 AND tc.constraint_type = 'FOREIGN KEY'
+         AND kcu.column_name = 'user_id' AND ccu.table_name = 'users'`,
+      [tableName]
+    );
+    const fk = rows[0];
+    if (!fk || fk.delete_rule === onDeleteAction) return; // مش موجود أصلاً أو مظبوط صح خلاص
+    await pool.query(`ALTER TABLE ${tableName} DROP CONSTRAINT "${fk.constraint_name}"`);
+    await pool.query(`ALTER TABLE ${tableName} ADD CONSTRAINT "${fk.constraint_name}" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE ${onDeleteAction}`);
+    console.log(`[Migration] ${tableName}.user_id FK -> ON DELETE ${onDeleteAction}`);
+  } catch (e) {
+    console.error(`[Migration] Failed to fix FK on ${tableName}:`, e.message);
+  }
+}
+
+(async () => {
+  const cascadeTables = [
+    'videos', 'user_usage', 'payment_requests', 'feedback_ratings',
+    'model3_usage', 'model4_usage', 'model5_usage',
+    'model3_credits', 'model4_credits', 'model5_credits', 'model7_credits',
+  ];
+  for (const t of cascadeTables) await ensureUserFkDeleteBehavior(t, 'CASCADE');
+  // جداول لوج/أودت — بنسيب السجل موجود (لأغراض أمنية/تتبع أخطاء) بس نفصله عن الحساب المحذوف
+  for (const t of ['login_events', 'audio_video_jobs']) await ensureUserFkDeleteBehavior(t, 'SET NULL');
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ✅ FIX (باج حقيقي رصدته مراجعة صفحة الإعدادات: مفاتيح الإشعارات الثلاثة كانت
+//  بتتحفظ في localStorage بس — مفيش أي كود في الباك اند بيتأكد منها قبل ما يبعت أي إيميل،
+//  يعني تشغيلها/تقفيلها مالوش أي تأثير حقيقي خالص). دلوقتي بتتحفظ في قاعدة البيانات
+//  (تفضل شغالة من أي جهاز)، وبقت فعليًا بتتحكم في: sendBroadcastEmail (newsletter) و
+//  sendDailyResultEmail الخاص بقنوات الفيديو التلقائية (video ready)
+(async () => {
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_email_enabled BOOLEAN DEFAULT true`).catch(() => {});
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_video_ready BOOLEAN DEFAULT true`).catch(() => {});
+  // ✅ ديفولت true عمدًا (مش false زي القيمة الافتراضية القديمة في الفرونت إند) — عشان
+  // sendBroadcastEmail حاليًا بيبعت لكل المستخدمين من غير استثناء، فتشغيل الفلترة دلوقتي
+  // بديفولت false كان هيوقف كل التحديثات فورًا لكل مستخدم موجود من غير ما يطلب هو ده
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_newsletter BOOLEAN DEFAULT true`).catch(() => {});
+})();
+
+export async function getNotificationPrefs(userId) {
+  const { rows } = await pool.query(
+    'SELECT notif_email_enabled, notif_video_ready, notif_newsletter FROM users WHERE id = $1',
+    [userId]
+  );
+  const r = rows[0] || {};
+  return {
+    emailEnabled: r.notif_email_enabled !== false,
+    videoReady: r.notif_video_ready !== false,
+    newsletter: r.notif_newsletter !== false,
+  };
+}
+
+export async function updateNotificationPrefs(userId, { emailEnabled, videoReady, newsletter }) {
+  await pool.query(
+    'UPDATE users SET notif_email_enabled = $1, notif_video_ready = $2, notif_newsletter = $3 WHERE id = $4',
+    [!!emailEnabled, !!videoReady, !!newsletter, userId]
+  );
+}
+
+// ✅ لازم بالإيميل مش الـid — sendDailyResultEmail بتاعة قنوات الفيديو مش معاها غير الإيميل
+export async function getNotificationPrefsByEmail(email) {
+  const { rows } = await pool.query(
+    'SELECT notif_email_enabled, notif_video_ready, notif_newsletter FROM users WHERE email = $1',
+    [email]
+  );
+  const r = rows[0] || {};
+  return {
+    emailEnabled: r.notif_email_enabled !== false,
+    videoReady: r.notif_video_ready !== false,
+    newsletter: r.notif_newsletter !== false,
+  };
 }
