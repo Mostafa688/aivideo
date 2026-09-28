@@ -292,7 +292,11 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
           .s-sidebar { width: 100% !important; }
           .s-sidebar-inner { display: flex !important; flex-direction: row !important; overflow-x: auto !important; border-radius: 12px !important; scrollbar-width: none !important; }
           .s-sidebar-inner::-webkit-scrollbar { display: none; }
-          .s-nav-btn { flex-shrink: 0 !important; padding: 10px 14px !important; border-left: none !important; border-bottom: 3px solid transparent !important; white-space: nowrap !important; }
+          /* ✅ FIX (باج حقيقي: كل تاب كان بياخد width:100% (inline، مقصودة للشريط الجانبي
+             الرأسي بتاع الديسكتوب) — على الموبايل ده كان بيخلي كل زرار ياخد عرض الشاشة كله،
+             فيبان "Profile" بس وكأنه الخيار الوحيد، وباقي التابات (زي "API & MCP") بتتطلب
+             سحب شاشة كاملة بالظبط عشان تظهر من غير أي مؤشر إنها موجودة أصلًا) */
+          .s-nav-btn { width: auto !important; flex-shrink: 0 !important; padding: 10px 14px !important; border-left: none !important; border-bottom: 3px solid transparent !important; white-space: nowrap !important; }
           .s-nav-btn-active { border-bottom-color: var(--accent) !important; border-left-color: transparent !important; }
           .s-row { flex-direction: column !important; align-items: flex-start !important; gap: 10px !important; }
           .s-row-control { width: 100% !important; }
