@@ -14,7 +14,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
-import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance, verifyOAuthToken } from './authService.js';
+import { verifyApiKey, mintInternalToken, getUserById, getCreditsBalance, verifyOAuthToken, listManagedChannelsForUser, getManagedChannelById } from './authService.js';
+import { uploadVideoToYoutube, uploadThumbnailToYoutube } from './youtubeUploadService.js';
 // ✅ FIX (طلب العميل: "ظبط الـMCP على النظام الجديد"): مستوردين هنا بس أسماء المفاتيح الحقيقية
 // (مش أي منطق تسعير/توليد) عشان نبني منها enum الـzod الصحيح لأدوات generate_image/
 // generate_video — نفس الاستيراد المستخدم فعليًا في agentService.js لنفس الغرض بالظبط
@@ -49,6 +50,34 @@ const videoResourceLink = (url, name = 'Generated video') => ({
 const imageResourceLink = (url, name = 'Generated image') => ({
   type: 'resource_link', uri: url, name, mimeType: 'image/jpeg', description: name,
 });
+
+
+// ── نشر على يوتيوب من Claude (MCP) ───────────────────────────────────────────
+// SSRF guard: السيرفر هو اللي بيحمّل الفيديو/الصورة من الرابط ويرفعهم — فمنسمحش بأي رابط
+// عشوائي؛ بس روابط تخزين Erivion نفسها (R2) أو دومين الموقع (نفس اللي generate_* وأدوات
+// "Upload ... get link" بترجّعه أصلاً)
+function isErivionMediaUrl(raw) {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:') return false;
+    const allowed = new Set();
+    for (const base of [process.env.R2_PUBLIC_URL, SITE_URL]) {
+      try { if (base) allowed.add(new URL(base).host); } catch {}
+    }
+    return allowed.has(u.host);
+  } catch { return false; }
+}
+
+// حماية ضد الرفع المزدوج (Claude ممكن يعيد النداء بعد timeout أو retry) — نفس درس
+// claimRunForPublishing في مسار القنوات: نفس الفيديو على نفس القناة مرتين = فيديوهين حقيقيين
+const ytPublishGuard = new Map(); // key -> { status: 'inflight' | 'done', videoId?, at }
+const YT_GUARD_TTL_MS = 60 * 60 * 1000;
+function ytGuardGet(key) {
+  const e = ytPublishGuard.get(key);
+  if (!e) return null;
+  if (Date.now() - e.at > YT_GUARD_TTL_MS) { ytPublishGuard.delete(key); return null; }
+  return e;
+}
 
 function buildMcpServer(userId, email) {
   const server = new McpServer({ name: 'erivion', version: '1.0.0' });
@@ -185,7 +214,7 @@ function buildMcpServer(userId, email) {
             'VIDEO ENGINES (use with generate_video, "model" = the exact key in brackets):',
             ...vidLines,
             '',
-            'Typical flow: generate_image to create a scene/character image, then generate_video with "imageUrl" set to that image to animate it — or generate_video directly for pure text-to-video. edit_video applies a precise AI edit to an existing short (max 15s) video from a public URL.',
+            'Typical flow: generate_image to create a scene/character image, then generate_video with "imageUrl" set to that image to animate it — or generate_video directly for pure text-to-video. edit_video applies a precise AI edit to an existing short (max 15s) video from a public URL. To publish a finished video: list_youtube_channels → (optional generate_image 16:9 thumbnail) → confirm title/description/tags/privacy with the user → publish_to_youtube.',
           ].join('\n'),
         }],
       };
@@ -484,6 +513,108 @@ function buildMcpServer(userId, email) {
         };
       } catch (e) {
         return { content: [{ type: 'text', text: `Failed to edit video: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+
+  // ── list_youtube_channels ────────────────────────────────────────────────
+  server.registerTool(
+    'list_youtube_channels',
+    {
+      title: 'List connected YouTube channels',
+      description: "List the YouTube channels this Erivion user has added under 'My Channels', with each channel's numeric id, name, whether it is connected for publishing, and its default privacy. Call this first to get the channelId that publish_to_youtube needs.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const channels = (await listManagedChannelsForUser(userId)).filter(c => c.platform === 'youtube' || !c.platform);
+        if (!channels.length) {
+          return { content: [{ type: 'text', text: `No channels yet. The user can add and connect a YouTube channel from Erivion → My Channels (${SITE_URL}).` }], structuredContent: { channels: [] } };
+        }
+        const lines = channels.map(c => {
+          const connected = !!c.youtube_channel_title;
+          return `- channelId ${c.id}: "${c.label || c.channel_id}"${connected ? ` (YouTube: ${c.youtube_channel_title}) — connected for publishing, default privacy: ${c.youtube_privacy_status || 'public'}` : ' — NOT connected to YouTube yet (user must click Connect in Erivion → My Channels)'}`;
+        });
+        return {
+          content: [{ type: 'text', text: lines.join('\n') }],
+          structuredContent: { channels: channels.map(c => ({ channelId: c.id, label: c.label || c.channel_id, youtubeChannelTitle: c.youtube_channel_title || null, connected: !!c.youtube_channel_title, defaultPrivacy: c.youtube_privacy_status || 'public' })) },
+        };
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Failed to list channels: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── publish_to_youtube ───────────────────────────────────────────────────
+  server.registerTool(
+    'publish_to_youtube',
+    {
+      title: 'Publish a video to the user\'s YouTube channel',
+      description: "Publish an Erivion-generated video (a videoUrl returned by generate_video / check_render_status / edit_video, or from Erivion's 'Upload video, get link') to one of the user's connected YouTube channels, with a title, description, tags, optional custom thumbnail, privacy/schedule, and the AI-content disclosure. THIS IS A REAL, PUBLIC ACTION on the user's real channel: before calling it, show the user the exact title, description, tags, thumbnail and privacy you intend to use and get their explicit go-ahead — never publish unprompted, and never call it twice for the same video. Recommended flow: (1) write a strong prompt and call generate_video, (2) optionally call generate_image (aspectRatio 16:9, a bold 1-3 word hook, no text that violates YouTube policy) for the thumbnail, (3) call list_youtube_channels for the channelId, (4) confirm metadata with the user, (5) call this tool. Metadata guidance: title ≤100 chars, front-loaded with the main keyword, honest (no misleading clickbait — YouTube demotes/removes it); description: the first 2 lines are what shows in search, include keywords naturally, 3-5 short paragraphs or bullets, no fake claims; 5-15 relevant tags; thumbnail must be a 16:9 image under 2MB (the channel must be phone-verified on YouTube to use custom thumbnails). aiDisclosure should stay true for realistic AI-generated/altered footage (YouTube's policy requires disclosing realistic synthetic content); only set it to false if the video is clearly animated/fantasy/unrealistic AND the user says so.",
+      inputSchema: {
+        channelId: z.number().int().describe('The numeric channelId from list_youtube_channels.'),
+        videoUrl: z.string().url().describe("The Erivion video URL to upload (must be an Erivion-hosted link, e.g. from generate_video's result)."),
+        title: z.string().min(1).max(100).describe('Video title, max 100 characters. Strong, honest, keyword-first.'),
+        description: z.string().max(4900).default('').describe('Full video description (searchable keywords in the first two lines).'),
+        tags: z.array(z.string()).max(30).optional().describe('Search keywords/tags (5-15 relevant ones; total length is capped at ~480 characters by YouTube).'),
+        thumbnailUrl: z.string().url().optional().describe('Optional custom thumbnail: an Erivion-hosted image URL (e.g. from generate_image, 16:9, under 2MB).'),
+        privacyStatus: z.enum(['public', 'unlisted', 'private']).optional().describe("Omit to use the channel's saved default privacy. Ignored if publishAt is set (scheduled videos go out as private then flip to public automatically)."),
+        publishAt: z.string().optional().describe('Optional ISO-8601 datetime in the future (e.g. "2026-10-05T16:00:00Z") to schedule the release instead of publishing immediately.'),
+        aiDisclosure: z.boolean().default(true).describe("Mark the video as containing AI-generated/altered content (YouTube's 'altered or synthetic content' disclosure). Keep true for realistic AI footage."),
+        madeForKids: z.boolean().default(false).describe('Whether the video is made for kids (COPPA). Set true only if the audience is children.'),
+        categoryId: z.string().optional().describe('YouTube category id, e.g. "22" People & Blogs (default), "24" Entertainment, "27" Education, "28" Science & Tech, "1" Film & Animation, "26" Howto & Style.'),
+        language: z.string().max(10).optional().describe('Video language code, e.g. "en" or "ar".'),
+      },
+    },
+    async ({ channelId, videoUrl, title, description, tags, thumbnailUrl, privacyStatus, publishAt, aiDisclosure, madeForKids, categoryId, language }) => {
+      const guardKey = `${userId}:${channelId}:${videoUrl}`;
+      try {
+        const channel = await getManagedChannelById(channelId);
+        if (!channel || channel.user_id !== userId) throw new Error('Channel not found on this account — call list_youtube_channels for valid channelIds.');
+        if (!channel.youtube_refresh_token) throw new Error("This channel isn't connected to YouTube yet — the user must click Connect in Erivion → My Channels first.");
+        if (!isErivionMediaUrl(videoUrl)) throw new Error('videoUrl must be an Erivion-hosted video link (use the URL returned by generate_video / check_render_status / edit_video, or one from Erivion\'s "Upload video, get link").');
+        if (thumbnailUrl && !isErivionMediaUrl(thumbnailUrl)) throw new Error('thumbnailUrl must be an Erivion-hosted image link (e.g. from generate_image or "Upload image, get link").');
+        if (publishAt) {
+          const t = new Date(publishAt).getTime();
+          if (!Number.isFinite(t)) throw new Error('publishAt is not a valid ISO-8601 datetime.');
+          if (t < Date.now() + 5 * 60_000) throw new Error('publishAt must be at least ~5 minutes in the future.');
+        }
+
+        const existing = ytGuardGet(guardKey);
+        if (existing?.status === 'inflight') throw new Error('This exact video is already being uploaded to this channel right now — wait for it to finish instead of retrying.');
+        if (existing?.status === 'done') {
+          return { content: [{ type: 'text', text: `⚠️ This exact video was already published to this channel: https://youtu.be/${existing.videoId} — not uploading a duplicate.` }], structuredContent: { status: 'already_published', videoId: existing.videoId, url: `https://youtu.be/${existing.videoId}` } };
+        }
+        ytPublishGuard.set(guardKey, { status: 'inflight', at: Date.now() });
+
+        let videoId;
+        try {
+          videoId = await uploadVideoToYoutube(channel, {
+            videoUrl, title, description, tags,
+            privacyStatus, publishAt,
+            containsSyntheticMedia: aiDisclosure !== false,
+            madeForKids: !!madeForKids, categoryId, defaultLanguage: language,
+          });
+        } catch (upErr) {
+          ytPublishGuard.delete(guardKey); // فشل حقيقي — نسمح بمحاولة تانية
+          throw upErr;
+        }
+        ytPublishGuard.set(guardKey, { status: 'done', videoId, at: Date.now() });
+
+        let thumbNote = '';
+        if (thumbnailUrl) {
+          try { await uploadThumbnailToYoutube(channel, videoId, thumbnailUrl); thumbNote = '\nThumbnail: set.'; }
+          catch (tErr) { thumbNote = `\nThumbnail: NOT set (${tErr.message}). The video itself is published; the user can set a thumbnail manually in YouTube Studio.`; }
+        }
+        const url = `https://youtu.be/${videoId}`;
+        const when = publishAt ? `scheduled for ${new Date(publishAt).toISOString()} (private until then)` : `published as ${privacyStatus || channel.youtube_privacy_status || 'public'}`;
+        return {
+          content: [{ type: 'text', text: `✅ Video ${when} on "${channel.youtube_channel_title || channel.label}": ${url}\nAI-content disclosure: ${aiDisclosure !== false ? 'on' : 'off'}.${thumbNote}` }],
+          structuredContent: { status: publishAt ? 'scheduled' : 'published', videoId, url, thumbnailSet: !!thumbnailUrl && !thumbNote.includes('NOT set') },
+        };
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Failed to publish to YouTube: ${e.message}` }], isError: true };
       }
     }
   );
