@@ -240,6 +240,13 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
   if (subPage === 'terms')   return <SubPage page="terms"   onBack={() => setSubPage(null)} />;
   if (subPage === 'privacy') return <SubPage page="privacy" onBack={() => setSubPage(null)} />;
   if (subPage === 'support') return <SupportPage onBack={() => setSubPage(null)} />;
+  // ✅ FIX (باج حقيقي رصدته مراجعة/اختبار الصفحة الجديدة): 'about' و'refund' كانوا مش
+  // متعاملين معاهم هنا زي terms/privacy/support فوق، فكانوا بيسقطوا لـonNavigate بتاع
+  // App.jsx اللي مش عارف يتعامل مع القيمتين دول، فبيفتح شاشة تسجيل الدخول بدل الصفحة —
+  // يعني "About Us" و"Refund Policy" كانوا فعليًا مكسورين لأي زائر مش مسجل دخول، بالظبط
+  // الجمهور اللي المفروض يقرأ صفحة "من نحن" قبل ما يسجل أصلاً
+  if (subPage === 'about')   return <SubPage page="about"   onBack={() => setSubPage(null)} />;
+  if (subPage === 'refund')  return <SubPage page="refund"  onBack={() => setSubPage(null)} />;
 
   const VIDEO_SHOWCASE = [
     { title:'How Rome Changed the World', tag:'HISTORY', color:'#f59e0b', duration:'1:00', views:'124K', img:null },
