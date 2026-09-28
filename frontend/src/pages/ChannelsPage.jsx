@@ -610,7 +610,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                         placeholder={t.sceneCountPlaceholder}
                         style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12, boxSizing: 'border-box' }} />
                     </div>
-                    {ch.uses_voice && (
+                    {!!ch.uses_voice && (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <span style={{ fontSize: 12 }}>{t.captionsLabel}</span>
                         <Toggle value={ch.captions_enabled !== 0} onChange={v => toggleCaptions(ch.id, v)} />

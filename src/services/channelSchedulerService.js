@@ -894,6 +894,7 @@ export async function triggerApprovedGeneration(run, overrides = {}) {
   // الذكي (generateAnimatedVideo) اللي بيستخدم الموديلات دي فعليًا. من غير اختيار صريح
   // (الافتراضي) السلوك القديم زي ما هو بالظبط
   const hasExplicitModel = !!(channel.image_model || channel.animation_model);
+  console.log(`[ChannelScheduler] run ${run.id} (channel ${channel.id}) style=${contentStyle} image_model=${channel.image_model || 'DEFAULT(nano_banana_2)'} animation_model=${channel.animation_model || 'DEFAULT(seedance_2_5)'}`);
   if (contentStyle === 'map' && !hasExplicitModel) {
     try { return await generateMapVideo(run, channel, idea, shape, headers); }
     catch (e) {
