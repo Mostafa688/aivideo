@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { TERMS_EN, PRIVACY_EN } from '../data/legalContent.js';
 import {
   ClipboardList, Check, Users, Search, Camera, Music, Play, Sparkles, Globe,
   GraduationCap, BookOpen, Megaphone, Drama, ImageIcon, Bot, Clapperboard,
@@ -182,16 +183,7 @@ function TermsStep({ onAgree }) {
           scrollbarWidth: 'thin',
           scrollbarColor: 'rgba(124,106,247,0.3) transparent',
         }}>
-          <Section title="1. Acceptance of Terms">By accessing or using Erivion ("the Service"), you agree to be bound by these Terms of Service. If you do not agree, please do not use the Service.</Section>
-          <Section title="2. Prohibited Content">Users are strictly prohibited from generating content that: is sexually explicit or pornographic; depicts, glorifies, instructs, or incites graphic violence, murder, killing, or serious harm to real people or groups; promotes racism, hatred, or discrimination based on race, ethnicity, religion, gender, nationality, sexual orientation, or disability; facilitates illegal activities; constitutes misinformation or deceptive material; involves minors in inappropriate contexts; or violates applicable laws. Erivion applies automated AI-based content screening to every generation request, in addition to manual review, to detect and block prohibited content before a video is created. Violations result in immediate account termination without refund.</Section>
-          <Section title="3. Account Responsibilities">You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account. You must provide accurate information during registration.</Section>
-          <Section title="4. Intellectual Property">Videos generated through Erivion using your original inputs are owned by you, subject to these Terms. Erivion retains rights to the platform, technology, and any pre-existing materials.</Section>
-          <Section title="5. AI-Generated Content & Service Availability">Videos are generated using third-party AI models and may occasionally contain inaccuracies or unexpected results — you are responsible for reviewing content before publishing it. Erivion strives for high availability but does not guarantee uninterrupted access, and reserves the right to modify, suspend, or discontinue the Service at any time.</Section>
-          <Section title="6. Limitation of Liability">Erivion is not liable for indirect, incidental, or consequential damages arising from your use of the Service. Our total liability shall not exceed the amount you paid in the 12 months preceding the claim.</Section>
-          <Section title="7. Payments & Refunds">Egyptian users pay via InstaPay (manual approval); refunds are available only if requested within 4 hours of purchase approval, and are never granted for dissatisfaction with AI video quality/output. International users pay via Gumroad — refunds are not yet available for international purchases (coming soon). After the 4-hour window, refunds are only issued for a verified technical failure on our end.</Section>
-          <Section title="8. Privacy">We collect your email and usage data to operate the Service. We do not sell your data. Erivion is completely ad-free. For full details, see our Privacy Policy at erivion.net/privacy.</Section>
-          <Section title="9. Changes to Terms">We may update these Terms at any time. Continued use of the Service after changes constitutes acceptance of the new Terms.</Section>
-          <Section title="10. Contact">For questions about these Terms, contact us at digidelight33@gmail.com.</Section>
+          {TERMS_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
           <div style={{ height: 8 }} />
         </div>
 
@@ -558,28 +550,11 @@ function LegalModal({ type, onClose }) {
         <div style={{ overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
           {isTerms ? (
             <>
-              <Section title="1. Acceptance of Terms">By accessing or using Erivion ("the Service"), you agree to be bound by these Terms of Service. If you do not agree, please do not use the Service.</Section>
-              <Section title="2. Prohibited Content">Users are strictly prohibited from generating content that: is sexually explicit or pornographic; depicts, glorifies, instructs, or incites graphic violence, murder, killing, or serious harm to real people; promotes racism, hatred, or discrimination; facilitates illegal activities; constitutes misinformation; involves minors in inappropriate contexts; or violates applicable laws. Erivion applies automated AI-based content screening to every generation request, in addition to manual review. Violations result in immediate account termination without refund.</Section>
-              <Section title="3. Account Responsibilities">You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account. You must provide accurate information during registration.</Section>
-              <Section title="4. Intellectual Property">Videos generated through Erivion using your original inputs are owned by you, subject to these Terms. Erivion retains rights to the platform, technology, and any pre-existing materials.</Section>
-              <Section title="5. Payments">Egyptian users pay via InstaPay (manual approval). International users pay via Gumroad using a credit or debit card.</Section>
-              <Section title="6. Refund Policy">Egyptian users: refunds are available only if requested within 4 hours of purchase approval, and are never granted for dissatisfaction with AI video quality/output. International users: refunds are not yet available (coming soon). After the 4-hour window, refunds are only issued for a verified technical failure on our end. For full details, visit erivion.net/refund.</Section>
-              <Section title="7. AI-Generated Content & Service Availability">Videos are generated using third-party AI models and may occasionally contain inaccuracies — you are responsible for reviewing content before publishing it. Erivion strives for high availability but does not guarantee uninterrupted access, and reserves the right to modify or discontinue the Service.</Section>
-              <Section title="8. Limitation of Liability">Erivion is not liable for indirect, incidental, or consequential damages. Our total liability shall not exceed the amount you paid in the 12 months preceding the claim.</Section>
-              <Section title="9. Changes to Terms">We may update these Terms at any time. Continued use constitutes acceptance.</Section>
-              <Section title="10. Contact">For questions, contact us at digidelight33@gmail.com.</Section>
+              {TERMS_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
             </>
           ) : (
             <>
-              <Section title="1. Information We Collect">We collect information you provide directly (email, name, profile data), usage data (videos created, features used), and technical data (IP address, browser type) to operate and improve the Service.</Section>
-              <Section title="2. How We Use Your Information">We use your information to provide and maintain the Service, send transactional emails (verification codes, payment confirmations), ensure compliance with our Terms, and communicate important updates. We do not use your data for advertising.</Section>
-              <Section title="3. Data Storage & Security">Your data is stored securely on Railway servers. We use industry-standard encryption for sensitive data. We do not sell your personal information to third parties.</Section>
-              <Section title="4. Ad-Free Platform">Erivion is completely ad-free. We do not use Google AdSense or any advertising network. We do not track you for advertising purposes.</Section>
-              <Section title="5. Payments">Egyptian users pay via InstaPay. International users pay via Gumroad (gumroad.com/privacy). We never store card details — all payment processing is handled by these providers.</Section>
-              <Section title="6. Third-Party Services">Erivion integrates with: Google OAuth (policies.google.com/privacy), Groq AI (groq.com/privacy), Pexels (pexels.com/privacy-policy), Stability AI (stability.ai/privacy-policy), Replicate (replicate.com/privacy), and Gumroad (gumroad.com/privacy).</Section>
-              <Section title="7. Your Rights">You may request access to, correction of, or deletion of your personal data by contacting us at digidelight33@gmail.com.</Section>
-              <Section title="8. Cookies">We use local storage only for login session management and preferences. No advertising or tracking cookies are used.</Section>
-              <Section title="9. Contact">For privacy concerns, contact us at digidelight33@gmail.com or through the Support page.</Section>
+              {PRIVACY_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
             </>
           )}
         </div>
