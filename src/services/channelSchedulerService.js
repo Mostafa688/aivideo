@@ -18,6 +18,7 @@ import {
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
 import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
+import { supportsReferenceImages } from './newImageModelsService.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
 import { mergeVideos } from './videoMergeService.js';
 import { uploadVideoToYoutube, uploadThumbnailToYoutube } from './youtubeUploadService.js';
@@ -604,7 +605,14 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
   const MAX_SCENES = 20;
   const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, MAX_SCENES);
   // ✅ NEW (طلب العميل: يختار بنفسه موديل الصور/التحريك — راجع generateAnimatedVideo)
-  const imageModel = channel.image_model || 'nano_banana_2';
+  // ✅ FIX: فكرة "شخصية واحدة ثابتة" مستحيلة من غير صورة مرجعية، وبعض الموديلات (زي Grok Image)
+  // بتتجاهل المرجع تمامًا فكل مشهد كان بيطلع بشخصية مختلفة. هنا الشخصية لازم تتثبّت، فلو
+  // الموديل المختار مش بياخد مرجع بنستخدم nano_banana_2 (المؤكد) لصور القناة دي بس، وبنسجّل ده
+  let imageModel = channel.image_model || 'nano_banana_2';
+  if (!supportsReferenceImages(imageModel)) {
+    console.warn(`[ChannelScheduler] run ${run.id}: image model "${imageModel}" ignores reference images, so a fixed character is impossible with it — using nano_banana_2 for this character channel instead`);
+    imageModel = 'nano_banana_2';
+  }
   const animationModel = channel.animation_model || 'seedance_2_5';
   const maxClip = getMaxClipSeconds(animationModel) || 30;
   const defaultSceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
@@ -878,6 +886,9 @@ export async function triggerApprovedGeneration(run, overrides = {}) {
     target_scene_count: overrides.sceneCount ?? dbChannel.target_scene_count,
     target_duration_sec: overrides.durationSec ?? dbChannel.target_duration_sec,
     captions_enabled: overrides.captionsEnabled !== undefined ? (overrides.captionsEnabled ? 1 : 0) : dbChannel.captions_enabled,
+    // ✅ FIX: "بدون فويس أوفر" في الشات كان مالوش أي مكان يوصل بيه للتوليد (overrides كانت بس مشاهد/
+    // مدة/كابشن)، فالقناة كانت بتكمّل بإعدادها الدائم وتولّد صوت رغم طلب العميل الصريح
+    uses_voice: overrides.usesVoice !== undefined ? (overrides.usesVoice ? 1 : 0) : dbChannel.uses_voice,
   };
   const user = await getUserById(run.user_id);
   const idea = JSON.parse(run.idea_brief || '{}');

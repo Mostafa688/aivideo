@@ -53,6 +53,7 @@ const T = {
     contentBriefSaved: 'اتحفظ.', save: 'حفظ',
     imageModelLabel: 'موديل توليد الصور', animationModelLabel: 'موديل تحريك المشاهد',
     modelDefaultOption: 'افتراضي (أفضل جودة)', perImage: 'كريديت/صورة', perSecond: 'كريديت/ثانية',
+    noRefTag: 'بدون مرجع', noRefWarning: 'الموديل ده مابياخدش صور مرجعية: كل مشهد بيتولّد لوحده، فمفيش ثبات للشخصيات أو الستايل بين المشاهد. لو محتاج شخصيات ثابتة اختار موديل غيره. (قناة "الشخصية الواحدة" بتستخدم موديل بيدعم المرجع تلقائيًا.)',
     cheapestTag: 'الأرخص', stockModelHint: 'لو اخترت موديل هنا، القناة هتولّد الفيديو بالذكاء الاصطناعي بالموديل ده حتى لو نوع المحتوى واقعي/خرائط. سيبه افتراضي لو عايز اللقطات الجاهزة.',
     modelChangedToast: 'اتحفظ اختيار الموديل.',
     sceneCountLabel: 'عدد المشاهد المستهدف (اختياري)', sceneCountPlaceholder: 'افتراضي حسب الشكل (قصير/طويل)',
@@ -101,6 +102,7 @@ const T = {
     contentBriefSaved: 'Saved.', save: 'Save',
     imageModelLabel: 'Image generation model', animationModelLabel: 'Scene animation model',
     modelDefaultOption: 'Default (best quality)', perImage: 'credits/image', perSecond: 'credits/sec',
+    noRefTag: 'no reference', noRefWarning: "This model doesn't take reference images: every scene is generated on its own, so characters and style won't stay consistent between scenes. Pick another model if you need consistent characters. (Single-character channels automatically use a reference-capable model.)",
     cheapestTag: 'cheapest', stockModelHint: 'If you pick a model here, this channel generates its videos with AI using that model, even for realistic/map content. Leave it on default to keep using stock footage.',
     modelChangedToast: 'Model choice saved.',
     sceneCountLabel: 'Target scene count (optional)', sceneCountPlaceholder: 'Default based on format (short/long)',
@@ -579,8 +581,11 @@ export default function ChannelsPage({ onBack, userRegion }) {
                         <select value={ch.image_model || ''} onChange={e => assignModel(ch.id, 'imageModel', e.target.value)}
                           style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
                           <option value="">{t.modelDefaultOption}</option>
-                          {[...imageModels].sort((a, b) => a.creditCostPerImage - b.creditCostPerImage).map((m, i) => <option key={m.key} value={m.key}>{m.label} — {m.creditCostPerImage} {t.perImage}{i === 0 ? ` (${t.cheapestTag})` : ''}</option>)}
+                          {[...imageModels].sort((a, b) => a.creditCostPerImage - b.creditCostPerImage).map((m, i) => <option key={m.key} value={m.key}>{m.label} — {m.creditCostPerImage} {t.perImage}{i === 0 ? ` (${t.cheapestTag})` : ''}{m.supportsReferenceImages === false ? ` — ${t.noRefTag}` : ''}</option>)}
                         </select>
+                        {imageModels.find(m => m.key === ch.image_model)?.supportsReferenceImages === false && (
+                          <p style={{ fontSize: 11, color: '#f59e0b', margin: '6px 0 0', lineHeight: 1.6 }}>{t.noRefWarning}</p>
+                        )}
                       </div>
                     )}
                     {!['whiteboard_sketch'].includes(ch.content_style) && videoModels.length > 0 && (

@@ -2881,6 +2881,7 @@ app.get('/api/images/models', authMiddleware, (req, res) => {
     label: REPLICATE_MODEL_COSTS[key]?.label || key,
     creditCostPerImage: getImageCreditCost(key, 1),
     tiers: getQualityTiers(key),
+    supportsReferenceImages: !NEW_IMAGE_MODELS[key].noReferenceImages,
   }));
   res.json({ models });
 });

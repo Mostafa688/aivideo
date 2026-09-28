@@ -155,6 +155,29 @@ function extractJsonAndRest(text) {
 // روابط قديمة برة نافذة آخر 16 رسالة تفضل متاحة للايجنت)، كان لازم الرابط ده يتضاف لمجموعة
 // "الروابط المعروفة" هنا كمان — وإلا الحارس ده كان هيرفض أي رابط الايجنت ينقله من الدفتر
 // (يشوفه "مش معروف" ويعتبره مختلق) حتى بعد ما بقى شايفه فعليًا في الـ prompt
+
+// ✅ FIX (باج حقيقي: العميل قال "بدون فويس أوفر" في الشات والقناة ولّدت صوت — Gemini TTS ×4 على
+// Replicate). كان الاعتماد كله على إن الـLLM يضيف حقل في الماركر، ومفيش حقل للصوت أصلاً. دلوقتي
+// الكود نفسه بيقرا رسائل العميل: أحدث رسالة بتذكر الصوت (بدون/مع) هي اللي بتحسم، من غير ما
+// نعتمد على التزام الـLLM. بيرجّع false = "من غير صوت"، true = "بصوت"، null = العميل ماذكرش
+const NO_VOICE_RE = /(بدون|من\s*غير|مفيش|بلا|مش\s*عايز|ماعايزش|ما\s*عايزش|بلاش|ولا)\s*(?:اي\s*)?(فويس|فويز|صوت|تعليق\s*صوتي|نارريشن|راوي|سرد)|بدون\s*تعليق|\b(no|without|skip)\s+(the\s+)?(voice|voiceover|voice-over|narration|narrator)\b|\bsilent\b/i;
+const WITH_VOICE_RE = /(مع|بـ|بصوت|عايز|اضف|ضيف)\s*(فويس|فويز|صوت|تعليق\s*صوتي|نارريشن|راوي)|\b(with|add|include)\s+(a\s+)?(voice|voiceover|voice-over|narration|narrator)/i;
+function detectVoiceRequest(message, history) {
+  const userTexts = [];
+  if (typeof message === 'string') userTexts.push(message);
+  if (Array.isArray(history)) {
+    for (let i = history.length - 1; i >= 0 && userTexts.length < 8; i--) {
+      const m = history[i];
+      if (m?.role === 'user' && typeof m.content === 'string') userTexts.push(m.content);
+    }
+  }
+  for (const t of userTexts) { // الأحدث أولاً
+    if (NO_VOICE_RE.test(t)) return false;
+    if (WITH_VOICE_RE.test(t)) return true;
+  }
+  return null;
+}
+
 function extractKnownUrls(history, extraText = null) {
   const set = new Set();
   const urlRegex = /https?:\/\/[^\s\]"',]+/g;
@@ -1224,6 +1247,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
           if (Number.isInteger(sceneN) && sceneN >= 2 && sceneN <= 20) overrides.sceneCount = sceneN;
           if (Number.isInteger(durN) && durN >= 5 && durN <= 1200) overrides.durationSec = durN;
           if (typeof channelGeneratePayload.captionsOverride === 'boolean') overrides.captionsEnabled = channelGeneratePayload.captionsOverride;
+          // الصوت: الكود بيقرا رسائل العميل بنفسه (detectVoiceRequest)، وحقل voiceOverride من الـLLM
+          // بس احتياطي لو مفيش ذكر واضح — الحسم للي العميل كتبه فعلاً مش لتفسير الـLLM
+          const voiceFromUser = detectVoiceRequest(message, history);
+          if (voiceFromUser !== null) overrides.usesVoice = voiceFromUser;
+          else if (typeof channelGeneratePayload.voiceOverride === 'boolean') overrides.usesVoice = channelGeneratePayload.voiceOverride;
           const { runId, idea, format, estimatedCost } = await triggerChannelRunNow(fullChannel, overrides);
           channelGenerate = { runId, channelId, ideaTitle: idea.title, format, estimatedCost };
         } catch (e) {
