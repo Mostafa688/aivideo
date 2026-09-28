@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clapperboard, Star, Trophy, Users, Building2, Check, X, HandHeart, Globe, Loader2 } from 'lucide-react';
 
-const INSTAPAY_NUMBER = import.meta.env.VITE_INSTAPAY_NUMBER || '01091917832';
+const INSTAPAY_LINK = import.meta.env.VITE_INSTAPAY_LINK || 'https://ipn.eg/S/mostafabond51/instapay/75HKD8';
 const EGP_PER_CREDIT = 0.7;
 const SLIDER_MIN = 600;
 const SLIDER_MAX = 10000;
@@ -74,8 +74,8 @@ export function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
     setPreview(URL.createObjectURL(file));
   };
 
-  const copyNumber = () => {
-    navigator.clipboard.writeText(INSTAPAY_NUMBER);
+  const copyLink = () => {
+    navigator.clipboard.writeText(INSTAPAY_LINK);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -107,10 +107,10 @@ export function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
         </div>
 
         <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 18, marginBottom: 18 }}>
-          <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 10px' }}>حوّل المبلغ عن طريق InstaPay على الرقم:</p>
+          <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 10px' }}>حوّل {amountEgp.toLocaleString()} جنيه عن طريق InstaPay بالضغط على الزرار ده:</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: 1 }}>{INSTAPAY_NUMBER}</span>
-            <button onClick={copyNumber} style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.35)', color: '#a99bff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{copied ? 'اتنسخ' : 'نسخ'}</button>
+            <a href={INSTAPAY_LINK} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: 'center', padding: '12px 16px', borderRadius: 10, background: '#7c6af7', color: '#fff', fontSize: 14, fontWeight: 800, textDecoration: 'none' }}>افتح رابط الدفع</a>
+            <button onClick={copyLink} style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.35)', color: '#a99bff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>{copied ? 'اتنسخ' : 'نسخ الرابط'}</button>
           </div>
         </div>
 
