@@ -394,14 +394,14 @@ function ChannelReviewCard({ job, lang, onUpdateJob, onMessage }) {
     ? { cost: 'كريديت', reviewedBadge: 'تمت المراجعة', publishedBadge: 'منشور على يوتيوب', reviewBtn: 'تمت المراجعة', publishBtn: 'نشر الآن', notConnected: 'القناة مش متربطة بيوتيوب', watchYoutube: 'شوفه على يوتيوب',
         pkgTitle: 'جاهز للرفع على قناتك', titleL: 'العنوان', descL: 'الوصف', tagsL: 'الكلمات المفتاحية', thumbL: 'الصورة المصغرة', copy: 'نسخ', copied: 'اتنسخ ✓', dlVideo: 'تحميل الفيديو', dlThumb: 'تحميل الصورة',
         aiNote: 'وانت بترفع، اختار "المحتوى ده اتعدّل أو اتولّد بالذكاء الاصطناعي" في يوتيوب.',
-        partialTitleErr: 'الفيديو ده ناقص — مشهد فشل في التوليد', partialHowErr: 'كريديت المشهد اللي فشل اتردّ. دوس "كمّل الفيديو" وهيعيد المحاولة من نفس المشهد بنفس الموديلات والترتيب.',
+        lastTryFailed: 'آخر محاولة للتكملة فشلت:', partialTitleErr: 'الفيديو ده ناقص — مشهد فشل في التوليد', partialHowErr: 'كريديت المشهد اللي فشل اتردّ. دوس "كمّل الفيديو" وهيعيد المحاولة من نفس المشهد بنفس الموديلات والترتيب.',
         partialTitle: 'الفيديو ده ناقص — الكريديت خلص قبل ما يكتمل', partialDone: (d, t) => `اتعمل ${d} مشهد من ${t}. ده الفيديو المنتج لحد دلوقتي.`,
         partialHow: 'عشان تكمّله: اشحن كريديت أو اشترك في خطة أكبر، وبعدين دوس "كمّل الفيديو" — بيكمّل من نفس المشهد بنفس الموديلات والترتيب.',
         partialNeed: (n, b) => `محتاج حوالي ${n} كريديت${b != null ? ` (رصيدك ${b})` : ''}.`, continueBtn: 'كمّل الفيديو', resuming: 'بيكمّل الفيديو دلوقتي... هيتحدّث هنا أول ما يخلص.' }
     : { cost: 'credits', reviewedBadge: 'Reviewed', publishedBadge: 'Published on YouTube', reviewBtn: 'Mark Reviewed', publishBtn: 'Publish Now', notConnected: 'This channel is not connected to YouTube', watchYoutube: 'Watch on YouTube',
         pkgTitle: 'Ready to upload to your channel', titleL: 'Title', descL: 'Description', tagsL: 'Tags', thumbL: 'Thumbnail', copy: 'Copy', copied: 'Copied ✓', dlVideo: 'Download video', dlThumb: 'Download thumbnail',
         aiNote: 'When uploading, turn on "Altered or synthetic content" in YouTube.',
-        partialTitleErr: 'This video is unfinished — a scene failed', partialHowErr: 'The credits for the failed scene were refunded. Press "Continue video" to retry from the same scene, same models and order.',
+        lastTryFailed: 'The last attempt to continue failed:', partialTitleErr: 'This video is unfinished — a scene failed', partialHowErr: 'The credits for the failed scene were refunded. Press "Continue video" to retry from the same scene, same models and order.',
         partialTitle: 'This video is unfinished — credits ran out', partialDone: (d, t) => `${d} of ${t} scenes were made. This is the video so far.`,
         partialHow: 'To finish it: top up credits or move to a bigger plan, then press "Continue video" — it carries on from the same scene, same models and order.',
         partialNeed: (n, b) => `Needs about ${n} credits${b != null ? ` (your balance ${b})` : ''}.`, continueBtn: 'Continue video', resuming: 'Finishing the video now... this card updates when it is done.' };
@@ -510,7 +510,7 @@ function ChannelReviewCard({ job, lang, onUpdateJob, onMessage }) {
               <>
                 {job.partial && <div style={{ fontSize: 12, color: '#e5e7eb', lineHeight: 1.6 }}>{tt.partialDone(job.partial.scenesDone, job.partial.scenesTotal)} {job.partial.estimatedRemaining ? tt.partialNeed(job.partial.estimatedRemaining, job.partial.balance) : ''}</div>}
                 <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>{job.partial?.reason === 'error' ? tt.partialHowErr : tt.partialHow}</div>
-                {job.resumeError && <div style={{ fontSize: 11.5, color: '#fca5a5' }}>{job.resumeError}</div>}
+                {job.resumeError && <div style={{ fontSize: 11.5, color: '#fca5a5' }}>{tt.lastTryFailed} {job.resumeError}</div>}
                 <button onClick={continueVideo} disabled={!!busy}
                   style={{ fontSize: 12, padding: '7px 12px', borderRadius: 8, border: 'none', background: '#f59e0b', color: '#111', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', width: 'fit-content', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {busy === 'resume' ? <span className="spinning" style={{ display: 'inline-block' }}>◐</span> : tt.continueBtn}
