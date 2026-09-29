@@ -387,35 +387,43 @@ async function renderScenesFromImages(run, channel, idea, shape, headers, st) {
     }
 
     // كل صورة تتحرك لكليب، بمدة = مدة سرد نفس المشهد (لو فيه صوت) وإلا المدة الافتراضية
-    let outOfCredits = null;
+    let stop = null; // { reason: 'credits' | 'error', ... } — لو وقفنا قبل ما نخلص كل المشاهد
     for (let i = startedAt; i < st.images.length; i++) {
-      const targetDurationSec = st.usesVoice ? Math.max(3, Math.min(st.maxClip, narrations[i].durationSec)) : st.defaultSceneDurationSec;
-      const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ model: st.animationModel, prompt: 'subtle natural motion, cinematic camera movement', imageUrl: st.images[i], aspectRatio: st.ratio, durationSec: targetDurationSec }),
-      });
-      const vidJobData = await vidRes.json();
-      if (!vidRes.ok) {
-        // الكريديت خلص وسط الفيديو — مش فشل: نقف هنا ونسلّم اللي اتعمل
-        if (vidJobData.error === 'quota_exceeded') { outOfCredits = { needed: vidJobData.cost ?? null, remaining: vidJobData.remaining ?? null }; break; }
-        // الصور خلاص اتولدت واتخصم تمنها — أي فشل تاني وطالع "committed" عشان منرجعش نخصم تاني على مسار تاني
-        const e = new Error(vidJobData.error || 'Scene animation failed'); e.committed = true; throw e;
+      try {
+        const targetDurationSec = st.usesVoice ? Math.max(3, Math.min(st.maxClip, narrations[i].durationSec)) : st.defaultSceneDurationSec;
+        const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
+          method: 'POST', headers,
+          body: JSON.stringify({ model: st.animationModel, prompt: 'subtle natural motion, cinematic camera movement', imageUrl: st.images[i], aspectRatio: st.ratio, durationSec: targetDurationSec }),
+        });
+        const vidJobData = await vidRes.json();
+        if (!vidRes.ok) {
+          // الكريديت خلص وسط الفيديو — مش فشل: نقف هنا ونسلّم اللي اتعمل
+          if (vidJobData.error === 'quota_exceeded') { stop = { reason: 'credits', needed: vidJobData.cost ?? null, remaining: vidJobData.remaining ?? null }; break; }
+          throw new Error(vidJobData.error || 'Scene animation failed');
+        }
+        let clipUrl = await pollRenderJob(vidJobData.jobId, headers);
+        if (st.usesVoice) {
+          // مطابقة دقيقة لمدة المشهد لمدة سرده الحقيقية + تركيب سرد المشهد ده على المشهد ده بالذات
+          clipUrl = await conformVideoDurationToAudio({ videoUrl: clipUrl, targetDurationSec: narrations[i].durationSec, modelKeyForNaming: st.namingKey });
+          clipUrl = await composeVideoAudio({ videoUrl: clipUrl, narrationPath: narrations[i].audioPath, modelKeyForNaming: st.namingKey });
+        }
+        st.clipUrls.push(clipUrl);
+        st.nextIndex = i + 1;
+        // كل كليب خلص واتدفع تمنه بيتحفظ فورًا — أي انقطاع بعد كده مايضيعش الشغل
+        await setDailyVideoRunResumeState(run.id, st).catch(() => {});
+      } catch (sceneErr) {
+        // مشهد فشل (والكريديت بتاعه اتردّ) بعد ما مشاهد قبله خلصت: منضيّعش اللي اتدفع — نسلّمه
+        // ناقص، والعميل يكمّل من نفس المشهد. لو ده أول مشهد مفيش حاجة نسلّمها فنرمي الخطأ زي الأول
+        if (!st.clipUrls.length) throw sceneErr;
+        console.warn(`[ChannelScheduler] Scene ${i + 1}/${st.images.length} failed for run ${run.id}; delivering the ${st.clipUrls.length} finished scenes as a partial video:`, sceneErr.message);
+        stop = { reason: 'error', message: sceneErr.message, sceneNumber: i + 1 };
+        break;
       }
-      let clipUrl = await pollRenderJob(vidJobData.jobId, headers);
-      if (st.usesVoice) {
-        // مطابقة دقيقة لمدة المشهد لمدة سرده الحقيقية + تركيب سرد المشهد ده على المشهد ده بالذات
-        clipUrl = await conformVideoDurationToAudio({ videoUrl: clipUrl, targetDurationSec: narrations[i].durationSec, modelKeyForNaming: st.namingKey });
-        clipUrl = await composeVideoAudio({ videoUrl: clipUrl, narrationPath: narrations[i].audioPath, modelKeyForNaming: st.namingKey });
-      }
-      st.clipUrls.push(clipUrl);
-      st.nextIndex = i + 1;
-      // كل كليب خلص واتدفع تمنه بيتحفظ فورًا — أي انقطاع بعد كده مايضيعش الشغل
-      await setDailyVideoRunResumeState(run.id, st).catch(() => {});
     }
 
     if (!st.clipUrls.length) {
-      const e = new Error(`insufficient_credits: the credits ran out before the first scene could be animated (needs ${outOfCredits?.needed ?? '?'}, balance ${outOfCredits?.remaining ?? '?'})`);
-      e.committed = true; e.creditsNeeded = outOfCredits?.needed ?? null; e.balance = outOfCredits?.remaining ?? null;
+      const e = new Error(`insufficient_credits: the credits ran out before the first scene could be animated (needs ${stop?.needed ?? '?'}, balance ${stop?.remaining ?? '?'})`);
+      e.committed = true; e.creditsNeeded = stop?.needed ?? null; e.balance = stop?.remaining ?? null;
       throw e;
     }
 
@@ -423,7 +431,7 @@ async function renderScenesFromImages(run, channel, idea, shape, headers, st) {
     let videoUrl = st.clipUrls.length === 1 ? st.clipUrls[0] : await mergeVideos(st.clipUrls);
 
     // كابشن حقيقي لو مطلوب — بكريديت. مش بنعمله على الفيديو الناقص (هيتحسب مرة واحدة عند الاكتمال)
-    if (!outOfCredits && st.usesVoice && st.captionsEnabled) {
+    if (!stop && st.usesVoice && st.captionsEnabled) {
       const captionCost = getFlatCreditCost('autocaption');
       const balance = await getCreditsBalance(run.user_id);
       if (balance >= captionCost) {
@@ -466,11 +474,11 @@ async function renderScenesFromImages(run, channel, idea, shape, headers, st) {
 
     await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
 
-    if (outOfCredits) {
+    if (stop) {
       // نسيب resume_state زي ما هو (اتحفظ بعد آخر كليب) — الفيديو اللي رجع ناقص
       run._partial = {
-        scenesDone: st.clipUrls.length, scenesTotal: st.images.length,
-        estimatedRemaining: estimateRemainingCost(st), balance: outOfCredits.remaining,
+        reason: stop.reason, scenesDone: st.clipUrls.length, scenesTotal: st.images.length,
+        estimatedRemaining: estimateRemainingCost(st), balance: stop.remaining ?? null,
       };
     } else {
       await setDailyVideoRunResumeState(run.id, null).catch(() => {});
@@ -889,6 +897,18 @@ async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers)
   }
 }
 
+// تجاوزات "لمرة واحدة" جاية من الشات (مشاهد/مدة/كابشن/فويس) فوق إعدادات القناة الدائمة — بتتطبق
+// على نسخة، مش على القناة نفسها. مشتركة بين التوليد الفعلي وتقدير التكلفة عشان يطابقوا بعض
+function applyRunOverrides(dbChannel, overrides = {}) {
+  return {
+    ...dbChannel,
+    target_scene_count: overrides.sceneCount ?? dbChannel.target_scene_count,
+    target_duration_sec: overrides.durationSec ?? dbChannel.target_duration_sec,
+    captions_enabled: overrides.captionsEnabled !== undefined ? (overrides.captionsEnabled ? 1 : 0) : dbChannel.captions_enabled,
+    uses_voice: overrides.usesVoice !== undefined ? (overrides.usesVoice ? 1 : 0) : dbChannel.uses_voice,
+  };
+}
+
 // ── لو العميل وافق: الموقع يقرر أنسب موديل لمحتوى القناة (contentStyle من draftDailyIdea)
 // ويولّد بيه. لو المسار الذكي (واقعي/خريطة) فشل قبل أي خصم كريديت، بنرجع تلقائيًا للمسار
 // الافتراضي (generateAnimatedVideo) بدل ما يوم العميل يضيع بالكامل بسبب باج في مسار جديد
@@ -899,15 +919,7 @@ export async function triggerApprovedGeneration(run, overrides = {}) {
   // "من غير كابشن" — من غير ما يغيّر إعدادات القناة الدائمة في my channels). بيتفلتر/يتحقق
   // منه في agentRoutes.js's CHANNEL_GENERATE handler قبل ما يوصل هنا، فمش بيوصل غير قيم سليمة.
   // الافتراضي (overrides={}) هو المسار العادي (الإيميل اليومي)، مفيهوش أي تغيير
-  const channel = {
-    ...dbChannel,
-    target_scene_count: overrides.sceneCount ?? dbChannel.target_scene_count,
-    target_duration_sec: overrides.durationSec ?? dbChannel.target_duration_sec,
-    captions_enabled: overrides.captionsEnabled !== undefined ? (overrides.captionsEnabled ? 1 : 0) : dbChannel.captions_enabled,
-    // ✅ FIX: "بدون فويس أوفر" في الشات كان مالوش أي مكان يوصل بيه للتوليد (overrides كانت بس مشاهد/
-    // مدة/كابشن)، فالقناة كانت بتكمّل بإعدادها الدائم وتولّد صوت رغم طلب العميل الصريح
-    uses_voice: overrides.usesVoice !== undefined ? (overrides.usesVoice ? 1 : 0) : dbChannel.uses_voice,
-  };
+  const channel = applyRunOverrides(dbChannel, overrides);
   const user = await getUserById(run.user_id);
   const idea = JSON.parse(run.idea_brief || '{}');
   const shape = run.format === 'short' ? SHORT_FORM : LONG_FORM;
@@ -1015,11 +1027,13 @@ async function sendPartialRunEmail(userEmail, idea, videoUrl, partial, projectNa
   if (!prefs.emailEnabled || !prefs.videoReady) return;
   const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const needLine = partial.estimatedRemaining ? `Finishing it needs about <strong style="color:#fff">${partial.estimatedRemaining} credits</strong>${partial.balance != null ? ` (your balance: ${partial.balance})` : ''}.` : '';
-  const html = `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:52px">⚠️</div><h2 style="color:#f59e0b;margin:8px 0">Your credits ran out before the video was finished</h2><p style="color:#d1d5db;font-size:15px"><strong style="color:#fff">${esc(idea.title)}</strong></p><p style="color:#9ca3af;font-size:14px;line-height:1.8">${partial.scenesDone} of ${partial.scenesTotal} scenes were made. Here is the video produced so far:</p><p><a href="${videoUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Watch the video so far →</a></p><p style="color:#9ca3af;font-size:14px;line-height:1.8">To finish it, top up your credits or upgrade to a bigger plan. ${needLine}<br/>Then open ${projectName ? `<strong style="color:#fff">${esc(projectName)}</strong>` : 'your project'} on Erivion and press <strong style="color:#fff">Continue</strong> — the remaining scenes are made in the same style and joined in order.</p><p style="margin-top:20px"><a href="${FRONTEND_URL}" style="display:inline-block;background:#22c55e;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Open Erivion →</a></p></div>`;
+  const byError = partial.reason === 'error';
+  const headline = byError ? 'One scene could not be made, so the video is unfinished' : 'Your credits ran out before the video was finished';
+  const html = `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:52px">⚠️</div><h2 style="color:#f59e0b;margin:8px 0">${headline}</h2><p style="color:#d1d5db;font-size:15px"><strong style="color:#fff">${esc(idea.title)}</strong></p><p style="color:#9ca3af;font-size:14px;line-height:1.8">${partial.scenesDone} of ${partial.scenesTotal} scenes were made. Here is the video produced so far:</p><p><a href="${videoUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Watch the video so far →</a></p><p style="color:#9ca3af;font-size:14px;line-height:1.8">${byError ? 'The credits for the failed scene were refunded. ' : 'To finish it, top up your credits or upgrade to a bigger plan. '}${needLine}<br/>${byError ? 'Open' : 'Then open'} ${projectName ? `<strong style="color:#fff">${esc(projectName)}</strong>` : 'your project'} on Erivion and press <strong style="color:#fff">Continue</strong> — the remaining scenes are made in the same style and joined in order.</p><p style="margin-top:20px"><a href="${FRONTEND_URL}" style="display:inline-block;background:#22c55e;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Open Erivion →</a></p></div>`;
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'Erivion <noreply@erivion.net>', to: userEmail, subject: `⚠️ ${idea.title} stopped at scene ${partial.scenesDone} of ${partial.scenesTotal} — credits ran out`, html }),
+    body: JSON.stringify({ from: 'Erivion <noreply@erivion.net>', to: userEmail, subject: `⚠️ ${idea.title} stopped at scene ${partial.scenesDone} of ${partial.scenesTotal} — ${byError ? 'a scene failed' : 'credits ran out'}`, html }),
   }).catch(() => {});
 }
 
@@ -1223,7 +1237,7 @@ export async function resolveChannelRunReviewAction(run, action) {
 
 export async function triggerChannelRunNow(channel, overrides = {}) {
   const { idea, format } = await getFreshChannelIdea(channel);
-  const estimatedCost = estimateChannelRunCost(channel, format, idea);
+  const estimatedCost = estimateChannelRunCost(applyRunOverrides(channel, overrides), format, idea);
   const runId = await createDailyVideoRun({
     channelId: channel.id, userId: channel.user_id,
     ideaTitle: idea.title, ideaBrief: JSON.stringify(idea), format, approveToken: null,
