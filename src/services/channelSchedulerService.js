@@ -1001,7 +1001,7 @@ export async function finalizeChannelRunAfterGeneration(run, channel, idea, vide
 
   const user = await getUserById(channel.user_id);
   if (user?.email) {
-    await sendDailyResultEmail(user.email, idea, videoUrl, true, null, { reviewToken, projectId, thumbnailUrl }).catch(() => {});
+    await sendDailyResultEmail(user.email, idea, videoUrl, true, null, { reviewToken, projectId, thumbnailUrl, projectName: `🎬 ${channel.label || channel.channel_id || 'Channel'} — Auto Videos` }).catch(() => {});
   }
 }
 
@@ -1160,9 +1160,8 @@ export async function sendDailyResultEmail(userEmail, idea, videoUrl, success, e
   let html;
   if (success && reviewInfo?.reviewToken && !YOUTUBE_PUBLISH_ENABLED) {
     const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const tags = Array.isArray(idea.tags) ? idea.tags.join(', ') : '';
-    const projectNote = reviewInfo.projectId ? '<p style="color:#6b7280;font-size:12px">The same package is saved in the video\'s project on Erivion.</p>' : '';
-    html = `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:16px"><div style="text-align:center;font-size:48px">🎬</div><h2 style="color:#22c55e;text-align:center;margin:8px 0">Your video is ready to upload</h2><p style="color:#9ca3af;text-align:center;margin:0 0 14px">Everything is prepared — you upload it yourself from YouTube Studio.</p><p style="text-align:center"><a href="${FRONTEND_URL}${videoUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Watch / Download the video →</a></p>${reviewInfo.thumbnailUrl ? `<p style="text-align:center"><img src="${reviewInfo.thumbnailUrl}" alt="thumbnail" style="max-width:100%;border-radius:10px"/><br/><a href="${reviewInfo.thumbnailUrl}" style="color:#7c6af7;font-size:12px">Download the thumbnail</a></p>` : ''}<div style="background:#16162a;border-radius:10px;padding:14px;margin-top:10px"><div style="color:#9ca3af;font-size:11px;margin-bottom:4px">TITLE</div><div style="font-weight:700">${esc(idea.title)}</div><div style="color:#9ca3af;font-size:11px;margin:12px 0 4px">DESCRIPTION</div><div style="white-space:pre-wrap;font-size:13px;color:#d1d5db">${esc(idea.description || idea.brief)}</div>${tags ? `<div style="color:#9ca3af;font-size:11px;margin:12px 0 4px">TAGS</div><div style="font-size:13px;color:#d1d5db">${esc(tags)}</div>` : ''}</div>${projectNote}</div>`;
+    const where = reviewInfo.projectName ? `in your project <strong style="color:#fff">${esc(reviewInfo.projectName)}</strong>` : 'in your Erivion projects';
+    html = `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:56px">🎬</div><h2 style="color:#22c55e;margin:8px 0">Your video is ready!</h2><p style="color:#d1d5db;font-size:15px;line-height:1.7"><strong style="color:#fff">${esc(idea.title)}</strong></p><p style="color:#9ca3af;font-size:14px;line-height:1.8">The video, thumbnail, title, description and keywords are all ready ${where}.<br/>Open it, copy what you need, and upload it to your channel.</p><p style="margin-top:22px"><a href="${FRONTEND_URL}" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Open Erivion →</a></p></div>`;
   } else if (success && reviewInfo?.reviewToken) {
     const reviewedUrl = `${BACKEND_URL}/api/channels/review-action?token=${reviewInfo.reviewToken}&action=reviewed`;
     const publishUrl = `${BACKEND_URL}/api/channels/review-action?token=${reviewInfo.reviewToken}&action=publish`;
