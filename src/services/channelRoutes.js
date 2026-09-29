@@ -6,10 +6,12 @@ import {
   claimDailyVideoRunForGeneration, claimRunForPublishing, releasePublishingClaim, acknowledgeYoutubePublish,
   listDailyVideoRunsForChannel, getDailyVideoRunById, linkYoutubeVideoToRun,
   getCharacterReferenceForUser, setChannelCharacter, getDailyVideoRunByReviewToken,
+  acknowledgeCostNotice, getCreditsBalance,
 } from './authService.js';
 import { verifyVidiqKey, getVideoPerformance } from './vidiqClientService.js';
 import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
-import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically, finalizeChannelRunAfterGeneration, resolveChannelRunReviewAction } from './channelSchedulerService.js';
+import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically, finalizeChannelRunAfterGeneration, resolveChannelRunReviewAction, describeRunError, startResumeChannelRun } from './channelSchedulerService.js';
+import { buildChannelCostGuide } from './channelCostGuide.js';
 import { getYoutubeConnectUrl, handleYoutubeOAuthCallback, disconnectYoutubeForChannel } from './youtubeUploadService.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
@@ -129,6 +131,41 @@ router.patch('/:id', authMiddleware, async (req, res) => {
 
 // ✅ موافقة صريحة (مرة واحدة لكل قناة) على إن النشر على يوتيوب عن طريق Erivion بمسؤولية العميل —
 // بدونها النشر (من الإيميل/الداشبورد/MCP) مرفوض
+// ✅ NEW: دليل تكلفة الفيديوهات الطويلة (أسعار كل موديل + تقدير القناة + توصيات) وإقرار العميل بقراءته
+router.get('/:id/cost-guide', authMiddleware, async (req, res) => {
+  try {
+    const channel = await getManagedChannelById(req.params.id);
+    if (!channel || channel.user_id !== req.user.userId) return res.status(404).json({ error: 'Channel not found' });
+    const balance = await getCreditsBalance(req.user.userId);
+    res.json(buildChannelCostGuide(channel, balance));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/:id/cost-ack', authMiddleware, async (req, res) => {
+  try {
+    const ok = await acknowledgeCostNotice(req.params.id, req.user.userId);
+    if (!ok) return res.status(404).json({ error: 'Channel not found' });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ✅ NEW: استكمال فيديو وقف قبل ما يكتمل (الكريديت خلص) — بعد ما العميل يشحن
+router.post('/runs/:runId/resume', authMiddleware, async (req, res) => {
+  try {
+    const r = await startResumeChannelRun(req.user.userId, parseInt(req.params.runId, 10));
+    if (r.ok) return res.status(202).json(r);
+    if (r.error === 'insufficient_credits') return res.status(403).json({ error: 'insufficient_credits', message: `Not enough credits to continue — the next scene needs ${r.needed} and your balance is ${r.balance}. Finishing the video needs about ${r.estimatedRemaining ?? '?'} credits.`, ...r });
+    if (r.error === 'already_resuming') return res.status(409).json({ error: 'already_resuming', message: 'This video is already being finished.' });
+    return res.status(404).json({ error: 'not_resumable', message: 'This video has nothing to continue.' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post('/:id/publish-ack', authMiddleware, async (req, res) => {
   try {
     const ok = await acknowledgeYoutubePublish(req.params.id, req.user.userId);
@@ -223,7 +260,7 @@ router.get('/runs/:runId/status', authMiddleware, async (req, res) => {
     const run = await getDailyVideoRunById(req.params.runId, req.user.userId);
     if (!run) return res.status(404).json({ error: 'Run not found' });
     res.json({ run: {
-      id: run.id, status: run.status, ideaTitle: run.idea_title, videoUrl: run.video_url,
+      id: run.id, status: run.status, ideaTitle: run.idea_title, videoUrl: run.video_url, reviewState: run.review_state || null,
       youtubeVideoId: run.youtube_video_id, error: run.error, creditsCharged: run.credits_charged,
     } });
   } catch (e) {
@@ -317,8 +354,7 @@ router.get('/daily-approve', async (req, res) => {
       await finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, null);
     } catch (e) {
       console.error('[ChannelRoutes] Approved generation failed:', e.message);
-      const isCredits = e.message.startsWith('insufficient_credits');
-      const errorMsg = isCredits ? 'Not enough credits — please top up to keep your daily videos running.' : e.message;
+      const errorMsg = describeRunError(e);
       await updateDailyVideoRunStatus(run.id, 'failed', { error: errorMsg });
       const user = await getUserById(run.user_id);
       await sendDailyResultEmail(user.email, idea, null, false, errorMsg);

@@ -15,9 +15,10 @@ import {
   mintInternalToken, getUserById, getCreditsBalance, chargeCredits, addCreditsBalance, saveVideo, saveChannelAnalysis,
   getCharacterReferenceById, linkYoutubeVideoToRun, setChannelProjectId,
   claimRunForPublishing, releasePublishingClaim, getNotificationPrefsByEmail, incrementYoutubePublishCount, setDailyVideoRunThumbnail,
+  setDailyVideoRunResumeState, claimDailyVideoRunForResume,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
-import { getMaxClipSeconds, getFlatCreditCost } from './creditPricingEngine.js';
+import { getMaxClipSeconds, getFlatCreditCost, getImageCreditCost, getPerSecondCreditCost } from './creditPricingEngine.js';
 import { supportsReferenceImages } from './newImageModelsService.js';
 import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
@@ -288,6 +289,9 @@ async function sendDailyFailureEmail(channel, errorMessage) {
 }
 
 async function sendDailyApprovalEmail(channel, idea, format, token) {
+  const costBreakdown = estimateChannelRunBreakdown(channel, format, idea);
+  const userBalance = costBreakdown ? await getCreditsBalance(channel.user_id).catch(() => null) : null;
+  const costBlock = costBreakdown ? `<div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#16162a;font-size:13px;line-height:1.7;color:#d1d5db">Estimated cost: <strong style="color:#fff">~${costBreakdown.total} credits</strong>${userBalance != null ? ` &nbsp;·&nbsp; Your balance: <strong style="color:${userBalance >= costBreakdown.total ? '#22c55e' : '#f59e0b'}">${userBalance}</strong>` : ''}${userBalance != null && userBalance < costBreakdown.total ? `<br/><span style="color:#f59e0b">Your balance may not cover the whole video — top up first, or the video will stop where the credits run out and you can continue it later.</span>` : ''}</div>` : '';
   const approveUrl = `${BACKEND_URL}/api/channels/daily-approve?token=${token}`;
   const rejectUrl = `${BACKEND_URL}/api/channels/daily-reject?token=${token}`;
   await fetch('https://api.resend.com/emails', {
@@ -302,6 +306,7 @@ async function sendDailyApprovalEmail(channel, idea, format, token) {
         <h3 style="color:#fff">${idea.title}</h3>
         <p style="color:#9ca3af;font-size:14px;line-height:1.7">${idea.brief || ''}</p>
         <p style="color:#6b7280;font-size:12px">Format: ${format === 'short' ? 'Short' : 'Long-form'}</p>
+        ${costBlock}
         <div style="margin-top:24px;display:flex;gap:12px">
           <a href="${approveUrl}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Make this video</a>
           <a href="${rejectUrl}" style="background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">❌ Skip today</a>
@@ -309,6 +314,174 @@ async function sendDailyApprovalEmail(channel, idea, format, token) {
       </div>`,
     }),
   }).catch(e => console.warn('[ChannelScheduler] Approval email failed:', e.message));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ NEW: تخطيط/تقدير تكلفة تشغيلة قناة + تنفيذ مشترك قابل للإيقاف والاستكمال
+// ─────────────────────────────────────────────────────────────────────────────
+// نفس معادلات generateAnimatedVideo/generateCharacterAdventureVideo بالظبط (عدد المشاهد، الموديلات،
+// مدة المشهد) — بنحسبها هنا لوحدها عشان التقدير قبل التوليد يطابق اللي بيتنفذ فعلاً
+function planChannelRun(channel, shape, { characterMode = false } = {}) {
+  const sceneCount = Math.min(channel.target_scene_count || shape.sceneCount, 20);
+  let imageModel = channel.image_model || 'nano_banana_2';
+  if (characterMode && !supportsReferenceImages(imageModel)) imageModel = 'nano_banana_2';
+  const animationModel = channel.animation_model || 'seedance_2_5';
+  const maxClip = getMaxClipSeconds(animationModel) || 30;
+  const defaultSceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
+  return { sceneCount, imageModel, animationModel, maxClip, defaultSceneDurationSec };
+}
+
+// تفصيل التكلفة المتوقعة (صور + كليبات + كابشن) للأنماط اللي بتستخدم موديلات صور/تحريك بكريديت؛
+// null للأنماط اللي مالهاش موديلات (خرائط/واقعي/سبورة) — تقدير (مدة المشهد الفعلية مع الصوت
+// بتتحدد بمدة السرد الحقيقية وقت التوليد)
+export function estimateChannelRunBreakdown(channel, format, idea = null) {
+  try {
+    const style = idea?.contentStyle || channel.content_style || null;
+    const hasExplicit = !!(channel.image_model || channel.animation_model);
+    if (style === 'whiteboard_sketch') return null;
+    if ((style === 'map' || style === 'realistic') && !hasExplicit) return null;
+    const shape = format === 'short' ? SHORT_FORM : LONG_FORM;
+    const plan = planChannelRun(channel, shape, { characterMode: style === 'character_adventure' && !!channel.character_reference_id });
+    const imagesCost = getImageCreditCost(plan.imageModel, plan.sceneCount);
+    const clipCost = getPerSecondCreditCost(plan.animationModel, plan.defaultSceneDurationSec);
+    const captions = channel.uses_voice && channel.captions_enabled !== 0 ? getFlatCreditCost('autocaption') : 0;
+    return { ...plan, imagesCost, clipCost, clips: clipCost * plan.sceneCount, captions, total: imagesCost + clipCost * plan.sceneCount + captions };
+  } catch { return null; }
+}
+
+// التكلفة المتوقعة الباقية لفيديو وقف في النص (كليبات المشاهد اللي فاضلة + كابشن)
+function estimateRemainingCost(st) {
+  try {
+    const remaining = Math.max(0, st.images.length - st.nextIndex);
+    return getPerSecondCreditCost(st.animationModel, st.defaultSceneDurationSec) * remaining + (st.usesVoice && st.captionsEnabled ? getFlatCreditCost('autocaption') : 0);
+  } catch { return null; }
+}
+
+// حاجز قبل أي خصم: لازم الرصيد يكفي الصور + أول كليب على الأقل، وإلا نرفض بوضوح ومن غير ما
+// نصرف حاجة (الصور بتتخصم كلها مرة واحدة أول ما نبدأ، فلو الرصيد مايكفيش أول كليب هيتصرف على
+// صور من غير فيديو خالص)
+async function assertCanAffordRunStart(run, plan) {
+  const need = getImageCreditCost(plan.imageModel, plan.sceneCount) + getPerSecondCreditCost(plan.animationModel, plan.defaultSceneDurationSec);
+  const balance = await getCreditsBalance(run.user_id);
+  if (balance < need) {
+    const e = new Error(`insufficient_credits: this video needs at least ${need} credits to start and the balance is ${balance}`);
+    e.committed = true; // مفيش أي مسار بديل هيفيد — نفس الرصيد
+    e.creditsNeeded = need; e.balance = balance;
+    throw e;
+  }
+}
+
+// ✅ الخطوات المشتركة (سرد → تحريك كل مشهد → دمج → كابشن → موسيقى) بين animated وcharacter_adventure،
+// وقابلة للاستكمال: لو الكريديت خلص قبل مشهد (طلب الكليب رجع quota_exceeded) بنقف، نركّب اللي
+// اتعمل فعلاً كفيديو ناقص، ونحفظ الحالة الكاملة (run._partial + resume_state) عشان نكمّل بنفس
+// الموديلات والترتيب لما العميل يشحن. st بيتحفظ بعد كل كليب ناجح.
+async function renderScenesFromImages(run, channel, idea, shape, headers, st) {
+  const startedAt = st.nextIndex;
+  const narrations = []; // بنفس ترتيب المشاهد (من startedAt وطالع بس)
+  try {
+    // سرد كل مشهد لوحده الأول (مدته الحقيقية بتتقاس) — نداء Replicate من غير كريديت، فآمن بالتوازي
+    if (st.usesVoice) {
+      const idxs = st.scenes.map((_, i) => i).filter(i => i >= startedAt);
+      const synthesized = await Promise.all(idxs.map(i => synthesizeNarration(st.scenes[i].narration || idea.title, { voiceKey: st.voiceKey, languageCode: idea.videoLanguage || 'en' })));
+      idxs.forEach((i, k) => { narrations[i] = synthesized[k]; });
+    }
+
+    // كل صورة تتحرك لكليب، بمدة = مدة سرد نفس المشهد (لو فيه صوت) وإلا المدة الافتراضية
+    let outOfCredits = null;
+    for (let i = startedAt; i < st.images.length; i++) {
+      const targetDurationSec = st.usesVoice ? Math.max(3, Math.min(st.maxClip, narrations[i].durationSec)) : st.defaultSceneDurationSec;
+      const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ model: st.animationModel, prompt: 'subtle natural motion, cinematic camera movement', imageUrl: st.images[i], aspectRatio: st.ratio, durationSec: targetDurationSec }),
+      });
+      const vidJobData = await vidRes.json();
+      if (!vidRes.ok) {
+        // الكريديت خلص وسط الفيديو — مش فشل: نقف هنا ونسلّم اللي اتعمل
+        if (vidJobData.error === 'quota_exceeded') { outOfCredits = { needed: vidJobData.cost ?? null, remaining: vidJobData.remaining ?? null }; break; }
+        // الصور خلاص اتولدت واتخصم تمنها — أي فشل تاني وطالع "committed" عشان منرجعش نخصم تاني على مسار تاني
+        const e = new Error(vidJobData.error || 'Scene animation failed'); e.committed = true; throw e;
+      }
+      let clipUrl = await pollRenderJob(vidJobData.jobId, headers);
+      if (st.usesVoice) {
+        // مطابقة دقيقة لمدة المشهد لمدة سرده الحقيقية + تركيب سرد المشهد ده على المشهد ده بالذات
+        clipUrl = await conformVideoDurationToAudio({ videoUrl: clipUrl, targetDurationSec: narrations[i].durationSec, modelKeyForNaming: st.namingKey });
+        clipUrl = await composeVideoAudio({ videoUrl: clipUrl, narrationPath: narrations[i].audioPath, modelKeyForNaming: st.namingKey });
+      }
+      st.clipUrls.push(clipUrl);
+      st.nextIndex = i + 1;
+      // كل كليب خلص واتدفع تمنه بيتحفظ فورًا — أي انقطاع بعد كده مايضيعش الشغل
+      await setDailyVideoRunResumeState(run.id, st).catch(() => {});
+    }
+
+    if (!st.clipUrls.length) {
+      const e = new Error(`insufficient_credits: the credits ran out before the first scene could be animated (needs ${outOfCredits?.needed ?? '?'}, balance ${outOfCredits?.remaining ?? '?'})`);
+      e.committed = true; e.creditsNeeded = outOfCredits?.needed ?? null; e.balance = outOfCredits?.remaining ?? null;
+      throw e;
+    }
+
+    // دمج كل الكليبات (كل واحد صوته متزامن بالفعل)
+    let videoUrl = st.clipUrls.length === 1 ? st.clipUrls[0] : await mergeVideos(st.clipUrls);
+
+    // كابشن حقيقي لو مطلوب — بكريديت. مش بنعمله على الفيديو الناقص (هيتحسب مرة واحدة عند الاكتمال)
+    if (!outOfCredits && st.usesVoice && st.captionsEnabled) {
+      const captionCost = getFlatCreditCost('autocaption');
+      const balance = await getCreditsBalance(run.user_id);
+      if (balance >= captionCost) {
+        const charge = await chargeCredits(run.user_id, captionCost);
+        if (charge.success) {
+          const combinedAudioPath = path.join(TEMP_DIR, `${st.kind}_narr_${run.id}_${Date.now()}.mp3`);
+          try {
+            fs.mkdirSync(TEMP_DIR, { recursive: true });
+            if (startedAt === 0) {
+              concatAudioFiles(narrations.map(n => n.audioPath), combinedAudioPath);
+            } else {
+              // فيديو مستكمل: سرد المشاهد القديمة مش معانا كملفات، فبنسحب الصوت من الفيديو المدموج نفسه
+              const tmpVideo = combinedAudioPath.replace(/\.mp3$/, '.mp4');
+              await downloadToFile(videoUrl, tmpVideo);
+              execSync(`ffmpeg -y -i "${tmpVideo}" -vn -acodec libmp3lame -q:a 4 "${combinedAudioPath}"`, { stdio: 'pipe' });
+              try { fs.unlinkSync(tmpVideo); } catch {}
+            }
+            const words = await transcribeWithTimestamps(combinedAudioPath);
+            const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(idea.videoLanguage);
+            videoUrl = await burnCaptions(videoUrl, words, { rightToLeft: isRtl });
+          } catch (capErr) {
+            console.warn(`[ChannelScheduler] Captions failed for run ${run.id} (video still delivered without captions, credits refunded):`, capErr.message);
+            await addCreditsBalance(run.user_id, captionCost);
+          } finally {
+            try { fs.unlinkSync(combinedAudioPath); } catch {}
+          }
+        }
+      }
+    }
+
+    // موسيقى خلفية خافتة — مجانية تمامًا، بتفشل بهدوء لو فشلت
+    if (st.usesVoice) {
+      try {
+        const musicBuffer = await getBackgroundMusicBuffer('youtube', st.musicMood);
+        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: st.namingKey });
+      } catch (musicErr) {
+        console.warn(`[ChannelScheduler] Background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
+      }
+    }
+
+    await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
+
+    if (outOfCredits) {
+      // نسيب resume_state زي ما هو (اتحفظ بعد آخر كليب) — الفيديو اللي رجع ناقص
+      run._partial = {
+        scenesDone: st.clipUrls.length, scenesTotal: st.images.length,
+        estimatedRemaining: estimateRemainingCost(st), balance: outOfCredits.remaining,
+      };
+    } else {
+      await setDailyVideoRunResumeState(run.id, null).catch(() => {});
+    }
+    return videoUrl;
+  } catch (e) {
+    e.committed = true;
+    throw e;
+  } finally {
+    narrations.forEach(n => { try { fs.rmSync(n.workDir, { recursive: true, force: true }); } catch {} });
+  }
 }
 
 // ── المسار الافتراضي (animated) — سيناريو موديل 4 + النظام الجديد (صور متسلسلة + تحريك +
@@ -335,6 +508,7 @@ async function generateAnimatedVideo(run, channel, idea, shape, headers) {
   const defaultSceneDurationSec = Math.min(maxClip, channel.target_duration_sec ? Math.max(3, Math.round(channel.target_duration_sec / sceneCount)) : shape.sceneDurationSec);
   const usesVoice = !!channel.uses_voice;
   const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise';
+  await assertCanAffordRunStart(run, { imageModel, animationModel, sceneCount, defaultSceneDurationSec });
 
   // نفس كتابة السيناريو المستخدمة قبل كده بالظبط (جودة مثبتة: نص سرد + برومبت بصري لكل مشهد،
   // مع قفل شخصية/مكان تلقائي لو القصة فيها) — التغيير الحقيقي في طريقة الرندر تحت بس
@@ -361,91 +535,14 @@ async function generateAnimatedVideo(run, channel, idea, shape, headers) {
   const images = await pollJobGeneric(`${INTERNAL_BASE}/api/images/generate-status/${imgJobData.jobId}`, headers, 'images');
   if (!Array.isArray(images) || images.length < 2) { const e = new Error('Image generation returned too few images'); e.committed = true; throw e; }
 
-  const narrations = [];
-  try {
-    // ── 2) لو القناة بتستخدم صوت: سرد كل مشهد لوحده الأول عشان نعرف مدته الحقيقية ──────
-    // ✅ FIX (تحسين أداء آمن رصدته مراجعة كود): كانت بتسرد المشاهد واحد ورا التاني بالتسلسل
-    // رغم إن synthesizeNarration نداء Replicate خارجي بحت (بدون أي خصم كريديت جواها) وكل
-    // مشهد بيكتب في مجلد مؤقت مستقل خاص بيه — فمفيش أي تعارض حالة بين المشاهد يمنع تنفيذهم
-    // بالتوازي. عكس كده تمامًا حلقة تحريك الفيديو تحت (كل نداء فيها بيخصم كريديت حقيقي)
-    // اللي سبناها بالتسلسل عمدًا عشان مفيش قفل ذري على خصم الكريديت لسه (باج تاني منفصل)
-    if (usesVoice) {
-      const synthesized = await Promise.all(scenes.map(s => {
-        const text = (s.text || '').trim() || idea.title;
-        return synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' });
-      }));
-      narrations.push(...synthesized);
-    }
-
-    // ── 3) كل صورة تتحرك لكليب، بمدة = مدة سرد نفس المشهد (لو فيه صوت) وإلا الافتراضية ──
-    const clipUrls = [];
-    for (let i = 0; i < images.length; i++) {
-      const targetDurationSec = usesVoice ? Math.max(3, Math.min(maxClip, narrations[i].durationSec)) : defaultSceneDurationSec;
-      const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ model: animationModel, prompt: 'subtle natural motion, cinematic camera movement', imageUrl: images[i], aspectRatio: shape.ratio, durationSec: targetDurationSec }),
-      });
-      const vidJobData = await vidRes.json();
-      // ✅ الصور خلاص اتولدت واتخصم تمنها — أي فشل من هنا وطالع "committed" عشان منرجعش
-      // نخصم كريديت الصور تاني على أي محاولة تانية
-      if (!vidRes.ok) { const e = new Error(vidJobData.error || 'Scene animation failed'); e.committed = true; throw e; }
-      let clipUrl = await pollRenderJob(vidJobData.jobId, headers);
-
-      if (usesVoice) {
-        // ✅ مطابقة دقيقة لمدة المشهد لمدة سرده الحقيقية (الموديل نادرًا ما بيطلع المدة
-        // المطلوبة بالظبط) — ده اللي بيضمن التزامن الحقيقي مشهد بمشهد، مش تقريب عام لاحقًا
-        clipUrl = await conformVideoDurationToAudio({ videoUrl: clipUrl, targetDurationSec: narrations[i].durationSec, modelKeyForNaming: 'animated' });
-        clipUrl = await composeVideoAudio({ videoUrl: clipUrl, narrationPath: narrations[i].audioPath, modelKeyForNaming: 'animated' });
-      }
-      clipUrls.push(clipUrl);
-    }
-
-    // ── 4) دمج كل الكليبات (كل واحد صوته متزامن بالفعل) ──────────────────────────────
-    let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
-
-    // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
-    if (usesVoice && channel.captions_enabled !== 0) {
-      const captionCost = getFlatCreditCost('autocaption');
-      const balance = await getCreditsBalance(run.user_id);
-      if (balance >= captionCost) {
-        const charge = await chargeCredits(run.user_id, captionCost);
-        if (charge.success) {
-          try {
-            const combinedAudioPath = path.join(TEMP_DIR, `animated_narr_${run.id}_${Date.now()}.mp3`);
-            fs.mkdirSync(TEMP_DIR, { recursive: true });
-            concatAudioFiles(narrations.map(n => n.audioPath), combinedAudioPath);
-            const words = await transcribeWithTimestamps(combinedAudioPath);
-            const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(idea.videoLanguage);
-            videoUrl = await burnCaptions(videoUrl, words, { rightToLeft: isRtl });
-            try { fs.unlinkSync(combinedAudioPath); } catch {}
-          } catch (capErr) {
-            console.warn(`[ChannelScheduler] Captions failed for run ${run.id} (video still delivered without captions, credits refunded):`, capErr.message);
-            await addCreditsBalance(run.user_id, captionCost);
-          }
-        }
-      }
-    }
-
-    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا (نفس ميزة التميّز لعملاء القنوات) ────────
-    if (usesVoice) {
-      try {
-        const musicBuffer = await getBackgroundMusicBuffer('youtube', channel.video_style === 'cinematic' ? 'epic cinematic dramatic' : 'calm storytelling narration');
-        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'animated' });
-      } catch (musicErr) {
-        console.warn(`[ChannelScheduler] Background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
-      }
-    }
-
-    await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
-    return videoUrl;
-  } catch (e) {
-    // ✅ الصور خلاص اتولدت واتخصم تمنها قبل ما ندخل الكتلة دي — أي فشل من هنا (سرد، تحريك،
-    // دمج، كابشن) لازم يبقى "committed" عشان triggerApprovedGeneration ميحاولش أي مسار تاني
-    e.committed = true;
-    throw e;
-  } finally {
-    narrations.forEach(n => { try { fs.rmSync(n.workDir, { recursive: true, force: true }); } catch {} });
-  }
+  return await renderScenesFromImages(run, channel, idea, shape, headers, {
+    kind: 'animated', namingKey: 'animated',
+    musicMood: channel.video_style === 'cinematic' ? 'epic cinematic dramatic' : 'calm storytelling narration',
+    scenes: scenes.map(sc => ({ narration: (sc.text || '').trim() || idea.title })),
+    images, clipUrls: [], nextIndex: 0,
+    imageModel, animationModel, maxClip, defaultSceneDurationSec, usesVoice, voiceKey,
+    captionsEnabled: channel.captions_enabled !== 0, ratio: shape.ratio,
+  });
 }
 
 // ── محتوى واقعي (موديل 2 — لقطات حقيقية من Pexels، مش رسوم بالذكاء الاصطناعي) ──────
@@ -620,6 +717,7 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
   const usesVoice = !!channel.uses_voice;
   const voiceKey = (idea.videoLanguage || '').startsWith('ar') ? 'male_arabic' : 'male_wise';
 
+  await assertCanAffordRunStart(run, { imageModel, animationModel, sceneCount, defaultSceneDurationSec });
   const scenes = await draftCharacterAdventureScenes(idea, sceneCount, channel.video_style, usesVoice);
 
   // ── 1) صور المشاهد، الشخصية ثابتة عبرهم كلهم ────────────────────────────────
@@ -632,94 +730,13 @@ async function generateCharacterAdventureVideo(run, channel, idea, shape, header
   const images = await pollJobGeneric(`${INTERNAL_BASE}/api/images/generate-status/${imgJobData.jobId}`, headers, 'images');
   if (!Array.isArray(images) || images.length < 2) { const e = new Error('Image generation returned too few images'); e.committed = true; throw e; }
 
-  // ── 2) لو القناة بتستخدم صوت: نولّد سرد كل مشهد لوحده الأول عشان نعرف مدته الحقيقية ──
-  // ✅ FIX (تحسين أداء آمن رصدته مراجعة كود — راجع نفس التعليق في generateAnimatedVideo):
-  // synthesizeNarration نداء Replicate بحت من غير خصم كريديت، فآمن بالكامل يتنفذ بالتوازي
-  const narrations = [];
-  try {
-    if (usesVoice) {
-      const synthesized = await Promise.all(scenes.map(s => {
-        const text = s.narration?.trim() || idea.title;
-        return synthesizeNarration(text, { voiceKey, languageCode: idea.videoLanguage || 'en' });
-      }));
-      narrations.push(...synthesized);
-    }
-
-    // ── 3) كل صورة تتحرك لكليب، بمدة = مدة سرد نفس المشهد (لو فيه صوت) وإلا المدة الافتراضية ──
-    const clipUrls = [];
-    for (let i = 0; i < images.length; i++) {
-      const targetDurationSec = usesVoice ? Math.max(3, Math.min(maxClip, narrations[i].durationSec)) : defaultSceneDurationSec;
-      const vidRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ model: animationModel, prompt: 'subtle natural motion, cinematic camera movement', imageUrl: images[i], aspectRatio: shape.ratio, durationSec: targetDurationSec }),
-      });
-      const vidJobData = await vidRes.json();
-      // ✅ الصور خلاص اتولدت واتخصم تمنها — أي فشل من هنا وطالع "committed" عشان منرجعش
-      // للمسار الافتراضي ونخصم كريديت الحركة تاني على مسار تاني
-      if (!vidRes.ok) { const e = new Error(vidJobData.error || 'Scene animation failed'); e.committed = true; throw e; }
-      let clipUrl = await pollRenderJob(vidJobData.jobId, headers);
-
-      if (usesVoice) {
-        // ✅ مطابقة دقيقة لمدة المشهد لمدة سرده الحقيقية (الموديل نادرًا ما بيطلع المدة
-        // المطلوبة بالظبط) — ده اللي بيضمن التزامن الحقيقي مشهد بمشهد، مش تقريب عام
-        clipUrl = await conformVideoDurationToAudio({ videoUrl: clipUrl, targetDurationSec: narrations[i].durationSec, modelKeyForNaming: 'char_adv' });
-        // ✅ نركّب سرد المشهد ده بالذات على المشهد ده بالذات — كل كليب بيخرج من هنا وصوته
-        // متزامن بالفعل، فمفيش أي "قص/تمطيط" عام لاحقًا وقت الدمج النهائي
-        clipUrl = await composeVideoAudio({ videoUrl: clipUrl, narrationPath: narrations[i].audioPath, modelKeyForNaming: 'char_adv' });
-      }
-      clipUrls.push(clipUrl);
-    }
-
-    // ── 4) دمج كل الكليبات (كل واحد صوته متزامن بالفعل) ────────────────────────────
-    let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
-
-    // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
-    if (usesVoice && channel.captions_enabled !== 0) {
-      const captionCost = getFlatCreditCost('autocaption');
-      const balance = await getCreditsBalance(run.user_id);
-      if (balance >= captionCost) {
-        const charge = await chargeCredits(run.user_id, captionCost);
-        if (charge.success) {
-          try {
-            const combinedAudioPath = path.join(TEMP_DIR, `char_adv_narr_${run.id}_${Date.now()}.mp3`);
-            fs.mkdirSync(TEMP_DIR, { recursive: true });
-            concatAudioFiles(narrations.map(n => n.audioPath), combinedAudioPath);
-            const words = await transcribeWithTimestamps(combinedAudioPath);
-            const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(idea.videoLanguage);
-            videoUrl = await burnCaptions(videoUrl, words, { rightToLeft: isRtl });
-            try { fs.unlinkSync(combinedAudioPath); } catch {}
-          } catch (capErr) {
-            console.warn(`[ChannelScheduler] Captions failed for run ${run.id} (video still delivered without captions, credits refunded):`, capErr.message);
-            await addCreditsBalance(run.user_id, captionCost);
-          }
-        }
-      }
-    }
-
-    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا (نفس ميزة التميّز). بنستخدم المكتبة المحلية
-    // (assets/music/) بدل Freesound هنا تحديدًا — أهون، مضمونة الترخيص بالكامل، وبقى فيها
-    // اختيار "ذكي" حسب مود القصة (epic/dramatic/adventure) بدل عشوائي بحت. بنسيبها تفشل
-    // بهدوء لو فشلت بدل ما توقف تسليم الفيديو نفسه
-    if (usesVoice) {
-      try {
-        const musicBuffer = await getBackgroundMusicBuffer('youtube', 'epic dramatic historical adventure');
-        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'char_adv' });
-      } catch (musicErr) {
-        console.warn(`[ChannelScheduler] Background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
-      }
-    }
-
-    await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
-    return videoUrl;
-  } catch (e) {
-    // ✅ الصور خلاص اتولدت واتخصم تمنها قبل ما ندخل الكتلة دي — أي فشل من هنا وطالع (سرد،
-    // تحريك، دمج، كابشن) لازم يبقى "committed" عشان triggerApprovedGeneration منيرجعش
-    // للمسار الافتراضي (generateAnimatedVideo) ويخصم كريديت تاني على مسار تاني فوق اللي خلاص اتصرف
-    e.committed = true;
-    throw e;
-  } finally {
-    narrations.forEach(n => { try { fs.rmSync(n.workDir, { recursive: true, force: true }); } catch {} });
-  }
+  return await renderScenesFromImages(run, channel, idea, shape, headers, {
+    kind: 'char_adv', namingKey: 'char_adv', musicMood: 'epic dramatic historical adventure',
+    scenes: scenes.map(sc => ({ narration: sc.narration?.trim() || idea.title })),
+    images, clipUrls: [], nextIndex: 0,
+    imageModel, animationModel, maxClip, defaultSceneDurationSec, usesVoice, voiceKey,
+    captionsEnabled: channel.captions_enabled !== 0, ratio: shape.ratio,
+  });
 }
 
 // ✅ NEW: مشاهد "سكتش على سبورة بيضاء" (whiteboard_sketch) — نفس فكرة draftCharacterAdventureScenes
@@ -948,8 +965,8 @@ export async function triggerApprovedGeneration(run, overrides = {}) {
 // دلوقتي كل أنماط المحتوى الخمسة بتكلفتها من موديلات خارجية متنوعة (صور + تحريك) مش معروفة
 // إلا بعد التوليد فعليًا، فمفيش تقدير دقيق مقدمًا لأي نمط تاني — نرجع null زي الباقي كلهم،
 // والتكلفة الحقيقية بتتحسب بفرق الرصيد قبل/بعد (triggerChannelRunNow) وتتقال للعميل بعد ما يخلص
-export function estimateChannelRunCost(channel, format) {
-  return null;
+export function estimateChannelRunCost(channel, format, idea = null) {
+  return estimateChannelRunBreakdown(channel, format, idea)?.total ?? null;
 }
 
 // ✅ NEW: مشروع دائم واحد لكل قناة — بيتعمل تلقائيًا أول مرة بس، وبيتحفظ على القناة نفسها
@@ -962,13 +979,97 @@ export async function getOrCreateChannelProject(channel) {
   return project.id;
 }
 
+// رسالة واضحة للعميل عن سبب فشل التشغيلة (نفاد الكريديت بالأرقام لو معروفة)
+export function describeRunError(e) {
+  if (typeof e?.message === 'string' && e.message.startsWith('insufficient_credits')) {
+    return e.creditsNeeded
+      ? `Not enough credits — this video needs about ${e.creditsNeeded} credits to start and your balance is ${e.balance}. Top up and try again.`
+      : 'Not enough credits — top up your balance and try again.';
+  }
+  return e?.message || 'Generation failed';
+}
+
+// ✅ NEW: فيديو وقف قبل ما يكتمل لأن الكريديت خلص — بيتسلّم للعميل كفيديو ناقص (مركّب زي الطبيعي:
+// صوت + موسيقى)، مع حالة "partial" وكارت بزرار "كمّل" وإيميل يشرح كام مشهد اتعمل وكام محتاج
+async function finalizePartialRun(run, channel, idea, videoUrl, creditsCharged, resumed) {
+  const partial = run._partial;
+  await updateDailyVideoRunStatus(run.id, 'done', { videoUrl, creditsCharged, reviewState: 'partial' });
+  let projectId = null;
+  try {
+    projectId = await getOrCreateChannelProject(channel);
+    const job = {
+      runId: run.id, channelId: channel.id, videoUrl, ideaTitle: idea.title,
+      creditsCharged: creditsCharged ?? null, reviewState: 'partial', canPublish: false, partial,
+    };
+    const patched = resumed && await updateProjectMessageByRunId(projectId, run.id, job).catch(() => false);
+    if (!patched) await appendProjectMessages(projectId, channel.user_id, [{ role: 'assistant', type: 'channelReview', job }]);
+  } catch (e) {
+    console.warn(`[ChannelScheduler] Could not add partial-video card for run ${run.id}:`, e.message);
+  }
+  const user = await getUserById(channel.user_id);
+  if (user?.email) await sendPartialRunEmail(user.email, idea, videoUrl, partial, projectId ? `🎬 ${channel.label || channel.channel_id || 'Channel'} — Auto Videos` : null).catch(() => {});
+}
+
+async function sendPartialRunEmail(userEmail, idea, videoUrl, partial, projectName) {
+  const prefs = await getNotificationPrefsByEmail(userEmail).catch(() => ({ emailEnabled: true, videoReady: true }));
+  if (!prefs.emailEnabled || !prefs.videoReady) return;
+  const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const needLine = partial.estimatedRemaining ? `Finishing it needs about <strong style="color:#fff">${partial.estimatedRemaining} credits</strong>${partial.balance != null ? ` (your balance: ${partial.balance})` : ''}.` : '';
+  const html = `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#0f0f1a;color:#fff;border-radius:16px;text-align:center"><div style="font-size:52px">⚠️</div><h2 style="color:#f59e0b;margin:8px 0">Your credits ran out before the video was finished</h2><p style="color:#d1d5db;font-size:15px"><strong style="color:#fff">${esc(idea.title)}</strong></p><p style="color:#9ca3af;font-size:14px;line-height:1.8">${partial.scenesDone} of ${partial.scenesTotal} scenes were made. Here is the video produced so far:</p><p><a href="${videoUrl}" style="display:inline-block;background:#7c6af7;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Watch the video so far →</a></p><p style="color:#9ca3af;font-size:14px;line-height:1.8">To finish it, top up your credits or upgrade to a bigger plan. ${needLine}<br/>Then open ${projectName ? `<strong style="color:#fff">${esc(projectName)}</strong>` : 'your project'} on Erivion and press <strong style="color:#fff">Continue</strong> — the remaining scenes are made in the same style and joined in order.</p><p style="margin-top:20px"><a href="${FRONTEND_URL}" style="display:inline-block;background:#22c55e;color:#fff;padding:12px 26px;border-radius:10px;text-decoration:none;font-weight:700">Open Erivion →</a></p></div>`;
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: 'Erivion <noreply@erivion.net>', to: userEmail, subject: `⚠️ ${idea.title} stopped at scene ${partial.scenesDone} of ${partial.scenesTotal} — credits ran out`, html }),
+  }).catch(() => {});
+}
+
+// ✅ NEW: استكمال فيديو ناقص (زرار "كمّل" في الكارت أو الأجنت). بيتأكد الأول إن الرصيد يكفي
+// المشهد الجاي على الأقل، بيعمل claim ذري (ضغطتين = مرة واحدة بس)، وبيكمّل في الخلفية من نفس
+// المشهد بنفس الموديلات والترتيب اللي اتحفظوا، وبيحدّث نفس الكارت لما يخلص
+export async function startResumeChannelRun(userId, runId) {
+  const { getDailyVideoRunById } = await import('./authService.js');
+  const runRow = await getDailyVideoRunById(runId, userId);
+  if (!runRow || runRow.review_state !== 'partial' || !runRow.resume_state) return { ok: false, error: 'not_resumable' };
+  const st = JSON.parse(runRow.resume_state);
+  let nextCost;
+  try { nextCost = getPerSecondCreditCost(st.animationModel, st.defaultSceneDurationSec); } catch { nextCost = 0; }
+  const balance = await getCreditsBalance(userId);
+  if (balance < nextCost) return { ok: false, error: 'insufficient_credits', needed: nextCost, balance, estimatedRemaining: estimateRemainingCost(st) };
+  const claimed = await claimDailyVideoRunForResume(runId, userId);
+  if (!claimed) return { ok: false, error: 'already_resuming' };
+
+  (async () => {
+    const channel = await getManagedChannelById(claimed.channel_id);
+    const idea = JSON.parse(claimed.idea_brief || '{}');
+    const shape = claimed.format === 'short' ? SHORT_FORM : LONG_FORM;
+    const run = { id: claimed.id, channel_id: claimed.channel_id, user_id: claimed.user_id, idea_brief: claimed.idea_brief, format: claimed.format };
+    try {
+      const user = await getUserById(claimed.user_id);
+      const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(claimed.user_id, user.email, { channelRun: true }) };
+      const balanceBefore = await getCreditsBalance(claimed.user_id).catch(() => null);
+      const videoUrl = await renderScenesFromImages(run, channel, idea, shape, headers, st);
+      const balanceAfter = await getCreditsBalance(claimed.user_id).catch(() => null);
+      const spent = (balanceBefore != null && balanceAfter != null) ? Math.max(0, balanceBefore - balanceAfter) : 0;
+      await finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, (claimed.credits_charged || 0) + spent, { resumed: true });
+    } catch (e) {
+      console.error(`[ChannelScheduler] Resume failed for run ${claimed.id}:`, e.message);
+      // نرجّعها "ناقصة" (الكليبات اللي خلصت محفوظة) عشان العميل يقدر يجرب تاني بدل ما تضيع
+      await updateDailyVideoRunStatus(claimed.id, 'done', { reviewState: 'partial', error: describeRunError(e) }).catch(() => {});
+      if (channel?.project_id) await updateProjectMessageByRunId(channel.project_id, claimed.id, { reviewState: 'partial', resumeError: describeRunError(e) }).catch(() => {});
+    }
+  })();
+  return { ok: true, scenesDone: st.clipUrls.length, scenesTotal: st.images.length, estimatedRemaining: estimateRemainingCost(st) };
+}
+
 // ✅ NEW (طلب العميل: "العميل يراجع الفيديو الأول وبعد كده يوافق على النشر او لا" — قبل
 // كده كان في رفع تلقائي فوري ليوتيوب من غير أي مراجعة بشرية): بعد ما التوليد يخلص بنجاح
 // (سواء من الإيميل اليومي أو من الشات دلوقتي)، مشترك بين المسارين الاتنين (channelRoutes.js's
 // /daily-approve وtriggerChannelRunNow تحت) — بيحط التشغيلة في حالة "محتاجة مراجعة"، يولّد
 // توكن مراجعة، يضيف كارت فيديو حقيقي (قابل للعب) في مشروع القناة الدائم، ويبعت إيميل مراجعة
 // فيه زرارين حقيقيين. النشر الفعلي بيحصل بس لما العميل يضغط "نشر الآن" (resolveChannelRunReview)
-export async function finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, creditsCharged) {
+export async function finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, creditsCharged, { resumed = false } = {}) {
+  // ✅ الكريديت خلص قبل ما الفيديو يكتمل: نسلّم اللي اتعمل كفيديو ناقص (مش حزمة رفع كاملة)
+  if (run._partial) return finalizePartialRun(run, channel, idea, videoUrl, creditsCharged, resumed);
   const reviewToken = crypto.randomBytes(24).toString('hex');
   await updateDailyVideoRunStatus(run.id, 'done', { videoUrl, creditsCharged, reviewState: 'awaiting_review', reviewToken });
 
@@ -987,14 +1088,16 @@ export async function finalizeChannelRunAfterGeneration(run, channel, idea, vide
   let projectId = null;
   try {
     projectId = await getOrCreateChannelProject(channel);
-    await appendProjectMessages(projectId, channel.user_id, [{
-      role: 'assistant', type: 'channelReview',
-      job: {
-        runId: run.id, channelId: channel.id, videoUrl, ideaTitle: idea.title,
-        creditsCharged: creditsCharged ?? null, reviewState: 'awaiting_review',
-        canPublish: YOUTUBE_PUBLISH_ENABLED && !!channel.youtube_refresh_token,
-      },
-    }]);
+    const reviewJob = {
+      runId: run.id, channelId: channel.id, videoUrl, ideaTitle: idea.title,
+      creditsCharged: creditsCharged ?? null, reviewState: 'awaiting_review',
+      canPublish: YOUTUBE_PUBLISH_ENABLED && !!channel.youtube_refresh_token, partial: null,
+    };
+    // فيديو مستكمل: نحدّث الكارت الناقص الموجود (نفس المكان) بدل ما نضيف كارت تاني
+    const patched = resumed && await updateProjectMessageByRunId(projectId, run.id, reviewJob).catch(() => false);
+    if (!patched) {
+      await appendProjectMessages(projectId, channel.user_id, [{ role: 'assistant', type: 'channelReview', job: reviewJob }]);
+    }
   } catch (e) {
     console.warn(`[ChannelScheduler] Could not add review card to channel project for run ${run.id} (video is still safe, just not shown in a project):`, e.message);
   }
@@ -1063,6 +1166,7 @@ async function generateAndUploadChannelThumbnail(run, channel, idea, videoId, he
 // ✅ NEW: التنفيذ الفعلي لضغطة "تمت المراجعة" أو "نشر الآن" — مشترك بين مسار الإيميل
 // (توكن، من غير تسجيل دخول) ومسار الموقع (المستخدم داخل حسابه) في channelRoutes.js
 export async function resolveChannelRunReviewAction(run, action) {
+  if (run.review_state === 'partial' || run.review_state === 'resuming') throw new Error('This video is not finished yet (credits ran out before the last scenes) — finish it first.');
   const channel = await getManagedChannelById(run.channel_id);
   if (action === 'reviewed') {
     await updateDailyVideoRunStatus(run.id, 'done', { reviewState: 'reviewed', reviewed: true });
@@ -1119,7 +1223,7 @@ export async function resolveChannelRunReviewAction(run, action) {
 
 export async function triggerChannelRunNow(channel, overrides = {}) {
   const { idea, format } = await getFreshChannelIdea(channel);
-  const estimatedCost = estimateChannelRunCost(channel, format);
+  const estimatedCost = estimateChannelRunCost(channel, format, idea);
   const runId = await createDailyVideoRun({
     channelId: channel.id, userId: channel.user_id,
     ideaTitle: idea.title, ideaBrief: JSON.stringify(idea), format, approveToken: null,
@@ -1135,8 +1239,7 @@ export async function triggerChannelRunNow(channel, overrides = {}) {
       const creditsCharged = (balanceBefore != null && balanceAfter != null) ? Math.max(0, balanceBefore - balanceAfter) : null;
       await finalizeChannelRunAfterGeneration(run, channel, idea, videoUrl, creditsCharged);
     } catch (e) {
-      const isCredits = e.message.startsWith('insufficient_credits');
-      const errorMsg = isCredits ? 'Not enough credits to make this video — top up your balance and try again.' : e.message;
+      const errorMsg = describeRunError(e);
       await updateDailyVideoRunStatus(runId, 'failed', { error: errorMsg });
       console.error(`[ChannelScheduler] On-demand (agent-triggered) generation failed for run ${runId}:`, e.message);
     }
