@@ -204,17 +204,29 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
+  // ✅ الـInput schema الحقيقي (سكرين شوت العميل لصفحة الموديل على Replicate): image (أول فريم)،
+  // last_frame_image (بيحتاج image)، reference_images (لحد 30)، reference_videos (لحد 10، مجموع
+  // مدتها لحد 30ث)، reference_audios (لحد 10، مجموع 30ث، بيحتاج صورة أو فيديو مرجعي)، generate_audio
+  // (Default true)، duration (من -1 "تلقائي" لحد 30)، aspect_ratio ("adaptive" مطلوبة مع أول/آخر فريم).
+  // قيود من الـschema نفسه: image/last_frame_image مينفعش يتجمعوا مع أي reference_*.
+  // سعر مختلف: أي reference_videos بيحوّل السعر لـ"video_in" (حوالي 4 أضعاف) — راجع creditPricingEngine.js
   seedance_2_5: {
     slug: 'bytedance/seedance-2.5',
     supportsImageInput: true,
+    refCaps: { images: 30, videos: 10, audios: 10, lastFrame: true, videoMaxTotalSec: 30, audioMaxTotalSec: 30 },
     minDurationSec: 4,
     maxDurationSec: 30,
-    buildInput: ({ prompt, imageUrl, aspectRatio, durationSec, tier }) => ({
+    buildInput: ({ prompt, imageUrl, lastFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls, generateAudio, aspectRatio, durationSec, tier }) => ({
       prompt,
       resolution: tier || '720p',
-      aspect_ratio: aspectRatio || '16:9',
+      aspect_ratio: lastFrameUrl ? 'adaptive' : (aspectRatio || '16:9'),
       duration: Math.min(Math.max(durationSec || 5, 4), 30),
+      ...(generateAudio === false ? { generate_audio: false } : {}),
       ...(imageUrl ? { image: imageUrl } : {}),
+      ...(lastFrameUrl ? { last_frame_image: lastFrameUrl } : {}),
+      ...(referenceImageUrls?.length ? { reference_images: referenceImageUrls } : {}),
+      ...(referenceVideoUrls?.length ? { reference_videos: referenceVideoUrls } : {}),
+      ...(referenceAudioUrls?.length ? { reference_audios: referenceAudioUrls } : {}),
     }),
   },
   // ✅ NEW (طلب العميل، سعره وschema مؤكدين من سكرين شوت العميل مباشرة لصفحة الموديل الحقيقية):
@@ -347,17 +359,26 @@ export const NEW_VIDEO_MODELS = {
   // يتأكد قبل الاعتماد عليه في الإنتاج الحقيقي. السعر ~$0.10/ثانية عند 720p (مؤكد من حساب
   // التوكنز الحقيقي: 5792 توكن/ثانية × $17.50/مليون)، الدقات التانية (360p/1080p/4K) سعرها
   // مش مؤكد فبنستخدم نفس السعر كتقدير موحد لحد التأكيد الحي
+  // ✅ الـInput schema الحقيقي (سكرين شوت العميل): image (صورة بداية بتتحرك)، video (فيديو للتعديل)،
+  // prompt، last_frame (صورة نهاية — مع image بتعمل انتقال)، resolution، aspect_ratio (بتتجاهل وقت
+  // التعديل)، reference_images (مراجع للشخصيات/الأشياء — مش فريمات حرفية). مفيش "duration" في الـschema.
+  // ✅ FIX: كانت الصورة الواحدة بتتبعت كـreference_images (مرجع مش فريم حرفي) بدل "image" — يعني
+  // "حرّك الصورة دي" مكانش بيحرك الصورة نفسها
   omni_flash_1_1: {
     slug: 'google/gemini-omni-1.1',
     supportsImageInput: true,
     supportsVideoEdit: true,
+    refCaps: { images: 10, videos: 0, audios: 0, lastFrame: true },
     allowedDurations: [3, 4, 5, 6, 7, 8, 9, 10],
-    buildInput: ({ prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier }) => ({
+    buildInput: ({ prompt, imageUrl, lastFrameUrl, referenceImageUrls, sourceVideoUrl, aspectRatio, durationSec, tier }) => ({
       prompt,
       resolution: tier || '720p',
       aspect_ratio: aspectRatio || '16:9',
       duration: Math.min(Math.max(durationSec || 5, 3), 10),
-      ...(sourceVideoUrl ? { video: sourceVideoUrl } : imageUrl ? { reference_images: [imageUrl] } : {}),
+      ...(sourceVideoUrl ? { video: sourceVideoUrl } : {}),
+      ...(!sourceVideoUrl && imageUrl ? { image: imageUrl } : {}),
+      ...(!sourceVideoUrl && lastFrameUrl ? { last_frame: lastFrameUrl } : {}),
+      ...(referenceImageUrls?.length ? { reference_images: referenceImageUrls } : {}),
     }),
   },
   // ✅ CONFIRMED (طلب العميل: تعديل فيديوهات أطول من 10 ثواني — omni_flash_1_1 محدود بـ10
@@ -462,11 +483,35 @@ async function pollPrediction(predictionId, label) {
 }
 
 /**
+ * Checks the reference inputs (extra images/videos/audios, last frame) against what the model's
+ * real Replicate schema allows. Returns an error message, or null if fine. Same rules the schema
+ * itself states — checked up front so an invalid combination fails before any credits are spent
+ * (Replicate can silently ignore a bad combination while still billing).
+ */
+export function validateReferenceInputs(modelKey, { imageUrl = null, lastFrameUrl = null, referenceImageUrls = [], referenceVideoUrls = [], referenceAudioUrls = [] } = {}) {
+  const model = NEW_VIDEO_MODELS[modelKey];
+  const caps = model?.refCaps;
+  const hasRefs = referenceImageUrls.length + referenceVideoUrls.length + referenceAudioUrls.length > 0;
+  if (!hasRefs && !lastFrameUrl) return null;
+  if (!caps) return `${modelKey} does not accept reference images/videos/audio or a last frame`;
+  if (referenceImageUrls.length > caps.images) return `${modelKey} accepts at most ${caps.images} reference images`;
+  if (referenceVideoUrls.length > (caps.videos || 0)) return caps.videos ? `${modelKey} accepts at most ${caps.videos} reference videos` : `${modelKey} does not accept reference videos`;
+  if (referenceAudioUrls.length > (caps.audios || 0)) return caps.audios ? `${modelKey} accepts at most ${caps.audios} reference audio files` : `${modelKey} does not accept reference audio`;
+  if (lastFrameUrl && !caps.lastFrame) return `${modelKey} does not support a last frame`;
+  if (lastFrameUrl && !imageUrl) return 'A last frame needs a first-frame image too (imageUrl)';
+  if (modelKey === 'seedance_2_5') {
+    if (hasRefs && (imageUrl || lastFrameUrl)) return 'Seedance 2.5 cannot combine a first/last-frame image with reference images, videos or audio — use one mode or the other';
+    if (referenceAudioUrls.length && !referenceImageUrls.length && !referenceVideoUrls.length) return 'Reference audio needs at least one reference image or video';
+  }
+  return null;
+}
+
+/**
  * Generates one video with the given model + quality tier, returning its
  * permanent (R2-persisted) URL. `tier` is a resolution string ("720p" etc.)
  * for models that support it — ignored otherwise.
  */
-export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null, sourceVideoUrl = null, aspectRatio = '16:9', durationSec = 5, tier = null }) {
+export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null, sourceVideoUrl = null, aspectRatio = '16:9', durationSec = 5, tier = null, lastFrameUrl = null, referenceImageUrls = [], referenceVideoUrls = [], referenceAudioUrls = [], generateAudio = null }) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const model = NEW_VIDEO_MODELS[modelKey];
   if (!model) throw new Error(`Unknown video model: ${modelKey}`);
@@ -474,7 +519,9 @@ export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null,
   if (sourceVideoUrl && !model.supportsVideoEdit) throw new Error(`${modelKey} does not support video-to-video editing`);
   const label = `${modelKey} video generation`;
 
-  const input = model.buildInput({ prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier });
+  const refError = validateReferenceInputs(modelKey, { imageUrl, lastFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls });
+  if (refError) throw new Error(refError);
+  const input = model.buildInput({ prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier, lastFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls, generateAudio });
   const output = await withRetry429(async () => {
     const res = await fetch(`https://api.replicate.com/v1/models/${model.slug}/predictions`, {
       method: 'POST', headers: authHeaders(), body: JSON.stringify({ input }),

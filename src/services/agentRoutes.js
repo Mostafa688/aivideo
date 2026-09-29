@@ -1088,6 +1088,21 @@ router.post('/chat', authMiddleware, async (req, res) => {
       console.warn('[Agent] Rejected unknown/corrupted imageUrl (not found in history)');
       delete generateVideo.imageUrl;
     }
+    // ✅ NEW: المدخلات المرجعية (صور/فيديو مرجعي/آخر فريم) — نفس مبدأ isKnownUrl فوق بالظبط (الايجنت
+    // بينسخ الروابط من الـhistory، لازم تكون موجودة فعلاً)، ولو الموديل مش بيدعمها بنشيلها بدل ما
+    // نبعت طلب مضمون يفشل
+    if (generateVideo) {
+      const rc = NEW_VIDEO_MODELS[generateVideo.model]?.refCaps;
+      const keepKnown = (v, max) => (Array.isArray(v) ? v : []).filter(u => typeof u === 'string' && isKnownUrl(u)).slice(0, max || 0);
+      generateVideo.referenceImageUrls = keepKnown(generateVideo.referenceImageUrls, rc?.images);
+      generateVideo.referenceVideoUrls = keepKnown(generateVideo.referenceVideoUrls, rc?.videos);
+      delete generateVideo.referenceAudioUrls; // الصوت المرجعي مش مربوط بالشات لسه
+      if (!(rc?.lastFrame && typeof generateVideo.lastFrameUrl === 'string' && isKnownUrl(generateVideo.lastFrameUrl) && generateVideo.imageUrl)) delete generateVideo.lastFrameUrl;
+      // seedance_2_5: الـschema بتمنع الجمع بين أول/آخر فريم وأي مرجع — المرجع يكسب
+      if (generateVideo.model === 'seedance_2_5' && (generateVideo.referenceImageUrls.length || generateVideo.referenceVideoUrls.length)) {
+        delete generateVideo.imageUrl; delete generateVideo.lastFrameUrl;
+      }
+    }
     // ✅ FIX (باج حقيقي: صورة اتعملت 16:9، والعميل قال "حرك الصورة دي" من غير ما يكرر
     // النسبة، فالفيديو الناتج طلع 9:16 — الايجنت (الموديل نفسه) اعتمد على تخمينه الافتراضي
     // بدل ما ياخد بالفعل نسبة الصورة الحقيقية من الـ history، رغم التعليمة الصريحة في
@@ -1147,7 +1162,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ NEW: توليد فيديو مستقل (Veo/Kling/Seedance/Luma) بيستخدم أول صورة مرفقة في نفس
     // الرسالة كـ image-to-video لو الموديل بيدعم كده — نفس نمط generateImage فوق بالظبط
     if (generateVideo && images.length && NEW_VIDEO_MODELS[generateVideo.model]?.supportsImageInput) {
-      generateVideo.imageUrl = images[0];
+      const rcAttach = NEW_VIDEO_MODELS[generateVideo.model].refCaps;
+      // لو الايجنت اختار وضع "صور مرجعية" (seedance_2_5)، الصور المرفقة بتنضاف كمراجع
+      // (الـschema بتمنع الجمع بين صورة أول فريم وأي مرجع) بدل ما تبقى imageUrl
+      if (generateVideo.model === 'seedance_2_5' && (generateVideo.referenceImageUrls?.length || generateVideo.referenceVideoUrls?.length)) {
+        generateVideo.referenceImageUrls = [...(generateVideo.referenceImageUrls || []), ...images].slice(0, rcAttach.images);
+      } else {
+        generateVideo.imageUrl = images[0];
+      }
     }
 
     // ✅ لو نجحنا نطلع "ready"/"editScene"/"videoEdit"/"generateImage"/"generateVideo" بس

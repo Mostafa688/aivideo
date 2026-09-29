@@ -34,7 +34,7 @@ import teamRouter from './services/teamRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
-import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureVideoDurationSec } from './services/newVideoModelsService.js';
+import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureVideoDurationSec, validateReferenceInputs } from './services/newVideoModelsService.js';
 import { mergeVideos } from './services/videoMergeService.js';
 import { analyzeActiveSpeaker, estimateAnalysisCreditCost } from './services/videoAnalysisService.js';
 import { synthesizeNarration, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer, composeVideoAudio } from './services/videoAudioService.js';
@@ -2987,17 +2987,19 @@ app.get('/api/videos/models', authMiddleware, (req, res) => {
     maxClipSec: getMaxClipSeconds(key),
     supportsImageInput: !!NEW_VIDEO_MODELS[key].supportsImageInput,
     supportsVideoEdit: !!NEW_VIDEO_MODELS[key].supportsVideoEdit,
+    referenceCaps: NEW_VIDEO_MODELS[key].refCaps || null,
     creditCostPerSecond: getPerSecondCreditCost(key, 1),
+    creditCostPerSecondWithVideoIn: REPLICATE_MODEL_COSTS[key]?.videoInTiers ? getPerSecondCreditCost(key, 1, null, { videoIn: true }) : null,
   }));
   res.json({ models });
 });
 
 app.get('/api/videos/credit-cost', authMiddleware, (req, res) => {
-  const { model, durationSec, tier } = req.query;
+  const { model, durationSec, tier, videoIn } = req.query;
   if (!model || !NEW_VIDEO_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
   const sec = Math.max(1, parseInt(durationSec, 10) || 5);
   try {
-    res.json({ model, durationSec: sec, tier: tier || null, creditCost: getPerSecondCreditCost(model, sec, tier || null) });
+    res.json({ model, durationSec: sec, tier: tier || null, creditCost: getPerSecondCreditCost(model, sec, tier || null, { videoIn: videoIn === 'true' }) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -3016,9 +3018,32 @@ const CAPTION_CREDIT_FLAT = getFlatCreditCost('autocaption');
 const MUSIC_CREDIT_FLAT = getFlatCreditCost('compose_audio');
 
 app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res) => {
-  let { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood } = req.body;
+  let { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood, lastFrameUrl, generateAudio } = req.body;
   if (!model || !NEW_VIDEO_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
   if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  // ✅ NEW: مدخلات مرجعية (صور/فيديوهات/صوت مرجعي + آخر فريم) للموديلات اللي الـschema بتاعها
+  // بيدعمها فعلاً (seedance_2_5، omni_flash_1_1) — بتتحقق كلها هنا قبل أي خصم كريديت
+  const cleanUrlList = (v) => (Array.isArray(v) ? v : []).filter(u => typeof u === 'string' && /^https?:\/\//i.test(u.trim())).map(u => u.trim()).filter((u, i, a) => a.indexOf(u) === i);
+  const referenceImageUrls = cleanUrlList(req.body.referenceImageUrls);
+  const referenceVideoUrls = cleanUrlList(req.body.referenceVideoUrls);
+  const referenceAudioUrls = cleanUrlList(req.body.referenceAudioUrls);
+  lastFrameUrl = typeof lastFrameUrl === 'string' && /^https?:\/\//i.test(lastFrameUrl.trim()) ? lastFrameUrl.trim() : null;
+  if (!sourceVideoUrl) {
+    const refError = validateReferenceInputs(model, { imageUrl, lastFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls });
+    if (refError) return res.status(400).json({ error: 'invalid_reference_inputs', message: refError });
+  }
+  // مدة الفيديوهات المرجعية الحقيقية (الـschema: مجموعها لحد 30 ثانية) + سعر "video_in" الأعلى
+  const hasReferenceVideos = !sourceVideoUrl && referenceVideoUrls.length > 0;
+  if (hasReferenceVideos) {
+    try {
+      let total = 0;
+      for (const u of referenceVideoUrls) total += await measureVideoDurationSec(u);
+      const maxTotal = NEW_VIDEO_MODELS[model].refCaps?.videoMaxTotalSec;
+      if (maxTotal && total > maxTotal + 0.5) return res.status(400).json({ error: 'invalid_reference_inputs', message: `Reference videos add up to ${Math.round(total)}s — the limit is ${maxTotal}s combined.` });
+    } catch (e) {
+      return res.status(400).json({ error: 'reference_video_probe_failed', message: `Could not read a reference video: ${e.message}` });
+    }
+  }
   if (addCaptions && !narrationScript?.trim()) return res.status(400).json({ error: 'addCaptions requires narrationScript (captions are burned from the real narration audio)' });
   // ✅ NEW (طلب العميل: "لو عميل طلب مونتاج لفيديو اقل من 10 ثواني... يتعمل بـomni flash1.1
   // ولو اكتر يتعمل بـdecart/lucy-edit-2"): حاجز إضافي في الكود نفسه — مش بنثق في أي موديل جاي
@@ -3087,7 +3112,7 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
 
   let vidCreditCost;
   try {
-    vidCreditCost = getPerSecondCreditCost(model, sec, tier || null);
+    vidCreditCost = getPerSecondCreditCost(model, sec, tier || null, { videoIn: hasReferenceVideos });
     if (narration) vidCreditCost += getPerSecondCreditCost('gemini_flash_tts', Math.ceil(narration.durationSec));
     if (addCaptions) vidCreditCost += CAPTION_CREDIT_FLAT;
     if (musicStyle) vidCreditCost += MUSIC_CREDIT_FLAT;
@@ -3125,6 +3150,12 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
         aspectRatio: aspectRatio || '16:9',
         durationSec: sec,
         tier: tier || null,
+        // (تعديل فيديو موجود = مسار منفصل، بيتجاهل أي مراجع)
+        lastFrameUrl: sourceVideoUrl ? null : lastFrameUrl,
+        referenceImageUrls: sourceVideoUrl ? [] : referenceImageUrls,
+        referenceVideoUrls: sourceVideoUrl ? [] : referenceVideoUrls,
+        referenceAudioUrls: sourceVideoUrl ? [] : referenceAudioUrls,
+        generateAudio: typeof generateAudio === 'boolean' ? generateAudio : null,
       });
 
       let captionWords = null;

@@ -105,8 +105,12 @@ export const REPLICATE_MODEL_COSTS = {
   // (من غير فيديو مدخل — إحنا بنستخدمه لتوليد من نص/صورة بس زي كل الموديلات التانية)
   seedance_2_0:     { label: 'Seedance 2.0',       unit: 'second', usdCost: 0.18, maxClipSec: 15,
                        tiers: { '480p': 0.08, '720p': 0.18, '1080p': 0.45, '4k': 1.00 } },
-  seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.168, maxClipSec: 30,
-                       tiers: { '480p': 0.1028, '720p': 0.2312 } }, // مؤكد من Replicate مباشرة (non_video_in). 1080p/4K مش native output حقيقي (upscale بس)، متضافين هنا
+  // ✅ FIX: usdCost كان 0.168 (تقدير قديم) بينما الدقة الافتراضية اللي بنولّد بيها فعليًا 720p =
+  // $0.2312 — يعني أي طلب من غير tier كان بيتحاسب أقل من التكلفة الحقيقية. بقى = سعر 720p
+  // videoInTiers: سعر "video_in" (لما نبعت reference_videos) — من سكرين شوت العميل لصفحة الموديل
+  seedance_2_5:     { label: 'Seedance 2.5',       unit: 'second', usdCost: 0.2312, maxClipSec: 30,
+                       tiers: { '480p': 0.1028, '720p': 0.2312 },
+                       videoInTiers: { '480p': 0.4304, '720p': 0.9676 } },
   // ✅ NEW (طلب العميل، سعره وschema مؤكدين من سكرين شوت العميل مباشرة لصفحة الموديل الحقيقية):
   // alibaba/wan-3 — لحد 30 ثانية زي seedance_2_5 بالظبط. usdCost الافتراضي = 1080p (الدقة
   // الافتراضية فعليًا في الـschema نفسه)
@@ -236,9 +240,14 @@ export function getImageCreditCost(modelKey, count = 1, tier = null) {
  * back to the model's blended/default usdCost if no tier given or the model
  * has no separate tiers.
  */
-export function getPerSecondCreditCost(modelKey, durationSec, tier = null) {
+export function getPerSecondCreditCost(modelKey, durationSec, tier = null, { videoIn = false } = {}) {
   const model = REPLICATE_MODEL_COSTS[modelKey];
   if (!model || model.unit !== 'second') throw new Error(`Unknown per-second model: ${modelKey}`);
+  // videoIn = الطلب فيه فيديو مرجعي كمدخل (سعر أعلى بكتير في بعض الموديلات، زي seedance_2_5)
+  if (videoIn && model.videoInTiers) {
+    const videoInUsd = (tier && model.videoInTiers[tier]) ?? model.videoInTiers['720p'];
+    return usdToCredits(videoInUsd * Math.max(1, durationSec));
+  }
   const perSecondUsd = (tier && model.tiers?.[tier]) ?? model.usdCost;
   return usdToCredits(perSecondUsd * Math.max(1, durationSec));
 }
