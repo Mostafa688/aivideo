@@ -33,7 +33,7 @@ const T = {
     views: 'مشاهدة', likes: 'لايك', comments: 'كومنت', avgView: 'متوسط وقت المشاهدة',
     notLinkedYet: 'لسه ما اترفعش/اترباط بيوتيوب', loadingStats: 'بيجيب الأداء...',
     connectYoutube: 'اربط يوتيوب (النشر بعد مراجعتك)', connectedAs: 'متصل — جاهز للنشر بعد ما تراجع كل فيديو',
-    costGuideBtn: 'دليل التكلفة والأسعار',
+    costGuideBtn: 'دليل التكلفة والأسعار', estCost: 'تكلفة الفيديو المتوقعة', credits: 'كريديت', yourBalance: 'رصيدك', lowBal: 'رصيدك أقل من فيديو كامل',
     disconnect: 'فصل الربط', youtubeConnectedToast: 'تم ربط يوتيوب بنجاح! هتراجع كل فيديو وتوافق على نشره بنفسك.',
     channelAddedToast: 'تمام! القناة اتضافت — تقدر تشوفها تحت في "قنواتك".',
     setupModeLabel: 'طريقة إعداد القناة', setupAuto: 'أوتوماتيك', setupManual: 'يدوي',
@@ -95,7 +95,7 @@ const T = {
     views: 'views', likes: 'likes', comments: 'comments', avgView: 'avg. view duration',
     notLinkedYet: 'Not linked to a YouTube video yet', loadingStats: 'Loading stats...',
     connectYoutube: 'Connect YouTube (publish after your review)', connectedAs: 'Connected — ready to publish after you review each video',
-    costGuideBtn: 'Cost & price guide',
+    costGuideBtn: 'Cost & price guide', estCost: 'Estimated cost per video', credits: 'credits', yourBalance: 'Your balance', lowBal: 'balance is below a full video',
     disconnect: 'Disconnect', youtubeConnectedToast: "YouTube connected! You'll review and approve each video before it publishes.",
     channelAddedToast: 'Done! Your channel was added — check it below under "Your channels".',
     setupModeLabel: 'Channel setup mode', setupAuto: 'Automatic', setupManual: 'Manual',
@@ -159,6 +159,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
 
   const [channels, setChannels] = useState([]);
   const [publishEnabled, setPublishEnabled] = useState(false);
+  const [creditsBalance, setCreditsBalance] = useState(null);
   const [costGuideId, setCostGuideId] = useState(null);
   const shownGuideIds = useRef(new Set());
   const [loading, setLoading] = useState(true);
@@ -307,6 +308,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
       const chs = d.channels || [];
       setChannels(chs);
       setPublishEnabled(!!d.youtubePublishEnabled);
+      setCreditsBalance(typeof d.creditsBalance === 'number' ? d.creditsBalance : null);
       // ✅ قناة طويلة لسه العميل ماقرأش دليل التكلفة بتاعها → النافذة الإجبارية (مرة لكل قناة لكل جلسة لحد ما يقرأ)
       const needGuide = chs.find(c => c.is_long_form && !c.cost_notice_ack_at && !shownGuideIds.current.has(c.id));
       if (needGuide) { shownGuideIds.current.add(needGuide.id); setCostGuideId(needGuide.id); }
@@ -731,6 +733,12 @@ export default function ChannelsPage({ onBack, userRegion }) {
                     </button>
                   )}
                 </div>}
+                {ch.estimated_run_cost != null && (
+                  <div style={{ marginBottom: 10, fontSize: 12, color: '#9ca3af', lineHeight: 1.7 }}>
+                    {t.estCost}: <strong style={{ color: '#e5e7eb' }}>~{ch.estimated_run_cost} {t.credits}</strong>
+                    {creditsBalance != null && <> · {t.yourBalance}: <strong style={{ color: creditsBalance >= ch.estimated_run_cost ? '#22c55e' : '#f59e0b' }}>{creditsBalance}</strong>{creditsBalance < ch.estimated_run_cost && <span style={{ color: '#f59e0b' }}> ({t.lowBal})</span>}</>}
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => toggleStatus(ch)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#d1d5db', fontSize: 12, cursor: 'pointer' }}>
                     {ch.status === 'active' ? <><Pause size={12} /> {t.pause}</> : <><PlayCircle size={12} /> {t.resume}</>}

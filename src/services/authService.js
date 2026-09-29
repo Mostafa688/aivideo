@@ -1538,10 +1538,16 @@ export const ADS_CREDIT_COST = 240;
 // عشان الفرونت إند يقدر يقول للعميل "محتاج X كريديت ومعاك Y بس"
 export async function chargeCredits(userId, cost) {
   const billingUserId = await resolveBillingUserId(userId);
+  // ✅ FIX (سباق حقيقي): كان بيقرا الرصيد ثم يخصم في استعلامين منفصلين — طلبين متزامنين (مشهدين،
+  // أو فيديو + صور) كانوا الاتنين يعدّوا الفحص على نفس الرصيد ويخصموا الاتنين → رصيد بالسالب
+  // (توليد ببلاش). دلوقتي الفحص والخصم استعلام واحد ذري: الخصم بيحصل بس لو الرصيد كفاية
+  const { rows } = await pool.query(
+    'UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 AND credits_balance >= $1 RETURNING credits_balance',
+    [cost, billingUserId]
+  );
+  if (rows.length) return { success: true, remaining: rows[0].credits_balance, cost };
   const balance = await getCreditsBalance(billingUserId);
-  if (balance < cost) return { success: false, reason: 'quota_exceeded', remaining: balance, cost };
-  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 RETURNING credits_balance', [cost, billingUserId]);
-  return { success: true, remaining: rows[0]?.credits_balance ?? (balance - cost), cost };
+  return { success: false, reason: 'quota_exceeded', remaining: balance, cost };
 }
 
 // ── رصيد ترحيبي بسيط لأول مرة بس (مش بيتجدد) — يكفي فيديو أو اتنين قصار للتجربة ──

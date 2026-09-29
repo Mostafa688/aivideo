@@ -10,7 +10,7 @@ import {
 } from './authService.js';
 import { verifyVidiqKey, getVideoPerformance } from './vidiqClientService.js';
 import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
-import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically, finalizeChannelRunAfterGeneration, resolveChannelRunReviewAction, describeRunError, startResumeChannelRun } from './channelSchedulerService.js';
+import { triggerApprovedGeneration, sendDailyResultEmail, analyzeChannelAutomatically, finalizeChannelRunAfterGeneration, resolveChannelRunReviewAction, describeRunError, startResumeChannelRun, estimateChannelRunCost } from './channelSchedulerService.js';
 import { buildChannelCostGuide } from './channelCostGuide.js';
 import { getYoutubeConnectUrl, handleYoutubeOAuthCallback, disconnectYoutubeForChannel } from './youtubeUploadService.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
@@ -67,8 +67,12 @@ router.post('/:id/analyze', authMiddleware, async (req, res) => {
 
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const channels = await listManagedChannelsForUser(req.user.userId);
-    res.json({ channels, youtubePublishEnabled: YOUTUBE_PUBLISH_ENABLED });
+    const rows = await listManagedChannelsForUser(req.user.userId);
+    // ✅ التكلفة المتوقعة للفيديو الواحد لكل قناة + رصيد العميل — بتتعرض على كارت القناة (null لأنماط
+    // المحتوى اللي مالهاش موديلات بكريديت زي الخرائط/الواقعي/السبورة)
+    const channels = rows.map(c => ({ ...c, estimated_run_cost: estimateChannelRunCost(c, c.is_long_form ? 'long' : 'short') }));
+    const creditsBalance = await getCreditsBalance(req.user.userId).catch(() => null);
+    res.json({ channels, youtubePublishEnabled: YOUTUBE_PUBLISH_ENABLED, creditsBalance });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
