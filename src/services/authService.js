@@ -1633,6 +1633,36 @@ export async function setDailyVideoRunThumbnail(runId, url) {
   await pool.query('UPDATE daily_video_runs SET thumbnail_url = $1 WHERE id = $2', [url, runId]);
 }
 
+// ✅ NEW: إقرار العميل بقراءة "دليل تكلفة الفيديوهات الطويلة" (مرة لكل قناة) + حالة استكمال
+// فيديو وقف قبل ما يخلص (نفاد الكريديت وسط التوليد) — resume_state = JSON بكل اللي محتاجينه
+// عشان نكمّل من نفس المشهد بنفس الموديلات والترتيب (مشاهد/صور/كليبات خلصت + الباقي)
+(async () => {
+  await pool.query('ALTER TABLE managed_channels ADD COLUMN IF NOT EXISTS cost_notice_ack_at TIMESTAMPTZ DEFAULT NULL').catch(() => {});
+  await pool.query('ALTER TABLE daily_video_runs ADD COLUMN IF NOT EXISTS resume_state TEXT DEFAULT NULL').catch(() => {});
+})();
+
+export async function acknowledgeCostNotice(channelId, userId) {
+  const { rowCount } = await pool.query(
+    'UPDATE managed_channels SET cost_notice_ack_at = COALESCE(cost_notice_ack_at, NOW()) WHERE id = $1 AND user_id = $2',
+    [channelId, userId]
+  );
+  return rowCount > 0;
+}
+
+export async function setDailyVideoRunResumeState(runId, state) {
+  await pool.query('UPDATE daily_video_runs SET resume_state = $1 WHERE id = $2', [state ? JSON.stringify(state) : null, runId]);
+}
+
+// claim ذري (نفس مبدأ claimDailyVideoRunForGeneration): بس أول ضغطة "كمّل" على فيديو ناقص هي اللي
+// تكسب، أي ضغطة تانية في نفس اللحظة مش هتلاقي صف فترجع null
+export async function claimDailyVideoRunForResume(runId, userId) {
+  const { rows } = await pool.query(
+    `UPDATE daily_video_runs SET review_state = 'resuming' WHERE id = $1 AND user_id = $2 AND review_state = 'partial' AND resume_state IS NOT NULL RETURNING *`,
+    [runId, userId]
+  );
+  return rows[0] || null;
+}
+
 export async function acknowledgeYoutubePublish(channelId, userId) {
   const { rowCount } = await pool.query(
     'UPDATE managed_channels SET youtube_publish_ack_at = COALESCE(youtube_publish_ack_at, NOW()) WHERE id = $1 AND user_id = $2',
@@ -1649,7 +1679,9 @@ export async function listManagedChannelsForUser(userId) {
   const { rows } = await pool.query(
     `SELECT mc.id, mc.platform, mc.label, mc.channel_id, mc.format_pref, mc.uses_voice, mc.voice_id, mc.model_pref, mc.status, mc.last_run_at, mc.created_at,
             mc.youtube_channel_title, mc.youtube_privacy_status, mc.youtube_publish_ack_at, mc.youtube_publish_count, mc.setup_mode, mc.content_style, mc.video_style, mc.content_brief,
-            mc.image_model, mc.animation_model, mc.captions_enabled,
+            mc.image_model, mc.animation_model, mc.captions_enabled, mc.cost_notice_ack_at,
+            (mc.format_pref = 'long' OR COALESCE(mc.target_duration_sec, 0) >= 90 OR EXISTS (SELECT 1 FROM daily_video_runs r WHERE r.channel_id = mc.id AND r.format = 'long')) AS is_long_form,
+            (SELECT r.id FROM daily_video_runs r WHERE r.channel_id = mc.id AND r.review_state = 'partial' AND r.resume_state IS NOT NULL ORDER BY r.id DESC LIMIT 1) AS partial_run_id,
             mc.target_duration_sec, mc.target_scene_count, mc.auto_analyzed_at, mc.character_reference_id, cr.image_url as character_image_url, cr.label as character_label
      FROM managed_channels mc LEFT JOIN character_references cr ON cr.id = mc.character_reference_id
      WHERE mc.user_id = $1 ORDER BY mc.id DESC`,

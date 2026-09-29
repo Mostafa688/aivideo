@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import CostGuideModal from './CostGuideModal.jsx';
 import {
   Tv, ArrowLeft, ExternalLink, KeyRound, Bot, Pencil, Mic, MicOff, RefreshCw, Search,
   Sparkles, Drama, Play, CheckCircle2, XCircle, Pause, PlayCircle, Trash2, BarChart3,
@@ -32,6 +33,7 @@ const T = {
     views: 'مشاهدة', likes: 'لايك', comments: 'كومنت', avgView: 'متوسط وقت المشاهدة',
     notLinkedYet: 'لسه ما اترفعش/اترباط بيوتيوب', loadingStats: 'بيجيب الأداء...',
     connectYoutube: 'اربط يوتيوب (النشر بعد مراجعتك)', connectedAs: 'متصل — جاهز للنشر بعد ما تراجع كل فيديو',
+    costGuideBtn: 'دليل التكلفة والأسعار',
     disconnect: 'فصل الربط', youtubeConnectedToast: 'تم ربط يوتيوب بنجاح! هتراجع كل فيديو وتوافق على نشره بنفسك.',
     channelAddedToast: 'تمام! القناة اتضافت — تقدر تشوفها تحت في "قنواتك".',
     setupModeLabel: 'طريقة إعداد القناة', setupAuto: 'أوتوماتيك', setupManual: 'يدوي',
@@ -93,6 +95,7 @@ const T = {
     views: 'views', likes: 'likes', comments: 'comments', avgView: 'avg. view duration',
     notLinkedYet: 'Not linked to a YouTube video yet', loadingStats: 'Loading stats...',
     connectYoutube: 'Connect YouTube (publish after your review)', connectedAs: 'Connected — ready to publish after you review each video',
+    costGuideBtn: 'Cost & price guide',
     disconnect: 'Disconnect', youtubeConnectedToast: "YouTube connected! You'll review and approve each video before it publishes.",
     channelAddedToast: 'Done! Your channel was added — check it below under "Your channels".',
     setupModeLabel: 'Channel setup mode', setupAuto: 'Automatic', setupManual: 'Manual',
@@ -156,6 +159,8 @@ export default function ChannelsPage({ onBack, userRegion }) {
 
   const [channels, setChannels] = useState([]);
   const [publishEnabled, setPublishEnabled] = useState(false);
+  const [costGuideId, setCostGuideId] = useState(null);
+  const shownGuideIds = useRef(new Set());
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState('');
   const [vidiqKey, setVidiqKey] = useState('');
@@ -302,6 +307,9 @@ export default function ChannelsPage({ onBack, userRegion }) {
       const chs = d.channels || [];
       setChannels(chs);
       setPublishEnabled(!!d.youtubePublishEnabled);
+      // ✅ قناة طويلة لسه العميل ماقرأش دليل التكلفة بتاعها → النافذة الإجبارية (مرة لكل قناة لكل جلسة لحد ما يقرأ)
+      const needGuide = chs.find(c => c.is_long_form && !c.cost_notice_ack_at && !shownGuideIds.current.has(c.id));
+      if (needGuide) { shownGuideIds.current.add(needGuide.id); setCostGuideId(needGuide.id); }
       if (d.youtubePublishEnabled) chs.filter(ch => !ch.youtube_channel_title).forEach(ch => prefetchConnectUrl(ch.id));
     }).catch(() => {}).finally(() => setLoading(false));
   };
@@ -415,6 +423,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
           </button>
         )}
 
+        {costGuideId && <CostGuideModal channelId={costGuideId} isAr={isAr} onDone={() => { setCostGuideId(null); load(); }} />}
         {ackModal && (
           <div onClick={() => setAckModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
             <div onClick={e => e.stopPropagation()} style={{ background: '#0d0d14', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
@@ -728,6 +737,9 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   </button>
                   <button onClick={() => removeChannel(ch.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
                     <Trash2 size={12} /> {t.remove}
+                  </button>
+                  <button onClick={() => setCostGuideId(ch.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.06)', color: '#fbbf24', fontSize: 12, cursor: 'pointer' }}>
+                    {t.costGuideBtn}
                   </button>
                   <button onClick={() => toggleAnalytics(ch.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.08)', color: '#a78bfa', fontSize: 12, cursor: 'pointer', marginInlineStart: 'auto' }}>
                     {expandedChannelId === ch.id ? <>{t.hideAnalytics}</> : <><BarChart3 size={12} /> {t.analytics}</>}

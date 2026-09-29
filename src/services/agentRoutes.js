@@ -6,7 +6,7 @@ import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
-import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost } from './channelSchedulerService.js';
+import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, startResumeChannelRun } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
@@ -693,9 +693,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
         } else {
           const fullChannel = await getManagedChannelById(channelId);
           const { idea, format } = await getFreshChannelIdea(fullChannel);
-          const estimatedCost = estimateChannelRunCost(fullChannel, format);
+          const estimatedCost = estimateChannelRunCost(fullChannel, format, idea);
           const costNote = estimatedCost != null
-            ? `estimated cost: ~${estimatedCost} credits (final cost may vary slightly, charged from their real balance)`
+            ? `estimated cost: ~${estimatedCost} credits (final cost may vary slightly, charged from their real balance)${typeof userCredits === 'number' ? `; the customer's current balance is ${userCredits} credits${userCredits < estimatedCost ? ' — LOWER than the estimate' : ''}` : ''}`
             : `cost: depends on this channel's content style — you'll be told the exact amount once it's done, charged from their real balance like any other video`;
           channelNote = `Fresh idea sourced from VidIQ for channel "${channel.label || channel.channel_id}" (id ${channelId}): title="${idea.title}", brief="${idea.brief || ''}", videoLanguage="${idea.videoLanguage || 'en'}", format="${format}" (${format === 'short' ? 'short, punchy, ~30s' : 'long-form, several minutes'}), voice="${channel.uses_voice ? 'yes — include narration' : 'no — silent, no narration'}", ${costNote}. Present this idea warmly to the user (title, brief, and the cost note above), then per rule 13b step 2, wait for their explicit go-ahead before ending a reply with ###CHANNEL_GENERATE###{"channelId":${channelId}} — do not use the generic image/video pipeline for this, and do not ask the user for details you already have here.`;
         }
@@ -1197,12 +1197,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
     ({ text: reply, payload: whiteboardVideoPayload } = extractTrailingMarker(reply, '###WHITEBOARD_VIDEO###'));
     ({ text: reply, payload: channelGeneratePayload } = extractTrailingMarker(reply, '###CHANNEL_GENERATE###'));
+    ({ text: reply, payload: channelResumePayload } = extractTrailingMarker(reply, '###CHANNEL_RESUME###'));
     // ✅ خطوة موافقة حقيقية بتكلفة كريديت حقيقية زي أي فيديو تاني — نفس حاجز الخطة المجانية
     // المستخدم فوق لـREADY/GENERATE_IMAGE/... بالظبط، بس منفصل لأنه ماركر ثانوي (بعد الحاجز
     // الأساسي فوق) مش من عيلة READY
@@ -1279,6 +1280,24 @@ router.post('/chat', authMiddleware, async (req, res) => {
         } catch (e) {
           console.warn('[Agent] CHANNEL_GENERATE marker failed:', e.message);
           reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ فيديو القناة — جرب تاني بعد شوية.';
+        }
+      }
+    }
+
+    // ✅ NEW: استكمال فيديو قناة وقف لما الكريديت خلص — الـrunId لازم يكون فعلاً من قنوات العميل نفسه
+    if (channelResumePayload) {
+      const runId = Number(channelResumePayload.runId);
+      if (!userChannels.some(c => Number(c.partial_run_id) === runId)) {
+        reply += (reply ? '\n\n' : '') + 'معلش، مش لاقي فيديو ناقص بالرقم ده على قنواتك.';
+      } else {
+        try {
+          const r = await startResumeChannelRun(userId, runId);
+          if (r.ok) reply += (reply ? '\n\n' : '') + `تمام، بدأت أكمّل الفيديو من المشهد ${r.scenesDone + 1} من ${r.scenesTotal}. هيتحدّث في مشروع القناة أول ما يخلص.`;
+          else if (r.error === 'insufficient_credits') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية لسه: المشهد الجاي محتاج ${r.needed} كريديت ورصيدك ${r.balance}، وإكمال الفيديو كله محتاج حوالي ${r.estimatedRemaining ?? '؟'} كريديت. اشحن الأول وقولّي "كمّل".`;
+          else reply += (reply ? '\n\n' : '') + 'الفيديو ده بيتكمّل بالفعل أو مفيش حاجة ناقصة فيه.';
+        } catch (e) {
+          console.warn('[Agent] CHANNEL_RESUME marker failed:', e.message);
+          reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أكمّل الفيديو — جرب تاني بعد شوية.';
         }
       }
     }
