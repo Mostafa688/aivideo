@@ -1649,6 +1649,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         body: JSON.stringify({
           model: gen.model, prompt: gen.prompt, imageUrl: gen.imageUrl || undefined,
           sourceVideoUrl: gen.sourceVideoUrl || undefined,
+          referenceImageUrls: gen.referenceImageUrls?.length ? gen.referenceImageUrls : undefined,
+          referenceVideoUrls: gen.referenceVideoUrls?.length ? gen.referenceVideoUrls : undefined,
+          lastFrameUrl: gen.lastFrameUrl || undefined,
           aspectRatio: gen.aspectRatio || '16:9', durationSec: gen.durationSec || 5, tier: gen.tier || undefined,
           narrationScript: gen.narrationScript || undefined, voiceKey: gen.voiceKey || undefined,
           narrationLanguage: gen.narrationLanguage || undefined, addCaptions: gen.addCaptions || undefined,

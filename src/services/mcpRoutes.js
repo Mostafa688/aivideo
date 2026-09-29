@@ -203,7 +203,11 @@ function buildMcpServer(userId, email) {
         const tierNote = m.tiers ? ` (resolutions: ${m.tiers.join('/')})` : '';
         const imgNote = m.supportsImageInput ? ', supports image-to-video' : '';
         const editNote = m.supportsVideoEdit ? ', supports editing an existing video' : '';
-        return `- ${m.label} [key: "${m.key}"] — ${m.creditCostPerSecond} credits/sec, max ${m.maxClipSec}s per clip${tierNote}${imgNote}${editNote}`;
+        const rc = m.referenceCaps;
+        const refNote = rc
+          ? `, reference inputs: ${[rc.images ? `up to ${rc.images} reference images` : null, rc.videos ? `up to ${rc.videos} reference videos (${m.creditCostPerSecondWithVideoIn ? `about ${m.creditCostPerSecondWithVideoIn} credits/sec instead when used` : 'higher price'})` : null, rc.audios ? `up to ${rc.audios} reference audio files` : null, rc.lastFrame ? 'last frame (end image)' : null].filter(Boolean).join(', ')}`
+          : '';
+        return `- ${m.label} [key: "${m.key}"] — ${m.creditCostPerSecond} credits/sec, max ${m.maxClipSec}s per clip${tierNote}${imgNote}${editNote}${refNote}`;
       });
       return {
         content: [{
@@ -327,6 +331,11 @@ function buildMcpServer(userId, email) {
         model: z.enum(VIDEO_MODEL_KEYS).describe('The exact engine key from list_models (e.g. "veo3_fast", "seedance_2_5", "kling_2_5").'),
         prompt: z.string().min(3).describe('A detailed English video-generation prompt — subject, action, camera movement, style.'),
         imageUrl: z.string().url().optional().describe('Animate this existing image instead of pure text-to-video (image-to-video) — only for engines where list_models says "supports image-to-video". Must be a real, direct public URL (e.g. an earlier Erivion generation\'s URL, or a link the user got from Erivion\'s "Upload image, get link" tool) — never a locally attached/uploaded file from this chat, MCP cannot pass that through. Never fabricate a URL.'),
+        referenceImageUrls: z.array(z.string().url()).max(30).optional().describe('Reference images that guide the subject/style (character consistency, a product, a place) — only for engines where list_models says "reference images". In the prompt refer to them as [Image1], [Image2]… (Seedance 2.5). Cannot be combined with imageUrl/lastFrameUrl on Seedance 2.5.'),
+        referenceVideoUrls: z.array(z.string().url()).max(10).optional().describe('Reference videos for motion transfer / style (Seedance 2.5 only, up to 10, combined max 30s). Refer to them as [Video1]… in the prompt. NOTE: this costs about 4x more per second — only use when the user actually wants to borrow motion/style from a video.'),
+        referenceAudioUrls: z.array(z.string().url()).max(10).optional().describe('Reference audio for audio-driven generation / lip-sync (Seedance 2.5 only, combined max 30s) — needs at least one reference image or video too. Refer to them as [Audio1]… in the prompt.'),
+        lastFrameUrl: z.string().url().optional().describe('Ending image — the video transitions from imageUrl (first frame) to this image. Needs imageUrl. Only for engines where list_models says "last frame".'),
+        generateAudio: z.boolean().optional().describe('Seedance 2.5 only: set false for a silent clip (default is with synchronized audio).'),
         aspectRatio: z.enum(['9:16', '16:9']).default('16:9').describe('16:9 for YouTube/cinematic, 9:16 for social/reels.'),
         durationSec: z.number().int().min(1).max(60).default(5).describe('Clip length in seconds — must not exceed that engine\'s "max Xs per clip" from list_models. Ignored if narrationScript is given (duration is then set by the real narration length).'),
         tier: z.string().optional().describe('Quality/resolution tier — only for engines that list "resolutions" in list_models. Omit otherwise.'),
@@ -339,13 +348,15 @@ function buildMcpServer(userId, email) {
       },
       _meta: { ui: { resourceUri: videoPlayerResourceUri } },
     },
-    async ({ model, prompt, imageUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood }) => {
+    async ({ model, prompt, imageUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood, referenceImageUrls, referenceVideoUrls, referenceAudioUrls, lastFrameUrl, generateAudio }) => {
       try {
         const headers = authHeaders();
         const genRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, {
           method: 'POST', headers,
           body: JSON.stringify({
             model, prompt, imageUrl: imageUrl || null, aspectRatio, durationSec, tier: tier || null,
+            referenceImageUrls: referenceImageUrls || [], referenceVideoUrls: referenceVideoUrls || [], referenceAudioUrls: referenceAudioUrls || [],
+            lastFrameUrl: lastFrameUrl || null, generateAudio: typeof generateAudio === 'boolean' ? generateAudio : undefined,
             narrationScript: narrationScript || null, voiceKey: voiceKey || null, narrationLanguage: narrationLanguage || null,
             addCaptions: !!addCaptions, musicStyle: musicStyle || null, musicMood: musicMood || null,
           }),
