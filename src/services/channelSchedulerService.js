@@ -1180,7 +1180,7 @@ async function generateAndUploadChannelThumbnail(run, channel, idea, videoId, he
 // ✅ NEW: التنفيذ الفعلي لضغطة "تمت المراجعة" أو "نشر الآن" — مشترك بين مسار الإيميل
 // (توكن، من غير تسجيل دخول) ومسار الموقع (المستخدم داخل حسابه) في channelRoutes.js
 export async function resolveChannelRunReviewAction(run, action) {
-  if (run.review_state === 'partial' || run.review_state === 'resuming') throw new Error('This video is not finished yet (credits ran out before the last scenes) — finish it first.');
+  if (run.review_state === 'partial' || run.review_state === 'resuming') throw new Error('This video is not finished yet — finish it first (press Continue video).');
   const channel = await getManagedChannelById(run.channel_id);
   if (action === 'reviewed') {
     await updateDailyVideoRunStatus(run.id, 'done', { reviewState: 'reviewed', reviewed: true });

@@ -79,7 +79,7 @@ function fmtVideoModels() {
     const imgNote = NEW_VIDEO_MODELS[key].supportsImageInput ? ', supports image-to-video' : '';
     const rc = NEW_VIDEO_MODELS[key].refCaps;
     const refNote = rc
-      ? `, reference inputs: ${[rc.images ? `up to ${rc.images} reference images` : null, rc.videos ? `up to ${rc.videos} reference videos (costs ~${getPerSecondCreditCost(key, 1, null, { videoIn: true })}cr/sec instead when used)` : null, rc.audios ? `up to ${rc.audios} reference audio files` : null, rc.lastFrame ? 'last frame' : null].filter(Boolean).join(', ')}`
+      ? `, reference inputs: ${[rc.images ? `up to ${rc.images} reference images` : null, rc.videos ? `up to ${rc.videos} reference videos (costs ~${getPerSecondCreditCost(key, 1, null, { videoIn: true })}cr/sec instead when used)` : null, rc.lastFrame ? 'last frame' : null].filter(Boolean).join(', ')}`
       : '';
     return `${key} ("${label}", ${perSec}cr/sec, max ${maxSec}s per clip${tierNote}${imgNote}${refNote})`;
   }).join('; ');

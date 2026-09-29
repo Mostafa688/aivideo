@@ -1192,7 +1192,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (m.type === 'channelRun') {
       if (m.job?.status === 'done') {
         const costTag = m.job.creditsCharged != null ? `, cost: ${m.job.creditsCharged} credits` : '';
-        return `[${lang === 'ar' ? 'تم عمل فيديو القناة بنجاح، جاهز للمراجعة والنشر (مش منشور تلقائي)' : 'The channel video was successfully made and is awaiting the user\'s review before publishing (NOT auto-published)'} — "${m.job.ideaTitle || ''}" — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}${costTag}]`;
+        return `[${lang === 'ar' ? 'تم عمل فيديو القناة بنجاح، جاهز للمراجعة ومعاه حزمة الرفع (العنوان والوصف والكلمات والصورة المصغرة) — العميل هو اللي بيرفعه على يوتيوب' : 'The channel video was successfully made and is ready for the user\'s review with its upload package (title, description, tags, thumbnail) — the user uploads it to YouTube themselves'} — "${m.job.ideaTitle || ''}" — ${lang === 'ar' ? 'رابط الفيديو' : 'video URL'}: ${m.job.videoUrl || ''}${costTag}]`;
       }
       if (m.job?.status === 'failed') {
         return failedNote(lang === 'ar' ? 'فيديو قناة سابق فشل في التوليد ولم يكتمل' : 'A previous channel video FAILED and did not complete');
