@@ -955,10 +955,10 @@ export async function addCreditsBalance(userId, amount) {
 
 export async function deductCreditsBalance(userId, amount) {
   const billingUserId = await resolveBillingUserId(userId);
-  const current = await getCreditsBalance(billingUserId);
-  if (current < amount) return { success: false, balance: current };
-  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 RETURNING credits_balance', [amount, billingUserId]);
-  return { success: true, balance: rows[0]?.credits_balance || 0 };
+  // فحص + خصم في استعلام واحد ذري (نفس إصلاح chargeCredits)
+  const { rows } = await pool.query('UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2 AND credits_balance >= $1 RETURNING credits_balance', [amount, billingUserId]);
+  if (rows.length) return { success: true, balance: rows[0].credits_balance || 0 };
+  return { success: false, balance: await getCreditsBalance(billingUserId) };
 }
 
 // ── اعتماد عملية شراء كريديت (مصري بالسلايدر أو دولي بباقة ثابتة) ─────────
