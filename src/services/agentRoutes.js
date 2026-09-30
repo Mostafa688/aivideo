@@ -870,7 +870,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     // ✅ NEW: أي رابط الايجنت "نسخه" بنفسه من الـ history (مش رابط جينا إحنا بيه من السيرفر)
     // لازم يتأكد إنه رابط حقيقي فعلاً ظهر قبل كده، دفاعًا ضد رابط مبتور بسبب انقطاع الرد
-    const knownUrls = extractKnownUrls(history, mediaLedger);
+    // (+ روابط الصور اللي اترفعت في نفس الرسالة دي — الايجنت بينسخها من ملاحظة الرفع في نفس الدور)
+    const knownUrls = extractKnownUrls(history, [typeof mediaLedger === 'string' ? mediaLedger : '', ...uploadedPhotoUrls].filter(Boolean).join(' '));
     const isKnownUrl = (u) => typeof u === 'string' && knownUrls.has(u.trim());
 
     // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة — لو
@@ -1103,6 +1104,22 @@ router.post('/chat', authMiddleware, async (req, res) => {
         delete generateVideo.imageUrl; delete generateVideo.lastFrameUrl;
       }
     }
+    // ✅ صورة المنتج/الشخص اللي العميل رفعها في نفس الرسالة بتتحرك/تتستخدم **مباشرة** في الفيديو
+    // (صورة أول فريم، أو كمرجع في seedance_2_5/omni_flash_1_1) من غير أي خطوة "صورة مرجعية" قبلها.
+    // بنستخدم الرابط الدائم (R2) لو اترفعت — مش الـbase64 الخام — عشان مايتبعتش ملف ضخم لـReplicate
+    // ونسبة الصورة تتفرض صح تحت. لو الايجنت اختار بنفسه رابط صورة مرفوعة (مثلاً Photo 2) بنحترمه
+    if (generateVideo && images.length && NEW_VIDEO_MODELS[generateVideo.model]?.supportsImageInput) {
+      const rcAttach = NEW_VIDEO_MODELS[generateVideo.model].refCaps;
+      const attachUrls = uploadedPhotoUrls.length ? uploadedPhotoUrls : images;
+      // لو الايجنت اختار وضع "صور مرجعية" (seedance_2_5)، الصور المرفقة بتنضاف كمراجع
+      // (الـschema بتمنع الجمع بين صورة أول فريم وأي مرجع) بدل ما تبقى imageUrl
+      if (generateVideo.model === 'seedance_2_5' && (generateVideo.referenceImageUrls?.length || generateVideo.referenceVideoUrls?.length)) {
+        const urlsOnly = attachUrls.filter(u => /^https?:\/\//i.test(u)); // base64 مينفعش كمرجع (الـAPI بيقبل روابط بس)
+        generateVideo.referenceImageUrls = [...new Set([...(generateVideo.referenceImageUrls || []), ...urlsOnly])].slice(0, rcAttach.images);
+      } else if (!generateVideo.referenceImageUrls?.length && (!generateVideo.imageUrl || (uploadedPhotoUrls.length && !uploadedPhotoUrls.includes(generateVideo.imageUrl)))) {
+        generateVideo.imageUrl = attachUrls[0];
+      }
+    }
     // ✅ FIX (باج حقيقي: صورة اتعملت 16:9، والعميل قال "حرك الصورة دي" من غير ما يكرر
     // النسبة، فالفيديو الناتج طلع 9:16 — الايجنت (الموديل نفسه) اعتمد على تخمينه الافتراضي
     // بدل ما ياخد بالفعل نسبة الصورة الحقيقية من الـ history، رغم التعليمة الصريحة في
@@ -1157,19 +1174,6 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (explicitRatio) {
       if (generateImage) generateImage.aspectRatio = explicitRatio;
       if (generateVideo && explicitRatio !== '1:1') generateVideo.aspectRatio = explicitRatio;
-    }
-
-    // ✅ NEW: توليد فيديو مستقل (Veo/Kling/Seedance/Luma) بيستخدم أول صورة مرفقة في نفس
-    // الرسالة كـ image-to-video لو الموديل بيدعم كده — نفس نمط generateImage فوق بالظبط
-    if (generateVideo && images.length && NEW_VIDEO_MODELS[generateVideo.model]?.supportsImageInput) {
-      const rcAttach = NEW_VIDEO_MODELS[generateVideo.model].refCaps;
-      // لو الايجنت اختار وضع "صور مرجعية" (seedance_2_5)، الصور المرفقة بتنضاف كمراجع
-      // (الـschema بتمنع الجمع بين صورة أول فريم وأي مرجع) بدل ما تبقى imageUrl
-      if (generateVideo.model === 'seedance_2_5' && (generateVideo.referenceImageUrls?.length || generateVideo.referenceVideoUrls?.length)) {
-        generateVideo.referenceImageUrls = [...(generateVideo.referenceImageUrls || []), ...images].slice(0, rcAttach.images);
-      } else {
-        generateVideo.imageUrl = images[0];
-      }
     }
 
     // ✅ لو نجحنا نطلع "ready"/"editScene"/"videoEdit"/"generateImage"/"generateVideo" بس
