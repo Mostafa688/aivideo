@@ -109,7 +109,7 @@ const MODEL3_PLANS = [
   },
 ];
 
-const INSTAPAY_LINK = import.meta.env.VITE_INSTAPAY_LINK || 'https://ipn.eg/S/mostafabond51/instapay/75HKD8';
+const INSTAPAY_LINK = import.meta.env.VITE_INSTAPAY_LINK || 'https://ipn.eg/S/mostafabond5/instapay/6lWPkh';
 
 function Model3PaymentModal({ onClose, onSuccess }) {
   const [step, setStep] = useState('plans');

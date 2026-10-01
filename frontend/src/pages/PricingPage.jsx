@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clapperboard, Star, Trophy, Users, Building2, Check, X, HandHeart, Globe, Loader2 } from 'lucide-react';
 
-const INSTAPAY_LINK = import.meta.env.VITE_INSTAPAY_LINK || 'https://ipn.eg/S/mostafabond51/instapay/75HKD8';
+const INSTAPAY_LINK = import.meta.env.VITE_INSTAPAY_LINK || 'https://ipn.eg/S/mostafabond5/instapay/6lWPkh';
 const EGP_PER_CREDIT = 0.7;
 const SLIDER_MIN = 600;
 const SLIDER_MAX = 10000;
