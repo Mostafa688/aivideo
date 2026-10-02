@@ -1,7 +1,7 @@
 // ── audioMix.js ── خلط الصوت: سرد + موسيقى (بتهدّى تحت الكلام بـsidechain) + مؤثرات، مع ضبط علو الصوت
 import { ffmpeg } from './ff.js';
 
-export async function mixAudio({ narrationFile, musicFile = null, musicVolume = 0.32, sfxEvents = [], sfxFiles = {}, duration, outFile }) {
+export async function mixAudio({ narrationFile, musicFile = null, musicVolume = 0.15, sfxEvents = [], sfxFiles = {}, duration, outFile }) {
   const inputs = ['-i', narrationFile];
   const parts = [];
   let idx = 1;
@@ -12,7 +12,7 @@ export async function mixAudio({ narrationFile, musicFile = null, musicVolume = 
     const mi = idx++;
     const fo = Math.max(0, duration - 3);
     parts.push(`[${mi}:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${musicVolume},afade=t=in:d=2,afade=t=out:st=${fo.toFixed(3)}:d=3[mus]`);
-    parts.push('[mus][narrsc]sidechaincompress=threshold=0.025:ratio=9:attack=15:release=600:makeup=1[duck]');
+    parts.push('[mus][narrsc]sidechaincompress=threshold=0.02:ratio=12:attack=15:release=700:makeup=1[duck]');
     labels.push('duck');
   } else {
     parts[0] = parts[0].replace('asplit=2[narr][narrsc]', 'anull[narr]');

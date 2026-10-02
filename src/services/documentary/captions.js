@@ -1,5 +1,10 @@
 // ── captions.js ── كابشن ASS من توقيت الكلمات (ستايلات: box | karaoke | pop) — بيدعم RTL
 import { getTheme } from './themes.js';
+import sharp from 'sharp';
+import fs_ from 'fs';
+import os from 'os';
+import path from 'path';
+import { ffmpeg, rmQuiet } from './ff.js';
 import { isRtlLang } from './textutil.js';
 
 const toAss = (s) => {
@@ -13,6 +18,54 @@ const hexToAssBGR = (hex, alpha = 0) => {
   return `&H${alpha.toString(16).padStart(2, '0').toUpperCase()}${b}${g}${r}`.toUpperCase();
 };
 const cleanWord = (w) => String(w).replace(/[{}\\]/g, '').replace(/\n/g, ' ');
+
+
+const capLayout = (lang, w, h) => {
+  const rtl = isRtlLang(lang);
+  const portrait = h > w;
+  return { rtl, portrait, font: rtl ? 'Noto Naskh Arabic' : 'Noto Sans', fs: portrait ? 78 : 64 };
+};
+
+// قياس عرض كل كلمة بنفس الخط (pango/fontconfig) — بنحتاجه في العربي عشان نوزّع الكلمات بنفسنا:
+// libass بيقلب ترتيب/تلوين الكلمات لما يبقى فيه tags لون أو \kf جوه سطر RTL (بيختلف حسب إصدار libass)
+const sharpWidth = async (text, font, fs) => (await sharp({ text: { text: text.replace(/&/g, '&amp;').replace(/</g, '&lt;'), font: `${font} Bold ${fs}`, rgba: true, dpi: 72 } }).metadata()).width;
+
+// libass بيفسّر حجم الخط كارتفاع سطر كامل (مش em) فالكلمة بتطلع أصغر من pango بنفس الرقم؛ بنعايرها
+// مرة بتجربة رسم حقيقية بـlibass نفسه (ffmpeg) ونقيس عرض الحبر، فالتوزيع بيطابق أي إصدار/خط
+let calibCache = null;
+async function calibrate(font, fs, ffmpegBin = 'ffmpeg') {
+  const key = `${font}|${fs}`;
+  if (calibCache?.key === key) return calibCache.k;
+  const dir = fs_.mkdtempSync(path.join(os.tmpdir(), 'capcal-'));
+  try {
+    const W = 1600, H = 300, probe = 'مممممممممم';
+    const ass = `[Script Info]\nScriptType: v4.00+\nPlayResX: ${W}\nPlayResY: ${H}\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: C,${font},${fs},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:00.00,0:00:02.00,C,,0,0,0,,${probe}\n`;
+    const assFile = path.join(dir, 'c.ass'), png = path.join(dir, 'c.png');
+    fs_.writeFileSync(assFile, ass);
+    await ffmpeg(['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:d=1`, '-vf', `ass=${assFile.replace(/\\/g, '/').replace(/:/g, '\\\\:')}`, '-frames:v', '1', png]);
+    const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true });
+    let min = info.width, max = -1;
+    for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) if (data[y * info.width + x] > 90) { if (x < min) min = x; if (x > max) max = x; }
+    const ink = max - min + 1;
+    const pw = await sharpWidth(probe, font, fs);
+    const k = ink > 20 && pw > 20 ? ink / pw : null;
+    calibCache = { key, k };
+    return k;
+  } finally { rmQuiet(dir); }
+}
+
+export async function measureCaptionWords(words, { lang = 'ar', w = 1920, h = 1080 } = {}) {
+  const { font, fs } = capLayout(lang, w, h);
+  const k = await calibrate(font, fs);
+  if (!k || k < 0.3 || k > 1.2) throw new Error('caption calibration failed');
+  const map = new Map();
+  for (const x of words) {
+    const t = cleanWord(x.w);
+    if (!t || map.has(t)) continue;
+    map.set(t, (await sharpWidth(t, font, fs)) * k);
+  }
+  return map;
+}
 
 // تجميع الكلمات في عبارات قصيرة (حد كلمات/حروف/مدة، وبنقطع عند علامات الترقيم والفجوات)
 export function groupWords(words, { maxWords = 6, maxChars = 32, maxDur = 3.2, gap = 0.55 } = {}) {
@@ -33,12 +86,9 @@ export function groupWords(words, { maxWords = 6, maxChars = 32, maxDur = 3.2, g
   return groups;
 }
 
-export function buildCaptionsAss({ words, style = 'karaoke', w = 1920, h = 1080, lang = 'en', theme = 'blue' }) {
+export function buildCaptionsAss({ words, style = 'karaoke', w = 1920, h = 1080, lang = 'en', theme = 'blue', widths = null }) {
   const th = getTheme(theme);
-  const rtl = isRtlLang(lang);
-  const portrait = h > w;
-  const font = rtl ? 'Noto Naskh Arabic' : 'Noto Sans';
-  const fs = portrait ? 78 : 64;
+  const { rtl, portrait, font, fs } = capLayout(lang, w, h);
   const marginV = portrait ? Math.round(h * 0.2) : Math.round(h * 0.075);
   const maxChars = portrait ? 20 : 34;
   // ألوان الكابشن ثابتة عالية التباين (مستقلة عن ستايل الخلفية) — أبيض + أصفر للكلمة الحالية
@@ -65,7 +115,31 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   const events = [];
   for (const g of groups) {
     const gStart = g[0].start, gEnd = Math.max(g[g.length - 1].end, gStart + 0.3);
-    if (style === 'box') {
+    if (rtl && style !== 'box') {
+      // RTL: كل كلمة حدث لوحدها بموضع محسوب (run واحد = بيتعرض صح في أي إصدار libass)
+      const texts = g.map(x => cleanWord(x.w));
+      if (!widths || texts.some(t => !widths.has(t))) {
+        events.push(`Dialogue: 0,${toAss(gStart)},${toAss(gEnd)},Cap,,0,0,0,,${texts.join(' ')}`);
+        continue;
+      }
+      const gap = fs * 0.28;
+      const total = texts.reduce((a, t) => a + widths.get(t), 0) + gap * (texts.length - 1);
+      let right = w / 2 + total / 2;
+      const cy = h - marginV - fs * 0.62;
+      const pos = texts.map(t => { const cx = right - widths.get(t) / 2; right -= widths.get(t) + gap; return cx; });
+      const ev = (st, en, k, extra, color) => events.push(`Dialogue: ${color === white ? 0 : 1},${toAss(st)},${toAss(en)},Cap,,0,0,0,,{\\an5\\pos(${pos[k].toFixed(1)},${cy.toFixed(1)})\\c${color}${extra}}${texts[k]}`);
+      const startOf = (k) => g[k].start;
+      const nextOf = (k) => (k < g.length - 1 ? g[k + 1].start : gEnd);
+      if (style === 'karaoke') {
+        g.forEach((_, k) => { ev(gStart, gEnd, k, '', white); ev(startOf(k), gEnd, k, '', accent); });
+      } else {
+        g.forEach((_, k) => {
+          const st = startOf(k);
+          ev(st, gEnd, k, '', white);
+          ev(st, Math.max(nextOf(k), st + 0.12), k, '\\fscx118\\fscy118\\t(0,110,\\fscx100\\fscy100)', accent);
+        });
+      }
+    } else if (style === 'box') {
       events.push(`Dialogue: 0,${toAss(gStart)},${toAss(gEnd)},Cap,,0,0,0,,${g.map(x => cleanWord(x.w)).join(' ')}`);
     } else if (style === 'karaoke') {
       // \kf = تعبئة لون تدريجية على كل كلمة بمدتها الحقيقية

@@ -7,7 +7,7 @@ import path from 'path';
 import { ffmpeg, probeDuration, rmQuiet } from './ff.js';
 import { buildBeatClip } from './clipBuilder.js';
 import { renderBackground } from './background.js';
-import { buildCaptionsAss } from './captions.js';
+import { buildCaptionsAss, measureCaptionWords } from './captions.js';
 import { ensureSfx, sfxForBeat } from './sfx.js';
 import { mixAudio } from './audioMix.js';
 import { isRtlLang } from './textutil.js';
@@ -64,7 +64,7 @@ export async function renderDocumentary({ timeline, workDir, onProgress = () => 
   let t0 = 0; const sfxEvents = [];
   beats.forEach(b => { sfxEvents.push(...sfxForBeat(b, t0)); t0 += b.dur; });
   const audioFile = path.join(workDir, 'mix.m4a');
-  await mixAudio({ narrationFile: timeline.narrationFile, musicFile: timeline.musicFile || null, musicVolume: timeline.musicVolume ?? 0.3, sfxEvents, sfxFiles, duration: total, outFile: audioFile });
+  await mixAudio({ narrationFile: timeline.narrationFile, musicFile: timeline.musicFile || null, musicVolume: timeline.musicVolume ?? 0.15, sfxEvents, sfxFiles, duration: total, outFile: audioFile });
   onProgress({ stage: 'audio' });
 
   // 4) الكابشن + التصدير النهائي
@@ -72,7 +72,10 @@ export async function renderDocumentary({ timeline, workDir, onProgress = () => 
   const args = ['-i', videoFile, '-i', audioFile, '-map', '0:v', '-map', '1:a'];
   if (timeline.captions?.words?.length) {
     const assFile = path.join(workDir, 'captions.ass');
-    fs.writeFileSync(assFile, buildCaptionsAss({ words: timeline.captions.words, style: timeline.captions.style || 'karaoke', w, h, lang, theme }));
+    const capStyle = timeline.captions.style || 'karaoke';
+    let widths = null;
+    if (isRtlLang(lang) && capStyle !== 'box') widths = await measureCaptionWords(timeline.captions.words, { lang, w, h }).catch(() => null);
+    fs.writeFileSync(assFile, buildCaptionsAss({ words: timeline.captions.words, style: capStyle, w, h, lang, theme, widths }));
     args.push('-vf', `ass='${escFilterPath(assFile)}'`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-profile:v', 'high');
   } else {
     args.push('-c:v', 'copy');
