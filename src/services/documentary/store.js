@@ -78,7 +78,7 @@ export async function claimStuckJobs() {
   await ready;
   const { rows } = await pool.query(
     `UPDATE documentary_jobs SET status = 'failed', error = 'Interrupted by a server restart — credits refunded.', updated_at = NOW()
-     WHERE status IN ('queued','processing') RETURNING id, user_id, credits_charged, credits_refunded`
+     WHERE status IN ('queued','processing') RETURNING id, user_id, credits_charged, credits_refunded, meta`
   );
   return rows;
 }
@@ -128,4 +128,25 @@ export async function adminStats({ days = 30 } = {}) {
   const recentFailures = await q(`SELECT j.id, j.stage, j.error_detail, j.credits_charged, j.created_at, u.email FROM documentary_jobs j LEFT JOIN users u ON u.id = j.user_id WHERE j.status='failed' ORDER BY j.id DESC LIMIT 25`);
   const recent = await q(`SELECT j.id, j.status, j.stage, j.progress, j.title, j.duration_sec, j.credits_charged, j.credits_refunded, j.created_at, u.email FROM documentary_jobs j LEFT JOIN users u ON u.id = j.user_id ORDER BY j.id DESC LIMIT 25`);
   return { days: Number(days) || 30, totals, byMode, failuresByStage, perDay, recentFailures, recent };
+}
+
+// ── دقيقة مجانية لأول فيلم (بصوت العميل المرفوع بس): علامة على الحساب، بتتاخد بشكل ذري ──
+let trialColReady = null;
+function ensureTrialCol() {
+  trialColReady ||= pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS free_doc_trial_used BOOLEAN DEFAULT FALSE').catch(e => { trialColReady = null; throw e; });
+  return trialColReady;
+}
+export async function trialAvailable(userId) {
+  await ensureTrialCol();
+  const { rows } = await pool.query('SELECT COALESCE(free_doc_trial_used, FALSE) AS used FROM users WHERE id = $1', [userId]);
+  return rows[0] ? !rows[0].used : false;
+}
+export async function claimTrial(userId) {
+  await ensureTrialCol();
+  const { rowCount } = await pool.query('UPDATE users SET free_doc_trial_used = TRUE WHERE id = $1 AND COALESCE(free_doc_trial_used, FALSE) = FALSE', [userId]);
+  return rowCount === 1;
+}
+export async function releaseTrial(userId) {
+  await ensureTrialCol();
+  await pool.query('UPDATE users SET free_doc_trial_used = FALSE WHERE id = $1', [userId]);
 }

@@ -50,6 +50,7 @@ router.get('/options', authMiddleware, async (req, res) => {
       limits: { maxMinutes: svc.MAX_MINUTES, maxScriptChars: MAX_SCRIPT_CHARS, minScriptChars: svc.MIN_SCRIPT_CHARS, maxVoiceoverMb: 90 },
       pricing: { perMinute: getDocumentaryCreditCost(1), perMinuteWithOwnVoiceover: getDocumentaryCreditCost(1, { userVoiceover: true }), usd: DOCUMENTARY_USD_PER_MINUTE },
       sources: sourceAvailability(), balance,
+      freeTrial: { available: await store.trialAvailable(req.user.userId).catch(() => false), maxSeconds: svc.TRIAL_MAX_SECONDS },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -58,7 +59,9 @@ router.post('/estimate', authMiddleware, express.json({ limit: '1mb' }), async (
   const { script, minutes, audioDurationSec, language } = req.body || {};
   const q = svc.quote({ script: typeof script === 'string' ? basicClean(script) : '', minutes, audioDurationSec: Number(audioDurationSec) || 0, language });
   const balance = await getCreditsBalance(req.user.userId).catch(() => null);
-  res.json({ ...q, balance, enough: balance == null ? null : balance >= q.cost });
+  const trial = q.userVoiceover && Number(audioDurationSec) <= svc.TRIAL_MAX_SECONDS && await store.trialAvailable(req.user.userId).catch(() => false);
+  const cost = trial ? 0 : q.cost;
+  res.json({ ...q, cost, trial: !!trial, balance, enough: balance == null ? null : balance >= cost });
 });
 
 // "اعمله بالذكاء الاصطناعي": موضوع → سكريبت (مجاني، لكن محدود المعدل)
@@ -122,7 +125,7 @@ router.post('/jobs', authMiddleware, (req, res, next) => (req.is('multipart/form
     }
     const r = await svc.startJob(userId, body);
     if (!r.ok) { if (tmpDir) rmQuiet(tmpDir); return res.status(r.status).json({ error: r.error, message: r.message, cost: r.cost, remaining: r.remaining }); }
-    res.status(202).json({ jobId: r.job.id, status: 'queued', cost: r.cost, minutes: r.minutes, remaining: r.remaining, queuePosition: svc.queuePosition(r.job.id) });
+    res.status(202).json({ jobId: r.job.id, status: 'queued', cost: r.cost, trial: !!r.trial, minutes: r.minutes, remaining: r.remaining, queuePosition: svc.queuePosition(r.job.id) });
   } catch (e) {
     if (tmpDir) rmQuiet(tmpDir);
     console.error('[Documentary] create failed:', e.message);

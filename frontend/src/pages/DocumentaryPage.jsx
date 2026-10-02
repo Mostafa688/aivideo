@@ -21,6 +21,7 @@ const T = {
     scriptReady: 'السكريبت جاهز — راجعه وعدّل عليه قبل الإنتاج.',
     dirtyBanner: 'السكريبت فيه أوقات أو تقسيمات أو تعليمات (مشاهد، موسيقى، لقطات...).', cleanBtn: 'نظّفه بالذكاء الاصطناعي', cleaning: 'بيراجع السكريبت...',
     cleanedNote: 'اتنضّف: بقى نص التسجيل الصافي بس.', cleanNoChange: 'السكريبت أصلاً صافي.', undo: 'تراجع',
+    trialChip: 'أول دقيقة مجانية', trialBanner: 'أول فيلم عندك مجاني! ارفع تعليقك الصوتي (لحد دقيقة) وErivion يبني الفيلم عليه من غير أي كريديت. مرة واحدة لكل حساب.', trialTooLong: 'صوتك أطول من دقيقة، فالفيلم هيتحسب بالكريديت العادي.', free: 'مجاني',
     voiceHint: 'ارفع ملف صوتي (mp3 / wav / m4a) من 20 ثانية لحد 30 دقيقة. Erivion هيفرّغه ويطابق اللقطات مع كلامك بالظبط.',
     chooseFile: 'اختر ملف صوتي', fileDur: 'مدة الملف',
     language: 'لغة الفيلم', voice: 'صوت الراوي', voiceOwn: 'هتستخدم صوتك — مفيش حاجة تختارها هنا.',
@@ -59,6 +60,7 @@ const T = {
     scriptReady: 'Script ready — review and edit it before producing.',
     dirtyBanner: 'The script has timestamps, scene breaks or directions (scenes, music, shots...).', cleanBtn: 'Clean it with AI', cleaning: 'Reviewing the script...',
     cleanedNote: 'Cleaned: only the narration text is left.', cleanNoChange: 'The script is already clean.', undo: 'Undo',
+    trialChip: 'First minute free', trialBanner: 'Your first film is free! Upload your own voiceover (up to one minute) and Erivion builds the film on it with no credits. Once per account.', trialTooLong: 'Your audio is longer than a minute, so this film is billed in normal credits.', free: 'Free',
     voiceHint: 'Upload an audio file (mp3 / wav / m4a), 20 seconds to 30 minutes. Erivion transcribes it and matches footage to what you say.',
     chooseFile: 'Choose audio file', fileDur: 'File length',
     language: 'Film language', voice: 'Narrator voice', voiceOwn: 'Your own voice is used — nothing to pick here.',
@@ -281,6 +283,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
       if (j.changed) { setBeforeClean(src); setScript(j.script); setScriptNote(t.cleanedNote); } else setScriptNote(t.cleanNoChange);
     } catch (e) { setError(e.message); } finally { setCleaning(false); }
   };
+  const trialOn = !!opts?.freeTrial?.available;
   const wordCount = useMemo(() => script.trim().split(/\s+/).filter(Boolean).length, [script]);
 
   const pickFile = (f) => {
@@ -441,7 +444,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Chip active={mode === 'script'} onClick={() => setMode('script')}>{t.mScript}</Chip>
             <Chip active={mode === 'topic'} onClick={() => setMode('topic')}>{t.mTopic}</Chip>
-            <Chip active={mode === 'voiceover'} onClick={() => setMode('voiceover')}>{t.mVoice}</Chip>
+            <Chip active={mode === 'voiceover'} onClick={() => setMode('voiceover')}>{t.mVoice}{trialOn ? <span style={{ marginInlineStart: 8, background: 'var(--green-bg)', color: 'var(--green)', borderRadius: 999, padding: '1px 8px', fontSize: 11 }}>🎁 {t.trialChip}</span> : null}</Chip>
           </div>
 
           {mode === 'script' && (<>
@@ -477,6 +480,11 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
           </>)}
 
           {mode === 'voiceover' && (<>
+            {trialOn && (
+              <div style={{ background: 'var(--green-bg)', color: 'var(--green)', borderRadius: 'var(--r-md)', padding: '9px 12px', fontSize: 13, lineHeight: 1.7 }}>
+                🎁 {t.trialBanner}{file && fileDur > opts.freeTrial.maxSeconds ? <div style={{ color: 'var(--yellow)', marginTop: 4 }}>{t.trialTooLong}</div> : null}
+              </div>
+            )}
             <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.7 }}>{t.voiceHint}</p>
             <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,video/mp4" hidden onChange={(e) => pickFile(e.target.files?.[0] || null)} />
             <button type="button" className="btn-ghost" onClick={() => fileRef.current?.click()} style={{ borderRadius: 'var(--r-md)', padding: '18px 14px', borderStyle: 'dashed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
@@ -565,7 +573,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
             <dt style={{ color: 'var(--text2)' }}>{t.sumMin}</dt>
             <dd style={{ margin: 0, textAlign: dir === 'rtl' ? 'left' : 'right', fontVariantNumeric: 'tabular-nums' }}>{mode === 'topic' ? `~${minutes} ${t.min}` : est ? fmtMin(est.minutes) : '—'}</dd>
             <dt style={{ color: 'var(--text2)' }}>{t.sumCost}</dt>
-            <dd style={{ margin: 0, textAlign: dir === 'rtl' ? 'left' : 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{cost != null ? `${cost} ${t.credits}` : '—'}</dd>
+            <dd style={{ margin: 0, textAlign: dir === 'rtl' ? 'left' : 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{cost != null ? (est?.trial && mode === 'voiceover' ? t.free : `${cost} ${t.credits}`) : '—'}</dd>
             <dt style={{ color: 'var(--text2)' }}>{t.sumBal}</dt>
             <dd style={{ margin: 0, textAlign: dir === 'rtl' ? 'left' : 'right', fontVariantNumeric: 'tabular-nums' }}>{balance != null ? `${balance} ${t.credits}` : '—'}</dd>
           </dl>

@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { cleanScript } from './scriptCleaner.js';
 import { buildSrt } from './uploadPackage.js';
-import { chargeCredits, addCreditsBalance } from '../authService.js';
+import { chargeCredits, addCreditsBalance, getCreditsBalance } from '../authService.js';
 import { getDocumentaryCreditCost } from '../creditPricingEngine.js';
 import { checkContentSafety } from '../scriptService.js';
 import { synthesizeNarration, getBackgroundMusicBuffer } from '../videoAudioService.js';
@@ -22,6 +22,7 @@ import * as store from './store.js';
 const TEMP_ROOT = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const MAX_CONCURRENT = Math.max(1, Number(process.env.DOC_MAX_CONCURRENT || 1));
 export const MAX_MINUTES = 30;
+export const TRIAL_MAX_SECONDS = 62; // أول فيلم مجاني: صوت مرفوع لحد دقيقة
 export const MIN_SCRIPT_CHARS = 120;
 export const LANGUAGES = { en: 'English', ar: 'العربية', es: 'Español', fr: 'Français', de: 'Deutsch' };
 export const CAPTION_STYLES = ['karaoke', 'box', 'pop', 'none'];
@@ -90,19 +91,26 @@ export async function startJob(userId, raw, hooks = {}) {
   const safety = await checkContentSafety([input.title, input.topic, (input.script || '').slice(0, 6000)].filter(Boolean).join('\n'));
   if (safety.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'This content cannot be generated.', category: safety.category };
 
-  const charge = await chargeCredits(userId, q.cost);
+  // أول فيلم مجاني: صوت مرفوع ≤ دقيقة، مرة واحدة لكل حساب (بتتاخد بشكل ذري، وبتتردّ لو الفيلم فشل)
+  let trial = false;
+  if (input.mode === 'voiceover' && input.audioDurationSec <= TRIAL_MAX_SECONDS) {
+    try { trial = await store.claimTrial(userId); } catch (e) { console.warn('[Documentary] trial check failed:', e.message); }
+  }
+  const cost = trial ? 0 : q.cost;
+  const charge = trial ? { success: true, remaining: await getCreditsBalance(userId).catch(() => null) } : await chargeCredits(userId, q.cost);
   if (!charge.success) return { ok: false, status: 403, error: 'quota_exceeded', message: `This documentary needs ${q.cost} credits, you have ${charge.remaining}.`, cost: q.cost, remaining: charge.remaining };
 
   let job;
   try {
     const stored = { ...input }; delete stored.audioFile;
-    job = await store.createJob({ userId, input: stored, title: input.title || input.topic || null, creditsCharged: q.cost });
+    job = await store.createJob({ userId, input: stored, title: input.title || input.topic || null, creditsCharged: cost });
+    if (trial) await store.updateJob(job.id, { meta: { trial: true } }).catch(() => {});
   } catch (e) {
-    await addCreditsBalance(userId, q.cost).catch(() => {});
+    if (trial) await store.releaseTrial(userId).catch(() => {}); else await addCreditsBalance(userId, q.cost).catch(() => {});
     return { ok: false, status: 500, error: 'job_create_failed', message: 'Could not start the job. Your credits were not charged.' };
   }
-  enqueue({ id: job.id, userId, input, charged: q.cost, minutes: q.minutes, hooks });
-  return { ok: true, job, cost: q.cost, minutes: q.minutes, remaining: charge.remaining };
+  enqueue({ id: job.id, userId, input, charged: cost, minutes: q.minutes, hooks, trial });
+  return { ok: true, job, cost, minutes: q.minutes, remaining: charge.remaining, trial };
 }
 
 function enqueue(task) {
@@ -168,6 +176,7 @@ async function runTask(task) {
   } catch (e) {
     console.error(`[Documentary] job ${id} failed:`, e.message);
     await refund(task, task.charged);
+    if (task.trial) await store.releaseTrial(userId).catch(() => {});
     task.hooks?.onFail?.(e);
     await store.updateJob(id, { status: 'failed', stage: currentStage, error: 'The documentary could not be completed, your credits were refunded.', error_detail: String(e.message || e).slice(0, 800), credits_refunded: task.charged }).catch(() => {});
   } finally {
@@ -310,6 +319,7 @@ export async function recoverInterruptedJobs() {
   try {
     const rows = await store.claimStuckJobs();
     for (const r of rows) {
+      if (r.meta?.trial) await store.releaseTrial(r.user_id).catch(() => {});
       const back = (r.credits_charged || 0) - (r.credits_refunded || 0);
       if (back > 0) { await addCreditsBalance(r.user_id, back).catch(() => {}); await store.updateJob(r.id, { credits_refunded: r.credits_charged }).catch(() => {}); }
     }
