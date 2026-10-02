@@ -19,6 +19,8 @@ const T = {
     topicPh: 'مثلاً: مشروع أبولو وهبوط الإنسان على القمر', topicLen: 'مدة الفيلم', writeScript: 'اكتب لي السكريبت أولاً', writing: 'بيكتب السكريبت...',
     topicHint: 'ممكن تسيبه يكتب ويصنع الفيلم على طول، أو تضغط "اكتب لي السكريبت" عشان تراجعه وتعدّل عليه قبل الإنتاج.',
     scriptReady: 'السكريبت جاهز — راجعه وعدّل عليه قبل الإنتاج.',
+    dirtyBanner: 'السكريبت فيه أوقات أو تقسيمات أو تعليمات (مشاهد، موسيقى، لقطات...).', cleanBtn: 'نظّفه بالذكاء الاصطناعي', cleaning: 'بيراجع السكريبت...',
+    cleanedNote: 'اتنضّف: بقى نص التسجيل الصافي بس.', cleanNoChange: 'السكريبت أصلاً صافي.', undo: 'تراجع',
     voiceHint: 'ارفع ملف صوتي (mp3 / wav / m4a) من 20 ثانية لحد 30 دقيقة. Erivion هيفرّغه ويطابق اللقطات مع كلامك بالظبط.',
     chooseFile: 'اختر ملف صوتي', fileDur: 'مدة الملف',
     language: 'لغة الفيلم', voice: 'صوت الراوي', voiceOwn: 'هتستخدم صوتك — مفيش حاجة تختارها هنا.',
@@ -54,6 +56,8 @@ const T = {
     topicPh: 'e.g. The Apollo program and the first Moon landing', topicLen: 'Film length', writeScript: 'Write the script first', writing: 'Writing the script...',
     topicHint: 'Skip ahead and let it write and produce in one go — or write the script first so you can review and edit it.',
     scriptReady: 'Script ready — review and edit it before producing.',
+    dirtyBanner: 'The script has timestamps, scene breaks or directions (scenes, music, shots...).', cleanBtn: 'Clean it with AI', cleaning: 'Reviewing the script...',
+    cleanedNote: 'Cleaned: only the narration text is left.', cleanNoChange: 'The script is already clean.', undo: 'Undo',
     voiceHint: 'Upload an audio file (mp3 / wav / m4a), 20 seconds to 30 minutes. Erivion transcribes it and matches footage to what you say.',
     chooseFile: 'Choose audio file', fileDur: 'File length',
     language: 'Film language', voice: 'Narrator voice', voiceOwn: 'Your own voice is used — nothing to pick here.',
@@ -82,6 +86,15 @@ const T = {
 
 const fmtMin = (m) => (m < 1 ? `${Math.round(m * 60)}s` : `${m.toFixed(1).replace(/\.0$/, '')} min`);
 const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+// نفس فكرة الكشف في السيرفر (scriptCleaner.looksDirty) — بتظهر البانر وتشغّل التنضيف تلقائي عند اللصق
+function looksDirtyClient(text) {
+  const t = String(text || '');
+  return /(^|[\s\[(])\d{1,2}:\d{2}(:\d{2})?\s*(-|–|—|to)\s*\d{1,2}:\d{2}/.test(t) || /[\[(【]\s*\d{1,2}:\d{2}/.test(t) || /^[ \t]*\d{1,2}:\d{2}/m.test(t)
+    || /^\s{0,3}#{1,6}\s/m.test(t) || /\[[^\]\n]{1,200}\]/.test(t) || /\*\*[^*\n]+\*\*/.test(t)
+    || /^[ \t]*[\[(*_]*(scene|shot|part|section|chapter|مشهد|المشهد|الفصل|الجزء)\s*\d+/im.test(t)
+    || /^[ \t]*(narrator|voice[- ]?over|الراوي|المعلق)\s*[:：]/im.test(t) || /^[ \t]*(visuals?|audio|music|sfx|b-?roll|المرئيات|الصوت|الموسيقى)\s*[:：]/im.test(t);
+}
 
 function Section({ icon: Icon, title, children }) {
   return (
@@ -187,6 +200,20 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
     return () => clearTimeout(h);
   }, [opts, mode, script, minutes, fileDur, language]);
 
+  const dirty = useMemo(() => looksDirtyClient(script), [script]);
+  const [cleaning, setCleaning] = useState(false);
+  const [beforeClean, setBeforeClean] = useState(null);
+  const cleanNow = async (text, force = false) => {
+    const src = text ?? script;
+    if (src.trim().length < 20) return;
+    setCleaning(true); setError('');
+    try {
+      const r = await fetch('/api/documentary/clean-script', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ script: src, force }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(t.errs[j.error] || t.errGeneric);
+      if (j.changed) { setBeforeClean(src); setScript(j.script); setScriptNote(t.cleanedNote); } else setScriptNote(t.cleanNoChange);
+    } catch (e) { setError(e.message); } finally { setCleaning(false); }
+  };
   const wordCount = useMemo(() => script.trim().split(/\s+/).filter(Boolean).length, [script]);
 
   const pickFile = (f) => {
@@ -350,11 +377,19 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
           </div>
 
           {mode === 'script' && (<>
-            <textarea value={script} onChange={(e) => { setScript(e.target.value); setScriptNote(''); }} placeholder={t.scriptPh} rows={12}
-              style={{ ...fieldStyle, lineHeight: 1.7, resize: 'vertical', minHeight: 220 }} maxLength={opts.limits.maxScriptChars} />
+            {dirty && !cleaning && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--yellow-bg)', color: 'var(--yellow)', borderRadius: 'var(--r-md)', padding: '8px 12px', fontSize: 13 }}>
+                <span style={{ flex: 1, minWidth: 200 }}>{t.dirtyBanner}</span>
+                <button type="button" className="btn-ghost" style={{ borderRadius: 8, padding: '4px 12px', fontSize: 13, color: 'inherit' }} onClick={() => cleanNow()}>{t.cleanBtn}</button>
+              </div>
+            )}
+            <textarea value={script} onChange={(e) => { setScript(e.target.value); setScriptNote(''); setBeforeClean(null); }} placeholder={t.scriptPh} rows={12} disabled={cleaning}
+              onPaste={() => setTimeout(() => { const v = document.activeElement?.value; if (typeof v === 'string' && looksDirtyClient(v)) cleanNow(v); }, 0)}
+              style={{ ...fieldStyle, lineHeight: 1.7, resize: 'vertical', minHeight: 220, opacity: cleaning ? 0.6 : 1 }} maxLength={opts.limits.maxScriptChars * 2} />
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text3)', flexWrap: 'wrap', gap: 6 }}>
               <span>{wordCount} {t.words}{est && script.trim().length >= 20 ? ` · ${t.approx} ${fmtMin(est.minutes)}` : ''}</span>
-              {scriptNote && <span style={{ color: 'var(--green)' }}>{scriptNote}</span>}
+              {cleaning && <span style={{ color: 'var(--accent3)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Loader2 size={13} className="doc-spin" />{t.cleaning}</span>}
+              {scriptNote && !cleaning && <span style={{ color: 'var(--green)' }}>{scriptNote}{beforeClean && <> · <button type="button" onClick={() => { setScript(beforeClean); setBeforeClean(null); setScriptNote(''); }} style={{ background: 'none', border: 0, color: 'inherit', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}>{t.undo}</button></>}</span>}
               {tooShortEst && <span style={{ color: 'var(--yellow)' }}>{t.tooShort}</span>}
             </div>
           </>)}

@@ -13,6 +13,7 @@ import { writeScript, MAX_SCRIPT_CHARS } from './scriptWriter.js';
 import { THEMES } from './themes.js';
 import { probeDuration, hasAudio, rmQuiet } from './ff.js';
 import * as svc from './documentaryService.js';
+import { cleanScript, basicClean } from './scriptCleaner.js';
 import * as store from './store.js';
 
 const router = express.Router();
@@ -53,7 +54,7 @@ router.get('/options', authMiddleware, async (req, res) => {
 
 router.post('/estimate', authMiddleware, express.json({ limit: '1mb' }), async (req, res) => {
   const { script, minutes, audioDurationSec, language } = req.body || {};
-  const q = svc.quote({ script: typeof script === 'string' ? script : '', minutes, audioDurationSec: Number(audioDurationSec) || 0, language });
+  const q = svc.quote({ script: typeof script === 'string' ? basicClean(script) : '', minutes, audioDurationSec: Number(audioDurationSec) || 0, language });
   const balance = await getCreditsBalance(req.user.userId).catch(() => null);
   res.json({ ...q, balance, enough: balance == null ? null : balance >= q.cost });
 });
@@ -76,6 +77,24 @@ router.post('/script', authMiddleware, express.json({ limit: '100kb' }), async (
   } catch (e) {
     console.error('[Documentary] script generation failed:', e.message);
     res.status(502).json({ error: 'script_failed', message: 'Could not write the script right now. Please try again.' });
+  }
+});
+
+const cleanCalls = new Map();
+router.post('/clean-script', authMiddleware, express.json({ limit: '1mb' }), async (req, res) => {
+  const uid = req.user.userId;
+  const now = Date.now();
+  const recent = (cleanCalls.get(uid) || []).filter(t => now - t < 3600e3);
+  if (recent.length >= 20) return res.status(429).json({ error: 'rate_limited', message: 'Too many cleanups this hour.' });
+  const script = String(req.body?.script || '').slice(0, MAX_SCRIPT_CHARS * 2);
+  if (script.trim().length < 20) return res.status(400).json({ error: 'script_too_short', message: 'Paste a script first.' });
+  cleanCalls.set(uid, [...recent, now]);
+  try {
+    const out = await cleanScript(script, { force: !!req.body?.force });
+    res.json(out);
+  } catch (e) {
+    console.error('[Documentary] clean-script failed:', e.message);
+    res.status(502).json({ error: 'clean_failed', message: 'Could not clean the script right now.' });
   }
 });
 

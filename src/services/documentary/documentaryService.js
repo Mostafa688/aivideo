@@ -3,6 +3,7 @@
 // معاها المراحل نفسها بخطط بديلة من غير ما تفشّل الفيلم.
 import fs from 'fs';
 import path from 'path';
+import { cleanScript } from './scriptCleaner.js';
 import { chargeCredits, addCreditsBalance } from '../authService.js';
 import { getDocumentaryCreditCost } from '../creditPricingEngine.js';
 import { checkContentSafety } from '../scriptService.js';
@@ -73,6 +74,8 @@ function normalizeInput(raw) {
 export async function startJob(userId, raw, hooks = {}) {
   const input = normalizeInput(raw);
   if (input.mode === 'script') {
+    // سكريبت ملصوق من ChatGPT/Claude: أوقات/مشاهد/تعليمات → نص التسجيل الصافي (Groq بيراجع لو فيه علامات)
+    input.script = (await cleanScript(input.script.slice(0, MAX_SCRIPT_CHARS * 2))).script;
     if (input.script.length < MIN_SCRIPT_CHARS) return { ok: false, status: 400, error: 'script_too_short', message: `The script is too short (minimum ${MIN_SCRIPT_CHARS} characters).` };
     if (input.script.length > MAX_SCRIPT_CHARS) return { ok: false, status: 400, error: 'script_too_long', message: `The script is too long (maximum ${MAX_SCRIPT_CHARS} characters).` };
   }
