@@ -262,7 +262,7 @@ app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
 app.use('/api/agent', agentRouter);
 // ✅ NEW: استوديو الأفلام الوثائقية — إنشاء وظيفة بتتحدد بمعدل الرندر (20/ساعة) زي باقي مسارات التوليد
-app.use('/api/documentary/jobs', (req, res, next) => (req.method === 'POST' ? renderLimiter(req, res, next) : next()));
+app.use(['/api/documentary/jobs', '/api/documentary/autoedit'], (req, res, next) => (req.method === 'POST' ? renderLimiter(req, res, next) : next()));
 app.use('/api/documentary', documentaryRouter);
 recoverDocumentaryJobs();
 app.use('/api/channels', channelRouter);

@@ -129,7 +129,7 @@ async function writeAss({ words, style, lang, W, H, duration, position, workDir 
  * @param {boolean} [o.sfx]
  * @returns {{file:string,duration:number,width:number,height:number,words:any[]|null,cuts:number[]}}
  */
-export async function montageVideos({ files, workDir, transitions = 'auto', narrationFile = null, words = null, captions = null, musicFile = null, musicVolume = 0.14, sfx = true, onProgress = () => {} }) {
+export async function montageVideos({ files, workDir, transitions = 'auto', narrationFile = null, words = null, captions = null, musicFile = null, musicVolume = 0.14, sfx = true, assumeNormalized = false, extraSfx = [], onProgress = () => {} }) {
   if (!files?.length) throw new Error('no clips');
   fs.mkdirSync(workDir, { recursive: true });
   const size = await displaySize(files[0]);
@@ -140,13 +140,13 @@ export async function montageVideos({ files, workDir, transitions = 'auto', narr
   const clips = [];
   for (let i = 0; i < files.length; i++) {
     onProgress({ stage: 'normalize', done: i, total: files.length });
-    clips.push(await normalizeClip(files[i], path.join(workDir, `n_${i}.mp4`), W, H));
+    clips.push(assumeNormalized ? { file: files[i], dur: await probeDuration(files[i]) } : await normalizeClip(files[i], path.join(workDir, `n_${i}.mp4`), W, H));
   }
   // 2) الدمج + الانتقالات
   onProgress({ stage: 'join', done: 0, total: 1 });
   const plan = planTransitions(clips.map(c => c.dur), transitions);
   const joined = clips.length === 1 ? { file: clips[0].file, cuts: [] } : await joinClips(clips, workDir, plan);
-  clips.forEach(c => { if (c.file !== joined.file) rmQuiet(c.file); });
+  if (!assumeNormalized) clips.forEach(c => { if (c.file !== joined.file) rmQuiet(c.file); });
   const duration = await probeDuration(joined.file);
 
   // 3) الصوت الأساسي (الصوت الأصلي أو سرد جديد) + كلمات الكابشن
@@ -162,12 +162,13 @@ export async function montageVideos({ files, workDir, transitions = 'auto', narr
 
   // 4) مؤثرات عند القطعات + موسيقى + توحيد الصوت
   onProgress({ stage: 'audio', done: 0, total: 1 });
-  const needMix = !!(musicFile || (sfx && joined.cuts.length) || narrationFile);
+  const needMix = !!(musicFile || (sfx && joined.cuts.length) || narrationFile || extraSfx.length);
   let audioFile = null;
   if (needMix) {
-    const sfxFiles = sfx && joined.cuts.length ? await ensureSfx(path.join(workDir, 'sfx')) : {};
+    const sfxFiles = (sfx && joined.cuts.length) || extraSfx.length ? await ensureSfx(path.join(workDir, 'sfx')) : {};
     const sfxEvents = sfx && plan.d ? joined.cuts.map((t, i) => ({ t: Math.max(0, t - 0.04), type: i % 4 === 3 ? 'impact' : 'whoosh', vol: i % 4 === 3 ? 0.35 : 0.3 })) : [];
     audioFile = path.join(workDir, 'mixed.m4a');
+    sfxEvents.push(...extraSfx);
     await mixAudio({ narrationFile: baseWav, musicFile, musicVolume, sfxEvents, sfxFiles, duration, outFile: audioFile });
   }
 

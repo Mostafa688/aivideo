@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { downloadRemoteFile } from '../utils/download.js';
 import {
   ArrowLeft, Clapperboard, FileText, Wand2, Mic, UploadCloud, Loader2, CheckCircle2,
-  XCircle, Download, Package, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
+  XCircle, Download, Package, Scissors, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
 } from 'lucide-react';
 
 const authHeaders = (json = true) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), Authorization: 'Bearer ' + localStorage.getItem('token') });
@@ -36,15 +36,21 @@ const T = {
     refundNote: 'لو الفيلم طلع أقصر من المتوقع بنرجّعلك الفرق، ولو فشل بنرجّع الكريديت كامل.',
     attribution: 'الفيلم بيستخدم لقطات من مصادر مفتوحة الترخيص؛ هنكتبلك أسماء المصادر المطلوبة لتضعها في وصف الفيديو.',
     progress: 'بيتم إنتاج الفيلم', queued: 'في الطابور', pos: 'ترتيبك',
-    stages: { queued: 'في الطابور', script: 'كتابة السكريبت', narration: 'تسجيل التعليق الصوتي', transcribe: 'تفريغ الصوت', plan: 'تخطيط المشاهد', assets: 'جلب اللقطات والصور', render: 'مونتاج ورسم وموسيقى', upload: 'رفع الفيلم', done: 'جاهز' },
+    stages: { queued: 'في الطابور', script: 'كتابة السكريبت', narration: 'تسجيل التعليق الصوتي', transcribe: 'تفريغ الصوت', cut: 'قص الصمت وتركيب اللقطات', finish: 'انتقالات وكابشن وموسيقى', plan: 'تخطيط المشاهد', assets: 'جلب اللقطات والصور', render: 'مونتاج ورسم وموسيقى', upload: 'رفع الفيلم', done: 'جاهز' },
     keepOpen: 'تقدر تقفل الصفحة — الفيلم هيفضل ظاهر في "أفلامي" تحت.',
     done: 'الفيلم جاهز!', download: 'تنزيل الفيلم', another: 'اعمل فيلم تاني', scriptOut: 'السكريبت', creditsOut: 'المصادر والتراخيص (حطها في وصف الفيديو)', copy: 'نسخ',
     failed: 'فشل الإنتاج', refunded: 'اترجّع لك الكريديت كامل.', retry: 'حاول تاني',
     myFilms: 'أفلامي', none: 'مفيش أفلام لسه.', open: 'فتح',
     errGeneric: 'حصلت مشكلة. جرّب تاني.',
+    kDoc: 'فيلم وثائقي', kEdit: 'مونتاج فيديو بتاعي',
+    eTitle: 'ارفع فيديو بيتكلم فيه شخص (فلوج، شرح، تسجيل شاشة) وErivion يعمله مونتاج احترافي لوحده',
+    eBullets: ['قص الصمت والتلعثم (jump cuts)', 'زوم ديناميكي بيتبدّل بين اللقطات', 'انتقالات ومؤثرات صوتية بين الفقرات', 'كابشن متزامن مع الكلمات (في النص بحركة للقصير، وتحت للطويل)', 'موسيقى بتهدّى تحت صوتك + توحيد مستوى الصوت'],
+    eUpload: 'اختر فيديو (لحد 20 دقيقة / 600 ميجا)', eFile: 'الفيديو', eDur: 'المدة', eLang: 'لغة الكلام في الفيديو', eOpts: 'اللي هيتعمل',
+    eCut: 'قص الصمت', eZoom: 'زوم ديناميكي', eTrans: 'انتقالات بين الفقرات', eMusic: 'موسيقى خلفية', eStart: 'ابدأ المونتاج', eNoAudio: 'الفيديو ده مفيهوش صوت.',
+    eNote: 'التكلفة بتتحسب على مدة الفيديو الأصلي.', eUnknownDur: 'مقدرناش نقرا مدة الفيديو في المتصفح، بس تقدر تكمّل — التكلفة هتتحسب بعد الرفع.',
     pkgBtn: 'جهّز حزمة النشر على يوتيوب', pkgBuilding: 'بيجهّز العنوان والوصف والصورة...', pkgTitle: 'العنوان', pkgDesc: 'الوصف (فيه الفصول والمصادر)', pkgTags: 'الكلمات المفتاحية', pkgThumb: 'الصورة المصغرة', pkgThumbDl: 'تنزيل الصورة', pkgSrt: 'تنزيل ملف الترجمة SRT', pkgRegen: 'جهّز تاني',
     tooShort: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.',
-    errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى من توليد السكريبتات في الساعة.' },
+    errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى من توليد السكريبتات في الساعة.', video_required: 'اختر فيديو الأول.', bad_video: 'الملف ده مش فيديو صالح أو أقصر من 5 ثواني.', no_audio: 'الفيديو ده مفيهوش صوت.', file_too_large: 'الفيديو أكبر من 600 ميجا.', upload_failed: 'فشل الرفع، جرّب تاني.' },
     copied: 'اتنسخ',
   },
   en: {
@@ -75,15 +81,21 @@ const T = {
     refundNote: 'If the film comes out shorter than estimated we refund the difference; if it fails you get a full refund.',
     attribution: 'Footage comes from openly-licensed archives; the source credits you need to paste in your video description are listed when the film is done.',
     progress: 'Producing your documentary', queued: 'Queued', pos: 'Position',
-    stages: { queued: 'Queued', script: 'Writing the script', narration: 'Recording the narration', transcribe: 'Transcribing audio', plan: 'Planning scenes', assets: 'Finding footage and photos', render: 'Editing, animating and mixing', upload: 'Uploading', done: 'Done' },
+    stages: { queued: 'Queued', script: 'Writing the script', narration: 'Recording the narration', transcribe: 'Transcribing audio', cut: 'Cutting silence and zooming', finish: 'Transitions, captions and music', plan: 'Planning scenes', assets: 'Finding footage and photos', render: 'Editing, animating and mixing', upload: 'Uploading', done: 'Done' },
     keepOpen: 'You can close this page — the film stays in "My films" below.',
     done: 'Your film is ready!', download: 'Download film', another: 'Make another', scriptOut: 'Script', creditsOut: 'Sources & licenses (paste in your video description)', copy: 'Copy',
     failed: 'Production failed', refunded: 'Your credits were fully refunded.', retry: 'Try again',
     myFilms: 'My films', none: 'No films yet.', open: 'Open',
     errGeneric: 'Something went wrong. Please try again.',
+    kDoc: 'Documentary', kEdit: 'Edit my video',
+    eTitle: 'Upload a video with someone talking (vlog, tutorial, screen recording) and Erivion edits it professionally on its own',
+    eBullets: ['Cuts silences and dead air (jump cuts)', 'Dynamic zooms that alternate between shots', 'Transitions and sound effects between parts', 'Word-synced captions (centered with motion for short videos, at the bottom for long ones)', 'Music that ducks under your voice + loudness normalisation'],
+    eUpload: 'Choose a video (up to 20 minutes / 600 MB)', eFile: 'Video', eDur: 'Length', eLang: 'Spoken language', eOpts: 'What it does',
+    eCut: 'Cut silences', eZoom: 'Dynamic zoom', eTrans: 'Transitions between parts', eMusic: 'Background music', eStart: 'Start editing', eNoAudio: 'This video has no audio.',
+    eNote: 'Billed on the length of the original video.', eUnknownDur: "We couldn't read the length in your browser, but you can continue — the cost is calculated after upload.",
     pkgBtn: 'Prepare the YouTube upload package', pkgBuilding: 'Preparing title, description and thumbnail...', pkgTitle: 'Title', pkgDesc: 'Description (with chapters and credits)', pkgTags: 'Tags', pkgThumb: 'Thumbnail', pkgThumbDl: 'Download thumbnail', pkgSrt: 'Download SRT subtitles', pkgRegen: 'Regenerate',
     tooShort: 'The film would be under 25 seconds — add more text.',
-    errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit for script generation.' },
+    errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit for script generation.', video_required: 'Choose a video first.', bad_video: 'This file is not a readable video or is shorter than 5 seconds.', no_audio: 'This video has no audio.', file_too_large: 'The video is larger than 600 MB.', upload_failed: 'Upload failed, please try again.' },
     copied: 'Copied',
   },
 };
@@ -156,6 +168,123 @@ function PackagePanel({ job, t }) {
   );
 }
 
+
+// مونتاج تلقائي لفيديو العميل: رفع + خيارات + ملخص التكلفة، وبعد البدء بيكمل في نفس شاشة التقدّم
+function AutoEditForm({ t, opts, dir, onStarted, onBalance }) {
+  const [file, setFile] = useState(null);
+  const [dur, setDur] = useState(0);
+  const [language, setLanguage] = useState(dir === 'rtl' ? 'ar' : 'en');
+  const [captions, setCaptions] = useState('karaoke');
+  const [cutSilence, setCutSilence] = useState(true);
+  const [zoom, setZoom] = useState(true);
+  const [transitions, setTransitions] = useState(true);
+  const [music, setMusic] = useState(false);
+  const [mood, setMood] = useState('');
+  const [est, setEst] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [metaFailed, setMetaFailed] = useState(false);
+  const fileRef = useRef(null);
+  const pick = (f) => {
+    setFile(f); setDur(0); setEst(null); setError(''); setMetaFailed(false);
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => { setDur(Number.isFinite(v.duration) ? v.duration : 0); URL.revokeObjectURL(url); };
+    // المتصفح مقدرش يقرا مدة الفيديو (كودك مش مدعوم مثلاً HEVC) — مش مشكلة: السيرفر هو اللي بيقيس ويحسب التكلفة
+    v.onerror = () => { URL.revokeObjectURL(url); setMetaFailed(true); };
+    v.src = url;
+  };
+  useEffect(() => {
+    if (!dur) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch('/api/documentary/autoedit/estimate', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ durationSec: dur }) });
+        if (r.ok && alive) { const j = await r.json(); setEst(j); onBalance?.(j.balance); }
+      } catch { /* ignore */ }
+    })();
+    return () => { alive = false; };
+  }, [dur]);
+  const tooLong = dur > opts.limits.maxMinutes * 60 + 5 && dur > 20 * 60;
+  const short = est && est.balance != null && est.balance < est.cost;
+  const start = async () => {
+    setBusy(true); setError('');
+    try {
+      const fd = new FormData();
+      fd.append('video', file);
+      Object.entries({ language, captions, cutSilence, zoom, transitions, music, musicMood: mood }).forEach(([k, v]) => { if (v !== '' && v !== undefined) fd.append(k, String(v)); });
+      const res = await fetch('/api/documentary/autoedit', { method: 'POST', headers: authHeaders(false), body: fd });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(t.errs[j.error] || t.errGeneric);
+      onStarted({ id: j.jobId, status: 'queued', stage: 'queued', progress: 0, queuePosition: j.queuePosition || 0, creditsCharged: j.cost });
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+  return (
+    <div className="doc-grid">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <Section icon={Scissors} title={t.kEdit}>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.8 }}>{t.eTitle}</p>
+          <ul style={{ margin: 0, paddingInlineStart: 20, color: 'var(--text2)', fontSize: 13.5, lineHeight: 1.9 }}>{t.eBullets.map((b) => <li key={b}>{b}</li>)}</ul>
+          <input ref={fileRef} type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv" hidden onChange={(e) => pick(e.target.files?.[0] || null)} />
+          <button type="button" className="btn-ghost" onClick={() => fileRef.current?.click()} style={{ borderRadius: 'var(--r-md)', padding: '18px 14px', borderStyle: 'dashed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <UploadCloud size={18} />{file ? file.name : t.eUpload}
+          </button>
+          {file && dur > 0 && <div style={{ fontSize: 13, color: 'var(--text2)' }}>{t.eDur}: {fmt(dur)}</div>}
+          {file && metaFailed && <div style={{ fontSize: 13, color: 'var(--text3)' }}>{t.eUnknownDur}</div>}
+        </Section>
+        <Section icon={Wand2} title={t.eOpts}>
+          <div>
+            <label style={labelStyle} htmlFor="ae-lang">{t.eLang}</label>
+            <select id="ae-lang" value={language} onChange={(e) => setLanguage(e.target.value)} style={fieldStyle}>
+              {Object.entries(opts.languages).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Toggle on={cutSilence} onChange={setCutSilence} label={t.eCut} />
+            <Toggle on={zoom} onChange={setZoom} label={t.eZoom} />
+            <Toggle on={transitions} onChange={setTransitions} label={t.eTrans} />
+          </div>
+          <div>
+            <span style={labelStyle}><Captions size={13} style={{ verticalAlign: -2 }} /> {t.captions}</span>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {[['karaoke', t.cKaraoke], ['box', t.cBox], ['pop', t.cPop], ['none', t.cNone]].map(([k, l]) => <Chip key={k} active={captions === k} onClick={() => setCaptions(k)}>{l}</Chip>)}
+            </div>
+          </div>
+          <Toggle on={music} onChange={setMusic} label={t.eMusic} />
+          {music && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Chip active={!mood} onClick={() => setMood('')}>{t.auto}</Chip>
+              {opts.moods.map((m) => <Chip key={m} active={mood === m} onClick={() => setMood(m)}>{m}</Chip>)}
+            </div>
+          )}
+        </Section>
+      </div>
+      <aside className="doc-side">
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-display)', fontSize: 16 }}><Coins size={17} color="var(--accent2)" />{t.sum}</h3>
+          <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 12px', fontSize: 14 }}>
+            <dt style={{ color: 'var(--text2)' }}>{t.eDur}</dt>
+            <dd style={{ margin: 0, textAlign: dir === 'rtl' ? 'left' : 'right' }}>{dur ? fmt(dur) : '—'}</dd>
+            <dt style={{ color: 'var(--text2)' }}>{t.sumCost}</dt>
+            <dd style={{ margin: 0, textAlign: dir === 'rtl' ? 'left' : 'right', fontWeight: 700 }}>{est ? `${est.cost} ${t.credits}` : '—'}</dd>
+            <dt style={{ color: 'var(--text2)' }}>{t.sumBal}</dt>
+            <dd style={{ margin: 0, textAlign: dir === 'rtl' ? 'left' : 'right' }}>{est?.balance != null ? `${est.balance} ${t.credits}` : (opts.balance != null ? `${opts.balance} ${t.credits}` : '—')}</dd>
+          </dl>
+          {short && <div style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 'var(--r-md)', padding: '10px 12px', fontSize: 13 }}><TriangleAlert size={14} style={{ verticalAlign: -2 }} /> {t.lowBal} {est.cost - est.balance} {t.credits}</div>}
+          {error && <div role="alert" style={{ background: 'var(--red-bg)', color: 'var(--red)', borderRadius: 'var(--r-md)', padding: '10px 12px', fontSize: 13 }}>{error}</div>}
+          <button type="button" className="btn-primary" disabled={!file || !(dur || metaFailed) || busy || short || tooLong} onClick={start} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            {busy ? <Loader2 size={16} className="doc-spin" /> : <Scissors size={16} />}{busy ? t.starting : t.eStart}
+          </button>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--text3)', lineHeight: 1.7 }}>{t.eNote} {t.refundNote}</p>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 // نفس فكرة الكشف في السيرفر (scriptCleaner.looksDirty) — بتظهر البانر وتشغّل التنضيف تلقائي عند اللصق
 function looksDirtyClient(text) {
   const t = String(text || '');
@@ -208,6 +337,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
   const [opts, setOpts] = useState(null);
   const [loadErr, setLoadErr] = useState('');
   const [mode, setMode] = useState('script');
+  const [kind, setKind] = useState('doc');
   const [script, setScript] = useState('');
   const [topic, setTopic] = useState('');
   const [minutes, setMinutes] = useState(5);
@@ -436,8 +566,42 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
   }
 
   // ── Form ───────────────────────────────────────────────────────────────────
+  const myFilmsSection = (
+    <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 16 }}>{t.myFilms}</h3>
+      {jobs.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13.5 }}>{t.none}</div>}
+      {jobs.slice(0, 12).map((j) => (
+        <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{j.title || `#${j.id}`}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+              {j.status === 'done' ? `${fmtDur(j.durationSec || 0)}` : j.status === 'failed' ? t.failed : `${t.stages[j.stage] || j.stage} ${j.progress || 0}%`}
+              {' · '}{new Date(j.createdAt).toLocaleDateString()}
+            </div>
+          </div>
+          {(j.status === 'done' || j.status === 'queued' || j.status === 'running' || j.status === 'processing') && (
+            <button type="button" className="btn-ghost" style={{ borderRadius: 8, padding: '4px 12px', fontSize: 13 }} onClick={() => { setJob(j); watchJob(j.id); }}>{t.open}</button>
+          )}
+        </div>
+      ))}
+    </section>
+  );
   const musicOff = !music;
+  const kindTabs = (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <Chip active={kind === 'doc'} onClick={() => setKind('doc')}><Clapperboard size={14} style={{ verticalAlign: -2, marginInlineEnd: 6 }} />{t.kDoc}</Chip>
+      <Chip active={kind === 'edit'} onClick={() => setKind('edit')}><Scissors size={14} style={{ verticalAlign: -2, marginInlineEnd: 6 }} />{t.kEdit}</Chip>
+    </div>
+  );
+  if (kind === 'edit') {
+    return shell(<>
+      {kindTabs}
+      <AutoEditForm t={t} opts={opts} dir={dir} onStarted={(j) => { setJob(j); watchJob(j.id); }} />
+      {myFilmsSection}
+    </>);
+  }
   return shell(<>
+    {kindTabs}
     <div className="doc-grid">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
         <Section icon={FileText} title={t.s1}>
@@ -593,23 +757,6 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
       </aside>
     </div>
 
-    <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 16 }}>{t.myFilms}</h3>
-      {jobs.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 13.5 }}>{t.none}</div>}
-      {jobs.slice(0, 12).map((j) => (
-        <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 160 }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{j.title || `#${j.id}`}</div>
-            <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-              {j.status === 'done' ? `${fmtDur(j.durationSec || 0)}` : j.status === 'failed' ? t.failed : `${t.stages[j.stage] || j.stage} ${j.progress || 0}%`}
-              {' · '}{new Date(j.createdAt).toLocaleDateString()}
-            </div>
-          </div>
-          {(j.status === 'done' || j.status === 'queued' || j.status === 'running' || j.status === 'processing') && (
-            <button type="button" className="btn-ghost" style={{ borderRadius: 8, padding: '4px 12px', fontSize: 13 }} onClick={() => { setJob(j); watchJob(j.id); }}>{t.open}</button>
-          )}
-        </div>
-      ))}
-    </section>
+    {myFilmsSection}
   </>);
 }

@@ -2,14 +2,16 @@
 // كل مرحلة بتفشل بشكل آمن: أي خطأ نهائي = فشل الوظيفة + رد كامل للكريديت. الأخطاء الجزئية (لقطة، موسيقى، مصدر) بتتعامل
 // معاها المراحل نفسها بخطط بديلة من غير ما تفشّل الفيلم.
 import fs from 'fs';
+import fetch from 'node-fetch';
 import path from 'path';
 import { cleanScript } from './scriptCleaner.js';
 import { buildSrt } from './uploadPackage.js';
+import { autoEditVideo } from '../montage/autoEdit.js';
 import { chargeCredits, addCreditsBalance, getCreditsBalance } from '../authService.js';
-import { getDocumentaryCreditCost } from '../creditPricingEngine.js';
+import { getDocumentaryCreditCost, getAutoEditCreditCost } from '../creditPricingEngine.js';
 import { checkContentSafety } from '../scriptService.js';
 import { synthesizeNarration, getBackgroundMusicBuffer } from '../videoAudioService.js';
-import { ffmpeg, probeDuration, rmQuiet } from './ff.js';
+import { ffmpeg, probeDuration, rmQuiet, probeVideo, hasAudio } from './ff.js';
 import { transcribeWords, tokenizeScript, alignScriptToWords, tokensFromAsr } from './align.js';
 import { buildBeats, planBeats } from './planner.js';
 import { resolveAssets } from './resolver.js';
@@ -134,7 +136,7 @@ async function refund(task, amount) {
 }
 
 // ── التنفيذ ──────────────────────────────────────────────────────────────────────────────────
-const STAGES = { script: [0, 6], narration: [6, 28], plan: [28, 38], assets: [38, 66], render: [66, 94], upload: [94, 99] };
+const STAGES = { script: [0, 6], narration: [6, 28], plan: [28, 38], assets: [38, 66], render: [66, 94], upload: [94, 99], transcribe: [2, 25], cut: [25, 70], finish: [70, 94] };
 function progressor(jobId) {
   let last = 0, lastAt = 0;
   return async (stage, frac = 0, extra = {}) => {
@@ -156,7 +158,7 @@ async function runTask(task) {
   fs.mkdirSync(workDir, { recursive: true });
   try {
     await store.updateJob(id, { status: 'processing', stage: 'script', progress: 1 });
-    const result = await produce({ id, input, workDir, prog });
+    const result = input.mode === 'autoedit' ? await produceAutoEdit({ id, input, workDir, prog }) : await produce({ id, input, workDir, prog });
     // رفع
     await prog('upload', 0);
     const base = `documentaries/${userId}/${id}`;
@@ -168,7 +170,7 @@ async function runTask(task) {
       thumbUrl = await store.uploadFile(thumb, `${base}.jpg`, 'image/jpeg');
     } catch (e) { console.warn('[Documentary] thumbnail failed:', e.message); }
     // الدفع على الطول الفعلي: فرق الحجز المسبق بيترد
-    const actual = getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
+    const actual = task.fixedCost ? task.charged : getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
     const back = Math.max(0, task.charged - actual);
     if (back >= 2) await refund(task, back);
     await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio } });
@@ -178,11 +180,110 @@ async function runTask(task) {
     await refund(task, task.charged);
     if (task.trial) await store.releaseTrial(userId).catch(() => {});
     task.hooks?.onFail?.(e);
-    await store.updateJob(id, { status: 'failed', stage: currentStage, error: 'The documentary could not be completed, your credits were refunded.', error_detail: String(e.message || e).slice(0, 800), credits_refunded: task.charged }).catch(() => {});
+    await store.updateJob(id, { status: 'failed', stage: currentStage, error: userFacingError(e), error_detail: String(e.message || e).slice(0, 800), credits_refunded: task.charged }).catch(() => {});
   } finally {
     rmQuiet(workDir);
     if (input.audioFile) rmQuiet(path.dirname(input.audioFile));
+    if (input.videoFile) rmQuiet(path.dirname(input.videoFile));
   }
+}
+
+const USER_ERRORS = {
+  no_audio: 'This video has no audio, so there is nothing to edit by speech. Your credits were refunded.',
+  no_speech: 'No speech was detected in this video. Your credits were refunded.',
+  content_policy: 'This video contains content we cannot edit. Your credits were refunded.',
+};
+function userFacingError(e) { return USER_ERRORS[e?.code] || 'The video could not be completed, your credits were refunded.'; }
+
+// ── مونتاج تلقائي لفيديو مرفوع (ffmpeg + Whisper): قص صمت + زوم + انتقالات + مؤثرات + كابشن + موسيقى ──
+export const AUTOEDIT_MAX_MINUTES = 20;
+export const AUTOEDIT_CAPTIONS = ['karaoke', 'box', 'pop', 'none'];
+export function quoteAutoEdit(durationSec) {
+  const minutes = Math.round((Number(durationSec) || 0) / 6) / 10;
+  return { minutes, cost: getAutoEditCreditCost((Number(durationSec) || 0) / 60) };
+}
+
+function normalizeAutoEditOptions(raw = {}) {
+  const bool = (v, d) => (v === undefined ? d : v === true || v === 'true' || v === '1');
+  return {
+    cutSilence: bool(raw.cutSilence, true), zoom: bool(raw.zoom, true), transitions: bool(raw.transitions, true),
+    captions: AUTOEDIT_CAPTIONS.includes(raw.captions) ? raw.captions : 'karaoke',
+    music: bool(raw.music, false), musicMood: MOODS.includes(raw.musicMood) ? raw.musicMood : null,
+    musicTrack: typeof raw.musicTrack === 'string' ? raw.musicTrack.slice(0, 120) : null,
+    language: LANGUAGES[raw.language] ? raw.language : 'en',
+  };
+}
+
+export async function startAutoEditJob(userId, { file, durationSec, title, options }) {
+  const opt = normalizeAutoEditOptions(options);
+  if (!file || !fs.existsSync(file)) return { ok: false, status: 400, error: 'video_required', message: 'Please upload a video.' };
+  if (!(durationSec >= 5)) return { ok: false, status: 400, error: 'bad_video', message: 'The video is too short (minimum 5 seconds).' };
+  if (durationSec > AUTOEDIT_MAX_MINUTES * 60 + 5) return { ok: false, status: 400, error: 'too_long', message: `The maximum length is ${AUTOEDIT_MAX_MINUTES} minutes.` };
+  const q = quoteAutoEdit(durationSec);
+  const charge = await chargeCredits(userId, q.cost);
+  if (!charge.success) return { ok: false, status: 403, error: 'quota_exceeded', message: `This edit needs ${q.cost} credits, you have ${charge.remaining}.`, cost: q.cost, remaining: charge.remaining };
+  let job;
+  try {
+    job = await store.createJob({ userId, input: { mode: 'autoedit', ...opt, durationSec }, title: String(title || '').slice(0, 120) || null, creditsCharged: q.cost });
+  } catch (e) {
+    await addCreditsBalance(userId, q.cost).catch(() => {});
+    return { ok: false, status: 500, error: 'job_create_failed', message: 'Could not start the job. Your credits were not charged.' };
+  }
+  enqueue({ id: job.id, userId, input: { mode: 'autoedit', ...opt, durationSec, videoFile: file }, charged: q.cost, minutes: q.minutes, fixedCost: true, hooks: {} });
+  return { ok: true, job, cost: q.cost, minutes: q.minutes, remaining: charge.remaining };
+}
+
+// نفس المونتاج التلقائي بس من رابط فيديو (مثلاً فيديو العميل المرفوع في شات الـagent): بننزّله، نفحصه، ونبدأ الوظيفة
+export async function startAutoEditFromUrl(userId, videoUrl, options = {}) {
+  const dir = path.join(TEMP_ROOT, `aeurl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'input.mp4');
+  try {
+    if (/^https?:\/\//i.test(videoUrl)) {
+      const res = await fetch(videoUrl);
+      if (!res.ok) throw new Error(`download failed ${res.status}`);
+      const len = Number(res.headers.get('content-length') || 0);
+      if (len > 600 * 1024 * 1024) { rmQuiet(dir); return { ok: false, status: 400, error: 'file_too_large', message: 'The video is larger than 600MB.' }; }
+      await new Promise((resolve, reject) => { const out = fs.createWriteStream(file); res.body.pipe(out); res.body.on('error', reject); out.on('finish', resolve); out.on('error', reject); });
+    } else {
+      fs.copyFileSync(path.join(process.cwd(), videoUrl.replace(/^\//, '')), file);
+    }
+    const info = await probeVideo(file).catch(() => null);
+    if (!info?.width) { rmQuiet(dir); return { ok: false, status: 400, error: 'bad_video', message: 'This file is not a readable video.' }; }
+    if (!(await hasAudio(file))) { rmQuiet(dir); return { ok: false, status: 400, error: 'no_audio', message: 'This video has no audio.' }; }
+    const dur = info.duration || (await probeDuration(file));
+    const r = await startAutoEditJob(userId, { file, durationSec: dur, title: options.title || 'Edited video', options });
+    if (!r.ok) rmQuiet(dir);
+    return r;
+  } catch (e) {
+    rmQuiet(dir);
+    console.error('[AutoEdit] URL start failed:', e.message);
+    return { ok: false, status: 500, error: 'failed', message: 'Could not start the job.' };
+  }
+}
+
+async function produceAutoEdit({ id, input, workDir, prog }) {
+  await prog('transcribe', 0);
+  let musicFile = null;
+  if (input.music) {
+    try {
+      musicFile = path.join(workDir, 'music.mp3');
+      const track = input.musicTrack && /^[\w ',.&()\-]+\.mp3$/i.test(input.musicTrack) && fs.existsSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack));
+      if (track) fs.copyFileSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack), musicFile);
+      else fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', input.musicMood));
+    } catch (e) { console.warn('[AutoEdit] music unavailable:', e.message); musicFile = null; }
+  }
+  const r = await autoEditVideo({
+    file: input.videoFile, workDir: path.join(workDir, 'edit'), language: input.language,
+    options: { cutSilence: input.cutSilence, zoom: input.zoom, transitions: input.transitions, captions: input.captions, music: musicFile ? { file: musicFile, volume: 0.1 } : null },
+    onProgress: ({ stage, frac = 0 }) => prog(stage === 'finish' ? 'finish' : stage, frac),
+    onTranscript: async (words) => {
+      const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000));
+      if (safety.unsafe) { const e = new Error('content policy'); e.code = 'content_policy'; throw e; }
+    },
+  });
+  const title = (await store.getJobAny(id))?.title || 'Edited video';
+  return { file: r.file, duration: r.duration, credits: [], script: r.transcript, title, chapters: r.chapters, srt: buildSrt(r.words) };
 }
 
 // قبل ما نبعت لـTTS: نقسّم السكريبت لقطع ≤ maxChars على حدود الفقرات/الجمل
