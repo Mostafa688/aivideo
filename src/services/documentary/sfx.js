@@ -1,0 +1,53 @@
+// ── sfx.js ── مؤثرات صوتية متولّدة محليًا بـffmpeg (مفيش ملفات خارجية = مفيش مشاكل ترخيص)
+import fs from 'fs';
+import path from 'path';
+import { ffmpeg } from './ff.js';
+
+const SPECS = {
+  whoosh: ['anoisesrc=d=0.9:c=pink:r=44100', 'highpass=f=250,lowpass=f=5200,afade=t=in:d=0.4,afade=t=out:st=0.4:d=0.5,volume=0.7'],
+  impact: ["aevalsrc='0.95*sin(2*PI*(46+44*exp(-9*t))*t)*exp(-4.2*t)':d=1.4:s=44100", 'lowpass=f=900,volume=1.0'],
+  tick: ["aevalsrc='0.55*sin(2*PI*1900*t)*exp(-70*t)':d=0.12:s=44100", 'volume=0.8'],
+  pop: ["aevalsrc='0.6*sin(2*PI*(520+1100*t)*t)*exp(-24*t)':d=0.2:s=44100", 'volume=0.8'],
+  riser: ['anoisesrc=d=1.8:c=white:r=44100', 'highpass=f=700,lowpass=f=7000,afade=t=in:d=1.7,afade=t=out:st=1.7:d=0.1,volume=0.5'],
+};
+export const SFX_TYPES = Object.keys(SPECS);
+
+export async function ensureSfx(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  const out = {};
+  for (const [name, [src, af]] of Object.entries(SPECS)) {
+    const file = path.join(dir, `${name}.wav`);
+    if (!fs.existsSync(file)) await ffmpeg(['-f', 'lavfi', '-i', src, '-af', af, '-ar', '44100', '-ac', '2', file]);
+    out[name] = file;
+  }
+  return out;
+}
+
+// أحداث المؤثرات لكل لقطة (t0 = زمن بداية اللقطة في الفيديو الكامل)
+export function sfxForBeat(beat, t0) {
+  const ev = [];
+  const tin = beat.transitionIn || 'cut';
+  if (tin === 'flash') ev.push({ t: Math.max(0, t0 - 0.06), type: 'whoosh', vol: 0.5 });
+  for (const ov of beat.overlays || []) {
+    const at = t0 + (ov.at || 0);
+    switch (ov.template) {
+      case 'title_card': ev.push({ t: at + 0.05, type: 'impact', vol: 0.55 }); break;
+      case 'lower_third': ev.push({ t: at + 0.05, type: 'whoosh', vol: 0.35 }); break;
+      case 'counter': ev.push({ t: at + 0.1, type: 'riser', vol: 0.4 }); break;
+      case 'bullet_panel': case 'evidence_board':
+        ev.push({ t: at + 0.05, type: 'whoosh', vol: 0.3 });
+        (ov.data?.bullets || []).slice(0, 6).forEach((_, i) => ev.push({ t: at + 0.6 + i * 0.5, type: 'pop', vol: 0.4 }));
+        break;
+      case 'kinetic_text': {
+        const n = String(ov.data?.text || '').split(/\s+/).filter(Boolean).length;
+        for (let i = 0; i < Math.min(n, 12); i++) ev.push({ t: at + 0.15 + i * 0.22, type: 'tick', vol: 0.35 });
+        break;
+      }
+      case 'timeline': case 'route_diagram':
+        (ov.data?.events || ov.data?.nodes || []).slice(0, 6).forEach((_, i) => ev.push({ t: at + 0.55 + i * 0.5, type: 'pop', vol: 0.4 }));
+        break;
+      default: ev.push({ t: at + 0.05, type: 'whoosh', vol: 0.3 });
+    }
+  }
+  return ev;
+}
