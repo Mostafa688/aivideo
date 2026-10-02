@@ -85,6 +85,8 @@ import mapVideoRouter from './services/mapVideoRoutes.js';
 import wanVideoRouter from './services/wanVideoRoutes.js';
 import adsRouter from './services/adsRoutes.js';
 import agentRouter from './services/agentRoutes.js';
+import documentaryRouter from './services/documentary/documentaryRoutes.js';
+import { recoverInterruptedJobs as recoverDocumentaryJobs } from './services/documentary/documentaryService.js';
 import pgPkg from 'pg';
 const { Pool: _TPool } = pgPkg;
 
@@ -258,6 +260,10 @@ app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
 app.use('/api/agent', agentRouter);
+// ✅ NEW: استوديو الأفلام الوثائقية — إنشاء وظيفة بتتحدد بمعدل الرندر (20/ساعة) زي باقي مسارات التوليد
+app.use('/api/documentary/jobs', (req, res, next) => (req.method === 'POST' ? renderLimiter(req, res, next) : next()));
+app.use('/api/documentary', documentaryRouter);
+recoverDocumentaryJobs();
 app.use('/api/channels', channelRouter);
 app.use('/api/voice-clone', voiceCloneRouter);
 app.use('/api/characters', charactersRouter);
