@@ -99,6 +99,15 @@ export function sanitizeTemplate(name, data, beatText) {
       return { title: clip(data.title, 40) || undefined, events };
     }
     case 'route_diagram': { const nodes = strArr(data.nodes, 3, 6, 30); return nodes.length >= 3 ? { title: clip(data.title, 40) || undefined, nodes } : null; }
+    case 'map_reveal': {
+      const text = String(beatText).toLowerCase();
+      const places = (Array.isArray(data.places) ? data.places : []).map(pl => ({ name: clip(pl?.name, 28), lat: Number(pl?.lat), lon: Number(pl?.lon) }))
+        .filter(pl => pl.name && Number.isFinite(pl.lat) && Number.isFinite(pl.lon) && pl.lat >= -58 && pl.lat <= 84 && pl.lon >= -180 && pl.lon <= 180).slice(0, 4);
+      // لازم كل مكان يكون مذكور فعلاً في جملة الـbeat (أي كلمة ≥3 حروف من اسمه)
+      const mentioned = (pl) => pl.name.toLowerCase().split(/[\s,،-]+/).some(w => w.length >= 3 && text.includes(w.replace(/^ال/, '')));
+      const kept = places.filter(mentioned);
+      return kept.length ? { title: clip(data.title, 40) || undefined, places: kept, route: kept.length > 1 && data.route !== false } : null;
+    }
     case 'kinetic_text': { const t = clip(data.text, 90); return t && t.split(/\s+/).length <= 14 ? { text: t, emphasis: strArr(data.emphasis, 0, 3, 20) } : null; }
     default: return null;
   }
@@ -144,7 +153,7 @@ Rules:
 - "visual": "archive" = real historical photos/films, named people, places, events, documents (queries MUST include proper names and years, e.g. "Winston Churchill 1941"); "nasa" = space, rockets, planets, astronauts; "stock" = generic b-roll that illustrates the idea (nature, cities, machines, crowds); "text" = a motion-graphic scene with no footage (use sparingly).
 - Queries are English search terms for photo/video libraries (2-3, from specific to broad). Never ask for text, logos, maps with labels, or identifiable private individuals. Show what the sentence concretely says.
 - Use a template ONLY when the data comes from the beat's own text. NEVER invent facts or numbers. Available templates and data:
-  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text).
+  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places[1-4 of {name,lat,lon}],route?} (a real geographic place or journey is named in the text, visual "text", needs a beat of 3+ seconds; name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about — never guess) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text).
 - At most ~1 in 4 beats should use a template; never two "text" beats in a row. Put "chapter" on the first beat and whenever the topic clearly shifts.
 - "grade": bw_archive for old (pre-1960) archival material, sepia for 1800s-1920s, cinematic for dramatic modern scenes, none for generic stock.
 - "emphasis": up to 2 words from the beat that deserve a zoom punch.
@@ -180,7 +189,7 @@ export function enforcePacing(plans, beats) {
   plans.forEach((p, i) => {
     const b = beats[i];
     const isText = p.visual === 'text';
-    if (isText && (prevText || b.dur < 2.6)) { // حوّل لستوك + اعتبر القالب overlay لو ينفع
+    if (isText && (prevText || b.dur < (p.template?.name === 'map_reveal' ? 3.2 : 2.6))) { // حوّل لستوك + اعتبر القالب overlay لو ينفع
       p.visual = 'stock'; p.queries = p.queries.length ? p.queries : fallbackBeatPlan(b).queries; p.template = null;
     }
     if (p.visual === 'text') templated++;
