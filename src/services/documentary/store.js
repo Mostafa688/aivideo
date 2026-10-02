@@ -30,6 +30,8 @@ export const ready = (async () => {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`);
+  await pool.query('ALTER TABLE documentary_jobs ADD COLUMN IF NOT EXISTS error_detail TEXT');
+  await pool.query('ALTER TABLE documentary_jobs ADD COLUMN IF NOT EXISTS meta JSONB');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_documentary_jobs_user ON documentary_jobs(user_id, id DESC)');
 })().catch(e => { console.warn('[Documentary] DB init failed:', e.message); });
 
@@ -42,12 +44,12 @@ export async function createJob({ userId, input, title, creditsCharged }) {
   return rows[0];
 }
 
-const COLS = new Set(['status', 'stage', 'progress', 'title', 'script', 'result_url', 'thumbnail_url', 'duration_sec', 'credits_refunded', 'credits_list', 'error']);
+const COLS = new Set(['status', 'stage', 'progress', 'title', 'script', 'result_url', 'thumbnail_url', 'duration_sec', 'credits_refunded', 'credits_list', 'error', 'error_detail', 'meta']);
 export async function updateJob(id, patch) {
   const keys = Object.keys(patch).filter(k => COLS.has(k));
   if (!keys.length) return;
   const sets = keys.map((k, i) => `${k} = $${i + 2}`);
-  const vals = keys.map(k => (k === 'credits_list' ? JSON.stringify(patch[k]) : patch[k]));
+  const vals = keys.map(k => (k === 'credits_list' || k === 'meta' ? JSON.stringify(patch[k]) : patch[k]));
   await pool.query(`UPDATE documentary_jobs SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $1`, [id, ...vals]);
 }
 
@@ -99,4 +101,31 @@ export async function uploadFile(file, key, contentType) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.copyFileSync(file, dest);
   return '/outputs/' + rel.replace(/\\/g, '/');
+}
+
+// دمج حقول في meta (الحزمة المولّدة مثلاً) من غير ما نمسح الباقي
+export async function mergeMeta(id, patch) {
+  await pool.query("UPDATE documentary_jobs SET meta = COALESCE(meta, '{}'::jsonb) || $2::jsonb, updated_at = NOW() WHERE id = $1", [id, JSON.stringify(patch)]);
+}
+
+// إحصائيات للأدمن: أرقام عامة + أسباب الفشل + آخر الوظائف
+export async function adminStats({ days = 30 } = {}) {
+  await ready;
+  const since = `NOW() - INTERVAL '${Math.max(1, Math.min(365, Number(days) || 30))} days'`;
+  const q = (t, p) => pool.query(t, p).then(r => r.rows);
+  const [totals] = await q(`SELECT COUNT(*)::int AS jobs,
+      COUNT(*) FILTER (WHERE status='done')::int AS done, COUNT(*) FILTER (WHERE status='failed')::int AS failed,
+      COUNT(*) FILTER (WHERE status IN ('queued','processing'))::int AS active,
+      COALESCE(SUM(credits_charged),0)::int AS charged, COALESCE(SUM(credits_refunded),0)::int AS refunded,
+      COALESCE(AVG(duration_sec) FILTER (WHERE status='done'),0)::float AS avg_duration,
+      COALESCE(SUM(duration_sec) FILTER (WHERE status='done'),0)::float AS total_duration,
+      COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) FILTER (WHERE status='done'),0)::float AS avg_wall_secs,
+      COUNT(DISTINCT user_id)::int AS users
+    FROM documentary_jobs WHERE created_at > ${since}`);
+  const byMode = await q(`SELECT COALESCE(input->>'mode','?') AS mode, COUNT(*)::int AS jobs, COUNT(*) FILTER (WHERE status='failed')::int AS failed FROM documentary_jobs WHERE created_at > ${since} GROUP BY 1 ORDER BY 2 DESC`);
+  const failuresByStage = await q(`SELECT COALESCE(stage,'?') AS stage, COUNT(*)::int AS n FROM documentary_jobs WHERE status='failed' AND created_at > ${since} GROUP BY 1 ORDER BY 2 DESC`);
+  const perDay = await q(`SELECT to_char(created_at::date,'YYYY-MM-DD') AS day, COUNT(*)::int AS jobs, COUNT(*) FILTER (WHERE status='failed')::int AS failed FROM documentary_jobs WHERE created_at > ${since} GROUP BY 1 ORDER BY 1 DESC LIMIT 31`);
+  const recentFailures = await q(`SELECT j.id, j.stage, j.error_detail, j.credits_charged, j.created_at, u.email FROM documentary_jobs j LEFT JOIN users u ON u.id = j.user_id WHERE j.status='failed' ORDER BY j.id DESC LIMIT 25`);
+  const recent = await q(`SELECT j.id, j.status, j.stage, j.progress, j.title, j.duration_sec, j.credits_charged, j.credits_refunded, j.created_at, u.email FROM documentary_jobs j LEFT JOIN users u ON u.id = j.user_id ORDER BY j.id DESC LIMIT 25`);
+  return { days: Number(days) || 30, totals, byMode, failuresByStage, perDay, recentFailures, recent };
 }

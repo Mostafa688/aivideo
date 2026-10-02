@@ -4,6 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { cleanScript } from './scriptCleaner.js';
+import { buildSrt } from './uploadPackage.js';
 import { chargeCredits, addCreditsBalance } from '../authService.js';
 import { getDocumentaryCreditCost } from '../creditPricingEngine.js';
 import { checkContentSafety } from '../scriptService.js';
@@ -141,7 +142,9 @@ function progressor(jobId) {
 async function runTask(task) {
   const { id, userId, input } = task;
   const workDir = path.join(TEMP_ROOT, `doc_${id}`);
-  const prog = progressor(id);
+  const prog0 = progressor(id);
+  let currentStage = 'script';
+  const prog = (stage, ...rest) => { currentStage = stage; return prog0(stage, ...rest); };
   fs.mkdirSync(workDir, { recursive: true });
   try {
     await store.updateJob(id, { status: 'processing', stage: 'script', progress: 1 });
@@ -160,13 +163,13 @@ async function runTask(task) {
     const actual = getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
     const back = Math.max(0, task.charged - actual);
     if (back >= 2) await refund(task, back);
-    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title });
+    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio } });
     task.hooks?.onDone?.({ videoUrl, thumbnailUrl: thumbUrl, durationSec: result.duration, title: result.title, credits: result.credits, creditsCharged: task.charged - (back >= 2 ? back : 0) });
   } catch (e) {
     console.error(`[Documentary] job ${id} failed:`, e.message);
     await refund(task, task.charged);
     task.hooks?.onFail?.(e);
-    await store.updateJob(id, { status: 'failed', error: 'The documentary could not be completed, your credits were refunded.', credits_refunded: task.charged }).catch(() => {});
+    await store.updateJob(id, { status: 'failed', stage: currentStage, error: 'The documentary could not be completed, your credits were refunded.', error_detail: String(e.message || e).slice(0, 800), credits_refunded: task.charged }).catch(() => {});
   } finally {
     rmQuiet(workDir);
     if (input.audioFile) rmQuiet(path.dirname(input.audioFile));
@@ -298,7 +301,8 @@ async function produce({ id, input, workDir, prog }) {
   const timeline = buildTimeline({ beats, plans, assets, boards, tokens, ratio: input.ratio, theme: input.theme, lang, captionsStyle: input.captions === 'none' ? null : input.captions, narrationFile, musicFile, motionGraphics: input.motionGraphics });
   const r = await renderDocumentary({ timeline, workDir: path.join(workDir, 'render'), concurrency: Math.max(1, Math.min(3, Number(process.env.DOC_RENDER_CONCURRENCY || 2))), onProgress: ({ stage, done, total: t }) => prog('render', stage === 'clips' ? (done / t) * 0.85 : stage === 'joined' ? 0.88 : stage === 'audio' ? 0.94 : 0.99) });
   if (r.failures.length) console.warn(`[Documentary] job ${id}: ${r.failures.length} beat(s) fell back to plain backgrounds`);
-  return { file: r.file, duration: r.duration, credits: [...allCredits, ...sources.map(s => s.url)], script, title };
+  const chapters = plans.map((p, i) => (p.chapter ? { t: beats[i].start, title: p.chapter } : null)).filter(Boolean);
+  return { file: r.file, duration: r.duration, credits: [...allCredits, ...sources.map(s => s.url)], script, title, chapters, srt: buildSrt(timeline.captions?.words || tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
 }
 
 // عند إقلاع السيرفر: وظايف كانت شغالة اتقطعت → نردّ كريديتها

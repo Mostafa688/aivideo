@@ -15,6 +15,8 @@ import { probeDuration, hasAudio, rmQuiet } from './ff.js';
 import * as svc from './documentaryService.js';
 import { cleanScript, basicClean } from './scriptCleaner.js';
 import * as store from './store.js';
+import { adminAuth } from '../adminAuthMiddleware.js';
+import { buildPackage, composeThumbnail } from './uploadPackage.js';
 
 const router = express.Router();
 const TEMP_ROOT = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
@@ -144,9 +146,57 @@ router.get('/jobs/:id', authMiddleware, async (req, res) => {
     if (!j) return res.status(404).json({ error: 'not_found' });
     res.setHeader('Cache-Control', 'no-store');
     const out = publicJob(j);
-    if (j.status === 'done') { out.script = j.script; out.credits = j.credits_list || []; }
+    if (j.status === 'done') { out.script = j.script; out.credits = j.credits_list || []; out.package = j.meta?.package || null; out.hasSrt = !!j.meta?.srt; }
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── حزمة النشر (عنوان/وصف بالمصادر والفصول/كلمات/صورة مصغرة) + ملف الترجمة ──
+const packageCalls = new Map();
+router.post('/jobs/:id/package', authMiddleware, express.json({ limit: '10kb' }), async (req, res) => {
+  try {
+    const j = await store.getJob(parseInt(req.params.id, 10), req.user.userId);
+    if (!j || j.status !== 'done') return res.status(404).json({ error: 'not_found' });
+    const meta = j.meta || {};
+    if (meta.package && !req.body?.refresh) return res.json(meta.package);
+    const uid = req.user.userId, now = Date.now();
+    const recent = (packageCalls.get(uid) || []).filter(t => now - t < 3600e3);
+    if (recent.length >= 15) return res.status(429).json({ error: 'rate_limited', message: 'Too many requests this hour.' });
+    packageCalls.set(uid, [...recent, now]);
+    const pkg = await buildPackage({ title: j.title, script: j.script, language: meta.language || 'en', chapters: meta.chapters, credits: j.credits_list, duration: j.duration_sec });
+    let thumbnailUrl = j.thumbnail_url || null;
+    if (j.thumbnail_url) {
+      try {
+        const buf = await composeThumbnail(j.thumbnail_url, pkg.thumbnailText, { lang: meta.language || 'en' });
+        const tmp = path.join(TEMP_ROOT, `thumb_${j.id}_${Date.now()}.jpg`);
+        fs.mkdirSync(TEMP_ROOT, { recursive: true });
+        fs.writeFileSync(tmp, buf);
+        thumbnailUrl = await store.uploadFile(tmp, `documentaries/${uid}/${j.id}_thumb.jpg`, 'image/jpeg');
+        fs.rmSync(tmp, { force: true });
+      } catch (e) { console.warn('[Documentary] thumbnail compose failed:', e.message); }
+    }
+    const out = { title: pkg.title, description: pkg.description, tags: pkg.tags, thumbnailUrl, chapters: pkg.chapters, hasSrt: !!meta.srt };
+    await store.mergeMeta(j.id, { package: out });
+    res.json(out);
+  } catch (e) {
+    console.error('[Documentary] package failed:', e.message);
+    res.status(500).json({ error: 'package_failed', message: 'Could not build the upload package right now.' });
+  }
+});
+
+router.get('/jobs/:id/srt', authMiddleware, async (req, res) => {
+  try {
+    const j = await store.getJob(parseInt(req.params.id, 10), req.user.userId);
+    if (!j || j.status !== 'done' || !j.meta?.srt) return res.status(404).json({ error: 'not_found' });
+    res.setHeader('Content-Type', 'application/x-subrip; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="documentary_${j.id}.srt"`);
+    res.send('\uFEFF' + j.meta.srt);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/admin/stats', adminAuth, async (req, res) => {
+  try { res.json(await store.adminStats({ days: req.query.days })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 export default router;

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { downloadRemoteFile } from '../utils/download.js';
 import {
   ArrowLeft, Clapperboard, FileText, Wand2, Mic, UploadCloud, Loader2, CheckCircle2,
-  XCircle, Download, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
+  XCircle, Download, Package, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
 } from 'lucide-react';
 
 const authHeaders = (json = true) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), Authorization: 'Bearer ' + localStorage.getItem('token') });
@@ -41,6 +41,7 @@ const T = {
     failed: 'فشل الإنتاج', refunded: 'اترجّع لك الكريديت كامل.', retry: 'حاول تاني',
     myFilms: 'أفلامي', none: 'مفيش أفلام لسه.', open: 'فتح',
     errGeneric: 'حصلت مشكلة. جرّب تاني.',
+    pkgBtn: 'جهّز حزمة النشر على يوتيوب', pkgBuilding: 'بيجهّز العنوان والوصف والصورة...', pkgTitle: 'العنوان', pkgDesc: 'الوصف (فيه الفصول والمصادر)', pkgTags: 'الكلمات المفتاحية', pkgThumb: 'الصورة المصغرة', pkgThumbDl: 'تنزيل الصورة', pkgSrt: 'تنزيل ملف الترجمة SRT', pkgRegen: 'جهّز تاني',
     tooShort: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.',
     errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى من توليد السكريبتات في الساعة.' },
     copied: 'اتنسخ',
@@ -78,6 +79,7 @@ const T = {
     failed: 'Production failed', refunded: 'Your credits were fully refunded.', retry: 'Try again',
     myFilms: 'My films', none: 'No films yet.', open: 'Open',
     errGeneric: 'Something went wrong. Please try again.',
+    pkgBtn: 'Prepare the YouTube upload package', pkgBuilding: 'Preparing title, description and thumbnail...', pkgTitle: 'Title', pkgDesc: 'Description (with chapters and credits)', pkgTags: 'Tags', pkgThumb: 'Thumbnail', pkgThumbDl: 'Download thumbnail', pkgSrt: 'Download SRT subtitles', pkgRegen: 'Regenerate',
     tooShort: 'The film would be under 25 seconds — add more text.',
     errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit for script generation.' },
     copied: 'Copied',
@@ -86,6 +88,71 @@ const T = {
 
 const fmtMin = (m) => (m < 1 ? `${Math.round(m * 60)}s` : `${m.toFixed(1).replace(/\.0$/, '')} min`);
 const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+
+// حزمة النشر: عنوان + وصف (فيه فصول ومصادر) + كلمات + صورة مصغرة + ملف ترجمة
+function PackagePanel({ job, t }) {
+  const [pkg, setPkg] = useState(job.package || null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [copiedKey, setCopiedKey] = useState('');
+  const build = async (refresh = false) => {
+    setBusy(true); setErr('');
+    try {
+      const r = await fetch(`/api/documentary/jobs/${job.id}/package`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ refresh }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(t.errs[j.error] || t.errGeneric);
+      setPkg(j);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const copy = async (key, text) => { try { await navigator.clipboard.writeText(text); setCopiedKey(key); setTimeout(() => setCopiedKey(''), 1500); } catch { /* ignore */ } };
+  const downloadSrt = async () => {
+    try {
+      const r = await fetch(`/api/documentary/jobs/${job.id}/srt`, { headers: authHeaders(false) });
+      if (!r.ok) return;
+      const blob = await r.blob();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `documentary_${job.id}.srt`; a.click(); URL.revokeObjectURL(a.href);
+    } catch { /* ignore */ }
+  };
+  if (!pkg) {
+    return (
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button type="button" className="btn-ghost" disabled={busy} onClick={() => build(false)} style={{ borderRadius: 'var(--r-md)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {busy ? <Loader2 size={15} className="doc-spin" /> : <Package size={15} />}{busy ? t.pkgBuilding : t.pkgBtn}
+        </button>
+        {job.hasSrt && <button type="button" className="btn-ghost" onClick={downloadSrt} style={{ borderRadius: 'var(--r-md)' }}>{t.pkgSrt}</button>}
+        {err && <span style={{ color: 'var(--red)', fontSize: 13 }}>{err}</span>}
+      </div>
+    );
+  }
+  const row = (key, label, value, mono) => (
+    <div>
+      <div style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
+        <span>{label}</span>
+        <button type="button" className="btn-ghost" style={{ padding: '2px 10px', fontSize: 12, borderRadius: 8 }} onClick={() => copy(key, value)}>{copiedKey === key ? t.copied : t.copy}</button>
+      </div>
+      <pre style={{ ...fieldStyle, whiteSpace: 'pre-wrap', margin: 0, maxHeight: key === 'desc' ? 240 : 120, overflow: 'auto', fontSize: 13, fontFamily: mono ? 'monospace' : 'inherit' }}>{value}</pre>
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+      {pkg.thumbnailUrl && (
+        <div>
+          <div style={labelStyle}>{t.pkgThumb}</div>
+          <img src={pkg.thumbnailUrl} alt="" style={{ width: '100%', maxWidth: 480, borderRadius: 'var(--r-md)', display: 'block' }} />
+          <button type="button" className="btn-ghost" onClick={() => downloadRemoteFile(pkg.thumbnailUrl, `thumbnail_${job.id}.jpg`)} style={{ marginTop: 8, borderRadius: 8, fontSize: 13 }}>{t.pkgThumbDl}</button>
+        </div>
+      )}
+      {row('title', t.pkgTitle, pkg.title)}
+      {row('desc', t.pkgDesc, pkg.description)}
+      {row('tags', t.pkgTags, (pkg.tags || []).join(', '))}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {job.hasSrt && <button type="button" className="btn-ghost" onClick={downloadSrt} style={{ borderRadius: 'var(--r-md)' }}>{t.pkgSrt}</button>}
+        <button type="button" className="btn-ghost" disabled={busy} onClick={() => build(true)} style={{ borderRadius: 'var(--r-md)' }}>{busy ? <Loader2 size={14} className="doc-spin" /> : t.pkgRegen}</button>
+      </div>
+    </div>
+  );
+}
 
 // نفس فكرة الكشف في السيرفر (scriptCleaner.looksDirty) — بتظهر البانر وتشغّل التنضيف تلقائي عند اللصق
 function looksDirtyClient(text) {
@@ -347,6 +414,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
               <pre dir="ltr" style={{ ...fieldStyle, whiteSpace: 'pre-wrap', fontSize: 12.5, margin: 0, maxHeight: 180, overflow: 'auto' }}>{job.credits.join('\n')}</pre>
             </div>
           )}
+          <PackagePanel job={job} t={t} />
           {job.script && (
             <details>
               <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>{t.scriptOut}</summary>

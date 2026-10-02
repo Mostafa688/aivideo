@@ -2406,6 +2406,101 @@ const CHANGELOG_TAGS = [
   { key: 'coming_soon', label: '🟠 Coming Soon', color: '#f59e0b' },
 ];
 
+function DocumentaryTab({ s }) {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const load = useCallback(async () => {
+    setLoading(true); setErr('');
+    try {
+      const r = await fetch(`/api/documentary/admin/stats?days=${days}`, { headers });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed');
+      setData(d);
+    } catch (e) { setErr(e.message); }
+    setLoading(false);
+  }, [days]);
+  useEffect(() => { load(); }, [load]);
+  const T = data?.totals;
+  const fmtDate = (x) => (x ? new Date(x).toLocaleString() : '');
+  const stat = (label, value, color) => (
+    <div style={{ background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 10, padding: '12px 14px', minWidth: 120 }}>
+      <div style={{ fontSize: 11, color: '#6b7280' }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: color || '#fff' }}>{value}</div>
+    </div>
+  );
+  return (
+    <div>
+      <div style={s.topbar} className="admin-header">
+        <div style={s.title} className="admin-header-title">🎞️ Documentary Studio</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={days} onChange={e => setDays(Number(e.target.value))} style={s.input}>
+            {[7, 30, 90, 365].map(d => <option key={d} value={d}>Last {d} days</option>)}
+          </select>
+          <button style={s.btn()} onClick={load}>🔄 Refresh</button>
+        </div>
+      </div>
+      {loading && <div style={{ color: '#6b7280', marginBottom: 12 }}>Loading...</div>}
+      {err && <div style={{ color: '#f87171', marginBottom: 12 }}>❌ {err}</div>}
+      {T && (<>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+          {stat('Films', T.jobs)}
+          {stat('Done', T.done, '#22c55e')}
+          {stat('Failed', T.failed, T.failed ? '#f87171' : '#fff')}
+          {stat('In progress', T.active, '#f59e0b')}
+          {stat('Success rate', T.done + T.failed ? `${Math.round((T.done / (T.done + T.failed)) * 100)}%` : '—')}
+          {stat('Users', T.users)}
+          {stat('Credits charged', T.charged)}
+          {stat('Credits refunded', T.refunded, '#f59e0b')}
+          {stat('Net credits', T.charged - T.refunded, '#22c55e')}
+          {stat('Film minutes made', (T.total_duration / 60).toFixed(1))}
+          {stat('Avg film length', `${Math.round(T.avg_duration)}s`)}
+          {stat('Avg time to finish', `${Math.round(T.avg_wall_secs)}s`)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, marginBottom: 16 }}>
+          <div style={s.card}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 8 }}>By input mode</div>
+            {data.byMode.length === 0 && <div style={{ color: '#6b7280', fontSize: 12.5 }}>No data.</div>}
+            {data.byMode.map(m => <div key={m.mode} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '4px 0' }}><span>{m.mode}</span><span style={{ color: '#9ca3af' }}>{m.jobs} films · <span style={{ color: m.failed ? '#f87171' : '#6b7280' }}>{m.failed} failed</span></span></div>)}
+          </div>
+          <div style={s.card}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Where failures happen</div>
+            {data.failuresByStage.length === 0 && <div style={{ color: '#22c55e', fontSize: 12.5 }}>No failures 🎉</div>}
+            {data.failuresByStage.map(f => <div key={f.stage} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '4px 0' }}><span>{f.stage}</span><span style={{ color: '#f87171' }}>{f.n}</span></div>)}
+          </div>
+          <div style={s.card}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Per day</div>
+            {data.perDay.slice(0, 8).map(d => <div key={d.day} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '4px 0' }}><span>{d.day}</span><span style={{ color: '#9ca3af' }}>{d.jobs} <span style={{ color: d.failed ? '#f87171' : '#6b7280' }}>({d.failed} failed)</span></span></div>)}
+          </div>
+        </div>
+        <div style={s.card}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 10 }}>Recent failures</div>
+          {data.recentFailures.length === 0 && <div style={{ color: '#6b7280', fontSize: 12.5 }}>None.</div>}
+          {data.recentFailures.map(f => (
+            <div key={f.id} style={{ padding: '8px 0', borderBottom: '1px solid #1a1a2e', fontSize: 12.5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <span><strong>#{f.id}</strong> · {f.email || 'user'} · stage <span style={{ color: '#f59e0b' }}>{f.stage || '?'}</span></span>
+                <span style={{ color: '#6b7280' }}>{fmtDate(f.created_at)} · refunded {f.credits_charged}</span>
+              </div>
+              <div style={{ color: '#f87171', marginTop: 3, wordBreak: 'break-word' }}>{f.error_detail || '—'}</div>
+            </div>
+          ))}
+        </div>
+        <div style={s.card}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 10 }}>Latest films</div>
+          {data.recent.map(r => (
+            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', padding: '7px 0', borderBottom: '1px solid #1a1a2e', fontSize: 12.5 }}>
+              <span><strong>#{r.id}</strong> {r.title || ''} <span style={{ color: '#6b7280' }}>· {r.email || 'user'}</span></span>
+              <span style={{ color: r.status === 'done' ? '#22c55e' : r.status === 'failed' ? '#f87171' : '#f59e0b' }}>{r.status}{r.status === 'processing' ? ` ${r.progress}%` : ''} · {r.duration_sec ? Math.round(r.duration_sec) + 's' : '—'} · {r.credits_charged - r.credits_refunded} cr · {fmtDate(r.created_at)}</span>
+            </div>
+          ))}
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 function ChangelogTab({ s }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -3505,6 +3600,7 @@ export default function AdminPage() {
     { key: 'answers',    label: '📋 Answers'     },
     { key: 'community',  label: '🌍 Community'   },
     { key: 'channels',   label: '📺 Channels'    },
+    { key: 'documentary', label: '🎞️ Documentary' },
     { key: 'voices',     label: '🗣️ Voices'      },
     { key: 'audiovideo', label: '🎬 Audio→Video' },
     { key: 'analytics',  label: '📈 Analytics'    },
@@ -4002,6 +4098,7 @@ export default function AdminPage() {
         {tab === 'ratings' && <RatingsTab s={s} />}
         {tab === 'notifications' && <NotificationsTab s={s} />}
         {tab === 'channels' && <ChannelsTab s={s} />}
+        {tab === 'documentary' && <DocumentaryTab s={s} />}
         {tab === 'voices' && <VoicesTab s={s} />}
         {tab === 'audiovideo' && <AudioVideoTab s={s} />}
         {tab === 'analytics' && <AnalyticsTab s={s} />}
