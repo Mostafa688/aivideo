@@ -90,7 +90,7 @@ export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rt
     const odur = Math.min(ov.dur || dur - (ov.at || 0), dur - (ov.at || 0));
     if (odur < 0.5) continue;
     const at = Math.max(0, ov.at || 0);
-    const r = await renderOverlay({ template: ov.template, data: ov.data, dur: odur, w, h, theme: th, lang, rtl, dir: path.join(workDir, `ov_${index}_${i}`) });
+    const r = await renderOverlay({ template: ov.template, data: ov.data, dur: odur, w, h, theme: th, themeName: theme, lang, rtl, dir: path.join(workDir, `ov_${index}_${i}`) });
     const iIn = inputIndex++, iHold = inputIndex++, iOut = inputIndex++;
     inputs.push('-itsoffset', at.toFixed(3), '-framerate', String(FPS), '-start_number', '0', '-i', r.inPattern);
     inputs.push('-itsoffset', (at + r.tHold).toFixed(3), '-loop', '1', '-framerate', String(FPS), '-t', (r.tOut - r.tHold + 0.04).toFixed(3), '-i', r.holdFile);

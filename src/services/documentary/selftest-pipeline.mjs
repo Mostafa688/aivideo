@@ -111,3 +111,26 @@ const r = await renderDocumentary({ timeline: tl, workDir: path.join(D, 'work') 
 assert.equal(r.failures.length, 0); assert.ok(Math.abs(r.duration - beats.reduce((a, b) => a + b.dur, 0)) < 0.5);
 console.log(`render ok ${r.duration.toFixed(1)}s credits=${allCredits.length}`);
 console.log('ALL PIPELINE CHECKS PASSED');
+
+// ── 7) photo_board: الـresolver بيجيب صور لكل بطاقة، والـtimeline بيعمل overlay، وفيه بدائل لو الصور ناقصة ──
+{
+  const bt = [{ i: 0, text: 'Lieutenant Commander John Kerans took command of HMS Amethyst in 1949.', dur: 4.5, start: 0, end: 4.5, tokens: [] }];
+  const pl = [{ visual: 'text', queries: [], overlays: [], template: { name: 'photo_board', data: { title: 'New commander', photos: [{ query: 'John Kerans 1949', caption: 'Kerans' }, { query: 'HMS Amethyst', caption: 'Amethyst' }, { query: 'nothing here', caption: 'x' }] } }, emphasis: [], transition: 'cut' }];
+  const res = await resolveAssets({ beats: bt, plans: pl, ratio: '16:9', assetsDir: path.join(D, 'assets_pb') }, {
+    skipLlmRank: true,
+    searchCandidates: async (q) => (q === 'nothing here' ? [] : [{ id: 'wikimedia:' + q, source: 'wikimedia', kind: 'image', title: q, description: '', url: 'u', license: { ok: true, attributionRequired: true }, credit: 'Credit ' + q }]),
+    materialize: async (c) => c,
+    fetchAsset: async () => ({ file: photo, kind: 'image', width: 2000, height: 1300 }),
+  });
+  assert.equal(res.boards[0].length, 2, 'two photos found, one missing');
+  assert.ok(res.credits.includes('Credit John Kerans 1949'));
+  const t2 = buildTimeline({ beats: bt, plans: pl, assets: [null], boards: res.boards, tokens: [], narrationFile: path.join(D, 'narr.wav') });
+  assert.equal(t2.beats[0].overlays[0].template, 'photo_board'); assert.equal(t2.beats[0].overlays[0].data.photos.length, 2);
+  const t3 = buildTimeline({ beats: bt, plans: pl, assets: [null], boards: { 0: [res.boards[0][0]] }, tokens: [], narrationFile: path.join(D, 'narr.wav') });
+  assert.equal(t3.beats[0].visual.kind, 'image');
+  const t4 = buildTimeline({ beats: bt, plans: pl, assets: [null], boards: { 0: [] }, tokens: [], narrationFile: path.join(D, 'narr.wav') });
+  assert.equal(t4.beats[0].visual.kind, 'background');
+  assert.equal(sanitizeTemplate('photo_board', { photos: [{ query: 'a' }] }, 'x'), null);
+  console.log('photo_board ok');
+}
+console.log('ALL BOARD CHECKS PASSED');
