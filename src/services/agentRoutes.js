@@ -6,6 +6,7 @@ import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
+import { startJob as startDocumentaryJob } from './documentary/documentaryService.js';
 import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, startResumeChannelRun } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
@@ -1201,13 +1202,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
     ({ text: reply, payload: whiteboardVideoPayload } = extractTrailingMarker(reply, '###WHITEBOARD_VIDEO###'));
     ({ text: reply, payload: channelGeneratePayload } = extractTrailingMarker(reply, '###CHANNEL_GENERATE###'));
     ({ text: reply, payload: channelResumePayload } = extractTrailingMarker(reply, '###CHANNEL_RESUME###'));
+    ({ text: reply, payload: documentaryPayload } = extractTrailingMarker(reply, '###DOCUMENTARY###'));
     // ✅ خطوة موافقة حقيقية بتكلفة كريديت حقيقية زي أي فيديو تاني — نفس حاجز الخطة المجانية
     // المستخدم فوق لـREADY/GENERATE_IMAGE/... بالظبط، بس منفصل لأنه ماركر ثانوي (بعد الحاجز
     // الأساسي فوق) مش من عيلة READY
@@ -1302,6 +1304,28 @@ router.post('/chat', authMiddleware, async (req, res) => {
         } catch (e) {
           console.warn('[Agent] CHANNEL_RESUME marker failed:', e.message);
           reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أكمّل الفيديو — جرب تاني بعد شوية.';
+        }
+      }
+    }
+
+    // ✅ NEW: فيلم وثائقي من موضوع (Documentary Studio) — نفس مسار الصفحة بالظبط (حجز كريديت ذري + رد/رجوع تلقائي)
+    if (documentaryPayload) {
+      if (userPlan === 'free') {
+        reply += (reply ? '\n\n' : '') + 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ فيلم وثائقي قبل ما تشترك.';
+      } else {
+        try {
+          const r = await startDocumentaryJob(userId, {
+            mode: 'topic',
+            topic: String(documentaryPayload.topic || '').slice(0, 300),
+            minutes: Number(documentaryPayload.minutes) || 5,
+            language: documentaryPayload.language,
+          });
+          if (r.ok) reply += (reply ? '\n\n' : '') + `تمام، بدأت الفيلم الوثائقي (${r.cost} كريديت لمدة حوالي ${Math.round(r.minutes)} دقيقة). هيظهر في "استوديو الأفلام الوثائقية" ← "أفلامي" أول ما يخلص، ومعاه مصادر اللقطات.`;
+          else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: الفيلم محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
+          else reply += (reply ? '\n\n' : '') + (r.message || 'معلش، مقدرتش أبدأ الفيلم ده.');
+        } catch (e) {
+          console.warn('[Agent] DOCUMENTARY marker failed:', e.message);
+          reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ الفيلم الوثائقي — جرب تاني بعد شوية.';
         }
       }
     }
