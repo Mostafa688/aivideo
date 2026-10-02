@@ -4,6 +4,7 @@
 // بنرسم في مساحة بكسلات حقيقية (w×h) وأحجام الخط نسبية لأصغر بُعد (s = min(w,h)/1080)، فنفس القالب
 // بيشتغل 16:9 و9:16. النصوص بتتلف بـwrapText، وبتدعم RTL (عربي) بقلب الاتجاهات.
 import { esc, wrapText, textWidth, fontStack, fmtNumber } from './textutil.js';
+import fs from 'fs';
 import { clamp01, lerp, easeOutCubic, easeOutBack, easeOutExpo, easeInOutCubic, seg } from './easing.js';
 
 const SHADOW_DEF = `<defs><filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feGaussianBlur in="SourceAlpha" stdDeviation="10"/><feOffset dy="8" result="o"/><feComponentTransfer><feFuncA type="linear" slope="0.45"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
@@ -347,7 +348,103 @@ const kinetic_text = {
   },
 };
 
-export const TEMPLATES = { title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text };
+
+// ── 12) map_reveal — خريطة عالم بكاميرا بتقرّب على الأماكن + دبابيس + مسار منحني بينهم ───────────
+// إحداثيات الخريطة (من world.svg اللي اتجاب من simplemaps): equirectangular بمقياس 2.498 درجة→وحدة
+const WORLD = JSON.parse(fs.readFileSync(new URL('./worldPaths.json', import.meta.url), 'utf8'));
+const WORLD_PATHS = Object.values(WORLD);
+const mapX = (lon) => 2.4979 * lon + 500.8;
+const mapY = (lat) => -2.551 * lat + 301.66;
+const hex2rgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(h)); return m ? [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16)) : [128, 128, 128]; };
+const mixHex = (a, b, f) => { const A = hex2rgb(a), B = hex2rgb(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * f).toString(16).padStart(2, '0')).join(''); };
+
+function mapCamera(c, places, t) {
+  const k0 = Math.max(c.w / 1000, c.h / 560);
+  const pts = places.map(p => ({ x: mapX(p.lon), y: mapY(p.lat) }));
+  const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x));
+  const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y));
+  const spanX = Math.max(70, maxX - minX), spanY = Math.max(48, maxY - minY);
+  let kt = Math.min((c.w * 0.62) / spanX, (c.h * 0.5) / spanY);
+  kt = Math.min(Math.max(kt, k0), k0 * 14);
+  const cxT = (minX + maxX) / 2, cyT = (minY + maxY) / 2;
+  const cx0 = 500, cy0 = 262;
+  const p = easeInOutCubic(seg(t, 0.25, 1.9));
+  const k = Math.exp(lerp(Math.log(k0), Math.log(kt), p)) * (1 + 0.03 * clamp01(seg(t, 1.9, 6)));
+  const cxm = lerp(cx0, cxT, p), cym = lerp(cy0, cyT, p);
+  return { k, tx: c.w / 2 - cxm * k, ty: c.h / 2 - cym * k, pts };
+}
+
+const map_reveal = {
+  animEnd: (d) => 2.3 + 0.6 * Math.min(4, (d.places || []).length),
+  render(c, d, t) {
+    const { w, h, theme } = c;
+    const places = (d.places || []).slice(0, 4);
+    if (!places.length) return '';
+    const cam = mapCamera(c, places, t);
+    const ocean = mixHex(theme.bgTop, '#000000', 0.12);
+    const land = mixHex(theme.bgBottom, theme.text, 0.2);
+    const border = mixHex(theme.bgTop, theme.text, 0.12);
+    const grid = mixHex(theme.bgTop, theme.text, 0.1);
+    const sw = (1.1 / cam.k).toFixed(3);
+    let out = SHADOW_DEF;
+    out += `<rect width="${w}" height="${h}" fill="${ocean}"/>`;
+    let g = '';
+    for (let lon = -180; lon <= 180; lon += 30) g += `<line x1="${mapX(lon).toFixed(1)}" y1="${mapY(84).toFixed(1)}" x2="${mapX(lon).toFixed(1)}" y2="${mapY(-60).toFixed(1)}"/>`;
+    for (let lat = -60; lat <= 80; lat += 20) g += `<line x1="${mapX(-180).toFixed(1)}" y1="${mapY(lat).toFixed(1)}" x2="${mapX(180).toFixed(1)}" y2="${mapY(lat).toFixed(1)}"/>`;
+    out += `<g transform="translate(${cam.tx.toFixed(2)},${cam.ty.toFixed(2)}) scale(${cam.k.toFixed(4)})">`;
+    out += `<g stroke="${grid}" stroke-width="${(0.8 / cam.k).toFixed(3)}" opacity="0.7">${g}</g>`;
+    out += `<g fill="${land}" stroke="${border}" stroke-width="${sw}" stroke-linejoin="round">${WORLD_PATHS.map(dd => `<path d="${dd}"/>`).join('')}</g>`;
+    out += '</g>';
+    const sc = cam.pts.map(p => ({ x: cam.tx + p.x * cam.k, y: cam.ty + p.y * cam.k }));
+    // مسار منحني بين الأماكن بالترتيب
+    if (places.length > 1 && d.route !== false) {
+      for (let i = 0; i < sc.length - 1; i++) {
+        const prog = easeInOutCubic(seg(t, 1.5 + i * 0.6, 2.4 + i * 0.6));
+        if (prog <= 0.001) continue;
+        const a = sc[i], b = sc[i + 1];
+        const dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy) || 1;
+        const q = { x: (a.x + b.x) / 2 - (dy / dist) * dist * 0.22, y: (a.y + b.y) / 2 + (dx / dist) * dist * 0.22 };
+        const N = 40, steps = Math.max(2, Math.round(N * prog));
+        const pts = [];
+        for (let s = 0; s <= steps; s++) { const u = (s / N) * 1; const m = Math.min(u, prog); pts.push([(1 - m) ** 2 * a.x + 2 * (1 - m) * m * q.x + m * m * b.x, (1 - m) ** 2 * a.y + 2 * (1 - m) * m * q.y + m * m * b.y]); }
+        out += `<polyline points="${pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}" fill="none" stroke="${theme.accent2}" stroke-width="${(6 * c.s).toFixed(1)}" stroke-dasharray="${(18 * c.s).toFixed(0)} ${(11 * c.s).toFixed(0)}" stroke-linecap="round" opacity="0.95"/>`;
+        const hd = pts[pts.length - 1];
+        if (prog < 0.999) out += `<circle cx="${hd[0].toFixed(1)}" cy="${hd[1].toFixed(1)}" r="${(11 * c.s).toFixed(1)}" fill="${theme.accent2}"/>`;
+      }
+    }
+    // دبابيس + أسماء
+    const placed = [];
+    places.forEach((pl, i) => {
+      const at = 1.5 + i * 0.6;
+      const p = easeOutBack(seg(t, at, at + 0.5));
+      if (p <= 0.01) return;
+      const { x, y } = sc[i];
+      if (x < -50 || x > w + 50 || y < -50 || y > h + 50) return;
+      const pulse = (t - at) > 0 ? ((t - at) % 1.6) / 1.6 : 0;
+      out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(16 * c.s + pulse * 46 * c.s).toFixed(1)}" fill="none" stroke="${theme.accent}" stroke-width="${(4 * c.s).toFixed(1)}" opacity="${(0.7 * (1 - pulse)).toFixed(3)}"/>`;
+      out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(15 * c.s * Math.max(0.01, p)).toFixed(1)}" fill="${theme.accent}" stroke="#ffffff" stroke-width="${(4 * c.s).toFixed(1)}"/>`;
+      const label = String(pl.name || '');
+      const size = 42;
+      const tw = textWidth(label, size * c.s, true) + 44 * c.s;
+      let above = !placed.some(q => Math.abs(q.x - x) < (q.tw + tw) / 2 + 10 && Math.abs(q.y - (y - 70 * c.s)) < 50 * c.s);
+      const ly = above ? y - 58 * c.s : y + 58 * c.s;
+      const lx = Math.min(w - tw / 2 - 12, Math.max(tw / 2 + 12, x));
+      placed.push({ x: lx, y: ly, tw });
+      const op = clamp01(p);
+      out += `<rect x="${(lx - tw / 2).toFixed(1)}" y="${(ly - 34 * c.s).toFixed(1)}" width="${tw.toFixed(1)}" height="${(56 * c.s).toFixed(1)}" rx="${(14 * c.s).toFixed(1)}" fill="rgba(0,0,0,0.72)" stroke="${theme.accent}" stroke-width="${(2.5 * c.s).toFixed(1)}" opacity="${op.toFixed(3)}"/>`;
+      out += txt(c, label, lx, ly + 8 * c.s, size, { weight: 800, fill: '#ffffff', opacity: op });
+    });
+    if (d.title) {
+      const op = easeOutCubic(seg(t, 0.1, 0.7));
+      const tw = textWidth(d.title, 46 * c.s, true) + 56 * c.s;
+      out += `<rect x="${(c.cx - tw / 2).toFixed(1)}" y="${(c.h * 0.07).toFixed(1)}" width="${tw.toFixed(1)}" height="${(72 * c.s).toFixed(1)}" rx="${(16 * c.s).toFixed(1)}" fill="rgba(0,0,0,0.6)" opacity="${op.toFixed(3)}"/>`;
+      out += txt(c, d.title, c.cx, c.h * 0.07 + 50 * c.s, 46, { weight: 800, opacity: op });
+    }
+    return out;
+  },
+};
+
+export const TEMPLATES = { map_reveal, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text };
 export const TEMPLATE_NAMES = Object.keys(TEMPLATES);
 
 export function templateAnimEnd(name, data) {
