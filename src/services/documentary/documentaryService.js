@@ -70,7 +70,7 @@ function normalizeInput(raw) {
  * يتحقق من الطلب، يفحص المحتوى، يحجز الكريديت (ذري)، يسجّل الوظيفة ويدخّلها الطابور.
  * @returns {{ok:true, job, cost, minutes} | {ok:false, status, error, message, cost?, remaining?}}
  */
-export async function startJob(userId, raw) {
+export async function startJob(userId, raw, hooks = {}) {
   const input = normalizeInput(raw);
   if (input.mode === 'script') {
     if (input.script.length < MIN_SCRIPT_CHARS) return { ok: false, status: 400, error: 'script_too_short', message: `The script is too short (minimum ${MIN_SCRIPT_CHARS} characters).` };
@@ -97,7 +97,7 @@ export async function startJob(userId, raw) {
     await addCreditsBalance(userId, q.cost).catch(() => {});
     return { ok: false, status: 500, error: 'job_create_failed', message: 'Could not start the job. Your credits were not charged.' };
   }
-  enqueue({ id: job.id, userId, input, charged: q.cost, minutes: q.minutes });
+  enqueue({ id: job.id, userId, input, charged: q.cost, minutes: q.minutes, hooks });
   return { ok: true, job, cost: q.cost, minutes: q.minutes, remaining: charge.remaining };
 }
 
@@ -158,9 +158,11 @@ async function runTask(task) {
     const back = Math.max(0, task.charged - actual);
     if (back >= 2) await refund(task, back);
     await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title });
+    task.hooks?.onDone?.({ videoUrl, thumbnailUrl: thumbUrl, durationSec: result.duration, title: result.title, credits: result.credits, creditsCharged: task.charged - (back >= 2 ? back : 0) });
   } catch (e) {
     console.error(`[Documentary] job ${id} failed:`, e.message);
     await refund(task, task.charged);
+    task.hooks?.onFail?.(e);
     await store.updateJob(id, { status: 'failed', error: 'The documentary could not be completed, your credits were refunded.', credits_refunded: task.charged }).catch(() => {});
   } finally {
     rmQuiet(workDir);

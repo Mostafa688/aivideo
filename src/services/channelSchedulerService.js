@@ -18,7 +18,7 @@ import {
   setDailyVideoRunResumeState, claimDailyVideoRunForResume,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
-import { getMaxClipSeconds, getFlatCreditCost, getImageCreditCost, getPerSecondCreditCost } from './creditPricingEngine.js';
+import { getMaxClipSeconds, getFlatCreditCost, getImageCreditCost, getPerSecondCreditCost, getDocumentaryCreditCost } from './creditPricingEngine.js';
 import { supportsReferenceImages } from './newImageModelsService.js';
 import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
@@ -220,7 +220,7 @@ export async function analyzeChannelAutomatically(channel) {
 
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
   const recentList = (profile.recentTitles || []).map(t => `- ${t}`).join('\n') || '(no recent videos)';
-  const system = `You analyze a real YouTube channel once, to configure automated video generation for it going forward. Output ONLY valid JSON: {"usesVoice": true|false, "contentStyle": "realistic"|"map"|"animated"|"character_adventure"|"whiteboard_sketch", "videoStyle": "realistic"|"anime"|"cartoon"|"cinematic", ${realAvgDurationSec ? '' : '"estimatedDurationSec": number, '}"reasoning": "one short sentence explaining the main signal you used"}. "usesVoice": true if the channel's videos have a spoken narrator/voiceover (a transcript sample is provided when available — real spoken content, not just on-screen text or music); false for purely visual/silent content. "contentStyle": "realistic" for real-world stock-footage-style content (documentary, real places/objects/everyday life, product/lifestyle); "map" for geography/country/region/route-focused content; "character_adventure" ONLY for a very specific, distinctive format: the SAME single recurring character (a person, "you", a mascot) appears throughout every video living through a different scenario/era/story each time (e.g. "what if you lived during Prophet Noah's time" style channels) — pick this only if the recent titles clearly show this exact one-character-per-episode pattern, not just any story content; "whiteboard_sketch" for hand-drawn/doodle/whiteboard-animation explainer channels (simple black-and-white sketch illustrations, common for educational or "explained" content); "animated" (default) for any other story/tutorial/abstract content that doesn't fit the other three. "videoStyle" describes the actual visual look this channel already uses or would suit: "realistic" (live-action look), "anime", "cartoon", or "cinematic" (stylized but not cartoonish).${realAvgDurationSec ? '' : ' "estimatedDurationSec": a realistic average video length in seconds for this channel/niche/format if you had to guess.'}`;
+  const system = `You analyze a real YouTube channel once, to configure automated video generation for it going forward. Output ONLY valid JSON: {"usesVoice": true|false, "contentStyle": "realistic"|"map"|"animated"|"character_adventure"|"whiteboard_sketch"|"documentary", "videoStyle": "realistic"|"anime"|"cartoon"|"cinematic", ${realAvgDurationSec ? '' : '"estimatedDurationSec": number, '}"reasoning": "one short sentence explaining the main signal you used"}. "usesVoice": true if the channel's videos have a spoken narrator/voiceover (a transcript sample is provided when available — real spoken content, not just on-screen text or music); false for purely visual/silent content. "contentStyle": "realistic" for real-world stock-footage-style content (documentary, real places/objects/everyday life, product/lifestyle); "map" for geography/country/region/route-focused content; "character_adventure" ONLY for a very specific, distinctive format: the SAME single recurring character (a person, "you", a mascot) appears throughout every video living through a different scenario/era/story each time (e.g. "what if you lived during Prophet Noah's time" style channels) — pick this only if the recent titles clearly show this exact one-character-per-episode pattern, not just any story content; "whiteboard_sketch" for hand-drawn/doodle/whiteboard-animation explainer channels (simple black-and-white sketch illustrations, common for educational or "explained" content); "documentary" ONLY for narrated documentary channels built from real archival footage/photos (history, science, space, true events, investigations) with a serious narrator; "animated" (default) for any other story/tutorial/abstract content that doesn't fit the other types. "videoStyle" describes the actual visual look this channel already uses or would suit: "realistic" (live-action look), "anime", "cartoon", or "cinematic" (stylized but not cartoonish).${realAvgDurationSec ? '' : ' "estimatedDurationSec": a realistic average video length in seconds for this channel/niche/format if you had to guess.'}`;
   const user = `Channel recent titles:\n${recentList}\n\nChannel topics: ${(profile.topics || []).join(', ') || 'unknown'}.\n\nFormat: ${format === 'short' ? 'Shorts' : 'long-form'}.${realAvgDurationSec ? ` Real measured average video length: ${realAvgDurationSec} seconds.` : ''}${transcriptSample ? `\n\nSample transcript excerpt(s) from ${transcriptSample.split('---').length - 1} recent video(s):${transcriptSample}` : '\n\nNo transcript could be sampled — infer usesVoice from the titles/topics as best you can.'}\n\nJSON only:`;
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -242,7 +242,7 @@ export async function analyzeChannelAutomatically(channel) {
   const targetSceneCount = Math.min(150, Math.max(4, Math.round(targetDurationSec / secPerScene)));
 
   const result = {
-    contentStyle: ['realistic', 'map', 'animated', 'character_adventure', 'whiteboard_sketch'].includes(analysis.contentStyle) ? analysis.contentStyle : 'animated',
+    contentStyle: ['realistic', 'map', 'animated', 'character_adventure', 'whiteboard_sketch', 'documentary'].includes(analysis.contentStyle) ? analysis.contentStyle : 'animated',
     videoStyle: ['realistic', 'anime', 'cartoon', 'cinematic'].includes(analysis.videoStyle) ? analysis.videoStyle : 'cinematic',
     usesVoice: !!analysis.usesVoice,
     targetDurationSec,
@@ -338,7 +338,7 @@ export function estimateChannelRunBreakdown(channel, format, idea = null) {
   try {
     const style = idea?.contentStyle || channel.content_style || null;
     const hasExplicit = !!(channel.image_model || channel.animation_model);
-    if (style === 'whiteboard_sketch') return null;
+    if (style === 'whiteboard_sketch' || style === 'documentary') return null;
     if ((style === 'map' || style === 'realistic') && !hasExplicit) return null;
     const shape = format === 'short' ? SHORT_FORM : LONG_FORM;
     const plan = planChannelRun(channel, shape, { characterMode: style === 'character_adventure' && !!channel.character_reference_id });
@@ -626,6 +626,43 @@ async function generateRealisticVideo(run, channel, idea, shape, headers) {
   } catch (pollErr) {
     pollErr.committed = true;
     throw pollErr;
+  }
+}
+
+// ── فيلم وثائقي (Documentary Studio) كنمط محتوى للقناة: سكريبت من فكرة اليوم → سرد → لقطات/صور حقيقية
+// → مونتاج وموشن جرافيك وخرائط → فيديو جاهز. نفس مسار صفحة الاستوديو (حجز كريديت ذري، رد الفرق
+// حسب الطول الفعلي، رد كامل عند الفشل) — بس هنا بننتظر لحد ما يخلص عشان يكمّل مسار المراجعة/الحزمة
+const DOC_LANGS = { en: 'en', ar: 'ar', es: 'es', fr: 'fr', de: 'de' };
+function documentaryShape(channel, format) {
+  if (format === 'short') return { minutes: 1, ratio: '9:16' };
+  const m = Math.round((Number(channel.target_duration_sec) || 240) / 60);
+  return { minutes: Math.min(10, Math.max(2, m)), ratio: '16:9' };
+}
+async function generateDocumentaryVideo(run, channel, idea) {
+  const { startJob } = await import('./documentary/documentaryService.js');
+  const { minutes, ratio } = documentaryShape(channel, run.format);
+  const lang = String(idea.videoLanguage || 'en').toLowerCase().split(/[-_]/)[0];
+  let hooks;
+  const finished = new Promise((resolve, reject) => { hooks = { onDone: resolve, onFail: reject }; });
+  finished.catch(() => {}); // الرفض بيتعالج تحت (await)؛ ده بس يمنع unhandled لو حصل قبل الانتظار
+  const r = await startJob(run.user_id, {
+    mode: 'topic', topic: [idea.title, idea.brief].filter(Boolean).join('. ').slice(0, 300), minutes, language: DOC_LANGS[lang] || 'en',
+    ratio, theme: 'cinematic', captions: channel.captions_enabled === 0 ? 'none' : 'karaoke', title: String(idea.title || '').slice(0, 120),
+  }, hooks);
+  if (!r.ok) {
+    const e = new Error(r.error === 'quota_exceeded'
+      ? `insufficient_credits: the documentary needs ${r.cost} credits and the balance is ${r.remaining}`
+      : (r.message || 'Documentary could not be started'));
+    e.committed = true; // ما نرجعش لمسار تاني (لا خصم حصل ولا نمط بديل مناسب)
+    if (r.error === 'quota_exceeded') { e.creditsNeeded = r.cost; e.balance = r.remaining; }
+    throw e;
+  }
+  try {
+    const out = await finished;
+    return out.videoUrl;
+  } catch (e) {
+    e.committed = true;
+    throw e;
   }
 }
 
@@ -928,7 +965,7 @@ export async function triggerApprovedGeneration(run, overrides = {}) {
   // الفيديو نفسه) للعملاء الرابطين قنواتهم بالموقع — ميزة تميّز خاصة بيهم
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(run.user_id, user.email, { channelRun: true }) };
 
-  const contentStyle = ['map', 'realistic', 'character_adventure', 'whiteboard_sketch'].includes(idea.contentStyle) ? idea.contentStyle : 'animated';
+  const contentStyle = ['map', 'realistic', 'character_adventure', 'whiteboard_sketch', 'documentary'].includes(idea.contentStyle) ? idea.contentStyle : 'animated';
 
   // ✅ لو العميل اختار صراحة موديل صور أو تحريك للقناة، نحترم اختياره حتى لو نوع المحتوى
   // واقعي/خرائط (اللي أصلاً بيبني من لقطات Pexels الجاهزة ومفيهوش موديلات) — بنولّد بالمسار
@@ -936,7 +973,10 @@ export async function triggerApprovedGeneration(run, overrides = {}) {
   // (الافتراضي) السلوك القديم زي ما هو بالظبط
   const hasExplicitModel = !!(channel.image_model || channel.animation_model);
   console.log(`[ChannelScheduler] run ${run.id} (channel ${channel.id}) style=${contentStyle} image_model=${channel.image_model || 'DEFAULT(nano_banana_2)'} animation_model=${channel.animation_model || 'DEFAULT(seedance_2_5)'}`);
-  if (contentStyle === 'map' && !hasExplicitModel) {
+  if (contentStyle === 'documentary') {
+    // لا رجوع لمسار الأنيميشن: القناة وثائقية، وأي فشل بيتسجّل والكريديت بيترجّع كامل
+    return await generateDocumentaryVideo(run, channel, idea, shape);
+  } else if (contentStyle === 'map' && !hasExplicitModel) {
     try { return await generateMapVideo(run, channel, idea, shape, headers); }
     catch (e) {
       if (e.committed) throw e;
@@ -978,6 +1018,7 @@ export async function triggerApprovedGeneration(run, overrides = {}) {
 // إلا بعد التوليد فعليًا، فمفيش تقدير دقيق مقدمًا لأي نمط تاني — نرجع null زي الباقي كلهم،
 // والتكلفة الحقيقية بتتحسب بفرق الرصيد قبل/بعد (triggerChannelRunNow) وتتقال للعميل بعد ما يخلص
 export function estimateChannelRunCost(channel, format, idea = null) {
+  if ((idea?.contentStyle || channel.content_style) === 'documentary') return getDocumentaryCreditCost(documentaryShape(channel, format).minutes);
   return estimateChannelRunBreakdown(channel, format, idea)?.total ?? null;
 }
 

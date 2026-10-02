@@ -106,7 +106,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
     if (status !== undefined) patch.status = status;
     // ✅ NEW: اختيار يدوي لنوع المحتوى (بما فيه "character_adventure") — لو العميل في وضع
     // "يدوي" وعايز يحدد النوع بنفسه بدل ما ينتظر تحليل أوتوماتيك
-    if (contentStyle !== undefined) patch.content_style = ['realistic', 'map', 'animated', 'character_adventure', 'whiteboard_sketch', ''].includes(contentStyle) ? (contentStyle || null) : undefined;
+    if (contentStyle !== undefined) patch.content_style = ['realistic', 'map', 'animated', 'character_adventure', 'whiteboard_sketch', 'documentary', ''].includes(contentStyle) ? (contentStyle || null) : undefined;
     // ✅ NEW: بريف حر بالنص من العميل (وضع يدوي) — وصف المحتوى/طريقة عمل الفيديو/الأدوات
     // المطلوبة، بيتضاف كتوجيه إضافي لكل فكرة يومية بتتعمل للقناة دي (راجع draftDailyIdea)
     if (contentBrief !== undefined) patch.content_brief = String(contentBrief || '').slice(0, 2000) || null;

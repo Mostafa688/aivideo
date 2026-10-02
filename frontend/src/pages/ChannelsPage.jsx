@@ -48,6 +48,8 @@ const T = {
     contentStyleMap: 'خرائط/جغرافيا', contentStyleAnimated: 'قصص/رسوم بالذكاء الاصطناعي',
     contentStyleCharacter: 'شخصية واحدة تعيش مغامرة',
     contentStyleWhiteboard: 'سكتش على سبورة بيضاء',
+    contentStyleDocumentary: 'فيلم وثائقي (لقطات حقيقية + خرائط + رسوم)',
+    documentaryHint: 'القناة دي بتطلع أفلام وثائقية كاملة: لقطات وصور حقيقية من مصادر مفتوحة، راوي، موسيقى، كابشن، خرائط ورسوم متحركة — بحوالي 16 كريديت للدقيقة، والتكلفة بتتحسب على المدة الفعلية. الفيديو الطويل حوالي 4 دقايق والقصير دقيقة.',
     characterPickLabel: 'اختار الشخصية', characterPickNone: 'لسه معملتش أي شخصية —',
     characterPickLink: 'روح لمكتبة الشخصيات وضيف واحدة الأول', characterRequired: 'لازم تختار شخصية عشان النوع ده يشتغل',
     contentBriefLabel: 'وصف المحتوى وطريقة العمل (اختياري)',
@@ -110,6 +112,8 @@ const T = {
     contentStyleMap: 'Map/Geography', contentStyleAnimated: 'Story/AI-animated',
     contentStyleCharacter: 'Single character adventure',
     contentStyleWhiteboard: 'Whiteboard sketch',
+    contentStyleDocumentary: 'Documentary (real footage + maps + graphics)',
+    documentaryHint: 'This channel makes full documentaries: real footage and photos from open archives, narration, music, captions, maps and motion graphics — about 16 credits per minute, billed on the real length. Long videos are about 4 minutes, shorts about 1 minute.',
     characterPickLabel: 'Choose the character', characterPickNone: "You haven't added a character yet —",
     characterPickLink: 'go to the Characters library and add one first', characterRequired: 'You must pick a character for this content style to work',
     contentBriefLabel: 'Content description & how to make it (optional)',
@@ -310,7 +314,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
       setPublishEnabled(!!d.youtubePublishEnabled);
       setCreditsBalance(typeof d.creditsBalance === 'number' ? d.creditsBalance : null);
       // ✅ قناة طويلة لسه العميل ماقرأش دليل التكلفة بتاعها → النافذة الإجبارية (مرة لكل قناة لكل جلسة لحد ما يقرأ)
-      const needGuide = chs.find(c => c.is_long_form && !c.cost_notice_ack_at && !shownGuideIds.current.has(c.id));
+      const needGuide = chs.find(c => c.is_long_form && c.content_style !== 'documentary' && !c.cost_notice_ack_at && !shownGuideIds.current.has(c.id));
       if (needGuide) { shownGuideIds.current.add(needGuide.id); setCostGuideId(needGuide.id); }
       if (d.youtubePublishEnabled) chs.filter(ch => !ch.youtube_channel_title).forEach(ch => prefetchConnectUrl(ch.id));
     }).catch(() => {}).finally(() => setLoading(false));
@@ -549,6 +553,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   <option value="animated">{t.contentStyleAnimated}</option>
                   <option value="character_adventure">{t.contentStyleCharacter}</option>
                   <option value="whiteboard_sketch">{t.contentStyleWhiteboard}</option>
+                  <option value="documentary">{t.contentStyleDocumentary}</option>
                 </select>
               </div>
               {contentStyle === 'character_adventure' && (
@@ -649,7 +654,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
 
                 {(imageModels.length > 0 || videoModels.length > 0) && (
                   <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {imageModels.length > 0 && (
+                    {imageModels.length > 0 && ch.content_style !== 'documentary' && (
                       <div>
                         <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.imageModelLabel}</div>
                         <select value={ch.image_model || ''} onChange={e => assignModel(ch.id, 'imageModel', e.target.value)}
@@ -662,7 +667,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                         )}
                       </div>
                     )}
-                    {!['whiteboard_sketch'].includes(ch.content_style) && videoModels.length > 0 && (
+                    {!['whiteboard_sketch', 'documentary'].includes(ch.content_style) && videoModels.length > 0 && (
                       <div>
                         <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.animationModelLabel}</div>
                         <select value={ch.animation_model || ''} onChange={e => assignModel(ch.id, 'animationModel', e.target.value)}
@@ -675,6 +680,10 @@ export default function ChannelsPage({ onBack, userRegion }) {
                     {['realistic', 'map'].includes(ch.content_style) && (
                       <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, lineHeight: 1.6 }}>{t.stockModelHint}</p>
                     )}
+                    {ch.content_style === 'documentary' && (
+                      <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, lineHeight: 1.6 }}>{t.documentaryHint}</p>
+                    )}
+                    {ch.content_style !== 'documentary' && (
                     <div>
                       <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.sceneCountLabel}</div>
                       <input type="number" min={2} max={20} step={1}
@@ -689,7 +698,8 @@ export default function ChannelsPage({ onBack, userRegion }) {
                         placeholder={t.sceneCountPlaceholder}
                         style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12, boxSizing: 'border-box' }} />
                     </div>
-                    {!!ch.uses_voice && (
+                    )}
+                    {(!!ch.uses_voice || ch.content_style === 'documentary') && (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <span style={{ fontSize: 12 }}>{t.captionsLabel}</span>
                         <Toggle value={ch.captions_enabled !== 0} onChange={v => toggleCaptions(ch.id, v)} />
@@ -746,9 +756,11 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   <button onClick={() => removeChannel(ch.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
                     <Trash2 size={12} /> {t.remove}
                   </button>
+                  {ch.content_style !== 'documentary' && (
                   <button onClick={() => setCostGuideId(ch.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.06)', color: '#fbbf24', fontSize: 12, cursor: 'pointer' }}>
                     {t.costGuideBtn}
                   </button>
+                  )}
                   <button onClick={() => toggleAnalytics(ch.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.08)', color: '#a78bfa', fontSize: 12, cursor: 'pointer', marginInlineStart: 'auto' }}>
                     {expandedChannelId === ch.id ? <>{t.hideAnalytics}</> : <><BarChart3 size={12} /> {t.analytics}</>}
                     <ChevronDown size={12} style={{ transform: expandedChannelId === ch.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
