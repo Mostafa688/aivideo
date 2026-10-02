@@ -36,6 +36,7 @@ import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, a
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
 import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureVideoDurationSec, validateReferenceInputs } from './services/newVideoModelsService.js';
 import { mergeVideos } from './services/videoMergeService.js';
+import { finishVideos } from './services/montage/postProduction.js';
 import { analyzeActiveSpeaker, estimateAnalysisCreditCost } from './services/videoAnalysisService.js';
 import { synthesizeNarration, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer, composeVideoAudio } from './services/videoAudioService.js';
 import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getFlatCreditCost, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
@@ -3164,19 +3165,22 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
         generateAudio: typeof generateAudio === 'boolean' ? generateAudio : null,
       });
 
-      let captionWords = null;
-      if (narration) {
-        videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: model });
-        if (addCaptions) captionWords = await transcribeWithTimestamps(narration.audioPath);
-        fs.rmSync(narration.workDir, { recursive: true, force: true });
-      }
-      if (captionWords) {
-        const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(narrationLanguage);
-        videoUrl = await burnCaptions(videoUrl, captionWords, { rightToLeft: isRtl });
-      }
-      if (musicStyle) {
-        const musicBuffer = await getBackgroundMusicBuffer(musicStyle, musicMood || null);
-        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: model });
+      // ✅ مونتاج ffmpeg محلي (سرد + كابشن بنفس محرك الأفلام الوثائقية + موسيقى بتهدّى تحت الكلام) — بدل
+      // fictions-ai/autocaption المدفوع. لو فشل لأي سبب: نرجع للسرد + الموسيقى القديمة من غير كابشن ونرجّع تكلفته
+      if (narration || addCaptions || musicStyle) {
+        const musicBuffer = musicStyle ? await getBackgroundMusicBuffer(musicStyle, musicMood || null) : null;
+        try {
+          videoUrl = await finishVideos({
+            videoUrls: [videoUrl], narrationPath: narration?.audioPath || null, musicBuffer, transitions: 'none',
+            captions: addCaptions ? { style: 'karaoke', lang: narrationLanguage || 'en', position: 'auto' } : null,
+          });
+        } catch (montageErr) {
+          console.warn('[NewVideoModels] montage failed — falling back to plain audio compose without captions:', montageErr.message);
+          if (narration) videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: model });
+          if (musicBuffer) videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: model });
+          if (addCaptions) { await addCreditsBalance(req.user.userId, CAPTION_CREDIT_FLAT).catch(() => {}); vidCreditCost -= CAPTION_CREDIT_FLAT; }
+        }
+        if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
       }
       setRenderJob(jobId, { status: 'done', videoUrl, creditCost: vidCreditCost, completedAt: Date.now() });
       logGeneration({ userId: req.user.userId, kind: sourceVideoUrl ? 'edit' : 'video', modelKey: model, creditCost: vidCreditCost });
@@ -3325,21 +3329,23 @@ app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) =>
 
   (async () => {
     try {
-      let videoUrl = await mergeVideos(videoUrls);
-      let captionWords = null;
-      if (narration) {
-        videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: 'merged' });
-        if (addCaptions) captionWords = await transcribeWithTimestamps(narration.audioPath);
-        fs.rmSync(narration.workDir, { recursive: true, force: true });
+      // ✅ مونتاج ffmpeg كامل: انتقالات متنوعة + مؤثرات عند القطعات + موسيقى بتهدّى تحت الكلام + كابشن محرك الأفلام
+      // الوثائقية (تحت للفيديو الطويل، في النص بحركة للقصير). لو فشل: الدمج القديم البسيط (من غير كابشن) ونرجّع تكلفته
+      let videoUrl;
+      const musicBuffer = musicStyle ? await getBackgroundMusicBuffer(musicStyle, musicMood || null).catch(() => null) : null;
+      try {
+        videoUrl = await finishVideos({
+          videoUrls, narrationPath: narration?.audioPath || null, musicBuffer, transitions: 'auto',
+          captions: addCaptions ? { style: 'karaoke', lang: narrationLanguage || 'en', position: 'auto' } : null,
+        });
+      } catch (montageErr) {
+        console.warn('[VideoMerge] montage failed — falling back to the simple merge:', montageErr.message);
+        videoUrl = await mergeVideos(videoUrls);
+        if (narration) videoUrl = await composeVideoAudio({ videoUrl, narrationPath: narration.audioPath, modelKeyForNaming: 'merged' });
+        if (musicBuffer) videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'merged' });
+        if (addCaptions) { await addCreditsBalance(req.user.userId, CAPTION_CREDIT_FLAT).catch(() => {}); mergeCreditCost -= CAPTION_CREDIT_FLAT; }
       }
-      if (captionWords) {
-        const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(narrationLanguage);
-        videoUrl = await burnCaptions(videoUrl, captionWords, { rightToLeft: isRtl });
-      }
-      if (musicStyle) {
-        const musicBuffer = await getBackgroundMusicBuffer(musicStyle, musicMood || null);
-        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'merged' });
-      }
+      if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
       setRenderJob(jobId, { status: 'done', videoUrl, creditCost: mergeCreditCost, completedAt: Date.now() });
       logGeneration({ userId: req.user.userId, kind: 'merge', modelKey: 'merge_videos', creditCost: mergeCreditCost });
     } catch (genErr) {
