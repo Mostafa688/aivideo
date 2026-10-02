@@ -3,7 +3,7 @@ import { punchTimes } from './planner.js';
 
 const MOTIONS = ['in', 'out', 'pan_right', 'pan_left'];
 
-export function buildTimeline({ beats, plans, assets, tokens, ratio = '16:9', theme = 'blue', lang = 'en', captionsStyle = 'karaoke', narrationFile, musicFile = null, musicVolume = 0.15, motionGraphics = true }) {
+export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio = '16:9', theme = 'blue', lang = 'en', captionsStyle = 'karaoke', narrationFile, musicFile = null, musicVolume = 0.15, motionGraphics = true }) {
   let imgCount = 0;
   const out = beats.map((b, i) => {
     const plan = plans[i];
@@ -12,7 +12,20 @@ export function buildTimeline({ beats, plans, assets, tokens, ratio = '16:9', th
     const punches = punchTimes(b, plan.emphasis);
     const wantTemplate = motionGraphics !== false;
 
-    if (plan.visual === 'text' && plan.template && wantTemplate) {
+    const board = plan.visual === 'text' && plan.template?.name === 'photo_board' ? (boards[i] || []) : null;
+    if (board && wantTemplate && board.length >= 2) {
+      beat.visual = { kind: 'background' };
+      beat.overlays.push({ template: 'photo_board', data: { title: plan.template.data.title, photos: board.map(p => ({ file: p.file, caption: p.caption })) }, at: 0.1, dur: Math.max(1.6, b.dur - 0.1) });
+    } else if (board) {
+      // لوحة صور ناقصة: لو لقينا صورة واحدة نعرضها كصورة كاملة، وإلا نكمّل لأقرب بديل (جملة متحركة)
+      const one = board[0];
+      if (one) beat.visual = { kind: 'image', file: one.file, grade: gradeFor(plan, one), motion: MOTIONS[imgCount++ % MOTIONS.length], punches };
+      else {
+        const phrase = shortPhrase(b);
+        beat.visual = { kind: 'background' };
+        if (phrase && wantTemplate) beat.overlays.push({ template: 'kinetic_text', data: { text: phrase, emphasis: plan.emphasis || [] }, at: 0.1, dur: Math.max(1.2, b.dur - 0.1) });
+      }
+    } else if (plan.visual === 'text' && plan.template && wantTemplate) {
       beat.visual = { kind: 'background' };
       beat.overlays.push({ template: plan.template.name, data: plan.template.data, at: 0.1, dur: Math.max(1.2, b.dur - 0.1) });
     } else if (a?.kind === 'video') {

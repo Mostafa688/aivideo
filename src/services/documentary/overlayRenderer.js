@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { renderTemplateFrame, templateAnimEnd } from './svgTemplates.js';
+import { prepareTemplateData } from './boardPrep.js';
 
 export const FPS = 30;
 const EXIT_SEC = 0.35;
@@ -23,8 +24,9 @@ async function svgToPng(svg, outPath) {
  * @returns {{dir, inCount, outCount, holdFile, inPattern, outPattern, tHold, tOut, fps}}
  * الإطارات: in_%04d.png (دخول)، hold.png (ثبات)، out_%04d.png (خروج) — الزمن محسوب بالنسبة لبداية القالب
  */
-export async function renderOverlay({ template, data, dur, w, h, theme, lang = 'en', rtl = false, dir, concurrency = 4 }) {
+export async function renderOverlay({ template, data: rawData, dur, w, h, theme, themeName = 'cinematic', lang = 'en', rtl = false, dir, concurrency = 4 }) {
   fs.mkdirSync(dir, { recursive: true });
+  const data = await prepareTemplateData(template, rawData, { w, h, themeName });
   const rawEnd = Math.max(0.2, templateAnimEnd(template, data));
   // لو اللقطة قصيرة نسرّع الحركة عشان تخلص جوه ~65% من المدة
   const speed = rawEnd > dur * 0.65 ? rawEnd / (dur * 0.65) : 1;

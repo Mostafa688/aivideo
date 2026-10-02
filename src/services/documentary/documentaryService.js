@@ -280,7 +280,7 @@ async function produce({ id, input, workDir, prog }) {
   // 4) الأصول
   const plans = plan.plans;
   if (input.sources === 'stock') plans.forEach(p => { if (p.visual === 'archive' || p.visual === 'nasa') p.visual = 'stock'; });
-  const { assets, allCredits } = await resolveAssets({ beats, plans, ratio: input.ratio, assetsDir: path.join(workDir, 'assets'), onProgress: ({ stage, done, total: t }) => prog('assets', stage === 'search' ? (done / t) * 0.3 : 0.3 + (done / t) * 0.7) });
+  const { assets, allCredits, boards } = await resolveAssets({ beats, plans, ratio: input.ratio, assetsDir: path.join(workDir, 'assets'), onProgress: ({ stage, done, total: t }) => prog('assets', stage === 'search' ? (done / t) * 0.3 : 0.3 + (done / t) * 0.7) });
   await prog('assets', 1);
 
   // 5) الموسيقى
@@ -295,7 +295,7 @@ async function produce({ id, input, workDir, prog }) {
   }
 
   // 6) الرندر
-  const timeline = buildTimeline({ beats, plans, assets, tokens, ratio: input.ratio, theme: input.theme, lang, captionsStyle: input.captions === 'none' ? null : input.captions, narrationFile, musicFile, motionGraphics: input.motionGraphics });
+  const timeline = buildTimeline({ beats, plans, assets, boards, tokens, ratio: input.ratio, theme: input.theme, lang, captionsStyle: input.captions === 'none' ? null : input.captions, narrationFile, musicFile, motionGraphics: input.motionGraphics });
   const r = await renderDocumentary({ timeline, workDir: path.join(workDir, 'render'), concurrency: Math.max(1, Math.min(3, Number(process.env.DOC_RENDER_CONCURRENCY || 2))), onProgress: ({ stage, done, total: t }) => prog('render', stage === 'clips' ? (done / t) * 0.85 : stage === 'joined' ? 0.88 : stage === 'audio' ? 0.94 : 0.99) });
   if (r.failures.length) console.warn(`[Documentary] job ${id}: ${r.failures.length} beat(s) fell back to plain backgrounds`);
   return { file: r.file, duration: r.duration, credits: [...allCredits, ...sources.map(s => s.url)], script, title };

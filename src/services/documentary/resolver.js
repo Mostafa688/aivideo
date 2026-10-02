@@ -118,7 +118,45 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
     onProgress({ stage: 'assets', done: ++done, total: need.length });
   });
 
-  const credits = [...new Set(assets.filter(a => a && a.license?.attributionRequired).map(a => a.credit))];
-  const allCredits = [...new Set(assets.filter(Boolean).map(a => a.credit))];
-  return { assets, credits, allCredits };
+  // D) لوحات الصور (photo_board): كل beat ليه 2-4 صور أرشيفية، لكل صورة بحث مستقل (صور بس، أرشيف ثم ستوك)
+  const boards = {};
+  const boardJobs = [];
+  plans.forEach((plan, i) => {
+    if (plan.visual === 'text' && plan.template?.name === 'photo_board') {
+      boards[i] = [];
+      (plan.template.data.photos || []).forEach((ph, k) => boardJobs.push({ i, k, ph, text: beats[i].text }));
+    }
+  });
+  const boardOut = new Map();
+  await pool(boardJobs, concurrency, async ({ i, k, ph, text }) => {
+    let cands = [];
+    for (const group of ['archive', 'stock']) {
+      try { cands.push(...await search(ph.query, { group, kinds: ['image'], orientation, limit: 8 }, deps.searchDeps)); } catch { /* مصدر واقع */ }
+      if (cands.length >= 3) break;
+    }
+    const seen = new Set();
+    cands = cands.filter(c => c.kind === 'image' && (seen.has(c.id) ? false : seen.add(c.id)));
+    cands.sort((x, y) => scoreCandidate(y, text, [ph.query], { wantKind: 'image', used }) - scoreCandidate(x, text, [ph.query], { wantKind: 'image', used }));
+    let tries = 0;
+    for (const c0 of cands) {
+      if (tries >= 3) break;
+      if (used.has(c0.id)) continue;
+      tries++;
+      try {
+        const c = await mat(c0, deps.searchDeps);
+        if (!c?.url) continue;
+        const a = await fetchOne(c, path.join(assetsDir, `${i}_p${k}`));
+        if (a.kind !== 'image') continue;
+        used.add(c0.id);
+        boardOut.set(`${i}:${k}`, { ...a, caption: ph.caption, credit: c.credit, license: c.license, source: c.source, pageUrl: c.pageUrl, title: c.title });
+        break;
+      } catch (e) { console.warn(`[Documentary/resolver] board ${i}/${k}: ${c0.id} failed — ${e.message}`); }
+    }
+  });
+  for (const { i, k } of boardJobs) { const a = boardOut.get(`${i}:${k}`); if (a) boards[i].push(a); }
+
+  const allAssets = [...assets, ...Object.values(boards).flat()];
+  const credits = [...new Set(allAssets.filter(a => a && a.license?.attributionRequired).map(a => a.credit))];
+  const allCredits = [...new Set(allAssets.filter(Boolean).map(a => a.credit))];
+  return { assets, credits, allCredits, boards };
 }

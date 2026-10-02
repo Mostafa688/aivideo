@@ -358,11 +358,31 @@ const mapY = (lat) => -2.551 * lat + 301.66;
 const hex2rgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(h)); return m ? [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16)) : [128, 128, 128]; };
 const mixHex = (a, b, f) => { const A = hex2rgb(a), B = hex2rgb(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * f).toString(16).padStart(2, '0')).join(''); };
 
-function mapCamera(c, places, t) {
+// مربع حدود كل دولة (من مسارها) + مربع أكبر جزء فيها (عشان الاسم ما يقعش على جزر بعيدة زي ألاسكا)
+const regionBoxCache = new Map();
+function regionBox(code) {
+  if (regionBoxCache.has(code)) return regionBoxCache.get(code);
+  const d = WORLD[code];
+  let out = null;
+  if (d) {
+    const polys = d.split(/(?=M)/).map(sub => [...sub.matchAll(/(-?\d+\.?\d*),(-?\d+\.?\d*)/g)].map(m => [+m[1], +m[2]])).filter(a => a.length);
+    const box = (pts) => { const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]); return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; };
+    const all = box(polys.flat());
+    const main = polys.map(box).sort((a, b) => (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0))[0];
+    out = { all, main };
+  }
+  regionBoxCache.set(code, out);
+  return out;
+}
+export const WORLD_CODES = new Set(Object.keys(WORLD));
+
+function mapCamera(c, places, regions, t) {
   const k0 = Math.max(c.w / 1000, c.h / 560);
   const pts = places.map(p => ({ x: mapX(p.lon), y: mapY(p.lat) }));
-  const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x));
-  const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y));
+  const frame = [...pts];
+  for (const r of regions) { const b = regionBox(r.code)?.main; if (b) frame.push({ x: b.x0, y: b.y0 }, { x: b.x1, y: b.y1 }); }
+  const minX = Math.min(...frame.map(p => p.x)), maxX = Math.max(...frame.map(p => p.x));
+  const minY = Math.min(...frame.map(p => p.y)), maxY = Math.max(...frame.map(p => p.y));
   const spanX = Math.max(70, maxX - minX), spanY = Math.max(48, maxY - minY);
   let kt = Math.min((c.w * 0.62) / spanX, (c.h * 0.5) / spanY);
   kt = Math.min(Math.max(kt, k0), k0 * 14);
@@ -375,12 +395,13 @@ function mapCamera(c, places, t) {
 }
 
 const map_reveal = {
-  animEnd: (d) => 2.3 + 0.6 * Math.min(4, (d.places || []).length),
+  animEnd: (d) => 2.3 + 0.6 * Math.min(4, (d.places || []).length) + ((d.regions || []).length ? 0.5 : 0),
   render(c, d, t) {
     const { w, h, theme } = c;
     const places = (d.places || []).slice(0, 4);
-    if (!places.length) return '';
-    const cam = mapCamera(c, places, t);
+    const regions = (d.regions || []).filter(r => regionBox(r.code)).slice(0, 4);
+    if (!places.length && !regions.length) return '';
+    const cam = mapCamera(c, places, regions, t);
     const ocean = mixHex(theme.bgTop, '#000000', 0.12);
     const land = mixHex(theme.bgBottom, theme.text, 0.2);
     const border = mixHex(theme.bgTop, theme.text, 0.12);
@@ -394,7 +415,22 @@ const map_reveal = {
     out += `<g transform="translate(${cam.tx.toFixed(2)},${cam.ty.toFixed(2)}) scale(${cam.k.toFixed(4)})">`;
     out += `<g stroke="${grid}" stroke-width="${(0.8 / cam.k).toFixed(3)}" opacity="0.7">${g}</g>`;
     out += `<g fill="${land}" stroke="${border}" stroke-width="${sw}" stroke-linejoin="round">${WORLD_PATHS.map(dd => `<path d="${dd}"/>`).join('')}</g>`;
+    // تظليل الدول المذكورة (لون بيظهر تدريجي) فوق الخريطة
+    regions.forEach((r, i) => {
+      const p = easeOutCubic(seg(t, 0.9 + i * 0.3, 1.8 + i * 0.3));
+      if (p <= 0.01) return;
+      out += `<path d="${WORLD[r.code]}" fill="${theme.accent}" fill-opacity="${(0.82 * p).toFixed(3)}" stroke="${theme.accent2}" stroke-opacity="${p.toFixed(3)}" stroke-width="${(2.2 / cam.k).toFixed(3)}" stroke-linejoin="round"/>`;
+    });
     out += '</g>';
+    regions.forEach((r, i) => {
+      if (!r.label) return;
+      const b = regionBox(r.code).main;
+      const p = easeOutCubic(seg(t, 1.5 + i * 0.3, 2.2 + i * 0.3));
+      if (p <= 0.01) return;
+      const x = cam.tx + ((b.x0 + b.x1) / 2) * cam.k, y = cam.ty + ((b.y0 + b.y1) / 2) * cam.k;
+      const label = c.rtl ? String(r.label) : String(r.label).toUpperCase();
+      out += `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-family="${c.ff}" font-size="${(40 * c.s).toFixed(1)}" font-weight="900" fill="#ffffff" fill-opacity="${(0.92 * p).toFixed(3)}" stroke="rgba(0,0,0,0.55)" stroke-width="${(5 * c.s).toFixed(1)}" paint-order="stroke" letter-spacing="${c.rtl ? 0 : (5 * c.s).toFixed(1)}">${esc(label)}</text>`;
+    });
     const sc = cam.pts.map(p => ({ x: cam.tx + p.x * cam.k, y: cam.ty + p.y * cam.k }));
     // مسار منحني بين الأماكن بالترتيب
     if (places.length > 1 && d.route !== false) {
@@ -444,7 +480,75 @@ const map_reveal = {
   },
 };
 
-export const TEMPLATES = { map_reveal, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text };
+// ── 13) photo_board — لوحة صور أرشيفية معلّقة (صور مائلة بدبابيس على ورق/مكتب + شريط عنوان) ───────────
+const photo_board = {
+  animEnd: (d) => 1.4 + 0.5 * Math.max(1, (d.photos || []).length),
+  render(c, d, t) {
+    const { w, h, theme } = c;
+    const photos = (d.photos || []).slice(0, 4);
+    const n = photos.length;
+    if (!n) return '';
+    const dark = !!d._dark;
+    const POL = { h: 1.22, pad: 0.06, cap: 0.22 };
+    const ROT = [-5, 3.5, -3, 5];
+    // التخطيط: أفقي = صف مع تمايل بسيط، رأسي = تعرّج
+    let pw, pos;
+    if (c.portrait) {
+      pw = w * (n >= 4 ? 0.42 : n === 3 ? 0.46 : 0.52);
+      const ys = n === 2 ? [0.33, 0.67] : n === 3 ? [0.26, 0.5, 0.74] : [0.26, 0.4, 0.6, 0.74];
+      pos = photos.map((_, i) => ({ x: w * (n === 2 ? (i % 2 ? 0.66 : 0.34) : (i % 2 ? 0.7 : 0.3)), y: h * ys[i] }));
+    } else {
+      const ph = h * (n >= 4 ? 0.5 : 0.56);
+      pw = ph / POL.h;
+      const step = n === 2 ? 0.27 : n === 3 ? 0.265 : 0.215;
+      pos = photos.map((_, i) => ({ x: w * (0.5 + (i - (n - 1) / 2) * step), y: h * 0.57 + (i % 2 ? 1 : -1) * h * 0.022 }));
+    }
+    const ph = pw * POL.h;
+    const pad = pw * POL.pad, cap = pw * POL.cap;
+    const card = dark ? '#f4f1ea' : '#fbf8f1';
+    const ink = '#2a2218';
+    let out = `<defs><filter id="pbsh" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur in="SourceAlpha" stdDeviation="${(14 * c.s).toFixed(1)}"/><feOffset dy="${(12 * c.s).toFixed(1)}" result="o"/><feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter><radialGradient id="pin" cx="35%" cy="30%" r="70%"><stop offset="0" stop-color="#ff8a80"/><stop offset="0.5" stop-color="#d32f2f"/><stop offset="1" stop-color="#7f1010"/></radialGradient></defs>`;
+    if (d._bg) out += `<image href="${d._bg}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none"/>`;
+    else out += `<rect width="${w}" height="${h}" fill="${theme.bgBottom}"/>`;
+    const zoom = 1 + 0.012 * Math.min(t, 4);
+    out += `<g transform="translate(${(w / 2).toFixed(1)},${(h / 2).toFixed(1)}) scale(${zoom.toFixed(4)}) translate(${(-w / 2).toFixed(1)},${(-h / 2).toFixed(1)})">`;
+    photos.forEach((p, i) => {
+      const st = 0.35 + i * 0.5;
+      const e = easeOutBack(seg(t, st, st + 0.55));
+      if (e <= 0.01) return;
+      const sway = Math.sin((t - st) * 1.6 + i) * 0.7 * clamp01(seg(t, st + 0.5, st + 1.2));
+      const rot = ROT[i % 4] + (1 - e) * (i % 2 ? 14 : -14) + sway;
+      const dy = (1 - Math.min(1, e)) * -h * 0.45;
+      const sc = 0.82 + 0.18 * Math.min(1.04, e);
+      const { x, y } = pos[i];
+      let g = `<g transform="translate(${x.toFixed(1)},${(y + dy).toFixed(1)}) rotate(${rot.toFixed(2)}) scale(${sc.toFixed(3)})" opacity="${clamp01(e * 2).toFixed(3)}">`;
+      // ضل رخيص (طبقات شفافة متزاحة) بدل فلتر blur — أسرع بكتير في الرندر
+      for (let k = 3; k >= 1; k--) g += `<rect x="${(-pw / 2 - k * 3 * c.s).toFixed(1)}" y="${(-ph / 2 + k * 5 * c.s).toFixed(1)}" width="${(pw + k * 6 * c.s).toFixed(1)}" height="${(ph + k * 3 * c.s).toFixed(1)}" rx="${((4 + k * 3) * c.s).toFixed(1)}" fill="#000" fill-opacity="0.11"/>`;
+      g += `<rect x="${(-pw / 2).toFixed(1)}" y="${(-ph / 2).toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" rx="${(4 * c.s).toFixed(1)}" fill="${card}"/>`;
+      const ix = -pw / 2 + pad, iy = -ph / 2 + pad, iw = pw - pad * 2, ih = ph - pad - cap;
+      if (p.uri) g += `<image href="${p.uri}" x="${ix.toFixed(1)}" y="${iy.toFixed(1)}" width="${iw.toFixed(1)}" height="${ih.toFixed(1)}" preserveAspectRatio="xMidYMid slice"/>`;
+      g += `<rect x="${ix.toFixed(1)}" y="${iy.toFixed(1)}" width="${iw.toFixed(1)}" height="${ih.toFixed(1)}" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="${(1.5 * c.s).toFixed(1)}"/>`;
+      if (p.caption) g += `<text x="0" y="${(ph / 2 - cap * 0.36).toFixed(1)}" text-anchor="middle" font-family="${c.ff}" font-size="${(cap * 0.46).toFixed(1)}" font-weight="700" font-style="italic" fill="${ink}">${esc(p.caption)}</text>`;
+      g += `<circle cx="0" cy="${(-ph / 2 + pad * 0.55).toFixed(1)}" r="${(pw * 0.034).toFixed(1)}" fill="url(#pin)" stroke="rgba(0,0,0,0.35)" stroke-width="${(1.5 * c.s).toFixed(1)}"/>`;
+      g += '</g>';
+      out += g;
+    });
+    out += '</g>';
+    if (d.title) {
+      const e = easeOutCubic(seg(t, 0.1, 0.7));
+      const size = 50 * c.s;
+      const tw = textWidth(d.title.toUpperCase(), size, true) + 90 * c.s;
+      const ty = c.portrait ? h * 0.085 : h * 0.12;
+      out += `<g transform="translate(${(w / 2).toFixed(1)},${ty.toFixed(1)}) rotate(-2.5) scale(${Math.max(0.01, e).toFixed(3)},1)" opacity="${clamp01(e * 1.6).toFixed(3)}">`;
+      out += `<rect x="${(-tw / 2).toFixed(1)}" y="${(-size * 0.95).toFixed(1)}" width="${tw.toFixed(1)}" height="${(size * 1.55).toFixed(1)}" fill="#efe3bf" fill-opacity="0.94" stroke="rgba(0,0,0,0.18)" stroke-width="1.5"/>`;
+      out += `<text x="0" y="${(size * 0.22).toFixed(1)}" text-anchor="middle" font-family="${c.ff}" font-size="${size.toFixed(1)}" font-weight="900" letter-spacing="${c.rtl ? 0 : (4 * c.s).toFixed(1)}" fill="${ink}">${esc(c.rtl ? d.title : d.title.toUpperCase())}</text>`;
+      out += '</g>';
+    }
+    return out;
+  },
+};
+
+export const TEMPLATES = { map_reveal, photo_board, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text };
 export const TEMPLATE_NAMES = Object.keys(TEMPLATES);
 
 export function templateAnimEnd(name, data) {
@@ -456,7 +560,7 @@ export function templateAnimEnd(name, data) {
 export function renderTemplateFrame(name, data, t, { w, h, theme, lang = 'en', rtl = false, exit = 0 }) {
   const tpl = TEMPLATES[name];
   if (!tpl) throw new Error(`Unknown template: ${name}`);
-  const c = ctx(w, h, theme, lang, rtl, name === 'quote' ? { serif: true } : {});
+  const c = ctx(w, h, theme, lang, rtl, name === 'quote' || name === 'photo_board' ? { serif: true } : {});
   const inner = tpl.render(c, data || {}, t);
   const e = clamp01(exit);
   const wrap = e > 0 ? `<g opacity="${(1 - easeInOutCubic(e)).toFixed(3)}" transform="translate(0,${(easeInOutCubic(e) * 26 * c.s).toFixed(1)})">${inner}</g>` : inner;

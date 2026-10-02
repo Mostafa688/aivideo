@@ -43,6 +43,10 @@ export function sfxForBeat(beat, t0) {
         for (let i = 0; i < Math.min(n, 12); i++) ev.push({ t: at + 0.15 + i * 0.22, type: 'tick', vol: 0.35 });
         break;
       }
+      case 'photo_board':
+        (ov.data?.photos || []).slice(0, 4).forEach((_, i) => ev.push({ t: at + 0.4 + i * 0.5, type: 'pop', vol: 0.45 }));
+        ev.push({ t: at + 0.1, type: 'whoosh', vol: 0.25 });
+        break;
       case 'map_reveal':
         ev.push({ t: at + 0.2, type: 'whoosh', vol: 0.3 });
         (ov.data?.places || []).slice(0, 4).forEach((_, i) => ev.push({ t: at + 1.5 + i * 0.6, type: 'pop', vol: 0.4 }));

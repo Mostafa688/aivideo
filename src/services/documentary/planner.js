@@ -1,6 +1,6 @@
 // ── planner.js ── من كلمات موقّتة → لقطات (beats) → خطة بصرية (LLM) مع تحقق صارم في الكود
 import { llmJson } from './llm.js';
-import { TEMPLATE_NAMES } from './svgTemplates.js';
+import { TEMPLATE_NAMES, WORLD_CODES } from './svgTemplates.js';
 
 const SENT_END = /[.!?؟…]["'”)\]]*$/;
 const PUNCH_WORDS = 2;
@@ -74,6 +74,20 @@ const grounded = (value, nums) => nums.some(n => Math.abs(n - value) <= Math.max
 const clip = (s, n) => String(s ?? '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
 const strArr = (a, min, max, n) => (Array.isArray(a) ? a.map(x => clip(x, n)).filter(Boolean).slice(0, max) : []).filter((_, i, arr) => arr.length >= min);
 
+const ALIASES = { US: ['america', 'usa', 'u.s.', 'united states'], GB: ['britain', 'british', 'england', 'english', 'u.k.', 'uk '], RU: ['russia', 'soviet', 'ussr'], FR: ['french'], NL: ['dutch', 'holland'], DE: ['german'], CN: ['chinese', 'china'], JP: ['japanese'], ES: ['spanish'], IN: ['indian'], EG: ['egyptian'], IL: ['israeli'], SA: ['saudi'], AE: ['emirat'], TR: ['turkish', 'ottoman'], IR: ['persian', 'iranian'], GR: ['greek'], IT: ['italian'], KR: ['korea'], KP: ['korea'] };
+const regionNames = { en: null, ar: null };
+function countryMentioned(code, text) {
+  try {
+    regionNames.en ||= new Intl.DisplayNames(['en'], { type: 'region' });
+    regionNames.ar ||= new Intl.DisplayNames(['ar'], { type: 'region' });
+  } catch { return false; }
+  const en = String(regionNames.en.of(code) || '').toLowerCase();
+  const ar = String(regionNames.ar.of(code) || '').replace(/^ال/, '');
+  const stem = en.length <= 4 ? en : en.slice(0, Math.max(4, Math.ceil(en.length * 0.75)));
+  const t = ` ${text} `;
+  return (en && t.includes(en)) || (stem.length >= 4 && t.includes(stem)) || (ar.length >= 3 && t.includes(ar)) || (ALIASES[code] || []).some(a => t.includes(a));
+}
+
 export function sanitizeTemplate(name, data, beatText) {
   if (!TEMPLATE_NAMES.includes(name) || !data || typeof data !== 'object') return null;
   const nums = numbersInText(beatText);
@@ -106,7 +120,15 @@ export function sanitizeTemplate(name, data, beatText) {
       // لازم كل مكان يكون مذكور فعلاً في جملة الـbeat (أي كلمة ≥3 حروف من اسمه)
       const mentioned = (pl) => pl.name.toLowerCase().split(/[\s,،-]+/).some(w => w.length >= 3 && text.includes(w.replace(/^ال/, '')));
       const kept = places.filter(mentioned);
-      return kept.length ? { title: clip(data.title, 40) || undefined, places: kept, route: kept.length > 1 && data.route !== false } : null;
+      // دول مظلّلة: كود ISO صالح + الدولة مذكورة فعلاً في الجملة (اسمها بالإنجليزي/العربي أو جذر قريب منه)
+      const regions = (Array.isArray(data.regions) ? data.regions : []).map(r => ({ code: String(r?.code || '').toUpperCase(), label: clip(r?.label, 28) || undefined }))
+        .filter(r => WORLD_CODES.has(r.code) && countryMentioned(r.code, text)).slice(0, 4);
+      if (!kept.length && !regions.length) return null;
+      return { title: clip(data.title, 40) || undefined, places: kept, regions, route: kept.length > 1 && data.route !== false };
+    }
+    case 'photo_board': {
+      const photos = (Array.isArray(data.photos) ? data.photos : []).map(p => ({ query: clip(p?.query, 80), caption: clip(p?.caption, 34) || undefined })).filter(p => p.query).slice(0, 4);
+      return photos.length >= 2 ? { title: clip(data.title, 30) || undefined, photos } : null;
     }
     case 'kinetic_text': { const t = clip(data.text, 90); return t && t.split(/\s+/).length <= 14 ? { text: t, emphasis: strArr(data.emphasis, 0, 3, 20) } : null; }
     default: return null;
@@ -153,7 +175,7 @@ Rules:
 - "visual": "archive" = real historical photos/films, named people, places, events, documents (queries MUST include proper names and years, e.g. "Winston Churchill 1941"); "nasa" = space, rockets, planets, astronauts; "stock" = generic b-roll that illustrates the idea (nature, cities, machines, crowds); "text" = a motion-graphic scene with no footage (use sparingly).
 - Queries are English search terms for photo/video libraries (2-3, from specific to broad). Never ask for text, logos, maps with labels, or identifiable private individuals. Show what the sentence concretely says.
 - Use a template ONLY when the data comes from the beat's own text. NEVER invent facts or numbers. Available templates and data:
-  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places[1-4 of {name,lat,lon}],route?} (a real geographic place or journey is named in the text, visual "text", needs a beat of 3+ seconds; name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about — never guess) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text).
+  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places?[1-4 of {name,lat,lon}],regions?[1-4 of {code,label?}],route?} (a real geographic place, country or journey is named in the text; visual "text"; needs a beat of 3.2+ seconds; places: name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about, never guess; regions: highlight whole countries with their ISO 3166-1 alpha-2 code, label = a short caption such as "Communist forces" or "Allied powers", only for countries named in the text) | photo_board {title?,photos[2-4 of {query,caption?}]} (a pinboard of old/archival photographs of the specific people, ships, places or objects the text names; visual "text"; needs a beat of 3.6+ seconds; query = a precise English search such as "HMS Amethyst 1949 frigate" or "Mao Zedong 1949"; caption = 1-4 words; use for introductions of key people/objects, at most once per ~15 beats) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text).
 - At most ~1 in 4 beats should use a template; never two "text" beats in a row. Put "chapter" on the first beat and whenever the topic clearly shifts.
 - "grade": bw_archive for old (pre-1960) archival material, sepia for 1800s-1920s, cinematic for dramatic modern scenes, none for generic stock.
 - "emphasis": up to 2 words from the beat that deserve a zoom punch.
@@ -189,7 +211,7 @@ export function enforcePacing(plans, beats) {
   plans.forEach((p, i) => {
     const b = beats[i];
     const isText = p.visual === 'text';
-    if (isText && (prevText || b.dur < (p.template?.name === 'map_reveal' ? 3.2 : 2.6))) { // حوّل لستوك + اعتبر القالب overlay لو ينفع
+    if (isText && (prevText || b.dur < ({ map_reveal: 3.2, photo_board: 3.6 }[p.template?.name] || 2.6))) { // حوّل لستوك + اعتبر القالب overlay لو ينفع
       p.visual = 'stock'; p.queries = p.queries.length ? p.queries : fallbackBeatPlan(b).queries; p.template = null;
     }
     if (p.visual === 'text') templated++;
