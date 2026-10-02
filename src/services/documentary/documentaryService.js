@@ -53,7 +53,7 @@ function normalizeInput(raw) {
     theme: THEME_NAMES.includes(raw.theme) ? raw.theme : 'blue',
     captions: CAPTION_STYLES.includes(raw.captions) ? raw.captions : 'karaoke',
     motionGraphics: raw.motionGraphics !== false,
-    voiceKey: typeof raw.voiceKey === 'string' ? raw.voiceKey.slice(0, 30) : (language === 'ar' ? 'male_arabic' : 'male_wise'),
+    voiceKey: typeof raw.voiceKey === 'string' ? raw.voiceKey.slice(0, 30) : 'male_wise',
     music: raw.music === false ? false : true,
     musicMood: MOODS.includes(raw.musicMood) ? raw.musicMood : null,
     musicTrack: typeof raw.musicTrack === 'string' ? raw.musicTrack.slice(0, 120) : null,

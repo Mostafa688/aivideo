@@ -39,6 +39,7 @@ import TeamInvitePage from './pages/TeamInvitePage.jsx';
 import ChannelsPage from './pages/ChannelsPage.jsx';
 import CharactersPage from './pages/CharactersPage.jsx';
 import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
+import DocumentaryPage from './pages/DocumentaryPage.jsx';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -538,6 +539,7 @@ export default function App() {
       case 'channels':   setPage('channels'); break;
       case 'characters': setPage('characters'); break;
       case 'whiteboard': setPage('whiteboard'); break;
+      case 'documentary': setPage('documentary'); break;
       case 'home':       setPage('dashboard'); break;
       default:           setPage('input'); break;
     }
@@ -789,6 +791,7 @@ export default function App() {
         {page === 'api-docs' && <ApiDocsPage onBack={() => setPage('dashboard')} userRegion={userRegion} onNavigate={handleNavigate} />}
         {page === 'stats' && <StatsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'team' && <TeamPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
+        {page === 'documentary' && <DocumentaryPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}
         {page === 'channels' && <ChannelsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'characters' && <CharactersPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('dashboard')} />}
