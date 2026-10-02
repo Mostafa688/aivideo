@@ -23,6 +23,7 @@ import { supportsReferenceImages } from './newImageModelsService.js';
 import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
 import { mergeVideos } from './videoMergeService.js';
+import { finishVideos } from './montage/postProduction.js';
 import { uploadVideoToYoutube, uploadThumbnailToYoutube } from './youtubeUploadService.js';
 import { createProjectForUser, appendProjectMessages, updateProjectMessageByRunId } from './projectRoutes.js';
 
@@ -371,6 +372,35 @@ async function assertCanAffordRunStart(run, plan) {
   }
 }
 
+// ✅ تجميع نهائي لفيديو قناة بمونتاج ffmpeg محلي: انتقالات + مؤثرات عند القطعات + موسيقى بتهدّى تحت الصوت + كابشن
+// (محرك الأفلام الوثائقية؛ تحت للطويل وفي النص بحركة للقصير). الكابشن بكريديت رمزي (compute بس) وبيترد لو فشل.
+// لو المونتاج فشل لأي سبب: دمج بسيط قديم (من غير كابشن) بدل ما يوم العميل يضيع.
+export async function finishChannelVideo({ run, clipUrls, usesVoice, wantCaptions, lang, musicMood, label }) {
+  let captionCost = 0, captionCharged = false;
+  if (wantCaptions) {
+    captionCost = getFlatCreditCost('autocaption');
+    const balance = await getCreditsBalance(run.user_id);
+    if (balance >= captionCost) captionCharged = (await chargeCredits(run.user_id, captionCost)).success;
+  }
+  let musicBuffer = null;
+  if (usesVoice) {
+    try { musicBuffer = await getBackgroundMusicBuffer('youtube', musicMood); }
+    catch (musicErr) { console.warn(`[ChannelScheduler] Background music unavailable for run ${run.id} (continuing without music):`, musicErr.message); }
+  }
+  try {
+    return await finishVideos({
+      videoUrls: clipUrls, musicBuffer, transitions: 'auto',
+      captions: captionCharged ? { style: 'karaoke', lang: lang || 'en', position: 'auto' } : null,
+    });
+  } catch (e) {
+    console.warn(`[ChannelScheduler] ${label} montage failed for run ${run.id} — falling back to the simple merge:`, e.message);
+    if (captionCharged) await addCreditsBalance(run.user_id, captionCost).catch(() => {});
+    let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
+    if (musicBuffer) { try { videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: label }); } catch { /* من غير موسيقى */ } }
+    return videoUrl;
+  }
+}
+
 // ✅ الخطوات المشتركة (سرد → تحريك كل مشهد → دمج → كابشن → موسيقى) بين animated وcharacter_adventure،
 // وقابلة للاستكمال: لو الكريديت خلص قبل مشهد (طلب الكليب رجع quota_exceeded) بنقف، نركّب اللي
 // اتعمل فعلاً كفيديو ناقص، ونحفظ الحالة الكاملة (run._partial + resume_state) عشان نكمّل بنفس
@@ -427,50 +457,11 @@ async function renderScenesFromImages(run, channel, idea, shape, headers, st) {
       throw e;
     }
 
-    // دمج كل الكليبات (كل واحد صوته متزامن بالفعل)
-    let videoUrl = st.clipUrls.length === 1 ? st.clipUrls[0] : await mergeVideos(st.clipUrls);
-
-    // كابشن حقيقي لو مطلوب — بكريديت. مش بنعمله على الفيديو الناقص (هيتحسب مرة واحدة عند الاكتمال)
-    if (!stop && st.usesVoice && st.captionsEnabled) {
-      const captionCost = getFlatCreditCost('autocaption');
-      const balance = await getCreditsBalance(run.user_id);
-      if (balance >= captionCost) {
-        const charge = await chargeCredits(run.user_id, captionCost);
-        if (charge.success) {
-          const combinedAudioPath = path.join(TEMP_DIR, `${st.kind}_narr_${run.id}_${Date.now()}.mp3`);
-          try {
-            fs.mkdirSync(TEMP_DIR, { recursive: true });
-            if (startedAt === 0) {
-              concatAudioFiles(narrations.map(n => n.audioPath), combinedAudioPath);
-            } else {
-              // فيديو مستكمل: سرد المشاهد القديمة مش معانا كملفات، فبنسحب الصوت من الفيديو المدموج نفسه
-              const tmpVideo = combinedAudioPath.replace(/\.mp3$/, '.mp4');
-              await downloadToFile(videoUrl, tmpVideo);
-              execSync(`ffmpeg -y -i "${tmpVideo}" -vn -acodec libmp3lame -q:a 4 "${combinedAudioPath}"`, { stdio: 'pipe' });
-              try { fs.unlinkSync(tmpVideo); } catch {}
-            }
-            const words = await transcribeWithTimestamps(combinedAudioPath);
-            const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(idea.videoLanguage);
-            videoUrl = await burnCaptions(videoUrl, words, { rightToLeft: isRtl });
-          } catch (capErr) {
-            console.warn(`[ChannelScheduler] Captions failed for run ${run.id} (video still delivered without captions, credits refunded):`, capErr.message);
-            await addCreditsBalance(run.user_id, captionCost);
-          } finally {
-            try { fs.unlinkSync(combinedAudioPath); } catch {}
-          }
-        }
-      }
-    }
-
-    // موسيقى خلفية خافتة — مجانية تمامًا، بتفشل بهدوء لو فشلت
-    if (st.usesVoice) {
-      try {
-        const musicBuffer = await getBackgroundMusicBuffer('youtube', st.musicMood);
-        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: st.namingKey });
-      } catch (musicErr) {
-        console.warn(`[ChannelScheduler] Background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
-      }
-    }
+    // دمج كل الكليبات (كل واحد صوته متزامن بالفعل) + مونتاج وكابشن وموسيقى (الكابشن مش على الفيديو الناقص — بيتحسب مرة عند الاكتمال)
+    const videoUrl = await finishChannelVideo({
+      run, clipUrls: st.clipUrls, usesVoice: st.usesVoice, wantCaptions: !stop && st.usesVoice && st.captionsEnabled,
+      lang: idea.videoLanguage, musicMood: st.musicMood, label: st.namingKey,
+    });
 
     await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
 
@@ -887,40 +878,11 @@ async function generateWhiteboardSketchVideo(run, channel, idea, shape, headers)
       }
     }
 
-    // ── 4) دمج كل الكليبات (كل واحد صوته متزامن بالفعل) ────────────────────────────
-    let videoUrl = clipUrls.length === 1 ? clipUrls[0] : await mergeVideos(clipUrls);
-
-    // ── 5) كابشن حقيقي لو مطلوب — بكريديت (التكلفة الحقيقية الوحيدة المتبقية هنا) ─────
-    if (usesVoice && channel.captions_enabled !== 0) {
-      const captionCost = getFlatCreditCost('autocaption');
-      const balance = await getCreditsBalance(run.user_id);
-      if (balance >= captionCost) {
-        const charge = await chargeCredits(run.user_id, captionCost);
-        if (charge.success) {
-          try {
-            const combinedAudioPath = path.join(TEMP_DIR, `whiteboard_narr_${run.id}_${Date.now()}.mp3`);
-            concatAudioFiles(narrations.map(n => n.audioPath), combinedAudioPath);
-            const words = await transcribeWithTimestamps(combinedAudioPath);
-            const isRtl = ['ar', 'ar_eg', 'ar_gulf'].includes(idea.videoLanguage);
-            videoUrl = await burnCaptions(videoUrl, words, { rightToLeft: isRtl });
-            try { fs.unlinkSync(combinedAudioPath); } catch {}
-          } catch (capErr) {
-            console.warn(`[ChannelScheduler] Whiteboard captions failed for run ${run.id} (video still delivered without captions, credits refunded):`, capErr.message);
-            await addCreditsBalance(run.user_id, captionCost);
-          }
-        }
-      }
-    }
-
-    // ── 6) موسيقى خلفية خافتة — مجانية تمامًا، من المكتبة المحلية بمود يناسب محتوى تعليمي/سكتش
-    if (usesVoice) {
-      try {
-        const musicBuffer = await getBackgroundMusicBuffer('youtube', 'calm playful lighthearted educational');
-        videoUrl = await composeVideoAudio({ videoUrl, musicBuffer, modelKeyForNaming: 'whiteboard' });
-      } catch (musicErr) {
-        console.warn(`[ChannelScheduler] Whiteboard background music failed for run ${run.id} (video still delivered without music):`, musicErr.message);
-      }
-    }
+    // ── 4) دمج + مونتاج + كابشن + موسيقى ────────────────────────────────────────────
+    const videoUrl = await finishChannelVideo({
+      run, clipUrls, usesVoice, wantCaptions: usesVoice && channel.captions_enabled !== 0,
+      lang: idea.videoLanguage, musicMood: 'calm playful lighthearted educational', label: 'whiteboard',
+    });
 
     await saveVideo(run.user_id, videoUrl.replace(/^\/outputs\//, ''), idea.title).catch(() => {});
     return videoUrl;

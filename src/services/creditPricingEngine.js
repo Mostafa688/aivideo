@@ -173,9 +173,10 @@ export const REPLICATE_MODEL_COSTS = {
   // وسعر Google المعلن ($20/مليون توكن output audio ≈ $0.012/1000 حرف)، ده يعادل تقريبًا نفس
   // الرقم القديم هنا ($0.00025/ثانية) — خليناه زي ما هو مع هامش أمان بسيط
   gemini_flash_tts: { label: 'Gemini Flash TTS',   unit: 'second', usdCost: 0.0003 },
-  // ✅ NEW: fictions-ai/autocaption على Replicate — حرق كابشن حقيقي على فيديو، سعر ثابت لكل
-  // فيديو (مش لكل ثانية) بغض النظر عن مدته — ~$0.12/تشغيلة (مصدر: aggregator، غير مؤكد مباشرة)
-  autocaption:      { label: 'Caption Burning',    unit: 'video', usdCost: 0.12 },
+  // ✅ الكابشن بقى محلي بالكامل (ffmpeg + محرك كابشن الأفلام الوثائقية + Whisper عبر Groq) بدل
+  // fictions-ai/autocaption المدفوع على Replicate (كان ~$0.12 × 3 = 27 كريديت) — تقدير تكلفة compute +
+  // تفريغ صوت، سعر ثابت لكل فيديو، بهامش العمليات الداخلية (AUX_PROFIT_MULTIPLIER)
+  autocaption:      { label: 'Caption Burning',    unit: 'video', usdCost: 0.02 },
   // ✅ NEW (باج حقيقي: التوليد ده كان مجاني بالكامل من غير أي خصم كريديت رغم إنه بينادي
   // Replicate فعليًا) — resemble-ai/chatterbox-multilingual، سعر ثابت تقريبي لكل نداء/قطعة
   // نص (≤300 حرف، الحد الرسمي للموديل) — ~$0.0042/تشغيلة (مصدر: aggregator، غير مؤكد مباشرة
@@ -201,7 +202,7 @@ export const REPLICATE_MODEL_COSTS = {
   // أي فاتورة API خارجية حقيقية — بنقدّر تكلفة الـcompute/التخزين/الـbandwidth بتاعتنا إحنا
   // بشكل متحفظ (تقدير داخلي، مش رقم من صفحة تسعير خارجية زي باقي الجدول ده) وبنطبّق
   // AUX_PROFIT_MULTIPLIER (1.25x) بدل الـ3x العادي، عشان الكريديت يبقى قريب من التكلفة الحقيقية
-  merge_videos:     { label: 'Merge Videos (per clip)', unit: 'video', usdCost: 0.02 },
+  merge_videos:     { label: 'Merge Videos (per clip)', unit: 'video', usdCost: 0.01 }, // مونتاج ffmpeg محلي (انتقالات + مؤثرات + موسيقى)
   compose_audio:    { label: 'Mix Narration/Dialogue Audio', unit: 'video', usdCost: 0.015 },
   conform_duration: { label: 'Conform Scene Duration', unit: 'video', usdCost: 0.015 },
 };
@@ -269,7 +270,7 @@ export function getMaxClipSeconds(modelKey) {
 
 // عمليات ffmpeg الداخلية البحتة (مفيهاش أي فاتورة API خارجية) — بتاخد AUX_PROFIT_MULTIPLIER
 // (هامش صغير قريب من التكلفة) بدل الـ3x العادي المخصص لتوليد AI حقيقي بتكلفة خارجية فعلية
-const INTERNAL_PROCESSING_KEYS = new Set(['merge_videos', 'compose_audio', 'conform_duration']);
+const INTERNAL_PROCESSING_KEYS = new Set(['merge_videos', 'compose_audio', 'conform_duration', 'autocaption']);
 
 /** Flat per-run credit cost for a "unit: 'video'" model (e.g. caption burning) — doesn't scale with duration/count. */
 export function getFlatCreditCost(modelKey) {
