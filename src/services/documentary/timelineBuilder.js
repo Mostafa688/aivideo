@@ -3,7 +3,7 @@ import { punchTimes } from './planner.js';
 
 const MOTIONS = ['in', 'out', 'pan_right', 'pan_left'];
 
-export function buildTimeline({ beats, plans, assets, tokens, ratio = '16:9', theme = 'blue', lang = 'en', captionsStyle = 'karaoke', narrationFile, musicFile = null, musicVolume = 0.3, motionGraphics = true }) {
+export function buildTimeline({ beats, plans, assets, tokens, ratio = '16:9', theme = 'blue', lang = 'en', captionsStyle = 'karaoke', narrationFile, musicFile = null, musicVolume = 0.15, motionGraphics = true }) {
   let imgCount = 0;
   const out = beats.map((b, i) => {
     const plan = plans[i];
