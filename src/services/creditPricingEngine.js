@@ -220,6 +220,16 @@ export function usdToCredits(usdCost, { multiplier = PROFIT_MULTIPLIER } = {}) {
   return Math.max(1, Math.ceil(rounded));
 }
 
+// ── الفيلم الوثائقي (Documentary Studio): السعر بالدقيقة. مفيش موديل فيديو مدفوع — التكلفة الحقيقية =
+// سرد Gemini TTS + Whisper + LLM (تخطيط/كتابة) + وقت رندر على السيرفر. المصادر (Pexels/NASA/Wikimedia/
+// Internet Archive) مجانية. بنحاسب على الطول النهائي الفعلي (فرق الحجز المسبق بيترد بعد الرندر).
+export const DOCUMENTARY_USD_PER_MINUTE = { tts: 0.018, asr: 0.002, llm: 0.010, render: 0.040 };
+export function getDocumentaryCreditCost(minutes, { userVoiceover = false } = {}) {
+  const d = DOCUMENTARY_USD_PER_MINUTE;
+  const perMin = d.render + d.llm + d.asr + (userVoiceover ? 0 : d.tts);
+  return usdToCredits(perMin * Math.max(0.5, Number(minutes) || 0.5));
+}
+
 /**
  * Credit cost for generating `count` images with the given model key. Pass
  * `tier` (e.g. "1K"/"2K"/"4K") for models with real per-resolution pricing

@@ -142,6 +142,8 @@ const GEMINI_VOICE_MAP = {
   male_wise: 'Charon', male_american: 'Puck', male_arabic: 'Charon',
   female_american: 'Kore', female_arabic: 'Kore', none: 'Kore',
 };
+// أسماء أصوات Gemini TTS المعروفة (بتتقبل مباشرة كـvoiceKey لو اتبعتت بنفس الاسم، وإلا Kore)
+export const GEMINI_VOICE_NAMES = new Set(['Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus', 'Aoede', 'Callirrhoe', 'Autonoe', 'Enceladus', 'Iapetus', 'Umbriel', 'Algieba', 'Despina', 'Erinome', 'Algenib', 'Rasalgethi', 'Laomedeia', 'Achernar', 'Alnilam', 'Schedar', 'Gacrux', 'Pulcherrima', 'Achird', 'Zubenelgenubi', 'Vindemiatrix', 'Sadachbia', 'Sadaltager', 'Sulafat']);
 // لغة قصيرة (زي باقي الحقول في البرومبت: en/ar) → كود لغة كامل حقيقي يقبله الموديل
 const GEMINI_LANGUAGE_MAP = {
   en: 'en-US', ar: 'ar-EG', ar_eg: 'ar-EG', ar_gulf: 'ar-XA', es: 'es-US', fr: 'fr-FR', de: 'de-DE',
@@ -155,7 +157,7 @@ const GEMINI_LANGUAGE_MAP = {
 export async function synthesizeNarration(script, { voiceKey = 'male_wise', languageCode = null, stylePrompt = null } = {}) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   if (!script?.trim()) throw new Error('narration script is required');
-  const voiceName = GEMINI_VOICE_MAP[voiceKey] || 'Kore';
+  const voiceName = GEMINI_VOICE_MAP[voiceKey] || (GEMINI_VOICE_NAMES.has(voiceKey) ? voiceKey : 'Kore');
   const langCode = languageCode ? (GEMINI_LANGUAGE_MAP[languageCode] || languageCode) : undefined;
   const input = {
     text: script.trim(),
