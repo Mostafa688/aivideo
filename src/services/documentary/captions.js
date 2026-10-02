@@ -86,17 +86,18 @@ export function groupWords(words, { maxWords = 6, maxChars = 32, maxDur = 3.2, g
   return groups;
 }
 
-export function buildCaptionsAss({ words, style = 'karaoke', w = 1920, h = 1080, lang = 'en', theme = 'blue', widths = null }) {
+export function buildCaptionsAss({ words, style = 'karaoke', w = 1920, h = 1080, lang = 'en', theme = 'blue', widths = null, position = 'bottom' }) {
   const th = getTheme(theme);
   const { rtl, portrait, font, fs } = capLayout(lang, w, h);
-  const marginV = portrait ? Math.round(h * 0.2) : Math.round(h * 0.075);
-  const maxChars = portrait ? 20 : 34;
+  const center = position === 'center'; // فيديو قصير: كابشن في النص، كلمات قليلة، دخول سريع (hook)
+  const marginV = center ? 0 : (portrait ? Math.round(h * 0.2) : Math.round(h * 0.075));
+  const maxChars = center ? (portrait ? 14 : 20) : (portrait ? 20 : 34);
   // ألوان الكابشن ثابتة عالية التباين (مستقلة عن ستايل الخلفية) — أبيض + أصفر للكلمة الحالية
   const white = '&H00FFFFFF', accent = hexToAssBGR('#FFD60A');
   const boxBack = '&H99000000';
   // BorderStyle 3 = صندوق معتم ورا النص (زي الشكل اللي في المنافسين)، 1 = ستروك
   const isBox = style === 'box';
-  const styles = `Style: Cap,${font},${fs},${style === 'karaoke' ? accent : white},${style === 'karaoke' ? white : white},&H00000000,${isBox ? boxBack : '&H64000000'},-1,0,0,0,100,100,0,0,${isBox ? 3 : 1},${isBox ? 12 : 5},${isBox ? 0 : 2},2,60,60,${marginV},1`;
+  const styles = `Style: Cap,${font},${fs},${style === 'karaoke' ? accent : white},${style === 'karaoke' ? white : white},&H00000000,${isBox ? boxBack : '&H64000000'},-1,0,0,0,100,100,0,0,${isBox ? 3 : 1},${isBox ? 12 : 5},${isBox ? 0 : 2},${center ? 5 : 2},60,60,${marginV},1`;
   const header = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${w}
@@ -111,7 +112,9 @@ ${styles}
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
-  const groups = groupWords(words, { maxChars });
+  const groups = groupWords(words, { maxChars, maxWords: center ? 3 : 6, maxDur: center ? 2.2 : 3.2 });
+  const cw = (x) => (center && !rtl ? cleanWord(x).toUpperCase() : cleanWord(x));
+  const popIn = center ? '{\\fad(60,40)\\fscx86\\fscy86\\t(0,110,\\fscx100\\fscy100)}' : '';
   const events = [];
   for (const g of groups) {
     const gStart = g[0].start, gEnd = Math.max(g[g.length - 1].end, gStart + 0.3);
@@ -125,9 +128,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       const gap = fs * 0.28;
       const total = texts.reduce((a, t) => a + widths.get(t), 0) + gap * (texts.length - 1);
       let right = w / 2 + total / 2;
-      const cy = h - marginV - fs * 0.62;
+      const cy = center ? h * 0.5 : h - marginV - fs * 0.62;
       const pos = texts.map(t => { const cx = right - widths.get(t) / 2; right -= widths.get(t) + gap; return cx; });
-      const ev = (st, en, k, extra, color) => events.push(`Dialogue: ${color === white ? 0 : 1},${toAss(st)},${toAss(en)},Cap,,0,0,0,,{\\an5\\pos(${pos[k].toFixed(1)},${cy.toFixed(1)})\\c${color}${extra}}${texts[k]}`);
+      const ev = (st, en, k, extra, color) => events.push(`Dialogue: ${color === white ? 0 : 1},${toAss(st)},${toAss(en)},Cap,,0,0,0,,{\\an5\\pos(${pos[k].toFixed(1)},${cy.toFixed(1)})${center ? '\\fad(60,40)' : ''}\\c${color}${extra}}${texts[k]}`);
       const startOf = (k) => g[k].start;
       const nextOf = (k) => (k < g.length - 1 ? g[k + 1].start : gEnd);
       if (style === 'karaoke') {
@@ -140,22 +143,22 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         });
       }
     } else if (style === 'box') {
-      events.push(`Dialogue: 0,${toAss(gStart)},${toAss(gEnd)},Cap,,0,0,0,,${g.map(x => cleanWord(x.w)).join(' ')}`);
+      events.push(`Dialogue: 0,${toAss(gStart)},${toAss(gEnd)},Cap,,0,0,0,,${popIn}${g.map(x => cw(x.w)).join(' ')}`);
     } else if (style === 'karaoke') {
       // \kf = تعبئة لون تدريجية على كل كلمة بمدتها الحقيقية
       const text = g.map((x, i) => {
         const nextStart = i < g.length - 1 ? g[i + 1].start : gEnd;
         const cs = Math.max(1, Math.round((nextStart - x.start) * 100));
-        return `{\\kf${cs}}${cleanWord(x.w)}`;
+        return `{\\kf${cs}}${cw(x.w)}`;
       }).join(' ');
-      events.push(`Dialogue: 0,${toAss(gStart)},${toAss(gEnd)},Cap,,0,0,0,,${text}`);
+      events.push(`Dialogue: 0,${toAss(gStart)},${toAss(gEnd)},Cap,,0,0,0,,${popIn}${text}`);
     } else {
       // pop: كل كلمة بتظهر في وقتها (تراكمي جوه العبارة) والكلمة الحالية بتكبر نبضة قصيرة وبلون مميز
       g.forEach((x, i) => {
         const st = x.start, en = i < g.length - 1 ? g[i + 1].start : gEnd;
         const shown = g.slice(0, i + 1).map((y, k) => (k === i
-          ? `{\\c${accent}\\fscx118\\fscy118\\t(0,110,\\fscx100\\fscy100)}${cleanWord(y.w)}{\\c${white}}`
-          : cleanWord(y.w))).join(' ');
+          ? `{\\c${accent}\\fscx118\\fscy118\\t(0,110,\\fscx100\\fscy100)}${cw(y.w)}{\\c${white}}`
+          : cw(y.w))).join(' ');
         events.push(`Dialogue: 0,${toAss(st)},${toAss(Math.max(en, st + 0.12))},Cap,,0,0,0,,${shown}`);
       });
     }
