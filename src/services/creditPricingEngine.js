@@ -231,6 +231,13 @@ export function getDocumentaryCreditCost(minutes, { userVoiceover = false } = {}
   return usdToCredits(perMin * Math.max(0.5, Number(minutes) || 0.5));
 }
 
+// ── مونتاج تلقائي لفيديو العميل (ffmpeg محلي + Whisper): بالدقيقة من الفيديو الأصلي — compute بس، هامش العمليات الداخلية
+export const AUTO_EDIT_USD_PER_MINUTE = { asr: 0.002, render: 0.03 };
+export function getAutoEditCreditCost(minutes) {
+  const perMin = AUTO_EDIT_USD_PER_MINUTE.asr + AUTO_EDIT_USD_PER_MINUTE.render;
+  return usdToCredits(perMin * Math.max(0.5, Number(minutes) || 0.5), { multiplier: AUX_PROFIT_MULTIPLIER });
+}
+
 /**
  * Credit cost for generating `count` images with the given model key. Pass
  * `tier` (e.g. "1K"/"2K"/"4K") for models with real per-resolution pricing

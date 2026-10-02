@@ -6,7 +6,7 @@ import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
-import { startJob as startDocumentaryJob } from './documentary/documentaryService.js';
+import { startJob as startDocumentaryJob, startAutoEditFromUrl } from './documentary/documentaryService.js';
 import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, startResumeChannelRun } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
@@ -1202,7 +1202,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload, autoEditPayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
@@ -1210,6 +1210,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     ({ text: reply, payload: channelGeneratePayload } = extractTrailingMarker(reply, '###CHANNEL_GENERATE###'));
     ({ text: reply, payload: channelResumePayload } = extractTrailingMarker(reply, '###CHANNEL_RESUME###'));
     ({ text: reply, payload: documentaryPayload } = extractTrailingMarker(reply, '###DOCUMENTARY###'));
+    ({ text: reply, payload: autoEditPayload } = extractTrailingMarker(reply, '###AUTOEDIT###'));
     // ✅ خطوة موافقة حقيقية بتكلفة كريديت حقيقية زي أي فيديو تاني — نفس حاجز الخطة المجانية
     // المستخدم فوق لـREADY/GENERATE_IMAGE/... بالظبط، بس منفصل لأنه ماركر ثانوي (بعد الحاجز
     // الأساسي فوق) مش من عيلة READY
@@ -1326,6 +1327,27 @@ router.post('/chat', authMiddleware, async (req, res) => {
         } catch (e) {
           console.warn('[Agent] DOCUMENTARY marker failed:', e.message);
           reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ الفيلم الوثائقي — جرب تاني بعد شوية.';
+        }
+      }
+    }
+
+    // ✅ NEW: مونتاج تلقائي (ffmpeg) لفيديو العميل المرفوع — نفس مسار صفحة الاستوديو (حجز كريديت ذري + رد كامل عند الفشل)
+    if (autoEditPayload) {
+      if (userPlan === 'free') {
+        reply += (reply ? '\n\n' : '') + 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ المونتاج قبل ما تشترك.';
+      } else if (!isKnownUrl(autoEditPayload.videoUrl)) {
+        reply += (reply ? '\n\n' : '') + 'معلش، مش لاقي الفيديو ده في المحادثة — ارفعه تاني وقولّي.';
+      } else {
+        try {
+          const r = await startAutoEditFromUrl(userId, autoEditPayload.videoUrl.trim(), {
+            language: autoEditPayload.language, captions: autoEditPayload.captions, music: autoEditPayload.music === true, cutSilence: autoEditPayload.cutSilence !== false,
+          });
+          if (r.ok) reply += (reply ? '\n\n' : '') + `تمام، بدأت المونتاج (${r.cost} كريديت لفيديو حوالي ${Math.max(1, Math.round(r.minutes))} دقيقة). هيظهر في "استوديو الأفلام الوثائقية" ← "مونتاج فيديو بتاعي" ← "أفلامي" أول ما يخلص.`;
+          else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: المونتاج محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
+          else reply += (reply ? '\n\n' : '') + (r.message || 'معلش، مقدرتش أبدأ المونتاج ده.');
+        } catch (e) {
+          console.warn('[Agent] AUTOEDIT marker failed:', e.message);
+          reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ المونتاج — جرب تاني بعد شوية.';
         }
       }
     }

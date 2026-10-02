@@ -11,7 +11,7 @@ import { GEMINI_VOICE_NAMES } from '../videoAudioService.js';
 import { sourceAvailability } from './sources/index.js';
 import { writeScript, MAX_SCRIPT_CHARS } from './scriptWriter.js';
 import { THEMES } from './themes.js';
-import { probeDuration, hasAudio, rmQuiet } from './ff.js';
+import { probeDuration, hasAudio, rmQuiet, probeVideo } from './ff.js';
 import * as svc from './documentaryService.js';
 import { cleanScript, basicClean } from './scriptCleaner.js';
 import * as store from './store.js';
@@ -152,6 +152,44 @@ router.get('/jobs/:id', authMiddleware, async (req, res) => {
     if (j.status === 'done') { out.script = j.script; out.credits = j.credits_list || []; out.package = j.meta?.package || null; out.hasSrt = !!j.meta?.srt; }
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── مونتاج تلقائي لفيديو مرفوع (قص صمت + زوم + انتقالات + مؤثرات + كابشن + موسيقى) ──
+const videoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => { const d = path.join(TEMP_ROOT, `aeup_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`); fs.mkdirSync(d, { recursive: true }); cb(null, d); },
+    filename: (req, file, cb) => cb(null, 'input' + (path.extname(file.originalname || '').replace(/[^.\w]/g, '').slice(0, 6) || '.mp4')),
+  }),
+  limits: { fileSize: 600 * 1024 * 1024 },
+});
+
+router.post('/autoedit/estimate', authMiddleware, express.json({ limit: '10kb' }), async (req, res) => {
+  const q = svc.quoteAutoEdit(Number(req.body?.durationSec) || 0);
+  const balance = await getCreditsBalance(req.user.userId).catch(() => null);
+  res.json({ ...q, balance, enough: balance == null ? null : balance >= q.cost, maxMinutes: svc.AUTOEDIT_MAX_MINUTES });
+});
+
+router.post('/autoedit', authMiddleware, (req, res, next) => videoUpload.single('video')(req, res, (err) => {
+  if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'file_too_large' : 'upload_failed', message: err.code === 'LIMIT_FILE_SIZE' ? 'The video is too large (maximum 600MB).' : 'Upload failed.' });
+  next();
+}), async (req, res) => {
+  const file = req.file?.path;
+  const cleanup = () => { if (file) rmQuiet(path.dirname(file)); };
+  try {
+    if (!file) return res.status(400).json({ error: 'video_required', message: 'Please upload a video.' });
+    const info = await probeVideo(file).catch(() => null);
+    if (!info?.width) { cleanup(); return res.status(400).json({ error: 'bad_video', message: 'This file is not a readable video.' }); }
+    if (!(await hasAudio(file))) { cleanup(); return res.status(400).json({ error: 'no_audio', message: 'This video has no audio.' }); }
+    const dur = info.duration || (await probeDuration(file));
+    const body = { ...(req.body || {}) };
+    const r = await svc.startAutoEditJob(req.user.userId, { file, durationSec: dur, title: String(body.title || path.parse(req.file.originalname || '').name || '').slice(0, 120), options: body });
+    if (!r.ok) { cleanup(); return res.status(r.status).json({ error: r.error, message: r.message, cost: r.cost, remaining: r.remaining }); }
+    res.status(202).json({ jobId: r.job.id, status: 'queued', cost: r.cost, minutes: r.minutes, remaining: r.remaining, queuePosition: svc.queuePosition(r.job.id) });
+  } catch (e) {
+    cleanup();
+    console.error('[AutoEdit] start failed:', e.message);
+    res.status(500).json({ error: 'failed', message: 'Could not start the job.' });
+  }
 });
 
 // ── حزمة النشر (عنوان/وصف بالمصادر والفصول/كلمات/صورة مصغرة) + ملف الترجمة ──
