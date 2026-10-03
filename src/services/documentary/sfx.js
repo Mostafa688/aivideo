@@ -59,6 +59,12 @@ export function sfxForBeat(beat, t0) {
       case 'vs_card': ev.push({ t: at + 0.05, type: 'swish', vol: 0.45 }); ev.push({ t: at + 0.65, type: 'boom', vol: 0.55 }); break;
       case 'stamp': ev.push({ t: at + 0.3, type: 'boom', vol: 0.7 }); ev.push({ t: at + 0.3, type: 'click', vol: 0.4 }); break;
       case 'percent_ring': ev.push({ t: at + 0.15, type: 'riser', vol: 0.35 }); ev.push({ t: at + 1.7, type: 'pop', vol: 0.45 }); break;
+      case 'bottom_sheet':
+        ev.push({ t: at + 0.05, type: 'swish', vol: 0.4 });
+        (ov.data?.items || []).slice(0, 4).forEach((_, i) => ev.push({ t: at + 0.55 + i * 0.5, type: 'pop', vol: 0.4 }));
+        break;
+      case 'side_note': ev.push({ t: at + 0.05, type: 'swish', vol: 0.35 }); break;
+      case 'news_bar': ev.push({ t: at + 0.05, type: 'swish', vol: 0.35 }); ev.push({ t: at + 0.5, type: 'click', vol: 0.3 }); break;
       case 'wipe_bars': ev.push({ t: at, type: 'swish', vol: 0.5 }); break;
       case 'corner_frame': ev.push({ t: at + 0.05, type: 'click', vol: 0.35 }); break;
       case 'photo_board':

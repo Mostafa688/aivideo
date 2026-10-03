@@ -639,6 +639,105 @@ const corner_frame = {
   },
 };
 
+
+// ── 20) bottom_sheet — قائمة بتطلع من تحت الشاشة بعنوان وبنود بتظهر واحد واحد ───────────────────────────────
+const bottom_sheet = {
+  animEnd: (d) => 0.9 + 0.5 * Math.min(4, (d.items || []).length),
+  render(c, d, t) {
+    const { theme, w, h, rtl } = c;
+    const items = (d.items || []).slice(0, 4).map(String);
+    if (!items.length) return '';
+    const pw = w * (c.portrait ? 0.9 : 0.62);
+    const bSize = c.portrait ? 52 : 50;
+    const wrapped = items.map(it => wrapText(it, pw - 200 * c.s, bSize * c.s, { maxLines: 2 }));
+    const rowH = (ls) => ls.length * bSize * 1.25 * c.s + 24 * c.s;
+    const headH = (d.title ? 110 : 44) * c.s;
+    const ph = headH + wrapped.reduce((a, ls) => a + rowH(ls), 0) + 30 * c.s;
+    const py = h * (c.portrait ? 0.92 : 0.84) - ph, px = (w - pw) / 2;
+    const rise = easeOutBack(seg(t, 0, 0.65));
+    const dy = (1 - rise) * (h - py + 40 * c.s);
+    let out = SHADOW_DEF + `<g transform="translate(0,${dy.toFixed(1)})">`;
+    out += panel(c, px, py, pw, ph, { r: 30 });
+    out += `<rect x="${(px + 30 * c.s).toFixed(1)}" y="${py.toFixed(1)}" width="${(pw - 60 * c.s).toFixed(1)}" height="${(9 * c.s).toFixed(1)}" rx="${(4.5 * c.s).toFixed(1)}" fill="${theme.accent}"/>`;
+    if (d.title) out += txt(c, d.title, px + pw / 2, py + 76 * c.s, c.portrait ? 56 : 54, { weight: 900, fill: theme.accent2 });
+    let y = py + headH;
+    wrapped.forEach((ls, i) => {
+      const p = easeOutCubic(seg(t, 0.5 + i * 0.5, 0.95 + i * 0.5));
+      const dot = rtl ? px + pw - 74 * c.s : px + 74 * c.s;
+      out += `<circle cx="${dot.toFixed(1)}" cy="${(y + bSize * 0.5 * c.s + 2 * c.s).toFixed(1)}" r="${(11 * c.s * Math.max(0.01, p)).toFixed(1)}" fill="${theme.accent2}"/>`;
+      ls.forEach((ln, k) => {
+        out += txt(c, ln, rtl ? dot - 40 * c.s : dot + 40 * c.s, y + bSize * 0.78 * c.s + k * bSize * 1.25 * c.s + (1 - p) * 26 * c.s, bSize, { anchor: rtl ? 'end' : 'start', weight: 700, opacity: p });
+      });
+      y += rowH(ls);
+    });
+    return out + '</g>';
+  },
+};
+
+// ── 21) side_note — كارت معلومة بيزحلق من جنب الشاشة (وسم + جملة قصيرة) ────────────────────────────────────
+const side_note = {
+  animEnd: () => 1.5,
+  render(c, d, t) {
+    const { theme, w, h, rtl } = c;
+    const tag = String(d.tag || (c.lang === 'ar' ? 'معلومة' : 'FACT')).slice(0, 16);
+    const pw = w * (c.portrait ? 0.88 : 0.38);
+    const size = c.portrait ? 56 : 46;
+    const lines = wrapText(String(d.text || ''), pw - 90 * c.s, size * c.s, { maxLines: 4 });
+    const ph = 104 * c.s + lines.length * size * 1.3 * c.s + 36 * c.s;
+    const px = c.portrait ? (w - pw) / 2 : (rtl ? w - pw - w * 0.05 : w * 0.05);
+    const py = c.portrait ? h * 0.08 : h * 0.13;
+    const p = easeOutCubic(seg(t, 0, 0.6));
+    const fromRight = px > w / 2 || (c.portrait && rtl);
+    const dx = (1 - p) * (pw + w * 0.08) * (fromRight ? 1 : -1);
+    let out = SHADOW_DEF + `<g transform="translate(${dx.toFixed(1)},0)">`;
+    out += panel(c, px, py, pw, ph, { r: 22 });
+    out += `<rect x="${(rtl ? px + pw - 14 * c.s : px).toFixed(1)}" y="${py.toFixed(1)}" width="${(14 * c.s).toFixed(1)}" height="${ph.toFixed(1)}" fill="${theme.accent}"/>`;
+    const chipW = textWidth(tag, 34 * c.s, true, true) + 48 * c.s;
+    const chipX = rtl ? px + pw - 50 * c.s - chipW : px + 50 * c.s;
+    out += `<rect x="${chipX.toFixed(1)}" y="${(py + 24 * c.s).toFixed(1)}" width="${chipW.toFixed(1)}" height="${(52 * c.s).toFixed(1)}" rx="${(10 * c.s).toFixed(1)}" fill="${theme.accent2}"/>`;
+    out += txt(c, tag, chipX + chipW / 2, py + 61 * c.s, 34, { weight: 900, fill: '#14110a' });
+    lines.forEach((ln, i) => {
+      const lp = easeOutCubic(seg(t, 0.35 + i * 0.18, 0.75 + i * 0.18));
+      out += txt(c, ln, rtl ? px + pw - 50 * c.s : px + 50 * c.s, py + 128 * c.s + i * size * 1.3 * c.s + (1 - lp) * 14 * c.s, size, { anchor: rtl ? 'end' : 'start', weight: 700, opacity: lp });
+    });
+    return out + '</g>';
+  },
+};
+
+// ── 22) news_bar — شريط أخبار بيتمدّ من الجنب مع وسم والنص بيتكشف حرف حرف ────────────────────────────────
+const news_bar = {
+  animEnd: () => 1.9,
+  render(c, d, t) {
+    const { theme, w, h, rtl } = c;
+    const tag = String(d.tag || (c.lang === 'ar' ? 'عاجل' : 'BREAKING')).slice(0, 14);
+    const text = String(d.text || '').slice(0, 90);
+    const bh = 92 * c.s, by = c.portrait ? h * 0.12 : h * 0.085;
+    const size = c.portrait ? 46 : 44;
+    const grow = easeInOutCubic(seg(t, 0, 0.55));
+    const chipW = textWidth(tag, 38 * c.s, true, true) + 64 * c.s;
+    const barW = w * 0.94;
+    const x0 = (w - barW) / 2;
+    const shownW = barW * grow;
+    const bx = rtl ? x0 + barW - shownW : x0;
+    let out = SHADOW_DEF;
+    out += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${shownW.toFixed(1)}" height="${bh.toFixed(1)}" rx="${(12 * c.s).toFixed(1)}" fill="${theme.panel}" stroke="${theme.panelStroke}" stroke-width="2" filter="url(#sh)"/>`;
+    if (grow > 0.5) {
+      const cx0 = rtl ? x0 + barW - chipW : x0;
+      out += `<rect x="${cx0.toFixed(1)}" y="${by.toFixed(1)}" width="${chipW.toFixed(1)}" height="${bh.toFixed(1)}" rx="${(12 * c.s).toFixed(1)}" fill="${theme.accent2}"/>`;
+      out += txt(c, tag, cx0 + chipW / 2, by + bh * 0.66, 38, { weight: 900, fill: '#14110a' });
+      const tx0 = rtl ? x0 + barW - chipW - 28 * c.s : x0 + chipW + 28 * c.s;
+      const avail = barW - chipW - 56 * c.s;
+      const tw = Math.min(avail, textWidth(text, size * c.s, true, false) + 8);
+      const rv = easeOutCubic(seg(t, 0.5, 1.5));
+      const cid = `nb${Math.round(t * 100)}`;
+      const clipX = rtl ? tx0 - tw * rv : tx0;
+      out += `<clipPath id="${cid}"><rect x="${clipX.toFixed(1)}" y="${by.toFixed(1)}" width="${(tw * rv).toFixed(1)}" height="${bh.toFixed(1)}"/></clipPath>`;
+      out += `<g clip-path="url(#${cid})">${txt(c, text, tx0, by + bh * 0.66, size, { anchor: rtl ? 'end' : 'start', weight: 700 })}</g>`;
+    }
+    return out;
+  },
+};
+
 // ── 12) map_reveal — خريطة عالم بكاميرا بتقرّب على الأماكن + دبابيس + مسار منحني بينهم ───────────
 // إحداثيات الخريطة (من world.svg اللي اتجاب من simplemaps): equirectangular بمقياس 2.498 درجة→وحدة
 const WORLD = JSON.parse(fs.readFileSync(new URL('./worldPaths.json', import.meta.url), 'utf8'));
@@ -838,7 +937,7 @@ const photo_board = {
   },
 };
 
-export const TEMPLATES = { map_reveal, photo_board, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text, stack_text, marker_text, icon_pop, date_card, vs_card, stamp, percent_ring, wipe_bars, corner_frame };
+export const TEMPLATES = { map_reveal, photo_board, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text, stack_text, marker_text, icon_pop, date_card, vs_card, stamp, percent_ring, wipe_bars, corner_frame, bottom_sheet, side_note, news_bar };
 export const TEMPLATE_NAMES = Object.keys(TEMPLATES);
 
 export function templateAnimEnd(name, data) {
