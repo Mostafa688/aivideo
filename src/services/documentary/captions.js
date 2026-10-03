@@ -20,10 +20,10 @@ const hexToAssBGR = (hex, alpha = 0) => {
 const cleanWord = (w) => String(w).replace(/[{}\\]/g, '').replace(/\n/g, ' ');
 
 
-const capLayout = (lang, w, h) => {
+const capLayout = (lang, w, h, fsScale = 1) => {
   const rtl = isRtlLang(lang);
   const portrait = h > w;
-  return { rtl, portrait, font: rtl ? 'Noto Naskh Arabic' : 'Noto Sans', fs: portrait ? 78 : 64 };
+  return { rtl, portrait, font: rtl ? 'Noto Naskh Arabic' : 'Noto Sans', fs: Math.round((portrait ? 78 : 64) * fsScale) };
 };
 
 // قياس عرض كل كلمة بنفس الخط (pango/fontconfig) — بنحتاجه في العربي عشان نوزّع الكلمات بنفسنا:
@@ -54,8 +54,8 @@ async function calibrate(font, fs, ffmpegBin = 'ffmpeg') {
   } finally { rmQuiet(dir); }
 }
 
-export async function measureCaptionWords(words, { lang = 'ar', w = 1920, h = 1080 } = {}) {
-  const { font, fs } = capLayout(lang, w, h);
+export async function measureCaptionWords(words, { lang = 'ar', w = 1920, h = 1080, fsScale = 1 } = {}) {
+  const { font, fs } = capLayout(lang, w, h, fsScale);
   const k = await calibrate(font, fs);
   if (!k || k < 0.3 || k > 1.2) throw new Error('caption calibration failed');
   const map = new Map();
@@ -86,11 +86,11 @@ export function groupWords(words, { maxWords = 6, maxChars = 32, maxDur = 3.2, g
   return groups;
 }
 
-export function buildCaptionsAss({ words, style = 'karaoke', w = 1920, h = 1080, lang = 'en', theme = 'blue', widths = null, position = 'bottom' }) {
+export function buildCaptionsAss({ words, style = 'karaoke', w = 1920, h = 1080, lang = 'en', theme = 'blue', widths = null, position = 'bottom', fsScale = 1, title = null }) {
   const th = getTheme(theme);
-  const { rtl, portrait, font, fs } = capLayout(lang, w, h);
+  const { rtl, portrait, font, fs } = capLayout(lang, w, h, fsScale);
   const center = position === 'center'; // فيديو قصير: كابشن في النص، كلمات قليلة، دخول سريع (hook)
-  const marginV = center ? 0 : (portrait ? Math.round(h * 0.2) : Math.round(h * 0.075));
+  const marginV = center ? 0 : (portrait ? Math.round(h * 0.2) : Math.round(h * (fsScale > 1 ? 0.085 : 0.075)));
   const maxChars = center ? (portrait ? 14 : 20) : (portrait ? 20 : 34);
   // ألوان الكابشن ثابتة عالية التباين (مستقلة عن ستايل الخلفية) — أبيض + أصفر للكلمة الحالية
   const white = '&H00FFFFFF', accent = hexToAssBGR('#FFD60A');
@@ -107,7 +107,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-${styles}
+${styles}${title?.text ? `\nStyle: Title,${font},${Math.round(fs * 0.95)},&H00FFFFFF,&H00FFFFFF,&H00000000,&HB0000000,-1,0,0,0,100,100,0,0,3,${Math.round(fs * 0.22)},0,8,80,80,${Math.round(h * (portrait ? 0.14 : 0.1))},1` : ''}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -162,6 +162,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         events.push(`Dialogue: 0,${toAss(st)},${toAss(Math.max(en, st + 0.12))},Cap,,0,0,0,,${shown}`);
       });
     }
+  }
+  if (title?.text) {
+    const ts = title.start ?? 0.15, te = title.end ?? 2.6;
+    events.push(`Dialogue: 2,${toAss(ts)},${toAss(te)},Title,,0,0,0,,{\\fad(260,260)\\fscx82\\fscy82\\t(0,280,\\fscx100\\fscy100)}${String(title.text).replace(/[{}\\]/g, '').slice(0, 60)}`);
   }
   return header + events.join('\n') + '\n';
 }

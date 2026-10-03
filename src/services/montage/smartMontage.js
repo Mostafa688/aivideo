@@ -91,23 +91,33 @@ function targetSizeFor(clips) {
   return { W: w * k, H: h * k };
 }
 
-async function renderSub({ src, dest, start, len, W, H, srcW, srcH, z0, z1, speed, keepAudio }) {
+const even = (x) => Math.max(2, Math.ceil(x / 2) * 2);
+// حركات الكاميرا المتبدّلة بين اللقطات (دفع، سحب، بان يمين/شمال، لكمة سريعة)
+const MOTIONS = [{ z0: 1, z1: 1.1 }, { pan: 'R' }, { z0: 1.1, z1: 1 }, { pan: 'L' }, { z0: 1, z1: 1.09, fast: true }];
+export const motionFor = (i, enabled = true) => (enabled ? MOTIONS[i % MOTIONS.length] : { z0: 1, z1: 1 });
+
+async function renderSub({ src, dest, start, len, W, H, srcW, srcH, z0 = 1, z1 = 1, pan = null, fast = false, speed = 1, keepAudio, loop = false, grade = true }) {
   const aspectDiff = Math.abs(srcW / srcH - W / H) / (W / H);
-  const animated = Math.abs(z1 - z0) > 0.001 && aspectDiff <= 0.15;
-  const zExpr = animated ? `(${z0}+(${(z1 - z0).toFixed(4)})*t/${Math.max(0.3, len / speed).toFixed(3)})` : String(z0);
+  const blur = aspectDiff > 0.15;
+  const L = Math.max(0.3, len); // بالثواني الأصلية (قبل تغيير السرعة)
+  const animated = !pan && Math.abs(z1 - z0) > 0.001;
   let vf;
-  if (aspectDiff > 0.15) {
+  if (blur) {
     // اتجاه مختلف: الفيديو كامل في النص + خلفية مغبّشة بدل ما نقص جانب كبير منه
     vf = `split[a][b];[a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=28:4,eq=brightness=-0.08[bg];[b]scale=${W}:${H}:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1`;
   } else {
     vf = `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
-    if (animated) vf += `,scale=w='ceil(${W}*${zExpr}/2)*2':h='ceil(${H}*${zExpr}/2)*2':eval=frame,crop=${W}:${H}`;
-    else if (z0 > 1.001) vf += `,scale=${Math.ceil((W * z0) / 2) * 2}:${Math.ceil((H * z0) / 2) * 2},crop=${W}:${H}`;
+    if (pan) vf += `,scale=${even(W * 1.14)}:${even(H * 1.14)},crop=${W}:${H}:x='(iw-${W})*${pan === 'R' ? `min(t/${L.toFixed(3)},1)` : `(1-min(t/${L.toFixed(3)},1))`}':y='(ih-${H})/2'`;
+    else if (animated) {
+      const zExpr = fast ? `(${z0}+(${(z1 - z0).toFixed(4)})*min(t/0.45,1))` : `(${z0}+(${(z1 - z0).toFixed(4)})*t/${L.toFixed(3)})`;
+      vf += `,scale=w='ceil(${W}*${zExpr}/2)*2':h='ceil(${H}*${zExpr}/2)*2':eval=frame,crop=${W}:${H}`;
+    } else if (z0 > 1.001) vf += `,scale=${even(W * z0)}:${even(H * z0)},crop=${W}:${H}`;
   }
+  if (grade) vf += ',eq=contrast=1.06:saturation=1.14,vignette=angle=PI/4.2'; // لون موحّد يربط اللقطات المختلفة ببعض
   if (speed !== 1) vf += `,setpts=PTS/${speed}`;
   vf += ',fps=30,format=yuv420p';
   const outLen = len / speed;
-  const args = ['-ss', start.toFixed(3), '-t', len.toFixed(3), '-i', src];
+  const args = [...(loop ? ['-stream_loop', '-1'] : []), '-ss', start.toFixed(3), '-t', len.toFixed(3), '-i', src];
   const fade = Math.min(0.03, outLen / 4);
   if (keepAudio) {
     args.push('-filter_complex', `[0:v]${vf}[v];[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,afade=t=in:d=${fade},afade=t=out:st=${Math.max(0, outLen - fade).toFixed(3)}:d=${fade}[a]`, '-map', '[v]', '-map', '[a]');
@@ -147,8 +157,9 @@ export async function executePlan({ plan, clips, workDir, options = {}, onProgre
     const files = [];
     for (const sub of subs) {
       const dest = path.join(workDir, `sub_${subIndex}.mp4`);
-      const [z0, z1] = zooms ? zooms[subIndex % zooms.length] : [1, 1];
-      const dur = await renderSub({ src: c.file, dest, start: sub.start, len: sub.end - sub.start, W, H, srcW: c.width, srcH: c.height, z0, z1, speed: sg.keep ? 1 : sg.speed, keepAudio: sg.keep });
+      // كلام (وش بيتكلم): زوم هادي متبدّل؛ لقطات الـb-roll: حركات كاميرا متنوّعة
+      const mo = sg.keep ? (() => { const [a, b] = zooms ? zooms[subIndex % zooms.length] : [1, 1]; return { z0: a, z1: b }; })() : motionFor(subIndex, options.zoom !== false && animate);
+      const dur = await renderSub({ src: c.file, dest, start: sub.start, len: sub.end - sub.start, W, H, srcW: c.width, srcH: c.height, ...mo, speed: sg.keep ? 1 : sg.speed, keepAudio: sg.keep });
       if (sg.keep && c.words?.length) {
         for (const w of c.words) if (w.start >= sub.start - 0.02 && w.start < sub.end) newWords.push({ w: w.w, start: offset + Math.max(0, w.start - sub.start), end: offset + Math.min(dur, Math.max(0.05, w.end - sub.start)) });
         speechSec += dur;
@@ -171,7 +182,7 @@ export async function executePlan({ plan, clips, workDir, options = {}, onProgre
   const capStyle = options.captions && options.captions !== 'none' ? options.captions : null;
   const r = await montageVideos({
     files: chapters.map(c => c.file), workDir: path.join(workDir, 'final'), assumeNormalized: true,
-    transitions: chapters.length > 1 && chapters.length <= 40 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', sfx: true,
+    transitions: chapters.length > 1 && chapters.length <= 40 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', title: plan.title || null, sfx: true,
     words: capStyle && newWords.length ? newWords : null,
     captions: capStyle && newWords.length ? { style: capStyle, lang: String(options.language || 'en').split(/[-_]/)[0], position: 'auto', transcribe: false } : null,
     musicFile: options.musicFile || null, musicVolume: speechShare > 0.35 ? 0.1 : 0.24,
@@ -185,16 +196,165 @@ export async function executePlan({ plan, clips, workDir, options = {}, onProgre
   };
 }
 
-/** كل الخطوات: تفريغ كلام الفيديوهات اللي فيها كلام → خطة → تنفيذ */
+
+// ════════════════════════════ وضع الفويس-أوفر ════════════════════════════
+// العميل رافع تعليق صوتي: الفيديو كله بيتبني على مدته (الصوت هو المرجع)، صوت المقاطع بيتقفل، والمشاهد بتتوزّع على الكلام
+// بترتيب منطقي وبتتقطع عند حدود الجمل/الكلمات عشان الصورة تتزامن مع اللي بيتقال.
+const VO_MIN_SHOT = 1.8, VO_MAX_SHOT = 8, VO_TAIL = 0.45;
+
+const SYSTEM_VO = `You are a professional video editor (documentary / YouTube / Reels). The customer recorded a voiceover and uploaded several raw clips. You must lay the clips over the narration so that every picture matches what is being said at that moment, with strong pacing. All clip audio will be muted — only the voiceover plays (plus music/effects added by the system).
+You receive: the narration as timed sentences, its total duration, the customer's wishes (may be empty), and the clips (label, name, length, what it shows). The clips are listed in the customer's intended order: when the file names are numbered (1.1, 1.2, … or clip2, clip10) that numbering is the story order — keep it unless the narration clearly requires another order.
+Return ONLY JSON: {"title":"short catchy title in the narration's language","style":"fast|clean|calm|dramatic","musicMood":"epic|documentary|tension|emotional|chill|upbeat","shots":[{"clip":"V1","start":0.0,"until":4.2}]}
+Rules:
+- "shots" play in order and cover the narration from 0 to its end. "until" = the narration time (seconds) where this shot ends (strictly increasing; the last one equals the narration duration). "start" = the second inside the clip where the shot begins (choose the most interesting part, avoid the first/last 0.3s).
+- Match meaning: when the narration talks about something a clip shows, use that clip at that moment. Use EVERY clip at least once unless it is unusable (black, shaky, blurry); a good clip can be used again later with a different "start".
+- Pace: shots of 2-6 seconds (up to 8 for calm moments); change picture at sentence or clause boundaries. Open with the most striking visual for the hook.
+- At most 60 shots. Never invent clips.`;
+
+/** حدود القطع الممكنة: نهايات الكلمات (القطع بين كلمتين، مش في نص كلمة) */
+function cutPoints(words) { return words.map(w => w.end).filter(Number.isFinite).sort((a, b) => a - b); }
+const snapTo = (t, points, tol = 0.7) => { let best = null; for (const p of points) { if (Math.abs(p - t) <= tol && (best === null || Math.abs(p - t) < Math.abs(best - t))) best = p; } return best ?? t; };
+
+export function describeForVoicePlanner(clips, narr) {
+  const lines = narr.sentences.slice(0, 160).map(s => `[${fmt(s.start)}-${fmt(s.end)}] ${s.words.map(w => w.w).join(' ').slice(0, 160)}`);
+  const cl = clips.map((c, i) => `V${i + 1} "${c.name}" — ${fmt(c.duration)}s — shows: ${c.analysis?.description || 'unknown'}`);
+  return `Narration (${fmt(narr.duration)}s):\n${lines.join('\n')}\n\nClips:\n${cl.join('\n')}`;
+}
+
+/** تحقق بالكود من خطة الـLLM: توقيتات متزايدة، لقطات 1.8-8 ثانية، قطع عند حدود الكلمات، تغطية الصوت بالكامل */
+export function sanitizeVoicePlan(raw, clips, narr) {
+  const D = narr.duration;
+  const points = cutPoints(narr.words);
+  const byLabel = new Map(clips.map((c, i) => [`V${i + 1}`, i]));
+  const picks = [];
+  let prev = 0;
+  for (const s of Array.isArray(raw?.shots) ? raw.shots : []) {
+    const ci = byLabel.get(String(s?.clip || '').toUpperCase());
+    let until = Number(s?.until);
+    if (ci === undefined || !Number.isFinite(until)) continue;
+    until = Math.min(D, snapTo(until, points));
+    if (until - prev < VO_MIN_SHOT) { if (until >= D - 0.05 && picks.length) picks[picks.length - 1].until = D; continue; }
+    picks.push({ clipIndex: ci, start: Number(s.start) || 0, until });
+    prev = until;
+    if (until >= D - 0.05 || picks.length >= 60) break;
+  }
+  if (!picks.length) return null;
+  picks[picks.length - 1].until = D;
+  // لقطات أطول من الحد: بنقسمها (نفس المقطع بيكمّل من بعد نقطته)
+  const shots = [];
+  let t0 = 0;
+  for (const p of picks) {
+    let span = p.until - t0, off = p.start;
+    const parts = Math.max(1, Math.ceil(span / VO_MAX_SHOT));
+    for (let k = 0; k < parts; k++) { const len = span / parts; shots.push({ clipIndex: p.clipIndex, start: off, dur: len }); off += len; }
+    t0 = p.until;
+  }
+  return { title: String(raw?.title || '').slice(0, 70) || null, style: ['fast', 'clean', 'calm', 'dramatic'].includes(raw?.style) ? raw.style : 'fast', musicMood: MOODS.includes(raw?.musicMood) ? raw.musicMood : null, shots: fitShots(shots, clips) };
+}
+
+/** كل لقطة تتظبط على مقطعها: بداية صالحة، وبطء/تكرار لو المقطع أقصر من المطلوب */
+function fitShots(shots, clips) {
+  return shots.map((s) => {
+    const c = clips[s.clipIndex];
+    let start = Math.max(0, Math.min(s.start, Math.max(0, c.duration - s.dur - 0.05)));
+    let speed = 1, loop = false, len = s.dur;
+    if (c.duration - start < s.dur) { // المتبقي من المقطع أقصر من اللقطة: نبدأ من أوله ونبطّئ شوية، ولو لسه أقصر نكرر
+      start = 0; speed = Math.max(0.7, Math.min(1, c.duration / s.dur));
+      len = Math.min(c.duration, s.dur * speed); loop = c.duration < s.dur * speed - 0.05; if (loop) len = s.dur * speed;
+    }
+    return { clipIndex: s.clipIndex, start: Number(start.toFixed(2)), len: Number(len.toFixed(3)), speed, loop, dur: Number(s.dur.toFixed(3)) };
+  });
+}
+
+/** خطة احتياطية: لقطات ~4 ثواني متوزّعة على الكلام بنسبة أطوال المقاطع وبترتيبها، وكل مقطع بيتستخدم */
+export function fallbackVoicePlan(clips, narr) {
+  const D = narr.duration;
+  const points = cutPoints(narr.words);
+  const n = Math.max(1, Math.round(D / 4));
+  const cuts = [];
+  for (let i = 1; i < n; i++) cuts.push(Math.min(D - 0.5, Math.max(cuts[cuts.length - 1] || 0, snapTo((D * i) / n, points, 1.0))));
+  cuts.push(D);
+  const durs = []; let p = 0; for (const c of cuts) { durs.push(c - p); p = c; }
+  const total = clips.reduce((a, c) => a + c.duration, 0) || 1;
+  // عدد اللقطات لكل مقطع بنسبة طوله (على الأقل 1 لو اللقطات تكفي، ولو أقل من المقاطع بنختار مقاطع موزّعة بالتساوي)
+  const m = durs.length;
+  let counts;
+  if (m < clips.length) { counts = clips.map(() => 0); for (let k = 0; k < m; k++) counts[Math.floor(((k + 0.5) * clips.length) / m)] = 1; }
+  else {
+    const ideal = clips.map(c => (m * c.duration) / total);
+    counts = ideal.map(x => Math.max(1, Math.floor(x)));
+    let sum = counts.reduce((a, b) => a + b, 0);
+    while (sum < m) { let bi = 0, bv = -1; ideal.forEach((x, i) => { const v = x - counts[i]; if (v > bv) { bv = v; bi = i; } }); counts[bi]++; sum++; }
+    while (sum > m) { let bi = 0, bv = -1; counts.forEach((c, i) => { if (c > 1 && counts[i] - ideal[i] > bv) { bv = counts[i] - ideal[i]; bi = i; } }); if (bv < 0) break; counts[bi]--; sum--; }
+  }
+  const order = [];
+  clips.forEach((c, i) => { for (let k = 0; k < counts[i]; k++) order.push({ i, k, of: counts[i] }); });
+  const shots = durs.map((d, idx) => {
+    const o = order[Math.min(idx, order.length - 1)];
+    const c = clips[o.i];
+    const start = Math.max(0, (c.duration - d) * ((o.k + 0.5) / o.of));
+    return { clipIndex: o.i, start, dur: d };
+  });
+  return { title: null, style: 'fast', musicMood: null, shots: fitShots(shots, clips) };
+}
+
+export async function planVoiceover({ clips, narr, instructions = '', ask = llmJson }) {
+  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}\n\n${describeForVoicePlanner(clips, narr)}`;
+  try {
+    const raw = await ask({ system: SYSTEM_VO, user, maxTokens: 4500, temperature: 0.3 });
+    const plan = sanitizeVoicePlan(raw, clips, narr);
+    if (plan && plan.shots.length >= Math.min(2, Math.ceil(narr.duration / VO_MAX_SHOT))) return { ...plan, source: 'ai' };
+  } catch (e) { console.warn('[SmartMontage] voiceover planner failed, using fallback:', e.message); }
+  return { ...fallbackVoicePlan(clips, narr), source: 'fallback' };
+}
+
+const hasArabic = (s) => /[؀-ۿ]/.test(s);
+
+export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, options = {}, onProgress = () => {} }) {
+  fs.mkdirSync(workDir, { recursive: true });
+  const { W, H } = targetSizeFor(clips);
+  const files = [];
+  const animate = plan.shots.length <= 45 && options.zoom !== false;
+  for (let i = 0; i < plan.shots.length; i++) {
+    onProgress({ stage: 'cut', frac: i / plan.shots.length });
+    const s = plan.shots[i], c = clips[s.clipIndex];
+    const dest = path.join(workDir, `shot_${i}.mp4`);
+    const extra = i === plan.shots.length - 1 ? VO_TAIL : 0; // ذيل صغير في الآخر عشان الموسيقى تقفل بنعومة
+    await renderSub({ src: c.file, dest, start: s.start, len: (s.dur + extra) * s.speed, W, H, srcW: c.width, srcH: c.height, ...motionFor(i, animate), speed: s.speed, keepAudio: false, loop: s.loop || (c.duration - s.start < (s.dur + extra) * s.speed) });
+    files.push(dest);
+  }
+  onProgress({ stage: 'finish', frac: 0 });
+  const capStyle = options.captions && options.captions !== 'none' ? options.captions : null;
+  const lang = hasArabic(narr.words.map(w => w.w).join(' ')) ? 'ar' : (options.language && options.language !== 'auto' ? String(options.language).split(/[-_]/)[0] : 'en');
+  const r = await montageVideos({
+    files, workDir: path.join(workDir, 'final'), assumeNormalized: true, narrationFile: voiceFile,
+    transitions: files.length > 1 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', title: plan.title || null, sfx: true,
+    words: capStyle ? narr.words : null,
+    captions: capStyle ? { style: capStyle, lang, position: 'auto', transcribe: false } : null,
+    musicFile: options.musicFile || null, musicVolume: 0.12,
+  });
+  files.forEach(f => rmQuiet(f));
+  let tt = 0;
+  return {
+    file: r.file, duration: r.duration, words: narr.words, transcript: narr.words.map(w => w.w).join(' '),
+    chapters: plan.shots.map(s => { const o = { t: tt, title: clips[s.clipIndex].name }; tt += s.dur; return o; }),
+    stats: { mode: 'voiceover', shots: plan.shots.length, narrationSec: narr.duration, finalSec: r.duration },
+  };
+}
+
+/** كل الخطوات: (فويس-أوفر؟ ← خطة على الصوت) أو (تفريغ كلام الفيديوهات → خطة → تنفيذ) */
 export async function smartMontage({ assets, workDir, instructions = '', options = {}, onProgress = () => {}, deps = {} }) {
   fs.mkdirSync(workDir, { recursive: true });
   const transcribe = deps.transcribe || transcribeAudioFile;
+  const voice = assets.find(a => a.kind === 'audio') || null;
+  const videos = assets.filter(a => a.kind !== 'audio');
+  if (!videos.length) { const e = new Error('no videos'); e.code = 'no_videos'; throw e; }
   const clips = [];
-  for (let i = 0; i < assets.length; i++) {
-    const a = assets[i];
-    onProgress({ stage: 'transcribe', frac: i / assets.length });
+  for (let i = 0; i < videos.length; i++) {
+    const a = videos[i];
+    onProgress({ stage: 'transcribe', frac: i / videos.length });
     const size = await displaySize(a.file).catch(() => null);
-    const c = { name: a.name, file: a.file, duration: a.duration, width: size?.w || a.width, height: size?.h || a.height, hasAudio: a.hasAudio, hasSpeech: !!a.analysis?.hasSpeech, analysis: a.analysis, words: null, sentences: null };
+    const c = { name: a.name, file: a.file, duration: a.duration, width: size?.w || a.width, height: size?.h || a.height, hasAudio: a.hasAudio, hasSpeech: !voice && !!a.analysis?.hasSpeech, analysis: a.analysis, words: null, sentences: null };
     if (c.hasSpeech) {
       const wav = path.join(workDir, `src_${i}.wav`);
       try {
@@ -206,6 +366,17 @@ export async function smartMontage({ assets, workDir, instructions = '', options
       finally { rmQuiet(wav); }
     }
     clips.push(c);
+  }
+  if (voice) {
+    let words = (voice.analysis?.words || []).map(([w, start, end]) => ({ w, start, end }));
+    if (!words.length) words = await transcribe(voice.file, workDir, options.language && options.language !== 'auto' ? options.language : null);
+    if (!words.length) { const e = new Error('no speech in the voiceover'); e.code = 'no_speech'; throw e; }
+    if (deps.onTranscript) await deps.onTranscript(words);
+    const narr = { words, sentences: splitSentences(words), duration: await probeDuration(voice.file) };
+    onProgress({ stage: 'plan', frac: 0 });
+    const plan = await planVoiceover({ clips, narr, instructions, ask: deps.ask });
+    const result = await executeVoicePlan({ plan, clips, narr, voiceFile: voice.file, workDir: path.join(workDir, 'exec'), options, onProgress });
+    return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: false })) };
   }
   if (deps.onTranscript) await deps.onTranscript(clips.flatMap(c => c.words || []));
   onProgress({ stage: 'plan', frac: 0 });
