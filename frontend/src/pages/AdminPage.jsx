@@ -2654,6 +2654,75 @@ function ChangelogTab({ s }) {
   );
 }
 
+// ── Terms Agreements Tab ──────────────────────────────────────────────────
+// موافقات العملاء على الشروط والخصوصية: ✓ + الـid + الإيميل + وقت الموافقة + نسخة الشروط + الـIP (الـid رقم داخلي بس — الصفحة دي للأدمن فقط)
+function TermsTab({ s }) {
+  const [data, setData] = useState({ users: [], total: 0, agreed: 0, missing: 0 });
+  const [status, setStatus] = useState('all');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams({ status, search, limit: '1000' });
+      const r = await fetch(`/api/admin/terms-agreements?${qs}`, { headers });
+      const d = await r.json();
+      if (r.ok) setData(d);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, [status, search]);
+  useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
+  const exportCsv = () => {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [['agreed', 'id', 'email', 'name', 'agreed_at', 'terms_version', 'ip'], ...data.users.map(u => [u.terms_accepted_at ? 'yes' : 'no', u.id, u.email, u.name || '', u.terms_accepted_at || '', u.terms_version || '', u.terms_accepted_ip || ''])];
+    const blob = new Blob(['\ufeff' + rows.map(r => r.map(esc).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `erivion-terms-agreements-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+  };
+  const chip = (key, label) => (
+    <button key={key} onClick={() => setStatus(key)} style={{ ...s.btn(status === key ? '#4f46e5' : '#1f2937'), border: `1px solid ${status === key ? '#6366f1' : '#374151'}` }}>{label}</button>
+  );
+  return (
+    <div>
+      <div style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 6 }}>✅ Terms & Privacy agreements</div>
+      <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 14, lineHeight: 1.7 }}>
+        Every customer who ticked "I Agree" on sign-up is recorded here with the time, the terms version and the IP. Accounts created before agreement tracking was added show ✗ (no recorded agreement).
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ ...s.card, padding: '10px 16px', marginBottom: 0 }}><div style={{ fontSize: 11, color: '#9ca3af' }}>Customers</div><div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{data.total}</div></div>
+        <div style={{ ...s.card, padding: '10px 16px', marginBottom: 0 }}><div style={{ fontSize: 11, color: '#9ca3af' }}>Agreed</div><div style={{ fontSize: 20, fontWeight: 700, color: '#22c55e' }}>{data.agreed}</div></div>
+        <div style={{ ...s.card, padding: '10px 16px', marginBottom: 0 }}><div style={{ fontSize: 11, color: '#9ca3af' }}>No record</div><div style={{ fontSize: 20, fontWeight: 700, color: '#ef4444' }}>{data.missing}</div></div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        {chip('all', 'All')}{chip('agreed', '✓ Agreed')}{chip('missing', '✗ No record')}
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search email, name or ID…" style={{ ...s.input, minWidth: 220 }} />
+        <button onClick={exportCsv} style={s.btn('#065f46')}>⬇ Export CSV</button>
+        {loading && <span style={{ fontSize: 12, color: '#9ca3af' }}>Loading…</span>}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr>
+            <th style={s.th}>Agreed</th><th style={s.th}>ID</th><th style={s.th}>Email</th><th style={s.th}>Name</th><th style={s.th}>Agreed at</th><th style={s.th}>Version</th><th style={s.th}>IP</th>
+          </tr></thead>
+          <tbody>
+            {data.users.map(u => (
+              <tr key={u.id}>
+                <td style={s.td}>{u.terms_accepted_at ? <span style={{ color: '#22c55e', fontSize: 18, fontWeight: 800 }}>✓</span> : <span style={{ color: '#ef4444', fontSize: 16, fontWeight: 800 }}>✗</span>}</td>
+                <td style={{ ...s.td, fontVariantNumeric: 'tabular-nums', color: '#a5b4fc' }}>{u.id}</td>
+                <td style={s.td}>{u.email}</td>
+                <td style={{ ...s.td, color: '#9ca3af' }}>{u.name || '–'}</td>
+                <td style={s.td}>{u.terms_accepted_at ? new Date(u.terms_accepted_at).toLocaleString() : '–'}</td>
+                <td style={s.td}>{u.terms_version ? `v${u.terms_version}` : '–'}</td>
+                <td style={{ ...s.td, color: '#9ca3af' }}>{u.terms_accepted_ip || '–'}</td>
+              </tr>
+            ))}
+            {data.users.length === 0 && <tr><td colSpan={7} style={{ ...s.td, textAlign: 'center', color: '#6b7280' }}>{loading ? 'Loading…' : 'No customers match.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Finance Tab ───────────────────────────────────────────────────────────────
 // ✅ NEW (طلب العميل: "عايز اعمل نظام يحدد المصروفات والمدخولات... عشان لما اسجل الموقع
 // تجاري" — دفتر حسابات يدوي بحت، أدمن بس مفيش صفحة عامة): كل حركة (مصروف زي Replicate، أو
@@ -2864,7 +2933,7 @@ function FinanceTab({ s }) {
               <input style={{ ...s.input, width: '100%', boxSizing: 'border-box' }} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Any extra detail..." />
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Receipt (optional)</div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Receipt / Invoice (optional)</div>
               <input type="file" accept="image/*,.pdf" onChange={handleFileChange} disabled={uploading} />
               {uploading && <span style={{ fontSize: 12, color: '#9ca3af', marginInlineStart: 8 }}>Uploading...</span>}
               {form.receipt_url && <a href={form.receipt_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#3b82f6', marginInlineStart: 8 }}>📎 View uploaded receipt</a>}
@@ -2889,7 +2958,7 @@ function FinanceTab({ s }) {
               <span style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>{(en.entry_date || '').slice(0, 10)}</span>
               <span style={{ fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{en.category}</span>
               <span style={{ fontWeight: 700, color: en.type === 'income' ? '#22c55e' : '#ef4444', flexShrink: 0 }}>{en.type === 'income' ? '+' : '-'}{Number(en.amount).toLocaleString()} {en.currency}</span>
-              {en.receipt_url && <a href={en.receipt_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#3b82f6', flexShrink: 0 }}>📎 Receipt</a>}
+              {en.receipt_url && <a href={en.receipt_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#3b82f6', flexShrink: 0 }}>📎 Receipt / Invoice</a>}
             </div>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               <button style={s.btn('#374151')} onClick={() => handleEdit(en)}>✏️ Edit</button>
@@ -3606,6 +3675,7 @@ export default function AdminPage() {
     { key: 'notifications', label: '🔔 Notifications' },
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'courses',    label: '🎓 Courses'     },
+    { key: 'terms',      label: '✅ Terms'        },
     { key: 'finance',    label: '🧾 Finance'     },
     { key: 'changelog',  label: '📰 Changelog'   },
     { key: 'roadmap',    label: '🗺️ Roadmap'     },
@@ -3762,7 +3832,6 @@ export default function AdminPage() {
                   <th style={s.th}>Plan</th>
                   <th style={s.th}>Legacy Models</th>
                   <th style={s.th}>Region</th>
-                  <th style={s.th}>Terms</th>
                   <th style={s.th}>Credits Balance</th>
                   <th style={s.th}>Videos</th>
                   <th style={s.th}>Status</th>
@@ -3797,14 +3866,6 @@ export default function AdminPage() {
                           <span style={{ fontSize:12, padding:'2px 8px', borderRadius:6, background: u.region==='eg'?'rgba(34,197,94,0.1)':'rgba(6,182,212,0.1)', color: u.region==='eg'?'#22c55e':'#06b6d4', border:`1px solid ${u.region==='eg'?'rgba(34,197,94,0.3)':'rgba(6,182,212,0.3)'}`, fontWeight:700 }}>
                             {u.region==='eg' ? '🇪🇬 EG' : u.region==='intl' ? '🌐 Intl' : '–'}
                           </span>
-                        </td>
-                        <td style={s.td} title={u.terms_accepted_at ? `IP: ${u.terms_accepted_ip || '–'}` : ''}>
-                          {u.terms_accepted_at ? (
-                            <div>
-                              <span style={{ fontSize:11, fontWeight:700, color:'#22c55e' }}>✓ Agreed</span>
-                              <div style={{ fontSize:10, color:'#6b7280' }}>{new Date(u.terms_accepted_at).toLocaleString()}{u.terms_version ? ` · v${u.terms_version}` : ''}</div>
-                            </div>
-                          ) : <span style={{ fontSize:11, color:'#4b5563' }} title="No recorded agreement (account created before agreement tracking, or the step was not completed)">–</span>}
                         </td>
                         <td style={s.td}>
                           <span style={{ fontSize:13, fontWeight:700, color: (u.credits_balance||0)===0 ? '#ef4444' : '#a99bff' }}>💎 {u.credits_balance || 0}</span>
@@ -4128,6 +4189,7 @@ export default function AdminPage() {
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}
         {tab === 'courses' && <CoursesTab s={s} />}
+        {tab === 'terms' && <TermsTab s={s} />}
         {tab === 'finance' && <FinanceTab s={s} />}
         {tab === 'changelog' && <ChangelogTab s={s} />}
         {tab === 'roadmap' && <RoadmapTab s={s} />}

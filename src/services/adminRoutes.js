@@ -222,6 +222,29 @@ router.get('/users', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ✅ موافقات العملاء على الشروط والخصوصية: قائمة مستقلة (id + إيميل + التاريخ + النسخة + الـIP) عشان تبقى دليل إن العميل وافق
+router.get('/terms-agreements', adminAuth, async (req, res) => {
+  try {
+    for (const c of ['terms_accepted_at TIMESTAMPTZ', 'terms_version TEXT', 'terms_accepted_ip TEXT']) {
+      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${c} DEFAULT NULL`).catch(() => {});
+    }
+    const { status = 'all', search = '' } = req.query;
+    const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit, 10) || 500));
+    const where = [], params = [];
+    if (status === 'agreed') where.push('terms_accepted_at IS NOT NULL');
+    else if (status === 'missing') where.push('terms_accepted_at IS NULL');
+    if (search) { params.push(`%${String(search).slice(0, 80)}%`); where.push(`(email ILIKE $${params.length} OR name ILIKE $${params.length} OR CAST(id AS TEXT) = $${params.length + 1})`); params.push(String(search).slice(0, 20)); }
+    const { rows } = await pool.query(
+      `SELECT id, email, name, created_at, terms_accepted_at, terms_version, terms_accepted_ip
+       FROM users ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY id DESC LIMIT ${limit}`, params);
+    const { rows: [counts] } = await pool.query(`SELECT COUNT(*)::int AS total, COUNT(terms_accepted_at)::int AS agreed FROM users`);
+    res.json({ users: rows, total: counts.total, agreed: counts.agreed, missing: counts.total - counts.agreed });
+  } catch (err) {
+    console.error('[Admin Terms]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 router.get('/videos', adminAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`
