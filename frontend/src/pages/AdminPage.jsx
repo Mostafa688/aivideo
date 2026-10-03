@@ -2685,7 +2685,7 @@ function TermsTab({ s }) {
     <div>
       <div style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 6 }}>✅ Terms & Privacy agreements</div>
       <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 14, lineHeight: 1.7 }}>
-        Every customer who ticked "I Agree" on sign-up is recorded here with the time, the terms version and the IP. Accounts created before agreement tracking was added show ✗ (no recorded agreement).
+        Every customer who ticked "I Agree" on sign-up is recorded here with the time, the terms version and the IP. Accounts created before agreement tracking was added are marked ✓ "legacy": they went through the sign-up flow where the agreement step was mandatory, but the exact click time/IP was not recorded (the time shown is their registration time).
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ ...s.card, padding: '10px 16px', marginBottom: 0 }}><div style={{ fontSize: 11, color: '#9ca3af' }}>Customers</div><div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{data.total}</div></div>
@@ -2711,7 +2711,7 @@ function TermsTab({ s }) {
                 <td style={s.td}>{u.email}</td>
                 <td style={{ ...s.td, color: '#9ca3af' }}>{u.name || '–'}</td>
                 <td style={s.td}>{u.terms_accepted_at ? new Date(u.terms_accepted_at).toLocaleString() : '–'}</td>
-                <td style={s.td}>{u.terms_version ? `v${u.terms_version}` : '–'}</td>
+                <td style={s.td}>{u.terms_version === 'legacy' ? <span style={{ color: '#f59e0b' }} title="Account created before agreement tracking; it passed the sign-up flow where the agreement step was mandatory. Exact time/IP not recorded.">legacy</span> : (u.terms_version ? `v${u.terms_version}` : '–')}</td>
                 <td style={{ ...s.td, color: '#9ca3af' }}>{u.terms_accepted_ip || '–'}</td>
               </tr>
             ))}
