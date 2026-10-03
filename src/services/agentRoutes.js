@@ -610,14 +610,17 @@ router.post('/chat', authMiddleware, async (req, res) => {
         voiceMissingNote = ' The customer mentioned a voice recording earlier but it is NOT attached to this montage (the server no longer has it): tell them, in one short line, to attach their voiceover with the "Upload videos (+ voiceover) for montage" button, and do not start a montage that ignores it.';
       }
     }
-    let freeNote = '';
-    if (userPlan === 'free') {
-      const avail = await docTrialAvailable(req.user.userId, 'montage').catch(() => false);
-      freeNote = avail
-        ? ` FREE MONTAGE: this customer is on the free plan and has ONE free montage available — costs 0 credits, up to ${MONTAGE_TRIAL_MAX_SECONDS / 60} minutes of output (the voiceover length, or the total length of the videos when there is no voiceover) and up to ${MONTAGE_TRIAL_MAX_VIDEOS} videos, with a small Erivion watermark in the corner. Offer it with price 0; if their material is longer or has more videos, tell them they need to top up credits instead (or trim).`
-        : ' The customer is on the free plan and already used their one free montage — to make another one they must top up credits first (do not start a montage for them).';
-    }
     const montageNote = await montageNoteFor().catch((e) => { console.warn('[Agent] montage note failed:', e.message); return null; });
+    let freeNote = '';
+    if (montageNote) {
+      const planNow = (await getUserById(req.user.userId).catch(() => null))?.plan || 'free'; // (userPlan لسه ما اتعرّفش في المكان ده من الـroute)
+      if (planNow === 'free') {
+        const avail = await docTrialAvailable(req.user.userId, 'montage').catch(() => false);
+        freeNote = avail
+          ? ` FREE MONTAGE: this customer is on the free plan and has ONE free montage available — costs 0 credits, up to ${MONTAGE_TRIAL_MAX_SECONDS / 60} minutes of output (the voiceover length, or the total length of the videos when there is no voiceover) and up to ${MONTAGE_TRIAL_MAX_VIDEOS} videos, with a small Erivion watermark in the corner. Offer it with price 0; if their material is longer or has more videos, tell them they need to top up credits instead (or trim).`
+          : ' The customer is on the free plan and already used their one free montage — to make another one they must top up credits first (do not start a montage for them).';
+      }
+    }
     if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote + voiceMissingNote + freeNote;
 
     let uploadedPhotoUrls = [];
