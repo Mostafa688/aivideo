@@ -187,9 +187,8 @@ export async function montageVideos({ files, workDir, transitions = 'auto', narr
   if (ovs.length) {
     onProgress({ stage: 'graphics', done: 0, total: 1 });
     try {
-      const NO_DIM = new Set(['lower_third', 'news_bar', 'side_note', 'corner_frame', 'wipe_bars']);
-      const dimWindows = ovs.filter(o => !NO_DIM.has(o.template)).map(o => [o.at, o.at + o.dur]);
-      videoFile = await buildBeatClip({ beat: { dur: duration, visual: { kind: 'clip', file: joined.file }, overlays: ovs, dim: dimWindows.length > 0, dimWindows }, w: W, h: H, theme: overlayTheme, bgPath: null, lang, rtl: isRtlLang(lang), workDir, index: 9000 });
+      // من غير تعتيم على الفيديو: النصوص ليها ظل/حدود تكفي للقراءة والصورة بتفضل بألوانها
+      videoFile = await buildBeatClip({ beat: { dur: duration, visual: { kind: 'clip', file: joined.file }, overlays: ovs, dim: false, textOutline: true }, w: W, h: H, theme: overlayTheme, bgPath: null, lang, rtl: isRtlLang(lang), workDir, index: 9000 });
     } catch (e) { console.warn('[Montage] graphics layer failed — continuing without it:', e.message); videoFile = joined.file; }
   }
 

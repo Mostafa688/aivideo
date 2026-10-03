@@ -172,7 +172,7 @@ async function renderSub({ src, dest, start, len, W, H, srcW, srcH, z0 = 1, z1 =
     vf += `,scale=w='ceil(${W}*${zE}/2)*2':h='ceil(${H}*${zE}/2)*2':eval=frame,crop=${W}:${H}`;
   }
   if (flashes?.length) vf += `,eq=brightness='0.22*(${flashes.map(T => `max(0,1-abs(t-${T.toFixed(3)})/0.08)`).join('+')})':eval=frame`;
-  if (grade) vf += ',eq=contrast=1.06:saturation=1.14,vignette=angle=PI/4.2'; // لون موحّد يربط اللقطات المختلفة ببعض
+  if (grade) vf += ',eq=contrast=1.05:saturation=1.1'; // لون موحّد خفيف يربط اللقطات ببعض (من غير تغميق/فينييت على الأطراف)
   if (speed !== 1) vf += `,setpts=PTS/${speed}`;
   vf += ',fps=30,format=yuv420p';
   const outLen = len / speed;
@@ -608,7 +608,7 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
         const phrase = PHRASE_TEMPLATES.has(s.overlay.template) ? phraseSpan(inWindow(narr.words, shotStart, shotStart + s.dur), s.overlay.data.text) : null;
         if (phrase) { at = Math.max(0.1, Math.min(outLen - 1.4, phrase.start - shotStart - 0.12)); ovDur = Math.min(outLen - at - 0.1, Math.max(1.8, phrase.end - phrase.start + 1.1), 4.4); }
         if (ovDur >= 0.9) {
-          const v = await buildBeatClip({ beat: { dur: outLen, visual: { kind: 'clip', file: raw }, overlays: [{ template: s.overlay.template, data: s.overlay.data, at, dur: ovDur }] }, w: W, h: H, theme, bgPath: null, lang: lang0, rtl: isRtlLang(lang0), workDir, index: i });
+          const v = await buildBeatClip({ beat: { dur: outLen, visual: { kind: 'clip', file: raw }, overlays: [{ template: s.overlay.template, data: s.overlay.data, at, dur: ovDur }], dim: false, textOutline: true }, w: W, h: H, theme, bgPath: null, lang: lang0, rtl: isRtlLang(lang0), workDir, index: i });
           const withAudio = path.join(workDir, `shotov_${i}.mp4`);
           await ffmpeg(['-i', v, '-i', raw, '-map', '0:v', '-map', '1:a', '-c', 'copy', '-shortest', withAudio]);
           rmQuiet(v); rmQuiet(raw); finalFile = withAudio;
