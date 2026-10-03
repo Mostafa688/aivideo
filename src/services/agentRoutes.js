@@ -7,7 +7,8 @@ import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
-import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob } from './documentary/documentaryService.js';
+import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
+import { trialAvailable as docTrialAvailable } from './documentary/store.js';
 import { registerAsset, registerVoiceFile, buildMontageNote, listAssets, resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, withAnalysis as montageWithAnalysis, MAX_ASSETS_PER_USER } from './montage/assets.js';
 import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, startResumeChannelRun } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
@@ -489,7 +490,9 @@ router.post('/montage-upload', authMiddleware, (req, res, next) => montageUpload
   try {
     if (!file) return res.status(400).json({ error: 'video_required', message: 'Please choose a video.' });
     const user = await getUserById(req.user.userId);
-    if (!user || (user.plan || 'free') === 'free') { fs.rmSync(path.dirname(file), { recursive: true, force: true }); return res.status(403).json({ error: 'no_access', message: 'Top up credits to use video montage.', show_upgrade: true }); }
+    // الخطة المجانية: الرفع متاح بس لو المونتاج المجاني (مرة واحدة) لسه ما اتستخدمش — غير كده لازم رصيد
+    const freeOk = user && (user.plan || 'free') === 'free' ? await docTrialAvailable(req.user.userId, 'montage').catch(() => false) : true;
+    if (!user || !freeOk) { fs.rmSync(path.dirname(file), { recursive: true, force: true }); return res.status(403).json({ error: 'no_access', message: 'Top up credits to use video montage (your free montage was already used).', show_upgrade: true }); }
     const meta = await registerAsset(req.user.userId, file, req.file.originalname, { seq: req.body?.seq });
     res.json(publicAsset(meta));
   } catch (e) {
@@ -607,8 +610,15 @@ router.post('/chat', authMiddleware, async (req, res) => {
         voiceMissingNote = ' The customer mentioned a voice recording earlier but it is NOT attached to this montage (the server no longer has it): tell them, in one short line, to attach their voiceover with the "Upload videos (+ voiceover) for montage" button, and do not start a montage that ignores it.';
       }
     }
+    let freeNote = '';
+    if (userPlan === 'free') {
+      const avail = await docTrialAvailable(req.user.userId, 'montage').catch(() => false);
+      freeNote = avail
+        ? ` FREE MONTAGE: this customer is on the free plan and has ONE free montage available — costs 0 credits, up to ${MONTAGE_TRIAL_MAX_SECONDS / 60} minutes of output (the voiceover length, or the total length of the videos when there is no voiceover) and up to ${MONTAGE_TRIAL_MAX_VIDEOS} videos, with a small Erivion watermark in the corner. Offer it with price 0; if their material is longer or has more videos, tell them they need to top up credits instead (or trim).`
+        : ' The customer is on the free plan and already used their one free montage — to make another one they must top up credits first (do not start a montage for them).';
+    }
     const montageNote = await montageNoteFor().catch((e) => { console.warn('[Agent] montage note failed:', e.message); return null; });
-    if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote + voiceMissingNote;
+    if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote + voiceMissingNote + freeNote;
 
     let uploadedPhotoUrls = [];
     // ✅ NEW: خريطة رابط → معلومة النسبة الحقيقية (من sharp) — بتتستخدم تحت كحاجز إضافي
@@ -1407,7 +1417,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           });
           if (r.ok) docJob = { jobId: r.job.id, kind: 'autoedit', title: r.job.title };
           if (r.ok) reply += (reply ? '\n\n' : '') + `تمام، بدأت المونتاج (${r.cost} كريديت لفيديو حوالي ${Math.max(1, Math.round(r.minutes))} دقيقة). هيظهر في "استوديو الأفلام الوثائقية" ← "مونتاج فيديو بتاعي" ← "أفلامي" أول ما يخلص.`;
-          else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: المونتاج محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
+          else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + (userPlan === 'free' ? `المونتاج المجاني متاح مرة واحدة بس، لحد ${MONTAGE_TRIAL_MAX_SECONDS / 60} دقيقة و${MONTAGE_TRIAL_MAX_VIDEOS} فيديوهات — وده مش بيتحقق هنا (أو استخدمته قبل كده). اشحن كريديت وقولّي "ابدأ" والمونتاج هيكلف ${r.cost} كريديت.` : `الرصيد مش كفاية: المونتاج محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`);
           else reply += (reply ? '\n\n' : '') + (r.message || 'معلش، مقدرتش أبدأ المونتاج ده.');
         } catch (e) {
           console.warn('[Agent] AUTOEDIT marker failed:', e.message);
@@ -1418,23 +1428,21 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     // ✅ NEW: مونتاج ذكي لعدة فيديوهات مرفوعة (فهم + خطة + ffmpeg) — نفس مسار الاستوديو (حجز كريديت ذري + رد كامل عند الفشل)
     if (montagePayload) {
-      if (userPlan === 'free') {
-        reply += (reply ? '\n\n' : '') + 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ المونتاج قبل ما تشترك.';
-      } else {
+      {
         try {
           const ids = (Array.isArray(montagePayload.assetIds) ? montagePayload.assetIds : []).map(String);
           if (montagePayload.voiceAssetId && !ids.includes(String(montagePayload.voiceAssetId))) ids.push(String(montagePayload.voiceAssetId));
           // لو العميل رافع فويس-أوفر، هو دايمًا جزء من المونتاج (حتى لو الايجنت نسي يكتب voiceAssetId) — وإلا الفيديو يطلع بطول الفيديوهات ويتجاهل الصوت
           const storedVoice = listAssets(userId).find(a => a.kind === 'audio');
           if (storedVoice && !ids.includes(storedVoice.id)) ids.push(storedVoice.id);
-          if (storedVoice?.srcUrl) consumedVoices.add(`${userId}:${storedVoice.srcUrl}`); // نفس التسجيل ما يتحطش تاني أوتوماتيك في مونتاج جديد
           console.log(`[Agent] SMART_MONTAGE start: ${ids.length} id(s), voiceover=${!!storedVoice}`);
           const r = await startMontageJob(userId, {
             assetIds: ids, instructions: typeof montagePayload.instructions === 'string' ? montagePayload.instructions : '',
             options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false },
           });
-          if (r.ok) { docJob = { jobId: r.job.id, kind: 'montage', title: r.job.title }; reply += (reply ? '\n\n' : '') + `تمام، بدأت المونتاج (${r.cost} كريديت). هتلاقي الفيديو هنا في المحادثة أول ما يخلص، وفي "استوديو الأفلام الوثائقية" ← "أفلامي".`; }
-          else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: المونتاج محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
+          if (r.ok && storedVoice?.srcUrl) consumedVoices.add(`${userId}:${storedVoice.srcUrl}`); // نفس التسجيل ما يتحطش تاني أوتوماتيك في مونتاج جديد
+          if (r.ok) { docJob = { jobId: r.job.id, kind: 'montage', title: r.job.title }; reply += (reply ? '\n\n' : '') + (r.trial ? 'تمام، بدأت المونتاج المجاني (مرة واحدة، وعليه علامة Erivion المائية).' : `تمام، بدأت المونتاج (${r.cost} كريديت).`) + ` هتلاقي الفيديو هنا في المحادثة أول ما يخلص، وفي "استوديو الأفلام الوثائقية" ← "أفلامي".`; }
+          else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + (userPlan === 'free' ? `المونتاج المجاني متاح مرة واحدة بس، لحد ${MONTAGE_TRIAL_MAX_SECONDS / 60} دقيقة و${MONTAGE_TRIAL_MAX_VIDEOS} فيديوهات — وده مش بيتحقق هنا (أو استخدمته قبل كده). اشحن كريديت وقولّي "ابدأ" والمونتاج هيكلف ${r.cost} كريديت.` : `الرصيد مش كفاية: المونتاج محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`);
           else if (r.error === 'assets_expired') reply += (reply ? '\n\n' : '') + 'الفيديوهات اللي رفعتها خلصت مدة حفظها أو مش لاقيها — ارفعهم تاني وقولّي.';
           else reply += (reply ? '\n\n' : '') + (r.message || 'معلش، مقدرتش أبدأ المونتاج ده.');
         } catch (e) {
