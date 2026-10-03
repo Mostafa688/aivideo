@@ -1,3 +1,4 @@
+import DocSetupCard from '../components/DocSetupCard.jsx';
 import React, { useState, useRef, useEffect } from 'react';
 import RatingPrompt from './RatingPrompt.jsx';
 import { EgPaymentModal, IntlPaymentModal, EG_PACKAGES, ALL_GUMROAD_PACKAGES } from './PricingPage.jsx';
@@ -1269,6 +1270,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (m.type === 'whiteboard') {
       return `[${lang === 'ar' ? 'تم إنشاء فيديو whiteboard' : 'A whiteboard video was generated'}]`;
     }
+    if (m.type === 'docSetup') return `[${lang === 'ar' ? (m.started ? 'بطاقة إعدادات الفيلم الوثائقي ظهرت للعميل في الشات وهو ملأها وبدأ الفيلم' : 'بطاقة إعدادات الفيلم الوثائقي ظاهرة للعميل في الشات (بيختار منها المقاس والصوت والمدة والستايل والكابشن والموسيقى بنفسه)') : (m.started ? 'The documentary settings card was shown in the chat and the customer filled it in and started the film' : 'The documentary settings card is shown in the chat (the customer picks ratio, voice, length, style, captions and music there)')}]`;
     if (m.type === 'docJob') return `[${lang === 'ar' ? 'مهمة فيديو (مونتاج/وثائقي) اتبدأت وبتظهر في المحادثة' : 'A video job (montage/documentary) was started and is shown in the chat'}]`;
     if (m.type === 'channelRun') {
       if (m.job?.status === 'done') {
@@ -1531,6 +1533,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // ✅ NEW (طلب العميل: "اقدر اقول للايجنت اعمل فيديو وانشره على القناة دلوقتي"): بنفس
       // فكرة كارت الـwhiteboard فوق بالظبط — بيعمل poll لحالة تشغيلة القناة الحقيقية اللي
       // بدأت في الخلفية (channelSchedulerService.js's triggerChannelRunNow) لحد ما تخلص
+      if (data.docSetup) setMessages(m => [...m, { role: 'assistant', type: 'docSetup', setup: data.docSetup, started: false }]);
       if (data.docJob?.jobId) {
         setMessages(m => [...m, { role: 'assistant', type: 'docJob', job: data.docJob }]);
         setMontageAssets([]); // الفيديوهات اتستهلكت في المهمة
@@ -2679,6 +2682,14 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           ) : (
             messages.map((m, i) => {
               if (MEDIA_TYPES.includes(m.type)) return null;
+              if (m.type === 'docSetup') {
+                return (
+                  <div key={i} className="agent-bubble" style={{ alignSelf: 'stretch' }}>
+                    <DocSetupCard setup={m.setup} lang={lang} started={!!m.started}
+                      onStarted={(job) => setMessages(ms => [...ms.map((x, idx) => (idx === i ? { ...x, started: true } : x)), { role: 'assistant', type: 'docJob', job }])} />
+                  </div>
+                );
+              }
               if (m.type === 'video') {
                 return (
                   <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start' }}>
