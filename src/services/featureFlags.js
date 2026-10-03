@@ -3,3 +3,8 @@
 // والوصف والكلمات المفتاحية والصورة المصغرة، والعميل هو اللي يرفعهم. لتشغيله تاني بعد الـAudit:
 // YOUTUBE_PUBLISH_ENABLED=true في بيئة التشغيل
 export const YOUTUBE_PUBLISH_ENABLED = process.env.YOUTUBE_PUBLISH_ENABLED === 'true';
+
+// ✅ موسيقى الخلفية للأفلام الوثائقية/المونتاج مقفولة افتراضيًا: المكتبة المحلية (assets/music) مقطوعات من مكتبة يوتيوب
+// وبعضها ليه شروط نسب/ترخيص ما اتأكدناش منها. الفيديو بيطلع بالمشاهد + صوت المعلّق + المؤثرات المتولّدة محليًا (مالهاش حقوق).
+// لتشغيلها تاني بعد التأكد من تراخيص المقطوعات: DOC_MUSIC_ENABLED=true
+export const DOC_MUSIC_ENABLED = process.env.DOC_MUSIC_ENABLED === 'true';
