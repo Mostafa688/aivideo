@@ -5,6 +5,7 @@ import { Film, Wand2, FileText, Mic, Play, Loader2, CheckCircle2, Upload } from 
 
 const tokenHeader = () => ({ Authorization: 'Bearer ' + localStorage.getItem('token') });
 const MINUTES = [1, 2, 3, 5, 8, 10, 15, 20, 30];
+const VERTICAL_MAX = 3; // الفيلم الطولي (9:16) لحد 3 دقائق
 
 const TXT = {
   ar: {
@@ -16,6 +17,7 @@ const TXT = {
     price: 'السعر', free: 'مجاني (مرة واحدة + علامة مائية)', credits: 'كريديت', balance: 'رصيدك', start: 'ابدأ الفيلم', starting: 'بيبدأ…',
     started: 'الفيلم بدأ — هيظهر هنا أول ما يخلص', needTopic: 'اكتب الموضوع', needScript: 'الصق السكريبت الأول', needVoice: 'ارفع التسجيل الصوتي', notEnough: 'الرصيد مش كفاية',
     audioLen: 'طول التسجيل',
+    vNote: 'الفيلم الطولي (9:16) لحد 3 دقائق، وبكابشن كبير في النص كلمة كلمة.', vTooLong: 'الفيلم الطولي أقصى مدة له 3 دقائق — قصّر الفيلم أو اختار 16:9.',
   },
   en: {
     title: 'Documentary settings', source: 'Script', mTopic: 'AI writes the script', mScript: 'My own script', mVoice: 'My voiceover',
@@ -26,6 +28,7 @@ const TXT = {
     price: 'Price', free: 'Free (once, with watermark)', credits: 'credits', balance: 'Your balance', start: 'Start the film', starting: 'Starting…',
     started: 'Film started — it will appear here when it is ready', needTopic: 'Enter the topic', needScript: 'Paste the script first', needVoice: 'Upload the voice recording', notEnough: 'Not enough credits',
     audioLen: 'Recording length',
+    vNote: 'Vertical (9:16) films run up to 3 minutes, with big centered word-by-word captions.', vTooLong: 'Vertical (9:16) films can be up to 3 minutes — shorten the film or choose 16:9.',
   },
 };
 
@@ -78,14 +81,14 @@ export default function DocSetupCard({ setup = {}, lang = 'ar', started = false,
   // السعر لحظيًا (debounce)
   useEffect(() => {
     if (started) return undefined;
-    const body = { language, minutes: mode === 'topic' ? minutes : undefined, script: mode === 'script' ? script : undefined, audioDurationSec: mode === 'voiceover' ? audioDur : undefined };
+    const body = { language, ratio, minutes: mode === 'topic' ? minutes : undefined, script: mode === 'script' ? script : undefined, audioDurationSec: mode === 'voiceover' ? audioDur : undefined };
     if ((mode === 'script' && script.trim().length < 20) || (mode === 'voiceover' && !audioDur)) { setEst(null); return undefined; }
     const h = setTimeout(() => {
       fetch('/api/documentary/estimate', { method: 'POST', headers: { ...tokenHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         .then(r => r.json()).then(setEst).catch(() => {});
     }, 400);
     return () => clearTimeout(h);
-  }, [mode, minutes, script, audioDur, language, started]);
+  }, [mode, minutes, script, audioDur, language, ratio, started]);
 
   const pickAudio = (file) => {
     setErr('');
@@ -96,8 +99,10 @@ export default function DocSetupCard({ setup = {}, lang = 'ar', started = false,
     a.onerror = () => setAudioDur(0);
   };
 
+  const vTooLong = ratio === '9:16' && (mode === 'topic' ? minutes > VERTICAL_MAX : !!est?.verticalTooLong);
   const start = async () => {
     setErr('');
+    if (vTooLong) return setErr(t.vTooLong);
     if (mode === 'topic' && topic.trim().length < 3) return setErr(t.needTopic);
     if (mode === 'script' && script.trim().length < 20) return setErr(t.needScript);
     if (mode === 'voiceover' && !audio) return setErr(t.needVoice);
@@ -152,7 +157,7 @@ export default function DocSetupCard({ setup = {}, lang = 'ar', started = false,
         <>
           <Row><span style={label}>{t.topic}</span><input value={topic} onChange={e => setTopic(e.target.value)} placeholder={t.topicPh} maxLength={300} style={inputStyle} /></Row>
           <Row><span style={label}>{t.minutes}</span>
-            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{MINUTES.map(m => <Chip key={m} active={minutes === m} onClick={() => setMinutes(m)}>{m} {t.min}</Chip>)}</div>
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{MINUTES.map(m => <Chip key={m} active={minutes === m} disabled={ratio === '9:16' && m > VERTICAL_MAX} onClick={() => setMinutes(m)}>{m} {t.min}</Chip>)}</div>
           </Row>
         </>
       )}
@@ -179,7 +184,8 @@ export default function DocSetupCard({ setup = {}, lang = 'ar', started = false,
 
       <Row>
         <span style={label}>{t.ratio}</span>
-        <div style={{ display: 'flex', gap: 6 }}><Chip active={ratio === '16:9'} onClick={() => setRatio('16:9')}>{t.wide}</Chip><Chip active={ratio === '9:16'} onClick={() => setRatio('9:16')}>{t.tall}</Chip></div>
+        <div style={{ display: 'flex', gap: 6 }}><Chip active={ratio === '16:9'} onClick={() => setRatio('16:9')}>{t.wide}</Chip><Chip active={ratio === '9:16'} onClick={() => { setRatio('9:16'); setMinutes(m => Math.min(m, VERTICAL_MAX)); }}>{t.tall}</Chip></div>
+      {ratio === '9:16' && <div style={{ fontSize: 11, marginTop: 6, color: vTooLong ? '#f59e0b' : 'var(--text3)', lineHeight: 1.6 }}>{vTooLong ? t.vTooLong : t.vNote}</div>}
       </Row>
 
       {mode !== 'voiceover' && voices.length > 0 && (

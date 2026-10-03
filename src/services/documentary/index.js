@@ -26,6 +26,7 @@ const escFilterPath = (p) => p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(
 /** ASS كابشن لقطة واحدة (توقيت نسبي لبداية اللقطة) — بيرجّع مسار الملف أو null لو مفيش كلمات في اللقطة */
 export function beatCaptionsAss({ words, start, dur, style, w, h, lang, theme, widths = null, file }) {
   if (!words?.length) return null;
+  if (h > w && style && style !== 'none') style = 'word'; // الفيديو الطولي (9:16): كابشن كلمة كلمة في النص
   const t1 = start + dur;
   const ws = words.filter(x => x.start >= start - 0.001 && x.start < t1).map(x => ({ w: x.w, start: Math.max(0, x.start - start), end: Math.min(dur, x.end - start) })).filter(x => x.end > x.start);
   if (!ws.length) return null;

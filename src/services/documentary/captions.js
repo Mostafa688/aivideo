@@ -88,8 +88,9 @@ export function groupWords(words, { maxWords = 6, maxChars = 32, maxDur = 3.2, g
 
 export function buildCaptionsAss({ words, style = 'karaoke', w = 1920, h = 1080, lang = 'en', theme = 'blue', widths = null, position = 'bottom', fsScale = 1, title = null }) {
   const th = getTheme(theme);
-  const { rtl, portrait, font, fs } = capLayout(lang, w, h, fsScale);
-  const center = position === 'center'; // فيديو قصير: كابشن في النص، كلمات قليلة، دخول سريع (hook)
+  const wordMode = style === 'word'; // الفيديو الطولي: كلمة كلمة، في النص، كبيرة جدًا، بدخول بوب
+  const { rtl, portrait, font, fs } = capLayout(lang, w, h, wordMode ? fsScale * 2.3 : fsScale);
+  const center = wordMode || position === 'center'; // فيديو قصير: كابشن في النص، كلمات قليلة، دخول سريع (hook)
   const marginV = center ? 0 : (portrait ? Math.round(h * 0.2) : Math.round(h * (fs > 66 ? 0.085 : 0.075)));
   const maxChars = center ? (portrait ? 14 : 20) : (portrait ? 20 : 34);
   // ألوان الكابشن ثابتة عالية التباين (مستقلة عن ستايل الخلفية) — أبيض + أصفر للكلمة الحالية
@@ -112,10 +113,27 @@ ${styles}${title?.text ? `\nStyle: Title,${font},${Math.round(fs * 0.95)},&H00FF
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
+  const events = [];
+  if (wordMode) {
+    // كلمة واحدة في كل لحظة: بتدخل بنبضة تكبير (pop) وبتتلوّن حسب طولها (الطويلة أصفر)، وبتتصغّر لو الكلمة طويلة عشان تفضل جوه الإطار
+    const lim = w * 0.88;
+    words.forEach((x, k) => {
+      const text = cleanWord(x.w).replace(/[.,;:!?؟،؛…"“”()\[\]]+/g, '').trim();
+      if (!text) return;
+      const shown = rtl ? text : text.toUpperCase();
+      const st = x.start, nxt = k < words.length - 1 ? words[k + 1].start : x.end + 0.4;
+      const en = Math.max(st + 0.2, Math.min(nxt, x.end + 0.3));
+      const est = shown.length * fs * (rtl ? 0.5 : 0.62); // تقدير عرض الكلمة بالبكسل
+      const k2 = est > lim ? Math.max(0.55, lim / est) : 1;
+      const color = shown.length >= 6 ? accent : white;
+      const size = Math.round(fs * k2);
+      events.push(`Dialogue: 0,${toAss(st)},${toAss(en)},Cap,,0,0,0,,{\\an5\\pos(${(w / 2).toFixed(0)},${(h / 2).toFixed(0)})\\fs${size}\\bord${Math.round(size * 0.075)}\\c${color}\\fad(40,50)\\fscx55\\fscy55\\t(0,120,\\fscx114\\fscy114)\\t(120,210,\\fscx100\\fscy100)}${shown}`);
+    });
+    return header + events.join('\n') + '\n';
+  }
   const groups = groupWords(words, { maxChars, maxWords: center ? 3 : 6, maxDur: center ? 2.2 : 3.2 });
   const cw = (x) => (center && !rtl ? cleanWord(x).toUpperCase() : cleanWord(x));
   const popIn = center ? '{\\fad(60,40)\\fscx86\\fscy86\\t(0,110,\\fscx100\\fscy100)}' : '';
-  const events = [];
   for (const g of groups) {
     const gStart = g[0].start, gEnd = Math.max(g[g.length - 1].end, gStart + 0.3);
     if (rtl && style !== 'box') {
