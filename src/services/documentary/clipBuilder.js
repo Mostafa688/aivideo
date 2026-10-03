@@ -32,7 +32,7 @@ function panExprX(motion, amount, dur) {
  * @param beat { dur, visual:{kind:'video'|'image'|'background', file, grade, motion, startOffset, punches}, overlays:[{template,data,at,dur}], transitionIn }
  * @returns مسار mp4 للمقطع
  */
-export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rtl = false, workDir, index = 0 }) {
+export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rtl = false, workDir, index = 0, captionsAss = null }) {
   const dur = Math.max(0.4, Number(beat.dur) || 3);
   const v = beat.visual || { kind: 'background' };
   const out = path.join(workDir, `clip_${String(index).padStart(4, '0')}.mp4`);
@@ -108,7 +108,9 @@ export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rt
   let post = '';
   if (tin === 'dip') post = 'fade=t=in:st=0:d=0.22';
   else if (tin === 'flash') post = 'fade=t=in:st=0:d=0.14:color=white';
-  filters.push(`${tail}${post ? post + ',' : ''}format=yuv420p[vout]`);
+  // الكابشن بيتحرق على مستوى المقطع نفسه (بعد الـfade) — فالدمج النهائي نسخ مباشر من غير إعادة تشفير، وتبديل مشهد واحد بيبقى سريع
+  const capFilter = captionsAss ? `ass='${String(captionsAss).replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'").replace(/,/g, '\\,')}',` : '';
+  filters.push(`${tail}${post ? post + ',' : ''}${capFilter}format=yuv420p[vout]`);
 
   await ffmpeg([...inputs, '-filter_complex', filters.join(';'), '-map', '[vout]', '-t', dur.toFixed(3), '-r', String(FPS), ...ENCODE_ARGS, out]);
   return out;
