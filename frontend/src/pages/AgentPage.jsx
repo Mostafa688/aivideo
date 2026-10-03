@@ -1434,6 +1434,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         // عشان الايجنت مايطلبش رفعهم تاني بعد كام رسالة
         photoAlreadyUploaded: !!lastUploadedPhotos.length,
         voiceAlreadyUploaded: !!lastUploadedVoiceUrl,
+        lastVoiceUrl: lastUploadedVoiceUrl || undefined,
         videoAlreadyUploaded: !!uploadedVideoFile,
         videoDurationSec: uploadedVideoDurationSec || undefined,
         hasStructuredScript: !!lastParsedStructuredScenes,

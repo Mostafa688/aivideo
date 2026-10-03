@@ -75,7 +75,7 @@ export function sweepOldAssets() {
 }
 
 /** يحفظ ملف اتحمّل (multer disk) كأصل (فيديو أو صوت فويس-أوفر) + يفحصه. بيرمي Error بكود لو الملف مش صالح */
-export async function registerAsset(userId, tmpFile, originalName, { seq = null } = {}) {
+export async function registerAsset(userId, tmpFile, originalName, { seq = null, srcUrl = null } = {}) {
   const fail = (code, message) => { rmQuiet(path.dirname(tmpFile)); const e = new Error(message); e.code = code; throw e; };
   const size = await displaySize(tmpFile).catch(() => null);
   const duration = await probeDuration(tmpFile).catch(() => 0);
@@ -97,7 +97,7 @@ export async function registerAsset(userId, tmpFile, originalName, { seq = null 
   rmQuiet(path.dirname(tmpFile));
   const meta = {
     id, userId, kind, file, name: String(originalName || kind).slice(0, 80), duration: Number(duration.toFixed(2)), width: size?.w || 0, height: size?.h || 0,
-    hasAudio: kind === 'audio' ? true : await hasAudio(file).catch(() => false), createdAt: Date.now(), seq: Number.isFinite(Number(seq)) ? Number(seq) : null, analysis: null,
+    hasAudio: kind === 'audio' ? true : await hasAudio(file).catch(() => false), createdAt: Date.now(), seq: Number.isFinite(Number(seq)) ? Number(seq) : null, srcUrl, analysis: null,
   };
   writeMeta(userId, id, meta);
   analyzeInBackground(meta); // مش بنستناه — الرد بيرجع فورًا
@@ -105,12 +105,12 @@ export async function registerAsset(userId, tmpFile, originalName, { seq = null 
 }
 
 /** ملف صوت موجود على السيرفر (فويس الشات) يتسجّل كـvoiceover للمونتاج */
-export async function registerVoiceFile(userId, srcFile, name = 'voiceover.mp3') {
+export async function registerVoiceFile(userId, srcFile, name = 'voiceover.mp3', srcUrl = null) {
   const tmpDir = path.join(path.dirname(ROOT), `mup_voice_${crypto.randomBytes(4).toString('hex')}`);
   fs.mkdirSync(tmpDir, { recursive: true });
   const tmp = path.join(tmpDir, 'in' + (path.extname(srcFile) || '.mp3'));
   fs.copyFileSync(srcFile, tmp);
-  return registerAsset(userId, tmp, name);
+  return registerAsset(userId, tmp, name, { srcUrl });
 }
 
 // ── التحليل: وصف بصري + هل فيه كلام ──────────────────────────────────────────────────────────

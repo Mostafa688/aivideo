@@ -467,6 +467,8 @@ function parseAgentMarkers(rawReply) {
 
 // بسيط جدًا — حماية إضافية ضد إساءة الاستخدام (spam) بدون تعقيد
 const lastRequestAt = new Map(); // userId -> timestamp
+const voiceOwners = new Map(); // userId -> Set(روابط تسجيلات الصوت اللي السيرفر ده سجّلها للعميل ده)
+const consumedVoices = new Set(); // `${userId}:${url}` — تسجيلات اتستخدمت في مونتاج خلاص
 const MIN_INTERVAL_MS = 1500;
 
 // ── فيديوهات العميل للمونتاج الذكي (رفع متعدد من شات الـagent): بتتخزّن مؤقتًا ويتحللوا (وصف بصري + كلام) ──
@@ -517,7 +519,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel, mediaLedger, montageAssetIds } = req.body;
+    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel, mediaLedger, montageAssetIds, lastVoiceUrl } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
     // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual
@@ -587,13 +589,26 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
 
-    // لو العميل عنده فيديوهات مونتاج متخزّنة وبعت تسجيل صوت في الرسالة: التسجيل ده هو الفويس-أوفر بتاع المونتاج (بيتسجّل كأصل صوت)
-    if (uploadedVoiceUrl && (listAssets(req.user.userId).some(a => a.kind !== 'audio') || /montage|مونتاج|فيديوهات|videos|دمج|اجمع|اجمّع|merge/i.test(`${message || ''} ${transcript || ''}`))) {
-      try { await registerVoiceFile(req.user.userId, path.join(process.cwd(), String(uploadedVoiceUrl).replace(/^\//, '')), 'voiceover.mp3'); }
-      catch (e) { console.warn('[Agent] could not register the voice as a montage voiceover:', e.message); }
+    // الفويس-أوفر للمونتاج: تسجيل الصوت اللي العميل بعته (في الرسالة دي، أو قبل كده في نفس المحادثة) بيتسجّل كأصل صوت لما يبقى عنده
+    // فيديوهات مونتاج متخزّنة. الرابط القديم بيتقبل بس لو هو فعلًا اللي السيرفر ده سجّله للعميل ده (مفيش استخدام لصوت حد تاني)
+    let voiceMissingNote = '';
+    {
+      const uid = req.user.userId;
+      if (uploadedVoiceUrl) { if (!voiceOwners.has(uid)) voiceOwners.set(uid, new Set()); voiceOwners.get(uid).add(uploadedVoiceUrl); }
+      const stored = listAssets(uid);
+      const hasVideos = stored.some(a => a.kind !== 'audio'), hasVoice = stored.some(a => a.kind === 'audio');
+      const fresh = uploadedVoiceUrl && (hasVideos || /montage|مونتاج|فيديوهات|videos|دمج|اجمع|اجمّع|merge/i.test(`${message || ''} ${transcript || ''}`));
+      const old = !uploadedVoiceUrl && hasVideos && lastVoiceUrl && voiceOwners.get(uid)?.has(lastVoiceUrl) ? lastVoiceUrl : null;
+      const cand = fresh ? uploadedVoiceUrl : old;
+      if (cand && !hasVoice && !consumedVoices.has(`${uid}:${cand}`)) {
+        try { await registerVoiceFile(uid, path.join(process.cwd(), String(cand).replace(/^\//, '')), 'voiceover.mp3', cand); }
+        catch (e) { console.warn('[Agent] could not register the voice as a montage voiceover:', e.message); }
+      } else if (hasVideos && !hasVoice && (voiceAlreadyUploaded || uploadedVoiceUrl) && !consumedVoices.has(`${uid}:${lastVoiceUrl || uploadedVoiceUrl}`)) {
+        voiceMissingNote = ' The customer mentioned a voice recording earlier but it is NOT attached to this montage (the server no longer has it): tell them, in one short line, to attach their voiceover with the "Upload videos (+ voiceover) for montage" button, and do not start a montage that ignores it.';
+      }
     }
     const montageNote = await montageNoteFor().catch((e) => { console.warn('[Agent] montage note failed:', e.message); return null; });
-    if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote;
+    if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote + voiceMissingNote;
 
     let uploadedPhotoUrls = [];
     // ✅ NEW: خريطة رابط → معلومة النسبة الحقيقية (من sharp) — بتتستخدم تحت كحاجز إضافي
@@ -1412,6 +1427,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
           // لو العميل رافع فويس-أوفر، هو دايمًا جزء من المونتاج (حتى لو الايجنت نسي يكتب voiceAssetId) — وإلا الفيديو يطلع بطول الفيديوهات ويتجاهل الصوت
           const storedVoice = listAssets(userId).find(a => a.kind === 'audio');
           if (storedVoice && !ids.includes(storedVoice.id)) ids.push(storedVoice.id);
+          if (storedVoice?.srcUrl) consumedVoices.add(`${userId}:${storedVoice.srcUrl}`); // نفس التسجيل ما يتحطش تاني أوتوماتيك في مونتاج جديد
+          console.log(`[Agent] SMART_MONTAGE start: ${ids.length} id(s), voiceover=${!!storedVoice}`);
           const r = await startMontageJob(userId, {
             assetIds: ids, instructions: typeof montagePayload.instructions === 'string' ? montagePayload.instructions : '',
             options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false },
