@@ -26,6 +26,8 @@ const clipsStub = assets.map(a => ({ ...a, sentences: null }));
 const bad = sanitizePlan({ segments: [{ clip: 'V9', start: 0, end: 5 }, { clip: 'V2', start: -3, end: 500, audio: 'keep', speed: 9 }, { clip: 'V1', start: 2, end: 2.2 }, { clip: 'V3', start: 1, end: 6, audio: 'mute', speed: 1.3 }] }, clipsStub);
 assert.equal(bad.segments.length, 2); assert.equal(bad.segments[0].end, 20, 'clamped to clip length'); assert.equal(bad.segments[0].keep, false, 'no audio → cannot keep'); assert.ok(bad.segments[0].speed <= 1.5);
 assert.equal(sanitizePlan({ segments: [] }, clipsStub), null);
+const nm = sanitizePlan({ segments: [{ clip: 'V3', start: 1, end: 6, audio: 'mute' }] }, clipsStub, { noMusic: true }); assert.equal(nm.segments[0].keep, true, 'without music the clip natural sound is kept');
+assert.equal(sanitizePlan({ segments: [{ clip: 'V3', start: 1, end: 6, audio: 'mute' }] }, clipsStub).segments[0].keep, false, 'with music it can be muted');
 assert.ok(fallbackPlan(clipsStub.map(c => ({ ...c, hasSpeech: !!c.analysis.hasSpeech }))).segments.length >= 3);
 assert.ok(describeForPlanner([{ ...assets[0], hasSpeech: true, sentences: [{ start: 1, end: 5, words: fake.slice(0, 6) }] }]).includes('HAS SPEECH'));
 
