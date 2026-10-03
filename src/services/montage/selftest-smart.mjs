@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { smartMontage, sanitizePlan, fallbackPlan, describeForPlanner, sanitizeVoicePlan, fallbackVoicePlan } from './smartMontage.js';
+import { smartMontage, sanitizePlan, fallbackPlan, describeForPlanner, sanitizeVoicePlan, fallbackVoicePlan, sanitizeOverlay, autoKinetic, finalizeOverlays } from './smartMontage.js';
 
 const D = fs.mkdtempSync(path.join(os.tmpdir(), 'smart-selftest-'));
 const ff = (...a) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...a]);
@@ -60,12 +60,19 @@ assert.ok(fb.shots.every((s, i) => i === 0 || s.clipIndex >= fb.shots[i - 1].cli
 const san = sanitizeVoicePlan({ shots: [{ clip: 'V1', start: 2, until: 3 }, { clip: 'V9', until: 8 }, { clip: 'V2', start: 0, until: 20 }, { clip: 'V3', start: 1, until: 30 }, { clip: 'V5', start: 0, until: 999 }] }, vclips, narr);
 assert.ok(Math.abs(san.shots.reduce((a, s) => a + s.dur, 0) - VD) < 0.05 && san.shots.every(s => s.dur <= 8.01 && s.dur >= 1.7), 'sanitised plan covers narration with sane shots');
 assert.equal(sanitizeVoicePlan({ shots: [] }, vclips, narr), null);
-const vplan = { title: 'رحلتي', style: 'fast', musicMood: 'epic', shots: vclips.map((c, i) => ({ clip: 'V' + (i + 1), start: 0, until: Math.round(((i + 1) * VD) / 5) })) };
+const win = vwords.filter(w => w.start >= 2 && w.start < 6);
+assert.ok(sanitizeOverlay({ template: 'kinetic_text', data: { text: win.slice(0, 3).map(w => w.w).join(' '), emphasis: [win[1].w] } }, win), 'grounded kinetic text accepted');
+assert.equal(sanitizeOverlay({ template: 'kinetic_text', data: { text: 'invented phrase never said' } }, win), null, 'invented text rejected');
+assert.equal(sanitizeOverlay({ template: 'counter', data: { value: 777 } }, win), null, 'invented number rejected');
+assert.equal(sanitizeOverlay({ template: 'map_reveal', data: {} }, win), null, 'template outside the allowed set rejected');
+assert.ok(autoKinetic(win)?.data.text.split(' ').length <= 6);
+const vplan = { title: 'Dynamic Fast-Cut Montage', style: 'fast', musicMood: 'epic', shots: vclips.map((c, i) => ({ clip: 'V' + (i + 1), start: 0, until: Math.round(((i + 1) * VD) / 5), ...(i === 1 ? { overlay: { template: 'kinetic_text', data: { text: vwords.slice(18, 21).map(w => w.w).join(' '), emphasis: [vwords[19].w] } } } : {}) })) };
 for (const [name, ask] of [['vo-ai', async () => vplan], ['vo-fallback', async () => { throw new Error('llm down'); }]]) {
   const r = await smartMontage({ assets: vassets, workDir: path.join(D, name), instructions: '', options: { captions: 'karaoke' }, onProgress: () => {}, deps: { ask } });
   console.log(name, 'source', r.plan.source, 'dur', r.duration.toFixed(2), 'shots', r.stats.shots, 'size', execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', r.file]).toString().trim());
   assert.ok(Math.abs(r.duration - VD) < 0.9, `voiceover mode duration ${r.duration} vs ${VD}`);
   assert.equal(r.plan.source, name === 'vo-ai' ? 'ai' : 'fallback');
+  assert.equal(r.plan.title, null, 'no planner title is burned into the video');
   // صوت المقاطع (900Hz) لازم يكون مقفول: الصوت النهائي = الفويس (180Hz) بس
   const vol = execFileSync('ffmpeg', ['-v', 'info', '-i', r.file, '-vn', '-af', 'bandpass=f=900:width_type=h:w=80,volumedetect', '-f', 'null', '-'], { stdio: ['ignore', 'pipe', 'pipe'] });
   void vol;
