@@ -8,6 +8,7 @@ import { ffmpeg, probeDuration, hasAudio, rmQuiet, run } from '../documentary/ff
 import { displaySize, transcribeAudioFile } from './index.js';
 import { transcribeWords } from '../documentary/align.js';
 import { getAutoEditCreditCost } from '../creditPricingEngine.js';
+import sharp from 'sharp';
 
 const ROOT = path.join(process.platform === 'win32' ? 'temp' : '/tmp/aivideo', 'montage_assets');
 const TTL_MS = 3 * 3600e3;
@@ -15,6 +16,9 @@ export const MAX_ASSETS_PER_USER = 20; // فيديوهات (الصوت المر�
 export const MAX_ASSET_MINUTES = 20;
 export const MAX_TOTAL_MINUTES = 20;
 export const MAX_VOICE_MINUTES = 20;
+export const MAX_STYLE_IMAGES = 4; // صور مرجعية لستايل الموشن جرافيك (مثلاً من Pinterest)
+const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
+export const isVideoAsset = (a) => (a.kind || 'video') === 'video';
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 const dirOf = (userId, id) => path.join(ROOT, String(userId), id);
@@ -32,7 +36,7 @@ const natural = (a, b) => String(a).localeCompare(String(b), undefined, { numeri
  * وغير كده ترتيب اختيار العميل (seq من الفرونت) — مش ترتيب انتهاء الرفع (الرفع متوازي فبيتلخبط).
  */
 export function orderAssets(list) {
-  const videos = list.filter(a => a.kind !== 'audio');
+  const videos = list.filter(isVideoAsset);
   const numbered = videos.filter(a => /\d/.test(a.name || '')).length;
   const byName = videos.length >= 2 && numbered >= Math.ceil(videos.length * 0.7);
   const arr = [...list];
@@ -77,6 +81,7 @@ export function sweepOldAssets() {
 /** يحفظ ملف اتحمّل (multer disk) كأصل (فيديو أو صوت فويس-أوفر) + يفحصه. بيرمي Error بكود لو الملف مش صالح */
 export async function registerAsset(userId, tmpFile, originalName, { seq = null, srcUrl = null } = {}) {
   const fail = (code, message) => { rmQuiet(path.dirname(tmpFile)); const e = new Error(message); e.code = code; throw e; };
+  if (IMAGE_EXT.test(originalName || '') || IMAGE_EXT.test(tmpFile)) return registerImage(userId, tmpFile, originalName, { seq, fail });
   const size = await displaySize(tmpFile).catch(() => null);
   const duration = await probeDuration(tmpFile).catch(() => 0);
   const audioOnly = !size && duration >= 1 && await hasAudio(tmpFile).catch(() => false);
@@ -86,7 +91,7 @@ export async function registerAsset(userId, tmpFile, originalName, { seq = null,
   if (kind === 'video' && duration > MAX_ASSET_MINUTES * 60 + 5) fail('too_long', `A single video can be up to ${MAX_ASSET_MINUTES} minutes.`);
   if (kind === 'audio' && duration > MAX_VOICE_MINUTES * 60 + 5) fail('too_long', `The voiceover can be up to ${MAX_VOICE_MINUTES} minutes.`);
   const existing = listAssets(userId);
-  if (kind === 'video' && existing.filter(a => a.kind !== 'audio').length >= MAX_ASSETS_PER_USER) fail('too_many', `You can keep up to ${MAX_ASSETS_PER_USER} videos at a time.`);
+  if (kind === 'video' && existing.filter(isVideoAsset).length >= MAX_ASSETS_PER_USER) fail('too_many', `You can keep up to ${MAX_ASSETS_PER_USER} videos at a time.`);
   if (kind === 'audio') removeAssets(userId, existing.filter(a => a.kind === 'audio').map(a => a.id)); // صوت واحد بس: الجديد بيحل محل القديم
   const id = crypto.randomBytes(8).toString('hex');
   const dir = dirOf(userId, id);
@@ -113,10 +118,61 @@ export async function registerVoiceFile(userId, srcFile, name = 'voiceover.mp3',
   return registerAsset(userId, tmp, name, { srcUrl });
 }
 
+/** صورة مرجعية لستايل الموشن جرافيك: بتتحلل (وصف الستايل + الألوان) والمونتاج بيعمل جرافيكس بنفس الروح */
+async function registerImage(userId, tmpFile, originalName, { seq, fail }) {
+  let md;
+  try { md = await sharp(tmpFile).metadata(); } catch { md = null; }
+  if (!md?.width || !md?.height) fail('bad_image', 'This file is not a readable image.');
+  const existing = listAssets(userId);
+  const imgs = existing.filter(a => a.kind === 'image');
+  if (imgs.length >= MAX_STYLE_IMAGES) removeAssets(userId, imgs.slice(0, imgs.length - MAX_STYLE_IMAGES + 1).map(a => a.id)); // الأقدم بيتشال
+  const id = crypto.randomBytes(8).toString('hex');
+  const dir = dirOf(userId, id);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'ref.png');
+  await sharp(tmpFile).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).png().toFile(file);
+  rmQuiet(path.dirname(tmpFile));
+  const meta = { id, userId, kind: 'image', file, name: String(originalName || 'image').slice(0, 80), duration: 0, width: md.width, height: md.height, hasAudio: false, createdAt: Date.now(), seq: Number.isFinite(Number(seq)) ? Number(seq) : null, srcUrl: null, analysis: null };
+  writeMeta(userId, id, meta);
+  analyzeInBackground(meta);
+  return meta;
+}
+
+/** ألوان الصورة الغالبة (مرتبة بالتشبّع/التكرار) — بتتحول لثيم للقوالب */
+export async function imagePalette(file) {
+  const { data, info } = await sharp(file).resize(48, 48, { fit: 'cover' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const buckets = new Map();
+  for (let i = 0; i < data.length; i += info.channels) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const key = `${r >> 5},${g >> 5},${b >> 5}`;
+    const x = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+    x.n++; x.r += r; x.g += g; x.b += b; buckets.set(key, x);
+  }
+  const hex = (v) => Math.round(v).toString(16).padStart(2, '0');
+  return [...buckets.values()].map(x => {
+    const r = x.r / x.n, g = x.g / x.n, b = x.b / x.n;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    return { hex: `#${hex(r)}${hex(g)}${hex(b)}`, n: x.n, sat: mx ? (mx - mn) / mx : 0, lum: (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 };
+  }).sort((a, b) => b.n - a.n).slice(0, 12);
+}
+
+/** ثيم قوالب من ألوان صورة مرجعية: أكتر لونين مشبّعين = accent/accent2، والأغمق = لوح الخلفية */
+export function themeFromPalette(pal) {
+  if (!Array.isArray(pal) || !pal.length) return null;
+  const vivid = pal.filter(c => c.sat > 0.35 && c.lum > 0.18 && c.lum < 0.92).sort((a, b) => (b.sat * Math.sqrt(b.n)) - (a.sat * Math.sqrt(a.n)));
+  const accent = vivid[0]?.hex || '#ffd166';
+  const accent2 = vivid.find(c => c.hex !== accent && Math.abs(parseInt(c.hex.slice(1, 3), 16) - parseInt(accent.slice(1, 3), 16)) + Math.abs(parseInt(c.hex.slice(3, 5), 16) - parseInt(accent.slice(3, 5), 16)) + Math.abs(parseInt(c.hex.slice(5, 7), 16) - parseInt(accent.slice(5, 7), 16)) > 90)?.hex || '#ffffff';
+  const dark = [...pal].sort((a, b) => a.lum - b.lum)[0];
+  const rgb = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(',');
+  const panelBase = dark && dark.lum < 0.35 ? dark.hex : '#0b0d14';
+  return { label: 'Reference', bgTop: panelBase, bgBottom: panelBase, text: '#ffffff', muted: '#d0d4e0', accent, accent2, panel: `rgba(${rgb(panelBase)},0.82)`, panelStroke: `rgba(${rgb(accent)},0.55)`, grain: 0.04, vignette: 0.4, grade: 'none' };
+}
+
 // ── التحليل: وصف بصري + هل فيه كلام ──────────────────────────────────────────────────────────
+const FRAME_POINTS = [0.06, 0.28, 0.5, 0.72, 0.94];
 async function frameDataUrls(file, duration) {
   const out = [];
-  for (const f of [0.12, 0.5, 0.88]) {
+  for (const f of FRAME_POINTS) {
     const tmp = `${file}.f${Math.round(f * 100)}.jpg`;
     try {
       await ffmpeg(['-ss', String(Math.max(0, duration * f)), '-i', file, '-frames:v', '1', '-vf', 'scale=512:-2', '-q:v', '5', tmp]);
@@ -124,6 +180,41 @@ async function frameDataUrls(file, duration) {
     } catch { /* إطار فاشل */ } finally { rmQuiet(tmp); }
   }
   return out;
+}
+
+const VIDEO_PROMPT = (times) => `These are ${times.length} frames sampled from ONE video clip at ${times.map(t => `${t}s`).join(', ')}. You are a video editor studying the footage before editing it. Return ONLY JSON: {"summary":"<=40 words: who/what is shown (a person talking to camera? cinematic scene? screen recording? product? landscape? action?), setting, mood, lighting, camera motion and any quality problem (shaky, dark, blurry)","moments":[{"t":<second>,"what":"<=12 words: what is on screen at that time"}],"faces":"none|small|large (is a face the main subject and where)","energy":"calm|medium|high"}. One moment per frame, using the given seconds.`;
+
+/** وصف الفيديو بالـvision: ملخص + لحظات بتوقيتها (عشان المخطط يعرف إيه بيحصل امتى) */
+export async function describeVideo(urls, times, { ask } = {}) {
+  if (ask) return ask(urls);
+  const key = process.env.GROQ_API_KEY;
+  if (!key || !urls.length) return null;
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: VISION_MODEL, max_tokens: 420, temperature: 0.2, response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: [{ type: 'text', text: VIDEO_PROMPT(times) }, ...urls.map(u => ({ type: 'image_url', image_url: { url: u } }))] }],
+    }),
+  });
+  if (!res.ok) throw new Error(`vision ${res.status}`);
+  const raw = String((await res.json()).choices?.[0]?.message?.content || '').trim();
+  try { return JSON.parse(raw.replace(/^```(?:json)?|```$/g, '')); } catch { return { summary: raw.slice(0, 300) }; }
+}
+
+const IMAGE_PROMPT = 'This image is a MOTION-GRAPHICS / design reference the customer wants their video graphics to look like (it may come from Pinterest or a template). Return ONLY JSON: {"summary":"<=45 words describing the visual style: layout, shapes (bars, boxes, circles, stickers), typography (bold condensed, handwritten, outlined…), colours, effects (neon glow, gradients, grain), and how the elements would animate","templates":["2-4 names, best first, from: kinetic_text, stack_text, marker_text, lower_third, bullet_panel, bottom_sheet, side_note, news_bar, counter, quote, icon_pop, stamp, percent_ring"],"text":"any readable text in the image, or empty"}';
+
+export async function describeStyleImage(file, { ask } = {}) {
+  if (ask) return ask(file);
+  const key = process.env.GROQ_API_KEY;
+  if (!key) return null;
+  const buf = await sharp(file).resize(768, 768, { fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: VISION_MODEL, max_tokens: 300, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: IMAGE_PROMPT }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + buf.toString('base64') } }] }] }),
+  });
+  if (!res.ok) throw new Error(`vision ${res.status}`);
+  const raw = String((await res.json()).choices?.[0]?.message?.content || '').trim();
+  try { return JSON.parse(raw.replace(/^```(?:json)?|```$/g, '')); } catch { return { summary: raw.slice(0, 300) }; }
 }
 
 export async function describeFrames(urls, { ask } = {}) {
@@ -166,8 +257,27 @@ async function analyzeVoice(meta, deps = {}) {
 async function analyze(meta, deps = {}) {
   const dir = path.dirname(meta.file);
   if (meta.kind === 'audio') { try { return await analyzeVoice(meta, deps); } catch (e) { console.warn('[Montage/assets] voiceover transcription failed:', e.message); return { description: 'Voiceover narration', hasSpeech: false, gist: '', words: [] }; } }
-  const out = { description: '', hasSpeech: false, gist: '' };
-  try { out.description = await describeFrames(await frameDataUrls(meta.file, meta.duration), deps); } catch (e) { console.warn('[Montage/assets] vision skipped:', e.message); }
+  if (meta.kind === 'image') {
+    const out = { description: 'Motion-graphics style reference image', templates: [], palette: [] };
+    try { out.palette = (await imagePalette(meta.file)).slice(0, 8); } catch (e) { console.warn('[Montage/assets] palette failed:', e.message); }
+    try {
+      const r = await describeStyleImage(meta.file, deps);
+      if (r) { out.description = String(r.summary || out.description).slice(0, 400); out.templates = (Array.isArray(r.templates) ? r.templates : []).map(String).slice(0, 4); out.text = String(r.text || '').slice(0, 120); }
+    } catch (e) { console.warn('[Montage/assets] style vision skipped:', e.message); }
+    return out;
+  }
+  const out = { description: '', hasSpeech: false, gist: '', moments: [] };
+  try {
+    const times = FRAME_POINTS.map(f => Number((meta.duration * f).toFixed(1)));
+    const v = await describeVideo(await frameDataUrls(meta.file, meta.duration), times, deps);
+    if (typeof v === 'string') out.description = v;
+    else if (v) {
+      out.description = String(v.summary || '').slice(0, 400);
+      out.moments = (Array.isArray(v.moments) ? v.moments : []).map(m => ({ t: Number(m?.t) || 0, what: String(m?.what || '').slice(0, 100) })).filter(m => m.what).slice(0, 8);
+      if (['none', 'small', 'large'].includes(v.faces)) out.faces = v.faces;
+      if (['calm', 'medium', 'high'].includes(v.energy)) out.energy = v.energy;
+    }
+  } catch (e) { console.warn('[Montage/assets] vision skipped:', e.message); }
   if (meta.hasAudio) {
     try { Object.assign(out, await (deps.speech || sampleSpeech)(meta.file, meta.duration, dir)); } catch (e) { console.warn('[Montage/assets] speech check skipped:', e.message); }
   }
@@ -198,10 +308,11 @@ export async function buildMontageNote(userId) {
   if (!stored.length) return null;
   const metas = [];
   for (const m0 of stored) { const m = await withAnalysis(userId, m0.id, m0.kind === 'audio' ? 60000 : 25000); if (m) metas.push(m); }
-  const vids = metas.filter(m => m.kind !== 'audio'), voice = metas.find(m => m.kind === 'audio');
-  if (!vids.length && !voice) return null;
-  const lines = vids.map((m, i) => `V${i + 1} [id ${m.id}] "${m.name}" ${Math.round(m.duration)}s ${m.width}x${m.height}, audio: ${m.analysis?.hasSpeech ? 'speech' : (m.hasAudio ? 'ambient sound only' : 'none')} — shows: ${m.analysis?.description || 'analysis not available'}${m.analysis?.gist ? ` — says (excerpt): "${m.analysis.gist}"` : ''}`);
+  const vids = metas.filter(isVideoAsset), voice = metas.find(m => m.kind === 'audio'), imgs = metas.filter(m => m.kind === 'image');
+  if (!vids.length && !voice && !imgs.length) return null;
+  const lines = vids.map((m, i) => `V${i + 1} [id ${m.id}] "${m.name}" ${Math.round(m.duration)}s ${m.width}x${m.height}${m.height > m.width ? ' (vertical 9:16)' : ''}, audio: ${m.analysis?.hasSpeech ? 'speech' : (m.hasAudio ? 'ambient sound only' : 'none')} — shows: ${m.analysis?.description || 'analysis not available'}${m.analysis?.moments?.length ? ` — timeline: ${m.analysis.moments.map(x => `${x.t}s ${x.what}`).join('; ')}` : ''}${m.analysis?.gist ? ` — says (excerpt): "${m.analysis.gist}"` : ''}`);
+  const imgLines = imgs.map((m, i) => `STYLE REFERENCE IMAGE R${i + 1} [id ${m.id}] "${m.name}" — ${m.analysis?.description || 'motion-graphics reference'}${m.analysis?.templates?.length ? ` (closest graphic types: ${m.analysis.templates.join(', ')})` : ''}`);
   const totalSec = vids.reduce((a, m) => a + m.duration, 0);
   const priceSec = voice ? Math.max(voice.duration, 30) : totalSec;
-  return `MONTAGE UPLOADS currently stored for this customer (kept 3 hours; the list is in the order the montage will use — numbered file names are the intended story order): ${vids.length ? lines.join(' | ') : 'no videos yet'}.${voice ? ` VOICEOVER [id ${voice.id}] "${voice.name}" ${Math.round(voice.duration)}s — transcript excerpt: "${voice.analysis?.gist || ''}" — with a voiceover the final video is exactly as long as the voiceover, all clip sounds are muted and the scenes are laid over the narration.` : ''} Footage total ${Math.round(totalSec)}s; the montage price would be ${getAutoEditCreditCost(priceSec / 60)} credits. These ids are valid — never ask the customer for URLs or ids. See rule 13e.`;
+  return `MONTAGE UPLOADS currently stored for this customer (kept 3 hours; the list is in the order the montage will use — numbered file names are the intended story order): ${vids.length ? lines.join(' | ') : 'no videos yet'}.${imgs.length ? ` ${imgLines.join(' | ')} — these images are used automatically as the look of the montage's motion graphics (same colours and the closest graphic style); mention it in one line.` : ''}${voice ? ` VOICEOVER [id ${voice.id}] "${voice.name}" ${Math.round(voice.duration)}s — transcript excerpt: "${voice.analysis?.gist || ''}" — with a voiceover the final video is exactly as long as the voiceover, all clip sounds are muted and the scenes are laid over the narration.` : ''} Footage total ${Math.round(totalSec)}s; the montage price would be ${getAutoEditCreditCost(priceSec / 60)} credits. These ids are valid — never ask the customer for URLs or ids. See rule 13e.`;
 }

@@ -82,7 +82,9 @@ export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rt
   const needsDim = v.kind !== 'background' && (beat.dim ?? (beat.overlays || []).some(o => TEXT_HEAVY.has(o.template)));
   if (needsDim) {
     const last = filters.pop();
-    filters.push(last.replace(/\[base\]$/, ',eq=brightness=-0.24:contrast=0.96[base]'));
+    // dimWindows: تعتيم بس وقت ظهور النصوص (لما الطبقات فوق فيديو طويل كامل)، غير كده على المقطع كله
+    const en = Array.isArray(beat.dimWindows) && beat.dimWindows.length ? `:enable='${beat.dimWindows.map(([a, b]) => `between(t,${Number(a).toFixed(2)},${Number(b).toFixed(2)})`).join('+')}'` : '';
+    filters.push(last.replace(/\[base\]$/, `,eq=brightness=-0.2:contrast=0.97${en}[base]`));
   }
 
   // طبقات الموشن جرافيك

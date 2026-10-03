@@ -9,6 +9,7 @@ import { montageVideos, displaySize, transcribeAudioFile } from './index.js';
 import { splitSentences, planCuts, zoomPlan } from './autoEdit.js';
 import { buildBeatClip } from '../documentary/clipBuilder.js';
 import { sanitizeTemplate } from '../documentary/planner.js';
+import { themeFromPalette } from './assets.js';
 import { isRtlLang } from '../documentary/textutil.js';
 
 const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', '30'];
@@ -16,13 +17,14 @@ const MOODS = ['epic', 'documentary', 'tension', 'emotional', 'chill', 'upbeat']
 const MAX_SIDE = 1920;
 export const MAX_TOTAL_OUTPUT_SEC = 20 * 60;
 
-const SYSTEM = `You are a professional video editor (YouTube / Reels / TikTok style) with a great sense of pacing. You receive several raw clips the customer filmed or collected, with what each one shows, its length, whether it has speech and, for speech clips, the transcript split into timed sentences. You also receive the customer's wishes (they may be empty — then YOU decide everything).
-Return ONLY JSON: {"title":"short title","style":"fast|clean|calm|dramatic","musicMood":"epic|documentary|tension|emotional|chill|upbeat","segments":[{"clip":"V1","start":0.0,"end":8.5,"audio":"keep|mute","speed":1}]}
+const SYSTEM = `You are a top creative video editor (YouTube / Reels / TikTok / cinematic edits) with a great sense of pacing. You receive the raw clips the customer uploaded: what each one shows (with a timeline of what is on screen at given seconds), its length, whether it has speech and, for speech clips, the transcript split into timed sentences. You also receive the customer's wishes (may be empty — then YOU decide everything) and, sometimes, a STYLE REFERENCE for the motion graphics.
+Return ONLY JSON: {"title":"short title","style":"fast|clean|calm|dramatic","musicMood":"epic|documentary|tension|emotional|chill|upbeat","segments":[{"clip":"V1","start":0.0,"end":8.5,"audio":"keep|mute","speed":1,"overlays":[{"at":3.2,"template":"stack_text","data":{"text":"...","emphasis":["word"]}}]}]}
 Rules:
-- Segments are played in the order you list them (you may reorder clips). Times are seconds inside that clip.
-- Open with a strong hook (the most interesting 2-4 seconds). Cut dead time, repetition and rambling; keep the best moments. Never invent clips.
-- Speech clips: choose whole sentences using the transcript timestamps (start at a sentence start, end at a sentence end) and use audio "keep". Non-speech clips (b-roll, scenery, action): choose the best 3-8 second windows and use audio "mute" (music will carry them); "speed" may be 1-1.5 for muted action, otherwise 1.
-- If the customer gave a target length or style, follow it. Without one: if the total raw footage is under 90 seconds keep most of it; otherwise aim for 45-120 seconds (or up to about 6 minutes when the speech content clearly deserves it).
+- Segments play in the order you list them (you may reorder clips). Times are seconds inside that clip.
+- LENGTH: unless the customer asked for a length or for "highlights/shorter", KEEP THE CONTENT: when the raw footage is under ~2.5 minutes use (almost) all of it — at least 85% — because the customer wants THEIR video edited, not shortened. Only longer raw footage gets condensed (45-120 seconds, or up to ~6 minutes when the speech deserves it). Never drop a sentence in the middle of a dialogue or story.
+- Open with a strong hook (the most interesting 2-4 seconds may be moved to the start as a teaser ONLY if it does not spoil the story).
+- Speech clips: cut at sentence boundaries (use the timestamps) and use audio "keep". Non-speech clips (b-roll, scenery, action): audio "keep" when the clip has meaningful sound (effects, ambience, a cinematic scene), "mute" for silent/noisy footage (music will carry it); "speed" may be 1-1.5 only for muted action.
+- MOTION GRAPHICS ("overlays", optional, at most one every ~6 seconds): "at" = the second inside the clip when it appears. Templates: kinetic_text {text,emphasis[]} (punchy phrase of 2-6 words copied EXACTLY from what is said around that moment), stack_text {text,emphasis[]} (2-5 words copied exactly, giant words slamming in — hard-hitting moments), marker_text {text,emphasis[]} (3-8 words copied exactly with a highlighter on the key words — key claims), stamp {text,tone:"red|gold"} (1-3 words said there, slammed like a rubber stamp — verdicts, shocking moments), news_bar {text,tag?} (a headline built from the words said there), side_note {text,tag?} (a short fact said there), bottom_sheet {title?,items[2-4]} (a list that rises from the bottom when the speaker lists things), counter {value,prefix?,suffix?,label?} (a number said there), lower_third {name,role?} (a person who is named). Text must be in the language spoken and come from what is said (or from text the customer explicitly asked to show) — never invent facts. If a STYLE REFERENCE is given, prefer its graphic types.
 - At most 40 segments. Each segment 1-45 seconds.`;
 
 const fmt = (s) => Number(s).toFixed(1);
@@ -30,7 +32,8 @@ const fmt = (s) => Number(s).toFixed(1);
 /** وصف مختصر لكل فيديو للمخطط (مع الجمل المؤقتة للفيديوهات اللي فيها كلام) */
 export function describeForPlanner(clips) {
   return clips.map((c, i) => {
-    const head = `V${i + 1} "${c.name}" — ${fmt(c.duration)}s — ${c.hasSpeech ? 'HAS SPEECH' : (c.hasAudio ? 'ambient audio only (no clear speech)' : 'no audio')} — shows: ${c.analysis?.description || 'unknown'}`;
+    const tl = c.analysis?.moments?.length ? ` — timeline: ${c.analysis.moments.map(m => `${fmt(m.t)}s ${m.what}`).join('; ')}` : '';
+    const head = `V${i + 1} "${c.name}" — ${fmt(c.duration)}s — ${c.hasSpeech ? 'HAS SPEECH' : (c.hasAudio ? 'ambient audio only (no clear speech)' : 'no audio')} — shows: ${c.analysis?.description || 'unknown'}${tl}${c.analysis?.energy ? ` — energy: ${c.analysis.energy}` : ''}`;
     if (!c.hasSpeech || !c.sentences?.length) return head;
     const lines = c.sentences.slice(0, 80).map(s => `  [${fmt(s.start)}-${fmt(s.end)}] ${s.words.map(w => w.w).join(' ').slice(0, 140)}`);
     return `${head}\n${lines.join('\n')}${c.sentences.length > 80 ? '\n  …' : ''}`;
@@ -52,7 +55,8 @@ export function sanitizePlan(raw, clips) {
     if (end - start > 45) end = start + 45;
     const keep = s.audio !== 'mute' && c.hasAudio;
     const speed = !keep ? Math.min(1.5, Math.max(1, Number(s.speed) || 1)) : 1;
-    segs.push({ clipIndex: clips.indexOf(c), start: Number(start.toFixed(2)), end: Number(end.toFixed(2)), keep, speed });
+    const overlays = (Array.isArray(s.overlays) ? s.overlays : (s.overlay ? [s.overlay] : [])).filter(o => o && typeof o === 'object').slice(0, 4);
+    segs.push({ clipIndex: clips.indexOf(c), start: Number(start.toFixed(2)), end: Number(end.toFixed(2)), keep, speed, overlays });
     if (segs.length >= 40) break;
   }
   let total = 0;
@@ -76,14 +80,34 @@ export function fallbackPlan(clips) {
   return { title: null, style: 'fast', musicMood: null, segments };
 }
 
-export async function planMontage({ clips, instructions = '', ask = llmJson }) {
-  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}\n\nClips:\n${describeForPlanner(clips)}`;
+// العميل طلب طول معيّن أو "ملخص/أقصر"؟ غير كده الفيديو القصير بيفضل بمحتواه كامل
+const ASKS_LENGTH = /\d+\s*(s\b|sec|second|ث\b|ثانيه|ثانية|ثواني|دقيقه|دقيقة|دقايق|دقائق|min)|shorter|short version|highlight|trim it|cut it down|summar|recap|اختصر|اختصار|قصّر|قصر|أقصر|اقصر|أهم اللقطات|اهم اللقطات|ملخص|تلخيص/i;
+export const asksForLength = (instructions) => ASKS_LENGTH.test(String(instructions || ''));
+
+/** خطة "حافظ على المحتوى": كل مقطع كامل (صوته محفوظ لو فيه صوت) — للفيديوهات القصيرة لما المخطط قصّ كتير من غير طلب */
+export function keepAllPlan(clips, base = {}) {
+  return { title: base.title || null, style: base.style || 'fast', musicMood: base.musicMood || null, segments: clips.map((c, i) => ({ clipIndex: i, start: 0, end: Number(Math.min(c.duration, 300).toFixed(2)), keep: !!c.hasAudio, speed: 1, overlays: [] })) };
+}
+
+export function enforceLength(plan, clips, instructions = '') {
+  const raw = clips.reduce((a, c) => a + c.duration, 0);
+  const out = plan.segments.reduce((a, sg) => a + (sg.end - sg.start) / (sg.speed || 1), 0);
+  if (asksForLength(instructions) || raw > 150 || out >= raw * 0.8) return plan;
+  // المخطط قصّ أكتر من 20% من فيديو قصير من غير ما العميل يطلب — بنرجّع المحتوى كامل وبنحتفظ بالجرافيكس المقترحة لكل مقطع
+  const kept = keepAllPlan(clips, plan);
+  for (const sg of plan.segments) kept.segments[sg.clipIndex].overlays.push(...(sg.overlays || []));
+  return { ...kept, lengthRestored: true };
+}
+
+export async function planMontage({ clips, instructions = '', style = null, ask = llmJson }) {
+  const ref = style?.description ? `\n\nSTYLE REFERENCE for the motion graphics: ${style.description}${style.templates?.length ? ` (closest graphic types: ${style.templates.join(', ')})` : ''}` : '';
+  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}${ref}\n\nClips:\n${describeForPlanner(clips)}`;
   try {
-    const raw = await ask({ system: SYSTEM, user, maxTokens: 3500, temperature: 0.3 });
+    const raw = await ask({ system: SYSTEM, user, maxTokens: 4000, temperature: 0.3 });
     const plan = sanitizePlan(raw, clips);
-    if (plan) return { ...plan, source: 'ai' };
+    if (plan) return { ...enforceLength(plan, clips, instructions), source: 'ai' };
   } catch (e) { console.warn('[SmartMontage] planner failed, using fallback:', e.message); }
-  return { ...fallbackPlan(clips), source: 'fallback' };
+  return { ...(asksForLength(instructions) ? fallbackPlan(clips) : (clips.reduce((a, c) => a + c.duration, 0) <= 150 ? keepAllPlan(clips) : fallbackPlan(clips))), source: 'fallback' };
 }
 
 function targetSizeFor(clips) {
@@ -99,7 +123,31 @@ const even = (x) => Math.max(2, Math.ceil(x / 2) * 2);
 const MOTIONS = [{ z0: 1, z1: 1.1 }, { pan: 'R' }, { z0: 1.1, z1: 1 }, { pan: 'L' }, { z0: 1, z1: 1.09, fast: true }];
 export const motionFor = (i, enabled = true) => (enabled ? MOTIONS[i % MOTIONS.length] : { z0: 1, z1: 1 });
 
-async function renderSub({ src, dest, start, len, W, H, srcW, srcH, z0 = 1, z1 = 1, pan = null, fast = false, speed = 1, keepAudio, loop = false, grade = true }) {
+const STEP_LEVELS = [1.12, 1.0, 1.18, 1.05, 1.14, 1.0];
+/**
+ * نقاط "punch-in" جوه لقطة طويلة (بثواني اللقطة): كل ~3 ثواني، على أقرب فاصل بين كلمتين لو فيه كلام.
+ * @param words كلمات بتوقيت نسبي لبداية اللقطة
+ */
+export function stepKeys(len, words = [], { every = 3.1, min = 2.2, offset = 0 } = {}) {
+  if (len < 4.6) return [];
+  const gaps = [];
+  for (let i = 0; i + 1 < words.length; i++) if (words[i + 1].start - words[i].end >= 0.03) gaps.push((words[i].end + words[i + 1].start) / 2);
+  const keys = [];
+  let last = 0, k = offset;
+  for (let target = every; target < len - min * 0.8; target += every) {
+    let t = target;
+    if (words.length) {
+      const g = gaps.filter(x => Math.abs(x - target) <= 1.1).sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0];
+      if (g !== undefined) t = g; else if (words.some(w => target > w.start - 0.05 && target < w.end + 0.05)) continue; // ما نقطعش في نص كلمة
+    }
+    if (t - last < min || len - t < min * 0.8) continue;
+    keys.push({ t: Number(t.toFixed(3)), z: STEP_LEVELS[k++ % STEP_LEVELS.length] });
+    last = t;
+  }
+  return keys;
+}
+
+async function renderSub({ src, dest, start, len, W, H, srcW, srcH, z0 = 1, z1 = 1, pan = null, fast = false, speed = 1, keepAudio, loop = false, grade = true, steps = null, flashes = null }) {
   const aspectDiff = Math.abs(srcW / srcH - W / H) / (W / H);
   const blur = aspectDiff > 0.15;
   const L = Math.max(0.3, len); // بالثواني الأصلية (قبل تغيير السرعة)
@@ -116,6 +164,14 @@ async function renderSub({ src, dest, start, len, W, H, srcW, srcH, z0 = 1, z1 =
       vf += `,scale=w='ceil(${W}*${zExpr}/2)*2':h='ceil(${H}*${zExpr}/2)*2':eval=frame,crop=${W}:${H}`;
     } else if (z0 > 1.001) vf += `,scale=${even(W * z0)}:${even(H * z0)},crop=${W}:${H}`;
   }
+  if (steps?.length) {
+    // مونتاج "punch-in": قفزات زوم سريعة عند حدود الكلام جوه نفس اللقطة الطويلة (إحساس قطعات من غير ما الصوت يتقطع)
+    let prevZ = 1;
+    const terms = steps.map(st => { const dz = st.z - prevZ; prevZ = st.z; return `${dz.toFixed(3)}*clip((t-${st.t.toFixed(3)})/0.09,0,1)`; });
+    const zE = `(1+${(0.035 / L).toFixed(5)}*t+${terms.join('+')})`;
+    vf += `,scale=w='ceil(${W}*${zE}/2)*2':h='ceil(${H}*${zE}/2)*2':eval=frame,crop=${W}:${H}`;
+  }
+  if (flashes?.length) vf += `,eq=brightness='0.22*(${flashes.map(T => `max(0,1-abs(t-${T.toFixed(3)})/0.08)`).join('+')})':eval=frame`;
   if (grade) vf += ',eq=contrast=1.06:saturation=1.14,vignette=angle=PI/4.2'; // لون موحّد يربط اللقطات المختلفة ببعض
   if (speed !== 1) vf += `,setpts=PTS/${speed}`;
   vf += ',fps=30,format=yuv420p';
@@ -136,23 +192,26 @@ async function renderSub({ src, dest, start, len, W, H, srcW, srcH, z0 = 1, z1 =
  * ينفّذ الخطة.
  * @returns {{file,duration,words,transcript,chapters,stats}}
  */
-export async function executePlan({ plan, clips, workDir, options = {}, onProgress = () => {} }) {
+export async function executePlan({ plan, clips, workDir, options = {}, style = null, instructions = '', onProgress = () => {} }) {
   fs.mkdirSync(workDir, { recursive: true });
   const { W, H } = targetSizeFor(clips);
   const animate = plan.segments.length <= 24;
   const zooms = options.zoom === false ? null : zoomPlan(200, animate);
   const chapters = [];
   const newWords = [];
-  let offset = 0, subIndex = 0, speechSec = 0;
+  const subsMap = []; // {ci, start, end, offset, speed} — عشان نحوّل توقيت جوه المقطع لتوقيت الفيديو النهائي
+  const stepSfx = [];
+  let offset = 0, subIndex = 0, speechSec = 0, stepCount = 0;
   for (let si = 0; si < plan.segments.length; si++) {
     onProgress({ stage: 'cut', frac: si / plan.segments.length });
     const sg = plan.segments[si];
     const c = clips[sg.clipIndex];
-    // أجزاء فرعية: للكلام بنقص الصمت جوه الجزء، غير كده جزء واحد
+    // أجزاء فرعية: قص الصمت بس لما الجزء أغلبه كلام (فلوج/شرح) — المشاهد السينمائية/الحوار مع مؤثرات بتفضل كاملة
     let subs = [{ start: sg.start, end: sg.end }];
     if (sg.keep && c.hasSpeech && c.sentences?.length && options.cutSilence !== false) {
       const inRange = c.sentences.filter(s => s.end > sg.start && s.start < sg.end);
-      if (inRange.length) {
+      const spoken = inRange.reduce((a, s) => a + (Math.min(sg.end, s.end) - Math.max(sg.start, s.start)), 0);
+      if (inRange.length && spoken / Math.max(0.1, sg.end - sg.start) >= 0.55) {
         subs = planCuts(inRange, c.duration, { cutSilence: true }).map(x => ({ start: Math.max(sg.start, x.start), end: Math.min(sg.end, x.end) })).filter(x => x.end - x.start >= 0.4);
         if (!subs.length) subs = [{ start: sg.start, end: sg.end }];
       }
@@ -160,9 +219,17 @@ export async function executePlan({ plan, clips, workDir, options = {}, onProgre
     const files = [];
     for (const sub of subs) {
       const dest = path.join(workDir, `sub_${subIndex}.mp4`);
-      // كلام (وش بيتكلم): زوم هادي متبدّل؛ لقطات الـb-roll: حركات كاميرا متنوّعة
-      const mo = sg.keep ? (() => { const [a, b] = zooms ? zooms[subIndex % zooms.length] : [1, 1]; return { z0: a, z1: b }; })() : motionFor(subIndex, options.zoom !== false && animate);
-      const dur = await renderSub({ src: c.file, dest, start: sub.start, len: sub.end - sub.start, W, H, srcW: c.width, srcH: c.height, ...mo, speed: sg.keep ? 1 : sg.speed, keepAudio: sg.keep });
+      const speed = sg.keep ? 1 : sg.speed;
+      const len = sub.end - sub.start;
+      // لقطة طويلة: قفزات زوم على حدود الكلام (punch-in) بدل زوم واحد بطيء؛ القصيرة: حركة كاميرا متبدّلة
+      const relWords = (c.words || []).filter(w => w.start >= sub.start && w.end <= sub.end).map(w => ({ start: w.start - sub.start, end: w.end - sub.start }));
+      const steps = options.zoom === false ? [] : stepKeys(len, sg.keep && c.hasSpeech ? relWords : [], { offset: stepCount });
+      const flashes = steps.filter((_, k) => (stepCount + k) % 3 === 2).map(st => st.t);
+      stepCount += steps.length;
+      const mo = steps.length ? { z0: 1, z1: 1 } : (sg.keep ? (() => { const [a, b] = zooms ? zooms[subIndex % zooms.length] : [1, 1]; return { z0: a, z1: b }; })() : motionFor(subIndex, options.zoom !== false && animate));
+      const dur = await renderSub({ src: c.file, dest, start: sub.start, len, W, H, srcW: c.width, srcH: c.height, ...mo, speed, keepAudio: sg.keep, steps, flashes });
+      for (const st of steps) stepSfx.push({ t: offset + st.t / speed - 0.03, type: flashes.includes(st.t) ? 'impact' : 'swish', vol: flashes.includes(st.t) ? 0.26 : 0.14 });
+      subsMap.push({ ci: sg.clipIndex, start: sub.start, end: sub.end, offset, speed, si });
       if (sg.keep && c.words?.length) {
         for (const w of c.words) if (w.start >= sub.start - 0.02 && w.start < sub.end) newWords.push({ w: w.w, start: offset + Math.max(0, w.start - sub.start), end: offset + Math.min(dur, Math.max(0.05, w.end - sub.start)) });
         speechSec += dur;
@@ -183,20 +250,119 @@ export async function executePlan({ plan, clips, workDir, options = {}, onProgre
   const total = chapters.reduce((a, c) => a + c.dur, 0);
   const speechShare = total ? speechSec / total : 0;
   const capStyle = options.captions && options.captions !== 'none' ? options.captions : null;
+  const lang = newWords.length && hasArabic(newWords.map(w => w.w).join(' ')) ? 'ar' : String(options.language && options.language !== 'auto' ? options.language : 'en').split(/[-_]/)[0];
+  const portraitShort = H > W && total <= 180;
+
+  // موشن جرافيك: (1) طلبات العميل بالاسم (2) اقتراحات المخطط بعد التحقق (3) عبارات قوية من الكلام تلقائيًا
+  const ovs = [];
+  if (options.motionGraphics !== false) {
+    ovs.push(...placeCustomerGraphics(options.graphics, newWords, total).map(o => ({ ...o, prio: 2 })));
+    const mapT = (ci, t) => { const m = subsMap.find(x => x.ci === ci && t >= x.start - 0.05 && t < x.end + 0.05); return m ? m.offset + (Math.min(t, m.end) - m.start) / m.speed : null; };
+    plan.segments.forEach((sg) => {
+      for (const o of sg.overlays || []) {
+        const ct = Number.isFinite(Number(o?.at)) ? Math.max(sg.start, Math.min(sg.end - 0.5, Number(o.at))) : sg.start + 0.4;
+        const at = mapT(sg.clipIndex, ct);
+        if (at === null) continue;
+        const ov = sanitizeOverlay(o, inWindow(newWords, at - 0.6, at + 4.5), instructions);
+        if (ov) ovs.push({ ...timeOverlay(ov, at, newWords), prio: 1 });
+      }
+    });
+    if (newWords.length) ovs.push(...autoPhraseOverlays(newWords, total, ovs, style?.templates).map(o => ({ ...o, prio: 0 })));
+  }
+  const overlays = resolveOverlays(ovs, total);
+  const extraSfx = [{ t: 0.04, type: 'impact', vol: 0.45 }, ...stepSfx, ...overlays.flatMap(o => overlaySfx(o, o.at))];
+  const hideCaps = overlays.filter(o => hidesCaptions(o.template, portraitShort)).map(o => [o.at - 0.05, o.at + o.dur - 0.2]);
+  const theme = style?.theme || (plan.style === 'dramatic' || ['epic', 'tension'].includes(plan.musicMood) ? 'cinematic' : 'blue');
   const r = await montageVideos({
     files: chapters.map(c => c.file), workDir: path.join(workDir, 'final'), assumeNormalized: true,
     transitions: chapters.length > 1 && chapters.length <= 40 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: true,
-    words: capStyle && newWords.length ? newWords : null,
-    captions: capStyle && newWords.length ? { style: capStyle, lang: String(options.language || 'en').split(/[-_]/)[0], position: 'auto', transcribe: false } : null,
-    musicFile: options.musicFile || null, musicVolume: speechShare > 0.35 ? 0.1 : 0.24,
+    words: capStyle && newWords.length ? newWords.filter(w => !hideCaps.some(([a, b]) => (w.start + w.end) / 2 >= a && (w.start + w.end) / 2 <= b)) : null,
+    captions: capStyle && newWords.length ? { style: capStyle, lang, position: 'auto', transcribe: false } : null,
+    musicFile: options.musicFile || null, musicVolume: speechShare > 0.35 ? 0.1 : 0.22, extraSfx,
+    overlays: overlays.map(({ template, data, at, dur }) => ({ template, data, at, dur })), overlayTheme: theme,
   });
   chapters.forEach(c => rmQuiet(c.file));
   let t = 0;
   return {
     file: r.file, duration: r.duration, words: newWords, transcript: newWords.map(w => w.w).join(' '),
     chapters: chapters.map(c => { const o = { t, title: c.clip }; t += c.dur; return o; }),
-    stats: { segments: plan.segments.length, subs: subIndex, speechShare: Number(speechShare.toFixed(2)), finalSec: r.duration },
+    stats: { segments: plan.segments.length, subs: subIndex, punchIns: stepCount, graphics: overlays.length, speechShare: Number(speechShare.toFixed(2)), finalSec: r.duration, lengthRestored: !!plan.lengthRestored },
   };
+}
+
+// ── موشن جرافيك على الفيديو كله (المونتاج العادي + طلبات العميل) ──────────────────────────────────────
+const OV_DUR = { stamp: 2.2, counter: 2.8, lower_third: 3.6, news_bar: 3.6, side_note: 3.6, bottom_sheet: 4.4, bullet_panel: 4.4, icon_pop: 3.6, percent_ring: 3, date_card: 3 };
+const TOP_OR_SIDE = new Set(['news_bar', 'side_note']);
+/** الكابشن يختفي وقت الجرافيك اللي بيغطي نفس المكان (عشان الكلام ما يتكتبش مرتين ولا يتراكب) */
+export function hidesCaptions(template, centeredCaptions) {
+  if (PHRASE_TEMPLATES.has(template) || template === 'stamp') return true;
+  if (TOP_OR_SIDE.has(template)) return false;
+  return centeredCaptions ? template !== 'lower_third' : ['bottom_sheet', 'lower_third', 'bullet_panel'].includes(template);
+}
+
+/** توقيت الجرافيك: نصوص الكلام بتظهر لحظة ما العبارة بتتقال وبتفضل لحد ما تخلص (+ثانية) */
+function timeOverlay(ov, at, words) {
+  if (PHRASE_TEMPLATES.has(ov.template) || ov.template === 'stamp') {
+    const sp = phraseSpan(inWindow(words, at - 0.6, at + 5), ov.data.text);
+    if (sp) return { ...ov, at: Math.max(0, sp.start - 0.12), dur: Math.min(4.4, Math.max(1.8, sp.end - sp.start + 1.1)) };
+  }
+  return { ...ov, at: Math.max(0, at), dur: OV_DUR[ov.template] || 3.2 };
+}
+
+/** طلبات العميل ("ضيف كلمة X بموشن قوي في الأول/الآخر/لما يقول Y") → جرافيك بتوقيت مضبوط */
+export function placeCustomerGraphics(graphics, words, total) {
+  const out = [];
+  for (const g of Array.isArray(graphics) ? graphics : []) {
+    const text = String(g?.text || '').trim();
+    if (!text) continue;
+    const style = g.style || 'stack_text';
+    let at;
+    if (typeof g.at === 'number') at = g.at;
+    else if (g.at === 'end') at = total - (OV_DUR[style] || 3.2) - 0.4;
+    else if (g.at === 'middle') at = total / 2;
+    else if (!g.at || g.at === 'start') at = 0.35;
+    else { const sp = phraseSpan(words, g.at); at = sp ? sp.start : 0.35; }
+    at = Math.max(0.1, Math.min(total - 1.4, at));
+    const words1 = text.split(/\s+/);
+    const emphasis = [...words1].sort((a, b) => b.length - a.length).slice(0, 1).map(w => w.replace(/[^\p{L}\p{N}]/gu, ''));
+    const raw = style === 'stamp' ? { text, tone: 'red' } : style === 'news_bar' || style === 'side_note' ? { text } : style === 'bottom_sheet' ? { title: text, items: g.items || [] } : style === 'lower_third' ? { name: text } : { text: style === 'stack_text' ? words1.slice(0, 6).join(' ') : text, emphasis };
+    const data = sanitizeTemplate(style, raw, [text, ...(g.items || [])].join(' '));
+    if (!data) continue;
+    out.push({ template: style, data, at, dur: Math.min(OV_DUR[style] || 3.4, total - at - 0.1) });
+  }
+  return out;
+}
+
+/** عبارات قوية من الكلام كل ~6-7 ثواني (من غير ما تقرب من جرافيك تاني) */
+export function autoPhraseOverlays(words, total, existing = [], preferred = []) {
+  const rot = (preferred || []).filter(t => ['stack_text', 'kinetic_text', 'marker_text'].includes(t));
+  const order = rot.length ? [...rot, ...['stack_text', 'kinetic_text', 'marker_text'].filter(t => !rot.includes(t))] : ['stack_text', 'kinetic_text', 'marker_text'];
+  const out = [];
+  let k = 0, last = -99;
+  for (const sen of splitSentences(words)) {
+    if (sen.start < 0.8 && total > 10) continue;
+    if (sen.start - last < 6.5) continue;
+    if ([...existing, ...out].some(o => Math.abs(o.at - sen.start) < 5)) continue;
+    const win = sen.words.filter(w => w.start < sen.start + 3.6);
+    const ov = autoKinetic(win, order[k % order.length]);
+    if (!ov) continue;
+    out.push(timeOverlay(ov, sen.start, words)); k++; last = sen.start;
+    if (out.length >= Math.max(2, Math.round(total / 7))) break;
+  }
+  return out;
+}
+
+/** ترتيب نهائي: من غير تراكب (الأولوية لطلب العميل، ثم المخطط، ثم التلقائي) */
+export function resolveOverlays(list, total) {
+  const sorted = [...list].filter(o => o.at < total - 0.8).sort((a, b) => (b.prio || 0) - (a.prio || 0) || a.at - b.at);
+  const kept = [];
+  for (const o of sorted) {
+    const dur = Math.min(o.dur, total - o.at - 0.05);
+    if (dur < 0.9) continue;
+    if (kept.some(x => o.at < x.at + x.dur + 0.4 && x.at < o.at + dur + 0.4)) continue;
+    kept.push({ ...o, dur });
+  }
+  return kept.sort((a, b) => a.at - b.at);
 }
 
 
@@ -304,19 +470,24 @@ export function fallbackVoicePlan(clips, narr) {
 
 
 // ── موشن جرافيك فوق المشاهد (نفس قوالب الأفلام الوثائقية): نصوص بتظهر بحركة، كلمات مهمة بتكبر وتتغير ألوانها، أرقام، أسماء... ──
-const OVERLAY_TEMPLATES = new Set(['kinetic_text', 'stack_text', 'marker_text', 'lower_third', 'counter', 'quote', 'bullet_panel']);
+const OVERLAY_TEMPLATES = new Set(['kinetic_text', 'stack_text', 'marker_text', 'lower_third', 'counter', 'quote', 'bullet_panel', 'stamp', 'news_bar', 'side_note', 'bottom_sheet']);
 const PHRASE_TEMPLATES = new Set(['kinetic_text', 'stack_text', 'marker_text', 'quote']); // قوالب نص من الكلام (الكابشن بيختفي وقت ظهورها)
 const normW = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 const inWindow = (words, t0, t1) => words.filter(w => w.start >= t0 - 0.05 && w.start < t1);
 const mostlySaid = (s, set) => { const ws = String(s).split(/\s+/).map(normW).filter(Boolean); return ws.length > 0 && ws.filter(x => set.has(x)).length / ws.length >= 0.7; };
 
 /** تحقق من overlay جاي من الـLLM: القالب مسموح، البيانات سليمة، والنص مأخوذ من كلام اللقطة فعلاً (مفيش اختراع) */
-export function sanitizeOverlay(raw, win) {
-  if (!raw || !OVERLAY_TEMPLATES.has(raw.template) || !win.length) return null;
-  const text = win.map(w => w.w).join(' ');
+export function sanitizeOverlay(raw, win, extraText = '') {
+  if (!raw || !OVERLAY_TEMPLATES.has(raw.template)) return null;
+  const extra = String(extraText || '').split(/\s+/).map(w => ({ w }));
+  const all = [...win, ...extra];
+  if (!all.length) return null;
+  const text = all.map(w => w.w).join(' ');
   const data = sanitizeTemplate(raw.template, raw.data, text);
   if (!data) return null;
-  const said = new Set(win.map(w => normW(w.w)));
+  const said = new Set(all.map(w => normW(w.w)).filter(Boolean));
+  if (['stamp', 'news_bar', 'side_note'].includes(raw.template) && !mostlySaid(data.text, said)) return null;
+  if (raw.template === 'bottom_sheet' && data.items.filter(b => mostlySaid(b, said)).length < Math.ceil(data.items.length / 2)) return null;
   if (PHRASE_TEMPLATES.has(raw.template) && !mostlySaid(data.text, said)) return null;
   if (raw.template === 'stack_text' && data.text.split(/\s+/).length > 6) return null;
   if (raw.template === 'lower_third' && !mostlySaid(data.name, said)) return null;
@@ -359,8 +530,9 @@ export function finalizeOverlays(shots, narr) {
   return shots;
 }
 
-export async function planVoiceover({ clips, narr, instructions = '', ask = llmJson }) {
-  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}\n\n${describeForVoicePlanner(clips, narr)}`;
+export async function planVoiceover({ clips, narr, instructions = '', style = null, ask = llmJson }) {
+  const ref = style?.description ? `\n\nSTYLE REFERENCE for the motion graphics: ${style.description}${style.templates?.length ? ` (prefer: ${style.templates.join(', ')})` : ''}` : '';
+  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}${ref}\n\n${describeForVoicePlanner(clips, narr)}`;
   try {
     const raw = await ask({ system: SYSTEM_VO, user, maxTokens: 4500, temperature: 0.3 });
     const plan = sanitizeVoicePlan(raw, clips, narr);
@@ -396,6 +568,10 @@ export function overlaySfx(ov, absAt) {
     case 'counter': ev.push({ t: absAt + 0.1, type: 'riser', vol: 0.32 }); break;
     case 'lower_third': ev.push({ t: absAt + 0.05, type: 'whoosh', vol: 0.3 }, { t: absAt + 0.55, type: 'click', vol: 0.3 }); break;
     case 'bullet_panel': (ov.data?.bullets || []).slice(0, 5).forEach((_, i) => ev.push({ t: absAt + 0.6 + i * 0.5, type: 'pop', vol: 0.35 })); break;
+    case 'bottom_sheet': ev.push({ t: absAt + 0.05, type: 'swish', vol: 0.35 }); (ov.data?.items || []).slice(0, 4).forEach((_, i) => ev.push({ t: absAt + 0.55 + i * 0.5, type: 'pop', vol: 0.35 })); break;
+    case 'stamp': ev.push({ t: absAt + 0.3, type: 'boom', vol: 0.55 }, { t: absAt + 0.3, type: 'click', vol: 0.35 }); break;
+    case 'news_bar': ev.push({ t: absAt + 0.05, type: 'swish', vol: 0.3 }, { t: absAt + 0.5, type: 'click', vol: 0.25 }); break;
+    case 'side_note': ev.push({ t: absAt + 0.05, type: 'swish', vol: 0.3 }); break;
     default: break;
   }
   return ev;
@@ -403,15 +579,18 @@ export function overlaySfx(ov, absAt) {
 
 const hasArabic = (s) => /[؀-ۿ]/.test(s);
 
-export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, options = {}, onProgress = () => {} }) {
+export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, options = {}, style = null, onProgress = () => {} }) {
   fs.mkdirSync(workDir, { recursive: true });
   const { W, H } = targetSizeFor(clips);
   const files = [];
   const animate = plan.shots.length <= 45 && options.zoom !== false;
   const lang0 = hasArabic(narr.words.map(w => w.w).join(' ')) ? 'ar' : (options.language && options.language !== 'auto' ? String(options.language).split(/[-_]/)[0] : 'en');
-  const theme = plan.style === 'dramatic' ? 'cinematic' : 'blue';
-  const hideCaps = []; // فترات الكابشن بيختفي فيها لأن نفس الكلام ظاهر كنص متحرك (مفيش تكرار)
-  const extraSfx = [{ t: 0.04, type: 'impact', vol: 0.5 }];
+  const theme = style?.theme || (plan.style === 'dramatic' ? 'cinematic' : 'blue');
+  // طلبات العميل بالاسم بتتحط على الفيديو كله؛ الجرافيك التلقائي في نفس الوقت بيتشال (الأولوية للعميل)
+  const custom = options.motionGraphics === false ? [] : placeCustomerGraphics(options.graphics, narr.words, narr.duration);
+  { let t0 = 0; for (const s of plan.shots) { const t1 = t0 + s.dur; if (s.overlay && custom.some(g => g.at < t1 + 0.3 && t0 < g.at + g.dur + 0.3)) s.overlay = null; t0 = t1; } }
+  const hideCaps = custom.filter(o => hidesCaptions(o.template, false)).map(o => [o.at - 0.05, o.at + o.dur - 0.2]); // فترات الكابشن بيختفي فيها لأن نفس الكلام ظاهر كنص متحرك (مفيش تكرار)
+  const extraSfx = [{ t: 0.04, type: 'impact', vol: 0.5 }, ...custom.flatMap(o => overlaySfx(o, o.at))];
   let shotStart = 0;
   for (let i = 0; i < plan.shots.length; i++) {
     onProgress({ stage: 'cut', frac: i / plan.shots.length });
@@ -450,6 +629,7 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
     words: capStyle ? narr.words.filter(w => !hideCaps.some(([a, b]) => (w.start + w.end) / 2 >= a && (w.start + w.end) / 2 <= b)) : null,
     captions: capStyle ? { style: capStyle, lang, position: 'auto', transcribe: false } : null,
     musicFile: options.musicFile || null, musicVolume: 0.12, extraSfx,
+    overlays: custom, overlayTheme: theme,
   });
   files.forEach(f => rmQuiet(f));
   let tt = 0;
@@ -460,12 +640,21 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   };
 }
 
+/** صور الستايل المرجعية → ثيم ألوان + أنواع الجرافيك الأقرب + وصف للمخطط */
+export function styleFrom(images) {
+  const im = (images || []).find(a => a.analysis);
+  if (!im) return null;
+  const theme = themeFromPalette(im.analysis.palette);
+  return { description: im.analysis.description || '', templates: (im.analysis.templates || []).filter(t => OVERLAY_TEMPLATES.has(t)), theme: theme || null };
+}
+
 /** كل الخطوات: (فويس-أوفر؟ ← خطة على الصوت) أو (تفريغ كلام الفيديوهات → خطة → تنفيذ) */
 export async function smartMontage({ assets, workDir, instructions = '', options = {}, onProgress = () => {}, deps = {} }) {
   fs.mkdirSync(workDir, { recursive: true });
   const transcribe = deps.transcribe || transcribeAudioFile;
   const voice = assets.find(a => a.kind === 'audio') || null;
-  const videos = assets.filter(a => a.kind !== 'audio');
+  const videos = assets.filter(a => (a.kind || 'video') === 'video');
+  const style = styleFrom(assets.filter(a => a.kind === 'image'));
   if (!videos.length) { const e = new Error('no videos'); e.code = 'no_videos'; throw e; }
   const clips = [];
   for (let i = 0; i < videos.length; i++) {
@@ -492,13 +681,13 @@ export async function smartMontage({ assets, workDir, instructions = '', options
     if (deps.onTranscript) await deps.onTranscript(words);
     const narr = { words, sentences: splitSentences(words), duration: await probeDuration(voice.file) };
     onProgress({ stage: 'plan', frac: 0 });
-    const plan = await planVoiceover({ clips, narr, instructions, ask: deps.ask });
-    const result = await executeVoicePlan({ plan, clips, narr, voiceFile: voice.file, workDir: path.join(workDir, 'exec'), options, onProgress });
+    const plan = await planVoiceover({ clips, narr, instructions, style, ask: deps.ask });
+    const result = await executeVoicePlan({ plan, clips, narr, voiceFile: voice.file, workDir: path.join(workDir, 'exec'), options, style, onProgress });
     return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: false })) };
   }
   if (deps.onTranscript) await deps.onTranscript(clips.flatMap(c => c.words || []));
   onProgress({ stage: 'plan', frac: 0 });
-  const plan = await planMontage({ clips, instructions, ask: deps.ask });
-  const result = await executePlan({ plan, clips, workDir: path.join(workDir, 'exec'), options, onProgress });
+  const plan = await planMontage({ clips, instructions, style, ask: deps.ask });
+  const result = await executePlan({ plan, clips, workDir: path.join(workDir, 'exec'), options, style, instructions, onProgress });
   return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: c.hasSpeech })) };
 }
