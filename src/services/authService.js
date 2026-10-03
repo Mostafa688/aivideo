@@ -223,6 +223,10 @@ async function initDB() {
   // ✅ NEW: منطقة العميل (مصري/دولي) — كانت بتتضاف بس lazy جوه GET /admin/users، دلوقتي
   // migration حقيقي عشان أي مكان تاني في الكود (زي الايجنت) يقدر يقرأها/يكتبها بأمان
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS region TEXT DEFAULT NULL`);
+  // ✅ موافقة العميل على الشروط والخصوصية (التاريخ + النسخة + الـIP) — بتظهر في صفحة الأدمن
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT NULL`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT DEFAULT NULL`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_ip TEXT DEFAULT NULL`);
   // ✅ FIX: كان endpoint /api/auth/onboarding-answers بيعمل INSERT في الجدول ده من غير ما
   // يكون معمول له CREATE أصلاً — ده كان هيفشل (relation does not exist) على أي قاعدة بيانات جديدة
   await pool.query(`

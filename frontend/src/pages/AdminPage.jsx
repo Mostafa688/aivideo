@@ -3762,6 +3762,7 @@ export default function AdminPage() {
                   <th style={s.th}>Plan</th>
                   <th style={s.th}>Legacy Models</th>
                   <th style={s.th}>Region</th>
+                  <th style={s.th}>Terms</th>
                   <th style={s.th}>Credits Balance</th>
                   <th style={s.th}>Videos</th>
                   <th style={s.th}>Status</th>
@@ -3796,6 +3797,14 @@ export default function AdminPage() {
                           <span style={{ fontSize:12, padding:'2px 8px', borderRadius:6, background: u.region==='eg'?'rgba(34,197,94,0.1)':'rgba(6,182,212,0.1)', color: u.region==='eg'?'#22c55e':'#06b6d4', border:`1px solid ${u.region==='eg'?'rgba(34,197,94,0.3)':'rgba(6,182,212,0.3)'}`, fontWeight:700 }}>
                             {u.region==='eg' ? '🇪🇬 EG' : u.region==='intl' ? '🌐 Intl' : '–'}
                           </span>
+                        </td>
+                        <td style={s.td} title={u.terms_accepted_at ? `IP: ${u.terms_accepted_ip || '–'}` : ''}>
+                          {u.terms_accepted_at ? (
+                            <div>
+                              <span style={{ fontSize:11, fontWeight:700, color:'#22c55e' }}>✓ Agreed</span>
+                              <div style={{ fontSize:10, color:'#6b7280' }}>{new Date(u.terms_accepted_at).toLocaleString()}{u.terms_version ? ` · v${u.terms_version}` : ''}</div>
+                            </div>
+                          ) : <span style={{ fontSize:11, color:'#4b5563' }} title="No recorded agreement (account created before agreement tracking, or the step was not completed)">–</span>}
                         </td>
                         <td style={s.td}>
                           <span style={{ fontSize:13, fontWeight:700, color: (u.credits_balance||0)===0 ? '#ef4444' : '#a99bff' }}>💎 {u.credits_balance || 0}</span>

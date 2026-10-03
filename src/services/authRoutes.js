@@ -815,6 +815,27 @@ router.post('/gumroad-ping', async (req, res) => {
   }
 });
 
+// ✅ موافقة العميل على الشروط والخصوصية: بتتسجّل مرة (أول موافقة على كل نسخة) بالتاريخ والنسخة والـIP، وبتظهر في صفحة الأدمن
+router.post('/accept-terms', authMiddleware, async (req, res) => {
+  try {
+    const version = String(req.body?.version || '').replace(/[^\w.\-]/g, '').slice(0, 20) || 'unknown';
+    const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 64) || null;
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT NULL').catch(() => {});
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT DEFAULT NULL').catch(() => {});
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_ip TEXT DEFAULT NULL').catch(() => {});
+    await pool.query(
+      `UPDATE users SET
+         terms_accepted_ip = CASE WHEN terms_accepted_at IS NULL OR terms_version IS DISTINCT FROM $2 THEN $3 ELSE terms_accepted_ip END,
+         terms_accepted_at = CASE WHEN terms_accepted_at IS NULL OR terms_version IS DISTINCT FROM $2 THEN NOW() ELSE terms_accepted_at END,
+         terms_version = $2
+       WHERE id = $1`, [req.user.userId, version, ip]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Terms] accept failed:', err.message);
+    res.status(500).json({ error: 'Could not record the agreement' });
+  }
+});
+
 // ✅ FIX: كان stub ملوش أي تأثير (بيرجع ok: true بس من غير ما يحفظ حاجة) — دلوقتي بيحفظ
 // مصدر العميل فعليًا (نفس جدول user_onboarding اللي onboarding-answers بيستخدمه)
 router.post('/referral', authMiddleware, async (req, res) => {

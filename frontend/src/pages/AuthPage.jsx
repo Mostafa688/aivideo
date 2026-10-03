@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TERMS_EN, PRIVACY_EN } from '../data/legalContent.js';
+import { TERMS_EN, PRIVACY_EN, TERMS_VERSION } from '../data/legalContent.js';
 import {
   ClipboardList, Check, Users, Search, Camera, Music, Play, Sparkles, Globe,
   GraduationCap, BookOpen, Megaphone, Drama, ImageIcon, Bot, Clapperboard,
@@ -189,6 +189,10 @@ function TermsStep({ onAgree }) {
 
         {/* Footer */}
         <div style={{ padding: '20px 28px', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+          <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.55)', color: '#ef4444', fontWeight: 800, fontSize: 13, lineHeight: 1.7 }}>
+            Once you register and agree to the Terms of Service and Privacy Policy, the responsibility for the content you create and publish is yours.
+            <div dir="rtl" style={{ marginTop: 4 }}>طالما سجّلت ووافقت على الشروط والخصوصية، تبقى المسؤولية عليك.</div>
+          </div>
           <label style={{
             display: 'flex', alignItems: 'flex-start', gap: 12, cursor: scrolled ? 'pointer' : 'not-allowed',
             marginBottom: 16, opacity: scrolled ? 1 : 0.5, transition: 'opacity 0.3s',
@@ -388,154 +392,6 @@ function SurveyStep({ onContinue }) {
 }
 
 
-// ─── Model Recommendation Step ────────────────────────────────────────────────
-const RECOMMEND_QUESTIONS = [
-  {
-    id: 'content_type',
-    question: 'ما نوع المحتوى الذي تريد إنشاءه؟ / What content do you create?',
-    options: [
-      { id: 'educational', label: 'تعليمي / Educational', icon: GraduationCap },
-      { id: 'storytelling', label: 'قصص وروايات / Storytelling', icon: BookOpen },
-      { id: 'marketing', label: 'تسويق / Marketing', icon: Megaphone },
-      { id: 'entertainment', label: 'ترفيه / Entertainment', icon: Drama },
-    ],
-  },
-  {
-    id: 'style',
-    question: 'ما الأسلوب المفضل لديك؟ / Preferred visual style?',
-    options: [
-      { id: 'realistic', label: 'مقاطع حقيقية / Real footage', icon: Camera },
-      { id: 'ai_images', label: 'صور ذكاء اصطناعي / AI images', icon: ImageIcon },
-      { id: 'ai_video', label: 'فيديو ذكاء اصطناعي / AI video', icon: Bot },
-      { id: 'cinematic', label: 'سينمائي / Cinematic', icon: Clapperboard },
-    ],
-  },
-  {
-    id: 'budget',
-    question: 'ما ميزانيتك الشهرية تقريباً؟ / Approximate monthly budget?',
-    options: [
-      { id: 'free', label: 'مجاناً / Free', icon: Gift },
-      { id: 'low', label: 'منخفضة / Low (≤100 EGP)', icon: Coins },
-      { id: 'medium', label: 'متوسطة / Medium (≤250 EGP)', icon: Coins },
-      { id: 'high', label: 'عالية / High (250+ EGP)', icon: Gem },
-    ],
-  },
-];
-
-const MODEL_RECOMMENDATION = {
-  'educational-realistic-free':   'model2',
-  'educational-realistic-low':    'model2',
-  'educational-realistic-medium': 'model2',
-  'educational-ai_images-free':   'model1',
-  'educational-ai_images-low':    'model1',
-  'storytelling-ai_images-low':   'model1',
-  'storytelling-ai_video-medium': 'model4',
-  'storytelling-cinematic-high':  'cinematic',
-  'marketing-realistic-medium':   'model2',
-  'marketing-ai_images-medium':   'model3',
-  'entertainment-cinematic-high': 'cinematic',
-  'entertainment-ai_video-high':  'model4',
-};
-
-const MODEL_INFO = {
-  model1:    { name: 'AI Slices (Model 1)',          icon: ImageIcon, color: '#7c6af7', desc: 'صور ذكاء اصطناعي مع Ken Burns — مثالي للمحتوى التعليمي والتوثيقي' },
-  model2:    { name: 'Real Footage (Model 2)',       icon: Camera, color: '#06b6d4', desc: 'مقاطع حقيقية من Pexels — مثالي للمحتوى الاحترافي' },
-  model3:    { name: 'AI Images (Model 3)',          icon: Sparkles, color: '#f59e0b', desc: 'صور ذكاء اصطناعي فريدة لكل مشهد — جودة احترافية عالية' },
-  model4:    { name: 'Seedance AI (Model 4)',        icon: Clapperboard, color: '#a855f7', desc: 'مقاطع فيديو حقيقية بالذكاء الاصطناعي — حركة سينمائية مذهلة' },
-  cinematic: { name: 'Cinematic AI (Model 5)',       icon: Drama, color: '#e11d48', desc: 'شخصيات متسقة وقصص بصرية سينمائية بدون تعليق صوتي' },
-  atlas:     { name: 'Atlas Map Video (Model 6)',    icon: Map, color: '#22c55e', desc: 'خرائط جغرافية متحركة — مثالي للمحتوى الجغرافي والتاريخي' },
-};
-
-function getRecommendation(answers) {
-  const key = `${answers.content_type}-${answers.style}-${answers.budget}`;
-  if (MODEL_RECOMMENDATION[key]) return MODEL_RECOMMENDATION[key];
-  // Fallback logic
-  if (answers.style === 'cinematic') return 'cinematic';
-  if (answers.style === 'ai_video') return 'model4';
-  if (answers.style === 'ai_images') return answers.budget === 'free' || answers.budget === 'low' ? 'model1' : 'model3';
-  if (answers.style === 'realistic') return 'model2';
-  return 'model1';
-}
-
-function ModelRecommendStep({ onContinue }) {
-  const [currentQ, setCurrentQ] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [recommended, setRecommended] = useState(null);
-  const [visible, setVisible] = useState(false);
-  const [hovered, setHovered] = useState(null);
-
-  useEffect(() => { const t = setTimeout(() => setVisible(true), 50); return () => clearTimeout(t); }, []);
-
-  const handleAnswer = (optionId) => {
-    const q = RECOMMEND_QUESTIONS[currentQ];
-    const newAnswers = { ...answers, [q.id]: optionId };
-    setAnswers(newAnswers);
-    if (currentQ < RECOMMEND_QUESTIONS.length - 1) {
-      setCurrentQ(currentQ + 1);
-    } else {
-      const rec = getRecommendation(newAnswers);
-      setRecommended(rec);
-    }
-  };
-
-  const q = RECOMMEND_QUESTIONS[currentQ];
-  const modelInfo = recommended ? MODEL_INFO[recommended] : null;
-
-  return (
-    <div style={{ position:'fixed', inset:0, zIndex:9000, background:'rgba(0,0,0,0.88)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, backdropFilter:'blur(8px)', opacity:visible?1:0, transition:'opacity 0.35s ease' }}>
-      <div style={{ background:'var(--bg)', border:'1px solid rgba(124,106,247,0.25)', borderRadius:24, width:'100%', maxWidth:520, padding:'36px 32px', boxShadow:'0 32px 80px rgba(0,0,0,0.6)', transform:visible?'translateY(0) scale(1)':'translateY(28px) scale(0.96)', transition:'transform 0.45s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease', position:'relative', overflow:'hidden' }}>
-        <div style={{ position:'absolute', top:-80, left:'50%', transform:'translateX(-50%)', width:300, height:200, background:'radial-gradient(circle, rgba(124,106,247,0.12) 0%, transparent 70%)', pointerEvents:'none' }} />
-
-        {!recommended ? (
-          <>
-            {/* Progress */}
-            <div style={{ display:'flex', gap:6, marginBottom:28 }}>
-              {RECOMMEND_QUESTIONS.map((_, i) => (
-                <div key={i} style={{ flex:1, height:3, borderRadius:3, background: i <= currentQ ? '#7c6af7' : 'var(--border)', transition:'background 0.3s' }} />
-              ))}
-            </div>
-            <div style={{ textAlign:'center', marginBottom:28 }}>
-              <div style={{ width:56, height:56, borderRadius:16, margin:'0 auto 14px', background:'linear-gradient(135deg, rgba(124,106,247,0.2), rgba(160,143,248,0.1))', border:'1px solid rgba(124,106,247,0.3)', display:'flex', alignItems:'center', justifyContent:'center', color:'#a99bff' }}><Target size={24} strokeWidth={1.75} /></div>
-              <h2 style={{ fontSize:18, fontWeight:800, color:'var(--text)', margin:'0 0 6px' }}>نرشح لك الموديل المناسب</h2>
-              <p style={{ fontSize:13, color:'var(--text3)', margin:0 }}>We\'ll recommend the best model for you</p>
-            </div>
-            <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:16, textAlign:'center', lineHeight:1.5 }}>{q.question}</div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:20 }}>
-              {q.options.map(opt => (
-                <button key={opt.id} onClick={() => handleAnswer(opt.id)}
-                  onMouseEnter={() => setHovered(opt.id)} onMouseLeave={() => setHovered(null)}
-                  style={{ padding:'14px 12px', borderRadius:14, border: hovered===opt.id ? '2px solid #7c6af7' : '2px solid var(--border)', background: hovered===opt.id ? 'rgba(124,106,247,0.1)' : 'var(--bg)', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:8, transition:'all 0.2s', transform: hovered===opt.id ? 'scale(1.02)' : 'scale(1)' }}>
-                  <opt.icon size={22} strokeWidth={1.75} color="var(--text2)" />
-                  <span style={{ fontSize:12, fontWeight:600, color:'var(--text2)', textAlign:'center' }}>{opt.label}</span>
-                </button>
-              ))}
-            </div>
-            <button onClick={() => onContinue(null)} style={{ width:'100%', padding:'10px', background:'transparent', border:'none', color:'var(--text3)', fontSize:13, cursor:'pointer' }}>
-              تخطي / Skip
-            </button>
-          </>
-        ) : (
-          <div style={{ textAlign:'center' }}>
-            <div style={{ marginBottom:12, display:'flex', justifyContent:'center', color: modelInfo?.color }}>{modelInfo?.icon && <modelInfo.icon size={48} strokeWidth={1.5} />}</div>
-            <h2 style={{ fontSize:20, fontWeight:800, color:'#fff', margin:'0 0 8px' }}>الموديل المناسب لك!</h2>
-            <p style={{ fontSize:13, color:'#9ca3af', marginBottom:24 }}>Based on your answers, we recommend:</p>
-            <div style={{ background:`${modelInfo?.color}15`, border:`1px solid ${modelInfo?.color}40`, borderRadius:16, padding:'20px 24px', marginBottom:28 }}>
-              <div style={{ fontSize:18, fontWeight:800, color: modelInfo?.color, marginBottom:8 }}>{modelInfo?.name}</div>
-              <div style={{ fontSize:14, color:'#d1d5db', lineHeight:1.6 }}>{modelInfo?.desc}</div>
-            </div>
-            <button onClick={() => onContinue(recommended, answers)} style={{ width:'100%', padding:'14px', background:'linear-gradient(135deg,#7c6af7,#a08ff8)', border:'none', borderRadius:12, color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 4px 20px rgba(124,106,247,0.4)', marginBottom:10 }}>
-              ابدأ الآن / Get Started →
-            </button>
-            <button onClick={() => onContinue(null, answers)} style={{ width:'100%', padding:'10px', background:'transparent', border:'none', color:'var(--text3)', fontSize:13, cursor:'pointer' }}>
-              استكشف جميع الموديلات / Explore all models
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Legal Modal (for Terms/Privacy links in footer) ──────────────────────────
 function LegalModal({ type, onClose }) {
   if (!type) return null;
@@ -578,7 +434,6 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, r
   const [resetDone, setResetDone] = useState(false);
   const [legalModal, setLegalModal] = useState(null);
   const [pendingAuthData, setPendingAuthData] = useState(googlePendingData || null);
-  const [surveySource, setSurveySource] = useState(null);
 
   useEffect(() => {
     // لو البيانات اتبعتت من App.jsx مباشرة، مش محتاجين نشوف الـ URL
@@ -675,37 +530,21 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, r
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   };
 
+  const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer ' + (pendingAuthData?.token || localStorage.getItem('token')) });
+
   const handleTermsAgree = () => {
     localStorage.setItem('termsAccepted', 'true');
+    // موافقة العميل بتتسجّل في الداتابيز (التاريخ + نسخة الشروط) وبتظهر في صفحة الأدمن
+    fetch('/api/auth/accept-terms', { method: 'POST', headers: authHeader(), body: JSON.stringify({ version: TERMS_VERSION }) }).catch(() => {});
     setStep('survey');
   };
 
+  // السؤال الوحيد بعد الشروط: عرفت Erivion منين؟ — وبعدها العميل يدخل مباشرة
   const handleSurveyDone = (source) => {
     if (source !== 'skipped') {
-      fetch('/api/auth/referral', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + (pendingAuthData?.token || localStorage.getItem('token')),
-        },
-        body: JSON.stringify({ source }),
-      }).catch(() => {});
+      fetch('/api/auth/referral', { method: 'POST', headers: authHeader(), body: JSON.stringify({ source }) }).catch(() => {});
     }
-    setSurveySource(source);
     localStorage.removeItem('erivion_ref');
-    setStep('recommend');
-  };
-
-  const handleRecommendDone = (modelKey, answers) => {
-    if (modelKey) localStorage.setItem('erivion_recommended_model', modelKey);
-    fetch('/api/auth/onboarding-answers', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + (pendingAuthData?.token || localStorage.getItem('token')),
-      },
-      body: JSON.stringify({ source: surveySource, ...(answers || {}) }),
-    }).catch(() => {});
     onAuth(pendingAuthData);
   };
 
@@ -713,7 +552,6 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, r
     <>
       {step === 'terms'  && <TermsStep  onAgree={handleTermsAgree} />}
       {step === 'survey' && <SurveyStep onContinue={handleSurveyDone} />}
-      {step === 'recommend' && <ModelRecommendStep onContinue={handleRecommendDone} />}
       <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
 
       <div style={{ minHeight: '100vh', display: 'flex', background: 'radial-gradient(ellipse at top left, #0d0b1e 0%, #080810 50%, #000 100%)', position: 'relative', overflow: 'hidden' }}>
@@ -920,6 +758,9 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, r
                   {' '}&amp;{' '}
                   <a href="#" onClick={e => { e.preventDefault(); setLegalModal('privacy'); }} style={{ color: 'var(--accent2)', textDecoration: 'none' }}>Privacy Policy</a>.
                   Sexually explicit, racist, or violent/harmful content is strictly prohibited.
+                </p>
+                <p style={{ textAlign: 'center', fontSize: 12, color: '#ef4444', fontWeight: 800, marginTop: 6, lineHeight: 1.6 }}>
+                  Once you register and agree to the Terms, the responsibility is yours. · طالما سجّلت ووافقت على الشروط تبقى المسؤولية عليك.
                 </p>
               </>
             )}
