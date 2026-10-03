@@ -103,7 +103,7 @@ export default function DocSetupCard({ setup = {}, lang = 'ar', started = false,
     if (mode === 'voiceover' && !audio) return setErr(t.needVoice);
     setBusy(true);
     try {
-      const common = { language, ratio, theme, captions, music: !!opts?.musicAvailable && music, motionGraphics: motion, voiceKey, title: topic.trim().slice(0, 120) };
+      const common = { language, ratio, theme, captions, music, motionGraphics: motion, voiceKey, title: topic.trim().slice(0, 120) };
       let res;
       if (mode === 'voiceover') {
         const fd = new FormData();
@@ -209,7 +209,7 @@ export default function DocSetupCard({ setup = {}, lang = 'ar', started = false,
 
       <Row>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          {opts?.musicAvailable && <div><span style={label}>{t.music}</span><div style={{ display: 'flex', gap: 6 }}><Chip active={music} onClick={() => setMusic(true)}>{t.on}</Chip><Chip active={!music} onClick={() => setMusic(false)}>{t.off}</Chip></div></div>}
+          <div><span style={label}>{t.music}</span><div style={{ display: 'flex', gap: 6 }}><Chip active={music} onClick={() => setMusic(true)}>{t.on}</Chip><Chip active={!music} onClick={() => setMusic(false)}>{t.off}</Chip></div></div>
           <div><span style={label}>{t.motion}</span><div style={{ display: 'flex', gap: 6 }}><Chip active={motion} onClick={() => setMotion(true)}>{t.on}</Chip><Chip active={!motion} onClick={() => setMotion(false)}>{t.off}</Chip></div></div>
         </div>
       </Row>

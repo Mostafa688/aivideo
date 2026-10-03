@@ -29,7 +29,7 @@ const T = {
     captions: 'الكابشن', cKaraoke: 'كاريوكي (الكلمة بتنوّر)', cBox: 'صندوق', cPop: 'بوب', cNone: 'بدون',
     motion: 'رسوم متحركة (عدادات، رسوم بيانية، خطوط زمنية، اقتباسات)',
     sources: 'مصادر اللقطات', srcAll: 'كل المصادر (Pexels, NASA, Wikimedia, Internet Archive)', srcStock: 'Stock فقط (Pexels)',
-    music: 'موسيقى خلفية', noMusic: 'الصوت: صوت المعلّق + مؤثرات صوتية متولّدة (من غير موسيقى خلفية حاليًا).', mood: 'الجو العام', auto: 'تلقائي', track: 'مقطع محدد',
+    music: 'موسيقى خلفية', mood: 'الجو العام', auto: 'تلقائي', track: 'مقطع محدد',
     sum: 'ملخص', sumMin: 'مدة الفيلم', sumCost: 'التكلفة', sumBal: 'رصيدك', credits: 'كريديت',
     start: 'ابدأ إنتاج الفيلم', starting: 'بيبدأ...',
     lowBal: 'رصيدك مش كفاية — محتاج', topUp: 'اشحن رصيد',
@@ -78,7 +78,7 @@ const T = {
     captions: 'Captions', cKaraoke: 'Karaoke (word highlight)', cBox: 'Box', cPop: 'Pop', cNone: 'None',
     motion: 'Motion graphics (counters, charts, timelines, quotes)',
     sources: 'Footage sources', srcAll: 'All sources (Pexels, NASA, Wikimedia, Internet Archive)', srcStock: 'Stock only (Pexels)',
-    music: 'Background music', noMusic: 'Sound: the narration + generated sound effects (no background music for now).', mood: 'Mood', auto: 'Auto', track: 'Specific track',
+    music: 'Background music', mood: 'Mood', auto: 'Auto', track: 'Specific track',
     sum: 'Summary', sumMin: 'Film length', sumCost: 'Cost', sumBal: 'Your balance', credits: 'credits',
     start: 'Produce the documentary', starting: 'Starting...',
     lowBal: "You don't have enough credits — need", topUp: 'Top up',
@@ -261,8 +261,8 @@ function AutoEditForm({ t, opts, dir, onStarted, onBalance }) {
               {[['karaoke', t.cKaraoke], ['box', t.cBox], ['pop', t.cPop], ['none', t.cNone]].map(([k, l]) => <Chip key={k} active={captions === k} onClick={() => setCaptions(k)}>{l}</Chip>)}
             </div>
           </div>
-          {opts.musicAvailable && <Toggle on={music} onChange={setMusic} label={t.eMusic} />}
-          {opts.musicAvailable && music && (
+          <Toggle on={music} onChange={setMusic} label={t.eMusic} />
+          {music && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Chip active={!mood} onClick={() => setMood('')}>{t.auto}</Chip>
               {opts.moods.map((m) => <Chip key={m} active={mood === m} onClick={() => setMood(m)}>{m}</Chip>)}
@@ -884,7 +884,6 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
           </div>
         </Section>
 
-        {opts.musicAvailable ? (
         <Section icon={Volume2} title={t.s4}>
           <Toggle on={music} onChange={setMusic} label={t.music} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', opacity: musicOff ? 0.5 : 1 }}>
@@ -901,9 +900,6 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
             </div>
           )}
         </Section>
-        ) : (
-          <Section icon={Volume2} title={t.s4}><div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.7 }}>{t.noMusic}</div></Section>
-        )}
       </div>
 
       <aside className="doc-side">

@@ -21,7 +21,7 @@ Return ONLY JSON: {"title":"short title","style":"fast|clean|calm|dramatic","mus
 Rules:
 - Segments are played in the order you list them (you may reorder clips). Times are seconds inside that clip.
 - Open with a strong hook (the most interesting 2-4 seconds). Cut dead time, repetition and rambling; keep the best moments. Never invent clips.
-- Speech clips: choose whole sentences using the transcript timestamps (start at a sentence start, end at a sentence end) and use audio "keep". Non-speech clips (b-roll, scenery, action): choose the best 3-8 second windows; use audio "mute" (music will carry them) — unless the note "NO MUSIC" appears in the customer wishes, then use audio "keep" for clips that have natural sound (it is their only soundtrack); "speed" may be 1-1.5 for muted action, otherwise 1.
+- Speech clips: choose whole sentences using the transcript timestamps (start at a sentence start, end at a sentence end) and use audio "keep". Non-speech clips (b-roll, scenery, action): choose the best 3-8 second windows and use audio "mute" (music will carry them); "speed" may be 1-1.5 for muted action, otherwise 1.
 - If the customer gave a target length or style, follow it. Without one: if the total raw footage is under 90 seconds keep most of it; otherwise aim for 45-120 seconds (or up to about 6 minutes when the speech content clearly deserves it).
 - At most 40 segments. Each segment 1-45 seconds.`;
 
@@ -38,7 +38,7 @@ export function describeForPlanner(clips) {
 }
 
 /** تنظيف الخطة بالكود: كل الأرقام بتتحقق ومفيش حاجة بتتصدّق من الـLLM */
-export function sanitizePlan(raw, clips, { noMusic = false } = {}) {
+export function sanitizePlan(raw, clips) {
   const byLabel = new Map(clips.map((c, i) => [`V${i + 1}`, c]));
   const segs = [];
   for (const s of Array.isArray(raw?.segments) ? raw.segments : []) {
@@ -50,7 +50,7 @@ export function sanitizePlan(raw, clips, { noMusic = false } = {}) {
     end = Math.min(c.duration, Math.max(end, start));
     if (end - start < 0.8) continue;
     if (end - start > 45) end = start + 45;
-    const keep = c.hasAudio && (s.audio !== 'mute' || noMusic); // بدون موسيقى: صوت المشهد الطبيعي هو الصوت الوحيد
+    const keep = s.audio !== 'mute' && c.hasAudio;
     const speed = !keep ? Math.min(1.5, Math.max(1, Number(s.speed) || 1)) : 1;
     segs.push({ clipIndex: clips.indexOf(c), start: Number(start.toFixed(2)), end: Number(end.toFixed(2)), keep, speed });
     if (segs.length >= 40) break;
@@ -66,24 +66,24 @@ export function sanitizePlan(raw, clips, { noMusic = false } = {}) {
 }
 
 /** خطة احتياطية: كل الفيديوهات بترتيبها — الكلام كامل (الصمت بيتقص بعدين)، والباقي أحسن 2×4 ثواني */
-export function fallbackPlan(clips, { noMusic = false } = {}) {
+export function fallbackPlan(clips) {
   const segments = [];
   clips.forEach((c, i) => {
     if (c.hasSpeech) segments.push({ clipIndex: i, start: 0, end: Math.min(c.duration, 300), keep: true, speed: 1 });
-    else if (c.duration <= 10) segments.push({ clipIndex: i, start: 0, end: c.duration, keep: noMusic && c.hasAudio, speed: 1 });
-    else { for (const f of [0.25, 0.65]) { const st = Math.min(c.duration - 4, c.duration * f); segments.push({ clipIndex: i, start: Number(st.toFixed(2)), end: Number((st + 4).toFixed(2)), keep: noMusic && c.hasAudio, speed: 1 }); } }
+    else if (c.duration <= 10) segments.push({ clipIndex: i, start: 0, end: c.duration, keep: false, speed: 1 });
+    else { for (const f of [0.25, 0.65]) { const st = Math.min(c.duration - 4, c.duration * f); segments.push({ clipIndex: i, start: Number(st.toFixed(2)), end: Number((st + 4).toFixed(2)), keep: false, speed: 1 }); } }
   });
   return { title: null, style: 'fast', musicMood: null, segments };
 }
 
-export async function planMontage({ clips, instructions = '', ask = llmJson, noMusic = false }) {
-  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}${noMusic ? ' NO MUSIC: no background music is added to this video.' : ''}\n\nClips:\n${describeForPlanner(clips)}`;
+export async function planMontage({ clips, instructions = '', ask = llmJson }) {
+  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}\n\nClips:\n${describeForPlanner(clips)}`;
   try {
     const raw = await ask({ system: SYSTEM, user, maxTokens: 3500, temperature: 0.3 });
-    const plan = sanitizePlan(raw, clips, { noMusic });
+    const plan = sanitizePlan(raw, clips);
     if (plan) return { ...plan, source: 'ai' };
   } catch (e) { console.warn('[SmartMontage] planner failed, using fallback:', e.message); }
-  return { ...fallbackPlan(clips, { noMusic }), source: 'fallback' };
+  return { ...fallbackPlan(clips), source: 'fallback' };
 }
 
 function targetSizeFor(clips) {
@@ -498,7 +498,7 @@ export async function smartMontage({ assets, workDir, instructions = '', options
   }
   if (deps.onTranscript) await deps.onTranscript(clips.flatMap(c => c.words || []));
   onProgress({ stage: 'plan', frac: 0 });
-  const plan = await planMontage({ clips, instructions, ask: deps.ask, noMusic: !options.musicFile });
+  const plan = await planMontage({ clips, instructions, ask: deps.ask });
   const result = await executePlan({ plan, clips, workDir: path.join(workDir, 'exec'), options, onProgress });
   return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: c.hasSpeech })) };
 }
