@@ -27,6 +27,39 @@ export function scoreCandidate(c, beatText, queries, { wantKind = 'either', used
   return s;
 }
 
+
+// كلمات عامة ما بتدلّش على الموضوع نفسه
+const GENERIC = new Set('statue map ruins photo photograph portrait picture image old ancient historical history archive archival vintage black white view building monument site city the remains painting drawing illustration relief tomb'.split(' '));
+export function boardRelevant(c, query) {
+  const q = toks(query);
+  const distinct = q.filter(w => !GENERIC.has(w));
+  const need = distinct.length ? distinct : q;
+  if (!need.length) return true;
+  const hay = new Set(toks(`${c.title} ${c.description}`));
+  const hits = need.filter(w => hay.has(w) || [...hay].some(h => h.length >= 5 && w.length >= 5 && (h.startsWith(w.slice(0, 5)) || w.startsWith(h.slice(0, 5))))).length;
+  return hits >= Math.min(need.length, need.length >= 3 ? 2 : 1);
+}
+
+async function llmBoardPick(items, deps) {
+  const ask = deps.llmJson || llmJson;
+  const picks = new Map();
+  const CH = 8;
+  for (let from = 0; from < items.length; from += CH) {
+    const chunk = items.slice(from, from + CH);
+    const user = chunk.map(it => `Slot [${it.key}]: the photo must clearly show "${it.query}"${it.caption ? ` (caption: "${it.caption}")` : ''}\nCandidates:\n` + it.cands.map(c => `- ${c.id} | ${String(c.title).slice(0, 90)} | ${String(c.description).slice(0, 110)}`).join('\n')).join('\n\n');
+    try {
+      const r = await ask({
+        system: 'You verify photos for a documentary pinboard. For each slot choose up to 2 candidate ids whose title/description show that EXACT subject (the named person, ship, place or object — not a lookalike, a different person/monument, or a generic stand-in). Be strict: if no candidate clearly matches, return an empty list for that slot. Return ONLY JSON: {"picks":[{"key":"3:0","ids":["id1"]}]}.',
+        user, maxTokens: 1200, temperature: 0,
+      });
+      const got = new Set();
+      for (const p of r.picks || []) { picks.set(String(p.key), Array.isArray(p.ids) ? p.ids : []); got.add(String(p.key)); }
+      chunk.forEach(it => { if (!got.has(it.key)) picks.set(it.key, []); });
+    } catch (e) { console.warn('[Documentary/resolver] board verification failed:', e.message); return null; }
+  }
+  return picks;
+}
+
 const kindsFor = (plan, group) => {
   if (plan.kind === 'video') return ['video'];
   if (plan.kind === 'image') return ['image'];
@@ -128,6 +161,8 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
     }
   });
   const boardOut = new Map();
+  // 1) بحث + فلتر صلة صارم: لازم الصورة تحمل اسم الموضوع المميّز (مش كلمة عامة زي statue/map)
+  const boardCands = new Map();
   await pool(boardJobs, concurrency, async ({ i, k, ph, text }) => {
     let cands = [];
     for (const group of ['archive', 'stock']) {
@@ -136,7 +171,16 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
     }
     const seen = new Set();
     cands = cands.filter(c => c.kind === 'image' && (seen.has(c.id) ? false : seen.add(c.id)));
+    cands = cands.filter(c => boardRelevant(c, ph.query));
     cands.sort((x, y) => scoreCandidate(y, text, [ph.query], { wantKind: 'image', used }) - scoreCandidate(x, text, [ph.query], { wantKind: 'image', used }));
+    boardCands.set(`${i}:${k}`, cands.slice(0, 6));
+  });
+  // 2) تحقق بالـLLM إن الصورة المختارة فعلاً هي الموضوع المكتوب (وإلا الخانة بتتشال بدل ما تتعرض صورة غلط)
+  const boardPick = deps.skipLlmRank ? null : await llmBoardPick(boardJobs.map(j => ({ key: `${j.i}:${j.k}`, query: j.ph.query, caption: j.ph.caption, cands: boardCands.get(`${j.i}:${j.k}`) || [] })).filter(x => x.cands.length), deps);
+  await pool(boardJobs, concurrency, async ({ i, k, ph }) => {
+    const key = `${i}:${k}`;
+    let cands = boardCands.get(key) || [];
+    if (boardPick) cands = (boardPick.get(key) || []).map(id => cands.find(c => c.id === id)).filter(Boolean);
     let tries = 0;
     for (const c0 of cands) {
       if (tries >= 3) break;
@@ -148,7 +192,7 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
         const a = await fetchOne(c, path.join(assetsDir, `${i}_p${k}`));
         if (a.kind !== 'image') continue;
         used.add(c0.id);
-        boardOut.set(`${i}:${k}`, { ...a, caption: ph.caption, credit: c.credit, license: c.license, source: c.source, pageUrl: c.pageUrl, title: c.title });
+        boardOut.set(key, { ...a, caption: ph.caption, credit: c.credit, license: c.license, source: c.source, pageUrl: c.pageUrl, title: c.title });
         break;
       } catch (e) { console.warn(`[Documentary/resolver] board ${i}/${k}: ${c0.id} failed — ${e.message}`); }
     }

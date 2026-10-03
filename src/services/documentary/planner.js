@@ -83,6 +83,14 @@ export function numbersInText(text) {
   }
   return out;
 }
+// النص لازم يكون في أغلبه من كلام الـbeat (مطابقة بجذر 4 حروف) عشان منخترعش معلومات
+const stemSet = (s) => new Set(String(s || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2).map(w => w.replace(/^ال/, '').slice(0, 4)));
+export function mostlyFrom(text, beatText, ratio = 0.4) {
+  const a = [...stemSet(text)];
+  if (!a.length) return false;
+  const b = stemSet(beatText);
+  return a.filter(w => b.has(w)).length / a.length >= ratio;
+}
 export function yearsIn(text) {
   const t = String(text || '').replace(/[٠-٩]/g, d => AR_DIGITS[d]);
   return [...t.matchAll(/(?<![\d,.])(1[0-9]{3}|20[0-9]{2})(?![\d,]|\.\d)/g)].map(m => Number(m[1]));
@@ -94,7 +102,12 @@ export function percentsIn(text) {
 const grounded = (value, nums) => nums.some(n => Math.abs(n - value) <= Math.max(0.011 * Math.abs(n), 1e-9));
 
 // ── 3) تحقق/تنضيف بيانات القوالب ───────────────────────────────────────────────────────────────
-const clip = (s, n) => String(s ?? '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
+const clip = (s, n) => {
+  const t = String(s ?? '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  const cut = t.slice(0, n), sp = cut.lastIndexOf(' ');
+  return (sp >= n * 0.6 ? cut.slice(0, sp) : cut).trim(); // قص عند آخر كلمة كاملة (مش نص كلمة)
+};
 const strArr = (a, min, max, n) => (Array.isArray(a) ? a.map(x => clip(x, n)).filter(Boolean).slice(0, max) : []).filter((_, i, arr) => arr.length >= min);
 
 const ALIASES = { US: ['america', 'usa', 'u.s.', 'united states'], GB: ['britain', 'british', 'england', 'english', 'u.k.', 'uk '], RU: ['russia', 'soviet', 'ussr'], FR: ['french'], NL: ['dutch', 'holland'], DE: ['german'], CN: ['chinese', 'china'], JP: ['japanese'], ES: ['spanish'], IN: ['indian'], EG: ['egyptian'], IL: ['israeli'], SA: ['saudi'], AE: ['emirat'], TR: ['turkish', 'ottoman'], IR: ['persian', 'iranian'], GR: ['greek'], IT: ['italian'], KR: ['korea'], KP: ['korea'] };
@@ -151,7 +164,7 @@ export function sanitizeTemplate(name, data, beatText) {
     }
     case 'photo_board': {
       const photos = (Array.isArray(data.photos) ? data.photos : []).map(p => ({ query: clip(p?.query, 80), caption: clip(p?.caption, 34) || undefined })).filter(p => p.query).slice(0, 4);
-      return photos.length >= 2 ? { title: clip(data.title, 30) || undefined, photos } : null;
+      return photos.length >= 2 ? { title: clip(data.title, 40) || undefined, photos } : null;
     }
     case 'kinetic_text': case 'stack_text': case 'marker_text': { const t = clip(data.text, 90); return t && t.split(/\s+/).length <= 14 ? { text: t, emphasis: strArr(data.emphasis, 0, 3, 20) } : null; }
     case 'icon_pop': {
@@ -174,6 +187,16 @@ export function sanitizeTemplate(name, data, beatText) {
       const v = Number(data.value);
       if (!Number.isFinite(v) || v < 0 || v > 100 || !grounded(v, nums)) return null;
       return { value: v, label: clip(data.label, 50) || undefined };
+    }
+    case 'bottom_sheet': {
+      const items = strArr(data.items, 2, 4, 48);
+      if (items.length < 2 || !mostlyFrom(items.join(' '), beatText, 0.4)) return null;
+      return { title: clip(data.title, 34) || undefined, items };
+    }
+    case 'side_note': case 'news_bar': {
+      const t = clip(data.text, name === 'news_bar' ? 90 : 110);
+      if (!t || !mostlyFrom(t, beatText, 0.4)) return null;
+      return { text: t, tag: clip(data.tag, 14) || undefined };
     }
     case 'wipe_bars': case 'corner_frame': return {};
     default: return null;
@@ -220,7 +243,7 @@ Rules:
 - "visual": "archive" = real historical photos/films, named people, places, events, documents (queries MUST include proper names and years, e.g. "Winston Churchill 1941"); "nasa" = space, rockets, planets, astronauts; "stock" = generic b-roll that illustrates the idea (nature, cities, machines, crowds); "text" = a motion-graphic scene with no footage (use sparingly).
 - Queries are English search terms for photo/video libraries (2-3, from specific to broad). Never ask for text, logos, maps with labels, or identifiable private individuals. Show what the sentence concretely says.
 - Use a template ONLY when the data comes from the beat's own text. NEVER invent facts or numbers. Available templates and data:
-  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places?[1-4 of {name,lat,lon}],regions?[1-4 of {code,label?}],route?} (a real geographic place, country or journey is named in the text; visual "text"; needs a beat of 3.2+ seconds; places: name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about, never guess; regions: highlight whole countries with their ISO 3166-1 alpha-2 code, label = a short caption such as "Communist forces" or "Allied powers", only for countries named in the text) | photo_board {title?,photos[2-4 of {query,caption?}]} (a pinboard of old/archival photographs of the specific people, ships, places or objects the text names; visual "text"; needs a beat of 3.6+ seconds; query = a precise English search such as "HMS Amethyst 1949 frigate" or "Mao Zedong 1949"; caption = 1-4 words; use for introductions of key people/objects) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text) | stack_text {text,emphasis[]} (the same, but the words stack line by line) | marker_text {text,emphasis[]} (the same, key words highlighted with a marker) | icon_pop {title?,items[2-4 of {icon,label}]} (2-4 concrete things/forces/ideas named in the text, each drawn as an animated icon; icon is one of: sword shield crown ship plane rocket book coin fire skull flag city pyramid scroll castle globe clock star bolt people house anchor gear tank trend; label = 1-2 words from the text; visual "text", needs 3.2+ seconds) | date_card {year,label?} (a year written in the text — 4-digit number between 1000 and 2100 that appears in the text; the year rolls up on screen; overlay on footage or visual "text") | vs_card {left:{label},right:{label}} (two opposing sides/people/countries both named in the text; visual "text") | stamp {text,tone?} (a rubber stamp slammed on screen: 1-3 words such as CLASSIFIED, BANNED, FAILED, VICTORY, ILLEGAL — tone "red" or "gold"; overlay for a dramatic verdict) | percent_ring {value,label?} (a percentage written in the text, 0-100; overlay or visual "text") | wipe_bars {} (a colourful bar wipe used at chapter changes — overlay, optional) | corner_frame {} (viewfinder corners over archive footage — overlay, optional).
+  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places?[1-4 of {name,lat,lon}],regions?[1-4 of {code,label?}],route?} (a real geographic place, country or journey is named in the text; visual "text"; needs a beat of 3.2+ seconds; places: name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about, never guess; regions: highlight whole countries with their ISO 3166-1 alpha-2 code, label = a short caption such as "Communist forces" or "Allied powers", only for countries named in the text) | photo_board {title?,photos[2-4 of {query,caption?}]} (a pinboard of old/archival photographs of the specific people, ships, places or objects the text names; visual "text"; needs a beat of 3.6+ seconds; query = a precise English search such as "HMS Amethyst 1949 frigate" or "Mao Zedong 1949"; caption = 1-4 words; use for introductions of key people/objects) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text) | stack_text {text,emphasis[]} (the same, but the words stack line by line) | marker_text {text,emphasis[]} (the same, key words highlighted with a marker) | icon_pop {title?,items[2-4 of {icon,label}]} (2-4 concrete things/forces/ideas named in the text, each drawn as an animated icon; icon is one of: sword shield crown ship plane rocket book coin fire skull flag city pyramid scroll castle globe clock star bolt people house anchor gear tank trend; label = 1-2 words from the text; visual "text", needs 3.2+ seconds) | date_card {year,label?} (a year written in the text — 4-digit number between 1000 and 2100 that appears in the text; the year rolls up on screen; overlay on footage or visual "text") | vs_card {left:{label},right:{label}} (two opposing sides/people/countries both named in the text; visual "text") | stamp {text,tone?} (a rubber stamp slammed on screen: 1-3 words such as CLASSIFIED, BANNED, FAILED, VICTORY, ILLEGAL — tone "red" or "gold"; overlay for a dramatic verdict) | percent_ring {value,label?} (a percentage written in the text, 0-100; overlay or visual "text") | bottom_sheet {title?,items[2-4 short strings]} (a list panel that RISES from the bottom of the screen while its items appear one by one: use for 2-4 reasons/steps/facts/terms the narration lists; items are copied or tightly shortened from the text; overlay on footage, needs 3.5+ seconds) | side_note {text,tag?} (a small fact card sliding in from the side: one key fact from the beat in <=14 words, tag = 1-2 word label such as "Fact"; overlay) | news_bar {text,tag?} (a news-style headline bar at the top, tag e.g. "Breaking"; text is a headline-like rewording of the beat; overlay) | wipe_bars {} (a colourful bar wipe used at chapter changes — overlay, optional) | corner_frame {} (viewfinder corners over archive footage — overlay, optional).
 - Use motion graphics GENEROUSLY — about 1 in 3 beats should carry a template or overlay (lower_third for every named person, counter for numbers, kinetic_text for striking phrases), but never two "text" beats in a row. Put "chapter" on the first beat and whenever the topic clearly shifts.
 - MOTION GRAPHICS VARIETY: the viewer must feel this is a produced film, not a slideshow — rotate between ALL the templates above instead of repeating the same one; use icon_pop whenever 2-4 concrete things are listed or contrasted, date_card for every important year, vs_card for rivalries, stamp for verdicts/secrets/outcomes, percent_ring for percentages, stack_text/marker_text for striking phrases. Never use the same template on two consecutive beats.
 - MAPS: whenever countries, regions, borders, invasions, routes or journeys are named, use a map_reveal beat (visual "text") with "regions" (ISO codes of the named countries, with a short label) and "places" when you are certain of the coordinates — at least one map in every ~45 seconds of narration when geography is part of the story. PHOTO BOARDS: use photo_board when 2-4 specific people, ships, places or objects are introduced (at least once in every ~45 seconds when such subjects exist).

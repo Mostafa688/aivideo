@@ -29,7 +29,7 @@ export function gradeFilter(grade) {
   switch (grade) {
     case 'bw_archive': return 'hue=s=0,eq=contrast=1.12:brightness=-0.02,noise=alls=14:allf=t+u,vignette=PI/5';
     case 'sepia': return 'colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,noise=alls=10:allf=t+u,vignette=PI/5';
-    case 'cinematic': return 'eq=contrast=1.08:saturation=0.92:gamma_b=0.96,curves=preset=cross_process,vignette=PI/6';
+    case 'cinematic': return 'eq=contrast=1.06:saturation=1.0,colorbalance=rs=0.03:bs=-0.03:rh=0.03:bh=-0.02,vignette=PI/7';
     case 'warm': return 'colorchannelmixer=rr=1.05:gg=1.0:bb=0.9,eq=contrast=1.05,vignette=PI/6';
     case 'cool': return 'colorchannelmixer=rr=0.95:gg=1.0:bb=1.06,eq=contrast=1.05,vignette=PI/6';
     default: return null;
