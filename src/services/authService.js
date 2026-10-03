@@ -227,6 +227,19 @@ async function initDB() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT NULL`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT DEFAULT NULL`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_ip TEXT DEFAULT NULL`);
+  // ✅ مرة واحدة بس: الحسابات اللي اتعملت قبل تسجيل الموافقة اتعدّت على خطوة الشروط الإلزامية في التسجيل، فبنعلّمها "legacy"
+  // (وقت التسجيل كتاريخ تقريبي، من غير نسخة/IP) — ده استنتاج من مسار التسجيل مش سجل نقرة فعلي، فبيظهر في الأدمن بوضوح إنه legacy
+  await pool.query(`CREATE TABLE IF NOT EXISTS schema_flags (name TEXT PRIMARY KEY, done_at TIMESTAMPTZ DEFAULT NOW())`);
+  const flag = await pool.query(`INSERT INTO schema_flags (name) VALUES ('terms_legacy_backfill') ON CONFLICT DO NOTHING RETURNING name`);
+  if (flag.rowCount === 1) {
+    await pool.query(`
+      DO $$ BEGIN
+        UPDATE users SET terms_accepted_at = created_at::timestamptz, terms_version = 'legacy' WHERE terms_accepted_at IS NULL AND created_at IS NOT NULL;
+        UPDATE users SET terms_accepted_at = NOW(), terms_version = 'legacy' WHERE terms_accepted_at IS NULL;
+      EXCEPTION WHEN others THEN
+        UPDATE users SET terms_accepted_at = NOW(), terms_version = 'legacy' WHERE terms_accepted_at IS NULL;
+      END $$;`).catch(e => console.warn('[Terms] legacy backfill skipped:', e.message));
+  }
   // ✅ FIX: كان endpoint /api/auth/onboarding-answers بيعمل INSERT في الجدول ده من غير ما
   // يكون معمول له CREATE أصلاً — ده كان هيفشل (relation does not exist) على أي قاعدة بيانات جديدة
   await pool.query(`
