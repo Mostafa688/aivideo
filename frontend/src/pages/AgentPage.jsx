@@ -2594,6 +2594,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
   // ✅ NEW (Workspace redesign, Phase 2): الشات بقى شريط جانبي نص فقط — أي ميديا متولدة
   // (فيديو/whiteboard/دفعة صور) بتتشال من قائمة رسائل الشات وتتعرض في canvas النص بدل كده
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 860px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 860px)');
+    const on = () => setIsMobile(mq.matches);
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
   const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis', 'channelRun', 'channelReview', 'docJob'];
   const mediaItems = messages
     .map((m, i) => ({ ...m, _i: i }))
@@ -2617,6 +2624,63 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     { key: 'favorites', label: t.favoritesTab, icon: Heart },
   ];
 
+  // كارت الميديا (نفسه في الكانفاس على الكمبيوتر وجوه الشات على الموبايل)
+  const renderMediaCard = (m) => (
+    <>
+    {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+    {m.type === 'whiteboard' && <WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+    {m.type === 'docJob' && <DocJobCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+    {m.type === 'channelRun' && <ChannelRunCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+    {m.type === 'channelReview' && <ChannelReviewCard job={m.job} lang={lang}
+      onUpdateJob={(patch) => updateJobByRunId(m.job.runId, patch)}
+      onMessage={(text) => setMessages(mm => [...mm, { role: 'assistant', content: text }])}
+    />}
+    {m.type === 'imageBatch' && <ImageBatchCard job={m.job} lang={lang}
+      onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
+      onRemoveImage={(idx) => removeImageFromBatch(m.job.uid, idx)}
+      onReusePrompt={reusePromptIntoComposer}
+      onAnimate={animateImageFromMenu}
+      onReport={reportMedia}
+      onOpenDetail={(idx) => setDetailView({ jobUid: m.job.uid, kind: 'imageBatch', imgIndex: idx })}
+      onToast={showToast}
+    />}
+    {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang}
+      onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
+      onRemove={() => removeMessageByJobUid(m.job.uid)}
+      onReusePrompt={reusePromptIntoComposer}
+      onReport={reportMedia}
+      onOpenDetail={() => setDetailView({ jobUid: m.job.uid, kind: 'videoModel' })}
+      onToast={showToast}
+    />}
+    {m.type === 'videoAnalysis' && (
+      <div style={{ padding: 16, borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', fontSize: 13, color: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontWeight: 700 }}>
+          <Mic size={14} strokeWidth={2} />
+          {lang === 'ar' ? 'تحليل الفيديو' : 'Video Analysis'}
+        </div>
+        {m.job?.status === 'generating' && <div style={{ color: 'var(--text2)' }}>{lang === 'ar' ? 'جاري التحليل...' : 'Analyzing...'}</div>}
+        {m.job?.status === 'failed' && <div style={{ color: '#ef4444' }}>{m.job.error || (lang === 'ar' ? 'فشل التحليل' : 'Analysis failed')}</div>}
+        {m.job?.status === 'done' && (
+          <>
+            {/* ✅ NEW: "media_path" على الأرجح فيديو تصور مرئي (مربعات حوالين
+                اللي بيتكلم/مش بيتكلم) — نعرضه كفيديو حقيقي مش مجرد رابط نصي */}
+            {Array.isArray(m.job.mediaUrls) && m.job.mediaUrls.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+                {m.job.mediaUrls.map((u, idx) => (
+                  <video key={idx} src={u} controls playsInline style={{ width: '100%', borderRadius: 10, background: '#000' }} />
+                ))}
+              </div>
+            )}
+            <div style={{ color: 'var(--text2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 160, overflowY: 'auto' }}>
+              {typeof m.job.analysis === 'string' ? m.job.analysis : JSON.stringify(m.job.analysis, null, 2)}
+            </div>
+          </>
+        )}
+      </div>
+    )}
+    </>
+  );
+
   return (
     <div className={`agent-3col${leavingWorkspace ? ' workspace-exiting' : ''}${mediaItems.length ? ' agent-has-media' : ''}`} style={{ height: 'calc(100vh - 74px)', display: 'flex', overflow: 'hidden' }}>
       <style>{`
@@ -2634,19 +2698,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
            بيطلع مقصوص/متلخبط. دلوقتي على الهاتف الأعمدة بتترتب فوق بعض (شات فوق، كانفاس تحت)،
            عمود "التنظيم" الجانبي بيختفي ومكانه شريط تابات أفقي بسيط فوق الكانفاس نفسه */
         @media (max-width: 860px) {
-          /* الموبايل: الشاشة كلها من غير سكرول للصفحة — الميديا فوق (بتسكرول جواها) والشات تحتها وخانة الكتابة دايمًا ظاهرة */
-          .agent-3col{flex-direction:column;height:calc(100dvh - 74px) !important;overflow:hidden !important;}
-          .agent-panel-chat{order:2;width:100% !important;flex:1 1 auto;min-height:0;border-inline-end:none !important;border-top:1px solid var(--border);}
-          .agent-panel-canvas{order:1;width:100% !important;flex:0 0 auto !important;max-height:44%;min-height:0;}
-          .agent-panel-canvas.agent-canvas-none{display:none !important;}
-          .agent-canvas-head{padding:8px 12px !important;display:flex !important;align-items:center;gap:8px;}
-          .agent-canvas-scroll{padding:10px 12px !important;min-height:0;}
-          .agent-mobile-only{display:flex !important;}
-          .agent-3col.agent-has-media .agent-chat-head{display:none !important;}
-          .agent-canvas-title{font-size:14px !important;text-align:center;flex:1;}
-          .agent-mobile-tabs{padding:6px 12px 0 !important;overflow-x:auto;}
+          /* الموبايل: شكل شات زي واتساب — الميديا جوه المحادثة نفسها والكانفاس المنفصل مخفي، وخانة الكتابة ثابتة تحت */
+          .agent-3col{flex-direction:column;height:calc(100vh - 74px) !important;height:calc(100dvh - 74px) !important;overflow:hidden !important;}
+          .agent-panel-chat{width:100% !important;flex:1 1 0 !important;flex-shrink:1 !important;min-height:0 !important;height:auto !important;border-inline-end:none !important;}
+          .agent-panel-canvas{display:none !important;}
           .agent-panel-organize{display:none !important;}
-          .agent-mobile-tabs{display:flex !important;}
         }
       `}</style>
 
@@ -2691,7 +2747,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             </div>
           ) : (
             messages.map((m, i) => {
-              if (MEDIA_TYPES.includes(m.type)) return null;
+              if (MEDIA_TYPES.includes(m.type)) {
+                // الموبايل: الميديا جوه الشات نفسه زي أي محادثة (مفيش كانفاس منفصل)
+                return isMobile ? <div key={i} className="agent-bubble" style={{ alignSelf: 'stretch', width: '100%' }}>{renderMediaCard(m)}</div> : null;
+              }
               if (m.type === 'docSetup') {
                 return (
                   <div key={i} className="agent-bubble" style={{ alignSelf: 'stretch' }}>
@@ -2853,57 +2912,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
               {visibleMedia.map(m => (
                 <div key={m._i} className="agent-bubble">
-                  {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}
-                  {m.type === 'whiteboard' && <WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} />}
-                  {m.type === 'docJob' && <DocJobCard job={m.job} lang={lang} onNavigate={onNavigate} />}
-                  {m.type === 'channelRun' && <ChannelRunCard job={m.job} lang={lang} onNavigate={onNavigate} />}
-                  {m.type === 'channelReview' && <ChannelReviewCard job={m.job} lang={lang}
-                    onUpdateJob={(patch) => updateJobByRunId(m.job.runId, patch)}
-                    onMessage={(text) => setMessages(mm => [...mm, { role: 'assistant', content: text }])}
-                  />}
-                  {m.type === 'imageBatch' && <ImageBatchCard job={m.job} lang={lang}
-                    onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
-                    onRemoveImage={(idx) => removeImageFromBatch(m.job.uid, idx)}
-                    onReusePrompt={reusePromptIntoComposer}
-                    onAnimate={animateImageFromMenu}
-                    onReport={reportMedia}
-                    onOpenDetail={(idx) => setDetailView({ jobUid: m.job.uid, kind: 'imageBatch', imgIndex: idx })}
-                    onToast={showToast}
-                  />}
-                  {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang}
-                    onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
-                    onRemove={() => removeMessageByJobUid(m.job.uid)}
-                    onReusePrompt={reusePromptIntoComposer}
-                    onReport={reportMedia}
-                    onOpenDetail={() => setDetailView({ jobUid: m.job.uid, kind: 'videoModel' })}
-                    onToast={showToast}
-                  />}
-                  {m.type === 'videoAnalysis' && (
-                    <div style={{ padding: 16, borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', fontSize: 13, color: '#fff' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontWeight: 700 }}>
-                        <Mic size={14} strokeWidth={2} />
-                        {lang === 'ar' ? 'تحليل الفيديو' : 'Video Analysis'}
-                      </div>
-                      {m.job?.status === 'generating' && <div style={{ color: 'var(--text2)' }}>{lang === 'ar' ? 'جاري التحليل...' : 'Analyzing...'}</div>}
-                      {m.job?.status === 'failed' && <div style={{ color: '#ef4444' }}>{m.job.error || (lang === 'ar' ? 'فشل التحليل' : 'Analysis failed')}</div>}
-                      {m.job?.status === 'done' && (
-                        <>
-                          {/* ✅ NEW: "media_path" على الأرجح فيديو تصور مرئي (مربعات حوالين
-                              اللي بيتكلم/مش بيتكلم) — نعرضه كفيديو حقيقي مش مجرد رابط نصي */}
-                          {Array.isArray(m.job.mediaUrls) && m.job.mediaUrls.length > 0 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
-                              {m.job.mediaUrls.map((u, idx) => (
-                                <video key={idx} src={u} controls playsInline style={{ width: '100%', borderRadius: 10, background: '#000' }} />
-                              ))}
-                            </div>
-                          )}
-                          <div style={{ color: 'var(--text2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 160, overflowY: 'auto' }}>
-                            {typeof m.job.analysis === 'string' ? m.job.analysis : JSON.stringify(m.job.analysis, null, 2)}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
+                  {renderMediaCard(m)}
                 </div>
               ))}
             </div>
