@@ -52,6 +52,7 @@ const T = {
     eUpload: 'اختر فيديو (لحد 20 دقيقة / 600 ميجا)', eFile: 'الفيديو', eDur: 'المدة', eLang: 'لغة الكلام في الفيديو', eOpts: 'اللي هيتعمل',
     eCut: 'قص الصمت', eZoom: 'زوم ديناميكي', eTrans: 'انتقالات بين الفقرات', eMusic: 'موسيقى خلفية', eStart: 'ابدأ المونتاج', eNoAudio: 'الفيديو ده مفيهوش صوت.',
     eNote: 'التكلفة بتتحسب على مدة الفيديو الأصلي.', eUnknownDur: 'مقدرناش نقرا مدة الفيديو في المتصفح، بس تقدر تكمّل — التكلفة هتتحسب بعد الرفع.',
+    rightsNote: 'تنبيه حقوق: بنختار اللقطات من مصادر مجانية ومرخّصة (Pexels وPixabay وNASA وWikimedia وInternet Archive) لكن مش بنضمن 100% إنها خالية من حقوق الغير. راجع الفيلم قبل النشر، وانسخ الـcredits في وصف الفيديو لأن بعض التراخيص بتطلب ذكر المصدر. المسؤولية على الناشر (راجع الشروط، البند 17).',
     pkgBtn: 'جهّز حزمة النشر على يوتيوب', pkgBuilding: 'بيجهّز العنوان والوصف والصورة...', pkgTitle: 'العنوان', pkgDesc: 'الوصف (فيه الفصول والمصادر)', pkgTags: 'الكلمات المفتاحية', pkgThumb: 'الصورة المصغرة', pkgThumbDl: 'تنزيل الصورة', pkgSrt: 'تنزيل ملف الترجمة SRT', pkgRegen: 'جهّز تاني',
     tooShort: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.',
     errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى من توليد السكريبتات في الساعة.', video_required: 'اختر فيديو الأول.', bad_video: 'الملف ده مش فيديو صالح أو أقصر من 5 ثواني.', no_audio: 'الفيديو ده مفيهوش صوت.', file_too_large: 'الفيديو أكبر من 600 ميجا.', upload_failed: 'فشل الرفع، جرّب تاني.' },
@@ -101,6 +102,7 @@ const T = {
     eUpload: 'Choose a video (up to 20 minutes / 600 MB)', eFile: 'Video', eDur: 'Length', eLang: 'Spoken language', eOpts: 'What it does',
     eCut: 'Cut silences', eZoom: 'Dynamic zoom', eTrans: 'Transitions between parts', eMusic: 'Background music', eStart: 'Start editing', eNoAudio: 'This video has no audio.',
     eNote: 'Billed on the length of the original video.', eUnknownDur: "We couldn't read the length in your browser, but you can continue — the cost is calculated after upload.",
+    rightsNote: 'Rights notice: footage comes from free, licensed sources (Pexels, Pixabay, NASA, Wikimedia, Internet Archive), but we cannot guarantee 100% that it is free of third-party rights. Review the film before publishing and paste the credits into your video description — some licenses require attribution. The publisher is responsible (see the Terms, Section 17).',
     pkgBtn: 'Prepare the YouTube upload package', pkgBuilding: 'Preparing title, description and thumbnail...', pkgTitle: 'Title', pkgDesc: 'Description (with chapters and credits)', pkgTags: 'Tags', pkgThumb: 'Thumbnail', pkgThumbDl: 'Download thumbnail', pkgSrt: 'Download SRT subtitles', pkgRegen: 'Regenerate',
     tooShort: 'The film would be under 25 seconds — add more text.',
     errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit for script generation.', video_required: 'Choose a video first.', bad_video: 'This file is not a readable video or is shorter than 5 seconds.', no_audio: 'This video has no audio.', file_too_large: 'The video is larger than 600 MB.', upload_failed: 'Upload failed, please try again.' },
@@ -144,6 +146,7 @@ function PackagePanel({ job, t }) {
         </button>
         {job.hasSrt && <button type="button" className="btn-ghost" onClick={downloadSrt} style={{ borderRadius: 'var(--r-md)' }}>{t.pkgSrt}</button>}
         {err && <span style={{ color: 'var(--red)', fontSize: 13 }}>{err}</span>}
+        <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.7, flexBasis: '100%' }}>{t.rightsNote}</div>
       </div>
     );
   }
@@ -172,6 +175,7 @@ function PackagePanel({ job, t }) {
         {job.hasSrt && <button type="button" className="btn-ghost" onClick={downloadSrt} style={{ borderRadius: 'var(--r-md)' }}>{t.pkgSrt}</button>}
         <button type="button" className="btn-ghost" disabled={busy} onClick={() => build(true)} style={{ borderRadius: 'var(--r-md)' }}>{busy ? <Loader2 size={14} className="doc-spin" /> : t.pkgRegen}</button>
       </div>
+      <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.7 }}>{t.rightsNote}</div>
     </div>
   );
 }
