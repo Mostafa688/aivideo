@@ -78,7 +78,7 @@ export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rt
   }
 
   // تعتيم خفيف تحت النصوص الكبيرة لما القاعدة لقطة/صورة حقيقية (القراءة أولوية)
-  const TEXT_HEAVY = new Set(['quote', 'kinetic_text', 'title_card', 'counter', 'bullet_panel', 'evidence_board', 'bar_chart', 'donut_chart', 'timeline', 'route_diagram']);
+  const TEXT_HEAVY = new Set(['quote', 'kinetic_text', 'stack_text', 'marker_text', 'title_card', 'counter', 'bullet_panel', 'evidence_board', 'bar_chart', 'donut_chart', 'timeline', 'route_diagram']);
   const needsDim = v.kind !== 'background' && (beat.dim ?? (beat.overlays || []).some(o => TEXT_HEAVY.has(o.template)));
   if (needsDim) {
     const last = filters.pop();

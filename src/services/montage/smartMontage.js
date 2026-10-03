@@ -212,7 +212,7 @@ Rules:
 - "shots" play in order and cover the narration from 0 to its end. "until" = the narration time (seconds) where this shot ends (strictly increasing; the last one equals the narration duration). "start" = the second inside the clip where the shot begins (choose the most interesting part, avoid the first/last 0.3s).
 - Match meaning: when the narration talks about something a clip shows, use that clip at that moment. Use EVERY clip at least once unless it is unusable (black, shaky, blurry); a good clip can be used again later with a different "start".
 - Pace: shots of 2-6 seconds (up to 8 for calm moments); change picture at sentence or clause boundaries. Open with the most striking visual for the hook.
-- Be creative with MOTION GRAPHICS: about every second shot may carry an "overlay" (optional field) animated on top of the picture: kinetic_text {text,emphasis[]} = a punchy phrase of 2-6 words copied EXACTLY from the narration of that shot (words pop in big, the emphasis words are enlarged and recoloured) — your main tool, use it for the strongest phrases, claims, numbers and turning points; counter {value,prefix?,suffix?,label?} = one striking number written in the narration (not a year); lower_third {name,role?} = the first time a real person is named; quote {text,author?} = a sentence quoted in the narration; bullet_panel {title?,bullets[2-5]} = an enumeration spoken in the narration. All overlay text must come from what is actually said in that shot — never invent facts or numbers, and use the narration's language. Never put an overlay on two consecutive shots.
+- Be creative with MOTION GRAPHICS: about every second shot may carry an "overlay" (optional field) animated on top of the picture: kinetic_text {text,emphasis[]} = a punchy phrase of 2-6 words copied EXACTLY from the narration of that shot (words pop in big, the emphasis words are enlarged and recoloured); stack_text {text,emphasis[]} = 2-5 words copied exactly, stacked as giant words slamming in one under the other — for hard-hitting moments; marker_text {text,emphasis[]} = a phrase of 3-8 words copied exactly with a highlighter marker swiping over the emphasis words — for key claims. Mix the three styles across the film; use them for the strongest phrases, claims, numbers and turning points; counter {value,prefix?,suffix?,label?} = one striking number written in the narration (not a year); lower_third {name,role?} = the first time a real person is named; quote {text,author?} = a sentence quoted in the narration; bullet_panel {title?,bullets[2-5]} = an enumeration spoken in the narration. All overlay text must come from what is actually said in that shot — never invent facts or numbers, and use the narration's language. Never put an overlay on two consecutive shots.
 - At most 60 shots. Never invent clips.`;
 
 /** حدود القطع الممكنة: نهايات الكلمات (القطع بين كلمتين، مش في نص كلمة) */
@@ -304,7 +304,8 @@ export function fallbackVoicePlan(clips, narr) {
 
 
 // ── موشن جرافيك فوق المشاهد (نفس قوالب الأفلام الوثائقية): نصوص بتظهر بحركة، كلمات مهمة بتكبر وتتغير ألوانها، أرقام، أسماء... ──
-const OVERLAY_TEMPLATES = new Set(['kinetic_text', 'lower_third', 'counter', 'quote', 'bullet_panel']);
+const OVERLAY_TEMPLATES = new Set(['kinetic_text', 'stack_text', 'marker_text', 'lower_third', 'counter', 'quote', 'bullet_panel']);
+const PHRASE_TEMPLATES = new Set(['kinetic_text', 'stack_text', 'marker_text', 'quote']); // قوالب نص من الكلام (الكابشن بيختفي وقت ظهورها)
 const normW = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 const inWindow = (words, t0, t1) => words.filter(w => w.start >= t0 - 0.05 && w.start < t1);
 const mostlySaid = (s, set) => { const ws = String(s).split(/\s+/).map(normW).filter(Boolean); return ws.length > 0 && ws.filter(x => set.has(x)).length / ws.length >= 0.7; };
@@ -316,8 +317,8 @@ export function sanitizeOverlay(raw, win) {
   const data = sanitizeTemplate(raw.template, raw.data, text);
   if (!data) return null;
   const said = new Set(win.map(w => normW(w.w)));
-  if (raw.template === 'kinetic_text' && !mostlySaid(data.text, said)) return null;
-  if (raw.template === 'quote' && !mostlySaid(data.text, said)) return null;
+  if (PHRASE_TEMPLATES.has(raw.template) && !mostlySaid(data.text, said)) return null;
+  if (raw.template === 'stack_text' && data.text.split(/\s+/).length > 6) return null;
   if (raw.template === 'lower_third' && !mostlySaid(data.name, said)) return null;
   if (raw.template === 'bullet_panel' && data.bullets.filter(b => mostlySaid(b, said)).length < Math.ceil(data.bullets.length / 2)) return null;
   if (raw.template === 'counter' && Number.isInteger(data.value) && data.value >= 1800 && data.value <= 2100 && !data.suffix && !data.prefix) return null; // سنة مش عدّاد
@@ -325,7 +326,7 @@ export function sanitizeOverlay(raw, win) {
 }
 
 /** نص قوي من كلام اللقطة (2-6 كلمات) مع كلمات التأكيد — بنستخدمه لما الـLLM ما يديش overlay */
-export function autoKinetic(win) {
+export function autoKinetic(win, template = 'kinetic_text') {
   if (win.length < 3) return null;
   // عبارات: نقطع عند علامات الترقيم، ونختار أطول عبارة (≤ 6 كلمات) أو أول 5 كلمات
   const clauses = []; let cur = [];
@@ -335,18 +336,20 @@ export function autoKinetic(win) {
   if (!best) best = win.slice(0, Math.min(5, win.length));
   const text = best.map(w => w.w.replace(/[.,;:!?،؛؟…]+$/, '')).join(' ');
   const emphasis = [...best].map(w => w.w.replace(/[^\p{L}\p{N}]/gu, '')).filter(w => w.length >= 4).sort((a, b) => b.length - a.length).slice(0, 2);
-  const data = sanitizeTemplate('kinetic_text', { text, emphasis }, text);
-  return data ? { template: 'kinetic_text', data } : null;
+  const max = template === 'stack_text' ? 4 : 99;
+  const trimmed = text.split(/\s+/).slice(0, max).join(' ');
+  const data = sanitizeTemplate(template, { text: trimmed, emphasis }, trimmed);
+  return data ? { template, data } : null;
 }
 
 /** بيحسب لكل لقطة نافذة كلامها ويثبّت الـoverlay (من الـLLM بعد التحقق، أو تلقائي كل لقطة تانية) — مفيش لقطتين ورا بعض */
 export function finalizeOverlays(shots, narr) {
-  let t0 = 0, prev = false;
+  let t0 = 0, prev = false, autoCount = 0;
   shots.forEach((s, i) => {
     const t1 = t0 + s.dur;
     const win = inWindow(narr.words, t0, t1);
     let ov = sanitizeOverlay(s.overlay, win);
-    if (!ov && !prev && i % 2 === 0) ov = autoKinetic(win);
+    if (!ov && !prev && i % 2 === 0) ov = autoKinetic(win, ['kinetic_text', 'marker_text', 'stack_text'][autoCount++ % 3]);
     if (ov && prev) ov = null;
     if (s.dur < 1.6) ov = null;
     s.overlay = ov || null;
@@ -367,6 +370,37 @@ export async function planVoiceover({ clips, narr, instructions = '', ask = llmJ
   return { ...fb, source: 'fallback' };
 }
 
+
+/** مكان العبارة المكتوبة جوه كلام اللقطة (بداية/نهاية الكلام الفعلي) — عشان النص يظهر وقت ما بيتقال */
+export function phraseSpan(win, text) {
+  const target = String(text).split(/\s+/).map(normW).filter(Boolean);
+  if (!target.length || !win.length) return null;
+  let best = null;
+  for (let i = 0; i < win.length; i++) {
+    let hit = 0, last = i;
+    for (let k = 0; k < target.length && i + k < win.length + 2; k++) { const w = win[i + k]; if (w && normW(w.w) === target[k]) { hit++; last = i + k; } }
+    if (hit >= Math.ceil(target.length * 0.6) && (!best || hit > best.hit)) best = { hit, start: win[i].start, end: win[last].end };
+  }
+  return best ? { start: best.start, end: best.end } : null;
+}
+
+/** مؤثرات صوتية للـoverlay (بتتوزّع مع حركة القالب نفسه) */
+export function overlaySfx(ov, absAt) {
+  const ev = [];
+  const words = String(ov.data?.text || '').split(/\s+/).filter(Boolean);
+  switch (ov.template) {
+    case 'kinetic_text': words.slice(0, 10).forEach((_, i) => ev.push({ t: absAt + 0.12 + i * 0.22, type: i === 0 ? 'click' : 'tick', vol: 0.3 })); break;
+    case 'stack_text': { const n = Math.min(4, words.length); for (let i = 0; i < n; i++) ev.push({ t: absAt + 0.2 + i * 0.2, type: i === n - 1 ? 'boom' : 'impact', vol: i === n - 1 ? 0.42 : 0.28 }); break; }
+    case 'marker_text': ev.push({ t: absAt + 0.08, type: 'swish', vol: 0.3 }, { t: absAt + 0.5, type: 'pop', vol: 0.4 }); break;
+    case 'quote': ev.push({ t: absAt + 0.05, type: 'swish', vol: 0.3 }); break;
+    case 'counter': ev.push({ t: absAt + 0.1, type: 'riser', vol: 0.32 }); break;
+    case 'lower_third': ev.push({ t: absAt + 0.05, type: 'whoosh', vol: 0.3 }, { t: absAt + 0.55, type: 'click', vol: 0.3 }); break;
+    case 'bullet_panel': (ov.data?.bullets || []).slice(0, 5).forEach((_, i) => ev.push({ t: absAt + 0.6 + i * 0.5, type: 'pop', vol: 0.35 })); break;
+    default: break;
+  }
+  return ev;
+}
+
 const hasArabic = (s) => /[؀-ۿ]/.test(s);
 
 export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, options = {}, onProgress = () => {} }) {
@@ -376,6 +410,9 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   const animate = plan.shots.length <= 45 && options.zoom !== false;
   const lang0 = hasArabic(narr.words.map(w => w.w).join(' ')) ? 'ar' : (options.language && options.language !== 'auto' ? String(options.language).split(/[-_]/)[0] : 'en');
   const theme = plan.style === 'dramatic' ? 'cinematic' : 'blue';
+  const hideCaps = []; // فترات الكابشن بيختفي فيها لأن نفس الكلام ظاهر كنص متحرك (مفيش تكرار)
+  const extraSfx = [{ t: 0.04, type: 'impact', vol: 0.5 }];
+  let shotStart = 0;
   for (let i = 0; i < plan.shots.length; i++) {
     onProgress({ stage: 'cut', frac: i / plan.shots.length });
     const s = plan.shots[i], c = clips[s.clipIndex];
@@ -387,17 +424,22 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
     if (s.overlay && options.motionGraphics !== false) {
       // موشن جرافيك: بنركّب القالب المتحرك فوق اللقطة (نفس محرك الأفلام الوثائقية) وبنرجّع الصوت الصامت للمقطع
       try {
-        const at = s.overlay.template === 'lower_third' ? 0.45 : 0.18;
-        const ovDur = Math.min(outLen - at - 0.2, s.overlay.template === 'kinetic_text' ? 3.4 : 4.5);
+        // نصوص الكلام: بتظهر وقت ما العبارة بتتقال وبتفضل لحد ما تخلص (+ثانية)؛ الباقي بتوقيت ثابت
+        let at = s.overlay.template === 'lower_third' ? 0.45 : 0.18, ovDur = Math.min(outLen - at - 0.2, 4.5);
+        const phrase = PHRASE_TEMPLATES.has(s.overlay.template) ? phraseSpan(inWindow(narr.words, shotStart, shotStart + s.dur), s.overlay.data.text) : null;
+        if (phrase) { at = Math.max(0.1, Math.min(outLen - 1.4, phrase.start - shotStart - 0.12)); ovDur = Math.min(outLen - at - 0.1, Math.max(1.8, phrase.end - phrase.start + 1.1), 4.4); }
         if (ovDur >= 0.9) {
           const v = await buildBeatClip({ beat: { dur: outLen, visual: { kind: 'clip', file: raw }, overlays: [{ template: s.overlay.template, data: s.overlay.data, at, dur: ovDur }] }, w: W, h: H, theme, bgPath: null, lang: lang0, rtl: isRtlLang(lang0), workDir, index: i });
           const withAudio = path.join(workDir, `shotov_${i}.mp4`);
           await ffmpeg(['-i', v, '-i', raw, '-map', '0:v', '-map', '1:a', '-c', 'copy', '-shortest', withAudio]);
           rmQuiet(v); rmQuiet(raw); finalFile = withAudio;
+          extraSfx.push(...overlaySfx(s.overlay, shotStart + at));
+          if (PHRASE_TEMPLATES.has(s.overlay.template)) hideCaps.push([shotStart + at - 0.05, shotStart + at + ovDur - 0.3]);
         }
       } catch (e) { console.warn('[SmartMontage] overlay failed for shot', i, '— continuing without it:', e.message); }
     }
     files.push(finalFile);
+    shotStart += s.dur;
   }
   onProgress({ stage: 'finish', frac: 0 });
   const capStyle = options.captions && options.captions !== 'none' ? options.captions : null;
@@ -405,9 +447,9 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   const r = await montageVideos({
     files, workDir: path.join(workDir, 'final'), assumeNormalized: true, narrationFile: voiceFile,
     transitions: files.length > 1 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: true,
-    words: capStyle ? narr.words : null,
+    words: capStyle ? narr.words.filter(w => !hideCaps.some(([a, b]) => (w.start + w.end) / 2 >= a && (w.start + w.end) / 2 <= b)) : null,
     captions: capStyle ? { style: capStyle, lang, position: 'auto', transcribe: false } : null,
-    musicFile: options.musicFile || null, musicVolume: 0.12,
+    musicFile: options.musicFile || null, musicVolume: 0.12, extraSfx,
   });
   files.forEach(f => rmQuiet(f));
   let tt = 0;

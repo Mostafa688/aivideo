@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { smartMontage, sanitizePlan, fallbackPlan, describeForPlanner, sanitizeVoicePlan, fallbackVoicePlan, sanitizeOverlay, autoKinetic, finalizeOverlays } from './smartMontage.js';
+import { smartMontage, sanitizePlan, fallbackPlan, describeForPlanner, sanitizeVoicePlan, fallbackVoicePlan, sanitizeOverlay, autoKinetic, finalizeOverlays, phraseSpan, overlaySfx } from './smartMontage.js';
 
 const D = fs.mkdtempSync(path.join(os.tmpdir(), 'smart-selftest-'));
 const ff = (...a) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...a]);
@@ -66,7 +66,10 @@ assert.equal(sanitizeOverlay({ template: 'kinetic_text', data: { text: 'invented
 assert.equal(sanitizeOverlay({ template: 'counter', data: { value: 777 } }, win), null, 'invented number rejected');
 assert.equal(sanitizeOverlay({ template: 'map_reveal', data: {} }, win), null, 'template outside the allowed set rejected');
 assert.ok(autoKinetic(win)?.data.text.split(' ').length <= 6);
-const vplan = { title: 'Dynamic Fast-Cut Montage', style: 'fast', musicMood: 'epic', shots: vclips.map((c, i) => ({ clip: 'V' + (i + 1), start: 0, until: Math.round(((i + 1) * VD) / 5), ...(i === 1 ? { overlay: { template: 'kinetic_text', data: { text: vwords.slice(18, 21).map(w => w.w).join(' '), emphasis: [vwords[19].w] } } } : {}) })) };
+const span = phraseSpan(vwords, vwords.slice(18, 21).map(w => w.w).join(' ')); assert.ok(span && span.end > span.start, 'phrase located in the narration');
+assert.ok(overlaySfx({ template: 'stack_text', data: { text: 'a b c' } }, 5).length === 3 && overlaySfx({ template: 'kinetic_text', data: { text: 'a b c' } }, 5).every(e => e.t >= 5));
+const ovT = ['kinetic_text', 'stack_text', 'marker_text'];
+const vplan = { title: 'Dynamic Fast-Cut Montage', style: 'fast', musicMood: 'epic', shots: vclips.map((c, i) => ({ clip: 'V' + (i + 1), start: 0, until: Math.round(((i + 1) * VD) / 5), ...(i % 2 === 1 ? { overlay: { template: ovT[(i >> 1) % 3], data: { text: vwords.slice(i * 8, i * 8 + 3).map(w => w.w).join(' '), emphasis: [vwords[i * 8 + 1].w] } } } : {}) })) };
 for (const [name, ask] of [['vo-ai', async () => vplan], ['vo-fallback', async () => { throw new Error('llm down'); }]]) {
   const r = await smartMontage({ assets: vassets, workDir: path.join(D, name), instructions: '', options: { captions: 'karaoke' }, onProgress: () => {}, deps: { ask } });
   console.log(name, 'source', r.plan.source, 'dur', r.duration.toFixed(2), 'shots', r.stats.shots, 'size', execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', r.file]).toString().trim());
@@ -76,6 +79,7 @@ for (const [name, ask] of [['vo-ai', async () => vplan], ['vo-fallback', async (
   // صوت المقاطع (900Hz) لازم يكون مقفول: الصوت النهائي = الفويس (180Hz) بس
   const vol = execFileSync('ffmpeg', ['-v', 'info', '-i', r.file, '-vn', '-af', 'bandpass=f=900:width_type=h:w=80,volumedetect', '-f', 'null', '-'], { stdio: ['ignore', 'pipe', 'pipe'] });
   void vol;
+  if (name === 'vo-ai') { const ass = fs.readFileSync(path.join(D, name, 'exec', 'final', 'captions.ass'), 'utf8'); const full = ass.split('\n').filter(l => l.startsWith('Dialogue')).length; console.log('caption events', full); assert.ok(full > 5); }
   if (process.argv[3] && name === 'vo-ai') fs.copyFileSync(r.file, process.argv[3]);
 }
 console.log('SMART MONTAGE SELFTEST PASSED');

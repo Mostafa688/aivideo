@@ -349,6 +349,90 @@ const kinetic_text = {
 };
 
 
+// ── 11b) stack_text — كلمات عملاقة فوق بعض بتنزل بضربة (للمونتاج) ────────────────────────────────
+const normTok = (x) => String(x).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+function stackLines(words) {
+  if (words.length <= 4) return words.map(w => [w]);
+  const n = 4, per = Math.ceil(words.length / n), lines = [];
+  for (let i = 0; i < words.length; i += per) lines.push(words.slice(i, i + per));
+  return lines;
+}
+const stack_text = {
+  animEnd: (d) => 0.45 + 0.2 * stackLines(String(d.text || '').split(/\s+/).filter(Boolean)).length,
+  render(c, d, t) {
+    const { theme } = c;
+    const words = String(d.text || '').split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    const emph = new Set((d.emphasis || []).map(normTok));
+    const lines = stackLines(words);
+    const base = (lines.length <= 2 ? 190 : lines.length === 3 ? 160 : 132) * (c.portrait ? 0.82 : 1) * (c.rtl ? 1.3 : 1);
+    const maxW = c.w * (c.portrait ? 0.9 : 0.78);
+    const lh = base * 1.08 * c.s;
+    const total = lines.length * lh;
+    let y = c.cy - total / 2 + lh * 0.82;
+    let out = SHADOW_DEF;
+    lines.forEach((ln, i) => {
+      const s0 = 0.08 + i * 0.2;
+      const p = easeOutBack(seg(t, s0, s0 + 0.28));
+      const text = ln.join(' ');
+      const isE = ln.some(w => emph.has(normTok(w)));
+      const wFull = textWidth(text, base * c.s, true, true);
+      const fit = Math.min(1, maxW / Math.max(1, wFull));
+      const sc = lerp(1.7, 1, clamp01(p)) * (p > 1 ? 1 : 1);
+      out += txt(c, text, c.cx, y + (1 - clamp01(p)) * 30 * c.s, base * fit * sc * (isE ? 1.06 : 1), { weight: 900, fill: isE ? theme.accent2 : theme.text, opacity: clamp01((t - s0) / 0.1) });
+      y += lh;
+    });
+    const bp = easeInOutCubic(seg(t, 0.2 + lines.length * 0.2, 0.7 + lines.length * 0.2));
+    const bw = Math.min(maxW, 520 * c.s) * bp;
+    out += `<rect x="${(c.cx - bw / 2).toFixed(1)}" y="${(c.cy + total / 2 + (c.rtl ? 34 : 14) * c.s).toFixed(1)}" width="${bw.toFixed(1)}" height="${(9 * c.s).toFixed(1)}" rx="${(4.5 * c.s).toFixed(1)}" fill="${theme.accent}"/>`;
+    return out;
+  },
+};
+
+// ── 11c) marker_text — جملة بكلمات مهمة عليها هايلايت ماركر بيتمسح عليها (للمونتاج) ────────────────
+const marker_text = {
+  animEnd: (d) => 1.1 + 0.08 * String(d.text || '').split(/\s+/).filter(Boolean).length,
+  render(c, d, t) {
+    const { theme } = c;
+    const words = String(d.text || '').split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    const emph = new Set((d.emphasis || []).map(normTok));
+    const size = (words.length > 8 ? 78 : 100) * (c.rtl ? 1.3 : 1);
+    const maxW = c.w * (c.portrait ? 0.88 : 0.76);
+    const lines = []; let cur = [], curW = 0;
+    words.forEach((wd, i) => {
+      const ww = textWidth(wd, size * c.s, true, true) + size * c.s * 0.32;
+      if (curW + ww > maxW && cur.length) { lines.push(cur); cur = []; curW = 0; }
+      cur.push({ wd, i, ww }); curW += ww;
+    });
+    if (cur.length) lines.push(cur);
+    const lh = size * 1.4 * c.s;
+    let y = c.cy - (lines.length * lh) / 2 + lh * 0.72;
+    let out = SHADOW_DEF;
+    const markers = [], texts = [];
+    lines.forEach((line, li) => {
+      const lineW = line.reduce((a, x) => a + x.ww, 0);
+      let x = c.rtl ? c.cx + lineW / 2 : c.cx - lineW / 2;
+      const lp = easeOutCubic(seg(t, 0.05 + li * 0.14, 0.45 + li * 0.14));
+      line.forEach(({ wd, ww }) => {
+        const isE = emph.has(normTok(wd));
+        const left = c.rtl ? x - ww : x;
+        if (isE) {
+          const mp = easeInOutCubic(seg(t, 0.45 + li * 0.14, 0.85 + li * 0.14));
+          const mw = (ww - size * c.s * 0.1) * mp;
+          const mx = c.rtl ? left + ww - size * c.s * 0.05 - mw : left + size * c.s * 0.05;
+          markers.push(`<rect x="${mx.toFixed(1)}" y="${(y - size * 0.86 * c.s + (1 - lp) * 24 * c.s).toFixed(1)}" width="${mw.toFixed(1)}" height="${(size * 1.08 * c.s).toFixed(1)}" rx="${(10 * c.s).toFixed(1)}" fill="${theme.accent2}" opacity="${(0.96 * lp).toFixed(3)}"/>`);
+        }
+        const mp2 = isE ? easeInOutCubic(seg(t, 0.45 + li * 0.14, 0.85 + li * 0.14)) : 0;
+        texts.push(txt(c, wd, left + ww / 2, y + (1 - lp) * 24 * c.s, size, { weight: 900, fill: isE && mp2 > 0.55 ? '#14110a' : theme.text, opacity: lp }));
+        x += c.rtl ? -ww : ww;
+      });
+      y += lh;
+    });
+    return out + markers.join('') + texts.join('');
+  },
+};
+
 // ── 12) map_reveal — خريطة عالم بكاميرا بتقرّب على الأماكن + دبابيس + مسار منحني بينهم ───────────
 // إحداثيات الخريطة (من world.svg اللي اتجاب من simplemaps): equirectangular بمقياس 2.498 درجة→وحدة
 const WORLD = JSON.parse(fs.readFileSync(new URL('./worldPaths.json', import.meta.url), 'utf8'));
@@ -548,7 +632,7 @@ const photo_board = {
   },
 };
 
-export const TEMPLATES = { map_reveal, photo_board, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text };
+export const TEMPLATES = { map_reveal, photo_board, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text, stack_text, marker_text };
 export const TEMPLATE_NAMES = Object.keys(TEMPLATES);
 
 export function templateAnimEnd(name, data) {
