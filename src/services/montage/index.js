@@ -14,6 +14,8 @@ export const SHORT_VIDEO_MAX_SEC = 75; // أقصر من كده = فيديو قص
 
 const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', '30'];
 const TRANSITION_SET = ['fade', 'slideleft', 'wipeleft', 'circleopen', 'zoomin', 'smoothleft', 'fadewhite', 'dissolve', 'slideup', 'radial'];
+// مجموعة "قوية" للمونتاج الذكي: حركة واضحة وقطعات ديناميكية (كلها متاحة من ffmpeg 4.3)
+const PUNCHY_SET = ['slideleft', 'zoomin', 'circleopen', 'wipeleft', 'diagtl', 'slideup', 'hlslice', 'fadewhite', 'squeezeh', 'smoothleft', 'vertopen', 'radial'];
 const escFilterPath = (p) => String(p).replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
 
 /** الأبعاد المعروضة الحقيقية (بتحترم علامة الدوران) */
@@ -47,7 +49,7 @@ async function normalizeClip(src, dest, W, H) {
 }
 
 /** يختار مدة الانتقال ونوعه لكل وصلة (متنوّع لكن متكرر بشكل ثابت) */
-export function planTransitions(durs, mode = 'auto') {
+export function planTransitions(durs, mode = 'auto', variant = 'auto') {
   const n = durs.length;
   if (mode === 'none' || n < 2) return { d: 0, types: [] };
   const avg = durs.reduce((a, b) => a + b, 0) / n;
@@ -55,7 +57,7 @@ export function planTransitions(durs, mode = 'auto') {
   const d = Math.max(0.18, Math.min(0.45, avg * 0.07));
   if (minDur < d * 3) return { d: 0, types: [] }; // مقطع أقصر من الانتقال: قطع مباشر أأمن
   const types = [];
-  for (let i = 0; i < n - 1; i++) types.push(mode === 'soft' ? (i % 2 ? 'dissolve' : 'fade') : TRANSITION_SET[(i * 3 + n) % TRANSITION_SET.length]);
+  for (let i = 0; i < n - 1; i++) types.push(mode === 'soft' ? (i % 2 ? 'dissolve' : 'fade') : (variant === 'punchy' ? PUNCHY_SET[(i * 5 + n) % PUNCHY_SET.length] : TRANSITION_SET[(i * 3 + n) % TRANSITION_SET.length]));
   return { d: Number(d.toFixed(3)), types };
 }
 
@@ -102,16 +104,20 @@ export async function transcribeAudioFile(file, workDir, language = null) {
 }
 
 /** الكابشن: لو الفيديو قصير → في النص بحركة، طويل → تحت */
-export function captionPosition(duration, requested = 'auto') {
+export function captionPosition(duration, requested = 'auto', portrait = false) {
   if (requested === 'bottom' || requested === 'center') return requested;
-  return duration <= SHORT_VIDEO_MAX_SEC ? 'center' : 'bottom';
+  // أفقي (16:9): الكابشن دايمًا تحت وبحجم أكبر؛ الرأسي القصير (ريلز/تيك توك): في النص بحركة
+  return portrait && duration <= SHORT_VIDEO_MAX_SEC ? 'center' : 'bottom';
 }
 
-async function writeAss({ words, style, lang, W, H, duration, position, workDir }) {
+const LANDSCAPE_CAPTION_SCALE = 1.32; // كابشن الفيديو الأفقي أكبر (64 → ~84px على 1080p)
+
+async function writeAss({ words, style, lang, W, H, duration, position, workDir, title = null }) {
+  const fsScale = H > W ? 1 : LANDSCAPE_CAPTION_SCALE;
   let widths = null;
-  if (isRtlLang(lang) && style !== 'box') widths = await measureCaptionWords(words, { lang, w: W, h: H }).catch(() => null);
+  if (words?.length && isRtlLang(lang) && style !== 'box') widths = await measureCaptionWords(words, { lang, w: W, h: H, fsScale }).catch(() => null);
   const file = path.join(workDir, 'captions.ass');
-  fs.writeFileSync(file, buildCaptionsAss({ words, style, w: W, h: H, lang, widths, position: captionPosition(duration, position) }));
+  fs.writeFileSync(file, buildCaptionsAss({ words: words || [], style, w: W, h: H, lang, widths, position: captionPosition(duration, position, H > W), fsScale, title }));
   return file;
 }
 
@@ -129,7 +135,7 @@ async function writeAss({ words, style, lang, W, H, duration, position, workDir 
  * @param {boolean} [o.sfx]
  * @returns {{file:string,duration:number,width:number,height:number,words:any[]|null,cuts:number[]}}
  */
-export async function montageVideos({ files, workDir, transitions = 'auto', narrationFile = null, words = null, captions = null, musicFile = null, musicVolume = 0.14, sfx = true, assumeNormalized = false, extraSfx = [], onProgress = () => {} }) {
+export async function montageVideos({ files, workDir, transitions = 'auto', narrationFile = null, words = null, captions = null, musicFile = null, musicVolume = 0.14, sfx = true, assumeNormalized = false, extraSfx = [], title = null, transitionStyle = 'auto', onProgress = () => {} }) {
   if (!files?.length) throw new Error('no clips');
   fs.mkdirSync(workDir, { recursive: true });
   const size = await displaySize(files[0]);
@@ -144,7 +150,7 @@ export async function montageVideos({ files, workDir, transitions = 'auto', narr
   }
   // 2) الدمج + الانتقالات
   onProgress({ stage: 'join', done: 0, total: 1 });
-  const plan = planTransitions(clips.map(c => c.dur), transitions);
+  const plan = planTransitions(clips.map(c => c.dur), transitions, transitionStyle);
   const joined = clips.length === 1 ? { file: clips[0].file, cuts: [] } : await joinClips(clips, workDir, plan);
   if (!assumeNormalized) clips.forEach(c => { if (c.file !== joined.file) rmQuiet(c.file); });
   const duration = await probeDuration(joined.file);
@@ -178,8 +184,9 @@ export async function montageVideos({ files, workDir, transitions = 'auto', narr
   const args = ['-i', joined.file];
   if (audioFile) args.push('-i', audioFile);
   args.push('-map', '0:v', '-map', audioFile ? '1:a' : '0:a');
-  if (captions && capWords?.length) {
-    const ass = await writeAss({ words: capWords, style: captions.style || 'karaoke', lang, W, H, duration, position: captions.position || 'auto', workDir });
+  const hasCaps = !!(captions && capWords?.length);
+  if (hasCaps || (title && duration >= 12)) {
+    const ass = await writeAss({ words: hasCaps ? capWords : [], style: captions?.style || 'karaoke', lang, W, H, duration, position: captions?.position || 'auto', workDir, title: title && duration >= 12 ? { text: title } : null });
     args.push('-vf', `ass='${escFilterPath(ass)}'`, ...ENC);
   } else args.push('-c:v', 'copy');
   args.push('-c:a', audioFile ? 'copy' : 'aac', '-t', duration.toFixed(3), '-movflags', '+faststart', out);

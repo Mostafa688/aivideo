@@ -5,14 +5,16 @@ import path from 'path';
 import crypto from 'crypto';
 import fetch from 'node-fetch';
 import { ffmpeg, probeDuration, hasAudio, rmQuiet, run } from '../documentary/ff.js';
-import { displaySize } from './index.js';
+import { displaySize, transcribeAudioFile } from './index.js';
 import { transcribeWords } from '../documentary/align.js';
+import { getAutoEditCreditCost } from '../creditPricingEngine.js';
 
 const ROOT = path.join(process.platform === 'win32' ? 'temp' : '/tmp/aivideo', 'montage_assets');
 const TTL_MS = 3 * 3600e3;
-export const MAX_ASSETS_PER_USER = 12;
+export const MAX_ASSETS_PER_USER = 20; // فيديوهات (الصوت المرفوع كـvoiceover بيتحسب لوحده)
 export const MAX_ASSET_MINUTES = 20;
 export const MAX_TOTAL_MINUTES = 20;
+export const MAX_VOICE_MINUTES = 20;
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 const dirOf = (userId, id) => path.join(ROOT, String(userId), id);
@@ -23,10 +25,25 @@ function readMeta(userId, id) {
 }
 function writeMeta(userId, id, meta) { fs.writeFileSync(metaPath(userId, id), JSON.stringify(meta)); }
 
+const natural = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+
+/**
+ * ترتيب الفيديوهات: لو أسماء أغلبها فيها أرقام (1.1, 1.2, … 1.10 أو clip2 clip10) فالرقم هو الترتيب المقصود (ترتيب طبيعي)،
+ * وغير كده ترتيب اختيار العميل (seq من الفرونت) — مش ترتيب انتهاء الرفع (الرفع متوازي فبيتلخبط).
+ */
+export function orderAssets(list) {
+  const videos = list.filter(a => a.kind !== 'audio');
+  const numbered = videos.filter(a => /\d/.test(a.name || '')).length;
+  const byName = videos.length >= 2 && numbered >= Math.ceil(videos.length * 0.7);
+  const arr = [...list];
+  arr.sort((a, b) => (byName ? natural(a.name, b.name) : ((a.seq ?? a.createdAt) - (b.seq ?? b.createdAt))) || a.createdAt - b.createdAt);
+  return arr;
+}
+
 export function listAssets(userId) {
   const dir = path.join(ROOT, String(userId));
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).map(id => readMeta(userId, id)).filter(Boolean).sort((a, b) => a.createdAt - b.createdAt);
+  return orderAssets(fs.readdirSync(dir).map(id => readMeta(userId, id)).filter(Boolean));
 }
 
 /** يرجّع ملفات الأصول المطلوبة (بترتيب الطلب) لو كلها بتاعة العميل وموجودة، وإلا null */
@@ -57,30 +74,43 @@ export function sweepOldAssets() {
   } catch { /* ignore */ }
 }
 
-/** يحفظ ملف اتحمّل (multer disk) كأصل + يفحصه. بيرمي Error بكود لو الفيديو مش صالح */
-export async function registerAsset(userId, tmpFile, originalName) {
+/** يحفظ ملف اتحمّل (multer disk) كأصل (فيديو أو صوت فويس-أوفر) + يفحصه. بيرمي Error بكود لو الملف مش صالح */
+export async function registerAsset(userId, tmpFile, originalName, { seq = null } = {}) {
   const fail = (code, message) => { rmQuiet(path.dirname(tmpFile)); const e = new Error(message); e.code = code; throw e; };
   const size = await displaySize(tmpFile).catch(() => null);
-  if (!size) fail('bad_video', 'This file is not a readable video.');
   const duration = await probeDuration(tmpFile).catch(() => 0);
-  if (!(duration >= 1)) fail('bad_video', 'The video is too short (minimum 1 second).');
-  if (duration > MAX_ASSET_MINUTES * 60 + 5) fail('too_long', `A single video can be up to ${MAX_ASSET_MINUTES} minutes.`);
+  const audioOnly = !size && duration >= 1 && await hasAudio(tmpFile).catch(() => false);
+  if (!size && !audioOnly) fail('bad_video', 'This file is not a readable video or audio file.');
+  if (!(duration >= 1)) fail('bad_video', 'The file is too short (minimum 1 second).');
+  const kind = audioOnly ? 'audio' : 'video';
+  if (kind === 'video' && duration > MAX_ASSET_MINUTES * 60 + 5) fail('too_long', `A single video can be up to ${MAX_ASSET_MINUTES} minutes.`);
+  if (kind === 'audio' && duration > MAX_VOICE_MINUTES * 60 + 5) fail('too_long', `The voiceover can be up to ${MAX_VOICE_MINUTES} minutes.`);
   const existing = listAssets(userId);
-  if (existing.length >= MAX_ASSETS_PER_USER) fail('too_many', `You can keep up to ${MAX_ASSETS_PER_USER} videos at a time.`);
+  if (kind === 'video' && existing.filter(a => a.kind !== 'audio').length >= MAX_ASSETS_PER_USER) fail('too_many', `You can keep up to ${MAX_ASSETS_PER_USER} videos at a time.`);
+  if (kind === 'audio') removeAssets(userId, existing.filter(a => a.kind === 'audio').map(a => a.id)); // صوت واحد بس: الجديد بيحل محل القديم
   const id = crypto.randomBytes(8).toString('hex');
   const dir = dirOf(userId, id);
   fs.mkdirSync(dir, { recursive: true });
-  const ext = (path.extname(originalName || '').replace(/[^.\w]/g, '').slice(0, 6) || '.mp4');
+  const ext = (path.extname(originalName || '').replace(/[^.\w]/g, '').slice(0, 6) || (kind === 'audio' ? '.mp3' : '.mp4'));
   const file = path.join(dir, `input${ext}`);
   fs.renameSync(tmpFile, file);
   rmQuiet(path.dirname(tmpFile));
   const meta = {
-    id, userId, file, name: String(originalName || 'video').slice(0, 80), duration: Number(duration.toFixed(2)), width: size.w, height: size.h,
-    hasAudio: await hasAudio(file).catch(() => false), createdAt: Date.now(), analysis: null,
+    id, userId, kind, file, name: String(originalName || kind).slice(0, 80), duration: Number(duration.toFixed(2)), width: size?.w || 0, height: size?.h || 0,
+    hasAudio: kind === 'audio' ? true : await hasAudio(file).catch(() => false), createdAt: Date.now(), seq: Number.isFinite(Number(seq)) ? Number(seq) : null, analysis: null,
   };
   writeMeta(userId, id, meta);
   analyzeInBackground(meta); // مش بنستناه — الرد بيرجع فورًا
   return meta;
+}
+
+/** ملف صوت موجود على السيرفر (فويس الشات) يتسجّل كـvoiceover للمونتاج */
+export async function registerVoiceFile(userId, srcFile, name = 'voiceover.mp3') {
+  const tmpDir = path.join(path.dirname(ROOT), `mup_voice_${crypto.randomBytes(4).toString('hex')}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const tmp = path.join(tmpDir, 'in' + (path.extname(srcFile) || '.mp3'));
+  fs.copyFileSync(srcFile, tmp);
+  return registerAsset(userId, tmp, name);
 }
 
 // ── التحليل: وصف بصري + هل فيه كلام ──────────────────────────────────────────────────────────
@@ -127,8 +157,15 @@ async function sampleSpeech(file, duration, dir, language = null) {
   } finally { rmQuiet(wav); }
 }
 
+async function analyzeVoice(meta, deps = {}) {
+  const dir = path.dirname(meta.file);
+  const words = await (deps.transcribe || transcribeAudioFile)(meta.file, dir, null);
+  return { description: 'Voiceover narration', hasSpeech: words.length > 0, gist: words.map(w => w.w).join(' ').slice(0, 240), words: words.map(w => [w.w, Number(w.start.toFixed(2)), Number(w.end.toFixed(2))]) };
+}
+
 async function analyze(meta, deps = {}) {
   const dir = path.dirname(meta.file);
+  if (meta.kind === 'audio') { try { return await analyzeVoice(meta, deps); } catch (e) { console.warn('[Montage/assets] voiceover transcription failed:', e.message); return { description: 'Voiceover narration', hasSpeech: false, gist: '', words: [] }; } }
   const out = { description: '', hasSpeech: false, gist: '' };
   try { out.description = await describeFrames(await frameDataUrls(meta.file, meta.duration), deps); } catch (e) { console.warn('[Montage/assets] vision skipped:', e.message); }
   if (meta.hasAudio) {
@@ -154,3 +191,17 @@ export async function withAnalysis(userId, id, timeoutMs = 25000) {
 }
 
 export { analyze as analyzeAsset };
+
+/** ملاحظة النظام للـagent: كل اللي متخزّن للعميل (بترجع في كل رسالة عشان الـids ما تضيعش بين الرسائل) */
+export async function buildMontageNote(userId) {
+  const stored = listAssets(userId).slice(0, MAX_ASSETS_PER_USER + 1);
+  if (!stored.length) return null;
+  const metas = [];
+  for (const m0 of stored) { const m = await withAnalysis(userId, m0.id, m0.kind === 'audio' ? 60000 : 25000); if (m) metas.push(m); }
+  const vids = metas.filter(m => m.kind !== 'audio'), voice = metas.find(m => m.kind === 'audio');
+  if (!vids.length && !voice) return null;
+  const lines = vids.map((m, i) => `V${i + 1} [id ${m.id}] "${m.name}" ${Math.round(m.duration)}s ${m.width}x${m.height}, audio: ${m.analysis?.hasSpeech ? 'speech' : (m.hasAudio ? 'ambient sound only' : 'none')} — shows: ${m.analysis?.description || 'analysis not available'}${m.analysis?.gist ? ` — says (excerpt): "${m.analysis.gist}"` : ''}`);
+  const totalSec = vids.reduce((a, m) => a + m.duration, 0);
+  const priceSec = voice ? Math.max(voice.duration, 30) : totalSec;
+  return `MONTAGE UPLOADS currently stored for this customer (kept 3 hours; the list is in the order the montage will use — numbered file names are the intended story order): ${vids.length ? lines.join(' | ') : 'no videos yet'}.${voice ? ` VOICEOVER [id ${voice.id}] "${voice.name}" ${Math.round(voice.duration)}s — transcript excerpt: "${voice.analysis?.gist || ''}" — with a voiceover the final video is exactly as long as the voiceover, all clip sounds are muted and the scenes are laid over the narration.` : ''} Footage total ${Math.round(totalSec)}s; the montage price would be ${getAutoEditCreditCost(priceSec / 60)} credits. These ids are valid — never ask the customer for URLs or ids. See rule 13e.`;
+}

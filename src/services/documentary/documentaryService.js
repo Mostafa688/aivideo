@@ -10,7 +10,7 @@ import { persistEditor, EDIT_MAX_MINUTES } from './editorStore.js';
 import { runEditTask, sweepExpiredEditors } from './editorService.js';
 import { autoEditVideo } from '../montage/autoEdit.js';
 import { smartMontage } from '../montage/smartMontage.js';
-import { resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, sweepOldAssets, withAnalysis, MAX_TOTAL_MINUTES } from '../montage/assets.js';
+import { resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, sweepOldAssets, withAnalysis, MAX_TOTAL_MINUTES, MAX_ASSETS_PER_USER } from '../montage/assets.js';
 import { chargeCredits, addCreditsBalance, getCreditsBalance } from '../authService.js';
 import { getDocumentaryCreditCost, getAutoEditCreditCost } from '../creditPricingEngine.js';
 import { checkContentSafety } from '../scriptService.js';
@@ -244,11 +244,16 @@ export async function startAutoEditJob(userId, { file, durationSec, title, optio
 // ── مونتاج ذكي لعدة فيديوهات مرفوعة في شات الـagent (فهم الفيديوهات + مخطط + تنفيذ ffmpeg) ──
 export async function startMontageJob(userId, { assetIds, instructions = '', options = {} }) {
   const ids = [...new Set((Array.isArray(assetIds) ? assetIds : []).map(String))];
-  if (!ids.length || ids.length > 10) return { ok: false, status: 400, error: 'bad_assets', message: 'Choose 1 to 10 uploaded videos.' };
+  if (!ids.length || ids.length > MAX_ASSETS_PER_USER + 1) return { ok: false, status: 400, error: 'bad_assets', message: `Choose 1 to ${MAX_ASSETS_PER_USER} uploaded videos.` };
   const assets = resolveMontageAssets(userId, ids);
   if (!assets) return { ok: false, status: 400, error: 'assets_expired', message: 'The uploaded videos expired or were not found — please upload them again.' };
-  const totalSec = assets.reduce((a, x) => a + x.duration, 0);
-  if (totalSec > MAX_TOTAL_MINUTES * 60 + 5) return { ok: false, status: 400, error: 'too_long', message: `The videos add up to more than ${MAX_TOTAL_MINUTES} minutes.` };
+  const videos = assets.filter(a => a.kind !== 'audio');
+  const voice = assets.find(a => a.kind === 'audio') || null;
+  if (!videos.length) return { ok: false, status: 400, error: 'bad_assets', message: 'Add at least one video to the montage.' };
+  const footageSec = videos.reduce((a, x) => a + x.duration, 0);
+  if (footageSec > MAX_TOTAL_MINUTES * 60 + 5) return { ok: false, status: 400, error: 'too_long', message: `The videos add up to more than ${MAX_TOTAL_MINUTES} minutes.` };
+  // مع الفويس-أوفر الفيديو النهائي بطول الصوت، فالتسعير على مدة الصوت (والفيديوهات بتتحلل بس)
+  const totalSec = voice ? Math.max(voice.duration, 30) : footageSec;
   const text = String(instructions || '').slice(0, 800);
   if (text) { const safety = await checkContentSafety(text); if (safety.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'These instructions cannot be used.' }; }
   const opt = normalizeAutoEditOptions(options);
@@ -257,12 +262,12 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
   if (!charge.success) return { ok: false, status: 403, error: 'quota_exceeded', message: `This montage needs ${q.cost} credits, you have ${charge.remaining}.`, cost: q.cost, remaining: charge.remaining };
   let job;
   try {
-    job = await store.createJob({ userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, durationSec: totalSec, clips: assets.map(a => a.name) }, title: (options.title || assets[0].name || 'Montage').replace(/\.[a-z0-9]{2,4}$/i, '').slice(0, 120), creditsCharged: q.cost });
+    job = await store.createJob({ userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, durationSec: totalSec, voiceover: !!voice, clips: videos.map(a => a.name) }, title: (options.title || videos[0].name || 'Montage').replace(/\.[a-z0-9]{2,4}$/i, '').slice(0, 120), creditsCharged: q.cost });
   } catch (e) {
     await addCreditsBalance(userId, q.cost).catch(() => {});
     return { ok: false, status: 500, error: 'job_create_failed', message: 'Could not start the job. Your credits were not charged.' };
   }
-  enqueue({ id: job.id, userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, durationSec: totalSec }, charged: q.cost, minutes: q.minutes, fixedCost: true, hooks: {} });
+  enqueue({ id: job.id, userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, durationSec: totalSec, voiceover: !!voice }, charged: q.cost, minutes: q.minutes, fixedCost: true, hooks: {} });
   return { ok: true, job, cost: q.cost, minutes: q.minutes, remaining: charge.remaining };
 }
 
@@ -271,7 +276,7 @@ async function produceSmartMontage({ id, userId, input, workDir, prog }) {
   const assets = resolveMontageAssets(userId, input.assetIds);
   if (!assets) throw new Error('uploaded videos are no longer available');
   const analysed = [];
-  for (const a of assets) analysed.push((await withAnalysis(userId, a.id, 20000)) || a);
+  for (const a of assets) analysed.push((await withAnalysis(userId, a.id, a.kind === 'audio' ? 90000 : 20000)) || a);
   let musicFile = null;
   if (input.music) {
     try {

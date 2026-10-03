@@ -17,7 +17,7 @@ const total = 16;
 
 assert.deepEqual(planTransitions([6, 5, 5], 'none'), { d: 0, types: [] });
 assert.equal(planTransitions([0.6, 5, 5], 'auto').d, 0, 'tiny clip → hard cuts');
-assert.equal(captionPosition(30), 'center'); assert.equal(captionPosition(300), 'bottom'); assert.equal(captionPosition(300, 'center'), 'center');
+assert.equal(captionPosition(30), 'bottom'); assert.equal(captionPosition(30, 'auto', true), 'center'); assert.equal(captionPosition(300, 'auto', true), 'bottom'); assert.equal(captionPosition(300, 'center'), 'center');
 
 const mk = (text) => text.split(' ').map((w, i) => ({ w, start: 0.3 + i * 0.5, end: 0.3 + i * 0.5 + 0.42 }));
 for (const [name, opt, words, lang] of [

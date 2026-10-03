@@ -8,7 +8,7 @@ import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneIma
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob } from './documentary/documentaryService.js';
-import { registerAsset, listAssets, resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, withAnalysis as montageWithAnalysis, MAX_ASSETS_PER_USER } from './montage/assets.js';
+import { registerAsset, registerVoiceFile, buildMontageNote, listAssets, resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, withAnalysis as montageWithAnalysis, MAX_ASSETS_PER_USER } from './montage/assets.js';
 import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, startResumeChannelRun } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
@@ -477,7 +477,7 @@ const montageUpload = multer({
   }),
   limits: { fileSize: 400 * 1024 * 1024 },
 });
-const publicAsset = (m) => ({ id: m.id, name: m.name, durationSec: Math.round(m.duration), hasAudio: m.hasAudio, width: m.width, height: m.height });
+const publicAsset = (m) => ({ id: m.id, kind: m.kind || 'video', name: m.name, durationSec: Math.round(m.duration), hasAudio: m.hasAudio, width: m.width, height: m.height });
 
 router.post('/montage-upload', authMiddleware, (req, res, next) => montageUpload.single('video')(req, res, (err) => {
   if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'file_too_large' : 'upload_failed', message: err.code === 'LIMIT_FILE_SIZE' ? 'The video is larger than 400MB.' : 'Upload failed.' });
@@ -488,7 +488,7 @@ router.post('/montage-upload', authMiddleware, (req, res, next) => montageUpload
     if (!file) return res.status(400).json({ error: 'video_required', message: 'Please choose a video.' });
     const user = await getUserById(req.user.userId);
     if (!user || (user.plan || 'free') === 'free') { fs.rmSync(path.dirname(file), { recursive: true, force: true }); return res.status(403).json({ error: 'no_access', message: 'Top up credits to use video montage.', show_upgrade: true }); }
-    const meta = await registerAsset(req.user.userId, file, req.file.originalname);
+    const meta = await registerAsset(req.user.userId, file, req.file.originalname, { seq: req.body?.seq });
     res.json(publicAsset(meta));
   } catch (e) {
     if (file) fs.rmSync(path.dirname(file), { recursive: true, force: true });
@@ -570,17 +570,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
       ? `The user manually selected the video engine "${forcedVideoModel}" from a picker before sending this message — you MUST use exactly this engine for ANY video generation in this turn, INCLUDING animating a generated image (if they ask to animate/move a picture right now, use the ###GENERATE_VIDEO### marker with model:"${forcedVideoModel}" and "imageUrl" set to the exact image URL from history — do NOT silently switch to a different engine for this turn, that would ignore their explicit choice). Do not pick a different engine, do not ask which one, and state its real credit cost from the price list above.`
       : null;
     let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote, forcedModelNote].filter(Boolean).join(' ') || null;
-    // ✅ NEW: فيديوهات مرفوعة للمونتاج الذكي — الايجنت بيشوف تحليل كل فيديو (وصف بصري + هل فيه كلام) وبيتصرف حسب رغبة العميل
-    const montageIds = (Array.isArray(montageAssetIds) ? montageAssetIds : []).map(String).filter(id => /^[a-f0-9]{16}$/.test(id)).slice(0, 10);
-    if (montageIds.length) {
-      const metas = [];
-      for (const id of montageIds) { const m = await montageWithAnalysis(req.user.userId, id, 25000); if (m) metas.push(m); }
-      if (metas.length) {
-        const totalSec = metas.reduce((a, m) => a + m.duration, 0);
-        const lines = metas.map((m, i) => `V${i + 1} [id ${m.id}] "${m.name}" ${Math.round(m.duration)}s ${m.width}x${m.height}, audio: ${m.analysis?.hasSpeech ? 'speech' : (m.hasAudio ? 'ambient sound only' : 'none')} — shows: ${m.analysis?.description || 'analysis not available'}${m.analysis?.gist ? ` — says (excerpt): "${m.analysis.gist}"` : ''}`);
-        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The customer has uploaded ${metas.length} video(s) for MONTAGE (kept for 3 hours). Analysis done by the system: ${lines.join(' | ')}. Total ${Math.round(totalSec)}s; the montage price for these videos would be ${getAutoEditCreditCost(totalSec / 60)} credits. See rule 13e.`;
-      }
-    }
+    // ✅ NEW: فيديوهات (وفويس-أوفر) مرفوعة للمونتاج الذكي — بنوصّف للايجنت *كل* اللي متخزّن للعميل في كل رسالة (مش بس رسالة الرفع)،
+    // وإلا بيفقد الـids في الرسالة التالية ("ابدأ") ويسأل عن روابط. الايجنت بيشوف تحليل كل فيديو ويتصرف حسب رغبة العميل
+    const montageNoteFor = () => buildMontageNote(req.user.userId);
     let transcript = null;
     let uploadedVoiceUrl = null;
 
@@ -594,6 +586,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
         return res.status(400).json({ error: e.message });
       }
     }
+
+    // لو العميل عنده فيديوهات مونتاج متخزّنة وبعت تسجيل صوت في الرسالة: التسجيل ده هو الفويس-أوفر بتاع المونتاج (بيتسجّل كأصل صوت)
+    if (uploadedVoiceUrl && (listAssets(req.user.userId).some(a => a.kind !== 'audio') || /montage|مونتاج|فيديوهات|videos|دمج|اجمع|اجمّع|merge/i.test(`${message || ''} ${transcript || ''}`))) {
+      try { await registerVoiceFile(req.user.userId, path.join(process.cwd(), String(uploadedVoiceUrl).replace(/^\//, '')), 'voiceover.mp3'); }
+      catch (e) { console.warn('[Agent] could not register the voice as a montage voiceover:', e.message); }
+    }
+    const montageNote = await montageNoteFor().catch((e) => { console.warn('[Agent] montage note failed:', e.message); return null; });
+    if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote;
 
     let uploadedPhotoUrls = [];
     // ✅ NEW: خريطة رابط → معلومة النسبة الحقيقية (من sharp) — بتتستخدم تحت كحاجز إضافي
@@ -1408,6 +1408,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       } else {
         try {
           const ids = (Array.isArray(montagePayload.assetIds) ? montagePayload.assetIds : []).map(String);
+          if (montagePayload.voiceAssetId && !ids.includes(String(montagePayload.voiceAssetId))) ids.push(String(montagePayload.voiceAssetId));
           const r = await startMontageJob(userId, {
             assetIds: ids, instructions: typeof montagePayload.instructions === 'string' ? montagePayload.instructions : '',
             options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false },
