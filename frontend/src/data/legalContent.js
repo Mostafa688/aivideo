@@ -2,6 +2,9 @@
 // كل صفحة عبارة عن مصفوفة أقسام {title, body} لكل لغة، بنفس ترقيم الأقسام في اللغتين
 // عشان TableOfContents/Section (في SubPage.jsx) يفضلوا شغالين زي ما هما من غير أي تغيير.
 
+// نسخة الشروط/الخصوصية — بتتسجّل مع موافقة كل عميل (وبتظهر في صفحة الأدمن)؛ غيّرها لما الشروط تتغير جوهريًا
+export const TERMS_VERSION = '2026-10';
+
 export const TERMS_EN = [
   { title: '1. Acceptance of Terms', body: 'By accessing or using Erivion ("the Service", "the Platform"), you confirm that you are at least 13 years of age and agree to be legally bound by these Terms of Service. If you do not agree to these Terms, you must not use the Service. Continued use of the Service after any changes constitutes your acceptance of the revised Terms.' },
   { title: '2. Description of Service', body: 'Erivion is an AI-powered video creation platform that allows users to generate videos from text ideas, scripts, voice recordings, or product photos (including AI video ads). The Service uses third-party AI and media providers including Groq, Pexels, Stability AI, Seedance, FLUX, Google Gemini, and ElevenLabs to deliver its functionality. The Service also includes an AI Agent (chat assistant) that can plan, refine, and generate videos on your behalf, help you subscribe or top up credits, make limited account changes at your explicit request (see Section 3), and — when you request a video about a real historical or current event — perform a live web search to verify facts before writing a script and provide you with the sources it used.' },

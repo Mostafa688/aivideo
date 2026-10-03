@@ -188,6 +188,9 @@ router.get('/users', adminAuth, async (req, res) => {
   try {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned INTEGER DEFAULT 0').catch(() => {});
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS region TEXT DEFAULT NULL').catch(() => {});
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT NULL').catch(() => {});
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT DEFAULT NULL').catch(() => {});
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_ip TEXT DEFAULT NULL').catch(() => {});
     const { plan, search, limit = 50 } = req.query;
     let where = [], params = [], idx = 1;
     if (plan) { where.push(`plan = $${idx++}`); params.push(plan); }
@@ -201,6 +204,7 @@ router.get('/users', adminAuth, async (req, res) => {
              u.plan_expires_at,
              COALESCE(u.banned, 0) as banned,
              COALESCE(u.region, 'unknown') as region,
+             u.terms_accepted_at, u.terms_version, u.terms_accepted_ip,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
              COUNT(v.id) as total_videos
