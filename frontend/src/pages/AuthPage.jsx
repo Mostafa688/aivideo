@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TERMS_EN, PRIVACY_EN, TERMS_VERSION } from '../data/legalContent.js';
 import LegalNotice from '../components/LegalNotice.jsx';
+
+// التنبيه الأحمر مخفي مؤقتًا في صفحة تسجيل الدخول (شاشة الموافقة ونوافذ الشروط/الخصوصية) لحد ما الموقع يتسجّل — غيّرها لـtrue لإظهاره
+const SHOW_AUTH_NOTICE = false;
 import {
   ClipboardList, Check, Users, Search, Camera, Music, Play, Sparkles, Globe,
   GraduationCap, BookOpen, Megaphone, Drama, ImageIcon, Bot, Clapperboard,
@@ -184,7 +187,7 @@ function TermsStep({ onAgree }) {
           scrollbarWidth: 'thin',
           scrollbarColor: 'rgba(124,106,247,0.3) transparent',
         }}>
-          <LegalNotice lang="both" />
+          {SHOW_AUTH_NOTICE && <LegalNotice lang="both" />}
           {TERMS_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
           <div style={{ height: 8 }} />
         </div>
@@ -404,12 +407,12 @@ function LegalModal({ type, onClose }) {
         <div style={{ overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
           {isTerms ? (
             <>
-              <LegalNotice lang="both" />
+              {SHOW_AUTH_NOTICE && <LegalNotice lang="both" />}
               {TERMS_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
             </>
           ) : (
             <>
-              <LegalNotice lang="both" />
+              {SHOW_AUTH_NOTICE && <LegalNotice lang="both" />}
               {PRIVACY_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
             </>
           )}
