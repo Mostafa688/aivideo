@@ -323,8 +323,8 @@ async function produceSmartMontage({ id, userId, input, workDir, prog }) {
     options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile, graphics: input.graphics || [] },
     onProgress: ({ stage, frac = 0 }) => prog(stage === 'plan' ? 'cut' : stage, stage === 'plan' ? 0 : frac),
     deps: { onTranscript: async (words) => {
-      const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000));
-      if (safety.unsafe) { const e = new Error('content policy'); e.code = 'content_policy'; throw e; }
+      const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000), { mode: 'footage' });
+      if (safety.unsafe) { console.warn(`[Moderation] footage blocked (${safety.category}): ${safety.reason}`); const e = new Error(`content policy: ${safety.category} — ${safety.reason}`); e.code = 'content_policy'; throw e; }
     } },
   });
   const title = (await store.getJobAny(id))?.title || r.plan?.title || 'Montage';
@@ -376,8 +376,8 @@ async function produceAutoEdit({ id, input, workDir, prog }) {
     options: { cutSilence: input.cutSilence, zoom: input.zoom, transitions: input.transitions, captions: input.captions, music: musicFile ? { file: musicFile, volume: 0.1 } : null },
     onProgress: ({ stage, frac = 0 }) => prog(stage === 'finish' ? 'finish' : stage, frac),
     onTranscript: async (words) => {
-      const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000));
-      if (safety.unsafe) { const e = new Error('content policy'); e.code = 'content_policy'; throw e; }
+      const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000), { mode: 'footage' });
+      if (safety.unsafe) { console.warn(`[Moderation] footage blocked (${safety.category}): ${safety.reason}`); const e = new Error(`content policy: ${safety.category} — ${safety.reason}`); e.code = 'content_policy'; throw e; }
     },
   });
   const title = (await store.getJobAny(id))?.title || 'Edited video';

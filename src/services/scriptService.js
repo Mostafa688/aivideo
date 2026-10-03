@@ -20,7 +20,22 @@ ALLOW (unsafe=false) everything else, including: historical war/battle depiction
 
 Respond with ONLY raw JSON, nothing else: {"unsafe": true|false, "category": "porn"|"racism"|"violence"|"none", "reason": "one short sentence"}`;
 
-export async function checkContentSafety(text) {
+// فحص كلام فيديو العميل نفسه (مونتاج/تعديل): الكلام من غير سياق بيبان عنيف بسهولة (مشهد سينمائي، لعبة، فيلم، أخبار)،
+// فبنمنع بس المحتوى الممنوع فعلاً — مش الخيال/الأكشن/المعارك
+const FOOTAGE_MODERATION_PROMPT = `You are a content safety classifier for a VIDEO EDITING tool. You receive the automatic speech transcript of a video the customer already made or filmed (it may be a movie or AI-generated cinematic scene, a game, a vlog, news, sports, a sermon, a song). The transcript has no visual context and may contain transcription mistakes. Decide if editing this video must be refused.
+
+BLOCK (unsafe=true) ONLY if the speech clearly contains:
+- Sexually explicit / pornographic content
+- Any sexual content involving minors
+- Hate speech that attacks people for their race, ethnicity, religion, nationality, gender, sexual orientation or disability
+- Real terrorist propaganda or recruitment, or instructions for making weapons/explosives or committing serious crimes
+- A direct, real threat against a specific real, identifiable person
+
+ALLOW (unsafe=false) everything else — fiction, movie/AI cinematic scenes, battle cries, war, fights, monsters, villains threatening heroes, "kill"/"die"/"attack" said by characters, action, horror, games, history, news reporting, sports trash-talk, profanity, emotional or angry speech. When unsure, ALLOW.
+
+Respond with ONLY raw JSON, nothing else: {"unsafe": true|false, "category": "porn"|"minors"|"hate"|"terror"|"threat"|"none", "reason": "one short sentence"}`;
+
+export async function checkContentSafety(text, { mode = 'generation' } = {}) {
   const trimmed = (text || '').trim();
   if (!trimmed) return { unsafe: false, category: 'none', reason: '' };
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -33,8 +48,8 @@ export async function checkContentSafety(text) {
       body: JSON.stringify({
         model: 'openai/gpt-oss-120b', reasoning_effort: 'low', max_tokens: 100, temperature: 0,
         messages: [
-          { role: 'system', content: MODERATION_SYSTEM_PROMPT },
-          { role: 'user', content: trimmed.slice(0, 1500) },
+          { role: 'system', content: mode === 'footage' ? FOOTAGE_MODERATION_PROMPT : MODERATION_SYSTEM_PROMPT },
+          { role: 'user', content: trimmed.slice(0, mode === 'footage' ? 4000 : 1500) },
         ],
       }),
     });
