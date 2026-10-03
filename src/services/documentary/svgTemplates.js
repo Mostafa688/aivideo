@@ -433,6 +433,212 @@ const marker_text = {
   },
 };
 
+// ════════════════ موشن جرافيك إضافي: رسومات متحركة، سنة، VS، ختم، نسبة، مسحات، إطار ════════════════
+// أيقونات مرسومة بخطوط (viewBox 64×64) — بتترسم بحركة "رسم بالقلم" (stroke-dashoffset)
+const circ = (cx, cy, r) => `M${cx - r} ${cy} a${r} ${r} 0 1 0 ${2 * r} 0 a${r} ${r} 0 1 0 ${-2 * r} 0`;
+export const ICONS = {
+  sword: ['M50 12 L20 42', 'M14 36 L28 50', 'M20 42 L10 54', 'M50 12 L56 8'],
+  shield: ['M32 8 L52 14 V30 C52 44 42 54 32 58 C22 54 12 44 12 30 V14 Z', 'M32 18 V50'],
+  crown: ['M10 46 L14 22 L24 34 L32 16 L40 34 L50 22 L54 46 Z', 'M12 52 H52'],
+  ship: ['M8 40 H56 L48 54 H16 Z', 'M32 40 V10', 'M32 12 L50 34 H32', 'M32 18 L18 34 H32'],
+  plane: ['M32 6 L36 26 L58 36 V42 L36 38 L34 52 L42 56 V60 L32 58 L22 60 V56 L30 52 L28 38 L6 42 V36 L28 26 Z'],
+  rocket: ['M32 6 C42 16 44 30 40 46 H24 C20 30 22 16 32 6 Z', circ(32, 24, 5), 'M24 40 L14 52 L24 50', 'M40 40 L50 52 L40 50', 'M28 50 L32 60 L36 50'],
+  book: ['M10 12 H30 C32 12 32 14 32 14 V54 C32 54 30 52 28 52 H10 Z', 'M54 12 H34 C32 12 32 14 32 14 V54 C32 54 34 52 36 52 H54 Z'],
+  coin: [circ(32, 32, 22), 'M32 18 V46', 'M39 24 C37 20 25 20 25 27 C25 34 39 31 39 38 C39 45 27 45 25 40'],
+  fire: ['M32 6 C34 18 48 24 48 38 C48 50 40 58 32 58 C24 58 16 50 16 38 C16 30 22 26 24 18 C28 22 28 28 30 30 C34 24 34 14 32 6 Z'],
+  skull: ['M32 8 C18 8 12 18 14 30 C15 36 18 38 20 40 V50 H44 V40 C46 38 49 36 50 30 C52 18 46 8 32 8 Z', circ(25, 30, 4), circ(39, 30, 4), 'M28 50 V44', 'M32 50 V44', 'M36 50 V44'],
+  flag: ['M16 8 V58', 'M16 10 H52 L43 22 L52 34 H16'],
+  city: ['M8 56 V30 H20 V56', 'M22 56 V12 H38 V56', 'M40 56 V26 H56 V56', 'M27 20 H33 M27 28 H33 M27 36 H33', 'M4 56 H60'],
+  pyramid: ['M6 54 L32 10 L58 54 Z', 'M19 32 H45', 'M12 44 H52'],
+  scroll: ['M18 10 H50 V46 C50 52 44 54 40 54 H14 C20 54 18 48 18 44 Z', 'M24 20 H44', 'M24 28 H44', 'M24 36 H38'],
+  castle: ['M10 56 V24 H18 V18 H24 V24 H28 V18 H34 V24 H38 V18 H44 V24 H54 V56 Z', 'M28 56 V44 C28 40 36 40 36 44 V56'],
+  globe: [circ(32, 32, 24), 'M8 32 H56', 'M32 8 C20 20 20 44 32 56 C44 44 44 20 32 8'],
+  clock: [circ(32, 32, 24), 'M32 16 V32 L42 38'],
+  star: ['M32 6 L39 24 L58 25 L43 37 L48 56 L32 45 L16 56 L21 37 L6 25 L25 24 Z'],
+  bolt: ['M36 6 L14 36 H30 L26 58 L50 26 H34 Z'],
+  people: [circ(32, 18, 7), 'M18 54 C18 36 46 36 46 54', circ(13, 28, 5), circ(51, 28, 5), 'M4 52 C4 42 14 40 18 44', 'M60 52 C60 42 50 40 46 44'],
+  house: ['M8 32 L32 10 L56 32', 'M14 28 V54 H50 V28', 'M28 54 V40 H36 V54'],
+  anchor: [circ(32, 12, 4), 'M32 16 V54', 'M20 26 H44', 'M12 40 C14 52 24 56 32 54 C40 56 50 52 52 40'],
+  gear: [circ(32, 32, 10), circ(32, 32, 20), 'M32 8 V12 M32 52 V56 M8 32 H12 M52 32 H56 M15 15 L18 18 M46 46 L49 49 M49 15 L46 18 M18 46 L15 49'],
+  tank: ['M8 44 H56 V52 H8 Z', 'M16 44 V34 H44 V44', 'M44 38 H62', circ(16, 48, 2), circ(32, 48, 2), circ(48, 48, 2)],
+  trend: ['M8 50 L22 34 L32 42 L56 14', 'M44 14 H56 V26'],
+};
+export const ICON_NAMES = Object.keys(ICONS);
+
+// ── 13) icon_pop — 2-4 أيقونات مرسومة بالقلم جوه دوائر، كل واحدة بتتحط بنبضة وتحتها عنوان ─────────────────
+const icon_pop = {
+  animEnd: (d) => 0.5 + 0.55 * Math.min(4, (d.items || []).length) + 0.4,
+  render(c, d, t) {
+    const { theme } = c;
+    const items = (d.items || []).slice(0, 4);
+    if (!items.length) return '';
+    const n = items.length;
+    const vertical = c.portrait && n > 2;
+    const R = (c.portrait ? (n > 2 ? 190 : 200) : (n > 3 ? 150 : 175)) * c.s;
+    const gap = R * 0.5;
+    const total = n * 2 * R + (n - 1) * gap;
+    let out = SHADOW_DEF;
+    if (d.title) out += txt(c, d.title, c.cx, c.cy - (vertical ? total / 2 + 80 * c.s : R + 120 * c.s), c.portrait ? 76 : 54, { weight: 900, opacity: easeOutCubic(seg(t, 0, 0.4)) });
+    items.forEach((it, i) => {
+      const s0 = 0.25 + i * 0.55;
+      const p = easeOutBack(seg(t, s0, s0 + 0.45));
+      const draw = easeInOutCubic(seg(t, s0 + 0.05, s0 + 0.85));
+      const cx = vertical ? c.cx : c.cx - total / 2 + R + i * (2 * R + gap);
+      const cy = vertical ? c.cy - total / 2 + R + i * (2 * R + gap) : c.cy;
+      const sc = Math.max(0.01, p);
+      const paths = ICONS[it.icon] || ICONS.star;
+      const k = (R * 1.15) / 64; // حجم الأيقونة جوه الدايرة
+      out += `<g transform="translate(${cx.toFixed(1)},${cy.toFixed(1)}) scale(${sc.toFixed(3)})" opacity="${clamp01(p * 1.4).toFixed(3)}">`
+        + `<circle r="${R.toFixed(1)}" fill="${theme.panel}" stroke="${theme.panelStroke}" stroke-width="${(3 * c.s).toFixed(1)}" filter="url(#sh)"/>`
+        + `<circle r="${(R * 0.93).toFixed(1)}" fill="none" stroke="${theme.accent}" stroke-width="${(6 * c.s).toFixed(1)}" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${((1 - draw) * 100).toFixed(1)}" transform="rotate(-90)"/>`
+        + `<g transform="scale(${k.toFixed(3)}) translate(-32,-32)" fill="none" stroke="${theme.accent2}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">`
+        + paths.map(pd => `<path d="${pd}" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${((1 - draw) * 100).toFixed(1)}"/>`).join('')
+        + `</g></g>`;
+      if (it.label) {
+        const lp = easeOutCubic(seg(t, s0 + 0.3, s0 + 0.75));
+        out += txt(c, it.label, cx, cy + R + 62 * c.s + (1 - lp) * 16 * c.s, c.portrait ? 62 : 44, { weight: 800, opacity: lp });
+      }
+    });
+    return out;
+  },
+};
+
+// ── 14) date_card — سنة كبيرة بتلف أرقامها لحد ما توصل، مع خط بيتمدّ وعنوان تحتها ───────────────────────
+const date_card = {
+  animEnd: () => 2.0,
+  render(c, d, t) {
+    const { theme } = c;
+    const year = Number(d.year) || 2000;
+    const p = easeOutExpo(seg(t, 0.1, 1.5));
+    const v = Math.round(lerp(year - 70, year, p));
+    const size = c.portrait ? 310 : 270;
+    const inP = easeOutCubic(seg(t, 0, 0.3));
+    let out = SHADOW_DEF;
+    const lineW = Math.min(c.w * 0.8, 760 * c.s) * easeInOutCubic(seg(t, 0.15, 1.0));
+    const y = c.cy + 40 * c.s;
+    out += `<rect x="${(c.cx - lineW / 2).toFixed(1)}" y="${(y - size * 0.9 * c.s).toFixed(1)}" width="${lineW.toFixed(1)}" height="${(6 * c.s).toFixed(1)}" rx="${(3 * c.s).toFixed(1)}" fill="${theme.accent}"/>`;
+    out += txt(c, String(v), c.cx, y, size, { weight: 900, fill: theme.accent2, opacity: inP, family: "'DejaVu Sans','Noto Sans',sans-serif", ls: 4 });
+    out += `<rect x="${(c.cx - lineW / 2).toFixed(1)}" y="${(y + 40 * c.s).toFixed(1)}" width="${lineW.toFixed(1)}" height="${(6 * c.s).toFixed(1)}" rx="${(3 * c.s).toFixed(1)}" fill="${theme.accent}"/>`;
+    if (d.label) {
+      const lp = easeOutCubic(seg(t, 0.9, 1.5));
+      wrapText(d.label, c.w * 0.82, (c.portrait ? 76 : 56) * c.s, { maxLines: 2 }).forEach((ln, i) => { out += txt(c, ln, c.cx, y + (130 + i * (c.portrait ? 90 : 66)) * c.s + (1 - lp) * 20 * c.s, c.portrait ? 76 : 56, { weight: 800, opacity: lp }); });
+    }
+    return out;
+  },
+};
+
+// ── 15) vs_card — طرفين بيدخلوا من الجنبين وبينهم شارة VS بتنبض ─────────────────────────────────────────
+const vs_card = {
+  animEnd: () => 1.6,
+  render(c, d, t) {
+    const { theme, w, h } = c;
+    const L = String(d.left?.label || d.left || ''), Rt = String(d.right?.label || d.right || '');
+    const p = easeOutBack(seg(t, 0.05, 0.7));
+    const pv = c.portrait;
+    const pw = pv ? w * 0.86 : w * 0.38, ph = pv ? h * 0.2 : h * 0.42;
+    const slide = (1 - Math.min(1, p)) * (pv ? h * 0.6 : w * 0.6);
+    let out = SHADOW_DEF;
+    const box = (x, y, color, label, fill) => panel(c, x, y, pw, ph, { r: 30, fill, stroke: color, strokeW: 4 })
+      + wrapText(label, pw * 0.86, 60 * c.s, { maxLines: 3 }).map((ln, i, arr) => txt(c, ln, x + pw / 2, y + ph / 2 + (i - (arr.length - 1) / 2) * 72 * c.s + 20 * c.s, pv ? 76 : 60, { weight: 900, fill: theme.text })).join('');
+    if (pv) {
+      out += box(c.cx - pw / 2, c.cy - ph - 85 * c.s - slide, theme.accent, L, theme.panel);
+      out += box(c.cx - pw / 2, c.cy + 85 * c.s + slide, theme.accent2, Rt, theme.panel);
+    } else {
+      out += box(c.cx - pw - 95 * c.s - slide, c.cy - ph / 2, theme.accent, L, theme.panel);
+      out += box(c.cx + 95 * c.s + slide, c.cy - ph / 2, theme.accent2, Rt, theme.panel);
+    }
+    const bp = easeOutBack(seg(t, 0.55, 1.05));
+    const pulse = 1 + 0.06 * Math.sin(Math.max(0, t - 1.0) * 9);
+    const br = (pv ? 95 : 70) * c.s * Math.max(0.01, bp) * pulse;
+    out += `<circle cx="${c.cx}" cy="${c.cy}" r="${br.toFixed(1)}" fill="${theme.accent2}" stroke="#fff" stroke-width="${(5 * c.s).toFixed(1)}" filter="url(#sh)"/>`;
+    out += txt(c, 'VS', c.cx, c.cy + 24 * c.s * Math.max(0.01, bp), (pv ? 96 : 72) * Math.max(0.01, bp), { weight: 900, fill: '#111', opacity: clamp01(bp * 1.5), family: "'DejaVu Sans','Noto Sans',sans-serif" });
+    return out;
+  },
+};
+
+// ── 16) stamp — ختم مطاطي بيضرب الشاشة (تدوير + ارتداد) ────────────────────────────────────────────────
+const stamp = {
+  animEnd: () => 1.0,
+  render(c, d, t) {
+    const text = String(d.text || '').toUpperCase().slice(0, 26);
+    const color = d.tone === 'gold' ? '#f5b301' : '#e11d48';
+    const p = easeOutBack(seg(t, 0.05, 0.45));
+    const sc = lerp(2.6, 1, Math.min(1, p));
+    const rot = lerp(-4, -11, Math.min(1, p));
+    const size = (text.length > 12 ? 92 : 132) * (c.portrait ? 1.25 : 1);
+    const tw = textWidth(text, size * c.s, true, true);
+    const bw = Math.min(c.w * 0.86, tw + 130 * c.s), bh = size * 1.75 * c.s;
+    const ring = easeOutCubic(seg(t, 0.4, 1.0));
+    const shake = t > 0.4 && t < 0.62 ? Math.sin((t - 0.4) * 70) * 6 * c.s : 0;
+    let out = SHADOW_DEF;
+    out += `<g transform="translate(${(c.cx + shake).toFixed(1)},${c.cy.toFixed(1)}) rotate(${rot.toFixed(2)}) scale(${sc.toFixed(3)})" opacity="${clamp01(p * 2).toFixed(3)}">`
+      + `<rect x="${(-bw / 2).toFixed(1)}" y="${(-bh / 2).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="${(14 * c.s).toFixed(1)}" fill="none" stroke="${color}" stroke-width="${(12 * c.s).toFixed(1)}"/>`
+      + `<rect x="${(-bw / 2 + 18 * c.s).toFixed(1)}" y="${(-bh / 2 + 18 * c.s).toFixed(1)}" width="${(bw - 36 * c.s).toFixed(1)}" height="${(bh - 36 * c.s).toFixed(1)}" rx="${(8 * c.s).toFixed(1)}" fill="none" stroke="${color}" stroke-width="${(4 * c.s).toFixed(1)}"/>`
+      + `<text x="0" y="${(size * 0.36 * c.s).toFixed(1)}" font-family="${c.ff}" font-size="${(size * c.s).toFixed(1)}" font-weight="900" fill="${color}" text-anchor="middle" letter-spacing="3">${esc(text)}</text></g>`;
+    out += `<circle cx="${c.cx}" cy="${c.cy}" r="${(bw * 0.5 * (0.6 + ring * 0.9)).toFixed(1)}" fill="none" stroke="${color}" stroke-width="${(5 * c.s).toFixed(1)}" opacity="${((1 - ring) * 0.6).toFixed(3)}"/>`;
+    return out;
+  },
+};
+
+// ── 17) percent_ring — حلقة نسبة مئوية بتتملي مع رقم بيعدّ ─────────────────────────────────────────────────
+const percent_ring = {
+  animEnd: () => 2.0,
+  render(c, d, t) {
+    const { theme } = c;
+    const val = Math.max(0, Math.min(100, Number(d.value) || 0));
+    const p = easeOutCubic(seg(t, 0.15, 1.7));
+    const R = (c.portrait ? 400 : 230) * c.s;
+    let out = SHADOW_DEF;
+    out += `<g transform="translate(${c.cx},${(c.cy - 30 * c.s).toFixed(1)}) rotate(-90)"><circle r="${R}" fill="none" stroke="${theme.panelStroke}" stroke-width="${(34 * c.s).toFixed(1)}"/>`
+      + `<circle r="${R}" fill="none" stroke="${theme.accent2}" stroke-width="${(34 * c.s).toFixed(1)}" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${(100 - val * p).toFixed(2)}"/></g>`;
+    out += txt(c, `${Math.round(val * p)}%`, c.cx, c.cy - 30 * c.s + (c.portrait ? 62 : 46) * c.s, c.portrait ? 200 : 140, { weight: 900, fill: theme.text, family: "'DejaVu Sans','Noto Sans',sans-serif" });
+    if (d.label) {
+      const lp = easeOutCubic(seg(t, 0.8, 1.4));
+      wrapText(d.label, c.w * 0.8, (c.portrait ? 72 : 52) * c.s, { maxLines: 2 }).forEach((ln, i) => { out += txt(c, ln, c.cx, c.cy + R + 60 * c.s + i * (c.portrait ? 86 : 62) * c.s + (1 - lp) * 18 * c.s, c.portrait ? 72 : 52, { weight: 800, opacity: lp }); });
+    }
+    return out;
+  },
+};
+
+// ── 18) wipe_bars — مسحة أشرطة مائلة بتعدّي على الشاشة (انتقال بين الفصول/اللحظات الدرامية) ───────────────
+const wipe_bars = {
+  animEnd: () => 0.8,
+  render(c, d, t) {
+    const { theme, w, h } = c;
+    const cols = [theme.accent, theme.accent2, theme.text, theme.accent];
+    const n = 5, bw = (w + h) / n + 40;
+    let out = '';
+    for (let i = 0; i < n; i++) {
+      const a = easeInOutCubic(seg(t, i * 0.04, 0.38 + i * 0.04)); // دخول
+      const b = easeInOutCubic(seg(t, 0.38 + i * 0.04, 0.78)); // خروج
+      const left = lerp(-bw * 2, w + bw, b);       // الحافة اليسرى بتتحرك مع الخروج
+      const right = lerp(-bw, w + bw * 2, a);      // الحافة اليمنى بتتحرك مع الدخول
+      const y0 = (h / n) * i, hh = h / n + 2;
+      const skew = h * 0.18;
+      if (right - left <= 2) continue;
+      out += `<polygon points="${left + skew},${y0} ${right + skew},${y0} ${right},${y0 + hh} ${left},${y0 + hh}" fill="${cols[i % cols.length]}" opacity="0.96"/>`;
+    }
+    return out;
+  },
+};
+
+// ── 19) corner_frame — أقواس زوايا (viewfinder) بتترسم + خط مسح بيعدّي مرة (لمسة "فيلم" على اللقطات) ──────────
+const corner_frame = {
+  animEnd: () => 0.9,
+  render(c, d, t) {
+    const { theme, w, h } = c;
+    const m = 56 * c.s, L = 110 * c.s * easeOutCubic(seg(t, 0, 0.5));
+    const sw = 6 * c.s, col = theme.accent2;
+    const o = clamp01(seg(t, 0, 0.2));
+    let out = `<g fill="none" stroke="${col}" stroke-width="${sw.toFixed(1)}" stroke-linecap="round" opacity="${(0.9 * o).toFixed(3)}">`
+      + `<path d="M${m} ${m + L} V${m} H${m + L}"/><path d="M${w - m - L} ${m} H${w - m} V${m + L}"/>`
+      + `<path d="M${m} ${h - m - L} V${h - m} H${m + L}"/><path d="M${w - m - L} ${h - m} H${w - m} V${h - m - L}"/></g>`;
+    const sp = seg(t, 0.15, 0.85);
+    if (sp > 0 && sp < 1) out += `<rect x="0" y="${(h * sp).toFixed(1)}" width="${w}" height="${(3 * c.s).toFixed(1)}" fill="${col}" opacity="${(0.35 * Math.sin(sp * Math.PI)).toFixed(3)}"/>`;
+    return out;
+  },
+};
+
 // ── 12) map_reveal — خريطة عالم بكاميرا بتقرّب على الأماكن + دبابيس + مسار منحني بينهم ───────────
 // إحداثيات الخريطة (من world.svg اللي اتجاب من simplemaps): equirectangular بمقياس 2.498 درجة→وحدة
 const WORLD = JSON.parse(fs.readFileSync(new URL('./worldPaths.json', import.meta.url), 'utf8'));
@@ -632,7 +838,7 @@ const photo_board = {
   },
 };
 
-export const TEMPLATES = { map_reveal, photo_board, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text, stack_text, marker_text };
+export const TEMPLATES = { map_reveal, photo_board, title_card, lower_third, quote, bullet_panel, evidence_board, counter, bar_chart, donut_chart, timeline, route_diagram, kinetic_text, stack_text, marker_text, icon_pop, date_card, vs_card, stamp, percent_ring, wipe_bars, corner_frame };
 export const TEMPLATE_NAMES = Object.keys(TEMPLATES);
 
 export function templateAnimEnd(name, data) {

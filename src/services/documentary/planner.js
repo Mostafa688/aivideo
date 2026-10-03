@@ -1,6 +1,6 @@
 // ── planner.js ── من كلمات موقّتة → لقطات (beats) → خطة بصرية (LLM) مع تحقق صارم في الكود
 import { llmJson } from './llm.js';
-import { TEMPLATE_NAMES, WORLD_CODES } from './svgTemplates.js';
+import { TEMPLATE_NAMES, WORLD_CODES, ICON_NAMES } from './svgTemplates.js';
 
 const SENT_END = /[.!?؟…]["'”)\]]*$/;
 const PUNCH_WORDS = 2;
@@ -83,6 +83,14 @@ export function numbersInText(text) {
   }
   return out;
 }
+export function yearsIn(text) {
+  const t = String(text || '').replace(/[٠-٩]/g, d => AR_DIGITS[d]);
+  return [...t.matchAll(/(?<![\d,.])(1[0-9]{3}|20[0-9]{2})(?![\d,]|\.\d)/g)].map(m => Number(m[1]));
+}
+export function percentsIn(text) {
+  const t = String(text || '').replace(/[٠-٩]/g, d => AR_DIGITS[d]);
+  return [...t.matchAll(/(\d{1,3}(?:\.\d+)?)\s*(?:%|٪|percent|per cent|بالمئة|بالمائة|في المئة|في المائة)/gi)].map(m => Number(m[1])).filter(v => v >= 1 && v <= 100);
+}
 const grounded = (value, nums) => nums.some(n => Math.abs(n - value) <= Math.max(0.011 * Math.abs(n), 1e-9));
 
 // ── 3) تحقق/تنضيف بيانات القوالب ───────────────────────────────────────────────────────────────
@@ -146,6 +154,28 @@ export function sanitizeTemplate(name, data, beatText) {
       return photos.length >= 2 ? { title: clip(data.title, 30) || undefined, photos } : null;
     }
     case 'kinetic_text': case 'stack_text': case 'marker_text': { const t = clip(data.text, 90); return t && t.split(/\s+/).length <= 14 ? { text: t, emphasis: strArr(data.emphasis, 0, 3, 20) } : null; }
+    case 'icon_pop': {
+      const items = (Array.isArray(data.items) ? data.items : []).map(i => ({ icon: ICON_NAMES.includes(i?.icon) ? i.icon : 'star', label: clip(i?.label, 18) })).filter(i => i.label).slice(0, 4);
+      return items.length >= 2 ? { title: clip(data.title, 36) || undefined, items } : null;
+    }
+    case 'date_card': {
+      const y = Math.round(Number(data.year));
+      if (!Number.isFinite(y) || y < 1000 || y > 2100 || !yearsIn(beatText).includes(y)) return null;
+      return { year: y, label: clip(data.label, 48) || undefined };
+    }
+    case 'vs_card': {
+      const lab = (x) => clip(typeof x === 'string' ? x : x?.label, 24);
+      const L = lab(data.left), R = lab(data.right), text = String(beatText).toLowerCase();
+      const ok = (l) => l && l.toLowerCase().split(/[\s,،-]+/).some(w => w.length >= 3 && text.includes(w.replace(/^ال/, '')));
+      return ok(L) && ok(R) && L.toLowerCase() !== R.toLowerCase() ? { left: { label: L }, right: { label: R } } : null;
+    }
+    case 'stamp': { const t = clip(data.text, 26); return t ? { text: t, tone: data.tone === 'gold' ? 'gold' : 'red' } : null; }
+    case 'percent_ring': {
+      const v = Number(data.value);
+      if (!Number.isFinite(v) || v < 0 || v > 100 || !grounded(v, nums)) return null;
+      return { value: v, label: clip(data.label, 50) || undefined };
+    }
+    case 'wipe_bars': case 'corner_frame': return {};
     default: return null;
   }
 }
@@ -190,8 +220,9 @@ Rules:
 - "visual": "archive" = real historical photos/films, named people, places, events, documents (queries MUST include proper names and years, e.g. "Winston Churchill 1941"); "nasa" = space, rockets, planets, astronauts; "stock" = generic b-roll that illustrates the idea (nature, cities, machines, crowds); "text" = a motion-graphic scene with no footage (use sparingly).
 - Queries are English search terms for photo/video libraries (2-3, from specific to broad). Never ask for text, logos, maps with labels, or identifiable private individuals. Show what the sentence concretely says.
 - Use a template ONLY when the data comes from the beat's own text. NEVER invent facts or numbers. Available templates and data:
-  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places?[1-4 of {name,lat,lon}],regions?[1-4 of {code,label?}],route?} (a real geographic place, country or journey is named in the text; visual "text"; needs a beat of 3.2+ seconds; places: name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about, never guess; regions: highlight whole countries with their ISO 3166-1 alpha-2 code, label = a short caption such as "Communist forces" or "Allied powers", only for countries named in the text) | photo_board {title?,photos[2-4 of {query,caption?}]} (a pinboard of old/archival photographs of the specific people, ships, places or objects the text names; visual "text"; needs a beat of 3.6+ seconds; query = a precise English search such as "HMS Amethyst 1949 frigate" or "Mao Zedong 1949"; caption = 1-4 words; use for introductions of key people/objects) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text).
+  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places?[1-4 of {name,lat,lon}],regions?[1-4 of {code,label?}],route?} (a real geographic place, country or journey is named in the text; visual "text"; needs a beat of 3.2+ seconds; places: name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about, never guess; regions: highlight whole countries with their ISO 3166-1 alpha-2 code, label = a short caption such as "Communist forces" or "Allied powers", only for countries named in the text) | photo_board {title?,photos[2-4 of {query,caption?}]} (a pinboard of old/archival photographs of the specific people, ships, places or objects the text names; visual "text"; needs a beat of 3.6+ seconds; query = a precise English search such as "HMS Amethyst 1949 frigate" or "Mao Zedong 1949"; caption = 1-4 words; use for introductions of key people/objects) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text) | stack_text {text,emphasis[]} (the same, but the words stack line by line) | marker_text {text,emphasis[]} (the same, key words highlighted with a marker) | icon_pop {title?,items[2-4 of {icon,label}]} (2-4 concrete things/forces/ideas named in the text, each drawn as an animated icon; icon is one of: sword shield crown ship plane rocket book coin fire skull flag city pyramid scroll castle globe clock star bolt people house anchor gear tank trend; label = 1-2 words from the text; visual "text", needs 3.2+ seconds) | date_card {year,label?} (a year written in the text — 4-digit number between 1000 and 2100 that appears in the text; the year rolls up on screen; overlay on footage or visual "text") | vs_card {left:{label},right:{label}} (two opposing sides/people/countries both named in the text; visual "text") | stamp {text,tone?} (a rubber stamp slammed on screen: 1-3 words such as CLASSIFIED, BANNED, FAILED, VICTORY, ILLEGAL — tone "red" or "gold"; overlay for a dramatic verdict) | percent_ring {value,label?} (a percentage written in the text, 0-100; overlay or visual "text") | wipe_bars {} (a colourful bar wipe used at chapter changes — overlay, optional) | corner_frame {} (viewfinder corners over archive footage — overlay, optional).
 - Use motion graphics GENEROUSLY — about 1 in 3 beats should carry a template or overlay (lower_third for every named person, counter for numbers, kinetic_text for striking phrases), but never two "text" beats in a row. Put "chapter" on the first beat and whenever the topic clearly shifts.
+- MOTION GRAPHICS VARIETY: the viewer must feel this is a produced film, not a slideshow — rotate between ALL the templates above instead of repeating the same one; use icon_pop whenever 2-4 concrete things are listed or contrasted, date_card for every important year, vs_card for rivalries, stamp for verdicts/secrets/outcomes, percent_ring for percentages, stack_text/marker_text for striking phrases. Never use the same template on two consecutive beats.
 - MAPS: whenever countries, regions, borders, invasions, routes or journeys are named, use a map_reveal beat (visual "text") with "regions" (ISO codes of the named countries, with a short label) and "places" when you are certain of the coordinates — at least one map in every ~45 seconds of narration when geography is part of the story. PHOTO BOARDS: use photo_board when 2-4 specific people, ships, places or objects are introduced (at least once in every ~45 seconds when such subjects exist).
 - THE HOOK: the first beats (the first ~10 seconds) are the hook — pick the most dramatic, concrete, visually striking footage for them (movement, scale, faces, explosions, crowds, vast landscapes — whatever the sentence really says), use varied queries per beat, no text-only scenes, and "flash" on the very first beat.
 - "grade": bw_archive for old (pre-1960) archival material, sepia for 1800s-1920s, cinematic for dramatic modern scenes, none for generic stock.
@@ -220,6 +251,7 @@ export async function planBeats({ beats, language = 'en', topic = '', onProgress
   }
   await ensureRichScenes({ beats, plans, language, ask });
   enforcePacing(plans, beats);
+  try { injectMotion({ beats, plans }); } catch (e) { console.warn('[Documentary/planner] motion injection failed:', e.message); }
   return { title, mood, plans };
 }
 
@@ -301,10 +333,51 @@ export async function injectBoards({ beats, plans, ask = llmJson, language = 'en
   return added;
 }
 
+// موشن جرافيك إضافي بالكود (مع تحقق من النص): سنة بتلف، نسبة مئوية، مسحة فصول، إطار كاميرا على الأرشيف
+export function injectMotion({ beats, plans }) {
+  const total = beats.length ? beats[beats.length - 1].end : 0;
+  const used = [];
+  const near = (i, gap) => used.some(k => Math.abs(beats[k].start - beats[i].start) < gap);
+  const free = (i) => !beats[i].hook && plans[i].visual !== 'text' && !(plans[i].overlays || []).length && !plans[i].keep;
+  let added = 0;
+  const put = (i, template, data, extra = {}) => { plans[i].overlays = [{ template, data, ...extra }]; used.push(i); added++; };
+  // سنين
+  let years = 0; const maxYears = Math.max(1, Math.min(6, Math.round(total / 30)));
+  for (let i = 0; i < beats.length && years < maxYears; i++) {
+    if (!free(i) || beats[i].dur < 2.8 || near(i, 14)) continue;
+    const ys = yearsIn(beats[i].text); if (!ys.length) continue;
+    const data = sanitizeTemplate('date_card', { year: ys[0] }, beats[i].text); if (!data) continue;
+    put(i, 'date_card', data, { at: 0.15, dur: Math.min(2.6, beats[i].dur - 0.3) }); years++;
+  }
+  // نسب مئوية
+  let pc = 0;
+  for (let i = 0; i < beats.length && pc < 3; i++) {
+    if (!free(i) || beats[i].dur < 2.8 || near(i, 12)) continue;
+    const ps = percentsIn(beats[i].text); if (!ps.length) continue;
+    const data = sanitizeTemplate('percent_ring', { value: ps[0] }, beats[i].text); if (!data) continue;
+    put(i, 'percent_ring', data, { at: 0.2, dur: Math.min(2.8, beats[i].dur - 0.3) }); pc++;
+  }
+  // مسحة أشرطة عند بداية الفصول
+  let wipes = 0;
+  for (let i = 1; i < beats.length && wipes < 5; i++) {
+    if (!plans[i].chapter || plans[i].visual === 'text' || beats[i].dur < 1.6 || (plans[i].overlays || []).length) continue;
+    plans[i].overlays = [{ template: 'wipe_bars', data: {}, at: 0, dur: 0.8 }]; wipes++; added++;
+  }
+  // إطار كاميرا على لقطات الأرشيف (كل تاني لقطة أرشيف)
+  let k = 0, frames = 0;
+  for (let i = 0; i < beats.length && frames < 6; i++) {
+    if (plans[i].visual !== 'archive' || beats[i].hook || beats[i].dur < 2.4 || (plans[i].overlays || []).length) continue;
+    if (k++ % 2) continue;
+    plans[i].overlays = [{ template: 'corner_frame', data: {}, at: 0.1, dur: 0.9 }]; frames++; added++;
+  }
+  return added;
+}
+
 export async function ensureRichScenes({ beats, plans, language = 'en', ask = llmJson }) {
   try { injectMaps({ beats, plans, language }); } catch (e) { console.warn('[Documentary/planner] map injection failed:', e.message); }
   try { await injectBoards({ beats, plans, ask, language }); } catch (e) { console.warn('[Documentary/planner] board injection failed:', e.message); }
 }
+
 
 // قواعد الإيقاع: مفيش نصّين ورا بعض، نسبة القوالب، حد أدنى لمدة القوالب، انتقال بداية الفصل
 export function enforcePacing(plans, beats) {
@@ -312,7 +385,7 @@ export function enforcePacing(plans, beats) {
   plans.forEach((p, i) => {
     const b = beats[i];
     const isText = p.visual === 'text';
-    if (isText && (prevText || b.dur < ({ map_reveal: 3.2, photo_board: 3.6 }[p.template?.name] || 2.6))) { // حوّل لستوك + اعتبر القالب overlay لو ينفع
+    if (isText && (prevText || b.dur < ({ map_reveal: 3.2, photo_board: 3.6, icon_pop: 3.2, vs_card: 2.8, percent_ring: 2.8 }[p.template?.name] || 2.6))) { // حوّل لستوك + اعتبر القالب overlay لو ينفع
       p.visual = 'stock'; p.queries = p.queries.length ? p.queries : fallbackBeatPlan(b).queries; p.template = null;
     }
     if (p.visual === 'text') templated++;

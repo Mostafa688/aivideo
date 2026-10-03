@@ -51,6 +51,16 @@ export function sfxForBeat(beat, t0) {
         for (let i = 0; i < Math.min(n, 12); i++) ev.push({ t: at + 0.15 + i * 0.22, type: 'tick', vol: 0.35 });
         break;
       }
+      case 'icon_pop':
+        (ov.data?.items || []).slice(0, 4).forEach((_, i) => ev.push({ t: at + 0.3 + i * 0.55, type: 'pop', vol: 0.45 }));
+        ev.push({ t: at + 0.1, type: 'swish', vol: 0.3 });
+        break;
+      case 'date_card': ev.push({ t: at + 0.1, type: 'riser', vol: 0.35 }); ev.push({ t: at + 1.45, type: 'impact', vol: 0.5 }); break;
+      case 'vs_card': ev.push({ t: at + 0.05, type: 'swish', vol: 0.45 }); ev.push({ t: at + 0.65, type: 'boom', vol: 0.55 }); break;
+      case 'stamp': ev.push({ t: at + 0.3, type: 'boom', vol: 0.7 }); ev.push({ t: at + 0.3, type: 'click', vol: 0.4 }); break;
+      case 'percent_ring': ev.push({ t: at + 0.15, type: 'riser', vol: 0.35 }); ev.push({ t: at + 1.7, type: 'pop', vol: 0.45 }); break;
+      case 'wipe_bars': ev.push({ t: at, type: 'swish', vol: 0.5 }); break;
+      case 'corner_frame': ev.push({ t: at + 0.05, type: 'click', vol: 0.35 }); break;
       case 'photo_board':
         (ov.data?.photos || []).slice(0, 4).forEach((_, i) => ev.push({ t: at + 0.4 + i * 0.5, type: 'pop', vol: 0.45 }));
         ev.push({ t: at + 0.1, type: 'whoosh', vol: 0.25 });
