@@ -9,8 +9,10 @@ import { ensureSfx } from '../documentary/sfx.js';
 import { mixAudio } from '../documentary/audioMix.js';
 import { isRtlLang } from '../documentary/textutil.js';
 import { transcribeWords } from '../documentary/align.js';
+import { buildBeatClip } from '../documentary/clipBuilder.js';
 
 export const SHORT_VIDEO_MAX_SEC = 75; // أقصر من كده = فيديو قصير (كابشن في النص)
+export const SHORTS_WORD_CAPTIONS_MAX_SEC = 180; // شورتس رأسي ≤ 3 دقايق: كابشن كبير كلمة كلمة في النص بحركة
 
 const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', '30'];
 const TRANSITION_SET = ['fade', 'slideleft', 'wipeleft', 'circleopen', 'zoomin', 'smoothleft', 'fadewhite', 'dissolve', 'slideup', 'radial'];
@@ -135,7 +137,7 @@ async function writeAss({ words, style, lang, W, H, duration, position, workDir,
  * @param {boolean} [o.sfx]
  * @returns {{file:string,duration:number,width:number,height:number,words:any[]|null,cuts:number[]}}
  */
-export async function montageVideos({ files, workDir, transitions = 'auto', narrationFile = null, words = null, captions = null, musicFile = null, musicVolume = 0.14, sfx = true, assumeNormalized = false, extraSfx = [], title = null, transitionStyle = 'auto', onProgress = () => {} }) {
+export async function montageVideos({ files, workDir, transitions = 'auto', narrationFile = null, words = null, captions = null, musicFile = null, musicVolume = 0.14, sfx = true, assumeNormalized = false, extraSfx = [], title = null, transitionStyle = 'auto', overlays = [], overlayTheme = 'blue', onProgress = () => {} }) {
   if (!files?.length) throw new Error('no clips');
   fs.mkdirSync(workDir, { recursive: true });
   const size = await displaySize(files[0]);
@@ -179,20 +181,36 @@ export async function montageVideos({ files, workDir, transitions = 'auto', narr
     await mixAudio({ narrationFile: baseWav, musicFile, musicVolume, sfxEvents, sfxFiles, duration, outFile: audioFile });
   }
 
+  // 4.5) موشن جرافيك فوق الفيديو كله (توقيتات مطلقة) — التعتيم بس وقت ظهور النصوص
+  let videoFile = joined.file;
+  const ovs = (overlays || []).filter(o => o && o.template && o.at >= 0 && o.at < duration - 0.6).map(o => ({ ...o, dur: Math.min(o.dur, duration - o.at - 0.05) })).filter(o => o.dur >= 0.8);
+  if (ovs.length) {
+    onProgress({ stage: 'graphics', done: 0, total: 1 });
+    try {
+      const NO_DIM = new Set(['lower_third', 'news_bar', 'side_note', 'corner_frame', 'wipe_bars']);
+      const dimWindows = ovs.filter(o => !NO_DIM.has(o.template)).map(o => [o.at, o.at + o.dur]);
+      videoFile = await buildBeatClip({ beat: { dur: duration, visual: { kind: 'clip', file: joined.file }, overlays: ovs, dim: dimWindows.length > 0, dimWindows }, w: W, h: H, theme: overlayTheme, bgPath: null, lang, rtl: isRtlLang(lang), workDir, index: 9000 });
+    } catch (e) { console.warn('[Montage] graphics layer failed — continuing without it:', e.message); videoFile = joined.file; }
+  }
+
   // 5) الإخراج النهائي: كابشن محروق (لو فيه) + الصوت
   onProgress({ stage: 'final', done: 0, total: 1 });
   const out = path.join(workDir, 'final.mp4');
-  const args = ['-i', joined.file];
+  const args = ['-i', videoFile];
   if (audioFile) args.push('-i', audioFile);
-  args.push('-map', '0:v', '-map', audioFile ? '1:a' : '0:a');
+  else if (videoFile !== joined.file) args.push('-i', joined.file);
+  args.push('-map', '0:v', '-map', audioFile || videoFile !== joined.file ? '1:a' : '0:a');
   const hasCaps = !!(captions && capWords?.length);
+  // شورتس رأسي ≤ 3 دقايق: كابشن كبير كلمة كلمة في النص (إلا لو اتطلب ستايل تاني صراحةً)
+  const capStyle = H > W && duration <= SHORTS_WORD_CAPTIONS_MAX_SEC && !captions?.keepStyle ? 'word' : (captions?.style || 'karaoke');
   if (hasCaps || (title && duration >= 12)) {
-    const ass = await writeAss({ words: hasCaps ? capWords : [], style: captions?.style || 'karaoke', lang, W, H, duration, position: captions?.position || 'auto', workDir, title: title && duration >= 12 ? { text: title } : null });
+    const ass = await writeAss({ words: hasCaps ? capWords : [], style: capStyle, lang, W, H, duration, position: captions?.position || 'auto', workDir, title: title && duration >= 12 ? { text: title } : null });
     args.push('-vf', `ass='${escFilterPath(ass)}'`, ...ENC);
   } else args.push('-c:v', 'copy');
   args.push('-c:a', audioFile ? 'copy' : 'aac', '-t', duration.toFixed(3), '-movflags', '+faststart', out);
   await ffmpeg(args);
   rmQuiet(joined.file === out ? '' : joined.file);
+  if (videoFile !== joined.file) rmQuiet(videoFile);
   return { file: out, duration: await probeDuration(out), width: W, height: H, words: capWords || null, cuts: joined.cuts };
 }
 

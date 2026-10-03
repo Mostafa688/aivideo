@@ -1192,15 +1192,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     const files = Array.from(fileList || []);
     if (!files.length) return;
     setError('');
-    const room = 20 - montageAssets.filter(x => x.kind !== 'audio').length;
+    const room = 20 - montageAssets.filter(x => x.kind === 'video').length;
     const baseSeq = Date.now() * 100;
     let vids = 0;
     files.forEach((file, fi) => {
       const isAudio = (file.type || '').startsWith('audio/') || /\.(mp3|m4a|wav|aac|ogg|opus|flac)$/i.test(file.name);
-      if (!isAudio && vids++ >= Math.max(0, room)) return;
+      const isImage = (file.type || '').startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name);
+      if (!isAudio && !isImage && vids++ >= Math.max(0, room)) return;
       const key = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       if (file.size > 400 * 1024 * 1024) { setError(lang === 'ar' ? `${file.name}: أكبر من 400MB` : `${file.name}: larger than 400MB`); return; }
-      setMontageAssets(a => [...a.filter(x => !(isAudio && x.kind === 'audio')), { key, name: file.name, kind: isAudio ? 'audio' : 'video', status: 'uploading', progress: 0 }]);
+      setMontageAssets(a => [...a.filter(x => !(isAudio && x.kind === 'audio')), { key, name: file.name, kind: isAudio ? 'audio' : (isImage ? 'image' : 'video'), status: 'uploading', progress: 0 }]);
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/agent/montage-upload');
       xhr.setRequestHeader('Authorization', 'Bearer ' + localStorage.getItem('token'));
@@ -2473,7 +2474,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       <input ref={voiceCloneInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceCloneFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
       <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
       <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => { handleVideoFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
-      <input ref={montageInputRef} type="file" accept="video/*,audio/*" multiple onChange={(e) => { uploadMontageFiles(e.target.files); e.target.value = ''; closePlusMenu(); }} style={{ display: 'none' }} />
+      <input ref={montageInputRef} type="file" accept="video/*,audio/*,image/png,image/jpeg,image/webp" multiple onChange={(e) => { uploadMontageFiles(e.target.files); e.target.value = ''; closePlusMenu(); }} style={{ display: 'none' }} />
       <button onClick={() => (plusMenuOpen ? closePlusMenu() : setPlusMenuOpen(true))} title="Attach, create, or set a style"
         style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (plusMenuOpen || forcedModel || selectedStyle) ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${(plusMenuOpen || forcedModel || selectedStyle) ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: (plusMenuOpen || forcedModel || selectedStyle) ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: plusMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
 
@@ -2490,7 +2491,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 <button onClick={() => videoInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={`Upload a video to edit (max ${MAX_VIDEO_UPLOAD_SEC}s)`}>
                   <Film size={16} strokeWidth={2} /> Upload video to edit
                 </button>
-                <button onClick={() => montageInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={lang === 'ar' ? 'ارفع فيديو أو أكتر (لحد 20) + تعليق صوتي اختياري، والايجنت يعمل لها مونتاج' : 'Upload one or more videos (up to 20) + an optional voiceover, and the agent edits them into one'}>
+                <button onClick={() => montageInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={lang === 'ar' ? 'ارفع فيديو أو أكتر (لحد 20) + تعليق صوتي اختياري + صورة موشن جرافيك مرجعية (مثلاً من Pinterest)، والايجنت يعمل لها مونتاج' : 'Upload one or more videos (up to 20) + an optional voiceover + a motion-graphics reference image (e.g. from Pinterest), and the agent edits them into one'}>
                   <Scissors size={16} strokeWidth={2} /> {lang === 'ar' ? 'ارفع فيديوهات (وصوت) للمونتاج' : 'Upload videos (+ voiceover) for montage'}
                 </button>
                 <button onClick={() => voiceInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}>
@@ -2755,7 +2756,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
               ))}
               {montageAssets.map((it) => (
                 <div key={it.key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}>
-                  {it.kind === 'audio' ? <Mic size={13} strokeWidth={2} /> : <Film size={13} strokeWidth={2} />} {it.name.slice(0, 18)}{it.status === 'uploading' ? ` · ${it.progress}%` : (it.durationSec ? ` · ${Math.floor(it.durationSec / 60)}:${String(it.durationSec % 60).padStart(2, '0')}` : '')}
+                  {it.kind === 'audio' ? <Mic size={13} strokeWidth={2} /> : it.kind === 'image' ? <ImageIcon size={13} strokeWidth={2} /> : <Film size={13} strokeWidth={2} />} {it.name.slice(0, 18)}{it.status === 'uploading' ? ` · ${it.progress}%` : (it.durationSec ? ` · ${Math.floor(it.durationSec / 60)}:${String(it.durationSec % 60).padStart(2, '0')}` : '')}
                   <button onClick={() => removeMontageAsset(it)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>✕</button>
                 </div>
               ))}

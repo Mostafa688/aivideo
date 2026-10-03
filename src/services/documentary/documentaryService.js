@@ -214,6 +214,18 @@ export function quoteAutoEdit(durationSec) {
   return { minutes, cost: getAutoEditCreditCost((Number(durationSec) || 0) / 60) };
 }
 
+// جرافيكس طلبها العميل بالاسم ("ضيف كلمة كذا بموشن قوي"): نص بلغته + وقت (بداية/نص/نهاية/ثانية/عبارة بتتقال) + ستايل
+const GRAPHIC_STYLES = ['kinetic_text', 'stack_text', 'marker_text', 'stamp', 'news_bar', 'side_note', 'bottom_sheet', 'lower_third'];
+function normalizeGraphics(raw) {
+  return (Array.isArray(raw) ? raw : []).slice(0, 6).map(g => {
+    const text = String(g?.text || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
+    const at = typeof g?.at === 'number' && Number.isFinite(g.at) ? Math.max(0, g.at) : String(g?.at || 'start').slice(0, 80);
+    const style = GRAPHIC_STYLES.includes(g?.style) ? g.style : 'stack_text';
+    const items = Array.isArray(g?.items) ? g.items.map(x => String(x || '').trim().slice(0, 48)).filter(Boolean).slice(0, 4) : undefined;
+    return text ? { text, at, style, ...(items?.length ? { items } : {}) } : null;
+  }).filter(Boolean);
+}
+
 function normalizeAutoEditOptions(raw = {}) {
   const bool = (v, d) => (v === undefined ? d : v === true || v === 'true' || v === '1');
   return {
@@ -251,10 +263,10 @@ export const MONTAGE_TRIAL_MAX_VIDEOS = 6;
 
 export async function startMontageJob(userId, { assetIds, instructions = '', options = {} }) {
   const ids = [...new Set((Array.isArray(assetIds) ? assetIds : []).map(String))];
-  if (!ids.length || ids.length > MAX_ASSETS_PER_USER + 1) return { ok: false, status: 400, error: 'bad_assets', message: `Choose 1 to ${MAX_ASSETS_PER_USER} uploaded videos.` };
+  if (!ids.length || ids.length > MAX_ASSETS_PER_USER + 1 + 4) return { ok: false, status: 400, error: 'bad_assets', message: `Choose 1 to ${MAX_ASSETS_PER_USER} uploaded videos.` };
   const assets = resolveMontageAssets(userId, ids);
   if (!assets) return { ok: false, status: 400, error: 'assets_expired', message: 'The uploaded videos expired or were not found — please upload them again.' };
-  const videos = assets.filter(a => a.kind !== 'audio');
+  const videos = assets.filter(a => (a.kind || 'video') === 'video');
   const voice = assets.find(a => a.kind === 'audio') || null;
   if (!videos.length) return { ok: false, status: 400, error: 'bad_assets', message: 'Add at least one video to the montage.' };
   const footageSec = videos.reduce((a, x) => a + x.duration, 0);
@@ -263,7 +275,8 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
   const totalSec = voice ? Math.max(voice.duration, 30) : footageSec;
   const text = String(instructions || '').slice(0, 800);
   if (text) { const safety = await checkContentSafety(text); if (safety.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'These instructions cannot be used.' }; }
-  const opt = normalizeAutoEditOptions(options);
+  const opt = { ...normalizeAutoEditOptions(options), graphics: normalizeGraphics(options.graphics) };
+  for (const g of opt.graphics) { const sf = await checkContentSafety(g.text); if (sf.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'This on-screen text cannot be used.' }; }
   const q = quoteAutoEdit(totalSec);
   // مونتاج مجاني مرة واحدة لكل حساب: ناتج ≤ دقيقتين (طول الفويس أو طول اللقطات) وحد أقصى 6 فيديوهات، بعلامة مائية — للخطة المجانية أو لو الرصيد مش كفاية
   let trial = false;
@@ -307,7 +320,7 @@ async function produceSmartMontage({ id, userId, input, workDir, prog }) {
   }
   const r = await smartMontage({
     assets: analysed, workDir: path.join(workDir, 'smart'), instructions: input.instructions,
-    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile },
+    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile, graphics: input.graphics || [] },
     onProgress: ({ stage, frac = 0 }) => prog(stage === 'plan' ? 'cut' : stage, stage === 'plan' ? 0 : frac),
     deps: { onTranscript: async (words) => {
       const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000));

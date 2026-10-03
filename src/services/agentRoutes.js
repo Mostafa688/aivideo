@@ -599,7 +599,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       const uid = req.user.userId;
       if (uploadedVoiceUrl) { if (!voiceOwners.has(uid)) voiceOwners.set(uid, new Set()); voiceOwners.get(uid).add(uploadedVoiceUrl); }
       const stored = listAssets(uid);
-      const hasVideos = stored.some(a => a.kind !== 'audio'), hasVoice = stored.some(a => a.kind === 'audio');
+      const hasVideos = stored.some(a => (a.kind || 'video') === 'video'), hasVoice = stored.some(a => a.kind === 'audio');
       const fresh = uploadedVoiceUrl && (hasVideos || /montage|مونتاج|فيديوهات|videos|دمج|اجمع|اجمّع|merge/i.test(`${message || ''} ${transcript || ''}`));
       const old = !uploadedVoiceUrl && hasVideos && lastVoiceUrl && voiceOwners.get(uid)?.has(lastVoiceUrl) ? lastVoiceUrl : null;
       const cand = fresh ? uploadedVoiceUrl : old;
@@ -1447,10 +1447,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
           // لو العميل رافع فويس-أوفر، هو دايمًا جزء من المونتاج (حتى لو الايجنت نسي يكتب voiceAssetId) — وإلا الفيديو يطلع بطول الفيديوهات ويتجاهل الصوت
           const storedVoice = listAssets(userId).find(a => a.kind === 'audio');
           if (storedVoice && !ids.includes(storedVoice.id)) ids.push(storedVoice.id);
+          // صور الستايل المرجعية (موشن جرافيك من Pinterest مثلاً) دايمًا داخلة في المونتاج
+          for (const im of listAssets(userId).filter(a => a.kind === 'image')) if (!ids.includes(im.id)) ids.push(im.id);
           console.log(`[Agent] SMART_MONTAGE start: ${ids.length} id(s), voiceover=${!!storedVoice}`);
           const r = await startMontageJob(userId, {
             assetIds: ids, instructions: typeof montagePayload.instructions === 'string' ? montagePayload.instructions : '',
-            options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false },
+            options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false, graphics: montagePayload.graphics },
           });
           if (r.ok && storedVoice?.srcUrl) consumedVoices.add(`${userId}:${storedVoice.srcUrl}`); // نفس التسجيل ما يتحطش تاني أوتوماتيك في مونتاج جديد
           if (r.ok) { docJob = { jobId: r.job.id, kind: 'montage', title: r.job.title }; reply += (reply ? '\n\n' : '') + (r.trial ? 'تمام، بدأت المونتاج المجاني (مرة واحدة، وعليه علامة Erivion المائية).' : `تمام، بدأت المونتاج (${r.cost} كريديت).`) + ` هتلاقي الفيديو هنا في المحادثة أول ما يخلص، وفي "استوديو الأفلام الوثائقية" ← "أفلامي".`; }
