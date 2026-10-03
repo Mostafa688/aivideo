@@ -24,11 +24,21 @@ async function pool(items, limit, fn) {
 const escFilterPath = (p) => p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'").replace(/,/g, '\\,');
 
 /** ASS كابشن لقطة واحدة (توقيت نسبي لبداية اللقطة) — بيرجّع مسار الملف أو null لو مفيش كلمات في اللقطة */
-export function beatCaptionsAss({ words, start, dur, style, w, h, lang, theme, widths = null, file }) {
+// الكابشن بيقف وقت ما في نص/جرافيك ظاهر في نفس المكان (عشان الكلام ما يدخلش في بعضه)
+const ALWAYS_HIDE = new Set(['kinetic_text', 'stack_text', 'marker_text', 'quote', 'title_card', 'stamp']);
+const NEVER_HIDE = new Set(['corner_frame', 'wipe_bars', 'news_bar', 'side_note']);
+export function captionHideWindows(overlays, portrait) {
+  return (overlays || []).filter(o => o?.template && !NEVER_HIDE.has(o.template) && (ALWAYS_HIDE.has(o.template) || (portrait ? o.template !== 'lower_third' : ['bottom_sheet', 'lower_third'].includes(o.template))))
+    .map(o => [Math.max(0, (o.at || 0) - 0.05), (o.at || 0) + (o.dur || 0) - 0.15]);
+}
+
+export function beatCaptionsAss({ words, start, dur, style, w, h, lang, theme, widths = null, file, overlays = null }) {
   if (!words?.length) return null;
   if (h > w && style && style !== 'none') style = 'word'; // الفيديو الطولي (9:16): كابشن كلمة كلمة في النص
   const t1 = start + dur;
-  const ws = words.filter(x => x.start >= start - 0.001 && x.start < t1).map(x => ({ w: x.w, start: Math.max(0, x.start - start), end: Math.min(dur, x.end - start) })).filter(x => x.end > x.start);
+  const hide = captionHideWindows(overlays, h > w);
+  const ws = words.filter(x => x.start >= start - 0.001 && x.start < t1).map(x => ({ w: x.w, start: Math.max(0, x.start - start), end: Math.min(dur, x.end - start) })).filter(x => x.end > x.start)
+    .filter(x => !hide.some(([a, b]) => (x.start + x.end) / 2 >= a && (x.start + x.end) / 2 <= b));
   if (!ws.length) return null;
   fs.writeFileSync(file, buildCaptionsAss({ words: ws, style, w, h, lang, theme, widths }));
   return file;
@@ -55,7 +65,7 @@ export async function renderDocumentary({ timeline, workDir, onProgress = () => 
   let widths = null;
   if (capWords.length && rtl && capStyle !== 'box') widths = await measureCaptionWords(capWords, { lang, w, h }).catch(() => null);
   const starts = []; { let t = 0; for (const b of beats) { starts.push(t); t += b.dur; } }
-  const assFor = (i) => beatCaptionsAss({ words: capWords, start: starts[i], dur: beats[i].dur, style: capStyle, w, h, lang, theme, widths, file: path.join(clipsDir, `cap_${String(i).padStart(4, '0')}.ass`) });
+  const assFor = (i) => beatCaptionsAss({ words: capWords, start: starts[i], dur: beats[i].dur, style: capStyle, w, h, lang, theme, widths, file: path.join(clipsDir, `cap_${String(i).padStart(4, '0')}.ass`), overlays: beats[i].overlays });
 
   // 1) المقاطع
   const clipFiles = new Array(beats.length);
