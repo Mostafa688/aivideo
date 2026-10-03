@@ -2618,7 +2618,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   ];
 
   return (
-    <div className={`agent-3col${leavingWorkspace ? ' workspace-exiting' : ''}`} style={{ height: 'calc(100vh - 74px)', display: 'flex', overflow: 'hidden' }}>
+    <div className={`agent-3col${leavingWorkspace ? ' workspace-exiting' : ''}${mediaItems.length ? ' agent-has-media' : ''}`} style={{ height: 'calc(100vh - 74px)', display: 'flex', overflow: 'hidden' }}>
       <style>{`
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
@@ -2628,14 +2628,23 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         .agent-icon-btn:hover{background:var(--bg3) !important;color:var(--text) !important;}
         .agent-tab-btn:hover{background:var(--bg3) !important;}
         .agent-mobile-tabs{display:none;}
+        .agent-mobile-only{display:none;}
         /* ✅ FIX (طلب العميل: "ظبط شكل الموقع على الهاتف"): الشكل بتاع 3 أعمدة (شات + كانفاس +
            تنظيم) كان عرضه ثابت بالبكسل من غير أي تعديل للهاتف خالص — على شاشة صغيرة ده كان
            بيطلع مقصوص/متلخبط. دلوقتي على الهاتف الأعمدة بتترتب فوق بعض (شات فوق، كانفاس تحت)،
            عمود "التنظيم" الجانبي بيختفي ومكانه شريط تابات أفقي بسيط فوق الكانفاس نفسه */
         @media (max-width: 860px) {
-          .agent-3col{flex-direction:column;height:auto !important;min-height:calc(100vh - 74px);overflow:visible !important;}
-          .agent-panel-chat{width:100% !important;height:62vh !important;border-inline-end:none !important;border-bottom:1px solid var(--border);}
-          .agent-panel-canvas{width:100% !important;}
+          /* الموبايل: الشاشة كلها من غير سكرول للصفحة — الميديا فوق (بتسكرول جواها) والشات تحتها وخانة الكتابة دايمًا ظاهرة */
+          .agent-3col{flex-direction:column;height:calc(100dvh - 74px) !important;overflow:hidden !important;}
+          .agent-panel-chat{order:2;width:100% !important;flex:1 1 auto;min-height:0;border-inline-end:none !important;border-top:1px solid var(--border);}
+          .agent-panel-canvas{order:1;width:100% !important;flex:0 0 auto !important;max-height:44%;min-height:0;}
+          .agent-panel-canvas.agent-canvas-none{display:none !important;}
+          .agent-canvas-head{padding:8px 12px !important;display:flex !important;align-items:center;gap:8px;}
+          .agent-canvas-scroll{padding:10px 12px !important;min-height:0;}
+          .agent-mobile-only{display:flex !important;}
+          .agent-3col.agent-has-media .agent-chat-head{display:none !important;}
+          .agent-canvas-title{font-size:14px !important;text-align:center;flex:1;}
+          .agent-mobile-tabs{padding:6px 12px 0 !important;overflow-x:auto;}
           .agent-panel-organize{display:none !important;}
           .agent-mobile-tabs{display:flex !important;}
         }
@@ -2645,7 +2654,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       <div className="agent-panel-chat" style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', borderInlineEnd: '1px solid var(--border)', position: 'relative' }}>
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 100% 30% at 50% -10%, rgba(124,106,247,0.08) 0%, transparent 70%)' }} />
 
-        <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--border)', position: 'relative', flexShrink: 0 }}>
+        <div className="agent-chat-head" style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--border)', position: 'relative', flexShrink: 0 }}>
           <button className="agent-icon-btn" onClick={handleLeaveWorkspace} title={t.backToProjects}
             style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg2)', color: 'var(--text2)', flexShrink: 0, transition: 'all 0.15s' }}>
             <ArrowLeft size={15} strokeWidth={2} />
@@ -2800,11 +2809,20 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       </div>
 
       {/* ── Center: Media canvas ──────────────────────────────────────────────── */}
-      <div className="agent-panel-canvas" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <span style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--text)', letterSpacing: '-0.2px' }}>
+      <div className={`agent-panel-canvas${mediaItems.length === 0 ? ' agent-canvas-none' : ''}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <div className="agent-canvas-head" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          {/* على الموبايل الميديا فوق، فزرار الرجوع والموديلات بيتنقلوا هنا */}
+          <button className="agent-icon-btn agent-mobile-only" onClick={handleLeaveWorkspace} title={t.backToProjects}
+            style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', background: 'var(--bg2)', color: 'var(--text2)', flexShrink: 0 }}>
+            <ArrowLeft size={15} strokeWidth={2} />
+          </button>
+          <span className="agent-canvas-title" style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--text)', letterSpacing: '-0.2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {activeProject?.name || t.backToProjects}
           </span>
+          <button className="agent-icon-btn agent-mobile-only" onClick={onSwitchToModels} title={t.models}
+            style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', background: 'var(--accent-bg)', color: 'var(--accent2)', flexShrink: 0 }}>
+            <Clapperboard size={15} strokeWidth={2} />
+          </button>
         </div>
         {/* ✅ NEW: نفس تابات "التنظيم" الجانبية بالظبط، بس شريط أفقي — بيظهر بس على الهاتف
             (العمود الجانبي بيختفي هناك) عشان يفضل ممكن تفلتر الكانفاس بين الكل/صور/فيديوهات */}
@@ -2816,7 +2834,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             </button>
           ))}
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        <div className="agent-canvas-scroll" style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {visibleMedia.length === 0 ? (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
               <div style={{ width: 64, height: 64, borderRadius: 18, background: 'var(--bg2)', border: '1px solid var(--border2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
