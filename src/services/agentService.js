@@ -248,7 +248,7 @@ PLATFORM POLICIES (answer directly from this — this is the real content of the
 - Ads: Erivion has NO third-party ads anywhere on the platform — completely ad-free, always.
 - Data retention: generated videos/job data are kept for a limited period; users should download videos they want to keep; inactive accounts (12+ months) may have data deleted.
 - Privacy: Erivion collects account info (email/name/password), Google OAuth profile data, usage data (videos/credits), and technical data (IP/browser). No card numbers are stored (Gumroad handles that). No data is sold or used for ad targeting.
-- Age requirement: must be at least 13 years old to use Erivion.
+- Age requirement: must be at least 18 years old to use Erivion.
 - Contact: digidelight33@gmail.com or the Support page, for anything not covered above.
 If asked something about policy NOT covered by the summary above (e.g. a very specific edge case), say so honestly and point to the Terms/Privacy/Support pages rather than guessing.
 
