@@ -29,6 +29,7 @@ import * as store from './store.js';
 const TEMP_ROOT = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 const MAX_CONCURRENT = Math.max(1, Number(process.env.DOC_MAX_CONCURRENT || 1));
 export const MAX_MINUTES = 30;
+export const VERTICAL_MAX_MINUTES = 3; // الفيلم الطولي (9:16 شورتس/ريلز) لحد 3 دقائق
 export const TRIAL_MAX_SECONDS = 62; // أول فيلم مجاني: صوت مرفوع لحد دقيقة
 export const MIN_SCRIPT_CHARS = 120;
 export const LANGUAGES = { en: 'English', ar: 'العربية', es: 'Español', fr: 'Français', de: 'Deutsch' };
@@ -94,6 +95,7 @@ export async function startJob(userId, raw, hooks = {}) {
   const q = quote(input);
   if (q.minutes < 0.4) return { ok: false, status: 400, error: 'too_short', message: 'The video would be shorter than 25 seconds.' };
   if (q.minutes > MAX_MINUTES + 0.5) return { ok: false, status: 400, error: 'too_long', message: `The maximum length is ${MAX_MINUTES} minutes.` };
+  if (input.ratio === '9:16' && q.minutes > VERTICAL_MAX_MINUTES + 0.05) return { ok: false, status: 400, error: 'too_long_vertical', message: `Vertical (9:16) films can be up to ${VERTICAL_MAX_MINUTES} minutes — choose 16:9 for a longer film.` };
 
   const safety = await checkContentSafety([input.title, input.topic, (input.script || '').slice(0, 6000)].filter(Boolean).join('\n'));
   if (safety.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'This content cannot be generated.', category: safety.category };

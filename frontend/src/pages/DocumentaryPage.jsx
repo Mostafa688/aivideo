@@ -25,6 +25,7 @@ const T = {
     voiceHint: 'ارفع ملف صوتي (mp3 / wav / m4a) من 20 ثانية لحد 30 دقيقة. Erivion هيفرّغه ويطابق اللقطات مع كلامك بالظبط.',
     chooseFile: 'اختر ملف صوتي', fileDur: 'مدة الملف',
     language: 'لغة الفيلم', voice: 'صوت الراوي', voiceOwn: 'هتستخدم صوتك — مفيش حاجة تختارها هنا.',
+    verticalNote: 'الفيلم الطولي (9:16) لحد 3 دقائق، وبكابشن كبير في النص كلمة كلمة.', verticalTooLong: 'الفيلم الطولي (9:16) أقصى مدة له 3 دقائق — قصّر الفيلم أو اختار 16:9.',
     theme: 'ستايل الفيلم', ratio: 'الأبعاد', r169: '16:9 (يوتيوب)', r916: '9:16 (شورتس / ريلز)',
     captions: 'الكابشن', cKaraoke: 'كاريوكي (الكلمة بتنوّر)', cBox: 'صندوق', cPop: 'بوب', cNone: 'بدون',
     motion: 'رسوم متحركة (عدادات، رسوم بيانية، خطوط زمنية، اقتباسات)',
@@ -55,7 +56,7 @@ const T = {
     rightsNote: 'تنبيه حقوق: بنختار اللقطات من مصادر مجانية ومرخّصة (Pexels وPixabay وNASA وWikimedia وInternet Archive) لكن مش بنضمن 100% إنها خالية من حقوق الغير. راجع الفيلم قبل النشر، وانسخ الـcredits في وصف الفيديو لأن بعض التراخيص بتطلب ذكر المصدر. المسؤولية على الناشر (راجع الشروط، البند 16).',
     pkgBtn: 'جهّز حزمة النشر على يوتيوب', pkgBuilding: 'بيجهّز العنوان والوصف والصورة...', pkgTitle: 'العنوان', pkgDesc: 'الوصف (فيه الفصول والمصادر)', pkgTags: 'الكلمات المفتاحية', pkgThumb: 'الصورة المصغرة', pkgThumbDl: 'تنزيل الصورة', pkgSrt: 'تنزيل ملف الترجمة SRT', pkgRegen: 'جهّز تاني',
     tooShort: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.',
-    errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى من توليد السكريبتات في الساعة.', video_required: 'اختر فيديو الأول.', bad_video: 'الملف ده مش فيديو صالح أو أقصر من 5 ثواني.', no_audio: 'الفيديو ده مفيهوش صوت.', file_too_large: 'الفيديو أكبر من 600 ميجا.', upload_failed: 'فشل الرفع، جرّب تاني.' },
+    errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_long_vertical: 'الفيلم الطولي (9:16) أقصى مدة له 3 دقائق.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى من توليد السكريبتات في الساعة.', video_required: 'اختر فيديو الأول.', bad_video: 'الملف ده مش فيديو صالح أو أقصر من 5 ثواني.', no_audio: 'الفيديو ده مفيهوش صوت.', file_too_large: 'الفيديو أكبر من 600 ميجا.', upload_failed: 'فشل الرفع، جرّب تاني.' },
     copied: 'اتنسخ',
   },
   en: {
@@ -75,6 +76,7 @@ const T = {
     voiceHint: 'Upload an audio file (mp3 / wav / m4a), 20 seconds to 30 minutes. Erivion transcribes it and matches footage to what you say.',
     chooseFile: 'Choose audio file', fileDur: 'File length',
     language: 'Film language', voice: 'Narrator voice', voiceOwn: 'Your own voice is used — nothing to pick here.',
+    verticalNote: 'Vertical (9:16) films run up to 3 minutes, with big centered word-by-word captions.', verticalTooLong: 'Vertical (9:16) films can be up to 3 minutes — shorten the film or choose 16:9.',
     theme: 'Film style', ratio: 'Aspect ratio', r169: '16:9 (YouTube)', r916: '9:16 (Shorts / Reels)',
     captions: 'Captions', cKaraoke: 'Karaoke (word highlight)', cBox: 'Box', cPop: 'Pop', cNone: 'None',
     motion: 'Motion graphics (counters, charts, timelines, quotes)',
@@ -105,7 +107,7 @@ const T = {
     rightsNote: 'Rights notice: footage comes from free, licensed sources (Pexels, Pixabay, NASA, Wikimedia, Internet Archive), but we cannot guarantee 100% that it is free of third-party rights. Review the film before publishing and paste the credits into your video description — some licenses require attribution. The publisher is responsible (see the Terms, Section 16).',
     pkgBtn: 'Prepare the YouTube upload package', pkgBuilding: 'Preparing title, description and thumbnail...', pkgTitle: 'Title', pkgDesc: 'Description (with chapters and credits)', pkgTags: 'Tags', pkgThumb: 'Thumbnail', pkgThumbDl: 'Download thumbnail', pkgSrt: 'Download SRT subtitles', pkgRegen: 'Regenerate',
     tooShort: 'The film would be under 25 seconds — add more text.',
-    errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit for script generation.', video_required: 'Choose a video first.', bad_video: 'This file is not a readable video or is shorter than 5 seconds.', no_audio: 'This video has no audio.', file_too_large: 'The video is larger than 600 MB.', upload_failed: 'Upload failed, please try again.' },
+    errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', too_long_vertical: 'Vertical (9:16) films can be up to 3 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit for script generation.', video_required: 'Choose a video first.', bad_video: 'This file is not a readable video or is shorter than 5 seconds.', no_audio: 'This video has no audio.', file_too_large: 'The video is larger than 600 MB.', upload_failed: 'Upload failed, please try again.' },
     copied: 'Copied',
   },
 };
@@ -561,9 +563,9 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
   // Cost estimate — debounced for script text, immediate for other modes.
   useEffect(() => {
     if (!opts) return undefined;
-    const body = mode === 'script' ? { script, language }
-      : mode === 'topic' ? { minutes, language }
-        : { audioDurationSec: fileDur || 0, language };
+    const body = mode === 'script' ? { script, language, ratio }
+      : mode === 'topic' ? { minutes, language, ratio }
+        : { audioDurationSec: fileDur || 0, language, ratio };
     if ((mode === 'script' && script.trim().length < 20) || (mode === 'voiceover' && !fileDur)) { setEst(null); return undefined; }
     const h = setTimeout(async () => {
       try {
@@ -572,7 +574,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
       } catch { /* keep previous estimate */ }
     }, mode === 'script' ? 450 : 0);
     return () => clearTimeout(h);
-  }, [opts, mode, script, minutes, fileDur, language]);
+  }, [opts, mode, script, minutes, fileDur, language, ratio]);
 
   const dirty = useMemo(() => looksDirtyClient(script), [script]);
   const [cleaning, setCleaning] = useState(false);
@@ -632,7 +634,9 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
   const balance = est?.balance ?? opts?.balance ?? null;
   const short = cost != null && balance != null && balance < cost;
   const tooShortEst = mode === 'script' && est && est.minutes < 0.4;
-  const ready = mode === 'script' ? script.trim().length >= (opts?.limits.minScriptChars || 120) && !tooShortEst
+  const verticalMax = opts?.limits?.maxVerticalMinutes || 3;
+  const verticalTooLong = ratio === '9:16' && ((mode === 'topic' && minutes > verticalMax) || (mode !== 'topic' && !!est?.verticalTooLong));
+  const ready = verticalTooLong ? false : mode === 'script' ? script.trim().length >= (opts?.limits.minScriptChars || 120) && !tooShortEst
     : mode === 'topic' ? topic.trim().length >= 3 : !!file && fileDur >= 20;
 
   const start = async () => {
@@ -809,7 +813,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
             <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={t.topicPh} maxLength={300} style={fieldStyle} />
             <div>
               <label style={labelStyle} htmlFor="doc-min">{t.topicLen}: {minutes} {t.min}</label>
-              <input id="doc-min" type="range" min={1} max={opts.limits.maxMinutes} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+              <input id="doc-min" type="range" min={1} max={ratio === '9:16' ? (opts.limits.maxVerticalMinutes || 3) : opts.limits.maxMinutes} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
             </div>
             <p style={{ margin: 0, fontSize: 13, color: 'var(--text3)', lineHeight: 1.7 }}>{t.topicHint}</p>
             <div>
@@ -868,8 +872,9 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Chip active={ratio === '16:9'} onClick={() => setRatio('16:9')}>{t.r169}</Chip>
-            <Chip active={ratio === '9:16'} onClick={() => setRatio('9:16')}>{t.r916}</Chip>
+            <Chip active={ratio === '9:16'} onClick={() => { setRatio('9:16'); setMinutes(m => Math.min(m, opts?.limits?.maxVerticalMinutes || 3)); }}>{t.r916}</Chip>
           </div>
+          {ratio === '9:16' && <div style={{ fontSize: 12, color: verticalTooLong ? 'var(--yellow)' : 'var(--text3)', lineHeight: 1.7 }}>{verticalTooLong ? t.verticalTooLong : t.verticalNote}</div>}
           <div>
             <span style={labelStyle}><Captions size={13} style={{ verticalAlign: -2 }} /> {t.captions}</span>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

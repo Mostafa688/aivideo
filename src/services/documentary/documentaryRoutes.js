@@ -48,7 +48,7 @@ router.get('/options', authMiddleware, async (req, res) => {
       languages: svc.LANGUAGES,
       themes: Object.entries(THEMES).map(([key, t]) => ({ key, label: t.label, top: t.bgTop, bottom: t.bgBottom })),
       captionStyles: svc.CAPTION_STYLES, moods: svc.MOODS, music: musicTracks(), voices: VOICES,
-      limits: { maxMinutes: svc.MAX_MINUTES, maxScriptChars: MAX_SCRIPT_CHARS, minScriptChars: svc.MIN_SCRIPT_CHARS, maxVoiceoverMb: 90 },
+      limits: { maxMinutes: svc.MAX_MINUTES, maxVerticalMinutes: svc.VERTICAL_MAX_MINUTES, maxScriptChars: MAX_SCRIPT_CHARS, minScriptChars: svc.MIN_SCRIPT_CHARS, maxVoiceoverMb: 90 },
       pricing: { perMinute: getDocumentaryCreditCost(1), perMinuteWithOwnVoiceover: getDocumentaryCreditCost(1, { userVoiceover: true }), usd: DOCUMENTARY_USD_PER_MINUTE },
       sources: sourceAvailability(), balance,
       freeTrial: { available: await store.trialAvailable(req.user.userId).catch(() => false), maxSeconds: svc.TRIAL_MAX_SECONDS },
@@ -57,12 +57,12 @@ router.get('/options', authMiddleware, async (req, res) => {
 });
 
 router.post('/estimate', authMiddleware, express.json({ limit: '1mb' }), async (req, res) => {
-  const { script, minutes, audioDurationSec, language } = req.body || {};
+  const { script, minutes, audioDurationSec, language, ratio } = req.body || {};
   const q = svc.quote({ script: typeof script === 'string' ? basicClean(script) : '', minutes, audioDurationSec: Number(audioDurationSec) || 0, language });
   const balance = await getCreditsBalance(req.user.userId).catch(() => null);
   const trial = q.userVoiceover && Number(audioDurationSec) <= svc.TRIAL_MAX_SECONDS && await store.trialAvailable(req.user.userId).catch(() => false);
   const cost = trial ? 0 : q.cost;
-  res.json({ ...q, cost, trial: !!trial, balance, enough: balance == null ? null : balance >= cost });
+  res.json({ ...q, cost, trial: !!trial, balance, enough: balance == null ? null : balance >= cost, verticalTooLong: ratio === '9:16' && q.minutes > svc.VERTICAL_MAX_MINUTES + 0.05, verticalMax: svc.VERTICAL_MAX_MINUTES });
 });
 
 // "اعمله بالذكاء الاصطناعي": موضوع → سكريبت (مجاني، لكن محدود المعدل)
