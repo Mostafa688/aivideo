@@ -7,6 +7,9 @@ import { ffmpeg, probeDuration, hasAudio, rmQuiet } from '../documentary/ff.js';
 import { llmJson } from '../documentary/llm.js';
 import { montageVideos, displaySize, transcribeAudioFile } from './index.js';
 import { splitSentences, planCuts, zoomPlan } from './autoEdit.js';
+import { buildBeatClip } from '../documentary/clipBuilder.js';
+import { sanitizeTemplate } from '../documentary/planner.js';
+import { isRtlLang } from '../documentary/textutil.js';
 
 const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', '30'];
 const MOODS = ['epic', 'documentary', 'tension', 'emotional', 'chill', 'upbeat'];
@@ -182,7 +185,7 @@ export async function executePlan({ plan, clips, workDir, options = {}, onProgre
   const capStyle = options.captions && options.captions !== 'none' ? options.captions : null;
   const r = await montageVideos({
     files: chapters.map(c => c.file), workDir: path.join(workDir, 'final'), assumeNormalized: true,
-    transitions: chapters.length > 1 && chapters.length <= 40 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', title: plan.title || null, sfx: true,
+    transitions: chapters.length > 1 && chapters.length <= 40 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: true,
     words: capStyle && newWords.length ? newWords : null,
     captions: capStyle && newWords.length ? { style: capStyle, lang: String(options.language || 'en').split(/[-_]/)[0], position: 'auto', transcribe: false } : null,
     musicFile: options.musicFile || null, musicVolume: speechShare > 0.35 ? 0.1 : 0.24,
@@ -204,11 +207,12 @@ const VO_MIN_SHOT = 1.8, VO_MAX_SHOT = 8, VO_TAIL = 0.45;
 
 const SYSTEM_VO = `You are a professional video editor (documentary / YouTube / Reels). The customer recorded a voiceover and uploaded several raw clips. You must lay the clips over the narration so that every picture matches what is being said at that moment, with strong pacing. All clip audio will be muted — only the voiceover plays (plus music/effects added by the system).
 You receive: the narration as timed sentences, its total duration, the customer's wishes (may be empty), and the clips (label, name, length, what it shows). The clips are listed in the customer's intended order: when the file names are numbered (1.1, 1.2, … or clip2, clip10) that numbering is the story order — keep it unless the narration clearly requires another order.
-Return ONLY JSON: {"title":"short catchy title in the narration's language","style":"fast|clean|calm|dramatic","musicMood":"epic|documentary|tension|emotional|chill|upbeat","shots":[{"clip":"V1","start":0.0,"until":4.2}]}
+Return ONLY JSON: {"style":"fast|clean|calm|dramatic","musicMood":"epic|documentary|tension|emotional|chill|upbeat","shots":[{"clip":"V1","start":0.0,"until":4.2,"overlay":{"template":"kinetic_text","data":{"text":"...","emphasis":["word"]}}}]}
 Rules:
 - "shots" play in order and cover the narration from 0 to its end. "until" = the narration time (seconds) where this shot ends (strictly increasing; the last one equals the narration duration). "start" = the second inside the clip where the shot begins (choose the most interesting part, avoid the first/last 0.3s).
 - Match meaning: when the narration talks about something a clip shows, use that clip at that moment. Use EVERY clip at least once unless it is unusable (black, shaky, blurry); a good clip can be used again later with a different "start".
 - Pace: shots of 2-6 seconds (up to 8 for calm moments); change picture at sentence or clause boundaries. Open with the most striking visual for the hook.
+- Be creative with MOTION GRAPHICS: about every second shot may carry an "overlay" (optional field) animated on top of the picture: kinetic_text {text,emphasis[]} = a punchy phrase of 2-6 words copied EXACTLY from the narration of that shot (words pop in big, the emphasis words are enlarged and recoloured) — your main tool, use it for the strongest phrases, claims, numbers and turning points; counter {value,prefix?,suffix?,label?} = one striking number written in the narration (not a year); lower_third {name,role?} = the first time a real person is named; quote {text,author?} = a sentence quoted in the narration; bullet_panel {title?,bullets[2-5]} = an enumeration spoken in the narration. All overlay text must come from what is actually said in that shot — never invent facts or numbers, and use the narration's language. Never put an overlay on two consecutive shots.
 - At most 60 shots. Never invent clips.`;
 
 /** حدود القطع الممكنة: نهايات الكلمات (القطع بين كلمتين، مش في نص كلمة) */
@@ -234,7 +238,7 @@ export function sanitizeVoicePlan(raw, clips, narr) {
     if (ci === undefined || !Number.isFinite(until)) continue;
     until = Math.min(D, snapTo(until, points));
     if (until - prev < VO_MIN_SHOT) { if (until >= D - 0.05 && picks.length) picks[picks.length - 1].until = D; continue; }
-    picks.push({ clipIndex: ci, start: Number(s.start) || 0, until });
+    picks.push({ clipIndex: ci, start: Number(s.start) || 0, until, overlay: s.overlay });
     prev = until;
     if (until >= D - 0.05 || picks.length >= 60) break;
   }
@@ -246,10 +250,10 @@ export function sanitizeVoicePlan(raw, clips, narr) {
   for (const p of picks) {
     let span = p.until - t0, off = p.start;
     const parts = Math.max(1, Math.ceil(span / VO_MAX_SHOT));
-    for (let k = 0; k < parts; k++) { const len = span / parts; shots.push({ clipIndex: p.clipIndex, start: off, dur: len }); off += len; }
+    for (let k = 0; k < parts; k++) { const len = span / parts; shots.push({ clipIndex: p.clipIndex, start: off, dur: len, overlay: k === 0 ? p.overlay : undefined }); off += len; }
     t0 = p.until;
   }
-  return { title: String(raw?.title || '').slice(0, 70) || null, style: ['fast', 'clean', 'calm', 'dramatic'].includes(raw?.style) ? raw.style : 'fast', musicMood: MOODS.includes(raw?.musicMood) ? raw.musicMood : null, shots: fitShots(shots, clips) };
+  return { title: null, style: ['fast', 'clean', 'calm', 'dramatic'].includes(raw?.style) ? raw.style : 'fast', musicMood: MOODS.includes(raw?.musicMood) ? raw.musicMood : null, shots: fitShots(shots, clips) };
 }
 
 /** كل لقطة تتظبط على مقطعها: بداية صالحة، وبطء/تكرار لو المقطع أقصر من المطلوب */
@@ -262,7 +266,7 @@ function fitShots(shots, clips) {
       start = 0; speed = Math.max(0.7, Math.min(1, c.duration / s.dur));
       len = Math.min(c.duration, s.dur * speed); loop = c.duration < s.dur * speed - 0.05; if (loop) len = s.dur * speed;
     }
-    return { clipIndex: s.clipIndex, start: Number(start.toFixed(2)), len: Number(len.toFixed(3)), speed, loop, dur: Number(s.dur.toFixed(3)) };
+    return { clipIndex: s.clipIndex, start: Number(start.toFixed(2)), len: Number(len.toFixed(3)), speed, loop, dur: Number(s.dur.toFixed(3)), overlay: s.overlay };
   });
 }
 
@@ -298,14 +302,69 @@ export function fallbackVoicePlan(clips, narr) {
   return { title: null, style: 'fast', musicMood: null, shots: fitShots(shots, clips) };
 }
 
+
+// ── موشن جرافيك فوق المشاهد (نفس قوالب الأفلام الوثائقية): نصوص بتظهر بحركة، كلمات مهمة بتكبر وتتغير ألوانها، أرقام، أسماء... ──
+const OVERLAY_TEMPLATES = new Set(['kinetic_text', 'lower_third', 'counter', 'quote', 'bullet_panel']);
+const normW = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+const inWindow = (words, t0, t1) => words.filter(w => w.start >= t0 - 0.05 && w.start < t1);
+const mostlySaid = (s, set) => { const ws = String(s).split(/\s+/).map(normW).filter(Boolean); return ws.length > 0 && ws.filter(x => set.has(x)).length / ws.length >= 0.7; };
+
+/** تحقق من overlay جاي من الـLLM: القالب مسموح، البيانات سليمة، والنص مأخوذ من كلام اللقطة فعلاً (مفيش اختراع) */
+export function sanitizeOverlay(raw, win) {
+  if (!raw || !OVERLAY_TEMPLATES.has(raw.template) || !win.length) return null;
+  const text = win.map(w => w.w).join(' ');
+  const data = sanitizeTemplate(raw.template, raw.data, text);
+  if (!data) return null;
+  const said = new Set(win.map(w => normW(w.w)));
+  if (raw.template === 'kinetic_text' && !mostlySaid(data.text, said)) return null;
+  if (raw.template === 'quote' && !mostlySaid(data.text, said)) return null;
+  if (raw.template === 'lower_third' && !mostlySaid(data.name, said)) return null;
+  if (raw.template === 'bullet_panel' && data.bullets.filter(b => mostlySaid(b, said)).length < Math.ceil(data.bullets.length / 2)) return null;
+  if (raw.template === 'counter' && Number.isInteger(data.value) && data.value >= 1800 && data.value <= 2100 && !data.suffix && !data.prefix) return null; // سنة مش عدّاد
+  return { template: raw.template, data };
+}
+
+/** نص قوي من كلام اللقطة (2-6 كلمات) مع كلمات التأكيد — بنستخدمه لما الـLLM ما يديش overlay */
+export function autoKinetic(win) {
+  if (win.length < 3) return null;
+  // عبارات: نقطع عند علامات الترقيم، ونختار أطول عبارة (≤ 6 كلمات) أو أول 5 كلمات
+  const clauses = []; let cur = [];
+  for (const w of win) { cur.push(w); if (/[.,;:!?،؛؟…]$/.test(w.w)) { clauses.push(cur); cur = []; } }
+  if (cur.length) clauses.push(cur);
+  let best = clauses.filter(c => c.length >= 2 && c.length <= 6).sort((a, b) => b.reduce((x, w) => x + w.w.length, 0) - a.reduce((x, w) => x + w.w.length, 0))[0];
+  if (!best) best = win.slice(0, Math.min(5, win.length));
+  const text = best.map(w => w.w.replace(/[.,;:!?،؛؟…]+$/, '')).join(' ');
+  const emphasis = [...best].map(w => w.w.replace(/[^\p{L}\p{N}]/gu, '')).filter(w => w.length >= 4).sort((a, b) => b.length - a.length).slice(0, 2);
+  const data = sanitizeTemplate('kinetic_text', { text, emphasis }, text);
+  return data ? { template: 'kinetic_text', data } : null;
+}
+
+/** بيحسب لكل لقطة نافذة كلامها ويثبّت الـoverlay (من الـLLM بعد التحقق، أو تلقائي كل لقطة تانية) — مفيش لقطتين ورا بعض */
+export function finalizeOverlays(shots, narr) {
+  let t0 = 0, prev = false;
+  shots.forEach((s, i) => {
+    const t1 = t0 + s.dur;
+    const win = inWindow(narr.words, t0, t1);
+    let ov = sanitizeOverlay(s.overlay, win);
+    if (!ov && !prev && i % 2 === 0) ov = autoKinetic(win);
+    if (ov && prev) ov = null;
+    if (s.dur < 1.6) ov = null;
+    s.overlay = ov || null;
+    prev = !!ov;
+    t0 = t1;
+  });
+  return shots;
+}
+
 export async function planVoiceover({ clips, narr, instructions = '', ask = llmJson }) {
   const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}\n\n${describeForVoicePlanner(clips, narr)}`;
   try {
     const raw = await ask({ system: SYSTEM_VO, user, maxTokens: 4500, temperature: 0.3 });
     const plan = sanitizeVoicePlan(raw, clips, narr);
-    if (plan && plan.shots.length >= Math.min(2, Math.ceil(narr.duration / VO_MAX_SHOT))) return { ...plan, source: 'ai' };
+    if (plan && plan.shots.length >= Math.min(2, Math.ceil(narr.duration / VO_MAX_SHOT))) { finalizeOverlays(plan.shots, narr); return { ...plan, source: 'ai' }; }
   } catch (e) { console.warn('[SmartMontage] voiceover planner failed, using fallback:', e.message); }
-  return { ...fallbackVoicePlan(clips, narr), source: 'fallback' };
+  const fb = fallbackVoicePlan(clips, narr); finalizeOverlays(fb.shots, narr);
+  return { ...fb, source: 'fallback' };
 }
 
 const hasArabic = (s) => /[؀-ۿ]/.test(s);
@@ -315,20 +374,37 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   const { W, H } = targetSizeFor(clips);
   const files = [];
   const animate = plan.shots.length <= 45 && options.zoom !== false;
+  const lang0 = hasArabic(narr.words.map(w => w.w).join(' ')) ? 'ar' : (options.language && options.language !== 'auto' ? String(options.language).split(/[-_]/)[0] : 'en');
+  const theme = plan.style === 'dramatic' ? 'cinematic' : 'blue';
   for (let i = 0; i < plan.shots.length; i++) {
     onProgress({ stage: 'cut', frac: i / plan.shots.length });
     const s = plan.shots[i], c = clips[s.clipIndex];
-    const dest = path.join(workDir, `shot_${i}.mp4`);
+    const raw = path.join(workDir, `shot_${i}.mp4`);
     const extra = i === plan.shots.length - 1 ? VO_TAIL : 0; // ذيل صغير في الآخر عشان الموسيقى تقفل بنعومة
-    await renderSub({ src: c.file, dest, start: s.start, len: (s.dur + extra) * s.speed, W, H, srcW: c.width, srcH: c.height, ...motionFor(i, animate), speed: s.speed, keepAudio: false, loop: s.loop || (c.duration - s.start < (s.dur + extra) * s.speed) });
-    files.push(dest);
+    const outLen = s.dur + extra;
+    await renderSub({ src: c.file, dest: raw, start: s.start, len: outLen * s.speed, W, H, srcW: c.width, srcH: c.height, ...motionFor(i, animate), speed: s.speed, keepAudio: false, loop: s.loop || (c.duration - s.start < outLen * s.speed) });
+    let finalFile = raw;
+    if (s.overlay && options.motionGraphics !== false) {
+      // موشن جرافيك: بنركّب القالب المتحرك فوق اللقطة (نفس محرك الأفلام الوثائقية) وبنرجّع الصوت الصامت للمقطع
+      try {
+        const at = s.overlay.template === 'lower_third' ? 0.45 : 0.18;
+        const ovDur = Math.min(outLen - at - 0.2, s.overlay.template === 'kinetic_text' ? 3.4 : 4.5);
+        if (ovDur >= 0.9) {
+          const v = await buildBeatClip({ beat: { dur: outLen, visual: { kind: 'clip', file: raw }, overlays: [{ template: s.overlay.template, data: s.overlay.data, at, dur: ovDur }] }, w: W, h: H, theme, bgPath: null, lang: lang0, rtl: isRtlLang(lang0), workDir, index: i });
+          const withAudio = path.join(workDir, `shotov_${i}.mp4`);
+          await ffmpeg(['-i', v, '-i', raw, '-map', '0:v', '-map', '1:a', '-c', 'copy', '-shortest', withAudio]);
+          rmQuiet(v); rmQuiet(raw); finalFile = withAudio;
+        }
+      } catch (e) { console.warn('[SmartMontage] overlay failed for shot', i, '— continuing without it:', e.message); }
+    }
+    files.push(finalFile);
   }
   onProgress({ stage: 'finish', frac: 0 });
   const capStyle = options.captions && options.captions !== 'none' ? options.captions : null;
   const lang = hasArabic(narr.words.map(w => w.w).join(' ')) ? 'ar' : (options.language && options.language !== 'auto' ? String(options.language).split(/[-_]/)[0] : 'en');
   const r = await montageVideos({
     files, workDir: path.join(workDir, 'final'), assumeNormalized: true, narrationFile: voiceFile,
-    transitions: files.length > 1 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', title: plan.title || null, sfx: true,
+    transitions: files.length > 1 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: true,
     words: capStyle ? narr.words : null,
     captions: capStyle ? { style: capStyle, lang, position: 'auto', transcribe: false } : null,
     musicFile: options.musicFile || null, musicVolume: 0.12,

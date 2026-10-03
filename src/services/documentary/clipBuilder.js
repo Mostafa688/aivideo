@@ -45,7 +45,11 @@ export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rt
   const filters = [];
   let label;
 
-  if (v.kind === 'video') {
+  if (v.kind === 'clip') {
+    // مقطع جاهز (مثلاً لقطة مونتاج اتعمل لها حركة وتدرّج): بس بنضيف عليه الطبقات والكابشن
+    inputs.push('-i', v.file);
+    filters.push(`[0:v]fps=${FPS},scale=${w}:${h},setsar=1[base]`);
+  } else if (v.kind === 'video') {
     if (v.startOffset > 0) inputs.push('-ss', String(v.startOffset));
     inputs.push('-stream_loop', '-1', '-i', v.file);
     // لقطة فيديو: قص لنفس الأبعاد + حركة بسيطة اختيارية + تدرّج

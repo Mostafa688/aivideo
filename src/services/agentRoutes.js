@@ -1409,6 +1409,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
         try {
           const ids = (Array.isArray(montagePayload.assetIds) ? montagePayload.assetIds : []).map(String);
           if (montagePayload.voiceAssetId && !ids.includes(String(montagePayload.voiceAssetId))) ids.push(String(montagePayload.voiceAssetId));
+          // لو العميل رافع فويس-أوفر، هو دايمًا جزء من المونتاج (حتى لو الايجنت نسي يكتب voiceAssetId) — وإلا الفيديو يطلع بطول الفيديوهات ويتجاهل الصوت
+          const storedVoice = listAssets(userId).find(a => a.kind === 'audio');
+          if (storedVoice && !ids.includes(storedVoice.id)) ids.push(storedVoice.id);
           const r = await startMontageJob(userId, {
             assetIds: ids, instructions: typeof montagePayload.instructions === 'string' ? montagePayload.instructions : '',
             options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false },
