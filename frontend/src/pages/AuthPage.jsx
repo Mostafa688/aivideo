@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TERMS_EN, PRIVACY_EN, TERMS_VERSION } from '../data/legalContent.js';
+import LegalNotice from '../components/LegalNotice.jsx';
 import {
   ClipboardList, Check, Users, Search, Camera, Music, Play, Sparkles, Globe,
   GraduationCap, BookOpen, Megaphone, Drama, ImageIcon, Bot, Clapperboard,
@@ -183,16 +184,13 @@ function TermsStep({ onAgree }) {
           scrollbarWidth: 'thin',
           scrollbarColor: 'rgba(124,106,247,0.3) transparent',
         }}>
+          <LegalNotice lang="both" />
           {TERMS_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
           <div style={{ height: 8 }} />
         </div>
 
         {/* Footer */}
         <div style={{ padding: '20px 28px', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
-          <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.55)', color: '#ef4444', fontWeight: 800, fontSize: 13, lineHeight: 1.7 }}>
-            Once you register and agree to the Terms of Service and Privacy Policy, the responsibility for the content you create and publish is yours.
-            <div dir="rtl" style={{ marginTop: 4 }}>طالما سجّلت ووافقت على الشروط والخصوصية، تبقى المسؤولية عليك.</div>
-          </div>
           <label style={{
             display: 'flex', alignItems: 'flex-start', gap: 12, cursor: scrolled ? 'pointer' : 'not-allowed',
             marginBottom: 16, opacity: scrolled ? 1 : 0.5, transition: 'opacity 0.3s',
@@ -406,10 +404,12 @@ function LegalModal({ type, onClose }) {
         <div style={{ overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
           {isTerms ? (
             <>
+              <LegalNotice lang="both" />
               {TERMS_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
             </>
           ) : (
             <>
+              <LegalNotice lang="both" />
               {PRIVACY_EN.map(s => <Section key={s.title} title={s.title}>{s.body}</Section>)}
             </>
           )}
@@ -759,10 +759,7 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, r
                   <a href="#" onClick={e => { e.preventDefault(); setLegalModal('privacy'); }} style={{ color: 'var(--accent2)', textDecoration: 'none' }}>Privacy Policy</a>.
                   Sexually explicit, racist, or violent/harmful content is strictly prohibited.
                 </p>
-                <p style={{ textAlign: 'center', fontSize: 12, color: '#ef4444', fontWeight: 800, marginTop: 6, lineHeight: 1.6 }}>
-                  Once you register and agree to the Terms, the responsibility is yours. · طالما سجّلت ووافقت على الشروط تبقى المسؤولية عليك.
-                </p>
-              </>
+</>
             )}
 
             {/* ── Verify email ── */}

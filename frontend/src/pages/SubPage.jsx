@@ -6,6 +6,7 @@ import {
   DollarSign, Info, LifeBuoy, BookOpen, Clock, Languages,
 } from 'lucide-react';
 import { TERMS_EN, TERMS_AR, PRIVACY_EN, PRIVACY_AR, ABOUT_EN, ABOUT_AR } from '../data/legalContent.js';
+import LegalNotice from '../components/LegalNotice.jsx';
 
 // ✅ NEW: كل Section بقى كارت واضح بحدود خفيفة، ورقم دائري لو العنوان مبدوء بـ "N. " —
 // بيتقرا تلقائي من نص العنوان نفسه (زي "1. Acceptance of Terms") من غير ما نلمس أي مكان
@@ -82,8 +83,8 @@ const TOC_AR_BY_PAGE = {
   about: tocFromSections(ABOUT_AR),
 };
 
-function TermsContent({ lang }) { return <>{renderSections(lang === 'ar' ? TERMS_AR : TERMS_EN)}</>; }
-function PrivacyContent({ lang }) { return <>{renderSections(lang === 'ar' ? PRIVACY_AR : PRIVACY_EN)}</>; }
+function TermsContent({ lang }) { return <><LegalNotice lang={lang === 'ar' ? 'ar' : 'en'} />{renderSections(lang === 'ar' ? TERMS_AR : TERMS_EN)}</>; }
+function PrivacyContent({ lang }) { return <><LegalNotice lang={lang === 'ar' ? 'ar' : 'en'} />{renderSections(lang === 'ar' ? PRIVACY_AR : PRIVACY_EN)}</>; }
 
 function RefundContent() {
   return <>
@@ -287,8 +288,8 @@ function SupportContent() {
 }
 
 const PAGE_CONFIG = {
-  terms:      { title: 'Terms of Service',        titleAr: 'شروط الخدمة',         icon: FileText, lastUpdated: 'September 2026', bilingual: true },
-  privacy:    { title: 'Privacy Policy',          titleAr: 'سياسة الخصوصية',      icon: Lock, lastUpdated: 'August 2026', bilingual: true },
+  terms:      { title: 'Terms of Service',        titleAr: 'شروط الخدمة',         icon: FileText, lastUpdated: 'October 2026', bilingual: true },
+  privacy:    { title: 'Privacy Policy',          titleAr: 'سياسة الخصوصية',      icon: Lock, lastUpdated: 'October 2026', bilingual: true },
   refund:     { title: 'Refund & Cancellation',    icon: DollarSign },
   about:      { title: 'About Erivion',           titleAr: 'عن Erivion',          icon: Info, bilingual: true },
   support:    { title: 'Support',                  icon: LifeBuoy },
