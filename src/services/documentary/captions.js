@@ -23,7 +23,7 @@ const cleanWord = (w) => String(w).replace(/[{}\\]/g, '').replace(/\n/g, ' ');
 const capLayout = (lang, w, h, fsScale = 1) => {
   const rtl = isRtlLang(lang);
   const portrait = h > w;
-  return { rtl, portrait, font: rtl ? 'Noto Naskh Arabic' : 'Noto Sans', fs: Math.round((portrait ? 78 : 64) * fsScale) };
+  return { rtl, portrait, font: rtl ? 'Noto Naskh Arabic' : 'Noto Sans', fs: Math.round((portrait ? 78 : 64) * (rtl ? (portrait ? 1.35 : 1.75) : 1) * fsScale) };  // العربي (Naskh) أصغر بصريًا بنفس الرقم فبنكبّره
 };
 
 // قياس عرض كل كلمة بنفس الخط (pango/fontconfig) — بنحتاجه في العربي عشان نوزّع الكلمات بنفسنا:
@@ -90,7 +90,7 @@ export function buildCaptionsAss({ words, style = 'karaoke', w = 1920, h = 1080,
   const th = getTheme(theme);
   const { rtl, portrait, font, fs } = capLayout(lang, w, h, fsScale);
   const center = position === 'center'; // فيديو قصير: كابشن في النص، كلمات قليلة، دخول سريع (hook)
-  const marginV = center ? 0 : (portrait ? Math.round(h * 0.2) : Math.round(h * (fsScale > 1 ? 0.085 : 0.075)));
+  const marginV = center ? 0 : (portrait ? Math.round(h * 0.2) : Math.round(h * (fs > 66 ? 0.085 : 0.075)));
   const maxChars = center ? (portrait ? 14 : 20) : (portrait ? 20 : 34);
   // ألوان الكابشن ثابتة عالية التباين (مستقلة عن ستايل الخلفية) — أبيض + أصفر للكلمة الحالية
   const white = '&H00FFFFFF', accent = hexToAssBGR('#FFD60A');

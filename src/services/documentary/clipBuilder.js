@@ -51,7 +51,7 @@ export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rt
     // لقطة فيديو: قص لنفس الأبعاد + حركة بسيطة اختيارية + تدرّج
     let f = `[0:v]fps=${FPS},scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`;
     if (motion === 'push' || punches.length) {
-      f += `,scale=${Math.round(w * 1.5)}:${Math.round(h * 1.5)},zoompan=z='${zoomExpr({ motion: motion === 'push' ? 'in' : 'still', amount: 0.06, dur, punches })}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${w}x${h}:fps=${FPS}`;
+      f += `,scale=${Math.round(w * 1.5)}:${Math.round(h * 1.5)},zoompan=z='${zoomExpr({ motion: motion === 'push' ? 'in' : 'still', amount: v.amount || 0.06, dur, punches })}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${w}x${h}:fps=${FPS}`;
     }
     filters.push(f + (grade ? `,${grade}` : '') + '[base]');
   } else {

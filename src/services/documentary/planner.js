@@ -6,7 +6,7 @@ const SENT_END = /[.!?؟…]["'”)\]]*$/;
 const PUNCH_WORDS = 2;
 
 // ── 1) تقسيم الكلام لجمل قصيرة (beats) بتوقيتات متصلة ───────────────────────────────────────
-export function buildBeats(tokens, { totalDur, minDur = 2.4, maxDur = 8.5, tail = 0.8 } = {}) {
+export function buildBeats(tokens, { totalDur, minDur = 2.4, maxDur = 8.5, tail = 0.8, hookUntil = 10, hookDur = 2.3 } = {}) {
   if (!tokens.length) return [];
   // جمل
   let sentences = [], cur = [];
@@ -42,7 +42,22 @@ export function buildBeats(tokens, { totalDur, minDur = 2.4, maxDur = 8.5, tail 
     const last = merged[merged.length - 1];
     if (last[last.length - 1].end - last[0].start < 1.6) { merged[merged.length - 2] = merged[merged.length - 2].concat(last); merged.pop(); }
   }
-  const beats = merged.map((s, i) => ({ i, text: s.map(t => t.w).join(' '), tokens: s, start: s[0].start, end: s[s.length - 1].end }));
+  // الـhook: أول ~10 ثواني بنقطّعها لقطات سريعة (~2.2 ثانية) عشان البداية تبقى سريعة وقوية
+  const hooked = [];
+  for (const s of merged) {
+    const dur = s[s.length - 1].end - s[0].start;
+    if (s[0].start < hookUntil && dur > hookDur * 1.6 && s.length >= 6) {
+      const k = Math.min(4, Math.max(2, Math.round(dur / hookDur)));
+      let from = 0;
+      for (let p = 1; p <= k && from < s.length; p++) {
+        let to = p === k ? s.length : Math.max(from + 2, Math.round((s.length * p) / k));
+        if (p < k) for (let d = 0; d <= 2; d++) { if (to - d > from + 2 && /[,;:،؛]$/.test(s[to - d - 1].w)) { to -= d; break; } }
+        if (s.length - to < 2 && p < k) to = s.length;
+        hooked.push(s.slice(from, to)); from = to;
+      }
+    } else hooked.push(s);
+  }
+  const beats = hooked.map((s, i) => ({ i, text: s.map(t => t.w).join(' '), tokens: s, start: s[0].start, end: s[s.length - 1].end, hook: s[0].start < hookUntil }));
   // اتصال زمني: بداية كل beat = نهاية اللي قبله (الفجوات بتتوزع)
   for (let i = 0; i < beats.length; i++) {
     beats[i].start = i === 0 ? 0 : (beats[i - 1].tokens[beats[i - 1].tokens.length - 1].end + beats[i].tokens[0].start) / 2;
@@ -175,8 +190,10 @@ Rules:
 - "visual": "archive" = real historical photos/films, named people, places, events, documents (queries MUST include proper names and years, e.g. "Winston Churchill 1941"); "nasa" = space, rockets, planets, astronauts; "stock" = generic b-roll that illustrates the idea (nature, cities, machines, crowds); "text" = a motion-graphic scene with no footage (use sparingly).
 - Queries are English search terms for photo/video libraries (2-3, from specific to broad). Never ask for text, logos, maps with labels, or identifiable private individuals. Show what the sentence concretely says.
 - Use a template ONLY when the data comes from the beat's own text. NEVER invent facts or numbers. Available templates and data:
-  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places?[1-4 of {name,lat,lon}],regions?[1-4 of {code,label?}],route?} (a real geographic place, country or journey is named in the text; visual "text"; needs a beat of 3.2+ seconds; places: name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about, never guess; regions: highlight whole countries with their ISO 3166-1 alpha-2 code, label = a short caption such as "Communist forces" or "Allied powers", only for countries named in the text) | photo_board {title?,photos[2-4 of {query,caption?}]} (a pinboard of old/archival photographs of the specific people, ships, places or objects the text names; visual "text"; needs a beat of 3.6+ seconds; query = a precise English search such as "HMS Amethyst 1949 frigate" or "Mao Zedong 1949"; caption = 1-4 words; use for introductions of key people/objects, at most once per ~15 beats) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text).
-- At most ~1 in 4 beats should use a template; never two "text" beats in a row. Put "chapter" on the first beat and whenever the topic clearly shifts.
+  title_card {title,subtitle?,kicker?} (chapter openers, visual "text") | lower_third {name,role?} (first time a real person is named, overlay on archive/stock) | quote {text,author?} (a direct quote said in the text, visual "text") | bullet_panel {title?,bullets[2-6]} or evidence_board (same) (an enumeration in the text) | counter {value,prefix?,suffix?,label?} (one striking number written in the text) | bar_chart/donut_chart {title?,items[{label,value}]} (2+ numbers written in the text) | timeline {title?,events[{date,label}]} (3+ dated events in the text) | route_diagram {title?,nodes[3-6]} (a sequence of steps/places in the text) | map_reveal {title?,places?[1-4 of {name,lat,lon}],regions?[1-4 of {code,label?}],route?} (a real geographic place, country or journey is named in the text; visual "text"; needs a beat of 3.2+ seconds; places: name = the place as written in the narration language, lat/lon = WGS84 decimal degrees you are certain about, never guess; regions: highlight whole countries with their ISO 3166-1 alpha-2 code, label = a short caption such as "Communist forces" or "Allied powers", only for countries named in the text) | photo_board {title?,photos[2-4 of {query,caption?}]} (a pinboard of old/archival photographs of the specific people, ships, places or objects the text names; visual "text"; needs a beat of 3.6+ seconds; query = a precise English search such as "HMS Amethyst 1949 frigate" or "Mao Zedong 1949"; caption = 1-4 words; use for introductions of key people/objects) | kinetic_text {text,emphasis[]} (a punchy phrase of <=10 words copied from the text).
+- Use motion graphics GENEROUSLY — about 1 in 3 beats should carry a template or overlay (lower_third for every named person, counter for numbers, kinetic_text for striking phrases), but never two "text" beats in a row. Put "chapter" on the first beat and whenever the topic clearly shifts.
+- MAPS: whenever countries, regions, borders, invasions, routes or journeys are named, use a map_reveal beat (visual "text") with "regions" (ISO codes of the named countries, with a short label) and "places" when you are certain of the coordinates — at least one map in every ~45 seconds of narration when geography is part of the story. PHOTO BOARDS: use photo_board when 2-4 specific people, ships, places or objects are introduced (at least once in every ~45 seconds when such subjects exist).
+- THE HOOK: the first beats (the first ~10 seconds) are the hook — pick the most dramatic, concrete, visually striking footage for them (movement, scale, faces, explosions, crowds, vast landscapes — whatever the sentence really says), use varied queries per beat, no text-only scenes, and "flash" on the very first beat.
 - "grade": bw_archive for old (pre-1960) archival material, sepia for 1800s-1920s, cinematic for dramatic modern scenes, none for generic stock.
 - "emphasis": up to 2 words from the beat that deserve a zoom punch.
 - "transition": mostly "cut"; "dip" at chapter changes; "flash" for sudden dramatic moments.
@@ -201,8 +218,92 @@ export async function planBeats({ beats, language = 'en', topic = '', onProgress
     }
     onProgress({ stage: 'planning', done: Math.min(beats.length, from + CH), total: beats.length });
   }
+  await ensureRichScenes({ beats, plans, language, ask });
   enforcePacing(plans, beats);
   return { title, mood, plans };
+}
+
+
+// ── 6) ضمان مشاهد الخرائط/لوحات الصور: لو الـLLM ما استخدمهاش وفيه دول/أشخاص مذكورين، بنضيفها بالكود (مع تحقق) ─────────────
+const NO_MAP = new Set(['GE', 'JO', 'TD', 'NE']); // أسماء ملتبسة (ولاية/اسم شخص/كلمة عادية)
+const STRICT_ALIASES = { US: ['america', 'usa', 'united states'], GB: ['britain', 'united kingdom', 'england'], RU: ['russia', 'soviet union', 'ussr'], NL: ['holland', 'netherlands'], DE: ['germany'], CN: ['china'], KR: ['south korea'], KP: ['north korea'], AE: ['uae'] };
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const nameCache = {};
+function countryNames(code) {
+  if (nameCache[code]) return nameCache[code];
+  let en = '', ar = '';
+  try { regionNames.en ||= new Intl.DisplayNames(['en'], { type: 'region' }); regionNames.ar ||= new Intl.DisplayNames(['ar'], { type: 'region' }); en = String(regionNames.en.of(code) || ''); ar = String(regionNames.ar.of(code) || ''); } catch { /* no ICU */ }
+  return (nameCache[code] = { en, ar, latin: [en.toLowerCase(), ...(STRICT_ALIASES[code] || [])].filter(n => n.length >= 4 || code === 'US' || code === 'UK') });
+}
+/** الدول المذكورة فعلاً (مطابقة كلمة كاملة — أدق بكتير من مطابقة الجذر المستخدمة في التحقق) */
+export function countriesIn(text) {
+  const lower = String(text || '').toLowerCase();
+  const found = [];
+  for (const code of WORLD_CODES) {
+    if (NO_MAP.has(code)) continue;
+    const { ar, latin } = countryNames(code);
+    const latinHit = latin.some(n => new RegExp(`(^|[^\\p{L}])${esc(n)}(?![\\p{L}])`, 'u').test(lower));
+    const arStem = ar.replace(/^ال/, '');
+    const arHit = arStem.length >= 3 && new RegExp(`(^|[^\\u0600-\\u06FF])[وبلفكال]{0,3}${esc(arStem)}(?![\\u0600-\\u06FF])`, 'u').test(String(text || ''));
+    if (latinHit || arHit) found.push(code);
+  }
+  return found;
+}
+
+const countryLabel = (code, language) => { const n = countryNames(code); return String((language === 'ar' ? n.ar : n.en) || n.en || code).slice(0, 26); };
+
+// تباعد: مشهد "text" جديد لازم يبعد عن أي مشهد text تاني (لا قبله ولا بعده مباشرة) وعن الـhook
+function freeSlot(plans, beats, i, minGapSec = 8) {
+  if (i < 1 || beats[i].hook || plans[i].visual === 'text') return false;
+  if (plans[i - 1]?.visual === 'text' || plans[i + 1]?.visual === 'text') return false;
+  return !plans.some((p, k) => p.visual === 'text' && Math.abs(beats[k].start - beats[i].start) < minGapSec);
+}
+
+export function injectMaps({ beats, plans, language = 'en' }) {
+  const total = beats.length ? beats[beats.length - 1].end : 0;
+  const existing = plans.filter(p => p.template?.name === 'map_reveal').length;
+  const want = Math.max(1, Math.min(4, Math.round(total / 60))) - existing;
+  if (want <= 0) return 0;
+  const cands = beats.map((b, i) => ({ i, c: b.dur >= 3.4 ? countriesIn(b.text) : [] })).filter(x => x.c.length).sort((a, b) => (Math.min(3, b.c.length) - Math.min(3, a.c.length)) || (a.i - b.i));
+  let added = 0;
+  for (const { i, c } of cands) {
+    if (added >= want) break;
+    if (!freeSlot(plans, beats, i)) continue;
+    const data = sanitizeTemplate('map_reveal', { regions: c.slice(0, 3).map(code => ({ code, label: countryLabel(code, language) })), places: [], route: false }, beats[i].text.toLowerCase());
+    if (!data) continue;
+    Object.assign(plans[i], { visual: 'text', template: { name: 'map_reveal', data }, queries: [], overlays: [], keep: true });
+    added++;
+  }
+  return added;
+}
+
+const SYSTEM_BOARDS = `You pick beats of a documentary narration that deserve a PHOTO BOARD: a pinboard of 2-4 archival photographs of the specific people, ships, vehicles, places or objects that the beat's text names. Return ONLY JSON: {"boards":[{"i":12,"title":"short title (optional)","photos":[{"query":"precise English search such as \\"Winston Churchill 1941\\"","caption":"1-4 words"}]}]}. Rules: only beats whose text actually names concrete, photographable subjects (introductions of key people/objects/places); each query names the subject precisely with a year/place when the text gives it; never invent subjects that are not in the text; at most the requested number of boards, spread across the film; if nothing suits, return {"boards":[]}.`;
+
+export async function injectBoards({ beats, plans, ask = llmJson, language = 'en' }) {
+  const total = beats.length ? beats[beats.length - 1].end : 0;
+  const existing = plans.filter(p => p.template?.name === 'photo_board').length;
+  const want = Math.max(1, Math.min(4, Math.round(total / 50))) - existing;
+  if (want <= 0) return 0;
+  const cands = beats.filter((b, i) => b.dur >= 3.8 && freeSlot(plans, beats, i)).slice(0, 60);
+  if (!cands.length) return 0;
+  let r;
+  try { r = await ask({ system: SYSTEM_BOARDS, user: `Language of the narration: ${language}. Pick up to ${want} beat(s).\nBeats:\n` + cands.map(b => `[${b.i}] (${b.dur.toFixed(1)}s) ${b.text}`).join('\n'), maxTokens: 1500, temperature: 0.2 }); }
+  catch (e) { console.warn('[Documentary/planner] photo-board pass failed:', e.message); return 0; }
+  let added = 0;
+  for (const x of Array.isArray(r?.boards) ? r.boards : []) {
+    const i = Number(x?.i);
+    if (added >= want || !cands.some(b => b.i === i) || !freeSlot(plans, beats, i)) continue;
+    const data = sanitizeTemplate('photo_board', { title: x.title, photos: x.photos }, beats[i].text);
+    if (!data) continue;
+    Object.assign(plans[i], { visual: 'text', template: { name: 'photo_board', data }, queries: [], overlays: [], keep: true });
+    added++;
+  }
+  return added;
+}
+
+export async function ensureRichScenes({ beats, plans, language = 'en', ask = llmJson }) {
+  try { injectMaps({ beats, plans, language }); } catch (e) { console.warn('[Documentary/planner] map injection failed:', e.message); }
+  try { await injectBoards({ beats, plans, ask, language }); } catch (e) { console.warn('[Documentary/planner] board injection failed:', e.message); }
 }
 
 // قواعد الإيقاع: مفيش نصّين ورا بعض، نسبة القوالب، حد أدنى لمدة القوالب، انتقال بداية الفصل
@@ -219,11 +320,11 @@ export function enforcePacing(plans, beats) {
     prevText = p.visual === 'text';
   });
   // لو القوالب النصية > 30% ، شيل أضعفها (مش title_card)
-  const limit = Math.ceil(plans.length * 0.3);
+  const limit = Math.ceil(plans.length * 0.4);
   if (templated > limit) {
     let excess = templated - limit;
     for (let i = plans.length - 1; i >= 0 && excess > 0; i--) {
-      if (plans[i].visual === 'text' && plans[i].template?.name !== 'title_card' && !plans[i].chapter) { plans[i].visual = 'stock'; plans[i].queries = fallbackBeatPlan(beats[i]).queries; plans[i].template = null; excess--; }
+      if (plans[i].visual === 'text' && plans[i].template?.name !== 'title_card' && !plans[i].chapter && !plans[i].keep) { plans[i].visual = 'stock'; plans[i].queries = fallbackBeatPlan(beats[i]).queries; plans[i].template = null; excess--; }
     }
   }
   plans.forEach((p, i) => { if (p.chapter && i > 0 && p.transition === 'cut') p.transition = 'dip'; });

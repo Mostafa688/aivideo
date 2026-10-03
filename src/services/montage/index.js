@@ -113,7 +113,7 @@ export function captionPosition(duration, requested = 'auto', portrait = false) 
 const LANDSCAPE_CAPTION_SCALE = 1.32; // كابشن الفيديو الأفقي أكبر (64 → ~84px على 1080p)
 
 async function writeAss({ words, style, lang, W, H, duration, position, workDir, title = null }) {
-  const fsScale = H > W ? 1 : LANDSCAPE_CAPTION_SCALE;
+  const fsScale = H > W || isRtlLang(lang) ? 1 : LANDSCAPE_CAPTION_SCALE; // العربي بيتكبّر جوه capLayout
   let widths = null;
   if (words?.length && isRtlLang(lang) && style !== 'box') widths = await measureCaptionWords(words, { lang, w: W, h: H, fsScale }).catch(() => null);
   const file = path.join(workDir, 'captions.ass');
