@@ -40,7 +40,7 @@ export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio
       beat.visual = { kind: 'background' };
       if (phrase && wantTemplate) beat.overlays.push({ template: 'kinetic_text', data: { text: phrase, emphasis: plan.emphasis || [] }, at: 0.1, dur: Math.max(1.2, b.dur - 0.1) });
     }
-    if (plan.visual !== 'text' && wantTemplate) for (const ov of plan.overlays || []) beat.overlays.push({ ...ov, at: Math.min(0.6, b.dur * 0.15), dur: Math.max(1.5, Math.min(b.dur - 0.7, 4.5)) });
+    if (plan.visual !== 'text' && wantTemplate) for (const ov of plan.overlays || []) beat.overlays.push({ ...ov, at: ov.at ?? Math.min(0.6, b.dur * 0.15), dur: ov.dur ?? Math.max(1.5, Math.min(b.dur - 0.7, 4.5)) });
     return beat;
   });
   const words = tokens.map(t => ({ w: t.w, start: t.start, end: t.end }));
