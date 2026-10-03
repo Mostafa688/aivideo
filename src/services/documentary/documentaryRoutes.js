@@ -294,6 +294,14 @@ router.get('/jobs/:id/srt', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.post('/admin/publish-example', adminAuth, express.json({ limit: '5kb' }), async (req, res) => {
+  try {
+    const id = await store.publishExample(parseInt(req.body?.jobId, 10));
+    if (!id) return res.status(404).json({ error: 'not_found' });
+    res.json({ success: true, templateId: id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/admin/stats', adminAuth, async (req, res) => {
   try { res.json(await store.adminStats({ days: req.query.days })); }
   catch (e) { res.status(500).json({ error: e.message }); }

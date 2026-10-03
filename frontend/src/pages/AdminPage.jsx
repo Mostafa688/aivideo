@@ -1863,6 +1863,8 @@ const TEMPLATE_MODELS = [
   { key: 'model4', label: 'Model 4 — Seedance AI' },
   { key: 'cinematic', label: 'Cinematic AI (Model 5)' },
   { key: 'atlas', label: 'Atlas Map (Model 6)' },
+  { key: 'documentary', label: 'Documentary Studio' },
+  { key: 'autoedit', label: 'Auto-edit' },
 ];
 
 function TemplatesTab({ s }) {
@@ -2422,6 +2424,15 @@ function DocumentaryTab({ s }) {
     setLoading(false);
   }, [days]);
   useEffect(() => { load(); }, [load]);
+  const publishExample = async (id) => {
+    if (!confirm(`Publish film #${id} on the public Templates page as an example?`)) return;
+    try {
+      const r = await fetch('/api/documentary/admin/publish-example', { method: 'POST', headers, body: JSON.stringify({ jobId: id }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed');
+      alert('✅ Published — it now appears on the Templates page.');
+    } catch (e) { alert('❌ ' + e.message); }
+  };
   const T = data?.totals;
   const fmtDate = (x) => (x ? new Date(x).toLocaleString() : '');
   const stat = (label, value, color) => (
@@ -2492,7 +2503,9 @@ function DocumentaryTab({ s }) {
           {data.recent.map(r => (
             <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', padding: '7px 0', borderBottom: '1px solid #1a1a2e', fontSize: 12.5 }}>
               <span><strong>#{r.id}</strong> {r.title || ''} <span style={{ color: '#6b7280' }}>· {r.email || 'user'}</span></span>
-              <span style={{ color: r.status === 'done' ? '#22c55e' : r.status === 'failed' ? '#f87171' : '#f59e0b' }}>{r.status}{r.status === 'processing' ? ` ${r.progress}%` : ''} · {r.duration_sec ? Math.round(r.duration_sec) + 's' : '—'} · {r.credits_charged - r.credits_refunded} cr · {fmtDate(r.created_at)}</span>
+              <span style={{ color: r.status === 'done' ? '#22c55e' : r.status === 'failed' ? '#f87171' : '#f59e0b' }}>{r.status}{r.status === 'processing' ? ` ${r.progress}%` : ''} · {r.duration_sec ? Math.round(r.duration_sec) + 's' : '—'} · {r.credits_charged - r.credits_refunded} cr · {fmtDate(r.created_at)}
+                {r.status === 'done' && <button style={{ ...s.btn('#14532d'), fontSize: 11, padding: '3px 9px', marginInlineStart: 8 }} onClick={() => publishExample(r.id)}>⭐ Publish as example</button>}
+              </span>
             </div>
           ))}
         </div>

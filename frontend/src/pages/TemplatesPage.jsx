@@ -7,11 +7,13 @@ const MODELS = [
   { key: 'model4',    label: 'Seedance AI',  icon: '🎬', color: '#a855f7' },
   { key: 'cinematic', label: 'Cinematic AI', icon: '🎭', color: '#e11d48' },
   { key: 'atlas',     label: 'Atlas Map',    icon: '🗺️', color: '#22c55e' },
+  { key: 'documentary', label: 'Documentary Studio', icon: '🎞️', color: '#f59e0b' },
+  { key: 'autoedit',  label: 'Auto-edit',    icon: '✂️', color: '#10b981' },
 ];
 
 const MODEL_NAV_MAP = {
   model1: 'home', model2: 'home', model3: 'model3',
-  model4: 'model4', cinematic: 'model5', atlas: 'home',
+  model4: 'model4', cinematic: 'model5', atlas: 'home', documentary: 'documentary', autoedit: 'documentary',
 };
 
 export default function TemplatesPage({ onNavigate }) {
@@ -31,6 +33,7 @@ export default function TemplatesPage({ onNavigate }) {
   const handleUse = (tpl) => {
     localStorage.setItem('erivion_template_prompt', tpl.prompt || tpl.description || '');
     localStorage.setItem('erivion_template_model', tpl.model_key);
+    if (tpl.script) localStorage.setItem('erivion_template_script', tpl.script);
     const nav = MODEL_NAV_MAP[tpl.model_key] || 'home';
     if (onNavigate) onNavigate(nav);
   };
