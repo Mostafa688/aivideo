@@ -1285,6 +1285,15 @@ router.post('/chat', authMiddleware, async (req, res) => {
     ({ text: reply, payload: documentaryPayload } = extractTrailingMarker(reply, '###DOCUMENTARY###'));
     ({ text: reply, payload: autoEditPayload } = extractTrailingMarker(reply, '###AUTOEDIT###'));
     ({ text: reply, payload: montagePayload } = extractTrailingMarker(reply, '###SMART_MONTAGE###'));
+    let docSetupPayload;
+    ({ text: reply, payload: docSetupPayload } = extractTrailingMarker(reply, '###DOC_SETUP###'));
+    // بطاقة إعدادات الفيلم الوثائقي اللي بتظهر في الشات: بنضبّط القيم (الفرونت بيستخدمها كقيم مبدئية بس والعميل هو اللي بيختار)
+    const docSetup = docSetupPayload && typeof docSetupPayload === 'object' ? {
+      topic: String(docSetupPayload.topic || '').replace(/<[^>]*>/g, '').slice(0, 300),
+      minutes: Math.min(30, Math.max(1, Number(docSetupPayload.minutes) || 5)),
+      language: ['ar', 'en', 'es', 'fr', 'de'].includes(docSetupPayload.language) ? docSetupPayload.language : null,
+      mode: ['topic', 'script', 'voiceover'].includes(docSetupPayload.mode) ? docSetupPayload.mode : 'topic',
+    } : null;
     let docJob = null;
     // ✅ خطوة موافقة حقيقية بتكلفة كريديت حقيقية زي أي فيديو تاني — نفس حاجز الخطة المجانية
     // المستخدم فوق لـREADY/GENERATE_IMAGE/... بالظبط، بس منفصل لأنه ماركر ثانوي (بعد الحاجز
@@ -1480,7 +1489,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       analyzeVideo: analyzeVideoPayload,
       awaitingConfirmation,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
-      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate, docJob,
+      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate, docJob, docSetup,
       // ✅ NEW: الروابط الدائمة (R2) لأي صورة العميل رفعها في الرسالة دي — الفرونت إند بيحفظها
       // مع رسالة العميل نفسها عشان تفضل قابلة للاستشهاد بيها في أي رسالة جاية (راجع
       // uploadUserPhotoToR2 فوق)
