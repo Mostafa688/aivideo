@@ -7,7 +7,7 @@ import {
   CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
   ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
   MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2, Maximize2,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Scissors,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 import { downloadRemoteFile, fetchRemoteBlob } from '../utils/download.js';
@@ -320,6 +320,51 @@ function WhiteboardCard({ job: initialJob, lang, onNavigate }) {
 // الشات (channelSchedulerService.js's triggerChannelRunNow) — نفس فكرة WhiteboardCard فوق
 // بالظبط (poll لحد done/failed)، بس بيتابع daily_video_runs مش audio_video_jobs، وبيوريّ
 // التكلفة الحقيقية النهائية + لينك يوتيوب لو اترفع تلقائي
+// كارت مهمة الاستوديو (مونتاج/فيلم وثائقي/مونتاج ذكي) جوه الشات: بيعمل poll لحالة المهمة وبيعرض الفيديو لما يخلص
+function DocJobCard({ job: initial, lang, onNavigate }) {
+  const ar = lang === 'ar';
+  const tt = ar
+    ? { working: 'بيشتغل على الفيديو دلوقتي...', failed: 'حصلت مشكلة — الكريديت اترجّع', done: 'الفيديو جاهز!', studio: 'افتحه في الاستوديو (حزمة النشر، الترجمة...)', stages: { queued: 'في الطابور', transcribe: 'بيفهم الفيديوهات ويفرّغ الكلام', cut: 'بيقص ويركّب اللقطات', finish: 'انتقالات وكابشن وموسيقى', script: 'كتابة السكريبت', narration: 'التعليق الصوتي', plan: 'تخطيط المشاهد', assets: 'جلب اللقطات', render: 'مونتاج ورسم', upload: 'رفع الفيديو' } }
+    : { working: 'Working on your video...', failed: 'Something went wrong — your credits were refunded', done: 'Your video is ready!', studio: 'Open in Studio (upload package, subtitles…)', stages: { queued: 'Queued', transcribe: 'Understanding the videos and transcribing', cut: 'Cutting and arranging', finish: 'Transitions, captions and music', script: 'Writing the script', narration: 'Narration', plan: 'Planning scenes', assets: 'Finding footage', render: 'Editing and rendering', upload: 'Uploading' } };
+  const [job, setJob] = useState({ ...initial, status: 'queued', progress: 0 });
+  useEffect(() => {
+    if (['done', 'failed'].includes(job.status)) return undefined;
+    const id = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/documentary/jobs/${initial.jobId}`, { headers: tokenHeader() });
+        if (!r.ok) return;
+        const d = await r.json();
+        setJob(prev => ({ ...prev, status: d.status, stage: d.stage, progress: d.progress, videoUrl: d.videoUrl, error: d.error }));
+        if (['done', 'failed'].includes(d.status)) clearInterval(id);
+      } catch { /* retry */ }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [job.status, initial.jobId]);
+  if (job.status === 'failed') return <div style={{ maxWidth: 300, padding: '12px 16px', borderRadius: 14, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: 13, color: '#ef4444' }}><AlertTriangle size={14} strokeWidth={2.25} style={{ verticalAlign: -2 }} /> {job.error || tt.failed}</div>;
+  if (job.status === 'done' && job.videoUrl) {
+    return (
+      <div style={{ width: 300 }}>
+        <video src={job.videoUrl} controls playsInline style={{ width: 300, borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 12.5, color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={13} color="#22c55e" /> {tt.done}</div>
+          <button onClick={() => downloadRemoteFile(job.videoUrl, `erivion-${job.kind || 'video'}-${initial.jobId}.mp4`)} style={{ fontSize: 11.5, color: '#fff', background: 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}><Download size={12} /> {ar ? 'تنزيل' : 'Download'}</button>
+          <button onClick={() => onNavigate?.('documentary')} style={{ fontSize: 11.5, color: '#a78bfa', background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}>{tt.studio}</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ width: 280, padding: '14px 16px', borderRadius: 14, background: 'linear-gradient(135deg, rgba(124,106,247,0.18), rgba(0,0,0,0.6))', border: '1px solid rgba(124,106,247,0.3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="spinning" style={{ display: 'inline-block', fontSize: 18 }}>◐</span>
+        <span style={{ fontSize: 13, color: '#fff' }}>{tt.working}</span>
+      </div>
+      <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 999, overflow: 'hidden', marginTop: 10 }}><div style={{ width: `${Math.max(4, job.progress || 0)}%`, height: '100%', background: 'linear-gradient(90deg,#7c6af7,#9d4edd)', transition: 'width .6s' }} /></div>
+      <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', marginTop: 6 }}>{tt.stages[job.stage] || tt.stages.queued} · {job.progress || 0}%</div>
+    </div>
+  );
+}
+
 function ChannelRunCard({ job: initialJob, lang, onNavigate }) {
   const tt = lang === 'ar'
     ? { generating: 'بيعمل الفيديو دلوقتي...', failed: 'حصلت مشكلة وأنا بعمل الفيديو', done: 'خلص! جاهز للمراجعة', cost: 'كريديت', goReview: 'روح راجعه وانشره' }
@@ -887,6 +932,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const [inputFocused, setInputFocused] = useState(false); // ✅ لعرض توهج الحدود لما الكتابة تكون فاعلة
   const [limits, setLimits] = useState({ MAX_AUDIO_SEC: 120, MAX_AUDIO_MB: 10, MAX_IMAGE_MB: 5 });
   const [lastUploadedPhotos, setLastUploadedPhotos] = useState([]); // ✅ FIX: كانت صورة واحدة بس — دلوقتي مصفوفة بتتراكم لحد صورتين عبر رسائل متتالية (موديل 5)
+  const [montageAssets, setMontageAssets] = useState([]); // فيديوهات المونتاج الذكي (بتترفع فورًا للسيرفر): { key, id, name, durationSec, status, progress, error }
+  const montageInputRef = useRef(null);
   const [uploadedVideoFile, setUploadedVideoFile] = useState(null); // ✅ NEW: فيديو العميل بتاعه هو، لتعديل video-to-video (أقصى 15 ثانية)
   const [uploadedVideoDurationSec, setUploadedVideoDurationSec] = useState(null);
   const [videoSentOnce, setVideoSentOnce] = useState(false); // ✅ FIX: بعد أول رسالة اتبعت بيها الفيديو، نخفي الـ chip من شريط الكتابة (كان فاضل ظاهر هناك للأبد وبيبان "عالق")
@@ -1139,6 +1186,35 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     video.src = URL.createObjectURL(file);
   };
 
+  // ✅ NEW: رفع عدة فيديوهات للمونتاج الذكي — كل ملف بيترفع لوحده (XHR عشان نسبة التقدّم) والسيرفر بيحلله (وصف + كلام)
+  const uploadMontageFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setError('');
+    const room = 10 - montageAssets.length;
+    files.slice(0, Math.max(0, room)).forEach((file) => {
+      const key = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      if (file.size > 400 * 1024 * 1024) { setError(lang === 'ar' ? `${file.name}: أكبر من 400MB` : `${file.name}: larger than 400MB`); return; }
+      setMontageAssets(a => [...a, { key, name: file.name, status: 'uploading', progress: 0 }]);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/agent/montage-upload');
+      xhr.setRequestHeader('Authorization', 'Bearer ' + localStorage.getItem('token'));
+      xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) setMontageAssets(a => a.map(x => (x.key === key ? { ...x, progress: Math.round((ev.loaded / ev.total) * 100) } : x))); };
+      xhr.onload = () => {
+        let d = {}; try { d = JSON.parse(xhr.responseText); } catch { /* ignore */ }
+        if (xhr.status >= 200 && xhr.status < 300 && d.id) setMontageAssets(a => a.map(x => (x.key === key ? { ...x, id: d.id, durationSec: d.durationSec, hasAudio: d.hasAudio, status: 'ready', progress: 100 } : x)));
+        else { setMontageAssets(a => a.filter(x => x.key !== key)); setError(d.message || (lang === 'ar' ? 'فشل رفع الفيديو' : 'Video upload failed')); }
+      };
+      xhr.onerror = () => { setMontageAssets(a => a.filter(x => x.key !== key)); setError(lang === 'ar' ? 'فشل رفع الفيديو' : 'Video upload failed'); };
+      const fd = new FormData(); fd.append('video', file, file.name);
+      xhr.send(fd);
+    });
+  };
+  const removeMontageAsset = (item) => {
+    setMontageAssets(a => a.filter(x => x.key !== item.key));
+    if (item.id) fetch(`/api/agent/montage-assets/${item.id}`, { method: 'DELETE', headers: tokenHeader() }).catch(() => {});
+  };
+
   const fileToBase64 = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -1189,6 +1265,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (m.type === 'whiteboard') {
       return `[${lang === 'ar' ? 'تم إنشاء فيديو whiteboard' : 'A whiteboard video was generated'}]`;
     }
+    if (m.type === 'docJob') return `[${lang === 'ar' ? 'مهمة فيديو (مونتاج/وثائقي) اتبدأت وبتظهر في المحادثة' : 'A video job (montage/documentary) was started and is shown in the chat'}]`;
     if (m.type === 'channelRun') {
       if (m.job?.status === 'done') {
         const costTag = m.job.creditsCharged != null ? `, cost: ${m.job.creditsCharged} credits` : '';
@@ -1317,7 +1394,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
   const sendMessage = async (overrideText) => {
     const textToSend = overrideText !== undefined ? overrideText : input;
-    if (!textToSend.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) return;
+    const readyMontage = montageAssets.filter(x => x.status === 'ready' && x.id);
+    if (montageAssets.some(x => x.status === 'uploading')) { setError(lang === 'ar' ? 'استنى لحد ما الفيديوهات تخلص رفع' : 'Wait until the videos finish uploading'); return; }
+    if (!textToSend.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile && !readyMontage.length) return;
     if (loading || activeJobRef.current) return; // ✅ FIX: منع إرسال رسالة تانية لحد ما الحالية تخلص، عشان محدش يبعت "ابدأ" مرتين ويعمل تضارب رندر
     setError('');
     const attachmentLabel = voiceFile
@@ -1340,7 +1419,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
     try {
       const body = {
-        message: textToSend.trim() || (lang === 'ar' ? 'من الصوت/الصورة المرفوعة' : 'from the attached voice/image'),
+        message: textToSend.trim() || (readyMontage.length ? (lang === 'ar' ? 'رفعت فيديوهات وعايز أعملها مونتاج' : 'I uploaded videos and want a montage') : (lang === 'ar' ? 'من الصوت/الصورة المرفوعة' : 'from the attached voice/image')),
+        montageAssetIds: readyMontage.length ? readyMontage.map(x => x.id) : undefined,
         // ✅ FIX: كانت -6 (3 تبادلات بس) وده كان بيخلي الايجنت ينسى تفاصيل قديمة في المحادثة — رفعناها لـ 16 لتغطي محادثة كاملة
         history: nextMessages.slice(0, -1).slice(-16).map(m => ({ role: m.role, content: historyContentFor(m) })),
         // ✅ NEW: دفتر كامل بكل صور/فيديوهات المشروع من الأول للآخر — منفصل عن نافذة الـ16
@@ -1446,6 +1526,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // ✅ NEW (طلب العميل: "اقدر اقول للايجنت اعمل فيديو وانشره على القناة دلوقتي"): بنفس
       // فكرة كارت الـwhiteboard فوق بالظبط — بيعمل poll لحالة تشغيلة القناة الحقيقية اللي
       // بدأت في الخلفية (channelSchedulerService.js's triggerChannelRunNow) لحد ما تخلص
+      if (data.docJob?.jobId) {
+        setMessages(m => [...m, { role: 'assistant', type: 'docJob', job: data.docJob }]);
+        setMontageAssets([]); // الفيديوهات اتستهلكت في المهمة
+      }
       if (data.channelGenerate?.runId) {
         setMessages(m => [...m, { role: 'assistant', type: 'channelRun', job: { ...data.channelGenerate, status: 'generating' } }]);
       }
@@ -2381,6 +2465,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       <input ref={voiceCloneInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceCloneFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
       <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
       <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => { handleVideoFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
+      <input ref={montageInputRef} type="file" accept="video/*" multiple onChange={(e) => { uploadMontageFiles(e.target.files); e.target.value = ''; closePlusMenu(); }} style={{ display: 'none' }} />
       <button onClick={() => (plusMenuOpen ? closePlusMenu() : setPlusMenuOpen(true))} title="Attach, create, or set a style"
         style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (plusMenuOpen || forcedModel || selectedStyle) ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${(plusMenuOpen || forcedModel || selectedStyle) ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: (plusMenuOpen || forcedModel || selectedStyle) ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: plusMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
 
@@ -2396,6 +2481,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 </button>
                 <button onClick={() => videoInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={`Upload a video to edit (max ${MAX_VIDEO_UPLOAD_SEC}s)`}>
                   <Film size={16} strokeWidth={2} /> Upload video to edit
+                </button>
+                <button onClick={() => montageInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={lang === 'ar' ? 'ارفع فيديو أو أكتر (لحد 10) والايجنت يعمل لها مونتاج' : 'Upload one or more videos (up to 10) and the agent edits them into one'}>
+                  <Scissors size={16} strokeWidth={2} /> {lang === 'ar' ? 'ارفع فيديوهات للمونتاج' : 'Upload videos for montage'}
                 </button>
                 <button onClick={() => voiceInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}>
                   <Mic size={16} strokeWidth={2} /> Record voice message
@@ -2509,7 +2597,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     return !!m.job?.favorited;
   };
   const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
-    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun' || m.type === 'channelReview')
+    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun' || m.type === 'channelReview' || m.type === 'docJob')
     : rightTab === 'favorites' ? mediaItems.filter(isMediaFavorited)
     : mediaItems;
 
@@ -2642,12 +2730,18 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         <div style={{ padding: '10px 14px 14px', flexShrink: 0, position: 'relative' }}>
           {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
-          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce) || forcedModel) && (
+          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce) || forcedModel || montageAssets.length > 0) && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
               {forcedModel && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}>{forcedModel.type === 'image' ? <ImageIcon size={13} strokeWidth={2} /> : <Film size={13} strokeWidth={2} />} {forcedModel.label} <button onClick={() => setForcedModel(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
               {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
               {imageFiles.map((_, idx) => (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>
+              ))}
+              {montageAssets.map((it) => (
+                <div key={it.key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}>
+                  <Film size={13} strokeWidth={2} /> {it.name.slice(0, 18)}{it.status === 'uploading' ? ` · ${it.progress}%` : (it.durationSec ? ` · ${Math.floor(it.durationSec / 60)}:${String(it.durationSec % 60).padStart(2, '0')}` : '')}
+                  <button onClick={() => removeMontageAsset(it)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>✕</button>
+                </div>
               ))}
               {uploadedVideoFile && !videoSentOnce && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Film size={13} strokeWidth={2} /> {uploadedVideoFile.name.slice(0, 20)} ({uploadedVideoDurationSec != null ? uploadedVideoDurationSec + 's' : '...'}) <button onClick={() => { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
             </div>
@@ -2678,7 +2772,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
                 style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s ease' }}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
             ) : (
-              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile}
+              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile && !montageAssets.length}
                 onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
                 onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
                 style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}><Send size={15} strokeWidth={2.25} /></button>
@@ -2726,6 +2820,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 <div key={m._i} className="agent-bubble">
                   {m.type === 'render' && <RenderCard job={m.job} lang={lang} onNavigate={onNavigate} />}
                   {m.type === 'whiteboard' && <WhiteboardCard job={m.job} lang={lang} onNavigate={onNavigate} />}
+                  {m.type === 'docJob' && <DocJobCard job={m.job} lang={lang} onNavigate={onNavigate} />}
                   {m.type === 'channelRun' && <ChannelRunCard job={m.job} lang={lang} onNavigate={onNavigate} />}
                   {m.type === 'channelReview' && <ChannelReviewCard job={m.job} lang={lang}
                     onUpdateJob={(patch) => updateJobByRunId(m.job.runId, patch)}
