@@ -130,25 +130,27 @@ export async function adminStats({ days = 30 } = {}) {
   return { days: Number(days) || 30, totals, byMode, failuresByStage, perDay, recentFailures, recent };
 }
 
-// ── دقيقة مجانية لأول فيلم (بصوت العميل المرفوع بس): علامة على الحساب، بتتاخد بشكل ذري ──
-let trialColReady = null;
-function ensureTrialCol() {
-  trialColReady ||= pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS free_doc_trial_used BOOLEAN DEFAULT FALSE').catch(e => { trialColReady = null; throw e; });
-  return trialColReady;
+// ── التجارب المجانية (مرة واحدة لكل حساب، بتتاخد بشكل ذري): 'doc' = أول دقيقة وثائقي بصوت العميل، 'montage' = مونتاج لحد دقيقتين ──
+const TRIAL_COLS = { doc: 'free_doc_trial_used', montage: 'free_montage_trial_used' };
+const trialColReady = {};
+function ensureTrialCol(kind = 'doc') {
+  const col = TRIAL_COLS[kind]; if (!col) throw new Error('unknown trial kind');
+  trialColReady[kind] ||= pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} BOOLEAN DEFAULT FALSE`).catch(e => { trialColReady[kind] = null; throw e; });
+  return trialColReady[kind].then(() => col);
 }
-export async function trialAvailable(userId) {
-  await ensureTrialCol();
-  const { rows } = await pool.query('SELECT COALESCE(free_doc_trial_used, FALSE) AS used FROM users WHERE id = $1', [userId]);
+export async function trialAvailable(userId, kind = 'doc') {
+  const col = await ensureTrialCol(kind);
+  const { rows } = await pool.query(`SELECT COALESCE(${col}, FALSE) AS used FROM users WHERE id = $1`, [userId]);
   return rows[0] ? !rows[0].used : false;
 }
-export async function claimTrial(userId) {
-  await ensureTrialCol();
-  const { rowCount } = await pool.query('UPDATE users SET free_doc_trial_used = TRUE WHERE id = $1 AND COALESCE(free_doc_trial_used, FALSE) = FALSE', [userId]);
+export async function claimTrial(userId, kind = 'doc') {
+  const col = await ensureTrialCol(kind);
+  const { rowCount } = await pool.query(`UPDATE users SET ${col} = TRUE WHERE id = $1 AND COALESCE(${col}, FALSE) = FALSE`, [userId]);
   return rowCount === 1;
 }
-export async function releaseTrial(userId) {
-  await ensureTrialCol();
-  await pool.query('UPDATE users SET free_doc_trial_used = FALSE WHERE id = $1', [userId]);
+export async function releaseTrial(userId, kind = 'doc') {
+  const col = await ensureTrialCol(kind);
+  await pool.query(`UPDATE users SET ${col} = FALSE WHERE id = $1`, [userId]);
 }
 
 // ── محرر المشاهد: حجز ذري على فيلم أثناء التعديل + تنضيف المنتهي ──
