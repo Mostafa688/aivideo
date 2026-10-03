@@ -8,8 +8,9 @@ export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio
   const out = beats.map((b, i) => {
     const plan = plans[i];
     const a = assets[i];
-    const beat = { dur: b.dur, overlays: [], transitionIn: plan.transition || 'cut' };
-    const punches = punchTimes(b, plan.emphasis);
+    const beat = { dur: b.dur, overlays: [], transitionIn: i === 0 && (!plan.transition || plan.transition === 'cut') ? 'flash' : (plan.transition || 'cut'), hook: !!b.hook };
+    // الـhook (أول ~10 ثواني): نبضة زوم عند كل قطعة + حركة أقوى عشان البداية تبقى سريعة وقوية
+    const punches = [...(b.hook ? [0.04] : []), ...punchTimes(b, plan.emphasis)];
     const wantTemplate = motionGraphics !== false;
 
     const board = plan.visual === 'text' && plan.template?.name === 'photo_board' ? (boards[i] || []) : null;
@@ -30,9 +31,9 @@ export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio
       beat.overlays.push({ template: plan.template.name, data: plan.template.data, at: 0.1, dur: Math.max(1.2, b.dur - 0.1) });
     } else if (a?.kind === 'video') {
       const slack = Math.max(0, (a.duration || 0) - b.dur - 0.5);
-      beat.visual = { kind: 'video', file: a.file, grade: gradeFor(plan, a), motion: i % 3 === 0 ? 'push' : 'still', startOffset: slack > 0 ? Math.min(slack, 0.5 + ((i * 7) % 10) / 10 * slack * 0.6) : 0, punches };
+      beat.visual = { kind: 'video', file: a.file, grade: gradeFor(plan, a), motion: b.hook || i % 3 === 0 ? 'push' : 'still', startOffset: slack > 0 ? Math.min(slack, 0.5 + ((i * 7) % 10) / 10 * slack * 0.6) : 0, punches, ...(b.hook ? { amount: 0.12 } : {}) };
     } else if (a?.kind === 'image') {
-      beat.visual = { kind: 'image', file: a.file, grade: gradeFor(plan, a), motion: MOTIONS[imgCount++ % MOTIONS.length], punches };
+      beat.visual = { kind: 'image', file: a.file, grade: gradeFor(plan, a), motion: MOTIONS[imgCount++ % MOTIONS.length], punches, ...(b.hook ? { amount: 0.22 } : {}) };
     } else {
       // مفيش أصل: بنعرض الجملة نفسها كنص متحرك على الخلفية بدل شاشة فاضية
       const phrase = shortPhrase(b);

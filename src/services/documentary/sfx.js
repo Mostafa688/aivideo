@@ -28,6 +28,10 @@ export function sfxForBeat(beat, t0) {
   const ev = [];
   const tin = beat.transitionIn || 'cut';
   if (tin === 'flash') ev.push({ t: Math.max(0, t0 - 0.06), type: 'whoosh', vol: 0.5 });
+  if (beat.hook) { // الـhook: ضربة في أول لقطة + وشّة خفيفة عند كل قطعة سريعة
+    if (t0 < 0.05) ev.push({ t: 0.04, type: 'impact', vol: 0.6 });
+    else ev.push({ t: Math.max(0, t0 - 0.05), type: 'whoosh', vol: 0.32 });
+  }
   for (const ov of beat.overlays || []) {
     const at = t0 + (ov.at || 0);
     switch (ov.template) {
