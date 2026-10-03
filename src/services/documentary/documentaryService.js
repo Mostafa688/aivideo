@@ -6,6 +6,8 @@ import fetch from 'node-fetch';
 import path from 'path';
 import { cleanScript } from './scriptCleaner.js';
 import { buildSrt } from './uploadPackage.js';
+import { persistEditor, EDIT_MAX_MINUTES } from './editorStore.js';
+import { runEditTask, sweepExpiredEditors } from './editorService.js';
 import { autoEditVideo } from '../montage/autoEdit.js';
 import { chargeCredits, addCreditsBalance, getCreditsBalance } from '../authService.js';
 import { getDocumentaryCreditCost, getAutoEditCreditCost } from '../creditPricingEngine.js';
@@ -119,6 +121,7 @@ function enqueue(task) {
   queue.push(task);
   pump();
 }
+export function enqueueEdit(task) { enqueue(task); }
 export function queuePosition(jobId) {
   const i = queue.findIndex(t => t.id === jobId);
   return i >= 0 ? i + 1 : 0;
@@ -150,6 +153,7 @@ function progressor(jobId) {
 }
 
 async function runTask(task) {
+  if (task.kind === 'edit') return runEditTask(task);
   const { id, userId, input } = task;
   const workDir = path.join(TEMP_ROOT, `doc_${id}`);
   const prog0 = progressor(id);
@@ -158,7 +162,7 @@ async function runTask(task) {
   fs.mkdirSync(workDir, { recursive: true });
   try {
     await store.updateJob(id, { status: 'processing', stage: 'script', progress: 1 });
-    const result = input.mode === 'autoedit' ? await produceAutoEdit({ id, input, workDir, prog }) : await produce({ id, input, workDir, prog });
+    const result = input.mode === 'autoedit' ? await produceAutoEdit({ id, input, workDir, prog }) : await produce({ id, userId, input, workDir, prog });
     // رفع
     await prog('upload', 0);
     const base = `documentaries/${userId}/${id}`;
@@ -173,7 +177,7 @@ async function runTask(task) {
     const actual = task.fixedCost ? task.charged : getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
     const back = Math.max(0, task.charged - actual);
     if (back >= 2) await refund(task, back);
-    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio } });
+    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio, ...(result.editor ? { editor: result.editor } : {}) } });
     task.hooks?.onDone?.({ videoUrl, thumbnailUrl: thumbUrl, durationSec: result.duration, title: result.title, credits: result.credits, creditsCharged: task.charged - (back >= 2 ? back : 0) });
   } catch (e) {
     console.error(`[Documentary] job ${id} failed:`, e.message);
@@ -322,7 +326,7 @@ async function transcribeLong(file, workDir, language) {
   return all;
 }
 
-async function produce({ id, input, workDir, prog }) {
+async function produce({ id, userId, input, workDir, prog }) {
   const lang = input.language;
   let title = input.title || input.topic || '';
   let script = input.script || '';
@@ -409,15 +413,27 @@ async function produce({ id, input, workDir, prog }) {
 
   // 6) الرندر
   const timeline = buildTimeline({ beats, plans, assets, boards, tokens, ratio: input.ratio, theme: input.theme, lang, captionsStyle: input.captions === 'none' ? null : input.captions, narrationFile, musicFile, motionGraphics: input.motionGraphics });
-  const r = await renderDocumentary({ timeline, workDir: path.join(workDir, 'render'), concurrency: Math.max(1, Math.min(3, Number(process.env.DOC_RENDER_CONCURRENCY || 2))), onProgress: ({ stage, done, total: t }) => prog('render', stage === 'clips' ? (done / t) * 0.85 : stage === 'joined' ? 0.88 : stage === 'audio' ? 0.94 : 0.99) });
+  const editable = timeline.beats.reduce((x, b) => x + b.dur, 0) <= EDIT_MAX_MINUTES * 60;
+  const r = await renderDocumentary({ timeline, keepClips: editable, workDir: path.join(workDir, 'render'), concurrency: Math.max(1, Math.min(3, Number(process.env.DOC_RENDER_CONCURRENCY || 2))), onProgress: ({ stage, done, total: t }) => prog('render', stage === 'clips' ? (done / t) * 0.85 : stage === 'joined' ? 0.88 : stage === 'audio' ? 0.94 : 0.99) });
   if (r.failures.length) console.warn(`[Documentary] job ${id}: ${r.failures.length} beat(s) fell back to plain backgrounds`);
   const chapters = plans.map((p, i) => (p.chapter ? { t: beats[i].start, title: p.chapter } : null)).filter(Boolean);
-  return { file: r.file, duration: r.duration, credits: [...allCredits, ...sources.map(s => s.url)], script, title, chapters, srt: buildSrt(timeline.captions?.words || tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
+  // محرر المشاهد: بنخزّن مقاطع اللقطات + الصوت النهائي (لو الفيلم قصير كفاية) — فشل التخزين ما يفشّلش الفيلم
+  let editor = null;
+  if (editable && r.clipFiles) {
+    try {
+      await prog('upload', 0.2);
+      editor = await persistEditor({ jobId: id, userId, render: r, timeline, beats, plans, assets, words: timeline.captions?.words || [], workDir: path.join(workDir, 'editor'), ratio: input.ratio, extraCredits: sources.map(s => s.url) });
+    } catch (e) { console.warn(`[Documentary] job ${id}: editor data not stored (${e.message})`); }
+  }
+  return { editor, file: r.file, duration: r.duration, credits: [...allCredits, ...sources.map(s => s.url)], script, title, chapters, srt: buildSrt(timeline.captions?.words || tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
 }
 
 // عند إقلاع السيرفر: وظايف كانت شغالة اتقطعت → نردّ كريديتها
 export async function recoverInterruptedJobs() {
   try {
+    for (const e of await store.stuckEdits()) { if (e.charged > 0) await addCreditsBalance(e.user_id, e.charged).catch(() => {}); console.warn(`[Documentary] recovered interrupted edit of job ${e.id}${e.charged ? ' (refunded)' : ''}`); }
+    sweepExpiredEditors();
+    setInterval(sweepExpiredEditors, 6 * 3600e3).unref?.();
     const rows = await store.claimStuckJobs();
     for (const r of rows) {
       if (r.meta?.trial) await store.releaseTrial(r.user_id).catch(() => {});

@@ -15,6 +15,7 @@ import { probeDuration, hasAudio, rmQuiet, probeVideo } from './ff.js';
 import * as svc from './documentaryService.js';
 import { cleanScript, basicClean } from './scriptCleaner.js';
 import * as store from './store.js';
+import { editorView, searchBeatCandidates, saveBeatUpload, prepareEdit } from './editorService.js';
 import { adminAuth } from '../adminAuthMiddleware.js';
 import { buildPackage, composeThumbnail } from './uploadPackage.js';
 
@@ -149,7 +150,7 @@ router.get('/jobs/:id', authMiddleware, async (req, res) => {
     if (!j) return res.status(404).json({ error: 'not_found' });
     res.setHeader('Cache-Control', 'no-store');
     const out = publicJob(j);
-    if (j.status === 'done') { out.script = j.script; out.credits = j.credits_list || []; out.package = j.meta?.package || null; out.hasSrt = !!j.meta?.srt; }
+    if (j.status === 'done') { out.script = j.script; out.credits = j.credits_list || []; out.package = j.meta?.package || null; out.hasSrt = !!j.meta?.srt; out.editing = j.meta?.editing === true; out.editError = j.meta?.editError || null; out.editorAvailable = !!j.meta?.editor; }
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -190,6 +191,64 @@ router.post('/autoedit', authMiddleware, (req, res, next) => videoUpload.single(
     console.error('[AutoEdit] start failed:', e.message);
     res.status(500).json({ error: 'failed', message: 'Could not start the job.' });
   }
+});
+
+// ── محرر المشاهد (تبديل لقطة بعد الإنتاج) ──
+const editSearchCalls = new Map();
+const beatUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => { const d = path.join(TEMP_ROOT, `editup_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`); fs.mkdirSync(d, { recursive: true }); cb(null, d); },
+    filename: (req, file, cb) => cb(null, 'upload' + (path.extname(file.originalname || '').replace(/[^.\w]/g, '').slice(0, 6) || '.bin')),
+  }),
+  limits: { fileSize: 100 * 1024 * 1024 },
+});
+const ownedDone = async (req) => { const j = await store.getJob(parseInt(req.params.id, 10), req.user.userId); return j && j.status === 'done' ? j : null; };
+
+router.get('/jobs/:id/editor', authMiddleware, async (req, res) => {
+  try { const j = await ownedDone(req); if (!j) return res.status(404).json({ error: 'not_found' }); res.setHeader('Cache-Control', 'no-store'); res.json(editorView(j)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/jobs/:id/editor/search', authMiddleware, express.json({ limit: '10kb' }), async (req, res) => {
+  try {
+    const j = await ownedDone(req); if (!j) return res.status(404).json({ error: 'not_found' });
+    const uid = req.user.userId, now = Date.now();
+    const recent = (editSearchCalls.get(uid) || []).filter(t => now - t < 3600e3);
+    if (recent.length >= 60) return res.status(429).json({ error: 'rate_limited', message: 'Too many searches this hour.' });
+    editSearchCalls.set(uid, [...recent, now]);
+    const q = String(req.body?.query || '').slice(0, 100);
+    if (q) { const safety = await checkContentSafety(q); if (safety.unsafe) return res.status(400).json({ error: 'content_policy_violation', message: 'This search cannot be used.' }); }
+    res.json({ candidates: await searchBeatCandidates(j, Number(req.body?.i), { query: q }) });
+  } catch (e) {
+    if (e.code === 'not_swappable') return res.status(400).json({ error: 'not_swappable', message: 'This scene cannot be replaced.' });
+    console.error('[Documentary] editor search failed:', e.message); res.status(500).json({ error: 'search_failed', message: 'Search failed, try again.' });
+  }
+});
+
+router.post('/jobs/:id/editor/upload', authMiddleware, (req, res, next) => beatUpload.single('file')(req, res, (err) => {
+  if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'file_too_large' : 'upload_failed', message: err.code === 'LIMIT_FILE_SIZE' ? 'The file is larger than 100MB.' : 'Upload failed.' });
+  next();
+}), async (req, res) => {
+  const file = req.file?.path;
+  try {
+    const j = await ownedDone(req);
+    if (!j || !file) { if (file) rmQuiet(path.dirname(file)); return res.status(404).json({ error: j ? 'file_required' : 'not_found' }); }
+    res.json(await saveBeatUpload(j, Number(req.body?.i), file, req.file.originalname));
+  } catch (e) {
+    if (file) rmQuiet(path.dirname(file));
+    if (e.code === 'not_swappable' || e.code === 'bad_file') return res.status(400).json({ error: e.code, message: e.code === 'bad_file' ? 'This file is not a readable image or video.' : 'This scene cannot be replaced.' });
+    res.status(500).json({ error: 'upload_failed', message: 'Upload failed.' });
+  }
+});
+
+router.post('/jobs/:id/editor/apply', authMiddleware, express.json({ limit: '20kb' }), async (req, res) => {
+  try {
+    const j = await ownedDone(req); if (!j) return res.status(404).json({ error: 'not_found' });
+    const r = await prepareEdit(req.user.userId, j, req.body?.changes);
+    if (!r.ok) return res.status(r.status).json({ error: r.error, message: r.message, cost: r.cost, remaining: r.remaining });
+    svc.enqueueEdit(r.task);
+    res.status(202).json({ status: 'editing', cost: r.task.charged, remaining: r.remaining });
+  } catch (e) { console.error('[Documentary] editor apply failed:', e.message); res.status(500).json({ error: 'failed', message: 'Could not start the edit.' }); }
 });
 
 // ── حزمة النشر (عنوان/وصف بالمصادر والفصول/كلمات/صورة مصغرة) + ملف الترجمة ──

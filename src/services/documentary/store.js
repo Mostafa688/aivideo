@@ -150,3 +150,25 @@ export async function releaseTrial(userId) {
   await ensureTrialCol();
   await pool.query('UPDATE users SET free_doc_trial_used = FALSE WHERE id = $1', [userId]);
 }
+
+// ── محرر المشاهد: حجز ذري على فيلم أثناء التعديل + تنضيف المنتهي ──
+export async function claimEditing(id) {
+  await ready;
+  const { rowCount } = await pool.query(
+    `UPDATE documentary_jobs SET meta = COALESCE(meta,'{}'::jsonb) || '{"editing":true}'::jsonb, updated_at = NOW()
+     WHERE id = $1 AND status = 'done' AND COALESCE(meta->>'editing','false') <> 'true'`, [id]);
+  return rowCount === 1;
+}
+export async function releaseEditing(id) {
+  await pool.query(`UPDATE documentary_jobs SET meta = COALESCE(meta,'{}'::jsonb) || '{"editing":false,"editCharged":0}'::jsonb, updated_at = NOW() WHERE id = $1`, [id]);
+}
+export async function expiredEditors() {
+  await ready;
+  const { rows } = await pool.query(`SELECT id, user_id, meta FROM documentary_jobs WHERE meta->'editor'->>'expiresAt' IS NOT NULL AND (meta->'editor'->>'expiresAt')::timestamptz < NOW() LIMIT 50`);
+  return rows;
+}
+export async function stuckEdits() {
+  await ready;
+  const { rows } = await pool.query(`UPDATE documentary_jobs SET meta = COALESCE(meta,'{}'::jsonb) || '{"editing":false,"editCharged":0}'::jsonb WHERE COALESCE(meta->>'editing','false') = 'true' RETURNING id, user_id, COALESCE((meta->>'editCharged')::int, 0) AS charged`);
+  return rows;
+}

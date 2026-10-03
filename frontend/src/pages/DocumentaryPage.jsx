@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { downloadRemoteFile } from '../utils/download.js';
 import {
   ArrowLeft, Clapperboard, FileText, Wand2, Mic, UploadCloud, Loader2, CheckCircle2,
-  XCircle, Download, Package, Scissors, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
+  XCircle, Download, Package, Scissors, Pencil, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
 } from 'lucide-react';
 
 const authHeaders = (json = true) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), Authorization: 'Bearer ' + localStorage.getItem('token') });
@@ -42,6 +42,10 @@ const T = {
     failed: 'فشل الإنتاج', refunded: 'اترجّع لك الكريديت كامل.', retry: 'حاول تاني',
     myFilms: 'أفلامي', none: 'مفيش أفلام لسه.', open: 'فتح',
     errGeneric: 'حصلت مشكلة. جرّب تاني.',
+    edBtn: 'تعديل المشاهد', edHint: 'غيّر أي لقطة مش عاجباك بلقطة تانية من نتائج البحث، أو ارفع لقطتك أنت. التعديل بيتطبق في ثواني من غير ما الفيلم كله يتعاد.',
+    edChange: 'غيّر', edSearchPh: 'ابحث بكلمات تانية (اختياري)', edSearch: 'بحث', edUpload: 'ارفع لقطتك (صورة أو فيديو)', edPicked: 'اتختار بديل', edNoCand: 'مفيش نتائج — جرّب كلمات تانية.',
+    edApply: 'طبّق التعديلات', edCost: 'التكلفة', edApplying: 'بيطبّق التعديلات...', edExpired: 'انتهت مدة التعديل لهذا الفيلم (30 يوم من الإنتاج).', edTooLong: 'التعديل متاح للأفلام لحد 12 دقيقة.',
+    edClose: 'إغلاق', edClear: 'إلغاء', edScene: 'المشهد', edDone: 'اتطبّق!', edKinds: { video: 'فيديو', image: 'صورة', background: 'نص / رسم', board: 'لوحة' }, edLocked: 'بالرسوم/النص (مش بيتغيّر)',
     kDoc: 'فيلم وثائقي', kEdit: 'مونتاج فيديو بتاعي',
     eTitle: 'ارفع فيديو بيتكلم فيه شخص (فلوج، شرح، تسجيل شاشة) وErivion يعمله مونتاج احترافي لوحده',
     eBullets: ['قص الصمت والتلعثم (jump cuts)', 'زوم ديناميكي بيتبدّل بين اللقطات', 'انتقالات ومؤثرات صوتية بين الفقرات', 'كابشن متزامن مع الكلمات (في النص بحركة للقصير، وتحت للطويل)', 'موسيقى بتهدّى تحت صوتك + توحيد مستوى الصوت'],
@@ -87,6 +91,10 @@ const T = {
     failed: 'Production failed', refunded: 'Your credits were fully refunded.', retry: 'Try again',
     myFilms: 'My films', none: 'No films yet.', open: 'Open',
     errGeneric: 'Something went wrong. Please try again.',
+    edBtn: 'Edit scenes', edHint: 'Replace any shot you don\'t like with another from the search results, or upload your own. Edits apply in seconds — the whole film is not re-rendered.',
+    edChange: 'Change', edSearchPh: 'Search with other words (optional)', edSearch: 'Search', edUpload: 'Upload your own (image or video)', edPicked: 'Replacement chosen', edNoCand: 'No results — try other words.',
+    edApply: 'Apply edits', edCost: 'Cost', edApplying: 'Applying your edits...', edExpired: 'The editing window for this film has ended (30 days after production).', edTooLong: 'Editing is available for films up to 12 minutes.',
+    edClose: 'Close', edClear: 'Cancel', edScene: 'Scene', edDone: 'Applied!', edKinds: { video: 'Video', image: 'Image', background: 'Text / graphic', board: 'Board' }, edLocked: 'Graphic/text scene (not replaceable)',
     kDoc: 'Documentary', kEdit: 'Edit my video',
     eTitle: 'Upload a video with someone talking (vlog, tutorial, screen recording) and Erivion edits it professionally on its own',
     eBullets: ['Cuts silences and dead air (jump cuts)', 'Dynamic zooms that alternate between shots', 'Transitions and sound effects between parts', 'Word-synced captions (centered with motion for short videos, at the bottom for long ones)', 'Music that ducks under your voice + loudness normalisation'],
@@ -281,6 +289,154 @@ function AutoEditForm({ t, opts, dir, onStarted, onBalance }) {
           <p style={{ margin: 0, fontSize: 12, color: 'var(--text3)', lineHeight: 1.7 }}>{t.eNote} {t.refundNote}</p>
         </div>
       </aside>
+    </div>
+  );
+}
+
+
+// محرر المشاهد: شبكة مشاهد (صورة مصغّرة + نص)، بدائل من البحث أو رفع لقطة، وتطبيق في ثواني
+function EditorPanel({ job, t, onJobUpdate }) {
+  const [view, setView] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState({}); // i → { kind:'candidate'|'upload', id, thumb, title }
+  const [modal, setModal] = useState(null);   // { i, query, cands, loading }
+  const [applying, setApplying] = useState(!!job.editing);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const pollRef = useRef(null);
+  const loadView = useCallback(async () => {
+    try { const r = await fetch(`/api/documentary/jobs/${job.id}/editor`, { headers: authHeaders() }); if (r.ok) setView(await r.json()); } catch { /* ignore */ }
+  }, [job.id]);
+  useEffect(() => { if (open && !view) loadView(); }, [open]);
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+  const waitForEdit = () => {
+    setApplying(true);
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/documentary/jobs/${job.id}`, { headers: authHeaders() });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!j.editing) {
+          clearInterval(pollRef.current); pollRef.current = null;
+          setApplying(false); setPending({});
+          if (j.editError) setErr(j.editError); else setMsg(t.edDone);
+          onJobUpdate(j); loadView();
+        }
+      } catch { /* retry */ }
+    }, 2000);
+  };
+  useEffect(() => { if (job.editing) waitForEdit(); }, []);
+  const search = async (i, query = '') => {
+    setModal({ i, query, cands: [], loading: true });
+    try {
+      const r = await fetch(`/api/documentary/jobs/${job.id}/editor/search`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ i, query }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(t.errs[j.error] || t.errGeneric);
+      setModal({ i, query, cands: j.candidates || [], loading: false });
+    } catch (e) { setErr(e.message); setModal(null); }
+  };
+  const upload = async (i, f) => {
+    if (!f) return;
+    setErr('');
+    try {
+      const fd = new FormData(); fd.append('file', f); fd.append('i', String(i));
+      const r = await fetch(`/api/documentary/jobs/${job.id}/editor/upload`, { method: 'POST', headers: authHeaders(false), body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || t.errGeneric);
+      setPending((p) => ({ ...p, [i]: { kind: 'upload', id: j.uploadId, thumb: f.type.startsWith('image/') ? URL.createObjectURL(f) : null, title: f.name } }));
+      setModal(null);
+    } catch (e) { setErr(e.message); }
+  };
+  const apply = async () => {
+    setErr(''); setMsg('');
+    const changes = Object.entries(pending).map(([i, c]) => (c.kind === 'upload' ? { i: Number(i), uploadId: c.id } : { i: Number(i), candidateId: c.id }));
+    try {
+      const r = await fetch(`/api/documentary/jobs/${job.id}/editor/apply`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ changes }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(t.errs[j.error] || j.message || t.errGeneric);
+      waitForEdit();
+    } catch (e) { setErr(e.message); }
+  };
+  if (!job.editorAvailable) return null;
+  if (!open) return <div><button type="button" className="btn-ghost" onClick={() => setOpen(true)} style={{ borderRadius: 'var(--r-md)', display: 'inline-flex', alignItems: 'center', gap: 8 }}><Pencil size={15} />{t.edBtn}</button></div>;
+  const n = Object.keys(pending).length;
+  const sp = view?.sprite;
+  const scale = 1.25;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <h4 style={{ margin: 0, fontSize: 15 }}>{t.edBtn}</h4>
+        <button type="button" className="btn-ghost" style={{ padding: '2px 10px', fontSize: 12, borderRadius: 8 }} onClick={() => setOpen(false)}>{t.edClose}</button>
+      </div>
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--text2)', lineHeight: 1.7 }}>{t.edHint}</p>
+      {view && !view.available && <div style={{ color: 'var(--yellow)', fontSize: 13 }}>{view.reason === 'expired' ? t.edExpired : view.reason === 'too_long' ? t.edTooLong : t.errGeneric}</div>}
+      {applying && <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent3)', fontSize: 14 }}><Loader2 size={16} className="doc-spin" />{t.edApplying}</div>}
+      {msg && <div style={{ color: 'var(--green)', fontSize: 14 }}>{msg}</div>}
+      {err && <div role="alert" style={{ color: 'var(--red)', fontSize: 13 }}>{err}</div>}
+      {view?.available && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 520, overflow: 'auto', opacity: applying ? 0.5 : 1, pointerEvents: applying ? 'none' : 'auto' }}>
+          {view.beats.map((b) => {
+            const pw = sp ? sp.tw * scale : 0, ph = sp ? sp.th * scale : 0;
+            const pick = pending[b.i];
+            return (
+              <div key={b.i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 8, border: '1px solid ' + (pick ? 'var(--accent)' : 'var(--border)'), borderRadius: 'var(--r-md)', background: pick ? 'var(--accent-bg)' : 'transparent' }}>
+                <div style={{ width: pw, height: ph, flexShrink: 0, borderRadius: 6, background: '#111', backgroundImage: sp ? `url(${sp.url})` : undefined, backgroundSize: sp ? `${sp.cols * pw}px auto` : undefined, backgroundPosition: sp ? `-${(b.i % sp.cols) * pw}px -${Math.floor(b.i / sp.cols) * ph}px` : undefined }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{t.edScene} {b.i + 1} · {fmtDur(b.start)} · {t.edKinds[b.kind] || b.kind}{b.title ? ` · ${b.title}` : ''}</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{b.text}</div>
+                  {pick && <div style={{ fontSize: 12, color: 'var(--accent3)', marginTop: 2 }}>✓ {t.edPicked}: {pick.title}</div>}
+                </div>
+                {b.swappable ? (
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {pick && <button type="button" className="btn-ghost" style={{ padding: '3px 10px', fontSize: 12, borderRadius: 8 }} onClick={() => setPending((p) => { const c = { ...p }; delete c[b.i]; return c; })}>{t.edClear}</button>}
+                    <button type="button" className="btn-ghost" style={{ padding: '3px 12px', fontSize: 12.5, borderRadius: 8 }} onClick={() => search(b.i)}>{t.edChange}</button>
+                  </div>
+                ) : <span style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0, maxWidth: 90, textAlign: 'center' }}>{t.edLocked}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {n > 0 && !applying && (
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" className="btn-primary" onClick={apply} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Wand2 size={15} />{t.edApply} ({n})</button>
+          <span style={{ fontSize: 13, color: 'var(--text2)' }}>{t.edCost}: {view?.cost ?? 2} {t.credits}</span>
+        </div>
+      )}
+      {modal && (
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setModal(null)}>
+          <div className="card" style={{ maxWidth: 820, width: '100%', maxHeight: '88vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>{t.edScene} {modal.i + 1}</strong>
+              <button type="button" className="btn-ghost" style={{ padding: '2px 10px', fontSize: 12, borderRadius: 8 }} onClick={() => setModal(null)}>{t.edClose}</button>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input value={modal.query} onChange={(e) => setModal({ ...modal, query: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') search(modal.i, modal.query); }} placeholder={t.edSearchPh} style={{ ...fieldStyle, flex: 1, minWidth: 200 }} maxLength={100} />
+              <button type="button" className="btn-ghost" onClick={() => search(modal.i, modal.query)} style={{ borderRadius: 'var(--r-md)' }}>{t.edSearch}</button>
+              <label className="btn-ghost" style={{ borderRadius: 'var(--r-md)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px' }}>
+                <UploadCloud size={15} />{t.edUpload}
+                <input type="file" accept="image/*,video/*" hidden onChange={(e) => upload(modal.i, e.target.files?.[0])} />
+              </label>
+            </div>
+            {modal.loading ? <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Loader2 size={16} className="doc-spin" />...</div>
+              : modal.cands.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 13 }}>{t.edNoCand}</div>
+                : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10 }}>
+                    {modal.cands.map((c) => (
+                      <button type="button" key={c.id} onClick={() => { setPending((p) => ({ ...p, [modal.i]: { kind: 'candidate', id: c.id, thumb: c.thumb, title: c.title || c.source } })); setModal(null); }}
+                        style={{ padding: 0, border: '1px solid var(--border2)', borderRadius: 'var(--r-md)', overflow: 'hidden', background: 'var(--bg3)', cursor: 'pointer', textAlign: 'start' }}>
+                        <div style={{ height: 90, background: '#111', backgroundImage: c.thumb ? `url(${c.thumb})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+                          <span style={{ position: 'absolute', top: 4, insetInlineStart: 4, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 10.5, padding: '1px 6px', borderRadius: 4 }}>{c.kind === 'video' ? '▶' : '🖼'} {c.source}</span>
+                        </div>
+                        <div style={{ padding: '6px 8px', fontSize: 11.5, color: 'var(--text2)', lineHeight: 1.5, height: 36, overflow: 'hidden' }}>{c.title}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -547,6 +703,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
               <pre dir="ltr" style={{ ...fieldStyle, whiteSpace: 'pre-wrap', fontSize: 12.5, margin: 0, maxHeight: 180, overflow: 'auto' }}>{job.credits.join('\n')}</pre>
             </div>
           )}
+          <EditorPanel job={job} t={t} onJobUpdate={(j) => setJob(j)} />
           <PackagePanel job={job} t={t} />
           {job.script && (
             <details>
