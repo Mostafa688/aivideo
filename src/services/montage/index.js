@@ -172,7 +172,8 @@ export async function montageVideos({ files, workDir, transitions = 'auto', narr
   let audioFile = null;
   if (needMix) {
     const sfxFiles = (sfx && joined.cuts.length) || extraSfx.length ? await ensureSfx(path.join(workDir, 'sfx')) : {};
-    const sfxEvents = sfx && plan.d ? joined.cuts.map((t, i) => ({ t: Math.max(0, t - 0.04), type: i % 4 === 3 ? 'impact' : 'whoosh', vol: i % 4 === 3 ? 0.35 : 0.3 })) : [];
+    const SFX_BY_TRANSITION = { slideleft: ['whoosh', 0.32], slideup: ['whoosh', 0.32], smoothleft: ['whoosh', 0.3], wipeleft: ['whoosh', 0.32], zoomin: ['swish', 0.34], circleopen: ['swish', 0.3], radial: ['swish', 0.3], squeezeh: ['swish', 0.3], vertopen: ['swish', 0.3], fadewhite: ['boom', 0.45], diagtl: ['glitch', 0.3], hlslice: ['glitch', 0.3], fade: ['swish', 0.2], dissolve: ['swish', 0.2] };
+    const sfxEvents = sfx && plan.d ? joined.cuts.map((t, i) => { const [type, vol] = SFX_BY_TRANSITION[plan.types[i]] || (i % 4 === 3 ? ['impact', 0.35] : ['whoosh', 0.3]); return { t: Math.max(0, t - 0.04), type, vol }; }) : [];
     audioFile = path.join(workDir, 'mixed.m4a');
     sfxEvents.push(...extraSfx);
     await mixAudio({ narrationFile: baseWav, musicFile, musicVolume, sfxEvents, sfxFiles, duration, outFile: audioFile });

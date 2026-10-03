@@ -145,7 +145,7 @@ export function sanitizeTemplate(name, data, beatText) {
       const photos = (Array.isArray(data.photos) ? data.photos : []).map(p => ({ query: clip(p?.query, 80), caption: clip(p?.caption, 34) || undefined })).filter(p => p.query).slice(0, 4);
       return photos.length >= 2 ? { title: clip(data.title, 30) || undefined, photos } : null;
     }
-    case 'kinetic_text': { const t = clip(data.text, 90); return t && t.split(/\s+/).length <= 14 ? { text: t, emphasis: strArr(data.emphasis, 0, 3, 20) } : null; }
+    case 'kinetic_text': case 'stack_text': case 'marker_text': { const t = clip(data.text, 90); return t && t.split(/\s+/).length <= 14 ? { text: t, emphasis: strArr(data.emphasis, 0, 3, 20) } : null; }
     default: return null;
   }
 }

@@ -8,6 +8,10 @@ const SPECS = {
   impact: ["aevalsrc='0.95*sin(2*PI*(46+44*exp(-9*t))*t)*exp(-4.2*t)':d=1.4:s=44100", 'lowpass=f=900,volume=1.0'],
   tick: ["aevalsrc='0.55*sin(2*PI*1900*t)*exp(-70*t)':d=0.12:s=44100", 'volume=0.8'],
   pop: ["aevalsrc='0.6*sin(2*PI*(520+1100*t)*t)*exp(-24*t)':d=0.2:s=44100", 'volume=0.8'],
+  swish: ['anoisesrc=d=0.5:c=white:r=44100', 'highpass=f=1400,lowpass=f=9000,afade=t=in:d=0.16,afade=t=out:st=0.16:d=0.34,volume=0.55'],
+  boom: ["aevalsrc='0.95*sin(2*PI*(36+64*exp(-7*t))*t)*exp(-3.2*t)+0.2*(random(0)-0.5)*exp(-10*t)':d=1.6:s=44100", 'lowpass=f=1100,volume=1.0'],
+  glitch: ["aevalsrc='0.45*sin(2*PI*(700+2800*random(0))*t)*between(mod(t,0.07),0,0.035)*exp(-7*t)':d=0.32:s=44100", 'volume=0.8'],
+  click: ["aevalsrc='0.5*sin(2*PI*3300*t)*exp(-110*t)':d=0.08:s=44100", 'volume=0.8'],
   riser: ['anoisesrc=d=1.8:c=white:r=44100', 'highpass=f=700,lowpass=f=7000,afade=t=in:d=1.7,afade=t=out:st=1.7:d=0.1,volume=0.5'],
 };
 export const SFX_TYPES = Object.keys(SPECS);
