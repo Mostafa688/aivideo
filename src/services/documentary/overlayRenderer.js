@@ -24,7 +24,7 @@ async function svgToPng(svg, outPath) {
  * @returns {{dir, inCount, outCount, holdFile, inPattern, outPattern, tHold, tOut, fps}}
  * الإطارات: in_%04d.png (دخول)، hold.png (ثبات)، out_%04d.png (خروج) — الزمن محسوب بالنسبة لبداية القالب
  */
-export async function renderOverlay({ template, data: rawData, dur, w, h, theme, themeName = 'cinematic', lang = 'en', rtl = false, dir, concurrency = 4 }) {
+export async function renderOverlay({ template, data: rawData, dur, w, h, theme, themeName = 'cinematic', lang = 'en', rtl = false, dir, concurrency = 4, outline = false }) {
   fs.mkdirSync(dir, { recursive: true });
   const data = await prepareTemplateData(template, rawData, { w, h, themeName });
   const rawEnd = Math.max(0.2, templateAnimEnd(template, data));
@@ -35,7 +35,7 @@ export async function renderOverlay({ template, data: rawData, dur, w, h, theme,
   const exitDur = Math.max(0.12, dur - tOut);
   const inCount = Math.max(1, Math.ceil(animEnd * FPS));
   const outCount = Math.max(1, Math.round(exitDur * FPS));
-  const base = { w, h, theme, lang, rtl };
+  const base = { w, h, theme, lang, rtl, outline };
 
   const jobs = [];
   for (let i = 0; i < inCount; i++) jobs.push({ file: path.join(dir, `in_${String(i).padStart(4, '0')}.png`), t: (i / FPS) * speed, exit: 0 });

@@ -11,11 +11,11 @@ const SHADOW_DEF = `<defs><filter id="sh" x="-20%" y="-20%" width="140%" height=
 
 function ctx(w, h, theme, lang, rtl, opts = {}) {
   const s = Math.min(w, h) / 1080;
-  return { w, h, s, theme, rtl, lang, ff: fontStack(lang, opts), portrait: h > w, cx: w / 2, cy: h / 2 };
+  return { w, h, s, theme, rtl, lang, ff: fontStack(lang, opts), portrait: h > w, cx: w / 2, cy: h / 2, outline: !!opts.outline };
 }
 
 const txt = (c, text, x, y, size, { weight = 800, fill, anchor = 'middle', opacity = 1, ls = 0, family, italic = false } = {}) =>
-  `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-family="${family || c.ff}" font-size="${(size * c.s).toFixed(1)}" font-weight="${weight}" fill="${fill || c.theme.text}" text-anchor="${anchor}" opacity="${opacity.toFixed(3)}"${ls ? ` letter-spacing="${ls}"` : ''}${italic ? ' font-style="italic"' : ''}>${esc(text)}</text>`;
+  `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-family="${family || c.ff}" font-size="${(size * c.s).toFixed(1)}" font-weight="${weight}" fill="${fill || c.theme.text}" text-anchor="${anchor}" opacity="${opacity.toFixed(3)}"${ls ? ` letter-spacing="${ls}"` : ''}${italic ? ' font-style="italic"' : ''}${c.outline ? ` stroke="rgba(0,0,0,0.88)" stroke-width="${Math.max(2, size * c.s * 0.1).toFixed(1)}" stroke-linejoin="round" paint-order="stroke"` : ''}>${esc(text)}</text>`;
 
 const panel = (c, x, y, w, h, { r = 26, fill, stroke, strokeW = 2, opacity = 1 } = {}) =>
   `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(r * c.s).toFixed(1)}" fill="${fill || c.theme.panel}" stroke="${stroke || c.theme.panelStroke}" stroke-width="${strokeW}" opacity="${opacity.toFixed(3)}" filter="url(#sh)"/>`;
@@ -946,10 +946,10 @@ export function templateAnimEnd(name, data) {
 }
 
 // بيرجّع SVG كامل لإطار واحد. exit: 0..1 تقدّم الخروج (بيتطبّق fade + نزول بسيط على كل المحتوى)
-export function renderTemplateFrame(name, data, t, { w, h, theme, lang = 'en', rtl = false, exit = 0 }) {
+export function renderTemplateFrame(name, data, t, { w, h, theme, lang = 'en', rtl = false, exit = 0, outline = false }) {
   const tpl = TEMPLATES[name];
   if (!tpl) throw new Error(`Unknown template: ${name}`);
-  const c = ctx(w, h, theme, lang, rtl, name === 'quote' || name === 'photo_board' ? { serif: true } : {});
+  const c = ctx(w, h, theme, lang, rtl, { ...(name === 'quote' || name === 'photo_board' ? { serif: true } : {}), outline });
   const inner = tpl.render(c, data || {}, t);
   const e = clamp01(exit);
   const wrap = e > 0 ? `<g opacity="${(1 - easeInOutCubic(e)).toFixed(3)}" transform="translate(0,${(easeInOutCubic(e) * 26 * c.s).toFixed(1)})">${inner}</g>` : inner;
