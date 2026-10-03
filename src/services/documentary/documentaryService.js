@@ -13,7 +13,6 @@ import { smartMontage } from '../montage/smartMontage.js';
 import { resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, sweepOldAssets, withAnalysis, MAX_TOTAL_MINUTES, MAX_ASSETS_PER_USER } from '../montage/assets.js';
 import { chargeCredits, addCreditsBalance, getCreditsBalance, getUserById } from '../authService.js';
 import { watermarkVideo } from '../watermark.js';
-import { DOC_MUSIC_ENABLED } from '../featureFlags.js';
 import { getDocumentaryCreditCost, getAutoEditCreditCost } from '../creditPricingEngine.js';
 import { checkContentSafety } from '../scriptService.js';
 import { synthesizeNarration, getBackgroundMusicBuffer } from '../videoAudioService.js';
@@ -65,7 +64,7 @@ function normalizeInput(raw) {
     captions: CAPTION_STYLES.includes(raw.captions) ? raw.captions : 'karaoke',
     motionGraphics: raw.motionGraphics !== false,
     voiceKey: typeof raw.voiceKey === 'string' ? raw.voiceKey.slice(0, 30) : 'male_wise',
-    music: DOC_MUSIC_ENABLED && raw.music !== false,
+    music: raw.music === false ? false : true,
     musicMood: MOODS.includes(raw.musicMood) ? raw.musicMood : null,
     musicTrack: typeof raw.musicTrack === 'string' ? raw.musicTrack.slice(0, 120) : null,
     sources: raw.sources === 'stock' ? 'stock' : 'all',
@@ -218,7 +217,7 @@ function normalizeAutoEditOptions(raw = {}) {
   return {
     cutSilence: bool(raw.cutSilence, true), zoom: bool(raw.zoom, true), transitions: bool(raw.transitions, true),
     captions: AUTOEDIT_CAPTIONS.includes(raw.captions) ? raw.captions : 'karaoke',
-    music: DOC_MUSIC_ENABLED && bool(raw.music, false), musicMood: MOODS.includes(raw.musicMood) ? raw.musicMood : null,
+    music: bool(raw.music, false), musicMood: MOODS.includes(raw.musicMood) ? raw.musicMood : null,
     musicTrack: typeof raw.musicTrack === 'string' ? raw.musicTrack.slice(0, 120) : null,
     language: LANGUAGES[raw.language] ? raw.language : 'en',
   };
@@ -289,25 +288,21 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
   return { ok: true, job, cost, minutes: q.minutes, remaining: charge.remaining, trial };
 }
 
-/** ملف موسيقى الخلفية أو null (مقفولة افتراضيًا — راجع DOC_MUSIC_ENABLED) */
-async function prepareMusic(workDir, input, mood, label) {
-  if (!DOC_MUSIC_ENABLED || !input.music) return null;
-  try {
-    const musicFile = path.join(workDir, 'music.mp3');
-    const track = input.musicTrack && /^[\w ',.&()\-]+\.mp3$/i.test(input.musicTrack) && fs.existsSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack));
-    if (track) fs.copyFileSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack), musicFile);
-    else fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', mood));
-    return musicFile;
-  } catch (e) { console.warn(`[${label}] music unavailable:`, e.message); return null; }
-}
-
 async function produceSmartMontage({ id, userId, input, workDir, prog }) {
   await prog('transcribe', 0);
   const assets = resolveMontageAssets(userId, input.assetIds);
   if (!assets) throw new Error('uploaded videos are no longer available');
   const analysed = [];
   for (const a of assets) analysed.push((await withAnalysis(userId, a.id, a.kind === 'audio' ? 90000 : 20000)) || a);
-  const musicFile = await prepareMusic(workDir, input, input.musicMood || 'upbeat', 'SmartMontage');
+  let musicFile = null;
+  if (input.music) {
+    try {
+      musicFile = path.join(workDir, 'music.mp3');
+      const track = input.musicTrack && /^[\w ',.&()\-]+\.mp3$/i.test(input.musicTrack) && fs.existsSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack));
+      if (track) fs.copyFileSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack), musicFile);
+      else fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', input.musicMood || 'upbeat'));
+    } catch (e) { console.warn('[SmartMontage] music unavailable:', e.message); musicFile = null; }
+  }
   const r = await smartMontage({
     assets: analysed, workDir: path.join(workDir, 'smart'), instructions: input.instructions,
     options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile },
@@ -352,7 +347,15 @@ export async function startAutoEditFromUrl(userId, videoUrl, options = {}) {
 
 async function produceAutoEdit({ id, input, workDir, prog }) {
   await prog('transcribe', 0);
-  const musicFile = await prepareMusic(workDir, input, input.musicMood, 'AutoEdit');
+  let musicFile = null;
+  if (input.music) {
+    try {
+      musicFile = path.join(workDir, 'music.mp3');
+      const track = input.musicTrack && /^[\w ',.&()\-]+\.mp3$/i.test(input.musicTrack) && fs.existsSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack));
+      if (track) fs.copyFileSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack), musicFile);
+      else fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', input.musicMood));
+    } catch (e) { console.warn('[AutoEdit] music unavailable:', e.message); musicFile = null; }
+  }
   const r = await autoEditVideo({
     file: input.videoFile, workDir: path.join(workDir, 'edit'), language: input.language,
     options: { cutSilence: input.cutSilence, zoom: input.zoom, transitions: input.transitions, captions: input.captions, music: musicFile ? { file: musicFile, volume: 0.1 } : null },
@@ -477,7 +480,15 @@ async function produce({ id, userId, input, workDir, prog }) {
   await prog('assets', 1);
 
   // 5) الموسيقى
-  const musicFile = await prepareMusic(workDir, input, input.musicMood || plan.mood, 'Documentary');
+  let musicFile = null;
+  if (input.music) {
+    try {
+      musicFile = path.join(workDir, 'music.mp3');
+      const track = input.musicTrack && /^[\w ',.&()\-]+\.mp3$/i.test(input.musicTrack) && fs.existsSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack));
+      if (track) fs.copyFileSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack), musicFile);
+      else fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', input.musicMood || plan.mood));
+    } catch (e) { console.warn('[Documentary] music unavailable:', e.message); musicFile = null; }
+  }
 
   // 6) الرندر
   const timeline = buildTimeline({ beats, plans, assets, boards, tokens, ratio: input.ratio, theme: input.theme, lang, captionsStyle: input.captions === 'none' ? null : input.captions, narrationFile, musicFile, motionGraphics: input.motionGraphics });

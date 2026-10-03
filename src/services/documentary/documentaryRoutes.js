@@ -15,7 +15,6 @@ import { probeDuration, hasAudio, rmQuiet, probeVideo } from './ff.js';
 import * as svc from './documentaryService.js';
 import { cleanScript, basicClean } from './scriptCleaner.js';
 import * as store from './store.js';
-import { DOC_MUSIC_ENABLED } from '../featureFlags.js';
 import { editorView, searchBeatCandidates, saveBeatUpload, prepareEdit } from './editorService.js';
 import { adminAuth } from '../adminAuthMiddleware.js';
 import { buildPackage, composeThumbnail } from './uploadPackage.js';
@@ -48,7 +47,7 @@ router.get('/options', authMiddleware, async (req, res) => {
     res.json({
       languages: svc.LANGUAGES,
       themes: Object.entries(THEMES).map(([key, t]) => ({ key, label: t.label, top: t.bgTop, bottom: t.bgBottom })),
-      captionStyles: svc.CAPTION_STYLES, moods: svc.MOODS, music: DOC_MUSIC_ENABLED ? musicTracks() : [], musicAvailable: DOC_MUSIC_ENABLED, voices: VOICES,
+      captionStyles: svc.CAPTION_STYLES, moods: svc.MOODS, music: musicTracks(), voices: VOICES,
       limits: { maxMinutes: svc.MAX_MINUTES, maxScriptChars: MAX_SCRIPT_CHARS, minScriptChars: svc.MIN_SCRIPT_CHARS, maxVoiceoverMb: 90 },
       pricing: { perMinute: getDocumentaryCreditCost(1), perMinuteWithOwnVoiceover: getDocumentaryCreditCost(1, { userVoiceover: true }), usd: DOCUMENTARY_USD_PER_MINUTE },
       sources: sourceAvailability(), balance,
