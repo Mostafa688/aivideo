@@ -524,6 +524,21 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
     try { const r = await fetch('/api/documentary/jobs', { headers: authHeaders() }); if (r.ok) setJobs((await r.json()).jobs || []); } catch { /* ignore */ }
   }, []);
 
+  // مثال جاهز من صفحة Templates: نملا الموضوع/السكريبت ونمسح المفاتيح
+  useEffect(() => {
+    try {
+      const m = localStorage.getItem('erivion_template_model');
+      if (m === 'documentary' || m === 'autoedit') {
+        const prompt = localStorage.getItem('erivion_template_prompt') || '';
+        const scr = localStorage.getItem('erivion_template_script') || '';
+        if (m === 'autoedit') setKind('edit');
+        else if (scr) { setScript(scr); setMode('script'); }
+        else if (prompt) { setTopic(prompt.slice(0, 300)); setMode('topic'); }
+        ['erivion_template_model', 'erivion_template_prompt', 'erivion_template_script'].forEach((k) => localStorage.removeItem(k));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {

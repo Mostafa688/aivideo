@@ -172,3 +172,19 @@ export async function stuckEdits() {
   const { rows } = await pool.query(`UPDATE documentary_jobs SET meta = COALESCE(meta,'{}'::jsonb) || '{"editing":false,"editCharged":0}'::jsonb WHERE COALESCE(meta->>'editing','false') = 'true' RETURNING id, user_id, COALESCE((meta->>'editCharged')::int, 0) AS charged`);
   return rows;
 }
+
+// نشر فيلم منتهي كمثال عام في جدول templates (صفحة Templates): بيستخدم نفس الـpool
+export async function publishExample(jobId) {
+  await ready;
+  const { rows: [j] } = await pool.query("SELECT * FROM documentary_jobs WHERE id = $1 AND status = 'done'", [jobId]);
+  if (!j || !j.result_url) return null;
+  const mode = j.input?.mode || 'script';
+  const modelKey = mode === 'autoedit' ? 'autoedit' : 'documentary';
+  const title = (j.title || 'Documentary').slice(0, 120);
+  const prompt = mode === 'topic' ? (j.input?.topic || title) : (mode === 'autoedit' ? null : title);
+  const script = mode === 'autoedit' ? null : (j.script || null);
+  const description = (j.script || title).replace(/\s+/g, ' ').slice(0, 180);
+  await pool.query('CREATE TABLE IF NOT EXISTS templates (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, prompt TEXT, script TEXT, model_key TEXT NOT NULL, video_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW())');
+  const { rows: [t] } = await pool.query('INSERT INTO templates (title, description, prompt, script, model_key, video_url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [title, description, prompt, script, modelKey, j.result_url]);
+  return t.id;
+}
