@@ -9,6 +9,8 @@ import { buildSrt } from './uploadPackage.js';
 import { persistEditor, EDIT_MAX_MINUTES } from './editorStore.js';
 import { runEditTask, sweepExpiredEditors } from './editorService.js';
 import { autoEditVideo } from '../montage/autoEdit.js';
+import { smartMontage } from '../montage/smartMontage.js';
+import { resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, sweepOldAssets, withAnalysis, MAX_TOTAL_MINUTES } from '../montage/assets.js';
 import { chargeCredits, addCreditsBalance, getCreditsBalance } from '../authService.js';
 import { getDocumentaryCreditCost, getAutoEditCreditCost } from '../creditPricingEngine.js';
 import { checkContentSafety } from '../scriptService.js';
@@ -162,7 +164,7 @@ async function runTask(task) {
   fs.mkdirSync(workDir, { recursive: true });
   try {
     await store.updateJob(id, { status: 'processing', stage: 'script', progress: 1 });
-    const result = input.mode === 'autoedit' ? await produceAutoEdit({ id, input, workDir, prog }) : await produce({ id, userId, input, workDir, prog });
+    const result = input.mode === 'autoedit' ? await produceAutoEdit({ id, input, workDir, prog }) : input.mode === 'montage' ? await produceSmartMontage({ id, userId, input, workDir, prog }) : await produce({ id, userId, input, workDir, prog });
     // رفع
     await prog('upload', 0);
     const base = `documentaries/${userId}/${id}`;
@@ -189,6 +191,7 @@ async function runTask(task) {
     rmQuiet(workDir);
     if (input.audioFile) rmQuiet(path.dirname(input.audioFile));
     if (input.videoFile) rmQuiet(path.dirname(input.videoFile));
+    if (input.mode === 'montage' && input.assetIds) removeMontageAssets(userId, input.assetIds);
   }
 }
 
@@ -238,6 +241,59 @@ export async function startAutoEditJob(userId, { file, durationSec, title, optio
 }
 
 // نفس المونتاج التلقائي بس من رابط فيديو (مثلاً فيديو العميل المرفوع في شات الـagent): بننزّله، نفحصه، ونبدأ الوظيفة
+// ── مونتاج ذكي لعدة فيديوهات مرفوعة في شات الـagent (فهم الفيديوهات + مخطط + تنفيذ ffmpeg) ──
+export async function startMontageJob(userId, { assetIds, instructions = '', options = {} }) {
+  const ids = [...new Set((Array.isArray(assetIds) ? assetIds : []).map(String))];
+  if (!ids.length || ids.length > 10) return { ok: false, status: 400, error: 'bad_assets', message: 'Choose 1 to 10 uploaded videos.' };
+  const assets = resolveMontageAssets(userId, ids);
+  if (!assets) return { ok: false, status: 400, error: 'assets_expired', message: 'The uploaded videos expired or were not found — please upload them again.' };
+  const totalSec = assets.reduce((a, x) => a + x.duration, 0);
+  if (totalSec > MAX_TOTAL_MINUTES * 60 + 5) return { ok: false, status: 400, error: 'too_long', message: `The videos add up to more than ${MAX_TOTAL_MINUTES} minutes.` };
+  const text = String(instructions || '').slice(0, 800);
+  if (text) { const safety = await checkContentSafety(text); if (safety.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'These instructions cannot be used.' }; }
+  const opt = normalizeAutoEditOptions(options);
+  const q = quoteAutoEdit(totalSec);
+  const charge = await chargeCredits(userId, q.cost);
+  if (!charge.success) return { ok: false, status: 403, error: 'quota_exceeded', message: `This montage needs ${q.cost} credits, you have ${charge.remaining}.`, cost: q.cost, remaining: charge.remaining };
+  let job;
+  try {
+    job = await store.createJob({ userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, durationSec: totalSec, clips: assets.map(a => a.name) }, title: (options.title || assets[0].name || 'Montage').replace(/\.[a-z0-9]{2,4}$/i, '').slice(0, 120), creditsCharged: q.cost });
+  } catch (e) {
+    await addCreditsBalance(userId, q.cost).catch(() => {});
+    return { ok: false, status: 500, error: 'job_create_failed', message: 'Could not start the job. Your credits were not charged.' };
+  }
+  enqueue({ id: job.id, userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, durationSec: totalSec }, charged: q.cost, minutes: q.minutes, fixedCost: true, hooks: {} });
+  return { ok: true, job, cost: q.cost, minutes: q.minutes, remaining: charge.remaining };
+}
+
+async function produceSmartMontage({ id, userId, input, workDir, prog }) {
+  await prog('transcribe', 0);
+  const assets = resolveMontageAssets(userId, input.assetIds);
+  if (!assets) throw new Error('uploaded videos are no longer available');
+  const analysed = [];
+  for (const a of assets) analysed.push((await withAnalysis(userId, a.id, 20000)) || a);
+  let musicFile = null;
+  if (input.music) {
+    try {
+      musicFile = path.join(workDir, 'music.mp3');
+      const track = input.musicTrack && /^[\w ',.&()\-]+\.mp3$/i.test(input.musicTrack) && fs.existsSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack));
+      if (track) fs.copyFileSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack), musicFile);
+      else fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', input.musicMood || 'upbeat'));
+    } catch (e) { console.warn('[SmartMontage] music unavailable:', e.message); musicFile = null; }
+  }
+  const r = await smartMontage({
+    assets: analysed, workDir: path.join(workDir, 'smart'), instructions: input.instructions,
+    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile },
+    onProgress: ({ stage, frac = 0 }) => prog(stage === 'plan' ? 'cut' : stage, stage === 'plan' ? 0 : frac),
+    deps: { onTranscript: async (words) => {
+      const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000));
+      if (safety.unsafe) { const e = new Error('content policy'); e.code = 'content_policy'; throw e; }
+    } },
+  });
+  const title = (await store.getJobAny(id))?.title || r.plan?.title || 'Montage';
+  return { file: r.file, duration: r.duration, credits: [], script: r.transcript, title, chapters: [], srt: buildSrt(r.words) };
+}
+
 export async function startAutoEditFromUrl(userId, videoUrl, options = {}) {
   const dir = path.join(TEMP_ROOT, `aeurl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   fs.mkdirSync(dir, { recursive: true });
@@ -433,6 +489,7 @@ export async function recoverInterruptedJobs() {
   try {
     for (const e of await store.stuckEdits()) { if (e.charged > 0) await addCreditsBalance(e.user_id, e.charged).catch(() => {}); console.warn(`[Documentary] recovered interrupted edit of job ${e.id}${e.charged ? ' (refunded)' : ''}`); }
     sweepExpiredEditors();
+    sweepOldAssets(); setInterval(sweepOldAssets, 3600e3).unref?.();
     setInterval(sweepExpiredEditors, 6 * 3600e3).unref?.();
     const rows = await store.claimStuckJobs();
     for (const r of rows) {

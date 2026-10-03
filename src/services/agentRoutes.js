@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
@@ -6,12 +7,13 @@ import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
-import { startJob as startDocumentaryJob, startAutoEditFromUrl } from './documentary/documentaryService.js';
+import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob } from './documentary/documentaryService.js';
+import { registerAsset, listAssets, resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, withAnalysis as montageWithAnalysis, MAX_ASSETS_PER_USER } from './montage/assets.js';
 import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, startResumeChannelRun } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
-import { getMaxClipSeconds } from './creditPricingEngine.js';
+import { getMaxClipSeconds, getAutoEditCreditCost } from './creditPricingEngine.js';
 
 // ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين على أكتر من موديل صور، مش موديل واحد بس): تأكد إن
 // كل موديلات الصور فعليًا بتقبل حقل "aspect_ratio" بشكل صحيح (راجعنا الـ schema الحقيقي لكل
@@ -467,6 +469,38 @@ function parseAgentMarkers(rawReply) {
 const lastRequestAt = new Map(); // userId -> timestamp
 const MIN_INTERVAL_MS = 1500;
 
+// ── فيديوهات العميل للمونتاج الذكي (رفع متعدد من شات الـagent): بتتخزّن مؤقتًا ويتحللوا (وصف بصري + كلام) ──
+const montageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => { const d = path.join(process.platform === 'win32' ? 'temp' : '/tmp/aivideo', `mup_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`); fs.mkdirSync(d, { recursive: true }); cb(null, d); },
+    filename: (req, file, cb) => cb(null, 'upload' + (path.extname(file.originalname || '').replace(/[^.\w]/g, '').slice(0, 6) || '.mp4')),
+  }),
+  limits: { fileSize: 400 * 1024 * 1024 },
+});
+const publicAsset = (m) => ({ id: m.id, name: m.name, durationSec: Math.round(m.duration), hasAudio: m.hasAudio, width: m.width, height: m.height });
+
+router.post('/montage-upload', authMiddleware, (req, res, next) => montageUpload.single('video')(req, res, (err) => {
+  if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'file_too_large' : 'upload_failed', message: err.code === 'LIMIT_FILE_SIZE' ? 'The video is larger than 400MB.' : 'Upload failed.' });
+  next();
+}), async (req, res) => {
+  const file = req.file?.path;
+  try {
+    if (!file) return res.status(400).json({ error: 'video_required', message: 'Please choose a video.' });
+    const user = await getUserById(req.user.userId);
+    if (!user || (user.plan || 'free') === 'free') { fs.rmSync(path.dirname(file), { recursive: true, force: true }); return res.status(403).json({ error: 'no_access', message: 'Top up credits to use video montage.', show_upgrade: true }); }
+    const meta = await registerAsset(req.user.userId, file, req.file.originalname);
+    res.json(publicAsset(meta));
+  } catch (e) {
+    if (file) fs.rmSync(path.dirname(file), { recursive: true, force: true });
+    if (e.code) return res.status(400).json({ error: e.code, message: e.message });
+    console.error('[Agent] montage upload failed:', e.message);
+    res.status(500).json({ error: 'upload_failed', message: 'Upload failed.' });
+  }
+});
+
+router.get('/montage-assets', authMiddleware, (req, res) => res.json({ assets: listAssets(req.user.userId).map(publicAsset), max: MAX_ASSETS_PER_USER }));
+router.delete('/montage-assets/:id', authMiddleware, (req, res) => { removeMontageAssets(req.user.userId, [String(req.params.id)]); res.json({ success: true }); });
+
 router.post('/chat', authMiddleware, async (req, res) => {
   // ✅ NEW: لوج فوري أول ما الطلب يوصل — قبل أي معالجة خالص — عشان نتأكد فورًا هل الطلب
   // بتاع الصورتين بيوصل للسيرفر أصلاً ولا بيتوقف قبل كده (مشكلة حجم/بروكسي مثلاً)
@@ -483,7 +517,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
-    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel, mediaLedger } = req.body;
+    const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel, mediaLedger, montageAssetIds } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
     // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual
@@ -536,6 +570,17 @@ router.post('/chat', authMiddleware, async (req, res) => {
       ? `The user manually selected the video engine "${forcedVideoModel}" from a picker before sending this message — you MUST use exactly this engine for ANY video generation in this turn, INCLUDING animating a generated image (if they ask to animate/move a picture right now, use the ###GENERATE_VIDEO### marker with model:"${forcedVideoModel}" and "imageUrl" set to the exact image URL from history — do NOT silently switch to a different engine for this turn, that would ignore their explicit choice). Do not pick a different engine, do not ask which one, and state its real credit cost from the price list above.`
       : null;
     let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote, forcedModelNote].filter(Boolean).join(' ') || null;
+    // ✅ NEW: فيديوهات مرفوعة للمونتاج الذكي — الايجنت بيشوف تحليل كل فيديو (وصف بصري + هل فيه كلام) وبيتصرف حسب رغبة العميل
+    const montageIds = (Array.isArray(montageAssetIds) ? montageAssetIds : []).map(String).filter(id => /^[a-f0-9]{16}$/.test(id)).slice(0, 10);
+    if (montageIds.length) {
+      const metas = [];
+      for (const id of montageIds) { const m = await montageWithAnalysis(req.user.userId, id, 25000); if (m) metas.push(m); }
+      if (metas.length) {
+        const totalSec = metas.reduce((a, m) => a + m.duration, 0);
+        const lines = metas.map((m, i) => `V${i + 1} [id ${m.id}] "${m.name}" ${Math.round(m.duration)}s ${m.width}x${m.height}, audio: ${m.analysis?.hasSpeech ? 'speech' : (m.hasAudio ? 'ambient sound only' : 'none')} — shows: ${m.analysis?.description || 'analysis not available'}${m.analysis?.gist ? ` — says (excerpt): "${m.analysis.gist}"` : ''}`);
+        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The customer has uploaded ${metas.length} video(s) for MONTAGE (kept for 3 hours). Analysis done by the system: ${lines.join(' | ')}. Total ${Math.round(totalSec)}s; the montage price for these videos would be ${getAutoEditCreditCost(totalSec / 60)} credits. See rule 13e.`;
+      }
+    }
     let transcript = null;
     let uploadedVoiceUrl = null;
 
@@ -1202,7 +1247,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload, autoEditPayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload, autoEditPayload, montagePayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
@@ -1211,6 +1256,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     ({ text: reply, payload: channelResumePayload } = extractTrailingMarker(reply, '###CHANNEL_RESUME###'));
     ({ text: reply, payload: documentaryPayload } = extractTrailingMarker(reply, '###DOCUMENTARY###'));
     ({ text: reply, payload: autoEditPayload } = extractTrailingMarker(reply, '###AUTOEDIT###'));
+    ({ text: reply, payload: montagePayload } = extractTrailingMarker(reply, '###SMART_MONTAGE###'));
+    let docJob = null;
     // ✅ خطوة موافقة حقيقية بتكلفة كريديت حقيقية زي أي فيديو تاني — نفس حاجز الخطة المجانية
     // المستخدم فوق لـREADY/GENERATE_IMAGE/... بالظبط، بس منفصل لأنه ماركر ثانوي (بعد الحاجز
     // الأساسي فوق) مش من عيلة READY
@@ -1321,6 +1368,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
             minutes: Number(documentaryPayload.minutes) || 5,
             language: documentaryPayload.language,
           });
+          if (r.ok) docJob = { jobId: r.job.id, kind: 'documentary', title: r.job.title };
           if (r.ok) reply += (reply ? '\n\n' : '') + `تمام، بدأت الفيلم الوثائقي (${r.cost} كريديت لمدة حوالي ${Math.round(r.minutes)} دقيقة). هيظهر في "استوديو الأفلام الوثائقية" ← "أفلامي" أول ما يخلص، ومعاه مصادر اللقطات.`;
           else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: الفيلم محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
           else reply += (reply ? '\n\n' : '') + (r.message || 'معلش، مقدرتش أبدأ الفيلم ده.');
@@ -1342,11 +1390,34 @@ router.post('/chat', authMiddleware, async (req, res) => {
           const r = await startAutoEditFromUrl(userId, autoEditPayload.videoUrl.trim(), {
             language: autoEditPayload.language, captions: autoEditPayload.captions, music: autoEditPayload.music === true, cutSilence: autoEditPayload.cutSilence !== false,
           });
+          if (r.ok) docJob = { jobId: r.job.id, kind: 'autoedit', title: r.job.title };
           if (r.ok) reply += (reply ? '\n\n' : '') + `تمام، بدأت المونتاج (${r.cost} كريديت لفيديو حوالي ${Math.max(1, Math.round(r.minutes))} دقيقة). هيظهر في "استوديو الأفلام الوثائقية" ← "مونتاج فيديو بتاعي" ← "أفلامي" أول ما يخلص.`;
           else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: المونتاج محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
           else reply += (reply ? '\n\n' : '') + (r.message || 'معلش، مقدرتش أبدأ المونتاج ده.');
         } catch (e) {
           console.warn('[Agent] AUTOEDIT marker failed:', e.message);
+          reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ المونتاج — جرب تاني بعد شوية.';
+        }
+      }
+    }
+
+    // ✅ NEW: مونتاج ذكي لعدة فيديوهات مرفوعة (فهم + خطة + ffmpeg) — نفس مسار الاستوديو (حجز كريديت ذري + رد كامل عند الفشل)
+    if (montagePayload) {
+      if (userPlan === 'free') {
+        reply += (reply ? '\n\n' : '') + 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ المونتاج قبل ما تشترك.';
+      } else {
+        try {
+          const ids = (Array.isArray(montagePayload.assetIds) ? montagePayload.assetIds : []).map(String);
+          const r = await startMontageJob(userId, {
+            assetIds: ids, instructions: typeof montagePayload.instructions === 'string' ? montagePayload.instructions : '',
+            options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false },
+          });
+          if (r.ok) { docJob = { jobId: r.job.id, kind: 'montage', title: r.job.title }; reply += (reply ? '\n\n' : '') + `تمام، بدأت المونتاج (${r.cost} كريديت). هتلاقي الفيديو هنا في المحادثة أول ما يخلص، وفي "استوديو الأفلام الوثائقية" ← "أفلامي".`; }
+          else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: المونتاج محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
+          else if (r.error === 'assets_expired') reply += (reply ? '\n\n' : '') + 'الفيديوهات اللي رفعتها خلصت مدة حفظها أو مش لاقيها — ارفعهم تاني وقولّي.';
+          else reply += (reply ? '\n\n' : '') + (r.message || 'معلش، مقدرتش أبدأ المونتاج ده.');
+        } catch (e) {
+          console.warn('[Agent] SMART_MONTAGE marker failed:', e.message);
           reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ المونتاج — جرب تاني بعد شوية.';
         }
       }
@@ -1377,7 +1448,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       analyzeVideo: analyzeVideoPayload,
       awaitingConfirmation,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
-      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate,
+      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate, docJob,
       // ✅ NEW: الروابط الدائمة (R2) لأي صورة العميل رفعها في الرسالة دي — الفرونت إند بيحفظها
       // مع رسالة العميل نفسها عشان تفضل قابلة للاستشهاد بيها في أي رسالة جاية (راجع
       // uploadUserPhotoToR2 فوق)
