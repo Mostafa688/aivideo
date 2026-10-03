@@ -150,7 +150,7 @@ export async function runEditTask(task) {
         asset = { file: a.file, kind: a.kind, credit: c.credit, title: c.title, license: c.license };
       }
       const spec = specWithAsset(beat.spec, asset, ch.i);
-      const ass = ed.captionsStyle ? beatCaptionsAss({ words, start: beat.start, dur: beat.dur, style: ed.captionsStyle, w, h, lang, theme: ed.theme, widths, file: path.join(clipsDir, `cap_${ch.i}.ass`) }) : null;
+      const ass = ed.captionsStyle ? beatCaptionsAss({ words, start: beat.start, dur: beat.dur, style: ed.captionsStyle, w, h, lang, theme: ed.theme, widths, file: path.join(clipsDir, `cap_${ch.i}.ass`), overlays: spec.overlays }) : null;
       fs.mkdirSync(path.join(workDir, `new_${ch.i}`), { recursive: true });
       const clip = await buildBeatClip({ beat: spec, w, h, theme: ed.theme || 'blue', bgPath, lang, rtl, workDir: path.join(workDir, `new_${ch.i}`), index: ch.i, captionsAss: ass });
       local[ch.i] = clip;
