@@ -26,11 +26,26 @@ export const EG_PACKAGES = [
 ];
 
 const FEATURE_LIST = [
-  'Access to every AI video & image engine',
-  'No watermark on any video',
+  'Every AI video & image engine, one shared balance',
+  'AI Agent: chat to plan, write and generate your videos',
+  'Documentary Studio: full films from a topic, a script or your own voiceover',
+  'Smart montage: upload up to 20 videos — pro editing, motion graphics, captions & sound effects',
+  'Shorts-ready 9:16 with big word-by-word captions',
+  'YouTube channel automation & upload',
+  'HD export, no watermark on paid videos',
   'Credits never expire',
-  'HD export on every engine',
   'Priority email support',
+];
+const FEATURE_LIST_AR = [
+  'كل موديلات الفيديو والصور بالذكاء الاصطناعي برصيد واحد مشترك',
+  'الأجينت: كلّمه يخطط ويكتب ويولّد فيديوهاتك',
+  'استوديو الأفلام الوثائقية: فيلم كامل من موضوع أو سكريبت أو تعليقك الصوتي',
+  'المونتاج الذكي: ارفع لحد 20 فيديو، مونتاج احترافي وموشن جرافيك وكابشن ومؤثرات صوتية',
+  'شورتس 9:16 بكابشن كبير كلمة كلمة',
+  'أتمتة قناة يوتيوب والرفع عليها',
+  'تصدير HD وبدون علامة مائية على الفيديوهات المدفوعة',
+  'الكريديت لا ينتهي',
+  'دعم ذو أولوية على البريد',
 ];
 
 function authHeaders() {
@@ -47,12 +62,12 @@ function fileToBase64(file) {
 }
 
 // ─── قائمة مميزات بسيطة تحت أي كارت سعر ────────────────────────────────────
-function FeatureList({ color }) {
+function FeatureList({ color, ar = false }) {
   return (
-    <ul style={{ listStyle: 'none', padding: 0, margin: '18px 0 0', display: 'flex', flexDirection: 'column', gap: 9 }}>
-      {FEATURE_LIST.map((f, i) => (
-        <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#9ca3af' }}>
-          <Check size={13} strokeWidth={2.5} color={color} style={{ flexShrink: 0 }} />{f}
+    <ul dir={ar ? 'rtl' : 'ltr'} style={{ listStyle: 'none', padding: 0, margin: '18px 0 0', display: 'flex', flexDirection: 'column', gap: 9 }}>
+      {(ar ? FEATURE_LIST_AR : FEATURE_LIST).map((f, i) => (
+        <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5, color: '#9ca3af', lineHeight: 1.5 }}>
+          <Check size={13} strokeWidth={2.5} color={color} style={{ flexShrink: 0, marginTop: 3 }} />{f}
         </li>
       ))}
     </ul>
@@ -302,7 +317,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Credits</h1>
           <p style={{ color: '#8b8b96', fontSize: 14, margin: 0, maxWidth: 380, marginInline: 'auto', lineHeight: 1.6 }}>
-            One credit balance works across every model. Pay once — credits never expire or reset.
+            One credit balance works across every model, the Documentary Studio and the montage tools. Pay once — credits never expire or reset.
           </p>
           {balance != null && (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16, padding: '6px 16px', borderRadius: 999, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#d1d5db', fontSize: 13 }}>
@@ -331,7 +346,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                   <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>دفعة واحدة · لا يتجدد</div>
 
                   <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: isLast ? 16 : 22 }}>
-                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{displayCredits.toLocaleString()} كريديت — رصيد واحد مشترك بين كل موديلات الفيديو والصور</p>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 8px', fontWeight: 600 }}>{displayCredits.toLocaleString()} كريديت — رصيد واحد مشترك بين كل موديلات الفيديو والصور والأفلام الوثائقية والمونتاج</p>
                   </div>
 
                   {isLast && (
@@ -349,7 +364,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                     اشترك في {pkg.name}
                   </button>
 
-                  <FeatureList color={pkg.popular ? '#7c6af7' : '#9ca3af'} />
+                  <FeatureList ar color={pkg.popular ? '#7c6af7' : '#9ca3af'} />
                 </div>
               );
             })}
@@ -372,7 +387,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                   <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
 
                   <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 22 }}>
-                    <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits — one shared balance across every video & image engine</p>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits — one shared balance across every video & image engine, documentaries and montage</p>
                   </div>
 
                   <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: pkg.popular ? pkg.color : 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
@@ -399,7 +414,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                     <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 2, letterSpacing: '-0.02em' }}>${pkg.usd}</div>
                     <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
                     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 22 }}>
-                      <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits — one shared balance across every video & image engine</p>
+                      <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits — one shared balance across every video & image engine, documentaries and montage</p>
                     </div>
                     <button onClick={() => setIntlModalPkg(pkg)} style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 24 }}>
                       Get {pkg.name}
