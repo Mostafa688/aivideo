@@ -40,7 +40,7 @@ function PaywallPanel({ lang, region, onPick }) {
   const packages = region === 'eg' ? EG_PACKAGES : GUMROAD_PACKAGES;
   const features = lang === 'ar'
     ? ['كل موديلات الفيديو بالذكاء الاصطناعي', 'بدون أي علامة مائية', 'الكريديت ما يخلصش أبدًا', 'تصدير بجودة HD']
-    : ['Access to every AI video model', 'No watermark on any video', 'Credits never expire', 'HD export on every model'];
+    : ['Access to every AI video model', 'No watermark on any video', 'HD export on every model'];
   return (
     <div className="card animate-in" style={{ textAlign: 'center', borderColor: 'var(--accent)', padding: '32px 22px' }}>
       <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: 'var(--accent)' }}><PartyPopper size={36} strokeWidth={1.5} /></div>
