@@ -391,6 +391,15 @@ export default function App() {
     }
     if (window.location.pathname === '/affiliate') { setPage('affiliate'); setAuthChecked(true); return; }
     if (window.location.pathname === '/community') { setPage('community'); setAuthChecked(true); return; }
+    // ✅ رابط مباشر لاستوديو الأفلام الوثائقية: مسجّل دخول → يفتح الاستوديو، غير كده → تسجيل الدخول وبعده الاستوديو
+    if (window.location.pathname === '/documentary') {
+      const token = localStorage.getItem('token');
+      const email = localStorage.getItem('email');
+      window.history.replaceState({}, '', '/');
+      if (token && email) { setUser({ token, email }); setUserPlan(localStorage.getItem('plan') || 'free'); setPlanSelected(true); setPage('documentary'); }
+      else { try { sessionStorage.setItem('erivion_after_login', 'documentary'); } catch { /* ignore */ } setShowAuth(true); }
+      setAuthChecked(true); return;
+    }
     if (window.location.pathname === '/pricing') {
       const token = localStorage.getItem('token');
       const email = localStorage.getItem('email');
@@ -417,7 +426,7 @@ export default function App() {
     }
     if (params.get('admin') === '1') { window.history.replaceState({}, '', '/'); setPage('admin'); setAuthChecked(true); return; }
     // ✅ أي رابط مش معروف خالص (مش من القايمة دي) → صفحة 404 بدل ما يترجع للصفحة الرئيسية بصمت
-    const KNOWN_PATHS = ['/', '/login', '/reset-password', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/changelog', '/roadmap', '/status', '/api-docs', '/blog', '/affiliate', '/community', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
+    const KNOWN_PATHS = ['/', '/login', '/reset-password', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/changelog', '/roadmap', '/status', '/api-docs', '/blog', '/affiliate', '/community', '/documentary', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
     if (!KNOWN_PATHS.includes(window.location.pathname) && !googleToken && !authError && params.get('admin') !== '1') {
       setPage('notfound'); setAuthChecked(true); return;
     }
@@ -598,6 +607,7 @@ export default function App() {
     setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false);
     // ✅ FIX (نفس الفيكس فوق): يضمن إن أي جلسة تسجيل دخول تبدأ من صفحة المشاريع دايمًا
     setPage('dashboard');
+    try { if (sessionStorage.getItem('erivion_after_login') === 'documentary') { sessionStorage.removeItem('erivion_after_login'); setPage('documentary'); } } catch { /* ignore */ }
     const planChosenBefore = localStorage.getItem('planSelected') === 'true';
     if (!planChosenBefore) setShowLogoTransition(true);
   }} />;
