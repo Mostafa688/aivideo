@@ -3764,6 +3764,21 @@ const SEO_PAGES = {
   },
 };
 
+// ✅ FIX: وسوم التحقق من ملكية الدومين لازم تكون موجودة في الـHTML اللي بيشوفه البوت كمان — كروالر ميتا (facebookexternalhit /
+// Meta-ExternalAgent) وبينج وTrustpilot بيعدّوا على الـUser-Agent regex اللي فوق فبياخدوا صفحة renderBotHTML مش index.html،
+// ولو الوسوم دي مش فيها التحقق بيفشل ("لا يمكن التحقق من النطاق") مع إن الوسم موجود في index.html. بنقراها من نفس مصدر الحقيقة
+// (frontend/index.html) عشان أي توكن يتغيّر هناك يتحدّث هنا لوحده.
+const DOMAIN_VERIFICATION_METAS = (() => {
+  for (const f of [['dist', 'index.html'], ['frontend', 'dist', 'index.html'], ['frontend', 'index.html']]) {
+    try {
+      const html = fs.readFileSync(join(__dirname, '..', ...f), 'utf8');
+      const tags = (html.match(/<meta\s+name="(?:facebook-domain-verification|msvalidate\.01|trustpilot-one-time-domain-verification-id|google-site-verification)"[^>]*>/g) || []).join('\n');
+      if (tags) return tags;
+    } catch { /* جرّب المسار اللي بعده */ }
+  }
+  return '';
+})();
+
 function renderBotHTML(pageData, path) {
   const canonical = `${SITE_URL}${path === '/' ? '' : path}`;
   const jsonLd = {
@@ -3803,6 +3818,7 @@ function renderBotHTML(pageData, path) {
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Erivion">
 <meta name="twitter:card" content="summary">
+${DOMAIN_VERIFICATION_METAS}
 ${schemas.map(s => `<script type="application/ld+json">${JSON.stringify(s)}</script>`).join('\n')}
 </head>
 <body>
