@@ -67,7 +67,7 @@ export function HowToModal({ onClose }) {
       Icon: Coins, title: 'Credits System',
       steps: [
         { step: '', title: 'What are credits?', desc: 'One credit balance works across every model (1, 2, 3, 4, 5, 7) — no separate plan per model.' },
-        { step: '', title: 'Pay once, no expiry', desc: 'Top up your credit balance once — it never expires or resets. Use it whenever you want, top up again anytime you need more.' },
+        { step: '', title: 'Pay once', desc: 'Top up your credit balance once and use it whenever you want. Top up again anytime you need more.' },
         { step: '', title: 'Free plan', desc: 'Limited free credits to try Model 2 (Real Footage). Other models need a paid credit balance.' },
         { step: '', title: 'Credit costs', desc: 'Shorter/simpler videos use fewer credits; longer or more complex ones (more scenes, extra reference photos) use more.' },
       ],

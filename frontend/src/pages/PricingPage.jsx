@@ -33,7 +33,6 @@ const FEATURE_LIST = [
   'Shorts-ready 9:16 with big word-by-word captions',
   'YouTube channel automation & upload',
   'HD export, no watermark on paid videos',
-  'Credits never expire',
   'Priority email support',
 ];
 const FEATURE_LIST_AR = [
@@ -44,7 +43,6 @@ const FEATURE_LIST_AR = [
   'شورتس 9:16 بكابشن كبير كلمة كلمة',
   'أتمتة قناة يوتيوب والرفع عليها',
   'تصدير HD وبدون علامة مائية على الفيديوهات المدفوعة',
-  'الكريديت لا ينتهي',
   'دعم ذو أولوية على البريد',
 ];
 
@@ -317,7 +315,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Credits</h1>
           <p style={{ color: '#8b8b96', fontSize: 14, margin: 0, maxWidth: 380, marginInline: 'auto', lineHeight: 1.6 }}>
-            One credit balance works across every model, the Documentary Studio and the montage tools. Pay once — credits never expire or reset.
+            One credit balance works across every model, the Documentary Studio and the montage tools. Pay once, use it whenever you want.
           </p>
           {balance != null && (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16, padding: '6px 16px', borderRadius: 999, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#d1d5db', fontSize: 13 }}>
@@ -384,7 +382,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 2 }}>
                     <span style={{ fontSize: 34, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>${pkg.usd}</span>
                   </div>
-                  <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time purchase</div>
 
                   <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 22 }}>
                     <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits — one shared balance across every video & image engine, documentaries and montage</p>
@@ -412,7 +410,7 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                     <div style={{ fontSize: 19, fontWeight: 800, color: '#fff', marginBottom: 4 }}>{pkg.name}</div>
                     <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 22 }}>{pkg.tagline}</div>
                     <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 2, letterSpacing: '-0.02em' }}>${pkg.usd}</div>
-                    <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time · never expires</div>
+                    <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>one-time purchase</div>
                     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 22 }}>
                       <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 600 }}>{pkg.credits.toLocaleString()} credits — one shared balance across every video & image engine, documentaries and montage</p>
                     </div>
