@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { downloadRemoteFile } from '../utils/download.js';
 import {
   ArrowLeft, Clapperboard, FileText, Wand2, Mic, UploadCloud, Loader2, CheckCircle2,
-  XCircle, Download, Package, Scissors, Pencil, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
+  XCircle, Download, Package, Sparkles, Scissors, Pencil, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
 } from 'lucide-react';
 
 const authHeaders = (json = true) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), Authorization: 'Bearer ' + localStorage.getItem('token') });
@@ -55,8 +55,12 @@ const T = {
     eNote: 'التكلفة بتتحسب على مدة الفيديو الأصلي.', eUnknownDur: 'مقدرناش نقرا مدة الفيديو في المتصفح، بس تقدر تكمّل — التكلفة هتتحسب بعد الرفع.',
     rightsNote: 'تنبيه حقوق: بنختار اللقطات من مصادر مجانية ومرخّصة (Pexels وPixabay وNASA وWikimedia وInternet Archive) لكن مش بنضمن 100% إنها خالية من حقوق الغير. راجع الفيلم قبل النشر، وانسخ الـcredits في وصف الفيديو لأن بعض التراخيص بتطلب ذكر المصدر. المسؤولية على الناشر (راجع الشروط، البند 16).',
     pkgBtn: 'جهّز حزمة النشر على يوتيوب', pkgBuilding: 'بيجهّز العنوان والوصف والصورة...', pkgTitle: 'العنوان', pkgDesc: 'الوصف (فيه الفصول والمصادر)', pkgTags: 'الكلمات المفتاحية', pkgThumb: 'الصورة المصغرة', pkgThumbDl: 'تنزيل الصورة', pkgSrt: 'تنزيل ملف الترجمة SRT', pkgRegen: 'جهّز تاني',
+    aiBtn: 'اعمل صورة مصغرة بالذكاء الاصطناعي', aiRegen: 'اعمل صورة مصغرة تانية', aiBusy: 'بيبحث عن صور مصغرة ناجحة في المجال ويفهم تصميمها ثم يرسم صورتك... (حوالي دقيقة)',
+    aiTitle: 'الصورة المصغرة بالذكاء الاصطناعي', aiText: 'النص على الصورة', aiLearned: 'اللي فهمه من المجال', aiDl: 'نزّل الصورة', aiPolicy: 'مبنية على بحث عن صور مصغرة حقيقية في نفس المجال، وبمبادئ الـCTR وسياسات يوتيوب (من غير تضليل أو محتوى صادم). راجعها قبل النشر.',
+    aiPrice: (c, cached) => (cached ? `${c} كريديت (البحث محفوظ من قبل)` : `${c} كريديت (صورة + بحثين)`),
+    aiConfirm: (c) => `هيتخصم ${c} كريديت لعمل الصورة المصغرة. كمّل؟`, aiCharged: (c, r) => `اتخصم ${c} كريديت${r != null ? ` — رصيدك ${r}` : ''}`,
     tooShort: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.',
-    errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_long_vertical: 'الفيلم الطولي (9:16) أقصى مدة له 3 دقائق.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى من توليد السكريبتات في الساعة.', video_required: 'اختر فيديو الأول.', bad_video: 'الملف ده مش فيديو صالح أو أقصر من 5 ثواني.', no_audio: 'الفيديو ده مفيهوش صوت.', file_too_large: 'الفيديو أكبر من 600 ميجا.', upload_failed: 'فشل الرفع، جرّب تاني.' },
+    errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_long_vertical: 'الفيلم الطولي (9:16) أقصى مدة له 3 دقائق.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى في الساعة، جرّب بعد شوية.', unsafe: 'فكرة الصورة دي اتفحصت واترفضت (سياسة المحتوى) واتردّ لك الكريديت.', ai_thumbnail_failed: 'مقدرتش أعمل الصورة المصغرة دلوقتي، واتردّ لك الكريديت.', video_required: 'اختر فيديو الأول.', bad_video: 'الملف ده مش فيديو صالح أو أقصر من 5 ثواني.', no_audio: 'الفيديو ده مفيهوش صوت.', file_too_large: 'الفيديو أكبر من 600 ميجا.', upload_failed: 'فشل الرفع، جرّب تاني.' },
     copied: 'اتنسخ',
   },
   en: {
@@ -106,8 +110,12 @@ const T = {
     eNote: 'Billed on the length of the original video.', eUnknownDur: "We couldn't read the length in your browser, but you can continue — the cost is calculated after upload.",
     rightsNote: 'Rights notice: footage comes from free, licensed sources (Pexels, Pixabay, NASA, Wikimedia, Internet Archive), but we cannot guarantee 100% that it is free of third-party rights. Review the film before publishing and paste the credits into your video description — some licenses require attribution. The publisher is responsible (see the Terms, Section 16).',
     pkgBtn: 'Prepare the YouTube upload package', pkgBuilding: 'Preparing title, description and thumbnail...', pkgTitle: 'Title', pkgDesc: 'Description (with chapters and credits)', pkgTags: 'Tags', pkgThumb: 'Thumbnail', pkgThumbDl: 'Download thumbnail', pkgSrt: 'Download SRT subtitles', pkgRegen: 'Regenerate',
+    aiBtn: 'Create a thumbnail with AI', aiRegen: 'Create another thumbnail', aiBusy: 'Researching successful thumbnails in your niche, studying their design, then drawing yours... (about a minute)',
+    aiTitle: 'AI thumbnail', aiText: 'Text on the image', aiLearned: 'What it learned from your niche', aiDl: 'Download image', aiPolicy: 'Based on research of real thumbnails in the same niche, CTR principles and YouTube policy (no misleading or shocking content). Review it before publishing.',
+    aiPrice: (c, cached) => (cached ? `${c} credits (research already saved)` : `${c} credits (image + 2 searches)`),
+    aiConfirm: (c) => `${c} credits will be charged to create the thumbnail. Continue?`, aiCharged: (c, r) => `${c} credits charged${r != null ? ` — balance ${r}` : ''}`,
     tooShort: 'The film would be under 25 seconds — add more text.',
-    errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', too_long_vertical: 'Vertical (9:16) films can be up to 3 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit for script generation.', video_required: 'Choose a video first.', bad_video: 'This file is not a readable video or is shorter than 5 seconds.', no_audio: 'This video has no audio.', file_too_large: 'The video is larger than 600 MB.', upload_failed: 'Upload failed, please try again.' },
+    errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', too_long_vertical: 'Vertical (9:16) films can be up to 3 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit, try again later.', unsafe: 'This thumbnail idea was rejected by the content policy check. Credits refunded.', ai_thumbnail_failed: 'Could not create the thumbnail right now. Credits refunded.', video_required: 'Choose a video first.', bad_video: 'This file is not a readable video or is shorter than 5 seconds.', no_audio: 'This video has no audio.', file_too_large: 'The video is larger than 600 MB.', upload_failed: 'Upload failed, please try again.' },
     copied: 'Copied',
   },
 };
@@ -122,6 +130,28 @@ function PackagePanel({ job, t }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [copiedKey, setCopiedKey] = useState('');
+  const [ai, setAi] = useState(job.package?.aiThumbnail || null);
+  const [aiQuote, setAiQuote] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState('');
+  const hasPkg = !!pkg;
+  useEffect(() => {
+    if (!hasPkg) return undefined;
+    let alive = true;
+    fetch(`/api/documentary/jobs/${job.id}/ai-thumbnail`, { headers: authHeaders(false) }).then(r => (r.ok ? r.json() : null)).then(d => { if (alive && d) { setAiQuote(d); if (d.current) setAi(d.current); } }).catch(() => {});
+    return () => { alive = false; };
+  }, [hasPkg, job.id, ai?.createdAt]);
+  const makeAi = async () => {
+    const cost = aiQuote?.cost?.total ?? 10;
+    if (!window.confirm(t.aiConfirm(cost))) return;
+    setAiBusy(true); setErr(''); setAiNote('');
+    try {
+      const r = await fetch(`/api/documentary/jobs/${job.id}/ai-thumbnail`, { method: 'POST', headers: authHeaders(), body: '{}' });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error === 'quota_exceeded' ? (j.message || t.errs.quota_exceeded) : (t.errs[j.error] || t.errGeneric));
+      setAi(j.aiThumbnail); setAiNote(t.aiCharged(j.charged, j.remaining));
+    } catch (e) { setErr(e.message); } finally { setAiBusy(false); }
+  };
   const build = async (refresh = false) => {
     setBusy(true); setErr('');
     try {
@@ -163,13 +193,39 @@ function PackagePanel({ job, t }) {
   );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-      {pkg.thumbnailUrl && (
-        <div>
-          <div style={labelStyle}>{t.pkgThumb}</div>
-          <img src={pkg.thumbnailUrl} alt="" style={{ width: '100%', maxWidth: 480, borderRadius: 'var(--r-md)', display: 'block' }} />
-          <button type="button" className="btn-ghost" onClick={() => downloadRemoteFile(pkg.thumbnailUrl, `thumbnail_${job.id}.jpg`)} style={{ marginTop: 8, borderRadius: 8, fontSize: 13 }}>{t.pkgThumbDl}</button>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {pkg.thumbnailUrl && (
+          <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+            <div style={labelStyle}>{t.pkgThumb}</div>
+            <img src={pkg.thumbnailUrl} alt="" style={{ width: '100%', maxWidth: 480, borderRadius: 'var(--r-md)', display: 'block' }} />
+            <button type="button" className="btn-ghost" onClick={() => downloadRemoteFile(pkg.thumbnailUrl, `thumbnail_${job.id}.jpg`)} style={{ marginTop: 8, borderRadius: 8, fontSize: 13 }}>{t.pkgThumbDl}</button>
+          </div>
+        )}
+        <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+          <div style={labelStyle}>{t.aiTitle}</div>
+          {ai?.url && !aiBusy && (
+            <div style={{ marginBottom: 10 }}>
+              <img src={ai.url} alt="" style={{ width: '100%', maxWidth: 480, borderRadius: 'var(--r-md)', display: 'block' }} />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                <button type="button" className="btn-ghost" onClick={() => downloadRemoteFile(ai.url, `thumbnail_ai_${job.id}.jpg`)} style={{ borderRadius: 8, fontSize: 13 }}>{t.aiDl}</button>
+              </div>
+              {ai.text && <div style={{ fontSize: 12.5, color: 'var(--text2)', marginTop: 8 }}><strong>{t.aiText}:</strong> {ai.text}</div>}
+              {(ai.patterns?.length > 0) && (
+                <details style={{ marginTop: 6, fontSize: 12.5, color: 'var(--text3)' }}>
+                  <summary style={{ cursor: 'pointer' }}>{t.aiLearned}</summary>
+                  <ul style={{ margin: '6px 0 0', paddingInlineStart: 18, lineHeight: 1.7 }}>{ai.patterns.map((p, i) => <li key={i}>{p}</li>)}</ul>
+                </details>
+              )}
+            </div>
+          )}
+          <button type="button" className="btn-primary" disabled={aiBusy} onClick={makeAi} style={{ borderRadius: 'var(--r-md)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {aiBusy ? <Loader2 size={15} className="doc-spin" /> : <Sparkles size={15} />}{aiBusy ? t.aiBusy : (ai?.url ? t.aiRegen : t.aiBtn)}
+          </button>
+          {!aiBusy && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>{aiQuote?.cost ? t.aiPrice(aiQuote.cost.total, aiQuote.researchCached) : ''}</div>}
+          {aiNote && <div style={{ fontSize: 12, color: 'var(--green, #22c55e)', marginTop: 4 }}>{aiNote}</div>}
+          <div style={{ fontSize: 11.5, color: 'var(--text3)', lineHeight: 1.7, marginTop: 6 }}>{t.aiPolicy}</div>
         </div>
-      )}
+      </div>
       {row('title', t.pkgTitle, pkg.title)}
       {row('desc', t.pkgDesc, pkg.description)}
       {row('tags', t.pkgTags, (pkg.tags || []).join(', '))}

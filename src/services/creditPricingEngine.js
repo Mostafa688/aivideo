@@ -242,6 +242,16 @@ export function getAutoEditCreditCost(minutes) {
   return usdToCredits(perMin * Math.max(0.5, Number(minutes) || 0.5), { multiplier: AUX_PROFIT_MULTIPLIER });
 }
 
+// ── صورة مصغرة بالذكاء الاصطناعي لفيلم وثائقي (حزمة يوتيوب): بحث عن أمثلة + بحث إرشادات (كل بحث 1 كريديت) + توليد
+// الصورة بـNano Banana 2.1 بدقة 1K. لو بحث الأمثلة اتعمل قبل كده لنفس الفيلم (≤24 ساعة) بنعيد استخدامه ومن غير رسوم بحث.
+export const AI_THUMBNAIL_SEARCH_CREDITS = 1;
+export const AI_THUMBNAIL_SEARCHES = 2;
+export function getAiThumbnailCost({ researchCached = false } = {}) {
+  const image = getImageCreditCost('nano_banana_2_1', 1, '1K');
+  const search = researchCached ? 0 : AI_THUMBNAIL_SEARCH_CREDITS * AI_THUMBNAIL_SEARCHES;
+  return { image, search, total: image + search };
+}
+
 /**
  * Credit cost for generating `count` images with the given model key. Pass
  * `tier` (e.g. "1K"/"2K"/"4K") for models with real per-resolution pricing

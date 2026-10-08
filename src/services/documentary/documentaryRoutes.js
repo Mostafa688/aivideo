@@ -4,8 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { authMiddleware } from '../authRoutes.js';
-import { getCreditsBalance } from '../authService.js';
-import { DOCUMENTARY_USD_PER_MINUTE, getDocumentaryCreditCost } from '../creditPricingEngine.js';
+import { getCreditsBalance, chargeCredits, addCreditsBalance } from '../authService.js';
+import { DOCUMENTARY_USD_PER_MINUTE, getDocumentaryCreditCost, getAiThumbnailCost, AI_THUMBNAIL_SEARCH_CREDITS } from '../creditPricingEngine.js';
 import { checkContentSafety } from '../scriptService.js';
 import { GEMINI_VOICE_NAMES } from '../videoAudioService.js';
 import { sourceAvailability } from './sources/index.js';
@@ -18,6 +18,7 @@ import * as store from './store.js';
 import { editorView, searchBeatCandidates, saveBeatUpload, prepareEdit } from './editorService.js';
 import { adminAuth } from '../adminAuthMiddleware.js';
 import { buildPackage, composeThumbnail } from './uploadPackage.js';
+import { createAiThumbnail, researchAvailable } from './thumbnailAi.js';
 
 const router = express.Router();
 const TEMP_ROOT = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
@@ -275,12 +276,61 @@ router.post('/jobs/:id/package', authMiddleware, express.json({ limit: '10kb' })
         fs.rmSync(tmp, { force: true });
       } catch (e) { console.warn('[Documentary] thumbnail compose failed:', e.message); }
     }
-    const out = { title: pkg.title, description: pkg.description, tags: pkg.tags, thumbnailUrl, chapters: pkg.chapters, hasSrt: !!meta.srt };
+    const out = { title: pkg.title, description: pkg.description, tags: pkg.tags, thumbnailUrl, chapters: pkg.chapters, hasSrt: !!meta.srt, ...(meta.package?.aiThumbnail ? { aiThumbnail: meta.package.aiThumbnail } : {}) };
     await store.mergeMeta(j.id, { package: out });
     res.json(out);
   } catch (e) {
     console.error('[Documentary] package failed:', e.message);
     res.status(500).json({ error: 'package_failed', message: 'Could not build the upload package right now.' });
+  }
+});
+
+// ── صورة مصغرة بالذكاء الاصطناعي (Nano Banana 2.1) بعد بحث وفهم أمثلة المجال ──
+// التسعير: كريديت الصورة + 1 كريديت لكل بحث ناجح (بحثين). لو بحث الأمثلة اتعمل لنفس الفيلم من أقل من 24 ساعة بنعيد استخدامه من غير رسوم بحث.
+const RESEARCH_TTL_MS = 24 * 3600e3;
+const aiThumbCalls = new Map();
+const cachedResearch = (meta) => { const r = meta?.thumbResearch; return r && Date.now() - r.at < RESEARCH_TTL_MS ? r : null; };
+
+router.get('/jobs/:id/ai-thumbnail', authMiddleware, async (req, res) => {
+  try {
+    const j = await ownedDone(req); if (!j) return res.status(404).json({ error: 'not_found' });
+    const cached = !!cachedResearch(j.meta);
+    res.json({ cost: getAiThumbnailCost({ researchCached: cached }), researchCached: cached, fullCost: getAiThumbnailCost(), current: j.meta?.package?.aiThumbnail || null, researchAvailable: researchAvailable() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/jobs/:id/ai-thumbnail', authMiddleware, express.json({ limit: '5kb' }), async (req, res) => {
+  let charged = 0, uid = null;
+  try {
+    const j = await ownedDone(req); if (!j) return res.status(404).json({ error: 'not_found' });
+    uid = req.user.userId;
+    const now = Date.now();
+    const recent = (aiThumbCalls.get(uid) || []).filter(t => now - t < 3600e3);
+    if (recent.length >= 8) return res.status(429).json({ error: 'rate_limited', message: 'Too many thumbnails this hour.' });
+    const meta = j.meta || {};
+    const cache = cachedResearch(meta);
+    const cost = getAiThumbnailCost({ researchCached: !!cache });
+    const pay = await chargeCredits(uid, cost.total);
+    if (!pay.success) return res.status(403).json({ error: 'quota_exceeded', message: `This thumbnail needs ${cost.total} credits, you have ${pay.remaining}.`, cost: cost.total, remaining: pay.remaining });
+    charged = cost.total;
+    aiThumbCalls.set(uid, [...recent, now]);
+    const language = meta.language || 'en';
+    const out = await createAiThumbnail({ title: j.title, script: j.script, language, research: cache || null });
+    // البحث بيتحاسب بس على اللي نجح فعلاً (لو بحث فشل أو معرفناش نفهم أمثلة، بنرجّع كريديته)
+    const searchesBilled = cache ? 0 : Math.min(2, out.research.searchesDone || 0);
+    const back = cost.search - searchesBilled * AI_THUMBNAIL_SEARCH_CREDITS;
+    if (back > 0) { await addCreditsBalance(uid, back).catch(() => {}); charged -= back; }
+    const ai = { url: out.url, text: out.text, concept: out.concept, createdAt: new Date().toISOString(), credits: charged, examples: (out.research.examples || []).slice(0, 4), patterns: (out.research.analysis?.patterns || []).slice(0, 4) };
+    await store.mergeMeta(j.id, {
+      package: { ...(meta.package || {}), aiThumbnail: ai },
+      ...(cache ? {} : { thumbResearch: { at: Date.now(), examples: out.research.examples, analysis: out.research.analysis, guidance: out.research.guidance, searchesDone: out.research.searchesDone } }),
+    });
+    res.json({ aiThumbnail: ai, charged, remaining: await getCreditsBalance(uid).catch(() => null) });
+  } catch (e) {
+    if (charged > 0 && uid) await addCreditsBalance(uid, charged).catch(() => {}); // أي فشل = رجوع كل الكريديت
+    console.error('[Documentary] ai thumbnail failed:', e.message);
+    if (e.code === 'unsafe') return res.status(400).json({ error: 'unsafe', message: 'This thumbnail idea was rejected by the content policy check. Credits refunded.' });
+    res.status(500).json({ error: 'ai_thumbnail_failed', message: 'Could not create the thumbnail right now. Your credits were refunded.' });
   }
 });
 
