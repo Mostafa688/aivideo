@@ -711,7 +711,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           // منفصل (GENERATE_VIDEO) بالبرومبت الخاص بيها هي، بنفس ترتيب الرفع بالظبط
           const note = images.length > 1
             ? `User just uploaded ${images.length} photos in this one message, numbered above in upload order (Photo 1, Photo 2, ...). Unless the customer explicitly says these are multiple people to merge into ONE combined reference (in which case use "referenceImageUrls" with all of them on a single GENERATE_IMAGE/GENERATE_VIDEO call), assume each photo is its own separate subject that needs its OWN separate animation — see the "ANIMATING MULTIPLE UPLOADED PHOTOS" rule below for exactly how to sequence this (one ###GENERATE_VIDEO### per turn, in upload order, using each photo's own numbered URL). If the customer already described a distinct motion/scene for each photo (in this same message or already earlier), match instruction 1 to Photo 1, instruction 2 to Photo 2, and so on in the exact order both were given — never mix up which instruction belongs to which photo.`
-            : 'User just uploaded a photo. This satisfies the required product/character reference photo for whatever they\'re generating — OR, if they just want the photo animated directly with no scene description at all, use ###GENERATE_VIDEO### with "imageUrl" set to it and no "prompt" (natural default motion), or a "prompt" too if they described specific motion. Treat the photo requirement as met right now, do not ask for it again, and proceed toward confirming and generating if you already have the other required details.';
+            : 'User just uploaded a photo. This satisfies the required product/character reference photo for whatever they\'re generating — OR, if they just want the photo animated directly with no scene description at all, use ###GENERATE_VIDEO### with "imageUrl" set to it and no "prompt" (natural default motion), or a "prompt" too if they described specific motion. Treat the photo requirement as met right now, do not ask for it again, and proceed toward confirming and generating if you already have the other required details. If it is a product photo for an ad/promo, follow the PRODUCT AD FROM AN UPLOADED PHOTO steps exactly (understand the product from the IMAGE ANALYSIS, propose or take the idea, let the customer pick the engine, settle the sound, show the plan with the exact cost) and never generate before they approve.';
           attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + note;
         }
       } catch (e) {
@@ -1263,6 +1263,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
         generateVideo.narrationScript = generateVideo.narrationScript.trim().slice(0, 4000);
         generateVideo.addCaptions = generateVideo.addCaptions === true;
       }
+      if (generateVideo.generateAudio !== false || generateVideo.model !== 'seedance_2_5') delete generateVideo.generateAudio; // الصامت مدعوم بس على seedance_2_5
       if (!['youtube', 'general'].includes(generateVideo.musicStyle)) delete generateVideo.musicStyle;
       if (typeof generateVideo.musicMood !== 'string') delete generateVideo.musicMood;
     }
