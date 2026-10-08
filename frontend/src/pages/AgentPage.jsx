@@ -1160,7 +1160,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // ✅ NEW: رفع فيديو العميل الخاص لتعديل video-to-video — لازم يتحقق من المدة (أقصى 15
   // ثانية) وحجم الملف قبل ما يتقبل، بنفس أسلوب فحص الصوت (metadata check)
   const MAX_VIDEO_UPLOAD_MB = 50;
-  const MAX_VIDEO_UPLOAD_SEC = 15;
+  const MAX_VIDEO_UPLOAD_SEC = 60; // سقف نقل الأداء (prunaai_p_video_animate)؛ تعديل الفيديو العادي (/api/video-edit) سقفه الأقصر بيتفحص في السيرفر
   const handleVideoFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1783,6 +1783,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // ✅ NEW (new standalone video-generation models — Veo/Kling/Seedance/Luma): نفس نمط
   // startImageGeneration بالظبط — طلب واحد بيستنى الفيديو جاهز (backend بيعمل Prefer: wait)
   const startVideoModelGeneration = async (gen) => {
+    // نقل الأداء: محتاج فيديو العميل المرفوع + صورة الشخصية — الفيديو بيترفع هنا لرابط عام قبل التوليد
+    const isPerf = gen.model === 'prunaai_p_video_animate';
+    if (isPerf && !gen.sourceVideoUrl && !uploadedVideoFile) {
+      setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'محتاج الفيديو الأصلي (اللي فيه الحركة والكلام) — ارفعه من زرار + وبعدين كمّل.' : 'I need the source video (the one with the movements and speech) — upload it with the + button, then continue.' }]);
+      return;
+    }
+    if (isPerf && !gen.imageUrl) {
+      setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'محتاج صورة الشخصية الجديدة — ارفعها أو اطلب مني أعملها، وبعدين كمّل.' : 'I need the new character image — upload one or ask me to create it, then continue.' }]);
+      return;
+    }
     const jobUid = `vid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const job = { uid: jobUid, status: 'generating', model: gen.model, prompt: gen.prompt, aspectRatio: gen.aspectRatio || '16:9' };
     setMessages(m => [...m, { role: 'assistant', type: 'videoModel', job }]);
@@ -1795,11 +1805,20 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       });
     };
     try {
+      let sourceVideoUrl = gen.sourceVideoUrl || undefined;
+      if (isPerf && !sourceVideoUrl) {
+        const form = new FormData();
+        form.append('video', uploadedVideoFile, uploadedVideoFile.name || 'video.mp4');
+        const up = await fetch('/api/videos/upload-source', { method: 'POST', headers: tokenHeader(), body: form });
+        const upData = await safeJson(up, lang);
+        if (!up.ok || !upData.url) { updateJob({ status: 'failed', error: upData.message || upData.error || 'Upload failed' }); return; }
+        sourceVideoUrl = upData.url;
+      }
       const res = await fetch('/api/videos/generate', {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({
           model: gen.model, prompt: gen.prompt, imageUrl: gen.imageUrl || undefined,
-          sourceVideoUrl: gen.sourceVideoUrl || undefined,
+          sourceVideoUrl,
           referenceImageUrls: gen.referenceImageUrls?.length ? gen.referenceImageUrls : undefined,
           referenceVideoUrls: gen.referenceVideoUrls?.length ? gen.referenceVideoUrls : undefined,
           lastFrameUrl: gen.lastFrameUrl || undefined,

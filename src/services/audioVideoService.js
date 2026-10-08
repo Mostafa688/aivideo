@@ -84,6 +84,12 @@ export async function uploadCompositeImageToR2(buffer, mimeExt = 'jpg') {
   return uploadUserImageToR2(buffer, mimeExt, 'composite', 'scene');
 }
 
+// فيديو العميل الشخصي كمصدر لنقل الأداء (Replicate لازم يقرأه برابط عام)
+export async function uploadUserSourceVideoToR2(buffer) {
+  if (!S3_ENDPOINT_URL || !S3_ACCESS_KEY || !S3_SECRET_KEY || !R2_PUBLIC_URL) throw new Error('Storage is not configured');
+  return uploadBufferToR2(buffer, `agent-uploads/source_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`, 'video/mp4');
+}
+
 export async function uploadFinalVideoToR2(buffer) {
   const key = `audio-video/final/video_${Date.now()}.mp4`;
   return uploadBufferToR2(buffer, key, 'video/mp4');

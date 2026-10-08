@@ -26,7 +26,7 @@ import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 // ✅ FIX: كانت بتتحسب من جديد جوه buildMcpServer() في كل طلب MCP رغم إنها ثابتة طول عمر
 // الـprocess — بنحسبها مرة واحدة هنا بدل ما نعيد بناء enum الـzod في كل نداء
 const IMAGE_MODEL_KEYS = Object.keys(NEW_IMAGE_MODELS);
-const VIDEO_MODEL_KEYS = Object.keys(NEW_VIDEO_MODELS);
+const VIDEO_MODEL_KEYS = Object.keys(NEW_VIDEO_MODELS).filter(k => !NEW_VIDEO_MODELS[k].performanceTransfer); // نقل الأداء محتاج رفع فيديو مصدر — مش متاح من MCP
 
 const router = express.Router();
 const SITE_URL = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';

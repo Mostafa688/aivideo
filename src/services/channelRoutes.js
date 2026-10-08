@@ -20,7 +20,7 @@ import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 // اتخصم منه بصمت) — بس الموديلات اللي فعلاً بتقبل صورة كمدخل (مش موديلات تعديل فيديو بحتة
 // زي decart_lucy_edit_2) صالحة كـ"موديل تحريك" هنا، لأن البايبلاين بيبعتلها صورة مشهد كمدخل
 const ALLOWED_IMAGE_MODELS = new Set(Object.keys(NEW_IMAGE_MODELS));
-const ALLOWED_ANIMATION_MODELS = new Set(Object.keys(NEW_VIDEO_MODELS).filter(k => NEW_VIDEO_MODELS[k].supportsImageInput));
+const ALLOWED_ANIMATION_MODELS = new Set(Object.keys(NEW_VIDEO_MODELS).filter(k => NEW_VIDEO_MODELS[k].supportsImageInput && !NEW_VIDEO_MODELS[k].performanceTransfer));
 
 const router = express.Router();
 
