@@ -9,6 +9,7 @@ import { displaySize, transcribeAudioFile } from './index.js';
 import { transcribeWords } from '../documentary/align.js';
 import { getAutoEditCreditCost } from '../creditPricingEngine.js';
 import sharp from 'sharp';
+import { groqVision } from '../visionService.js';
 
 const ROOT = path.join(process.platform === 'win32' ? 'temp' : '/tmp/aivideo', 'montage_assets');
 const TTL_MS = 3 * 3600e3;
@@ -19,7 +20,6 @@ export const MAX_VOICE_MINUTES = 20;
 export const MAX_STYLE_IMAGES = 4; // صور مرجعية لستايل الموشن جرافيك (مثلاً من Pinterest)
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 export const isVideoAsset = (a) => (a.kind || 'video') === 'video';
-const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 const dirOf = (userId, id) => path.join(ROOT, String(userId), id);
 const metaPath = (userId, id) => path.join(dirOf(userId, id), 'meta.json');
@@ -189,15 +189,11 @@ export async function describeVideo(urls, times, { ask } = {}) {
   if (ask) return ask(urls);
   const key = process.env.GROQ_API_KEY;
   if (!key || !urls.length) return null;
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: VISION_MODEL, max_tokens: 420, temperature: 0.2, response_format: { type: 'json_object' },
-      messages: [{ role: 'user', content: [{ type: 'text', text: VIDEO_PROMPT(times) }, ...urls.map(u => ({ type: 'image_url', image_url: { url: u } }))] }],
-    }),
+  const data = await groqVision({
+    max_tokens: 420, temperature: 0.2, response_format: { type: 'json_object' },
+    messages: [{ role: 'user', content: [{ type: 'text', text: VIDEO_PROMPT(times) }, ...urls.map(u => ({ type: 'image_url', image_url: { url: u } }))] }],
   });
-  if (!res.ok) throw new Error(`vision ${res.status}`);
-  const raw = String((await res.json()).choices?.[0]?.message?.content || '').trim();
+  const raw = String(data.choices?.[0]?.message?.content || '').trim();
   try { return JSON.parse(raw.replace(/^```(?:json)?|```$/g, '')); } catch { return { summary: raw.slice(0, 300) }; }
 }
 
@@ -208,12 +204,8 @@ export async function describeStyleImage(file, { ask } = {}) {
   const key = process.env.GROQ_API_KEY;
   if (!key) return null;
   const buf = await sharp(file).resize(768, 768, { fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: VISION_MODEL, max_tokens: 300, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: IMAGE_PROMPT }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + buf.toString('base64') } }] }] }),
-  });
-  if (!res.ok) throw new Error(`vision ${res.status}`);
-  const raw = String((await res.json()).choices?.[0]?.message?.content || '').trim();
+  const data = await groqVision({ max_tokens: 300, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: IMAGE_PROMPT }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + buf.toString('base64') } }] }] });
+  const raw = String(data.choices?.[0]?.message?.content || '').trim();
   try { return JSON.parse(raw.replace(/^```(?:json)?|```$/g, '')); } catch { return { summary: raw.slice(0, 300) }; }
 }
 
@@ -221,18 +213,14 @@ export async function describeFrames(urls, { ask } = {}) {
   if (ask) return ask(urls);
   const key = process.env.GROQ_API_KEY;
   if (!key || !urls.length) return '';
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: VISION_MODEL, max_tokens: 160, temperature: 0.2,
+  const data = await groqVision({
+      max_tokens: 160, temperature: 0.2,
       messages: [{ role: 'user', content: [
         { type: 'text', text: 'These are 3 frames sampled from one video clip (start, middle, end). In at most 40 words describe what the clip shows: subject/people (a person talking to the camera? screen recording? product? landscape? action?), setting, motion, lighting and any quality problem (shaky, dark, blurry). Plain text only.' },
         ...urls.map(u => ({ type: 'image_url', image_url: { url: u } })),
       ] }],
-    }),
   });
-  if (!res.ok) throw new Error(`vision ${res.status}`);
-  return String((await res.json()).choices?.[0]?.message?.content || '').trim();
+  return String(data.choices?.[0]?.message?.content || '').trim();
 }
 
 /** هل في كلام؟ بنفرّغ عينة ≤ 75 ثانية من النص */
