@@ -183,7 +183,7 @@ async function runTask(task) {
     const actual = task.fixedCost ? task.charged : getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
     const back = Math.max(0, task.charged - actual);
     if (back >= 2) await refund(task, back);
-    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio, ...(result.editor ? { editor: result.editor } : {}) } });
+    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio, ...(result.sceneStats ? { sceneStats: result.sceneStats } : {}), ...(result.editor ? { editor: result.editor } : {}) } });
     task.hooks?.onDone?.({ videoUrl, thumbnailUrl: thumbUrl, durationSec: result.duration, title: result.title, credits: result.credits, creditsCharged: task.charged - (back >= 2 ? back : 0) });
   } catch (e) {
     console.error(`[Documentary] job ${id} failed:`, e.message);
@@ -502,6 +502,14 @@ async function produce({ id, userId, input, workDir, prog }) {
   if (input.sources === 'stock') plans.forEach(p => { if (p.visual === 'archive' || p.visual === 'nasa') p.visual = 'stock'; });
   const { assets, allCredits, boards } = await resolveAssets({ beats, plans, ratio: input.ratio, assetsDir: path.join(workDir, 'assets'), onProgress: ({ stage, done, total: t }) => prog('assets', stage === 'search' ? (done / t) * 0.3 : 0.3 + (done / t) * 0.7) });
   await prog('assets', 1);
+  // إحصائيات المشاهد (للتشخيص): كام خريطة/لوحة اتخططت وكام اتحل فعليًا، ونسبة الأرشيف — بتتسجل في اللوج وفي meta بتاع الفيلم
+  const sceneStats = (() => {
+    const cnt = (n) => plans.filter(p => p.template?.name === n).length;
+    const footage = plans.filter(p => ['stock', 'archive', 'nasa'].includes(p.visual));
+    const boardsOk = Object.values(boards || {}).filter(b => (b || []).length >= 2).length;
+    return { maps: cnt('map_reveal'), boards: cnt('photo_board'), boardsResolved: boardsOk, archiveShare: footage.length ? Number((footage.filter(p => p.visual !== 'stock').length / footage.length).toFixed(2)) : 0, beats: plans.length };
+  })();
+  console.log(`[Documentary] job ${id} scenes:`, JSON.stringify(sceneStats));
 
   // 5) الموسيقى
   let musicFile = null;
@@ -529,7 +537,7 @@ async function produce({ id, userId, input, workDir, prog }) {
       editor = await persistEditor({ jobId: id, userId, render: r, timeline, beats, plans, assets, words: timeline.captions?.words || [], workDir: path.join(workDir, 'editor'), ratio: input.ratio, extraCredits: sources.map(s => s.url) });
     } catch (e) { console.warn(`[Documentary] job ${id}: editor data not stored (${e.message})`); }
   }
-  return { editor, file: r.file, duration: r.duration, credits: [...allCredits, ...sources.map(s => s.url)], script, title, chapters, srt: buildSrt(timeline.captions?.words || tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
+  return { sceneStats, editor, file: r.file, duration: r.duration, credits: [...allCredits, ...sources.map(s => s.url)], script, title, chapters, srt: buildSrt(timeline.captions?.words || tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
 }
 
 // عند إقلاع السيرفر: وظايف كانت شغالة اتقطعت → نردّ كريديتها

@@ -1400,13 +1400,47 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     return lines.join('\n');
   };
 
+  // رفع ملف واحد كأصل مونتاج (فيديو/صورة ستايل) بـfetch عادي ويرجّع بيانات الأصل — للحالة اللي العميل بيرفع فيها الفيديو بزرار "رفع فيديو" العادي ويطلب مونتاج
+  const registerMontageAsset = async (blob, name, seq) => {
+    const fd = new FormData(); fd.append('seq', String(seq)); fd.append('video', blob, name);
+    const r = await fetch('/api/agent/montage-upload', { method: 'POST', headers: tokenHeader(), body: fd });
+    let d = {}; try { d = await r.json(); } catch { /* ignore */ }
+    if (!r.ok || !d.id) throw new Error(d.message || d.error || 'upload failed');
+    return { key: `att_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, id: d.id, name, durationSec: d.durationSec, hasAudio: d.hasAudio, status: 'ready', progress: 100 };
+  };
+  // data: URL → Blob من غير fetch (الـCSP بتاعة الموقع بتمنع fetch لـdata:)
+  const dataUrlToBlob = (u) => { const m = /^data:([^;]+);base64,(.*)$/.exec(String(u)); if (!m) throw new Error('bad image'); const bin = atob(m[2]); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); return new Blob([arr], { type: m[1] }); };
+  const MONTAGE_INTENT = /مونتاج|montage|موشن|motion ?graphic|جرافيك|انتقالات|transitions?|كابشن|captions?/i;
+
   const sendMessage = async (overrideText) => {
     const textToSend = overrideText !== undefined ? overrideText : input;
-    const readyMontage = montageAssets.filter(x => x.status === 'ready' && x.id);
+    let readyMontage = montageAssets.filter(x => x.status === 'ready' && x.id);
     if (montageAssets.some(x => x.status === 'uploading')) { setError(lang === 'ar' ? 'استنى لحد ما الفيديوهات تخلص رفع' : 'Wait until the videos finish uploading'); return; }
     if (!textToSend.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile && !readyMontage.length) return;
     if (loading || activeJobRef.current) return; // ✅ FIX: منع إرسال رسالة تانية لحد ما الحالية تخلص، عشان محدش يبعت "ابدأ" مرتين ويعمل تضارب رندر
     setError('');
+    // العميل رفع الفيديو بزرار "رفع فيديو" العادي (مش زرار المونتاج) وطلب مونتاج/موشن جرافيكس: بنسجّل الفيديو (والصور المرفقة كمراجع ستايل) كأصول مونتاج
+    // قبل الإرسال، عشان الايجنت يشوفها ويحلّلها ويقدر يبدأ المونتاج بدل ما يلف في أسئلة
+    let styleRegistered = false, videoRegistered = false;
+    if (uploadedVideoFile && MONTAGE_INTENT.test(textToSend) && !readyMontage.some(x => x.name === (uploadedVideoFile.name || 'video.mp4'))) {
+      setLoading(true);
+      try {
+        const base = Date.now() * 100;
+        const added = [await registerMontageAsset(uploadedVideoFile, uploadedVideoFile.name || 'video.mp4', base)];
+        videoRegistered = true;
+        if (imageFiles.length) {
+          for (let i = 0; i < Math.min(4, imageFiles.length); i++) {
+            try { added.push(await registerMontageAsset(dataUrlToBlob(imageFiles[i]), `style_${i + 1}.png`, base + 1 + i)); styleRegistered = true; } catch { /* صورة فاشلة: بتتبعت كصورة عادية */ }
+          }
+        }
+        setMontageAssets(a => [...a, ...added.map(x => ({ ...x, kind: /^style_/.test(x.name) ? 'image' : 'video' }))]);
+        readyMontage = [...readyMontage, ...added];
+      } catch (e) {
+        setLoading(false);
+        setError(lang === 'ar' ? 'مقدرتش أرفع الفيديو للمونتاج — جرب تاني أو استخدم زرار "رفع فيديوهات للمونتاج".' : 'Could not upload the video for the montage — try again or use the "Upload videos for montage" button.');
+        return;
+      }
+    }
     const attachmentLabel = voiceFile
       ? (lang === 'ar' ? 'رسالة صوتية' : 'Voice message')
       : imageFiles.length
@@ -1420,9 +1454,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
-    const currentVoice = voiceFile, currentImages = imageFiles;
+    const currentVoice = voiceFile, currentImages = styleRegistered ? [] : imageFiles; // صور الستايل اتسجّلت كمراجع مونتاج — مش بتتبعت كصور عادية كمان
     setInput(''); setVoiceFile(null); setImageFiles([]);
-    if (uploadedVideoFile) setVideoSentOnce(true);
+    if (videoRegistered) { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }
+    else if (uploadedVideoFile) setVideoSentOnce(true);
     setLoading(true);
 
     try {
@@ -1439,7 +1474,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         photoAlreadyUploaded: !!lastUploadedPhotos.length,
         voiceAlreadyUploaded: !!lastUploadedVoiceUrl,
         lastVoiceUrl: lastUploadedVoiceUrl || undefined,
-        videoAlreadyUploaded: !!uploadedVideoFile,
+        videoAlreadyUploaded: !!uploadedVideoFile && !videoRegistered,
         videoDurationSec: uploadedVideoDurationSec || undefined,
         hasStructuredScript: !!lastParsedStructuredScenes,
         hasAdsScenePlan: !!lastParsedAdsScenePlan,

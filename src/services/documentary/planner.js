@@ -275,6 +275,8 @@ export async function planBeats({ beats, language = 'en', topic = '', onProgress
   }
   await ensureRichScenes({ beats, plans, language, ask });
   enforcePacing(plans, beats);
+  // لو الإيقاع شال خريطة/لوحة (مشهدين نصيين ورا بعض مثلًا) نعوّضها في مكان تاني مناسب بنفس شروط التأريض، وبعدها نطبّق الإيقاع تاني
+  try { await ensureRichScenes({ beats, plans, language, ask }); enforcePacing(plans, beats); } catch (e) { console.warn('[Documentary/planner] refill pass failed:', e.message); }
   try { await ensureArchiveShare({ beats, plans, topic: topic || title, language, ask }); } catch (e) { console.warn('[Documentary/planner] archive upgrade failed:', e.message); }
   try { injectMotion({ beats, plans }); } catch (e) { console.warn('[Documentary/planner] motion injection failed:', e.message); }
   return { title, mood, plans };
@@ -438,11 +440,17 @@ export async function ensureArchiveShare({ beats, plans, topic = '', language = 
 // قواعد الإيقاع: مفيش نصّين ورا بعض، نسبة القوالب، حد أدنى لمدة القوالب، انتقال بداية الفصل
 export function enforcePacing(plans, beats) {
   let templated = 0, prevText = false;
+  const demote = (k) => { const q = plans[k]; q.visual = 'stock'; q.queries = q.queries.length ? q.queries : fallbackBeatPlan(beats[k]).queries; q.template = null; };
+  // الخرائط ولوحات الصور أغلى مشاهد في الفيلم: لو لزقت في مشهد نصي أضعف (kinetic/quote/...) نشيل الأضعف هو بدل ما نخسرها
+  const valuable = (q) => ['map_reveal', 'photo_board'].includes(q.template?.name);
+  const weak = (k) => plans[k].visual === 'text' && !valuable(plans[k]) && plans[k].template?.name !== 'title_card' && !plans[k].chapter && !plans[k].keep && !beats[k].hook;
   plans.forEach((p, i) => {
     const b = beats[i];
     const isText = p.visual === 'text';
-    if (isText && (prevText || b.dur < ({ map_reveal: 3.2, photo_board: 3.6, icon_pop: 3.2, vs_card: 2.8, percent_ring: 2.8 }[p.template?.name] || 2.6))) { // حوّل لستوك + اعتبر القالب overlay لو ينفع
-      p.visual = 'stock'; p.queries = p.queries.length ? p.queries : fallbackBeatPlan(b).queries; p.template = null;
+    const minDur = ({ map_reveal: 3.2, photo_board: 3.6, icon_pop: 3.2, vs_card: 2.8, percent_ring: 2.8 }[p.template?.name] || 2.6);
+    if (isText && prevText && b.dur >= minDur && valuable(p) && i > 0 && weak(i - 1)) { demote(i - 1); templated--; prevText = false; }
+    if (isText && (prevText || b.dur < minDur)) { // حوّل لستوك + اعتبر القالب overlay لو ينفع
+      demote(i);
     }
     if (p.visual === 'text') templated++;
     if (b.dur < 2.2) p.overlays = [];
