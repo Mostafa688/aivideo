@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
+import { visionDiagnostics } from './visionService.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
@@ -528,6 +529,18 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel, mediaLedger, montageAssetIds, lastVoiceUrl } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+    // تشخيص موديلات الرؤية: العميل بيكتب /vision-check في الشات فيطلع كل موديل شغّال ولا لأ وليه (من غير مفاتيح)
+    if (message.trim() === '/vision-check') {
+      try {
+        const d = await visionDiagnostics();
+        const lines = [`Vision check — Groq key: ${d.groqKey ? 'yes' : 'NO'}, Anthropic key: ${d.anthropicKey ? 'yes' : 'no'}, any working: ${d.anyWorking ? 'YES' : 'NO'}`,
+          d.groqModels ? `Groq models listed: ${d.groqModels.length}` : 'Groq models list: unavailable',
+          ...d.tried.map(t => `${t.ok ? 'OK ' : 'FAIL'} ${t.provider}/${t.model}${t.status ? ' [' + t.status + ']' : ''} ${String(t.detail || '').replace(/\s+/g, ' ').slice(0, 160)}`),
+          d.lastError ? `Last real failure: ${d.lastError}` : ''];
+        return res.json({ reply: lines.filter(Boolean).join('\n') });
+      } catch (e) { return res.json({ reply: `Vision check failed: ${e.message}` }); }
+    }
 
     // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual
     // Prompt/Narration...)؟ لو أيوه، بنستخرج المشاهد هنا بالـ regex ونديها للإيجنت كـ "حقيقة
