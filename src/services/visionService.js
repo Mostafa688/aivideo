@@ -15,7 +15,7 @@ const ANTHROPIC_VISION_MODEL = process.env.ANTHROPIC_VISION_MODEL || 'claude-hai
 
 let workingModel = null;      // موديل Groq اللي نجح آخر مرة
 let discovered = null;        // { at, ids }
-let lastReport = null;
+let lastError = null;         // آخر فشل حقيقي (للتشخيص)
 
 async function groqModelIds() {
   if (discovered && Date.now() - discovered.at < 60 * 60 * 1000) return discovered.ids;
@@ -102,6 +102,7 @@ export async function groqVision(payload, { timeoutMs = 25000 } = {}) {
     try { return await anthropicVision(payload, Math.max(timeoutMs, 30000)); }
     catch (e) { failures.push(`anthropic ${ANTHROPIC_VISION_MODEL}: ${e.message}`); console.warn('[Vision] anthropic fallback failed:', e.message); }
   }
+  lastError = `${new Date().toISOString()} ${failures.join(' | ')}`.slice(0, 500);
   throw new Error(`vision failed — ${failures.join(' | ')}`.slice(0, 700));
 }
 
@@ -120,7 +121,7 @@ export async function toVisionDataUrl(input, { max = 1280 } = {}) {
 
 /** تشخيص للأدمن: بيجرّب كل موديل لوحده على صورة صغيرة ويقول مين شغّال ومين لأ وليه */
 export async function visionDiagnostics() {
-  const out = { groqKey: !!process.env.GROQ_API_KEY, anthropicKey: !!process.env.ANTHROPIC_API_KEY, groqModels: null, tried: [], workingModel };
+  const out = { groqKey: !!process.env.GROQ_API_KEY, anthropicKey: !!process.env.ANTHROPIC_API_KEY, groqModels: null, tried: [], workingModel, lastError };
   const img = 'data:image/jpeg;base64,' + (await sharp({ create: { width: 64, height: 64, channels: 3, background: '#cc3333' } }).jpeg().toBuffer()).toString('base64');
   const payload = { max_tokens: 20, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: 'What colour is this image? One word.' }, { type: 'image_url', image_url: { url: img } }] }] };
   if (out.groqKey) {
