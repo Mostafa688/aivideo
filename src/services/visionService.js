@@ -95,7 +95,12 @@ async function replicateVisionOne(slug, payload, timeoutMs) {
     method: 'POST', signal: AbortSignal.timeout(timeoutMs), headers: { ...headers, Prefer: 'wait=45' },
     body: JSON.stringify({ input: toReplicateInput(payload, slug) }),
   });
-  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 300);
+    const err = new Error(`${res.status} ${body.slice(0, 200)}`);
+    if (res.status === 429) { err.rateLimited = true; err.retryAfterMs = retryAfterMs(body, res.headers.get('retry-after')); }
+    throw err;
+  }
   let data = await res.json();
   const deadline = Date.now() + timeoutMs;
   while (data.status && !['succeeded', 'failed', 'canceled'].includes(data.status) && Date.now() < deadline) {
@@ -110,11 +115,37 @@ async function replicateVisionOne(slug, payload, timeoutMs) {
   return { choices: [{ message: { content: text } }], _provider: 'replicate', _model: slug };
 }
 
+// Replicate بيحدّ الحساب اللي رصيده أقل من $5 بـ6 طلبات في الدقيقة وطلب واحد في نفس اللحظة (429) — بنخلّي نداءات الرؤية في طابور
+// بفاصل ~10.5 ثانية بعد أول 429 (ومن غير تأخير لو الحساب مش محدود)، ونعيد المحاولة بعد المدة اللي Replicate بيطلبها.
+let replicateGapUntil = 0, replicateLast = 0, replicateChain = Promise.resolve();
+const REPLICATE_GAP_MS = Number(process.env.REPLICATE_VISION_GAP_MS || 10500);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function retryAfterMs(body, header) {
+  const h = Number(header); if (Number.isFinite(h) && h > 0) return Math.min(30000, h * 1000);
+  const m = /retry_after"?\s*[:=]\s*(\d+(?:\.\d+)?)/i.exec(body || '') || /in (\d+(?:\.\d+)?) seconds?/i.exec(body || '');
+  return m ? Math.min(30000, Math.ceil(Number(m[1]) * 1000) + 500) : 11000;
+}
+function scheduleReplicate(fn) {
+  const run = replicateChain.then(async () => {
+    if (Date.now() < replicateGapUntil) { const wait = replicateLast + REPLICATE_GAP_MS - Date.now(); if (wait > 0) await sleep(wait); }
+    try { return await fn(); } finally { replicateLast = Date.now(); }
+  });
+  replicateChain = run.catch(() => {});
+  return run;
+}
+
 async function replicateVision(payload, timeoutMs, failures) {
   const order = workingReplicate ? [workingReplicate, ...REPLICATE_VISION_MODELS.filter(m => m !== workingReplicate)] : REPLICATE_VISION_MODELS;
   for (const slug of order) {
-    try { const out = await replicateVisionOne(slug, payload, timeoutMs); workingReplicate = slug; return out; }
-    catch (e) { failures.push(`replicate ${slug}: ${e.message}`); console.warn('[Vision] replicate failed:', slug, e.message); }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { const out = await scheduleReplicate(() => replicateVisionOne(slug, payload, timeoutMs)); workingReplicate = slug; return out; }
+      catch (e) {
+        if (e.rateLimited && attempt < 2) { replicateGapUntil = Date.now() + 30 * 60 * 1000; console.warn(`[Vision] replicate rate-limited (${slug}) — waiting ${Math.round((e.retryAfterMs || 11000) / 1000)}s then retrying`); await sleep(e.retryAfterMs || 11000); continue; }
+        failures.push(`replicate ${slug}: ${e.message}`); console.warn('[Vision] replicate failed:', slug, e.message);
+        if (e.rateLimited) return null; // نفس الحد على أي موديل تاني — مفيش فايدة
+        break;
+      }
+    }
   }
   return null;
 }
