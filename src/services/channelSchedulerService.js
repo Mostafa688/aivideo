@@ -18,7 +18,7 @@ import {
   setDailyVideoRunResumeState, claimDailyVideoRunForResume,
 } from './authService.js';
 import { buildChannelProfile, findVideoIdeaCandidates, verifyVidiqKey, callVidiqTool } from './vidiqClientService.js';
-import { getMaxClipSeconds, getFlatCreditCost, getImageCreditCost, getPerSecondCreditCost, getDocumentaryCreditCost } from './creditPricingEngine.js';
+import { getMaxClipSeconds, getFlatCreditCost, getImageCreditCost, getPerSecondCreditCost, getDocumentaryCreditCost, getAiThumbnailCost, AI_THUMBNAIL_SEARCH_CREDITS } from './creditPricingEngine.js';
 import { supportsReferenceImages } from './newImageModelsService.js';
 import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 import { synthesizeNarration, conformVideoDurationToAudio, composeVideoAudio, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer } from './videoAudioService.js';
@@ -1096,7 +1096,7 @@ export async function finalizeChannelRunAfterGeneration(run, channel, idea, vide
   try {
     const owner = await getUserById(channel.user_id);
     const thumbHeaders = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(channel.user_id, owner.email, { channelRun: true }) };
-    thumbnailUrl = await generateChannelThumbnailImage(idea, thumbHeaders);
+    thumbnailUrl = await generateChannelThumbnail(channel, idea, thumbHeaders);
     await setDailyVideoRunThumbnail(run.id, thumbnailUrl);
   } catch (e) {
     console.warn(`[ChannelScheduler] Thumbnail generation failed for run ${run.id} (the rest of the upload package is still delivered):`, e.message);
@@ -1165,7 +1165,7 @@ async function generateChannelThumbnailImage(idea, headers) {
   const prompt = `Create a bold, high-contrast, eye-catching YouTube thumbnail image related to: "${idea.title}". Include this exact short text as large, clearly readable ${isArabic ? 'Arabic' : 'English'} typography overlaid on the image: "${hookText}". Professional YouTube thumbnail style, dramatic lighting, vivid colors. The thumbnail must comply with YouTube's Community Guidelines and monetization policies — no violent, gory, sexual, hateful, or misleading imagery.`;
   const imgRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, {
     method: 'POST', headers,
-    body: JSON.stringify({ model: 'nano_banana_2', prompt, aspectRatio: '16:9' }),
+    body: JSON.stringify({ model: 'nano_banana_2_1', prompt, aspectRatio: '16:9' }),
   });
   const imgJobData = await imgRes.json();
   if (!imgRes.ok) throw new Error(imgJobData.error || 'Thumbnail image generation failed');
@@ -1175,8 +1175,39 @@ async function generateChannelThumbnailImage(idea, headers) {
   return thumbnailUrl;
 }
 
+// قنوات الأفلام الوثائقية: نفس "صورة مصغّرة بالـAI" بتاعة حزمة يوتيوب في الاستوديو — بحث عن صور مصغّرة حقيقية في
+// نفس المجال + فهم الـCTR وسياسات يوتيوب + Nano Banana 2.1 (بيتخصم صورة + 1 كريديت لكل بحث ناجح، ورجوع كامل لو فشل).
+// لو أي حاجة فيها فشلت (رصيد، بحث، موديل الرؤية…) بنرجع للصورة المصغّرة البسيطة بنفس الموديل بدل ما الحزمة تفضل من غير صورة.
+async function generateDocumentaryChannelThumbnail(channel, idea) {
+  const { createAiThumbnail } = await import('./documentary/thumbnailAi.js');
+  const uid = channel.user_id;
+  const cost = getAiThumbnailCost({ researchCached: false });
+  const pay = await chargeCredits(uid, cost.total);
+  if (!pay.success) throw new Error(`insufficient credits for the AI thumbnail (needs ${cost.total}, balance ${pay.remaining})`);
+  let charged = cost.total;
+  try {
+    const language = String(idea.videoLanguage || 'en').toLowerCase().split(/[-_]/)[0];
+    const out = await createAiThumbnail({ title: idea.title, script: [idea.brief, idea.description].filter(Boolean).join('\n').slice(0, 3000), language });
+    const searchesBilled = Math.min(2, out.research?.searchesDone || 0);
+    const back = cost.search - searchesBilled * AI_THUMBNAIL_SEARCH_CREDITS;
+    if (back > 0) { await addCreditsBalance(uid, back).catch(() => {}); charged -= back; }
+    return out.url;
+  } catch (e) {
+    await addCreditsBalance(uid, charged).catch(() => {});
+    throw e;
+  }
+}
+
+async function generateChannelThumbnail(channel, idea, headers) {
+  if ((idea?.contentStyle || channel.content_style) === 'documentary') {
+    try { return await generateDocumentaryChannelThumbnail(channel, idea); }
+    catch (e) { console.warn(`[ChannelScheduler] AI documentary thumbnail failed for channel ${channel.id}, using the simple Nano Banana 2.1 thumbnail instead:`, e.message); }
+  }
+  return generateChannelThumbnailImage(idea, headers);
+}
+
 async function generateAndUploadChannelThumbnail(run, channel, idea, videoId, headers) {
-  const thumbnailUrl = run.thumbnail_url || await generateChannelThumbnailImage(idea, headers);
+  const thumbnailUrl = run.thumbnail_url || await generateChannelThumbnail(channel, idea, headers);
   await uploadThumbnailToYoutube(channel, videoId, thumbnailUrl);
 }
 
