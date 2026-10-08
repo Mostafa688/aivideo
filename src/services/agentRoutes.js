@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
-import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
+import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
@@ -468,6 +468,10 @@ function parseAgentMarkers(rawReply) {
 
 // بسيط جدًا — حماية إضافية ضد إساءة الاستخدام (spam) بدون تعقيد
 const lastRequestAt = new Map(); // userId -> timestamp
+// آخر صور رفعها كل عميل + وصف موديل الرؤية لها (3 ساعات): عشان الرسالة اللي بعدها ("قولي وصف الصورة") الايجنت يفضل شايفها
+const photoDescriptions = new Map(); // userId -> [{ url, description, at }]
+const PHOTO_DESC_TTL_MS = 3 * 3600e3;
+const IMAGE_TALK = /صور|الصور|صورة|image|photo|picture|prompt|بروم|وصف|describe|الشخص|الراجل|المنتج|ده|دي|هذه|هذا|this|that|it\b/i;
 const voiceOwners = new Map(); // userId -> Set(روابط تسجيلات الصوت اللي السيرفر ده سجّلها للعميل ده)
 const consumedVoices = new Set(); // `${userId}:${url}` — تسجيلات اتستخدمت في مونتاج خلاص
 const MIN_INTERVAL_MS = 1500;
@@ -661,6 +665,20 @@ router.post('/chat', authMiddleware, async (req, res) => {
             : labelFor(uploadedPhotoUrls[0]);
           attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `The photo(s) just uploaded are now permanently available at ${uploadedPhotoUrls.length > 1 ? 'these exact URLs, numbered in the exact order they were uploaded' : 'this exact URL'}: ${indexedUrls} — you may use ${uploadedPhotoUrls.length > 1 ? 'them' : 'it'} directly in "referenceImageUrls"/"imageUrl" right now, and ${uploadedPhotoUrls.length > 1 ? 'each of these URLs' : 'this same URL'} will remain valid to cite in ANY future message in this conversation (see the MEDIA LEDGER note if present) if the customer later asks to reuse this exact uploaded photo — never substitute a different, previously-generated image instead of this real uploaded one. If animating one of these photos directly, match "aspectRatio" to that exact photo's own stated ratio above, never a generic default.`;
         }
+        // ✅ FIX (باج حقيقي: صورة رجل بشماغ اتوصفت "منتج" — الايجنت موديل نصي مبيشوفش الصور): بنحلل كل صورة مرفقة
+        // بموديل الرؤية ونديه وصفها الحقيقي، ونحفظه (3 ساعات) عشان الرسايل اللي بعدها
+        try {
+          const descs = await Promise.all(images.map(img => describeAttachedImage(img).catch(e => { console.warn('[Agent] image description failed:', e.message); return null; })));
+          const done = descs.map((d, i) => ({ d, i })).filter(x => x.d);
+          if (done.length) {
+            attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `IMAGE ANALYSIS — what the attached ${images.length > 1 ? 'photos actually show (a vision model looked at them; you cannot see images yourself)' : 'photo actually shows (a vision model looked at it; you cannot see images yourself)'}: ${done.map(({ d, i }) => `${images.length > 1 ? `Photo ${i + 1}: ` : ''}${d}`).join(' | ')}. Base EVERYTHING you say about the image(s) on this analysis only — when asked to describe it, to write a prompt for it, or to continue from it, use these real details (subject, clothing, setting, lighting, style, text) and NEVER invent or guess other details such as products or scenes that are not in the analysis.`;
+            const list = (photoDescriptions.get(userId) || []).filter(x => Date.now() - x.at < PHOTO_DESC_TTL_MS);
+            done.forEach(({ d, i }) => list.push({ url: uploadResults[i]?.url || null, description: d, at: Date.now() }));
+            photoDescriptions.set(userId, list.slice(-6));
+          } else {
+            attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + 'IMAGE ANALYSIS UNAVAILABLE: the customer attached an image but the vision analysis failed. You cannot see it — do NOT describe it or guess what it shows; tell the customer briefly that you could not read the image right now and ask them to describe it in a sentence or to resend it.';
+          }
+        } catch (e) { console.warn('[Agent] image analysis step failed:', e.message); }
         // ✅ NEW: لو العميل رفع صورة مشهد وقال "اعملي نفس المشهد ده" أو أي صيغة مشابهة،
         // نحلل الصورة بالـ vision model ونطلع منها rawPrompt جاهز بدل ما نطلب منه يوصف بنفسه
         const sameSceneIntent = images.length === 1 && /same\s*scene|recreate this|make (a|the) same|make this (a|into a) video|animate this photo|نفس\s*المشهد|زي\s*(الصورة|المشهد)\s*ده|كأنه\s*المشهد|حرك\s*(الصورة|المشهد)\s*دي?/i.test(message || '');
@@ -686,6 +704,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
       } catch (e) {
         return res.status(400).json({ error: e.message });
       }
+    }
+
+    // رسالة بعد رفع صورة (من غير صورة جديدة): نفكّر الايجنت بآخر صورتين اترفعوا ووصفهم الحقيقي
+    if (!images.length && message && IMAGE_TALK.test(String(message))) {
+      const recent = (photoDescriptions.get(userId) || []).filter(x => Date.now() - x.at < PHOTO_DESC_TTL_MS).slice(-2);
+      if (recent.length) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `EARLIER UPLOADED PHOTO(S) — IMAGE ANALYSIS (you cannot see images; a vision model described them when they were uploaded; use ONLY this if the customer refers to "the image/photo"): ${recent.map((x, i) => `${x.url ? `[${x.url}] ` : ''}${x.description}`).join(' | ')}`;
     }
 
     const user = await getUserById(userId).catch(() => null);
