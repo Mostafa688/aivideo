@@ -1254,6 +1254,19 @@ router.post('/chat', authMiddleware, async (req, res) => {
         generateVideo.aspectRatio = uploadedPhotoRatioByUrl.get(generateVideo.imageUrl).videoRatio;
       }
     }
+    // ✅ إعلان من صورة منتج مرفوعة على موديل قوي (wan_3 / seedance_2_5 / omni_flash_1_1): الموديل بيعمل الصوت والفويس أوفر بنفسه ومتزامن،
+    // فالفويس الخارجي (Gemini TTS) ممنوع هنا — الايجنت أحيانًا بيبعته غصب عنه وده كان بيقصّر الفيديو على طول الصوت (10ث → 7ث).
+    // بنسمح بيه بس لو العميل طلب صوت خارجي/منفصل صراحة. الفويس الخارجي أصلًا للفيديوهات المتعددة المشاهد (دمج كليبات).
+    if (generateVideo && generateVideo.narrationScript && ['wan_3', 'seedance_2_5', 'omni_flash_1_1'].includes(generateVideo.model)) {
+      const fromUpload = [generateVideo.imageUrl, ...(generateVideo.referenceImageUrls || [])].some(u => typeof u === 'string' && u.includes('/agent-uploads/'));
+      const recentUserText = [message, ...(Array.isArray(history) ? history.filter(m => m?.role === 'user').slice(-3).map(m => m.content) : [])].filter(t => typeof t === 'string').join(' ');
+      const wantsExternalVoice = /(external|separate|tts|gemini).{0,40}(voice|narrat)|(voice|narrat).{0,40}(external|separate|tts|gemini)|(فويس|صوت|راوي|تعليق).{0,25}(خارجي|منفصل|جيميني)|(خارجي|منفصل).{0,25}(فويس|صوت|راوي|تعليق)/i.test(recentUserText);
+      if (fromUpload && !wantsExternalVoice) {
+        console.warn('[Agent] Dropped external narration on a single-clip product ad — the engine generates its own voice/sound');
+        delete generateVideo.narrationScript;
+        delete generateVideo.addCaptions;
+      }
+    }
     // ✅ NEW: تنضيف حقول السرد/الكابشن/الموسيقى الجديدة قبل ما توصل للراوت
     if (generateVideo) {
       if (typeof generateVideo.narrationScript !== 'string' || !generateVideo.narrationScript.trim()) {
