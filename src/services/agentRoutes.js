@@ -1288,11 +1288,18 @@ router.post('/chat', authMiddleware, async (req, res) => {
       const recentText = [message, ...(Array.isArray(history) ? history.filter(m => m?.role === 'user').slice(-4).map(m => m.content) : []), generateVideo.prompt].filter(t => typeof t === 'string').join(' ');
       if (adUrls.length && /(إعلان|اعلان|دعاية|ترويج|\bads?\b|advert|commercial|promo|product|منتج)/i.test(recentText)) {
         try {
+          // seedance_2_5 / omni_flash_1_1: صورة المنتج مرجع للشكل بس (مش أول فريم) — الفيديو يبدأ بحركة مباشرة. wan_3 بياخد الصورة كأول فريم.
+          const referenceMode = generateVideo.model === 'wan_3' ? 'first_frame' : 'reference';
+          if (referenceMode === 'reference') {
+            const rc = NEW_VIDEO_MODELS[generateVideo.model]?.refCaps;
+            const refs = [...new Set([generateVideo.imageUrl, ...(generateVideo.referenceImageUrls || [])].filter(u => typeof u === 'string' && u))].slice(0, rc?.images || 1);
+            if (refs.length) { generateVideo.referenceImageUrls = refs; delete generateVideo.imageUrl; delete generateVideo.lastFrameUrl; }
+          }
           const known = (photoDescriptions.get(userId) || []).filter(x => adUrls.includes(x.url)).map(x => x.description);
           const composed = await composeProductAdPrompt({
             draft: generateVideo.prompt, productDescription: known.join(' | '),
             durationSec: Math.round(Number(generateVideo.durationSec) || 10), aspectRatio: generateVideo.aspectRatio || '9:16',
-            region: userRegion, conversation: Array.isArray(history) ? [...history.slice(-7), { role: 'user', content: message }] : [{ role: 'user', content: message }],
+            region: userRegion, referenceMode, conversation: Array.isArray(history) ? [...history.slice(-7), { role: 'user', content: message }] : [{ role: 'user', content: message }],
           });
           generateVideo.prompt = composed.prompt;
           if (composed.sound === 'none' || composed.sound === 'silent_for_own_voiceover') {
