@@ -2,16 +2,25 @@
 // أو من مجموعات معروفة بإنها ملك عام (Prelinger وNASA). التنزيل بيتم بـffmpeg (قص الجزء المطلوب بس عن بُعد).
 import { fetchJson, stripHtml, classifyLicense } from './common.js';
 
-const PD_COLLECTIONS = new Set(['prelinger', 'nasa', 'nasaaudiovideo']);
+const PD_COLLECTIONS = new Set(['prelinger', 'fedflix', 'nasa', 'nasaaudiovideo']);
+
+const IA_FIELDS = '&fl[]=identifier&fl[]=title&fl[]=description&fl[]=licenseurl&fl[]=collection&fl[]=year';
+const iaUrl = (q, rows) => 'https://archive.org/advancedsearch.php?' + new URLSearchParams({ q, rows: String(rows), page: '1', output: 'json', sort: 'downloads desc' }) + IA_FIELDS;
 
 export async function searchInternetArchive(query, { limit = 10 } = {}, deps = {}) {
   const get = deps.fetchJson || fetchJson;
-  const q = `(${query}) AND mediatype:(movies)`;
-  const url = 'https://archive.org/advancedsearch.php?' + new URLSearchParams({ q, rows: String(limit * 3), page: '1', output: 'json', sort: 'downloads desc' })
-    + '&fl[]=identifier&fl[]=title&fl[]=description&fl[]=licenseurl&fl[]=collection&fl[]=year';
-  const d = await get(url);
+  // بحث 1: جوه مجموعات الملك العام المعروفة بس (النتايج كلها صالحة للاستخدام) — ده اللي بيجيب عدد أرشيفي حقيقي.
+  // بحث 2: بحث عام زي الأول (بيلقط أي فيلم ليه ترخيص صريح) — بنجمع الاتنين من غير تكرار.
+  const pdCols = [...PD_COLLECTIONS].map(c => `collection:${c}`).join(' OR ');
+  const [pdRes, anyRes] = await Promise.all([
+    get(iaUrl(`(${query}) AND mediatype:(movies) AND (${pdCols})`, limit * 3)).catch(() => null),
+    get(iaUrl(`(${query}) AND mediatype:(movies)`, limit * 3)).catch(() => null),
+  ]);
   const out = [];
-  for (const doc of d?.response?.docs || []) {
+  const seen = new Set();
+  for (const doc of [...(pdRes?.response?.docs || []), ...(anyRes?.response?.docs || [])]) {
+    if (seen.has(doc.identifier)) continue;
+    seen.add(doc.identifier);
     const cols = [].concat(doc.collection || []).map(x => String(x).toLowerCase());
     const lic = doc.licenseurl ? classifyLicense(doc.licenseurl) : { ok: false };
     const pdCol = cols.some(c => PD_COLLECTIONS.has(c));

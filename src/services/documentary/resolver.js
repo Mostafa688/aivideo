@@ -61,6 +61,7 @@ async function llmBoardPick(items, deps) {
 }
 
 const kindsFor = (plan, group) => {
+  if (group === 'archive') return ['video', 'image']; // أرشيف: صور تاريخية مهمة زي الأفلام — الأفضلية بتتحدد بالـscore (wantKind)
   if (plan.kind === 'video') return ['video'];
   if (plan.kind === 'image') return ['image'];
   return ['video', 'image'];

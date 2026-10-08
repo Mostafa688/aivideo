@@ -13,7 +13,7 @@ import { ffmpeg, probeVideo, probeDuration } from '../ff.js';
 // خطوط المصادر حسب نية اللقطة: stock = لقطات عامة (B-roll) | archive = أرشيف تاريخي/شخصيات/أحداث | nasa = فضاء
 export const SOURCE_GROUPS = {
   stock: ['pexels', 'pixabay'],
-  archive: ['wikimedia', 'archive', 'nasa', 'pexels'],
+  archive: ['wikimedia', 'archive', 'nasa'], // أرشيف حقيقي بس — لو مالقاش كفاية الريزولفر بيرجع لستوك عام لوحده
   nasa: ['nasa', 'wikimedia', 'pexels'],
   any: ['pexels', 'wikimedia', 'archive', 'nasa', 'pixabay'],
 };
