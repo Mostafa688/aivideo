@@ -5,7 +5,7 @@
 import path from 'path';
 import { ffmpeg } from './ff.js';
 import { renderOverlay, FPS } from './overlayRenderer.js';
-import { gradeFilter, getTheme } from './themes.js';
+import { gradeFilter, getTheme, footageSafeTheme } from './themes.js';
 
 export const ENCODE_ARGS = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-g', '30', '-keyint_min', '30', '-sc_threshold', '0', '-an', '-movflags', '+faststart'];
 
@@ -84,7 +84,7 @@ export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rt
     const last = filters.pop();
     // dimWindows: تعتيم بس وقت ظهور النصوص (لما الطبقات فوق فيديو طويل كامل)، غير كده على المقطع كله
     const en = Array.isArray(beat.dimWindows) && beat.dimWindows.length ? `:enable='${beat.dimWindows.map(([a, b]) => `between(t,${Number(a).toFixed(2)},${Number(b).toFixed(2)})`).join('+')}'` : '';
-    filters.push(last.replace(/\[base\]$/, `,eq=brightness=-0.2:contrast=0.97${en}[base]`));
+    filters.push(last.replace(/\[base\]$/, `,eq=brightness=-0.26:contrast=0.97${en}[base]`));
   }
 
   // طبقات الموشن جرافيك
@@ -96,7 +96,7 @@ export async function buildBeatClip({ beat, w, h, theme, bgPath, lang = 'en', rt
     const odur = Math.min(ov.dur || dur - (ov.at || 0), dur - (ov.at || 0));
     if (odur < 0.5) continue;
     const at = Math.max(0, ov.at || 0);
-    const r = await renderOverlay({ template: ov.template, data: ov.data, dur: odur, w, h, theme: th, themeName: theme, lang, rtl, dir: path.join(workDir, `ov_${index}_${i}`), outline: !!beat.textOutline });
+    const r = await renderOverlay({ template: ov.template, data: ov.data, dur: odur, w, h, theme: v.kind === 'background' ? th : footageSafeTheme(th), themeName: theme, lang, rtl, dir: path.join(workDir, `ov_${index}_${i}`), outline: !!beat.textOutline });
     const iIn = inputIndex++, iHold = inputIndex++, iOut = inputIndex++;
     inputs.push('-itsoffset', at.toFixed(3), '-framerate', String(FPS), '-start_number', '0', '-i', r.inPattern);
     inputs.push('-itsoffset', (at + r.tHold).toFixed(3), '-loop', '1', '-framerate', String(FPS), '-t', (r.tOut - r.tHold + 0.04).toFixed(3), '-i', r.holdFile);

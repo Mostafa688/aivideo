@@ -24,6 +24,31 @@ export const THEMES = {
 
 export const getTheme = (name) => THEMES[name] || THEMES.blue;
 
+// ── ألوان آمنة فوق اللقطات الحقيقية: ثيمات vintage/light نصها غامق (متصمم لخلفية فاتحة) فبيختفي فوق لقطة معتّمة — بنقلبه لنص فاتح
+// ولوحات غامقة، وبنفتّح الألوان الباهتة (muted/accent) عشان تتقرا على أي لقطة. الخلفيات المرسومة (visual: background) بتفضل بثيمها الأصلي.
+const hexRgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(h || '').trim()); if (!m) return null; const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const lumOf = (h) => { const c = hexRgb(h); if (!c) return 1; const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+const toHex = (c) => '#' + c.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+const lighten = (h, k) => { const c = hexRgb(h); return c ? toHex(c.map(v => v + (255 - v) * k)) : h; };
+// لون غامق → نفس الدرجة بس فاتحة وزاهية (مش رمادية) عشان تبان فوق اللقطة
+const vivid = (h) => {
+  const c = hexRgb(h); if (!c) return h;
+  const [r, g, b] = c.map(v => v / 255); const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let hue = 0; if (d) hue = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; hue = (hue * 60 + 360) % 360;
+  const sat = Math.max(0.7, d ? d / (1 - Math.abs(mx + mn - 1)) : 0), l = 0.64;
+  const k = (n) => (n + hue / 30) % 12, a = sat * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return toHex([f(0) * 255, f(8) * 255, f(4) * 255]);
+};
+export function footageSafeTheme(th) {
+  const out = { ...th };
+  if (lumOf(th.text) < 0.4) { // نص غامق
+    out.text = '#ffffff'; out.muted = '#ece6d8';
+    out.panel = 'rgba(10,9,8,0.82)'; out.panelStroke = 'rgba(255,255,255,0.28)';
+  } else if (lumOf(th.muted) < 0.45) out.muted = lighten(th.muted, 0.45);
+  for (const k of ['accent', 'accent2']) if (lumOf(th[k]) < 0.3) out[k] = vivid(th[k]);
+  return out;
+}
+
 // فلتر ffmpeg للتدرّج اللوني على اللقطات (أرشيف أبيض/أسود، سينمائي، دافئ...). null = من غير تغيير
 export function gradeFilter(grade) {
   switch (grade) {
