@@ -1172,6 +1172,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
         ['luma', /luma[\s_-]*ray[\s_-]*2[\s_-]*540/, 'luma_ray2_540p'],
         ['luma', /luma[\s_-]*ray[\s_-]*2[\s_-]*720/, 'luma_ray2_720p'],
         ['pixverse', /pixverse/, 'pixverse_v4_5'],
+        ['pvideo', /\bp[\s_-]*video[\s_-]*animate/, 'prunaai_p_video_animate'],
         ['pvideo', /\bp[\s_-]+video[\s_-]*2\b/, 'prunaai_p_video_2'],
         ['pvideo', /(prunaai|\bp[\s_-]+video\b)/, 'prunaai_p_video'],
         ['omni', /(omni[\s_-]*flash|gemini[\s_-]*omni)/, 'omni_flash_1_1'],

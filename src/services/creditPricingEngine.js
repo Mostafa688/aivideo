@@ -148,6 +148,11 @@ export const REPLICATE_MODEL_COSTS = {
   // Decart المباشرة بتعلن دعم لحد 30 دقيقة، وده سقف عملي معقول (مؤكد عبر بحث ويب، راجع
   // newVideoModelsService.js) — السعر $0.04/ثانية من تصريح العميل نفسه، لسه مش مؤكد من صفحة
   // الـPricing مباشرة (مفيش سكرين شوت لصفحة السعر بالتحديد)
+  // ✅ NEW (طلب العميل، سكرين شوت صفحة الموديل على Replicate): prunaai/p-video-animate — "نقل أداء":
+  // فيديو مصدر (حركة + كلام) + صورة شخصية جديدة → نفس الأداء بالشخصية/المكان الجديد. السعر لكل ثانية
+  // من الفيديو الناتج (= مدة فيديو المصدر): 720p $0.03، 1080p $0.06. maxClipSec سقف أمان مننا (مفيش حد مؤكد في الصفحة)
+  prunaai_p_video_animate: { label: 'P-Video Animate (performance transfer)', unit: 'second', usdCost: 0.03, maxClipSec: 60,
+                       tiers: { '720p': 0.03, '1080p': 0.06 } },
   decart_lucy_edit_2: { label: 'Lucy Edit 2', unit: 'second', usdCost: 0.04, maxClipSec: 1800 },
 
   // ✅ CONFIRMED (سكرين شوت العميل لصفحة الـinput schema الحقيقية بعد كده): Kling Video 3.0

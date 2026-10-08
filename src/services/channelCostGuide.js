@@ -19,7 +19,7 @@ function defaultResolutionOf(modelKey) {
 
 export function buildChannelCostGuide(channel, balance) {
   const animationModels = Object.keys(NEW_VIDEO_MODELS)
-    .filter(k => NEW_VIDEO_MODELS[k].supportsImageInput && REPLICATE_MODEL_COSTS[k]?.unit === 'second')
+    .filter(k => NEW_VIDEO_MODELS[k].supportsImageInput && !NEW_VIDEO_MODELS[k].performanceTransfer && REPLICATE_MODEL_COSTS[k]?.unit === 'second')
     .map(k => {
       const c = REPLICATE_MODEL_COSTS[k];
       return {

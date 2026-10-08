@@ -35,6 +35,7 @@ import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
 import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureVideoDurationSec, validateReferenceInputs } from './services/newVideoModelsService.js';
+import { uploadUserSourceVideoToR2 } from './services/audioVideoService.js';
 import { mergeVideos } from './services/videoMergeService.js';
 import { finishVideos } from './services/montage/postProduction.js';
 import { analyzeActiveSpeaker, estimateAnalysisCreditCost } from './services/videoAnalysisService.js';
@@ -2987,7 +2988,7 @@ app.get('/api/images/generate-status/:jobId', authMiddleware, (req, res) => {
 
 // ── New Video Models Routes ────────────────────────────────────────────────
 app.get('/api/videos/models', authMiddleware, (req, res) => {
-  const models = Object.keys(NEW_VIDEO_MODELS).map(key => ({
+  const models = Object.keys(NEW_VIDEO_MODELS).filter(key => !NEW_VIDEO_MODELS[key].performanceTransfer).map(key => ({
     key,
     label: REPLICATE_MODEL_COSTS[key]?.label || key,
     tiers: getQualityTiers(key),
@@ -3027,7 +3028,14 @@ const MUSIC_CREDIT_FLAT = getFlatCreditCost('compose_audio');
 app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res) => {
   let { model, prompt, imageUrl, sourceVideoUrl, aspectRatio, durationSec, tier, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood, lastFrameUrl, generateAudio } = req.body;
   if (!model || !NEW_VIDEO_MODELS[model]) return res.status(400).json({ error: 'unknown model' });
-  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+  // نقل الأداء (prunaai_p_video_animate): فيديو مصدر + صورة شخصية معًا، والبرومبت اختياري (توجيه إضافي بس)
+  const isPerfTransfer = !!NEW_VIDEO_MODELS[model].performanceTransfer;
+  const httpUrl = (u) => typeof u === 'string' && /^https?:\/\//i.test(u.trim());
+  if (isPerfTransfer) {
+    if (!httpUrl(sourceVideoUrl) || !httpUrl(imageUrl)) return res.status(400).json({ error: 'performance_transfer_needs_inputs', message: 'This engine needs BOTH a source video (the motion + speech) and a character image.' });
+    sourceVideoUrl = sourceVideoUrl.trim(); imageUrl = imageUrl.trim();
+    prompt = typeof prompt === 'string' ? prompt : '';
+  } else if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
   // ✅ NEW: مدخلات مرجعية (صور/فيديوهات/صوت مرجعي + آخر فريم) للموديلات اللي الـschema بتاعها
   // بيدعمها فعلاً (seedance_2_5، omni_flash_1_1) — بتتحقق كلها هنا قبل أي خصم كريديت
   const cleanUrlList = (v) => (Array.isArray(v) ? v : []).filter(u => typeof u === 'string' && /^https?:\/\//i.test(u.trim())).map(u => u.trim()).filter((u, i, a) => a.indexOf(u) === i);
@@ -3063,11 +3071,15 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
     } catch (e) {
       return res.status(400).json({ error: 'source_video_probe_failed', message: `Could not read the source video: ${e.message}` });
     }
-    model = sourceVideoDurationSec <= 10 ? 'omni_flash_1_1' : 'decart_lucy_edit_2';
+    if (isPerfTransfer) {
+      const maxPerf = getMaxClipSeconds(model);
+      if (maxPerf && sourceVideoDurationSec > maxPerf + 0.5) return res.status(400).json({ error: 'source_video_too_long', message: `This engine supports source videos up to ${maxPerf} seconds — yours is ${Math.round(sourceVideoDurationSec)}s. Trim it and try again.` });
+      if (sourceVideoDurationSec < 1) return res.status(400).json({ error: 'source_video_too_short', message: 'The source video is too short.' });
+    } else model = sourceVideoDurationSec <= 10 ? 'omni_flash_1_1' : 'decart_lucy_edit_2';
     // ✅ NEW (طلب العميل: "الفيديو يكون أقل من 200 ميجا زي ما Replicate بيقول وتأكد من كده"):
     // decart/lucy-edit-2's الحد الحقيقي المعلن هو حجم الملف (200MB)، مش مدة زمنية — نتحقق
     // فعليًا بـHEAD request قبل ما نبدأ أي حاجة (تحصيل كريديت أو تحليل)، مش بس نذكره كلام
-    if (model === 'decart_lucy_edit_2') {
+    if (!isPerfTransfer && model === 'decart_lucy_edit_2') {
       try {
         const headRes = await fetch(sourceVideoUrl, { method: 'HEAD' });
         const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
@@ -3088,7 +3100,7 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
   if ((vidUser?.plan || 'free') === 'free') {
     return res.status(403).json({ error: 'no_access', message: 'Free credits can only be used on Model 2 (Real Footage). Top up credits to unlock this video model.', show_upgrade: true });
   }
-  const modCheck = await checkContentSafety(prompt);
+  const modCheck = prompt?.trim() ? await checkContentSafety(prompt) : { unsafe: false };
   if (modCheck.unsafe) {
     return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar, category: modCheck.category });
   }
@@ -3193,6 +3205,30 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       scheduleRenderJobCleanup(jobId);
     }
   })();
+});
+
+// رفع فيديو العميل كمصدر لنقل الأداء (prunaai_p_video_animate): بنقيس مدته، نتأكد من السقف، ونرفعه على R2 برابط عام
+app.post('/api/videos/upload-source', authMiddleware, renderLimiter, videoUpload.single('video'), async (req, res) => {
+  let tmp = null;
+  try {
+    const user = await getUserById(req.user.userId);
+    if ((user?.plan || 'free') === 'free') return res.status(403).json({ error: 'no_access', message: 'Top up credits to unlock this video engine.', show_upgrade: true });
+    if (!req.file?.buffer?.length || req.file.buffer.length < 1000) return res.status(400).json({ error: 'video file is required' });
+    const dir = join(process.cwd(), 'outputs', 'video_edit_tmp');
+    fs.mkdirSync(dir, { recursive: true });
+    tmp = join(dir, `src_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp4`);
+    fs.writeFileSync(tmp, req.file.buffer);
+    let durationSec = 0;
+    try { durationSec = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmp}"`, { encoding: 'utf8' }).trim()); } catch { /* handled below */ }
+    if (!durationSec) return res.status(400).json({ error: 'Could not read this video — try an MP4 file.' });
+    const maxSec = getMaxClipSeconds('prunaai_p_video_animate');
+    if (maxSec && durationSec > maxSec + 0.5) return res.status(400).json({ error: `This video is ${Math.round(durationSec)}s — the limit for this engine is ${maxSec}s.` });
+    const url = await uploadUserSourceVideoToR2(req.file.buffer);
+    res.json({ url, durationSec: Math.round(durationSec * 10) / 10 });
+  } catch (e) {
+    console.error('[UploadSource] failed:', e.message);
+    res.status(500).json({ error: 'Upload failed — please try again.' });
+  } finally { if (tmp) fs.rm(tmp, { force: true }, () => {}); }
 });
 
 app.get('/api/videos/generate-status/:jobId', authMiddleware, (req, res) => {

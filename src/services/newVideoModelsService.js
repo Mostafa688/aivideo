@@ -329,6 +329,29 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
+  // ✅ NEW (طلب العميل — schema الحقيقي من سكرين شوت صفحة الموديل): prunaai/p-video-animate = "نقل أداء".
+  // بياخد فيديو مصدر ("video": الحركة + الصوت) + صورة شخصية ("image": الموضوع اللي هيتحرك)، والناتج
+  // نفس حركات وكلام الفيديو الأصلي بالشخصية والمكان اللي في الصورة. الحقول: image، video، resolution
+  // (720p/1080p)، instruction_prompt (توجيه إضافي)، save_audio (افتراضي true — صوت المصدر بيتحفظ في
+  // الناتج، يعني نفس الكلام)، ignore_audio، target_fps ('original')، turbo، seed، no_op،
+  // disable_safety_checker. مدة الناتج = مدة فيديو المصدر، فالسعر بيتحسب منها (راجع /api/videos/generate).
+  // performanceTransfer: بيحتاج sourceVideoUrl + imageUrl معًا، ومش بيتعرض كموديل توليد عادي (مفيش prompt-to-video)
+  prunaai_p_video_animate: {
+    slug: 'prunaai/p-video-animate',
+    supportsImageInput: true,
+    performanceTransfer: true,
+    promptOptional: true,
+    buildInput: ({ prompt, imageUrl, sourceVideoUrl, tier }) => ({
+      image: imageUrl,
+      video: sourceVideoUrl,
+      resolution: tier || '720p',
+      save_audio: true,
+      ignore_audio: false,
+      target_fps: 'original',
+      disable_safety_checker: false,
+      ...(prompt?.trim() ? { instruction_prompt: prompt.trim() } : {}),
+    }),
+  },
   // ✅ Luma Ray 2 — Replicate بيعرضه كـ slug منفصل لكل دقة (مش باراميتر resolution داخل نفس
   // الموديل زي الباقي)، فمفتاح الموديل هنا نفسه بيحدد الجودة
   luma_ray2_540p: {
@@ -515,8 +538,9 @@ export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null,
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const model = NEW_VIDEO_MODELS[modelKey];
   if (!model) throw new Error(`Unknown video model: ${modelKey}`);
-  if (!prompt?.trim()) throw new Error('prompt is required');
-  if (sourceVideoUrl && !model.supportsVideoEdit) throw new Error(`${modelKey} does not support video-to-video editing`);
+  if (!prompt?.trim() && !model.promptOptional) throw new Error('prompt is required');
+  if (model.performanceTransfer && (!sourceVideoUrl || !imageUrl)) throw new Error(`${modelKey} needs both a source video and a character image`);
+  if (sourceVideoUrl && !model.supportsVideoEdit && !model.performanceTransfer) throw new Error(`${modelKey} does not support video-to-video editing`);
   const label = `${modelKey} video generation`;
 
   const refError = validateReferenceInputs(modelKey, { imageUrl, lastFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls });
