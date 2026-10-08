@@ -7,12 +7,12 @@
 // كل خطوة خارجية قابلة للحقن (deps) عشان الاختبار بدون خدمات حقيقية.
 import fetch from 'node-fetch';
 import sharp from 'sharp';
+import { groqVision } from '../visionService.js';
 import { llmJson } from './llm.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from '../webSearchService.js';
 import { checkContentSafety } from '../scriptService.js';
 import { generateNewModelImages } from '../newImageModelsService.js';
 
-const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 const YT_ID = /(?:youtube\.com\/watch\?[^#]*v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/i;
 export const researchAvailable = () => WEB_SEARCH_AVAILABLE;
 
@@ -51,15 +51,11 @@ Study them and return ONLY JSON: {"patterns":["<=14 words each: recurring design
 async function visionAnalyze(images, titles) {
   const key = process.env.GROQ_API_KEY;
   if (!key || !images.length) return null;
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: VISION_MODEL, max_tokens: 700, temperature: 0.2, response_format: { type: 'json_object' },
-      messages: [{ role: 'user', content: [{ type: 'text', text: VISION_PROMPT(titles) }, ...images.slice(0, 5).map(u => ({ type: 'image_url', image_url: { url: u } }))] }],
-    }),
+  const data = await groqVision({
+    max_tokens: 700, temperature: 0.2, response_format: { type: 'json_object' },
+    messages: [{ role: 'user', content: [{ type: 'text', text: VISION_PROMPT(titles) }, ...images.slice(0, 5).map(u => ({ type: 'image_url', image_url: { url: u } }))] }],
   });
-  if (!res.ok) throw new Error(`vision ${res.status}`);
-  const raw = String((await res.json()).choices?.[0]?.message?.content || '').trim();
+  const raw = String(data.choices?.[0]?.message?.content || '').trim();
   try { return JSON.parse(raw.replace(/^```(?:json)?|```$/g, '')); } catch { return { patterns: [raw.slice(0, 400)] }; }
 }
 
