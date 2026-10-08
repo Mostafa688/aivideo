@@ -240,6 +240,7 @@ const SYSTEM = `You are the editor of a documentary YouTube channel. You receive
 Return ONLY JSON: {"title":"short documentary title","mood":"epic|documentary|tension|emotional|chill|upbeat","beats":[{"i":0,"visual":"stock|archive|nasa|text","kind":"video|image|either","queries":["specific search","broader search"],"grade":"none|bw_archive|sepia|cinematic|warm|cool","emphasis":["word"],"transition":"cut|dip|flash","chapter":"Chapter title (only on the first beat of a new chapter)","template":{"name":"...","data":{}}}]}
 
 Rules:
+- ARCHIVE FIRST — the film must feel like a real archival documentary: whenever the topic is a true story, history, a biography, war, science, an investigation or any real event, MORE THAN HALF of the beats that show footage must be "archive" (real photographs, newsreels, government/archival films, documents, newspapers, paintings, engravings, artefacts, portraits of the specific people/places/events/objects the sentence names). Use "stock" only for abstract ideas or generic atmosphere that has no specific archival subject. For events after 1895 prefer kind "video" (newsreels, archival films), for older periods "image" (paintings, engravings, artefacts, manuscripts).
 - "visual": "archive" = real historical photos/films, named people, places, events, documents (queries MUST include proper names and years, e.g. "Winston Churchill 1941"); "nasa" = space, rockets, planets, astronauts; "stock" = generic b-roll that illustrates the idea (nature, cities, machines, crowds); "text" = a motion-graphic scene with no footage (use sparingly).
 - Queries are English search terms for photo/video libraries (2-3, from specific to broad). Never ask for text, logos, maps with labels, or identifiable private individuals. Show what the sentence concretely says.
 - Use a template ONLY when the data comes from the beat's own text. NEVER invent facts or numbers. Available templates and data:
@@ -274,6 +275,7 @@ export async function planBeats({ beats, language = 'en', topic = '', onProgress
   }
   await ensureRichScenes({ beats, plans, language, ask });
   enforcePacing(plans, beats);
+  try { await ensureArchiveShare({ beats, plans, topic: topic || title, language, ask }); } catch (e) { console.warn('[Documentary/planner] archive upgrade failed:', e.message); }
   try { injectMotion({ beats, plans }); } catch (e) { console.warn('[Documentary/planner] motion injection failed:', e.message); }
   return { title, mood, plans };
 }
@@ -401,6 +403,37 @@ export async function ensureRichScenes({ beats, plans, language = 'en', ask = ll
   try { await injectBoards({ beats, plans, ask, language }); } catch (e) { console.warn('[Documentary/planner] board injection failed:', e.message); }
 }
 
+
+// ── ضمان نسبة لقطات أرشيفية: لو الـLLM كتّر ستوك عام، بنسأله تاني عن اللقطات الستوك اللي ممكن تتبدّل بمواد أرشيفية حقيقية للشيء المذكور (أسماء/سنين) ──
+export const ARCHIVE_TARGET_SHARE = 0.55;
+const SYSTEM_ARCHIVE = `You are the editor of a documentary. Some beats were planned with generic STOCK footage. Upgrade a beat to REAL ARCHIVAL material only when the narration names or concretely describes a specific historical subject (a person, place, event, object, institution, battle, document, era) for which archival photographs, newsreels or films, documents, newspapers, paintings or engravings plausibly exist. Skip beats about abstract ideas, feelings, modern generic scenes or things with no archival record.
+Return ONLY JSON: {"upgrades":[{"i":0,"kind":"video|image|either","queries":["precise English search with proper names and years","broader search"],"grade":"none|bw_archive|sepia"}]}.
+Queries MUST contain the proper names/years (e.g. "Winston Churchill 1941 speech", "Battle of Stalingrad 1942 ruins"). For events after 1895 prefer kind "video" (newsreels/archival films); for older periods "image". grade: bw_archive for pre-1960 material, sepia for 1800s-1920s, otherwise none.`;
+export async function ensureArchiveShare({ beats, plans, topic = '', language = 'en', ask = llmJson }) {
+  const shown = plans.filter(p => ['stock', 'archive', 'nasa'].includes(p.visual));
+  if (shown.length < 6) return 0;
+  const archived = shown.filter(p => p.visual === 'archive' || p.visual === 'nasa').length;
+  const need = Math.ceil(shown.length * ARCHIVE_TARGET_SHARE) - archived;
+  if (need <= 0) return 0;
+  const stockIdx = plans.map((p, i) => (p.visual === 'stock' ? i : -1)).filter(i => i >= 0).slice(0, 60);
+  if (!stockIdx.length) return 0;
+  const user = `Language of the narration: ${language}. Topic: ${topic || '-'}.\nUpgrade up to ${need + 2} of these STOCK beats (only the ones that really can be shown with archival material):\n` + stockIdx.map(i => `[${i}] ${beats[i].text}`).join('\n') + '\nJSON only:';
+  const r = await ask({ system: SYSTEM_ARCHIVE, user, maxTokens: 3500, temperature: 0.2 });
+  let done = 0;
+  for (const u of (Array.isArray(r?.upgrades) ? r.upgrades : [])) {
+    if (done >= need + 2) break;
+    const i = Number(u.i);
+    if (!stockIdx.includes(i) || plans[i].visual !== 'stock') continue;
+    const queries = (Array.isArray(u.queries) ? u.queries : []).map(q => clip(q, 80)).filter(Boolean).slice(0, 3);
+    if (!queries.length || !/[\p{L}]{3,}/u.test(queries[0])) continue;
+    Object.assign(plans[i], {
+      visual: 'archive', kind: ['video', 'image', 'either'].includes(u.kind) ? u.kind : 'either', queries,
+      grade: GRADES.has(u.grade) ? u.grade : plans[i].grade,
+    });
+    done++;
+  }
+  return done;
+}
 
 // قواعد الإيقاع: مفيش نصّين ورا بعض، نسبة القوالب، حد أدنى لمدة القوالب، انتقال بداية الفصل
 export function enforcePacing(plans, beats) {
