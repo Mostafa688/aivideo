@@ -1826,6 +1826,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           narrationScript: gen.narrationScript || undefined, voiceKey: gen.voiceKey || undefined,
           narrationLanguage: gen.narrationLanguage || undefined, addCaptions: gen.addCaptions || undefined,
           musicStyle: gen.musicStyle || undefined, musicMood: gen.musicMood || undefined,
+          generateAudio: gen.generateAudio === false ? false : undefined,
         }),
       });
       const data = await safeJson(res, lang);
