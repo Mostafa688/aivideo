@@ -565,6 +565,31 @@ export async function analyzeSceneImage(photoBase64) {
   return description;
 }
 
+// ── وصف عام ومفصّل لأي صورة العميل بيرفعها في الشات: الايجنت (موديل نصي) مبيشوفش الصور بنفسه، فبنحلل كل صورة
+// بموديل الرؤية ونديله الوصف كملاحظة — وإلا بيهلوس وصف/برومبت من خياله (باج حقيقي: صورة رجل بشماغ اتوصفت "منتج"). ──
+export async function describeAttachedImage(photoBase64, { timeoutMs = 25000 } = {}) {
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+  const dataUrl = photoBase64.startsWith('data:') ? photoBase64 : `data:image/jpeg;base64,${photoBase64}`;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST', headers: authHeaders(), signal: ctl.signal,
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct', max_tokens: 380, temperature: 0.2,
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: 'Describe this image factually and in detail (90-140 words, plain English). Cover: the main subject(s) — for people: apparent age range, gender presentation, clothing and accessories, hairstyle/facial hair, expression, pose; for products/objects: what they are, materials, colours; the setting and background; lighting; composition/camera framing; the visual style (photo, illustration, 3D render, screenshot…); any visible text (transcribe it exactly); and image quality. Never guess who a real person is. Do not invent anything that is not visible.' },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ] }],
+      }),
+    });
+    if (!res.ok) throw new Error(`Groq vision error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const text = (await res.json()).choices?.[0]?.message?.content?.trim() || '';
+    if (!text) throw new Error('Vision model returned an empty description');
+    return text;
+  } finally { clearTimeout(timer); }
+}
+
 // ✅ NEW (باج حقيقي: العميل كتب تعليمة تعديل بالعربي في مربع "AI edit this image/video" في
 // نافذة تفاصيل الميديا، وطلعت الأمر ده حرفيًا (عربي، بصياغة مكسورة) اتبعت لـReplicate كـ
 // prompt خام — الميزة دي مالهاش أي علاقة بالايجنت/الشات خالص، فمكنش فيه أي خطوة ترجمة/تحسين
