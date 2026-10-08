@@ -534,7 +534,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (message.trim() === '/vision-check') {
       try {
         const d = await visionDiagnostics();
-        const lines = [`Vision check — Groq key: ${d.groqKey ? 'yes' : 'NO'}, Anthropic key: ${d.anthropicKey ? 'yes' : 'no'}, any working: ${d.anyWorking ? 'YES' : 'NO'}`,
+        const lines = [`Vision check — Groq key: ${d.groqKey ? 'yes' : 'NO'}, Replicate key: ${d.replicateKey ? 'yes' : 'NO'}, Anthropic key: ${d.anthropicKey ? 'yes' : 'no'}, any working: ${d.anyWorking ? 'YES' : 'NO'}`,
           d.groqModels ? `Groq models listed: ${d.groqModels.length}` : 'Groq models list: unavailable',
           ...d.tried.map(t => `${t.ok ? 'OK ' : 'FAIL'} ${t.provider}/${t.model}${t.status ? ' [' + t.status + ']' : ''} ${String(t.detail || '').replace(/\s+/g, ' ').slice(0, 160)}`),
           d.lastError ? `Last real failure: ${d.lastError}` : ''];

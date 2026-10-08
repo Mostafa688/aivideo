@@ -38,7 +38,7 @@ async function groqCandidates() {
   if (ids) {
     const live = ids.filter(id => VISION_ID.test(id) && !NOT_VISION.test(id));
     list = [...STATIC_CANDIDATES.filter(m => ids.includes(m)), ...live.filter(m => !STATIC_CANDIDATES.includes(m))];
-    if (!list.length) list = STATIC_CANDIDATES; // لو مفيش ولا واحد باين، نجرّب القايمة برضه
+    // لو Groq قال صراحة إن مفيش عنده موديل رؤية متاح للحساب ده، منضيّعش وقت (ولا رسالة فاشلة) في تجربة أسماء ثابتة
   }
   return workingModel ? [workingModel, ...list.filter(m => m !== workingModel)] : list;
 }
@@ -69,6 +69,56 @@ async function anthropicVision(payload, timeoutMs) {
   return { choices: [{ message: { content: text } }], _provider: 'anthropic', _model: ANTHROPIC_VISION_MODEL };
 }
 
+
+// ── Replicate: موديلات رؤية رسمية (التوكن موجود أصلًا للتوليد). OpenAI-style messages → input الخاص بكل عيلة ──
+const REPLICATE_VISION_MODELS = (process.env.REPLICATE_VISION_MODELS || 'openai/gpt-4o-mini,google/gemini-2.5-flash').split(',').map(x => x.trim()).filter(Boolean);
+let workingReplicate = null;
+
+function toReplicateInput(payload, slug) {
+  const texts = [], images = [], sys = [];
+  for (const m of payload.messages || []) {
+    const parts = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : (m.content || []);
+    for (const p of parts) {
+      if (p.type === 'text') (m.role === 'system' ? sys : texts).push(p.text);
+      else if (p.image_url?.url) images.push(p.image_url.url);
+    }
+  }
+  const max = payload.max_tokens || 500, temperature = payload.temperature ?? 0.2;
+  const prompt = texts.join('\n\n');
+  if (slug.startsWith('google/')) return { prompt, images, temperature, max_output_tokens: Math.max(max, 1024), ...(sys.length ? { system_instruction: sys.join('\n') } : {}) };
+  return { prompt, image_input: images, temperature, max_completion_tokens: max, ...(sys.length ? { system_prompt: sys.join('\n') } : {}) };
+}
+
+async function replicateVisionOne(slug, payload, timeoutMs) {
+  const headers = { Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json' };
+  const res = await fetch(`https://api.replicate.com/v1/models/${slug}/predictions`, {
+    method: 'POST', signal: AbortSignal.timeout(timeoutMs), headers: { ...headers, Prefer: 'wait=45' },
+    body: JSON.stringify({ input: toReplicateInput(payload, slug) }),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+  let data = await res.json();
+  const deadline = Date.now() + timeoutMs;
+  while (data.status && !['succeeded', 'failed', 'canceled'].includes(data.status) && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 1500));
+    const r2 = await fetch(`https://api.replicate.com/v1/predictions/${data.id}`, { headers, signal: AbortSignal.timeout(15000) });
+    if (!r2.ok) throw new Error(`poll ${r2.status}`);
+    data = await r2.json();
+  }
+  if (data.status !== 'succeeded') throw new Error(`${data.status || 'no status'}: ${String(data.error || '').slice(0, 200)}`);
+  const text = (Array.isArray(data.output) ? data.output.join('') : String(data.output || '')).trim();
+  if (!text) throw new Error('empty output');
+  return { choices: [{ message: { content: text } }], _provider: 'replicate', _model: slug };
+}
+
+async function replicateVision(payload, timeoutMs, failures) {
+  const order = workingReplicate ? [workingReplicate, ...REPLICATE_VISION_MODELS.filter(m => m !== workingReplicate)] : REPLICATE_VISION_MODELS;
+  for (const slug of order) {
+    try { const out = await replicateVisionOne(slug, payload, timeoutMs); workingReplicate = slug; return out; }
+    catch (e) { failures.push(`replicate ${slug}: ${e.message}`); console.warn('[Vision] replicate failed:', slug, e.message); }
+  }
+  return null;
+}
+
 /** payload = جسم الطلب (OpenAI-style) من غير model. بيرجّع الرد JSON. بيرمي خطأ فيه سبب كل موديل فشل. */
 export async function groqVision(payload, { timeoutMs = 25000 } = {}) {
   const failures = [];
@@ -96,8 +146,13 @@ export async function groqVision(payload, { timeoutMs = 25000 } = {}) {
         console.warn('[Vision] request error:', model, e.message);
       }
     }
+    if (!(await groqCandidates()).length) failures.push('groq: no vision-capable model available on this account');
   } else failures.push('GROQ_API_KEY not set');
 
+  if (process.env.REPLICATE_API_TOKEN) {
+    const out = await replicateVision(payload, Math.max(timeoutMs, 50000), failures);
+    if (out) return out;
+  }
   if (process.env.ANTHROPIC_API_KEY) {
     try { return await anthropicVision(payload, Math.max(timeoutMs, 30000)); }
     catch (e) { failures.push(`anthropic ${ANTHROPIC_VISION_MODEL}: ${e.message}`); console.warn('[Vision] anthropic fallback failed:', e.message); }
@@ -121,7 +176,7 @@ export async function toVisionDataUrl(input, { max = 1280 } = {}) {
 
 /** تشخيص للأدمن: بيجرّب كل موديل لوحده على صورة صغيرة ويقول مين شغّال ومين لأ وليه */
 export async function visionDiagnostics() {
-  const out = { groqKey: !!process.env.GROQ_API_KEY, anthropicKey: !!process.env.ANTHROPIC_API_KEY, groqModels: null, tried: [], workingModel, lastError };
+  const out = { groqKey: !!process.env.GROQ_API_KEY, anthropicKey: !!process.env.ANTHROPIC_API_KEY, replicateKey: !!process.env.REPLICATE_API_TOKEN, groqModels: null, tried: [], workingModel, lastError };
   const img = 'data:image/jpeg;base64,' + (await sharp({ create: { width: 64, height: 64, channels: 3, background: '#cc3333' } }).jpeg().toBuffer()).toString('base64');
   const payload = { max_tokens: 20, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: 'What colour is this image? One word.' }, { type: 'image_url', image_url: { url: img } }] }] };
   if (out.groqKey) {
@@ -136,6 +191,12 @@ export async function visionDiagnostics() {
       } catch (e) { out.tried.push({ provider: 'groq', model, ok: false, detail: e.message }); }
     }
   }
+  if (process.env.REPLICATE_API_TOKEN) {
+    for (const slug of REPLICATE_VISION_MODELS) {
+      try { const d = await replicateVisionOne(slug, payload, 60000); out.tried.push({ provider: 'replicate', model: slug, ok: true, detail: d.choices[0].message.content.slice(0, 60) }); }
+      catch (e) { out.tried.push({ provider: 'replicate', model: slug, ok: false, detail: e.message }); }
+    }
+  }
   if (out.anthropicKey) {
     try { const d = await anthropicVision(payload, 20000); out.tried.push({ provider: 'anthropic', model: ANTHROPIC_VISION_MODEL, ok: true, detail: d.choices[0].message.content.slice(0, 60) }); }
     catch (e) { out.tried.push({ provider: 'anthropic', model: ANTHROPIC_VISION_MODEL, ok: false, detail: e.message }); }
@@ -144,4 +205,4 @@ export async function visionDiagnostics() {
   return out;
 }
 
-export const _resetVisionForTest = () => { workingModel = null; discovered = null; };
+export const _resetVisionForTest = () => { workingModel = null; workingReplicate = null; discovered = null; };
