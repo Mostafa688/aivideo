@@ -76,6 +76,10 @@ export const REPLICATE_MODEL_COSTS = {
   seedream_5_lite:  { label: 'Seedream 5 Lite',    unit: 'image', usdCost: 0.035 },
   // ✅ NEW (طلب العميل — سعر واحد بلا دقات متعددة، مؤكد من العميل مباشرة)
   nano_banana_2_lite: { label: 'Nano Banana 2 Lite', unit: 'image', usdCost: 0.034 },
+  // ✅ NEW (طلب العميل — أسعار الدقات مؤكدة من صفحة الموديل مباشرة على Replicate، سكرين شوت العميل):
+  // google/nano-banana-2.1 — 1K=$0.0336 / 2K=$0.0504 / 4K=$0.1134 للصورة (usdCost الافتراضي = 1K)
+  nano_banana_2_1:  { label: 'Nano Banana 2.1',    unit: 'image', usdCost: 0.0336,
+                       tiers: { '1K': 0.0336, '2K': 0.0504, '4K': 0.1134 } },
 
   // ── Video generation (per second of output) ──────────────────────────────
   // كل موديل فيديو هنا بيسعّر حسب الدقة (وأحيانًا حسب معايير تانية زي وجود صوت أو صورة/فيديو

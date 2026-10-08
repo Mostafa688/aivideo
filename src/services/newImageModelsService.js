@@ -93,6 +93,17 @@ export const NEW_IMAGE_MODELS = {
       ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 14) } : {}),
     }),
   },
+  // ✅ NEW (طلب العميل — schema مؤكد من صفحة الموديل على Replicate): google/nano-banana-2.1. نفس حقول
+  // nano_banana_2: prompt / resolution (1K افتراضي، 2K، 4K) / image_input (لحد 14 صورة مرجعية) / aspect_ratio /
+  // output_format. حقلي image_search وgoogle_search (grounding بالبحث) بنسيبهم على الافتراضي (مقفولين) عمدًا — بيزودوا
+  // التكلفة/التأخير ومش مسعّرين عندنا
+  nano_banana_2_1: {
+    slug: 'google/nano-banana-2.1',
+    buildInput: ({ prompt, referenceImageUrls, aspectRatio, tier }) => ({
+      prompt, aspect_ratio: aspectRatio || '9:16', resolution: tier || '1K', output_format: 'jpg',
+      ...(referenceImageUrls?.length ? { image_input: referenceImageUrls.slice(0, 14) } : {}),
+    }),
+  },
   nano_banana_pro: {
     slug: 'google/nano-banana-pro',
     buildInput: ({ prompt, referenceImageUrls, aspectRatio, tier }) => ({
