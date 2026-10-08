@@ -4,7 +4,7 @@ const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
 // بحث حقيقي على الإنترنت — بيتستخدم لما العميل يطلب فيديو عن حدث حقيقي/تاريخي، عشان
 // الايجنت يتأكد من المعلومات قبل ما يكتب السكريبت ويقدر يدّي العميل المصادر اللي استخدمها
-export async function searchWeb(query, { maxResults = 5 } = {}) {
+export async function searchWeb(query, { maxResults = 5, includeDomains = null, depth = 'advanced' } = {}) {
   if (!TAVILY_API_KEY) throw new Error('TAVILY_API_KEY not set');
   const res = await fetch('https://api.tavily.com/search', {
     method: 'POST',
@@ -12,9 +12,10 @@ export async function searchWeb(query, { maxResults = 5 } = {}) {
     body: JSON.stringify({
       api_key: TAVILY_API_KEY,
       query,
-      search_depth: 'advanced',
+      search_depth: depth,
       max_results: maxResults,
       include_answer: true,
+      ...(includeDomains?.length ? { include_domains: includeDomains } : {}),
     }),
   });
   if (!res.ok) {
