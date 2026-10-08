@@ -8,6 +8,7 @@ import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approv
 import { isGA4Configured, getGA4Overview } from './googleAnalyticsService.js';
 import { adminAuth, verifyAdminCredentials, issueAdminToken, checkLoginRateLimit } from './adminAuthMiddleware.js';
 import { generateNewModelVideo } from './newVideoModelsService.js';
+import { visionDiagnostics } from './visionService.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -159,6 +160,7 @@ router.post('/payments/:id/unmark-paid', adminAuth, async (req, res) => {
 });
 
 // ── عرض/خصم باقات مصر: عرض الحالة، بدء عرض جديد { percent, hours }، إيقافه فورًا ──
+router.get('/vision-check', adminAuth, async (req, res) => { try { res.json(await visionDiagnostics()); } catch (e) { res.status(500).json({ error: e.message }); } });
 router.get('/promo', adminAuth, async (req, res) => { try { res.json({ promo: await getActivePromo() }); } catch (e) { res.status(500).json({ error: e.message }); } });
 router.post('/promo', adminAuth, async (req, res) => { try { res.json({ success: true, promo: await startPromo({ percent: req.body?.percent, hours: req.body?.hours }) }); } catch (e) { res.status(400).json({ error: e.message }); } });
 router.delete('/promo', adminAuth, async (req, res) => { try { res.json({ success: true, stopped: await stopPromo() }); } catch (e) { res.status(500).json({ error: e.message }); } });
