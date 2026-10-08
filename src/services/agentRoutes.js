@@ -5,7 +5,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
 import { visionDiagnostics } from './visionService.js';
-import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
+import { composeProductAdPrompt, agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
@@ -228,6 +228,20 @@ function stripStrayMarkers(text) {
 // خام في الرد رغم قاعدة "NO MARKDOWN" الصريحة. الحل الحاسم: حارس حتمي في الكود نفسه (regex)
 // بيشيل أي ذكر لموديل قديم بالاسم/الرقم وأي ماركداون خام من الرد النهائي قبل ما يوصل للعميل
 // خالص — بغض النظر عن التزام الموديل بالتعليمات من عدمه، هذا يضمن العميل محيشوفش الحاجات دي تاني
+// خطة الإعلان لازم تبقى مختصرة: لو الايجنت لزّق برومبت الفيديو بالإنجليزي (قايمة لقطات "Shot 1 (0-2s)…") في الشات — جوه ``` أو فقرة طويلة —
+// بنشيله من الرد قبل ما يوصل للعميل (البرومبت بيتكتب للموديل في السيرفر مش للعميل)
+function stripLongPromptBlocks(text) {
+  const t = String(text || '');
+  const isPromptish = (blk) => blk.length > 180 && /(Shot\s*\d|\d+-second\s+(vertical\s+|horizontal\s+|square\s+)?commercial)/i.test(blk);
+  let out = t.replace(/```[\s\S]*?```/g, (blk) => (isPromptish(blk) ? '' : blk));
+  out = out.split(/\n\s*\n/).filter((para) => {
+    const letters = para.replace(/[^\p{L}]/gu, '');
+    const latin = para.replace(/[^A-Za-z]/g, '');
+    return !(isPromptish(para) && letters.length && latin.length / letters.length > 0.8);
+  }).join('\n\n');
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function stripLegacyModelMentions(text) {
   if (!text) return text;
   let out = text;
@@ -1267,6 +1281,29 @@ router.post('/chat', authMiddleware, async (req, res) => {
         delete generateVideo.addCaptions;
       }
     }
+    // ✅ إعلان منتج من صورة مرفوعة: البرومبت النهائي بيتكتب بخطوة مخصصة (لقطات بتوقيت + فويس أوفر منطوق جوه الفيديو + من غير نص مكتوب
+    // على الشاشة) بدل ما نعتمد على اللي الايجنت العام كتبه. لو الخطوة فشلت بنكمّل بمسودة الايجنت زي ما هي.
+    if (generateVideo && ['wan_3', 'seedance_2_5', 'omni_flash_1_1'].includes(generateVideo.model) && !generateVideo.narrationScript) {
+      const adUrls = [generateVideo.imageUrl, ...(generateVideo.referenceImageUrls || [])].filter(u => typeof u === 'string' && u.includes('/agent-uploads/'));
+      const recentText = [message, ...(Array.isArray(history) ? history.filter(m => m?.role === 'user').slice(-4).map(m => m.content) : []), generateVideo.prompt].filter(t => typeof t === 'string').join(' ');
+      if (adUrls.length && /(إعلان|اعلان|دعاية|ترويج|\bads?\b|advert|commercial|promo|product|منتج)/i.test(recentText)) {
+        try {
+          const known = (photoDescriptions.get(userId) || []).filter(x => adUrls.includes(x.url)).map(x => x.description);
+          const composed = await composeProductAdPrompt({
+            draft: generateVideo.prompt, productDescription: known.join(' | '),
+            durationSec: Math.round(Number(generateVideo.durationSec) || 10), aspectRatio: generateVideo.aspectRatio || '9:16',
+            region: userRegion, conversation: Array.isArray(history) ? [...history.slice(-7), { role: 'user', content: message }] : [{ role: 'user', content: message }],
+          });
+          generateVideo.prompt = composed.prompt;
+          if (composed.sound === 'none' || composed.sound === 'silent_for_own_voiceover') {
+            if (generateVideo.model === 'seedance_2_5') generateVideo.generateAudio = false;
+          }
+          console.log(`[Agent] Product ad prompt composed (sound=${composed.sound}, ${composed.spoken.length} spoken line(s))`);
+        } catch (e) {
+          console.warn('[Agent] Product ad prompt composer failed, keeping the agent draft:', e.message);
+        }
+      }
+    }
     // ✅ NEW: تنضيف حقول السرد/الكابشن/الموسيقى الجديدة قبل ما توصل للراوت
     if (generateVideo) {
       if (typeof generateVideo.narrationScript !== 'string' || !generateVideo.narrationScript.trim()) {
@@ -1538,7 +1575,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ حارس حتمي أخير قبل ما الرد يوصل للعميل خالص — راجع تعريف الدالتين فوق لسبب وجودهم.
     // الترتيب مهم: لازم نفك أي **نجمتين** الأول قبل ما نشيل اسم الموديل اللي جواهم، وإلا
     // بيفضل "****" يتيمة مكسورة (اتأكد فعليًا: لو عكسنا الترتيب، "**Model 8**" بترجع "****")
-    reply = stripLegacyModelMentions(stripMarkdownFormatting(reply));
+    reply = stripLongPromptBlocks(stripLegacyModelMentions(stripMarkdownFormatting(reply)));
 
     // ✅ NEW (طلب العميل: أزرار سريعة "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة): لو الرد ده
     // مجرد سؤال تأكيد قبل التوليد (مفيش أي ماركر نفّذ فعليًا في الرد ده)، بنعلّم الفرونت إند
