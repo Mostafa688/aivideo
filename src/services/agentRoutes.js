@@ -1556,7 +1556,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           console.log(`[Agent] SMART_MONTAGE start: ${ids.length} id(s), voiceover=${!!storedVoice}`);
           const r = await startMontageJob(userId, {
             assetIds: ids, instructions: typeof montagePayload.instructions === 'string' ? montagePayload.instructions : '',
-            options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false, graphics: montagePayload.graphics },
+            options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false, graphics: montagePayload.graphics, mode: montagePayload.mode, graphicsLevel: montagePayload.graphicsLevel, transitionStyle: montagePayload.transitionStyle },
           });
           if (r.ok && storedVoice?.srcUrl) consumedVoices.add(`${userId}:${storedVoice.srcUrl}`); // نفس التسجيل ما يتحطش تاني أوتوماتيك في مونتاج جديد
           if (r.ok) { docJob = { jobId: r.job.id, kind: 'montage', title: r.job.title }; reply += (reply ? '\n\n' : '') + (r.trial ? 'تمام، بدأت المونتاج المجاني (مرة واحدة، وعليه علامة Erivion المائية).' : `تمام، بدأت المونتاج (${r.cost} كريديت).`) + ` هتلاقي الفيديو هنا في المحادثة أول ما يخلص، وفي "استوديو الأفلام الوثائقية" ← "أفلامي".`; }

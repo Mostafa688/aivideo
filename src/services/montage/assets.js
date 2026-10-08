@@ -182,6 +182,81 @@ async function frameDataUrls(file, duration) {
   return out;
 }
 
+// ── فهم الفيديو على مستوى المشاهد: حدود القطع (scene detection) + إطار من نص كل مشهد يتوصف بالـvision → timeline بالتوقيت ──
+const SCENE_MIN_VIDEO_SEC = 6, SCENE_MAX = 24;
+export async function detectSceneCuts(file, duration, { threshold = 0.32 } = {}) {
+  const { stderr } = await run('ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-an', '-vf', `fps=6,scale=320:-2,select='gt(scene,${threshold})',showinfo`, '-f', 'null', '-'], { timeoutMs: 180000 });
+  const cuts = [];
+  for (const m of String(stderr).matchAll(/pts_time:([0-9.]+)/g)) cuts.push(Number(m[1]));
+  return cuts.filter(t => Number.isFinite(t) && t > 0.4 && t < duration - 0.4).sort((a, b) => a - b);
+}
+
+/** حدود → مشاهد: أقصر من minLen بتتدمج في اللي قبلها، وفوق max بندمج أقصر مشهدين متجاورين */
+export function buildScenes(cuts, duration, { minLen = 1.2, max = SCENE_MAX } = {}) {
+  const b = [0, ...cuts.filter((t, i) => i === 0 || t - cuts[i - 1] > 0.05), duration];
+  let sc = [];
+  for (let i = 0; i < b.length - 1; i++) if (b[i + 1] - b[i] > 0.01) sc.push({ start: b[i], end: b[i + 1] });
+  const mergeAt = (i) => { // ادمج المشهد i في اللي قبله (أو بعده لو هو الأول)
+    if (sc.length < 2) return;
+    if (i > 0) { sc[i - 1].end = sc[i].end; sc.splice(i, 1); } else { sc[1].start = sc[0].start; sc.splice(0, 1); }
+  };
+  for (;;) {
+    const i = sc.findIndex(x => x.end - x.start < minLen);
+    if (i < 0 || sc.length < 2) break;
+    mergeAt(i);
+  }
+  while (sc.length > max) {
+    let best = 0, bl = Infinity;
+    sc.forEach((x, i) => { const l = x.end - x.start; if (l < bl) { bl = l; best = i; } });
+    mergeAt(best);
+  }
+  return sc.map(x => ({ start: Number(x.start.toFixed(2)), end: Number(x.end.toFixed(2)) }));
+}
+
+async function sceneFrame(file, t) {
+  const tmp = `${file}.s${Math.round(t * 100)}.jpg`;
+  try {
+    await ffmpeg(['-ss', String(Math.max(0, t)), '-i', file, '-frames:v', '1', '-vf', 'scale=384:-2', '-q:v', '6', tmp]);
+    return 'data:image/jpeg;base64,' + fs.readFileSync(tmp).toString('base64');
+  } catch { return null; } finally { rmQuiet(tmp); }
+}
+
+const SCENES_PROMPT = (sc) => `These are ${sc.length} frames, one per scene, in order, taken from ONE video. Scene times (seconds): ${sc.map((x, i) => `${i}: ${x.start.toFixed(1)}-${x.end.toFixed(1)}`).join(' | ')}. You are a video editor logging the footage. Return ONLY JSON: {"scenes":[{"i":0,"what":"<=12 words: who/what is on screen, the action and the setting"}]} with exactly one entry per frame, same order. Describe only what you see.`;
+
+/** يوصف كل مشهد (دفعات من 8 إطارات). بيرجّع [{start,end,what}] أو null لو الرؤية فشلت كلها */
+export async function describeScenes(file, scenes, { ask } = {}) {
+  const out = scenes.map(x => ({ ...x, what: '' }));
+  let any = false;
+  for (let from = 0; from < scenes.length; from += 8) {
+    const chunk = scenes.slice(from, from + 8);
+    const frames = [];
+    for (const sc of chunk) frames.push(await sceneFrame(file, (sc.start + sc.end) / 2));
+    const idx = frames.map((f, k) => (f ? k : -1)).filter(k => k >= 0);
+    if (!idx.length) continue;
+    try {
+      const use = idx.map(k => chunk[k]);
+      const urls = idx.map(k => frames[k]);
+      const raw = ask ? await ask(urls, use) : (await groqVision({ max_tokens: 700, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: [{ type: 'text', text: SCENES_PROMPT(use) }, ...urls.map(u => ({ type: 'image_url', image_url: { url: u } }))] }] })).choices?.[0]?.message?.content;
+      const txt = typeof raw === 'string' ? raw : JSON.stringify(raw || {});
+      const j = JSON.parse((txt.match(/\{[\s\S]*\}/) || ['{}'])[0]);
+      for (const e of Array.isArray(j.scenes) ? j.scenes : []) {
+        const k = idx[Number(e?.i)];
+        if (k !== undefined && e?.what) { out[from + k].what = String(e.what).slice(0, 110); any = true; }
+      }
+    } catch (e) { console.warn('[Montage/assets] scene description failed:', e.message); }
+  }
+  return any ? out : null;
+}
+
+/** تحليل المشاهد لفيديو: null لو قصير جدًا أو لقطة واحدة متصلة */
+export async function analyzeScenes(file, duration, deps = {}) {
+  if (!(duration >= SCENE_MIN_VIDEO_SEC)) return null;
+  const cuts = await (deps.detectCuts || detectSceneCuts)(file, duration);
+  const scenes = buildScenes(cuts, duration);
+  if (scenes.length < 2) return null;
+  return (await describeScenes(file, scenes, { ask: deps.sceneVision })) || scenes.map(x => ({ ...x, what: '' }));
+}
+
 const VIDEO_PROMPT = (times) => `These are ${times.length} frames sampled from ONE video clip at ${times.map(t => `${t}s`).join(', ')}. You are a video editor studying the footage before editing it. Return ONLY JSON: {"summary":"<=40 words: who/what is shown (a person talking to camera? cinematic scene? screen recording? product? landscape? action?), setting, mood, lighting, camera motion and any quality problem (shaky, dark, blurry)","moments":[{"t":<second>,"what":"<=12 words: what is on screen at that time"}],"faces":"none|small|large (is a face the main subject and where)","energy":"calm|medium|high"}. One moment per frame, using the given seconds.`;
 
 /** وصف الفيديو بالـvision: ملخص + لحظات بتوقيتها (عشان المخطط يعرف إيه بيحصل امتى) */
@@ -255,6 +330,7 @@ async function analyze(meta, deps = {}) {
     return out;
   }
   const out = { description: '', hasSpeech: false, gist: '', moments: [] };
+  const scenesP = analyzeScenes(meta.file, meta.duration, deps).catch((e) => { console.warn('[Montage/assets] scene analysis skipped:', e.message); return null; });
   try {
     const times = FRAME_POINTS.map(f => Number((meta.duration * f).toFixed(1)));
     const v = await describeVideo(await frameDataUrls(meta.file, meta.duration), times, deps);
@@ -269,13 +345,20 @@ async function analyze(meta, deps = {}) {
   if (meta.hasAudio) {
     try { Object.assign(out, await (deps.speech || sampleSpeech)(meta.file, meta.duration, dir)); } catch (e) { console.warn('[Montage/assets] speech check skipped:', e.message); }
   }
+  // المشاهد بتخلص بعد الوصف (فيديو طويل = أبطأ) — الوصف بيتحفظ فورًا، والمشاهد بتتضاف لما تجهز (analyzeInBackground)
+  Object.defineProperty(out, '_scenesP', { value: scenesP, enumerable: false });
   return out;
 }
 
 const pending = new Map(); // `${userId}:${id}` → Promise
 function analyzeInBackground(meta) {
   const key = `${meta.userId}:${meta.id}`;
-  const p = analyze(meta).then(a => { const m = readMeta(meta.userId, meta.id); if (m) { m.analysis = a; writeMeta(meta.userId, meta.id, m); } return a; })
+  const p = analyze(meta).then(async (a) => {
+    const m = readMeta(meta.userId, meta.id); if (m) { m.analysis = a; writeMeta(meta.userId, meta.id, m); }
+    const sc = a?._scenesP ? await a._scenesP : null;
+    if (sc?.length) { const m2 = readMeta(meta.userId, meta.id); if (m2) { m2.analysis = { ...(m2.analysis || {}), scenes: sc }; writeMeta(meta.userId, meta.id, m2); } }
+    return a;
+  })
     .catch(() => null).finally(() => pending.delete(key));
   pending.set(key, p);
 }
@@ -290,6 +373,14 @@ export async function withAnalysis(userId, id, timeoutMs = 25000) {
 
 export { analyze as analyzeAsset };
 
+/** سطر المشاهد المكتشفة (للـagent والمخطط): [من-إلى] الوصف — حد أقصى 14 مشهد في الملاحظة */
+export function scenesNote(analysis, max = 14) {
+  const sc = analysis?.scenes;
+  if (!Array.isArray(sc) || sc.length < 2) return '';
+  const shown = sc.length <= max ? sc : sc.filter((_, i) => i % Math.ceil(sc.length / max) === 0).slice(0, max);
+  return ` — ${sc.length} scenes (detected cuts)${sc.length > max ? `, first ${shown.length} sampled` : ''}: ${shown.map(x => `[${Number(x.start).toFixed(1)}-${Number(x.end).toFixed(1)}] ${x.what || '…'}`).join('; ')}`;
+}
+
 /** ملاحظة النظام للـagent: كل اللي متخزّن للعميل (بترجع في كل رسالة عشان الـids ما تضيعش بين الرسائل) */
 export async function buildMontageNote(userId) {
   const stored = listAssets(userId).slice(0, MAX_ASSETS_PER_USER + 1);
@@ -298,7 +389,7 @@ export async function buildMontageNote(userId) {
   for (const m0 of stored) { const m = await withAnalysis(userId, m0.id, m0.kind === 'audio' ? 60000 : 25000); if (m) metas.push(m); }
   const vids = metas.filter(isVideoAsset), voice = metas.find(m => m.kind === 'audio'), imgs = metas.filter(m => m.kind === 'image');
   if (!vids.length && !voice && !imgs.length) return null;
-  const lines = vids.map((m, i) => `V${i + 1} [id ${m.id}] "${m.name}" ${Math.round(m.duration)}s ${m.width}x${m.height}${m.height > m.width ? ' (vertical 9:16)' : ''}, audio: ${m.analysis?.hasSpeech ? 'speech' : (m.hasAudio ? 'ambient sound only' : 'none')} — shows: ${m.analysis?.description || 'analysis not available'}${m.analysis?.moments?.length ? ` — timeline: ${m.analysis.moments.map(x => `${x.t}s ${x.what}`).join('; ')}` : ''}${m.analysis?.gist ? ` — says (excerpt): "${m.analysis.gist}"` : ''}`);
+  const lines = vids.map((m, i) => `V${i + 1} [id ${m.id}] "${m.name}" ${Math.round(m.duration)}s ${m.width}x${m.height}${m.height > m.width ? ' (vertical 9:16)' : ''}, audio: ${m.analysis?.hasSpeech ? 'speech' : (m.hasAudio ? 'ambient sound only' : 'none')} — shows: ${m.analysis?.description || 'analysis not available'}${m.analysis?.moments?.length ? ` — timeline: ${m.analysis.moments.map(x => `${x.t}s ${x.what}`).join('; ')}` : ''}${scenesNote(m.analysis)}${m.analysis?.gist ? ` — says (excerpt): "${m.analysis.gist}"` : ''}`);
   const imgLines = imgs.map((m, i) => `STYLE REFERENCE IMAGE R${i + 1} [id ${m.id}] "${m.name}" — ${m.analysis?.description || 'motion-graphics reference'}${m.analysis?.templates?.length ? ` (closest graphic types: ${m.analysis.templates.join(', ')})` : ''}`);
   const totalSec = vids.reduce((a, m) => a + m.duration, 0);
   const priceSec = voice ? Math.max(voice.duration, 30) : totalSec;

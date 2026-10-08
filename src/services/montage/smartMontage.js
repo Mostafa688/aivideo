@@ -9,7 +9,7 @@ import { montageVideos, displaySize, transcribeAudioFile } from './index.js';
 import { splitSentences, planCuts, zoomPlan } from './autoEdit.js';
 import { buildBeatClip } from '../documentary/clipBuilder.js';
 import { sanitizeTemplate } from '../documentary/planner.js';
-import { themeFromPalette } from './assets.js';
+import { themeFromPalette, scenesNote } from './assets.js';
 import { isRtlLang } from '../documentary/textutil.js';
 
 const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', '30'];
@@ -25,6 +25,7 @@ Rules:
 - Open with a strong hook (the most interesting 2-4 seconds may be moved to the start as a teaser ONLY if it does not spoil the story).
 - Speech clips: cut at sentence boundaries (use the timestamps) and use audio "keep". Non-speech clips (b-roll, scenery, action): audio "keep" when the clip has meaningful sound (effects, ambience, a cinematic scene), "mute" for silent/noisy footage (music will carry it); "speed" may be 1-1.5 only for muted action.
 - MOTION GRAPHICS ("overlays", optional, at most one every ~6 seconds): "at" = the second inside the clip when it appears. Templates: kinetic_text {text,emphasis[]} (punchy phrase of 2-6 words copied EXACTLY from what is said around that moment), stack_text {text,emphasis[]} (2-5 words copied exactly, giant words slamming in — hard-hitting moments), marker_text {text,emphasis[]} (3-8 words copied exactly with a highlighter on the key words — key claims), stamp {text,tone:"red|gold"} (1-3 words said there, slammed like a rubber stamp — verdicts, shocking moments), news_bar {text,tag?} (a headline built from the words said there), side_note {text,tag?} (a short fact said there), bottom_sheet {title?,items[2-4]} (a list that rises from the bottom when the speaker lists things), counter {value,prefix?,suffix?,label?} (a number said there), lower_third {name,role?} (a person who is named). Text must be in the language spoken and come from what is said (or from text the customer explicitly asked to show) — never invent facts. If a STYLE REFERENCE is given, prefer its graphic types.
+- SCENES: a clip may list its detected SCENES with what each shows. Cut at scene boundaries (a segment should start at a scene start and end at a scene end when possible) and use the scene descriptions to understand what is where — never start a segment in the middle of a transition.
 - At most 40 segments. Each segment 1-45 seconds.`;
 
 const fmt = (s) => Number(s).toFixed(1);
@@ -33,7 +34,7 @@ const fmt = (s) => Number(s).toFixed(1);
 export function describeForPlanner(clips) {
   return clips.map((c, i) => {
     const tl = c.analysis?.moments?.length ? ` — timeline: ${c.analysis.moments.map(m => `${fmt(m.t)}s ${m.what}`).join('; ')}` : '';
-    const head = `V${i + 1} "${c.name}" — ${fmt(c.duration)}s — ${c.hasSpeech ? 'HAS SPEECH' : (c.hasAudio ? 'ambient audio only (no clear speech)' : 'no audio')} — shows: ${c.analysis?.description || 'unknown'}${tl}${c.analysis?.energy ? ` — energy: ${c.analysis.energy}` : ''}`;
+    const head = `V${i + 1} "${c.name}" — ${fmt(c.duration)}s — ${c.hasSpeech ? 'HAS SPEECH' : (c.hasAudio ? 'ambient audio only (no clear speech)' : 'no audio')} — shows: ${c.analysis?.description || 'unknown'}${tl}${scenesNote(c.analysis, 30)}${c.analysis?.energy ? ` — energy: ${c.analysis.energy}` : ''}`;
     if (!c.hasSpeech || !c.sentences?.length) return head;
     const lines = c.sentences.slice(0, 80).map(s => `  [${fmt(s.start)}-${fmt(s.end)}] ${s.words.map(w => w.w).join(' ').slice(0, 140)}`);
     return `${head}\n${lines.join('\n')}${c.sentences.length > 80 ? '\n  …' : ''}`;
@@ -99,9 +100,9 @@ export function enforceLength(plan, clips, instructions = '') {
   return { ...kept, lengthRestored: true };
 }
 
-export async function planMontage({ clips, instructions = '', style = null, ask = llmJson }) {
+export async function planMontage({ clips, instructions = '', style = null, ask = llmJson, dense = false }) {
   const ref = style?.description ? `\n\nSTYLE REFERENCE for the motion graphics: ${style.description}${style.templates?.length ? ` (closest graphic types: ${style.templates.join(', ')})` : ''}` : '';
-  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}${ref}\n\nClips:\n${describeForPlanner(clips)}`;
+  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}${dense ? '\nThe customer wants MANY motion graphics (a content-creator style): propose an overlay about every 3-4 seconds of speech.' : ''}${ref}\n\nClips:\n${describeForPlanner(clips)}`;
   try {
     const raw = await ask({ system: SYSTEM, user, maxTokens: 4000, temperature: 0.3 });
     const plan = sanitizePlan(raw, clips);
@@ -267,7 +268,7 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
         if (ov) ovs.push({ ...timeOverlay(ov, at, newWords), prio: 1 });
       }
     });
-    if (newWords.length) ovs.push(...autoPhraseOverlays(newWords, total, ovs, style?.templates).map(o => ({ ...o, prio: 0 })));
+    if (newWords.length) ovs.push(...autoPhraseOverlays(newWords, total, ovs, style?.templates, { dense: options.graphicsLevel === 'high' }).map(o => ({ ...o, prio: 0 })));
   }
   const overlays = resolveOverlays(ovs, total);
   const extraSfx = [{ t: 0.04, type: 'impact', vol: 0.45 }, ...stepSfx, ...overlays.flatMap(o => overlaySfx(o, o.at))];
@@ -334,20 +335,20 @@ export function placeCustomerGraphics(graphics, words, total) {
 }
 
 /** عبارات قوية من الكلام كل ~6-7 ثواني (من غير ما تقرب من جرافيك تاني) */
-export function autoPhraseOverlays(words, total, existing = [], preferred = []) {
+export function autoPhraseOverlays(words, total, existing = [], preferred = [], { dense = false } = {}) {
   const rot = (preferred || []).filter(t => ['stack_text', 'kinetic_text', 'marker_text'].includes(t));
   const order = rot.length ? [...rot, ...['stack_text', 'kinetic_text', 'marker_text'].filter(t => !rot.includes(t))] : ['stack_text', 'kinetic_text', 'marker_text'];
   const out = [];
   let k = 0, last = -99;
   for (const sen of splitSentences(words)) {
     if (sen.start < 0.8 && total > 10) continue;
-    if (sen.start - last < 6.5) continue;
-    if ([...existing, ...out].some(o => Math.abs(o.at - sen.start) < 5)) continue;
+    if (sen.start - last < (dense ? 3.4 : 6.5)) continue;
+    if ([...existing, ...out].some(o => Math.abs(o.at - sen.start) < (dense ? 2.6 : 5))) continue;
     const win = sen.words.filter(w => w.start < sen.start + 3.6);
     const ov = autoKinetic(win, order[k % order.length]);
     if (!ov) continue;
     out.push(timeOverlay(ov, sen.start, words)); k++; last = sen.start;
-    if (out.length >= Math.max(2, Math.round(total / 7))) break;
+    if (out.length >= Math.max(2, Math.round(total / (dense ? 3.8 : 7)))) break;
   }
   return out;
 }
@@ -379,6 +380,7 @@ Rules:
 - Match meaning: when the narration talks about something a clip shows, use that clip at that moment. Use EVERY clip at least once unless it is unusable (black, shaky, blurry); a good clip can be used again later with a different "start".
 - Pace: shots of 2-6 seconds (up to 8 for calm moments); change picture at sentence or clause boundaries. Open with the most striking visual for the hook.
 - Be creative with MOTION GRAPHICS: about every second shot may carry an "overlay" (optional field) animated on top of the picture: kinetic_text {text,emphasis[]} = a punchy phrase of 2-6 words copied EXACTLY from the narration of that shot (words pop in big, the emphasis words are enlarged and recoloured); stack_text {text,emphasis[]} = 2-5 words copied exactly, stacked as giant words slamming in one under the other — for hard-hitting moments; marker_text {text,emphasis[]} = a phrase of 3-8 words copied exactly with a highlighter marker swiping over the emphasis words — for key claims. Mix the three styles across the film; use them for the strongest phrases, claims, numbers and turning points; counter {value,prefix?,suffix?,label?} = one striking number written in the narration (not a year); lower_third {name,role?} = the first time a real person is named; quote {text,author?} = a sentence quoted in the narration; bullet_panel {title?,bullets[2-5]} = an enumeration spoken in the narration. All overlay text must come from what is actually said in that shot — never invent facts or numbers, and use the narration's language. Never put an overlay on two consecutive shots.
+- SCENES: a clip may list its detected SCENES (cuts) with what each shows — this is how you SEE a long video. When the customer uploaded ONE long video made of several scenes, treat each scene as its own shot source: for every narration moment pick the scene whose content matches what is being said, set "start" to that scene's start (shots should stay inside one scene when possible), use the scenes in the order that follows the narration's meaning, and reuse a scene with a different "start" only when needed. A short scene is slowed slightly to fill its shot, a long one is trimmed — the system does that.
 - At most 60 shots. Never invent clips.`;
 
 /** حدود القطع الممكنة: نهايات الكلمات (القطع بين كلمتين، مش في نص كلمة) */
@@ -387,8 +389,18 @@ const snapTo = (t, points, tol = 0.7) => { let best = null; for (const p of poin
 
 export function describeForVoicePlanner(clips, narr) {
   const lines = narr.sentences.slice(0, 160).map(s => `[${fmt(s.start)}-${fmt(s.end)}] ${s.words.map(w => w.w).join(' ').slice(0, 160)}`);
-  const cl = clips.map((c, i) => `V${i + 1} "${c.name}" — ${fmt(c.duration)}s — shows: ${c.analysis?.description || 'unknown'}`);
+  const cl = clips.map((c, i) => `V${i + 1} "${c.name}" — ${fmt(c.duration)}s — shows: ${c.analysis?.description || 'unknown'}${scenesNote(c.analysis, 30)}`);
   return `Narration (${fmt(narr.duration)}s):\n${lines.join('\n')}\n\nClips:\n${cl.join('\n')}`;
+}
+
+/** بداية اللقطة جوه مقطع طويل فيه مشاهد مكتشفة: لو قريبة من بداية مشهد (أو أول 0.8ث منه) نبدأ من بداية المشهد بالظبط — عشان مانبدأش وسط انتقال */
+export function snapToSceneStart(clip, start) {
+  const sc = clip?.analysis?.scenes;
+  if (!Array.isArray(sc) || sc.length < 2) return start;
+  const cur = sc.find(x => start >= x.start - 0.01 && start < x.end);
+  if (cur && start - cur.start <= 0.8) return cur.start + 0.05;
+  const next = sc.find(x => x.start > start && x.start - start <= 0.5);
+  return next ? next.start + 0.05 : start;
 }
 
 /** تحقق بالكود من خطة الـLLM: توقيتات متزايدة، لقطات 1.8-8 ثانية، قطع عند حدود الكلمات، تغطية الصوت بالكامل */
@@ -404,7 +416,7 @@ export function sanitizeVoicePlan(raw, clips, narr) {
     if (ci === undefined || !Number.isFinite(until)) continue;
     until = Math.min(D, snapTo(until, points));
     if (until - prev < VO_MIN_SHOT) { if (until >= D - 0.05 && picks.length) picks[picks.length - 1].until = D; continue; }
-    picks.push({ clipIndex: ci, start: Number(s.start) || 0, until, overlay: s.overlay });
+    picks.push({ clipIndex: ci, start: snapToSceneStart(clips[ci], Number(s.start) || 0), until, overlay: s.overlay });
     prev = until;
     if (until >= D - 0.05 || picks.length >= 60) break;
   }
@@ -514,13 +526,13 @@ export function autoKinetic(win, template = 'kinetic_text') {
 }
 
 /** بيحسب لكل لقطة نافذة كلامها ويثبّت الـoverlay (من الـLLM بعد التحقق، أو تلقائي كل لقطة تانية) — مفيش لقطتين ورا بعض */
-export function finalizeOverlays(shots, narr) {
+export function finalizeOverlays(shots, narr, { dense = false } = {}) {
   let t0 = 0, prev = false, autoCount = 0;
   shots.forEach((s, i) => {
     const t1 = t0 + s.dur;
     const win = inWindow(narr.words, t0, t1);
     let ov = sanitizeOverlay(s.overlay, win);
-    if (!ov && !prev && i % 2 === 0) ov = autoKinetic(win, ['kinetic_text', 'marker_text', 'stack_text'][autoCount++ % 3]);
+    if (!ov && !prev && (dense || i % 2 === 0)) ov = autoKinetic(win, ['kinetic_text', 'marker_text', 'stack_text'][autoCount++ % 3]);
     if (ov && prev) ov = null;
     if (s.dur < 1.6) ov = null;
     s.overlay = ov || null;
@@ -530,15 +542,15 @@ export function finalizeOverlays(shots, narr) {
   return shots;
 }
 
-export async function planVoiceover({ clips, narr, instructions = '', style = null, ask = llmJson }) {
+export async function planVoiceover({ clips, narr, instructions = '', style = null, ask = llmJson, dense = false }) {
   const ref = style?.description ? `\n\nSTYLE REFERENCE for the motion graphics: ${style.description}${style.templates?.length ? ` (prefer: ${style.templates.join(', ')})` : ''}` : '';
-  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}${ref}\n\n${describeForVoicePlanner(clips, narr)}`;
+  const user = `Customer's wishes: ${instructions.trim() ? `"${instructions.trim().slice(0, 600)}"` : '(none — you decide)'}${dense ? '\nThe customer wants MANY motion graphics: put an overlay on almost every shot that has a strong phrase.' : ''}${ref}\n\n${describeForVoicePlanner(clips, narr)}`;
   try {
     const raw = await ask({ system: SYSTEM_VO, user, maxTokens: 4500, temperature: 0.3 });
     const plan = sanitizeVoicePlan(raw, clips, narr);
-    if (plan && plan.shots.length >= Math.min(2, Math.ceil(narr.duration / VO_MAX_SHOT))) { finalizeOverlays(plan.shots, narr); return { ...plan, source: 'ai' }; }
+    if (plan && plan.shots.length >= Math.min(2, Math.ceil(narr.duration / VO_MAX_SHOT))) { finalizeOverlays(plan.shots, narr, { dense }); return { ...plan, source: 'ai' }; }
   } catch (e) { console.warn('[SmartMontage] voiceover planner failed, using fallback:', e.message); }
-  const fb = fallbackVoicePlan(clips, narr); finalizeOverlays(fb.shots, narr);
+  const fb = fallbackVoicePlan(clips, narr); finalizeOverlays(fb.shots, narr, { dense });
   return { ...fb, source: 'fallback' };
 }
 
@@ -681,13 +693,15 @@ export async function smartMontage({ assets, workDir, instructions = '', options
     if (deps.onTranscript) await deps.onTranscript(words);
     const narr = { words, sentences: splitSentences(words), duration: await probeDuration(voice.file) };
     onProgress({ stage: 'plan', frac: 0 });
-    const plan = await planVoiceover({ clips, narr, instructions, style, ask: deps.ask });
+    const plan = await planVoiceover({ clips, narr, instructions, style, ask: deps.ask, dense: options.graphicsLevel === 'high' });
     const result = await executeVoicePlan({ plan, clips, narr, voiceFile: voice.file, workDir: path.join(workDir, 'exec'), options, style, onProgress });
     return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: false })) };
   }
   if (deps.onTranscript) await deps.onTranscript(clips.flatMap(c => c.words || []));
   onProgress({ stage: 'plan', frac: 0 });
-  const plan = await planMontage({ clips, instructions, style, ask: deps.ask });
+  const plan = options.mode === 'transitions'
+    ? { ...keepAllPlan(clips, { style: options.transitionStyle === 'soft' ? 'calm' : 'clean' }), source: 'transitions' } // بس ضم بالترتيب + انتقالات: من غير إعادة ترتيب أو قص
+    : await planMontage({ clips, instructions, style, ask: deps.ask, dense: options.graphicsLevel === 'high' });
   const result = await executePlan({ plan, clips, workDir: path.join(workDir, 'exec'), options, style, instructions, onProgress });
   return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: c.hasSpeech })) };
 }

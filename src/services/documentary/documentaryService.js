@@ -276,6 +276,15 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
   const text = String(instructions || '').slice(0, 800);
   if (text) { const safety = await checkContentSafety(text); if (safety.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'These instructions cannot be used.' }; }
   const opt = { ...normalizeAutoEditOptions(options), graphics: normalizeGraphics(options.graphics) };
+  // أنماط المونتاج: smart (الافتراضي) | transitions = ضمّ المشاهد بترتيبها بانتقالات بس (من غير قص/زوم/جرافيكس إلا لو طلبها العميل صراحة)
+  opt.mode = options.mode === 'transitions' ? 'transitions' : 'smart';
+  opt.graphicsLevel = options.graphicsLevel === 'high' ? 'high' : 'normal';
+  opt.transitionStyle = options.transitionStyle === 'soft' ? 'soft' : 'punchy';
+  if (opt.mode === 'transitions') {
+    opt.cutSilence = false; opt.zoom = false;
+    if (!AUTOEDIT_CAPTIONS.includes(options.captions)) opt.captions = 'none';
+    if (opt.graphics.length === 0) opt.motionGraphics = false;
+  }
   for (const g of opt.graphics) { const sf = await checkContentSafety(g.text); if (sf.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'This on-screen text cannot be used.' }; }
   const q = quoteAutoEdit(totalSec);
   // مونتاج مجاني مرة واحدة لكل حساب: ناتج ≤ دقيقتين (طول الفويس أو طول اللقطات) وحد أقصى 6 فيديوهات، بعلامة مائية — للخطة المجانية أو لو الرصيد مش كفاية
@@ -320,7 +329,7 @@ async function produceSmartMontage({ id, userId, input, workDir, prog }) {
   }
   const r = await smartMontage({
     assets: analysed, workDir: path.join(workDir, 'smart'), instructions: input.instructions,
-    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile, graphics: input.graphics || [] },
+    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile, graphics: input.graphics || [], mode: input.mode, graphicsLevel: input.graphicsLevel, transitionStyle: input.transitionStyle, motionGraphics: input.motionGraphics === false ? false : undefined },
     onProgress: ({ stage, frac = 0 }) => prog(stage === 'plan' ? 'cut' : stage, stage === 'plan' ? 0 : frac),
     deps: { onTranscript: async (words) => {
       const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000), { mode: 'footage' });
