@@ -5,7 +5,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
 import { agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
-import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance } from './authService.js';
+import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
 import { trialAvailable as docTrialAvailable } from './documentary/store.js';
@@ -622,6 +622,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
     if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote + voiceMissingNote + freeNote;
+    // عرض مؤقت على باقات مصر: الايجنت لازم يعرف السعر الحقيقي الحالي (اللي هيتحاسب بيه العميل) ووقت الانتهاء
+    try {
+      const promo = await getActivePromo();
+      if (promo) {
+        const lines = [600, 1400, 3000].map(c => `${c} credits: ${egpPriceForCredits(c, promo.percent)} EGP instead of ${egpPriceForCredits(c)} EGP`).join('; ');
+        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `LIMITED-TIME OFFER (Egypt only, InstaPay): ${promo.percent}% off the Egypt credit packages until ${new Date(promo.endsAt).toISOString()} — ${lines}. When quoting Egypt prices use these discounted prices and mention the offer is limited-time; the payment screen shows the discounted amount automatically. International (Gumroad) prices are NOT discounted.`;
+      }
+    } catch { /* ignore */ }
 
     let uploadedPhotoUrls = [];
     // ✅ NEW: خريطة رابط → معلومة النسبة الحقيقية (من sharp) — بتتستخدم تحت كحاجز إضافي

@@ -2,6 +2,7 @@ import DocSetupCard from '../components/DocSetupCard.jsx';
 import React, { useState, useRef, useEffect } from 'react';
 import RatingPrompt from './RatingPrompt.jsx';
 import { EgPaymentModal, IntlPaymentModal, EG_PACKAGES, ALL_GUMROAD_PACKAGES } from './PricingPage.jsx';
+import { egPrice, getPromo } from '../promo.js';
 import {
   ShoppingBag, Clapperboard, FileText, GraduationCap, ImageIcon, Mic, Film, Sparkles,
   Camera, Swords, Map as MapIcon, Check, X, Lock, Construction, Video, Send,
@@ -1477,7 +1478,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // ✅ NEW: الايجنت قرر يفتح شاشة الدفع (مصري أو دولي) بعد ما العميل حدد الباقة اللي عايزها
       if (data.subscribe?.region === 'eg') {
         const pkg = EG_PACKAGES.find(p => p.key === data.subscribe.packageKey) || EG_PACKAGES[0];
-        setSubscribeModal({ type: 'eg', credits: pkg.credits, amountEgp: pkg.egp });
+        setSubscribeModal({ type: 'eg', credits: pkg.credits, amountEgp: egPrice(pkg.credits, getPromo()) });
       } else if (data.subscribe?.region === 'intl') {
         const pkg = ALL_GUMROAD_PACKAGES.find(p => p.key === data.subscribe.packageKey) || ALL_GUMROAD_PACKAGES[0];
         setSubscribeModal({ type: 'intl', pkg });

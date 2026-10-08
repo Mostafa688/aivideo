@@ -23,7 +23,7 @@ import {
   getModel4Usage, MODEL4_PLANS, getModel4Credits, addModel4Credits,
   getModel5Usage, MODEL5_PLANS, getModel5Credits, addModel5Credits,
   resetModel3Usage, resetModel4Usage, resetModel5Usage,
-  EGP_PER_CREDIT, CREDITS_PACKAGES, getCreditsBalance, approveCreditsPayment,
+  EGP_PER_CREDIT, CREDITS_PACKAGES, getCreditsBalance, approveCreditsPayment, egpPriceForCredits, getActivePromo, getLastEndedPromo,
   generateApiKey, listApiKeys, revokeApiKey, setUserRegion,
   createPasswordResetToken, resetPasswordWithToken,
   getNotificationPrefs, updateNotificationPrefs,
@@ -333,6 +333,16 @@ router.get('/payment/status', authMiddleware, async (req, res) => {
 // نظام الكريديت الموحد — رصيد واحد مشترك بين كل الموديلات
 // ═══════════════════════════════════════════════════════════════════════════
 
+// عرض مصر الشغال (عام — الصفحة بتعرضه للكل). الأسعار بتتحسب في السيرفر عشان تبقى نفس اللي هيتحاسب بيها العميل
+router.get('/promo', async (req, res) => {
+  try {
+    const promo = await getActivePromo();
+    const prices = {};
+    for (const c of [600, 1400, 3000]) prices[c] = { list: egpPriceForCredits(c), promo: promo ? egpPriceForCredits(c, promo.percent) : null };
+    res.json({ active: !!promo, percent: promo?.percent || 0, endsAt: promo?.endsAt || null, serverNow: new Date().toISOString(), prices });
+  } catch (e) { res.json({ active: false }); }
+});
+
 router.get('/credits/balance', authMiddleware, async (req, res) => {
   try {
     const balance = await getCreditsBalance(req.user.userId);
@@ -352,7 +362,14 @@ router.post('/credits/eg-request', authMiddleware, async (req, res) => {
     const user = await getUserById(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const amountEgp = Math.round(creditsNum * EGP_PER_CREDIT);
+    // السعر: بخصم العرض الشغال، أو (لو العرض خلص من أقل من ساعة) بسعر العرض لو العميل كان بدأ الدفع بيه
+    const promo = await getActivePromo().catch(() => null);
+    let promoPercent = promo?.percent || 0;
+    if (!promoPercent) {
+      const ended = await getLastEndedPromo().catch(() => null);
+      if (ended && Number(req.body.amountEgp) === egpPriceForCredits(creditsNum, ended.percent)) promoPercent = ended.percent;
+    }
+    const amountEgp = egpPriceForCredits(creditsNum, promoPercent);
     const requestId = await createPaymentRequest(req.user.userId, user.email, 'credits_custom', 'onetime', amountEgp, screenshot, creditsNum);
 
     const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'https://erivion.net';
@@ -371,7 +388,7 @@ router.post('/credits/eg-request', authMiddleware, async (req, res) => {
           <table style="width:100%;border-collapse:collapse;margin:20px 0">
             <tr><td style="color:#888;padding:8px 0">Email</td><td style="color:#fff;font-weight:600">${user.email}</td></tr>
             <tr><td style="color:#888;padding:8px 0">Credits</td><td style="color:#7c6af7;font-weight:700">${creditsNum.toLocaleString()}</td></tr>
-            <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amountEgp} EGP</td></tr>
+            <tr><td style="color:#888;padding:8px 0">Amount</td><td style="color:#22c55e;font-weight:700">${amountEgp} EGP${promoPercent ? ` &nbsp;<span style="color:#f59e0b">(PROMO −${promoPercent}%, list price ${egpPriceForCredits(creditsNum)} EGP)</span>` : ''}</td></tr>
           </table>
           <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap">
             <a href="${backendUrl}/api/auth/admin/approve?email=${encodeURIComponent(user.email)}&plan=credits_custom&secret=${adminSecret}" style="background:#22c55e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">✅ Approve</a>
@@ -462,7 +479,7 @@ router.get('/admin/approve', async (req, res) => {
       const result = await approveCreditsPayment(email, plan);
       // ✅ FIX: تتبع عمولة المسوق كان مفقود تماماً لنظام الكريديت الموحد (المسار الأساسي دلوقتي)
       try {
-        const amountEgp = Math.round(result.creditsAdded * EGP_PER_CREDIT);
+        const amountEgp = result.amountEgp ?? Math.round(result.creditsAdded * EGP_PER_CREDIT);
         if (amountEgp > 0) trackAffiliatePayment(result.userId, email, plan, amountEgp).catch(() => {});
       } catch {}
       await fetch('https://api.resend.com/emails', {
@@ -657,7 +674,7 @@ router.get('/intl-approve', async (req, res) => {
       const result = await approveCreditsPayment(email, plan);
       // ✅ FIX: تتبع عمولة المسوق كان مفقود تماماً لنظام الكريديت الموحد (المسار الأساسي دلوقتي)
       try {
-        const amountEgp = Math.round(result.creditsAdded * EGP_PER_CREDIT);
+        const amountEgp = result.amountEgp ?? Math.round(result.creditsAdded * EGP_PER_CREDIT);
         if (amountEgp > 0) trackAffiliatePayment(result.userId, email, plan, amountEgp).catch(() => {});
       } catch {}
       await fetch('https://api.resend.com/emails', {

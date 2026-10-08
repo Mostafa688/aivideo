@@ -3,6 +3,7 @@ import pkg from 'pg';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { getActivePromo, startPromo, stopPromo } from './authService.js';
 import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, deleteManagedChannelAsAdmin, listRecentDailyRunsForAdmin, listClonedVoicesForAdmin } from './authService.js';
 import { isGA4Configured, getGA4Overview } from './googleAnalyticsService.js';
 import { adminAuth, verifyAdminCredentials, issueAdminToken, checkLoginRateLimit } from './adminAuthMiddleware.js';
@@ -156,6 +157,11 @@ router.post('/payments/:id/unmark-paid', adminAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── عرض/خصم باقات مصر: عرض الحالة، بدء عرض جديد { percent, hours }، إيقافه فورًا ──
+router.get('/promo', adminAuth, async (req, res) => { try { res.json({ promo: await getActivePromo() }); } catch (e) { res.status(500).json({ error: e.message }); } });
+router.post('/promo', adminAuth, async (req, res) => { try { res.json({ success: true, promo: await startPromo({ percent: req.body?.percent, hours: req.body?.hours }) }); } catch (e) { res.status(400).json({ error: e.message }); } });
+router.delete('/promo', adminAuth, async (req, res) => { try { res.json({ success: true, stopped: await stopPromo() }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // ✅ NEW: اعتماد/رفض طلب دفع مباشرة من صفحة الأدمن (بدل ما يكون بس عن طريق لينك الإيميل)
 router.post('/payments/:id/approve', adminAuth, async (req, res) => {

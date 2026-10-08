@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Clapperboard, Star, Trophy, Users, Building2, Check, X, HandHeart, Globe, Loader2 } from 'lucide-react';
+import { usePromo, egPrice, formatRemaining } from '../promo.js';
 
 const INSTAPAY_LINK = import.meta.env.VITE_INSTAPAY_LINK || 'https://ipn.eg/S/mostafabond5/instapay/6lWPkh';
 const EGP_PER_CREDIT = 0.7;
@@ -100,7 +101,7 @@ export function EgPaymentModal({ credits, amountEgp, onClose, onSuccess }) {
       const base64 = await fileToBase64(screenshot);
       const res = await fetch('/api/auth/credits/eg-request', {
         method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ credits, screenshot: base64 }),
+        body: JSON.stringify({ credits, screenshot: base64, amountEgp }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل الإرسال');
@@ -266,7 +267,8 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
       }).catch(() => {});
   }, []);
 
-  const amountEgp = Math.round(sliderCredits * EGP_PER_CREDIT);
+  const { promo, remainingMs } = usePromo();
+  const amountEgp = egPrice(sliderCredits, promo);
 
   if (egPending) return <EgPendingScreen onNavigate={onNavigate} onSkip={() => { if (onSkip) onSkip(); }} info={pendingInfo} />;
 
@@ -325,12 +327,19 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
         </div>
 
         {/* ══════════════ مصري: 3 خطط كبيرة، آخر واحدة فيها سلايدر مدمج للزيادة ══════════════ */}
+        {region === 'eg' && promo && (
+          <div dir="rtl" style={{ margin: '0 auto 26px', maxWidth: 560, textAlign: 'center', padding: '14px 18px', borderRadius: 16, background: 'linear-gradient(135deg, rgba(245,158,11,0.16), rgba(225,29,72,0.14))', border: '1px solid rgba(245,158,11,0.45)' }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>🔥 خصم {promo.percent}% على كل الباقات</div>
+            <div style={{ fontSize: 13, color: '#fcd34d', marginTop: 4 }}>العرض ينتهي بعد <strong style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '0.04em' }} dir="ltr">{formatRemaining(remainingMs)}</strong></div>
+          </div>
+        )}
         {region === 'eg' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
             {EG_PACKAGES.map(pkg => {
               const isLast = pkg.key === 'studio';
               const displayCredits = isLast ? studioSliderCredits : pkg.credits;
-              const displayEgp = isLast ? Math.round(studioSliderCredits * EGP_PER_CREDIT) : pkg.egp;
+              const listEgp = isLast ? egPrice(studioSliderCredits) : pkg.egp;
+              const displayEgp = promo ? egPrice(displayCredits, promo) : listEgp;
               return (
                 <div key={pkg.key} style={{ position: 'relative', background: '#0e0e16', border: pkg.popular ? '1px solid #7c6af7' : '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: '30px 26px', display: 'flex', flexDirection: 'column' }}>
                   {pkg.popular && <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', padding: '4px 14px', borderRadius: 999, background: '#7c6af7', fontSize: 10.5, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', letterSpacing: '0.02em' }}>الأكثر طلبًا</div>}
@@ -340,6 +349,8 @@ export default function PricingPage({ onSkip, onNavigate, onRegionSelect }) {
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 2 }}>
                     <span style={{ fontSize: 34, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>{displayEgp.toLocaleString()}</span>
                     <span style={{ fontSize: 14, color: '#9ca3af' }}>ج.م</span>
+                    {promo && <span style={{ fontSize: 15, color: '#6b7280', textDecoration: 'line-through', marginInlineStart: 6 }}>{listEgp.toLocaleString()}</span>}
+                    {promo && <span dir="rtl" style={{ fontSize: 11, fontWeight: 800, color: '#14110a', background: '#fbbf24', borderRadius: 999, padding: '3px 9px', marginInlineStart: 4 }}>خصم {promo.percent}%</span>}
                   </div>
                   <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 20 }}>دفعة واحدة · لا يتجدد</div>
 

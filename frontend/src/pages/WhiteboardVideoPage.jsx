@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import PremiumTimelineEditor from '../components/PremiumTimelineEditor.jsx';
 import { EgPaymentModal, IntlPaymentModal, EG_PACKAGES, GUMROAD_PACKAGES } from './PricingPage.jsx';
+import { egPrice, usePromo } from '../promo.js';
 import {
   PenLine, Sparkles, Gift, Check, Music, UploadCloud, Loader2, Plus, Frown,
   Bot, CheckCircle2, PartyPopper,
@@ -36,6 +37,7 @@ function formatMin(sec) {
 // same InstaPay-receipt flow for Egypt, same Gumroad checkout for international — so
 // upgrading from here feels like a real plan, not a dead-end placeholder message.
 function PaywallPanel({ lang, region, onPick }) {
+  const { promo } = usePromo();
   const t = (ar, en) => (lang === 'ar' ? ar : en);
   const packages = region === 'eg' ? EG_PACKAGES : GUMROAD_PACKAGES;
   const features = lang === 'ar'
@@ -79,7 +81,7 @@ function PaywallPanel({ lang, region, onPick }) {
             )}
             <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{pkg.name}</div>
             <div style={{ fontSize: 11.5, color: 'var(--text3)', margin: '2px 0 10px' }}>{pkg.tagline}</div>
-            <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--accent)' }}>{region === 'eg' ? `${pkg.egp} ${t('ج.م', 'EGP')}` : `$${pkg.usd}`}</div>
+            <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--accent)' }}>{region === 'eg' ? `${egPrice(pkg.credits, promo)} ${t('ج.م', 'EGP')}` : `$${pkg.usd}`}</div>
             <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 2 }}>{pkg.credits.toLocaleString()} {t('كريديت', 'credits')}</div>
           </div>
         ))}
@@ -89,6 +91,7 @@ function PaywallPanel({ lang, region, onPick }) {
 }
 
 export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
+  const { promo } = usePromo();
   const lang = region === 'eg' ? 'ar' : 'en';
   const t = (ar, en) => (lang === 'ar' ? ar : en);
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
@@ -121,7 +124,7 @@ export default function WhiteboardVideoPage({ region, onBack, onNavigate }) {
   const [paywallModal, setPaywallModal] = useState(null); // { type: 'eg', credits, amountEgp } | { type: 'intl', pkg }
   const [paywallSuccess, setPaywallSuccess] = useState(false);
   const pickPaywallPackage = (pkg) => {
-    if (region === 'eg') setPaywallModal({ type: 'eg', credits: pkg.credits, amountEgp: pkg.egp });
+    if (region === 'eg') setPaywallModal({ type: 'eg', credits: pkg.credits, amountEgp: egPrice(pkg.credits, promo) });
     else setPaywallModal({ type: 'intl', pkg });
   };
 

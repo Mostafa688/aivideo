@@ -240,6 +240,11 @@ async function initDB() {
         UPDATE users SET terms_accepted_at = NOW(), terms_version = 'legacy' WHERE terms_accepted_at IS NULL;
       END $$;`).catch(e => console.warn('[Terms] legacy backfill skipped:', e.message));
   }
+  // ✅ عروض/خصومات مؤقتة على باقات مصر (بتتحكم فيها قاعدة البيانات: وقت بداية ونهاية فعليين، مش بتتمدد مع إعادة التشغيل)
+  await pool.query(`CREATE TABLE IF NOT EXISTS site_promos (id SERIAL PRIMARY KEY, kind TEXT NOT NULL DEFAULT 'eg_credits', percent INT NOT NULL, starts_at TIMESTAMPTZ NOT NULL, ends_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW())`);
+  // أول عرض: خصم 30% على باقات مصر لمدة 24 ساعة من أول تشغيل بالنسخة دي (مرة واحدة بس)
+  const promoFlag = await pool.query(`INSERT INTO schema_flags (name) VALUES ('promo_eg_30_24h_2026_10') ON CONFLICT DO NOTHING RETURNING name`);
+  if (promoFlag.rowCount === 1) await pool.query(`INSERT INTO site_promos (kind, percent, starts_at, ends_at) VALUES ('eg_credits', 30, NOW(), NOW() + INTERVAL '24 hours')`);
   // ✅ FIX: كان endpoint /api/auth/onboarding-answers بيعمل INSERT في الجدول ده من غير ما
   // يكون معمول له CREATE أصلاً — ده كان هيفشل (relation does not exist) على أي قاعدة بيانات جديدة
   await pool.query(`
@@ -815,6 +820,35 @@ export async function activateUserPlan(email, plan, billing = 'monthly') {
 // سعر الكريديت للمصريين (شحن مرن بالسلايدر)
 export const EGP_PER_CREDIT = 0.7;
 
+/** سعر شحن كريديت بالجنيه المصري، مع خصم اختياري (٪) بيتقرّب لأقرب 10 جنيه لتحت (420→290، 980→680، 2100→1470 بخصم 30%) */
+export function egpPriceForCredits(credits, percent = 0) {
+  const base = Math.round(Number(credits) * EGP_PER_CREDIT);
+  if (!percent) return base;
+  return Math.max(10, Math.floor((base * (100 - percent)) / 100 / 10) * 10);
+}
+
+/** العرض الشغال حاليًا (أو null) */
+export async function getActivePromo(kind = 'eg_credits') {
+  const { rows } = await pool.query(`SELECT percent, starts_at, ends_at FROM site_promos WHERE kind = $1 AND starts_at <= NOW() AND ends_at > NOW() ORDER BY ends_at DESC LIMIT 1`, [kind]);
+  return rows[0] ? { percent: rows[0].percent, startsAt: rows[0].starts_at, endsAt: rows[0].ends_at } : null;
+}
+/** آخر عرض خلص (للسماح بدقايق سماح لمن بدأ الدفع قبل النهاية) */
+export async function getLastEndedPromo(kind = 'eg_credits', graceMinutes = 60) {
+  const { rows } = await pool.query(`SELECT percent, ends_at FROM site_promos WHERE kind = $1 AND ends_at <= NOW() AND ends_at > NOW() - ($2 || ' minutes')::interval ORDER BY ends_at DESC LIMIT 1`, [kind, String(graceMinutes)]);
+  return rows[0] ? { percent: rows[0].percent, endsAt: rows[0].ends_at } : null;
+}
+export async function startPromo({ percent, hours, kind = 'eg_credits' }) {
+  const pct = Math.max(1, Math.min(90, Math.round(Number(percent) || 0)));
+  const h = Math.max(0.25, Math.min(24 * 14, Number(hours) || 24));
+  await pool.query(`UPDATE site_promos SET ends_at = NOW() WHERE kind = $1 AND ends_at > NOW()`, [kind]);
+  const { rows } = await pool.query(`INSERT INTO site_promos (kind, percent, starts_at, ends_at) VALUES ($1, $2, NOW(), NOW() + ($3 || ' hours')::interval) RETURNING percent, starts_at, ends_at`, [kind, pct, String(h)]);
+  return { percent: rows[0].percent, startsAt: rows[0].starts_at, endsAt: rows[0].ends_at };
+}
+export async function stopPromo(kind = 'eg_credits') {
+  const { rowCount } = await pool.query(`UPDATE site_promos SET ends_at = NOW() WHERE kind = $1 AND ends_at > NOW()`, [kind]);
+  return rowCount;
+}
+
 // باقات ثابتة للدوليين (مرتبطة بمنتجات Gumroad — دفعة واحدة، مش اشتراك)
 export const CREDITS_PACKAGES = {
   credits_starter: { name: 'Starter', credits: 600,   usd: 15  },
@@ -986,18 +1020,18 @@ export async function approveCreditsPayment(email, plan) {
   const userId = userRow.rows[0].id;
 
   const reqRow = await pool.query(
-    "SELECT id, credits_purchased FROM payment_requests WHERE user_email = $1 AND plan = $2 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+    "SELECT id, credits_purchased, amount FROM payment_requests WHERE user_email = $1 AND plan = $2 AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
     [email, plan]
   );
   if (reqRow.rows.length === 0) throw new Error('No pending credits request found');
-  const { id: requestId, credits_purchased: creditsToAdd } = reqRow.rows[0];
+  const { id: requestId, credits_purchased: creditsToAdd, amount: paidAmount } = reqRow.rows[0];
   if (!creditsToAdd || creditsToAdd <= 0) throw new Error('Invalid credits amount on this request');
 
   const newBalance = await addCreditsBalance(userId, creditsToAdd);
   // ✅ أول ما العميل يشحن رصيد حقيقي، يتفتحله كل الموديلات وتتشال العلامة المائية تلقائيًا
   await pool.query("UPDATE users SET plan = 'paid' WHERE id = $1 AND plan = 'free'", [userId]);
   await pool.query("UPDATE payment_requests SET status = 'approved' WHERE id = $1", [requestId]);
-  return { userId, creditsAdded: creditsToAdd, newBalance };
+  return { userId, creditsAdded: creditsToAdd, newBalance, amountEgp: paidAmount != null ? Number(paidAmount) : null };
 }
 
 
