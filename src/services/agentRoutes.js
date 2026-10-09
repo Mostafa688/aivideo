@@ -115,7 +115,14 @@ function extractTrailingMarker(text, markerName) {
     try {
       return { text: (before + ' ' + restText).trim(), payload: JSON.parse(repairTruncatedJson(jsonText)) };
     } catch {
-      return { text: before.trim(), payload: null };
+      // محاولة أخيرة متسامحة: الموديل أحيانًا بينسخ بدائل القالب ("a"|"b")، بيسيب فاصلة زيادة، أو بيستخدم علامات اقتباس ذكية
+      try {
+        const lenient = jsonText.replace(/[“”]/g, '"').replace(/("[^"\n]*")\s*(?:\|\s*"[^"\n]*")+/g, '$1').replace(/,\s*([}\]])/g, '$1');
+        return { text: (before + ' ' + restText).trim(), payload: JSON.parse(lenient) };
+      } catch {
+        console.warn(`[Agent] marker ${markerName} present but its JSON is not parseable: ${String(jsonText).slice(0, 300)}`);
+        return { text: before.trim(), payload: null, unparsable: true };
+      }
     }
   }
 }
@@ -1390,7 +1397,24 @@ router.post('/chat', authMiddleware, async (req, res) => {
     ({ text: reply, payload: channelResumePayload } = extractTrailingMarker(reply, '###CHANNEL_RESUME###'));
     ({ text: reply, payload: documentaryPayload } = extractTrailingMarker(reply, '###DOCUMENTARY###'));
     ({ text: reply, payload: autoEditPayload } = extractTrailingMarker(reply, '###AUTOEDIT###'));
-    ({ text: reply, payload: montagePayload } = extractTrailingMarker(reply, '###SMART_MONTAGE###'));
+    {
+      const rawBeforeMontage = reply;
+      const mm = extractTrailingMarker(reply, '###SMART_MONTAGE###');
+      ({ text: reply, payload: montagePayload } = mm);
+      // الموديل بعت ماركر المونتاج بس الـJSON بتاعه باظ → كان الرد بيطلع فاضي ومفيش حاجة بتبدأ: بنطلب منه يعيده صح مرة واحدة
+      if (mm.unparsable) {
+        try {
+          const retryRaw = await agentChat({
+            message: '(system reminder: your last reply tried to start the montage but the ###SMART_MONTAGE### JSON was malformed, so NOTHING started. Reply again with ONE short human sentence followed by the corrected marker ###SMART_MONTAGE### and STRICTLY valid JSON: double quotes only, no comments, no "a"|"b" alternatives, no trailing commas, only fields from the instructions and ids from the note.)',
+            history: [...history, { role: 'user', content: message }, { role: 'assistant', content: rawBeforeMontage.slice(0, 1500) }],
+            attachmentNote, userPlan, isAdminUser, hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded, hasVideo: !!videoAlreadyUploaded,
+            videoDurationSec: videoDurationSec || null, hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits, mediaLedger,
+          });
+          if (retryRaw?.trim()) ({ text: reply, payload: montagePayload } = extractTrailingMarker(retryRaw, '###SMART_MONTAGE###'));
+        } catch (e) { console.warn('[Agent] SMART_MONTAGE re-ask failed:', e.message); }
+        if (!montagePayload && !reply.trim()) reply = 'معلش، حصلت مشكلة صغيرة وأنا بجهّز المونتاج ومفيش حاجة اتخصمت — اكتب "ابدأ" تاني وهبدأه.';
+      }
+    }
     let docSetupPayload;
     ({ text: reply, payload: docSetupPayload } = extractTrailingMarker(reply, '###DOC_SETUP###'));
     // بطاقة إعدادات الفيلم الوثائقي اللي بتظهر في الشات: بنضبّط القيم (الفرونت بيستخدمها كقيم مبدئية بس والعميل هو اللي بيختار)
@@ -1599,6 +1623,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !analyzeVideoPayload && !channelGeneratePayload &&
       looksLikeConfirmationQuestion(reply);
 
+    if (!String(reply || '').trim() && !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !analyzeVideoPayload && !showcaseVideos && !docJob && !docSetup && !channelGenerate) {
+      console.warn('[Agent] empty reply — sending a fallback message instead of an empty bubble');
+      reply = 'معلش، الرد ماوصلش كامل. ممكن تبعتلي رسالتك تاني؟';
+    }
     res.json({
       reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl,
       analyzeVideo: analyzeVideoPayload,
