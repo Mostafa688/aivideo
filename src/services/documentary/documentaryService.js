@@ -280,6 +280,7 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
   opt.editMode = options.mode === 'transitions' ? 'transitions' : 'smart'; // مش "mode": ده اسم نوع الـjob نفسه (montage) وبيتكتب فوقه
   opt.graphicsLevel = options.graphicsLevel === 'high' ? 'high' : 'normal';
   opt.transitionStyle = options.transitionStyle === 'soft' ? 'soft' : 'punchy';
+  opt.cutaways = options.cutaways === false ? false : undefined; // مشاهد موشن 3D بتحل محل لقطات (الصوت بيكمّل)؛ false = العميل مش عايزها
   if (opt.editMode === 'transitions') {
     opt.cutSilence = false; opt.zoom = false;
     if (!AUTOEDIT_CAPTIONS.includes(options.captions)) opt.captions = 'none';
@@ -329,7 +330,7 @@ async function produceSmartMontage({ id, userId, input, workDir, prog }) {
   }
   const r = await smartMontage({
     assets: analysed, workDir: path.join(workDir, 'smart'), instructions: input.instructions,
-    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile, graphics: input.graphics || [], mode: input.editMode, graphicsLevel: input.graphicsLevel, transitionStyle: input.transitionStyle, motionGraphics: input.motionGraphics === false ? false : undefined },
+    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile, graphics: input.graphics || [], mode: input.editMode, graphicsLevel: input.graphicsLevel, transitionStyle: input.transitionStyle, motionGraphics: input.motionGraphics === false ? false : undefined, cutaways: input.cutaways === false ? false : undefined },
     onProgress: ({ stage, frac = 0 }) => prog(stage === 'plan' ? 'cut' : stage, stage === 'plan' ? 0 : frac),
     deps: { onTranscript: async (words) => {
       const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000), { mode: 'footage' });
