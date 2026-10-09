@@ -8,7 +8,7 @@ import { llmJson } from '../documentary/llm.js';
 import { montageVideos, displaySize, transcribeAudioFile } from './index.js';
 import { splitSentences, planCuts, zoomPlan } from './autoEdit.js';
 import { buildBeatClip } from '../documentary/clipBuilder.js';
-import { sanitizeTemplate } from '../documentary/planner.js';
+import { sanitizeTemplate, yearsIn, percentsIn } from '../documentary/planner.js';
 import { themeFromPalette, scenesNote } from './assets.js';
 import { isRtlLang } from '../documentary/textutil.js';
 
@@ -251,7 +251,7 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
   const total = chapters.reduce((a, c) => a + c.dur, 0);
   const speechShare = total ? speechSec / total : 0;
   const capStyle = options.captions && options.captions !== 'none' ? options.captions : null;
-  const lang = newWords.length && hasArabic(newWords.map(w => w.w).join(' ')) ? 'ar' : String(options.language && options.language !== 'auto' ? options.language : 'en').split(/[-_]/)[0];
+  const lang = captionLang(newWords, options.language);
   const portraitShort = H > W && total <= 180;
 
   // موشن جرافيك: (1) طلبات العميل بالاسم (2) اقتراحات المخطط بعد التحقق (3) عبارات قوية من الكلام تلقائيًا
@@ -269,6 +269,7 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
       }
     });
     if (newWords.length) ovs.push(...autoPhraseOverlays(newWords, total, ovs, style?.templates, { dense: options.graphicsLevel === 'high' }).map(o => ({ ...o, prio: 0 })));
+    ovs.push(...autoExtraOverlays(newWords, total, ovs, { dense: options.graphicsLevel === 'high' }));
   }
   const overlays = resolveOverlays(ovs, total);
   const extraSfx = [{ t: 0.04, type: 'impact', vol: 0.45 }, ...stepSfx, ...overlays.flatMap(o => overlaySfx(o, o.at))];
@@ -292,10 +293,11 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
 }
 
 // ── موشن جرافيك على الفيديو كله (المونتاج العادي + طلبات العميل) ──────────────────────────────────────
-const OV_DUR = { stamp: 2.2, counter: 2.8, lower_third: 3.6, news_bar: 3.6, side_note: 3.6, bottom_sheet: 4.4, bullet_panel: 4.4, icon_pop: 3.6, percent_ring: 3, date_card: 3 };
+const OV_DUR = { corner_frame: 1.8, wipe_bars: 0.9, stamp: 2.2, counter: 2.8, lower_third: 3.6, news_bar: 3.6, side_note: 3.6, bottom_sheet: 4.4, bullet_panel: 4.4, icon_pop: 3.6, percent_ring: 3, date_card: 3 };
 const TOP_OR_SIDE = new Set(['news_bar', 'side_note']);
 /** الكابشن يختفي وقت الجرافيك اللي بيغطي نفس المكان (عشان الكلام ما يتكتبش مرتين ولا يتراكب) */
 export function hidesCaptions(template, centeredCaptions) {
+  if (template === 'corner_frame' || template === 'wipe_bars') return false; // زخرفة متحركة من غير نص — الكابشن يفضل ظاهر
   if (PHRASE_TEMPLATES.has(template) || template === 'stamp') return true;
   if (TOP_OR_SIDE.has(template)) return false;
   return centeredCaptions ? template !== 'lower_third' : ['bottom_sheet', 'lower_third', 'bullet_panel'].includes(template);
@@ -342,14 +344,33 @@ export function autoPhraseOverlays(words, total, existing = [], preferred = [], 
   let k = 0, last = -99;
   for (const sen of splitSentences(words)) {
     if (sen.start < 0.8 && total > 10) continue;
-    if (sen.start - last < (dense ? 3.4 : 6.5)) continue;
-    if ([...existing, ...out].some(o => Math.abs(o.at - sen.start) < (dense ? 2.6 : 5))) continue;
+    if (sen.start - last < (dense ? 3.2 : 4.6)) continue;
+    if ([...existing, ...out].some(o => Math.abs(o.at - sen.start) < (dense ? 2.4 : 3.6))) continue;
     const win = sen.words.filter(w => w.start < sen.start + 3.6);
     const ov = autoKinetic(win, order[k % order.length]);
     if (!ov) continue;
     out.push(timeOverlay(ov, sen.start, words)); k++; last = sen.start;
-    if (out.length >= Math.max(2, Math.round(total / (dense ? 3.8 : 7)))) break;
+    if (out.length >= Math.max(2, Math.round(total / (dense ? 3.6 : 5)))) break;
   }
+  return out;
+}
+
+/** جرافيكس إضافي من الكلام نفسه + زخرفة متحركة: سنة → date_card، نسبة → percent_ring (متأرضين في الجملة)، وإطار/مسحة متحركة من غير نص —
+ *  عشان فيديو الكلام (فلوج/شرح) ما يطلعش "عريان" حتى لو الكلام قليل. بتتحط في الفراغات بس (الأولوية للعبارات وطلبات العميل). */
+export function autoExtraOverlays(words, total, existing = [], { dense = false } = {}) {
+  const out = [];
+  const taken = (at, dur) => [...existing, ...out].some(o => at < o.at + o.dur + 0.5 && o.at < at + dur + 0.5);
+  const add = (template, data, at, dur) => { if (at < 0.1 || at > total - 1.3 || taken(at, dur)) return false; out.push({ template, data, at, dur: Math.min(dur, total - at - 0.1), prio: -1 }); return true; };
+  let years = 0, pcs = 0;
+  for (const sen of splitSentences(words || [])) {
+    const text = sen.words.map(w => w.w).join(' ');
+    const at = (needle) => (sen.words.find(w => normW(w.w).includes(needle)) || sen.words[0]).start;
+    if (years < 3) { const ys = yearsIn(text); const data = ys.length ? sanitizeTemplate('date_card', { year: ys[0] }, text) : null; if (data && add('date_card', data, at(String(ys[0])), OV_DUR.date_card)) years++; }
+    if (pcs < 2) { const ps = percentsIn(text); const data = ps.length ? sanitizeTemplate('percent_ring', { value: ps[0] }, text) : null; if (data && add('percent_ring', data, at(String(ps[0])), OV_DUR.percent_ring)) pcs++; }
+  }
+  add('wipe_bars', {}, 0.15, OV_DUR.wipe_bars);
+  const step = dense ? 4.2 : 7.2;
+  for (let t = 2.2; t < total - 2; t += step) add('corner_frame', {}, t, OV_DUR.corner_frame);
   return out;
 }
 
@@ -596,7 +617,7 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   const { W, H } = targetSizeFor(clips);
   const files = [];
   const animate = plan.shots.length <= 45 && options.zoom !== false;
-  const lang0 = hasArabic(narr.words.map(w => w.w).join(' ')) ? 'ar' : (options.language && options.language !== 'auto' ? String(options.language).split(/[-_]/)[0] : 'en');
+  const lang0 = captionLang(narr.words, options.language);
   const theme = style?.theme || (plan.style === 'dramatic' ? 'cinematic' : 'blue');
   // طلبات العميل بالاسم بتتحط على الفيديو كله؛ الجرافيك التلقائي في نفس الوقت بيتشال (الأولوية للعميل)
   const custom = options.motionGraphics === false ? [] : placeCustomerGraphics(options.graphics, narr.words, narr.duration);
@@ -604,6 +625,7 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   const hideCaps = custom.filter(o => hidesCaptions(o.template, false)).map(o => [o.at - 0.05, o.at + o.dur - 0.2]); // فترات الكابشن بيختفي فيها لأن نفس الكلام ظاهر كنص متحرك (مفيش تكرار)
   const extraSfx = [{ t: 0.04, type: 'impact', vol: 0.5 }, ...custom.flatMap(o => overlaySfx(o, o.at))];
   let shotStart = 0;
+  const bakedWins = []; // نوافذ الجرافيكس المدمجة جوه اللقطات — الزخرفة الإضافية ما بتتراكبش عليها
   for (let i = 0; i < plan.shots.length; i++) {
     onProgress({ stage: 'cut', frac: i / plan.shots.length });
     const s = plan.shots[i], c = clips[s.clipIndex];
@@ -625,6 +647,7 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
           await ffmpeg(['-i', v, '-i', raw, '-map', '0:v', '-map', '1:a', '-c', 'copy', '-shortest', withAudio]);
           rmQuiet(v); rmQuiet(raw); finalFile = withAudio;
           extraSfx.push(...overlaySfx(s.overlay, shotStart + at));
+          bakedWins.push({ at: shotStart + at, dur: ovDur });
           if (PHRASE_TEMPLATES.has(s.overlay.template)) hideCaps.push([shotStart + at - 0.05, shotStart + at + ovDur - 0.3]);
         }
       } catch (e) { console.warn('[SmartMontage] overlay failed for shot', i, '— continuing without it:', e.message); }
@@ -634,14 +657,15 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   }
   onProgress({ stage: 'finish', frac: 0 });
   const capStyle = options.captions && options.captions !== 'none' ? options.captions : null;
-  const lang = hasArabic(narr.words.map(w => w.w).join(' ')) ? 'ar' : (options.language && options.language !== 'auto' ? String(options.language).split(/[-_]/)[0] : 'en');
+  const lang = captionLang(narr.words, options.language);
+  const extraOv = options.motionGraphics === false ? [] : autoExtraOverlays(narr.words, narr.duration, [...custom, ...bakedWins], { dense: options.graphicsLevel === 'high' }).map(({ template, data, at, dur }) => ({ template, data, at, dur }));
   const r = await montageVideos({
     files, workDir: path.join(workDir, 'final'), assumeNormalized: true, narrationFile: voiceFile,
     transitions: files.length > 1 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: true,
     words: capStyle ? narr.words.filter(w => !hideCaps.some(([a, b]) => (w.start + w.end) / 2 >= a && (w.start + w.end) / 2 <= b)) : null,
     captions: capStyle ? { style: capStyle, lang, position: 'auto', transcribe: false } : null,
     musicFile: options.musicFile || null, musicVolume: 0.12, extraSfx,
-    overlays: custom, overlayTheme: theme,
+    overlays: [...custom, ...extraOv], overlayTheme: theme,
   });
   files.forEach(f => rmQuiet(f));
   let tt = 0;
@@ -661,6 +685,21 @@ export function styleFrom(images) {
 }
 
 /** كل الخطوات: (فويس-أوفر؟ ← خطة على الصوت) أو (تفريغ كلام الفيديوهات → خطة → تنفيذ) */
+/** لغة الكابشن/الخط من الكلام الفعلي نفسه (مش من حقل language اللي الايجنت بيكتبه — كان بيطلّع كابشن عربي لفيديو إنجليزي) */
+export function captionLang(words, hint) {
+  if (hasArabic((words || []).map(w => w.w).join(' '))) return 'ar';
+  const h = String(hint && hint !== 'auto' ? hint : 'en').split(/[-_]/)[0];
+  return ['es', 'fr', 'de'].includes(h) ? h : 'en';
+}
+
+/** تفريغ بكشف اللغة التلقائي: الـhint ما بيتفرضش على الموديل (لو اتفرض غلط، كلام إنجليزي بيطلع "مترجم" بالعربي)، وبنستخدمه بس لو الكشف التلقائي ملقاش كلام */
+export async function transcribeAuto(transcribe, file, workDir, hint) {
+  const words = await transcribe(file, workDir, null);
+  if (words?.length) return words;
+  const h = hint && hint !== 'auto' ? hint : null;
+  return h ? transcribe(file, workDir, h) : (words || []);
+}
+
 export async function smartMontage({ assets, workDir, instructions = '', options = {}, onProgress = () => {}, deps = {} }) {
   fs.mkdirSync(workDir, { recursive: true });
   const transcribe = deps.transcribe || transcribeAudioFile;
@@ -678,7 +717,7 @@ export async function smartMontage({ assets, workDir, instructions = '', options
       const wav = path.join(workDir, `src_${i}.wav`);
       try {
         await ffmpeg(['-i', a.file, '-vn', '-ac', '1', '-ar', '16000', wav]);
-        c.words = await transcribe(wav, workDir, options.language || null);
+        c.words = await transcribeAuto(transcribe, wav, workDir, options.language);
         c.sentences = splitSentences(c.words);
         if (!c.words.length) c.hasSpeech = false;
       } catch (e) { console.warn('[SmartMontage] transcription failed for a clip, treating as no speech:', e.message); c.hasSpeech = false; }
@@ -688,7 +727,7 @@ export async function smartMontage({ assets, workDir, instructions = '', options
   }
   if (voice) {
     let words = (voice.analysis?.words || []).map(([w, start, end]) => ({ w, start, end }));
-    if (!words.length) words = await transcribe(voice.file, workDir, options.language && options.language !== 'auto' ? options.language : null);
+    if (!words.length) words = await transcribeAuto(transcribe, voice.file, workDir, options.language);
     if (!words.length) { const e = new Error('no speech in the voiceover'); e.code = 'no_speech'; throw e; }
     if (deps.onTranscript) await deps.onTranscript(words);
     const narr = { words, sentences: splitSentences(words), duration: await probeDuration(voice.file) };
