@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { HelpCircle, Search, ChevronDown, Sparkles, Bot, Clapperboard, Tv, ShoppingBag, Users, Handshake, CreditCard, Film, GraduationCap, Wrench, MessageCircle, X } from 'lucide-react';
+import { PageShell, Empty } from '../components/PageKit.jsx';
 
 // ─── Arabic Content ────────────────────────────────────────────────────────
 const faqs_ar = [
@@ -6,7 +8,7 @@ const faqs_ar = [
     category: '🌟 عن Erivion',
     questions: [
       { q: 'ايه هي Erivion وبتقدم ايه بالظبط؟', a: 'Erivion منصة بتحول أي فكرة، سكريبت، أو حتى صورة، لفيديو جاهز بالذكاء الاصطناعي — صوت، موسيقى، وكابشن، من غير ما تحتاج خبرة مونتاج. الايجنت الذكي بيبني الفيديو معاك خطوة بخطوة (صورة مرجعية لو محتاج شخصية ثابتة تفضل زي ما هي في كل المشاهد، صور المشاهد، وبعدين تحريكها فيديو) مستخدم أحدث موديلات الصور والفيديو المتاحة، وبيختارلك أنسب موديل لكل مشهد تلقائيًا من غير ما تحتاج تختار حاجة بنفسك.' },
-      { q: 'هل فيه خطة مجانية؟', a: 'لأ، الخطة المجانية اتلغت. أي مستخدم جديد بيبدأ برصيد كريديت صفر، ولازم يشحن كريديت (مصري عن طريق InstaPay، أو دولي عن طريق Gumroad) قبل ما يقدر يعمل أي فيديو.' },
+      { q: 'هل فيه خطة مجانية؟', a: 'مفيش خطة مجانية دايمة: أي حساب جديد بيبدأ برصيد كريديت صفر، وتشحن (مصري عن طريق InstaPay، أو دولي عن طريق Gumroad) قبل ما تعمل فيديو.\nلكن فيه تجارب مجانية مرة واحدة لكل حساب: مونتاج مجاني لفيديوهاتك (لحد دقيقتين و6 فيديوهات، بعلامة Erivion المائية)، وأول دقيقة من فيلم وثائقي بصوتك أنت (بعلامة مائية كمان).' },
       { q: 'إمتى أستخدم الايجنت وإمتى أستخدم صفحة موديل معينة مباشرة؟', a: 'الايجنت هو الطريق الافتراضي والأسهل لأي فيديو جديد — بيبني الفيديو بالكامل من وصفك للفكرة وبيختار أحدث الموديلات المتاحة تلقائيًا. صفحات الموديلات القديمة المرقمة (زي Model 3، 4، 5) لسه شغالة بس بقت خيار إضافي بس، مش الأساس — تقدر تستخدمها لو انت مشترك فيها من قبل، أو لو طلبت موديل معين بالاسم صراحة.' },
     ],
   },
@@ -20,18 +22,52 @@ const faqs_ar = [
     ],
   },
   {
+    category: '🎞️ الأفلام الوثائقية والمونتاج',
+    questions: [
+      { q: 'إيه هو استوديو الأفلام الوثائقية؟', a: 'بتديله موضوع أو سكريبت جاهز أو تعليق صوتي سجلته بنفسك، ويطلعلك فيلم وثائقي كامل: لقطات حقيقية وأرشيفية من مصادر عامة (NASA وWikimedia Commons وInternet Archive وPexels)، موشن جرافيك، خرائط، لوحات صور، وكابشن. أفلام أفقية لحد 30 دقيقة وشورتس رأسي 9:16 لحد 3 دقايق. السعر بالكريديت حسب مدة الفيلم وبتشوفه قبل ما تبدأ.' },
+      { q: 'إزاي أعمل مونتاج لفيديوهاتي؟', a: 'من شات الايجنت: زرار + ← ارفع فيديوهات للمونتاج. تقدر ترفع لحد 20 فيديو (مجموع لقطاتها لحد 20 دقيقة) وتعليق صوتي لو عايز، وصور أو فيديو كمرجع لستايل الموشن جرافيك. الايجنت بيفهم كل مشهد، يقترح عليك خطة وسعر، وبعد موافقتك بيبدأ. الفيديوهات المرفوعة بتتحفظ 3 ساعات بس. السعر بيبدأ من حوالي 2 كريديت وبيزيد مع المدة (الدقيقة حوالي 4 كريديت).' },
+      { q: 'المونتاج بيطلع شكل واحد ولا بيختلف؟', a: 'بيختلف حسب خطتك ومزاجك: انتقالات بس بنفس ترتيب مشاهدك، مشاهد متزامنة مع تعليقك الصوتي لقصة، مونتاج صنّاع محتوى بجرافيكس كتير ولقطات مقربة، أو إيقاع هادي. وتقدر تحدد مستوى المؤثرات الصوتية (بدون، خفيف، عادي، قوي) والموسيقى (بتتضاف بس لو وافقت). قوله اللي في دماغك والايجنت يختار الباقي.' },
+      { q: 'إيه هي مشاهد الموشن 3D في المونتاج؟', a: 'لما حد بيتكلم قدام الكاميرا، الايجنت بيفصل الصوت عن الصورة ويختار من 2 لـ 8 لحظات ويحط مكانها مشاهد موشن جرافيك 3D بتتعمل بالكود عن اللي بتقوله (عنوان، كلمات مفتاحية، قايمة، رقم، مقارنة). صوتك الأصلي بيكمّل من غير قطع واللقطة بترجع بعدها، والكابشن بيقف أثناء المشهد. محتاج كلام واضح في الفيديو، ومش بتتعمل في وضع "انتقالات بس" أو لو قلتله مش عايزها.' },
+      { q: 'أقدر أرفع صورة أو فيديو بستايل موشن جرافيك معين وييجي زيه؟', a: 'أيوه. الصورة بتتستخدم تلقائيًا كمرجع للألوان وأقرب نوع جرافيك. الفيديو بيتقرأ بموديل فيديو رخيص بيشوف الحركة والانتقالات (حوالي 1–2 كريديت للفيديو المرجعي، وبيتردّ لو القارئ ما اشتغلش). النتيجة بتطلع أقرب شبه من مكتبة الجرافيك عندنا من حيث الألوان والأنواع والإيقاع، مش نسخة طبق الأصل.' },
+      { q: 'الكابشن بيطلع بأي لغة؟', a: 'بلغة الكلام الفعلي في الفيديو — بنكتشفها من الصوت نفسه، يعني فيديو إنجليزي بيطلع كابشنه إنجليزي حتى لو بتكلم الايجنت بالعربي.' },
+      { q: 'فيه مونتاج مجاني؟', a: 'أيوه، مرة واحدة لكل حساب: ناتج لحد دقيقتين وحد أقصى 6 فيديوهات، بعلامة Erivion المائية. بعد كده المونتاج بالكريديت.' },
+    ],
+  },
+  {
+    category: '📺 قنواتك على يوتيوب',
+    questions: [
+      { q: 'إيه اللي بتعمله صفحة قنواتي؟', a: 'بتربط قناتك عن طريق VidIQ، وErivion يقترح عليك فيديو كل يوم بناءً على تحليل القناة. بتوافق على الفكرة، والتنفيذ بيبدأ، وبيجيلك إيميل لما الفكرة والصورة المصغرة والعنوان والوصف والكلمات المفتاحية تجهز في مشروع باسم القناة.' },
+      { q: 'هل Erivion بتنشر على قناتي؟', a: 'لأ. Erivion بتجهّز لك كل حاجة وانت اللي بترفع الفيديو على قناتك بنفسك.' },
+      { q: 'الصورة المصغرة بتتعمل إزاي؟', a: 'بالذكاء الاصطناعي (Nano Banana 2.1) بعد بحث عن أمثلة ناجحة في مجالك، وبتكون جاهزة مع باقي حزمة يوتيوب.' },
+    ],
+  },
+  {
+    category: '🛍️ إعلانات المنتجات',
+    questions: [
+      { q: 'أعمل إعلان لمنتجي من صورة واحدة؟', a: 'أيوه. ارفع صورة المنتج (وفكرة لو عندك)، والايجنت يتعرف عليه ويقترح فكرة وموديل (Wan 3.0 أو Seedance 2.5 أو Gemini Omni Flash 1.1) بتعليق صوتي مدمج، وانت اللي بتختار وبتوافق على الخطة والسعر قبل أي خصم. الموسيقى بتتضاف بس لو وافقت عليها.' },
+      { q: 'إيه هو P-Video Animate؟', a: 'نقل أداء: بتديله فيديو فيه حركة وكلام (لحد 60 ثانية) وصورة شخصية أو مكان جديد، وبيطلع نفس الحركات والكلام بالشخصية الجديدة. هتلاقيه في زرار + ← Create video، والسعر بالثانية بيظهر قدام الموديل.' },
+    ],
+  },
+  {
+    category: '🤝 الفريق',
+    questions: [
+      { q: 'أقدر أشارك الكريديت مع زمايلي؟', a: 'أيوه من صفحة "Team": بتبعت دعوة بإيميل العضو، وهو بيدخل بحسابه الخاص ويستخدم رصيد الفريق. كل عضو بيفضل بخطته وصلاحياته، وتقدر تشيل أي عضو في أي وقت.' },
+    ],
+  },
+  {
     category: '💳 الاشتراك والدفع',
     questions: [
       { q: 'إزاي الكريديت شغال؟', a: 'رصيد كريديت واحد بيشتغل مع كل الموديلات — تشحن مرة واحدة والكريديت بيفضل في حسابك من غير ما ينتهي أو يتصفّر أسبوعيًا.' },
       { q: 'إزاي أدفع لو أنا في مصر؟', a: 'تحدد عدد الكريديت اللي عايزه، تحوّل المبلغ عن طريق InstaPay على رقم الموقع، ترفع صورة إيصال التحويل، وتدوس "تم الدفع" — طلبك بيتراجع من فريق Erivion خلال 24 ساعة ويتفعّل الكريديت.' },
       { q: 'إزاي أدفع لو أنا برة مصر؟', a: 'تختار الباقة المناسبة وتدفع مباشرة بالكارت عن طريق Gumroad، وبعدها تدوس "I\'ve Paid" — التفعيل بيتم بعد المراجعة.' },
       { q: 'هل فيه استرجاع فلوس؟', a: 'للمصريين (InstaPay): تقدر تطلب استرجاع خلال 4 ساعات فقط من وقت الموافقة على الدفع. بعد كده مفيش استرجاع إلا في حالة عطل تقني مؤكد من عندنا — عدم الرضا عن ستايل الفيديو مش سبب كافي للاسترجاع. التفاصيل الكاملة في صفحة "Refund Policy".' },
+      { q: 'فيه خصومات على الباقات؟', a: 'بتظهر خصومات دورية على باقات المصريين في صفحة الأسعار، والسعر المكتوب بعد الخصم هو اللي بتدفعه. لو بدأت الدفع قبل ما الخصم يتجدد، بنحسبلك سعر الخصم اللي دخلت عليه.' },
     ],
   },
   {
     category: '🎬 الموديلات والفيديوهات',
     questions: [
-      { q: 'ايه الفرق بين الموديلات؟', a: 'مبقاش لازم تختار موديل بنفسك — الايجنت بيختار أفضل موديل فيديو أو صور لكل مشهد تلقائيًا حسب طلبك (موديلات فيديو زي Veo وKling وSeedance وغيرهم، وموديلات صور زي Nano Banana وSeedream للمشاهد). لو المشهد فيه حوار بين شخصيات أو نص لازم يظهر واضح على الشاشة، الايجنت بيختار موديل مخصص لده تلقائيًا. الموديلات القديمة المرقمة (من 1 لحد 8) لسه موجودة كخيار إضافي، بس مش الاختيار الافتراضي — تقدر تطلبها بالاسم صراحة لو حابب.' },
+      { q: 'ايه الفرق بين الموديلات؟ وأقدر أختار بنفسي؟', a: 'الايجنت بيختار أنسب موديل لكل مشهد تلقائيًا ويقولك سعره قبل ما يبدأ، وتقدر كمان تختار بنفسك من زرار + جنب الشات ← Create video أو Create image — بتشوف كل موديل بسعره بالكريديت في الثانية.\nأمثلة: Veo وKling وSeedance وWan وLuma لتحريك الفيديو، وNano Banana وSeedream للصور، وP-Video Animate لنقل حركة وكلام فيديو لشخصية جديدة، وGemini Omni Flash لتعديل فيديو موجود. لو المشهد فيه حوار أو نص مكتوب لازم يطلع واضح، الايجنت بيختار موديل مناسب لده.' },
       { q: 'أقدر أعدّل فيديو خلصت عمله قبل كده؟', a: 'أيوه — قوله للايجنت إنك عايز تعدّل حاجة في فيديو اتعمل بالفعل (زي تغيير جو المشهد أو تفاصيل معينة) من غير ما تعمل الفيديو من الأول تاني. المدة الحقيقية للفيديو المصدر هي اللي بتحدد الموديل المستخدم في التعديل تلقائيًا.' },
       { q: 'كام وقت يستغرق تصيير الفيديو؟', a: 'من دقيقة لحد شوية دقايق حسب مدة الفيديو والموديل. لو اتأخر، هتلاقيه في صفحة "My Videos" حتى لو الشاشة قفلت.' },
       { q: 'أقدر أرفع سكريبت أو صوت جاهز؟', a: 'أيوه — تقدر تلصق سكريبت كامل (حتى مقسّم مشاهد) أو ترفع تسجيل صوتي وهيتحول لنارريشن حقيقي في الفيديو.' },
@@ -40,7 +76,7 @@ const faqs_ar = [
   {
     category: '🎓 الكورسات',
     questions: [
-      { q: 'فيه كورسات لتعلم صناعة الفيديوهات على Erivion؟', a: 'أيوه، فيه قسم "Courses" مخصص لده في القائمة العلوية بالموقع — هيحتوي دروس على إزاي تستخدم كل موديل وتعمل فيديوهات ناجحة. المحتوى بيتحدث تباعًا.' },
+      { q: 'فيه كورسات لتعلم صناعة الفيديوهات على Erivion؟', a: 'أيوه، صفحة "Courses" فيها فيديو تعريفي مجاني للكل وكورسات بعضها مجاني والباقي لمشتركي Erivion (اللي اشتروا كريديت). كل كورس فيه دروس فيديو ومرفقات، وبنضيف كورسات جديدة باستمرار.' },
     ],
   },
   {
@@ -48,6 +84,7 @@ const faqs_ar = [
     questions: [
       { q: 'الفيديو توقف أثناء التصيير وظهرت رسالة خطأ', a: 'تحقق أولاً من "My Videos" — قد يكون الفيديو اكتمل. في حالة الفشل الكامل تواصل مع الدعم وسنعيد الكريديت.' },
       { q: 'لا أستطيع تسجيل الدخول', a: 'تأكد من تفعيل بريدك الإلكتروني (تحقق من Spam). للمشاكل الأخرى تواصل مع الدعم.' },
+      { q: 'الايجنت مش شايف الفيديوهات اللي رفعتها للمونتاج', a: 'فيديوهات المونتاج بتتحفظ 3 ساعات بس. لو عدّت المدة ارفعها تاني. ولو الرد جه فاضي أو ما بدأش بعد "ابدأ"، ابعتله الرسالة تاني — ومفيش حاجة بتتخصم غير لما المونتاج يبدأ فعلًا.' },
     ],
   },
   {
@@ -65,7 +102,7 @@ const faqs_en = [
     category: '🌟 About Erivion',
     questions: [
       { q: 'What is Erivion and what does it actually offer?', a: "Erivion turns any idea, script, or even a single photo into a finished AI-generated video — voiceover, music, and captions included, no editing experience required. The smart Agent builds your video step by step (a reference image first if a character needs to stay consistent across scenes, then scene images, then animating them into video) using the latest available image and video engines, automatically picking the best one for each scene so you never have to choose anything yourself." },
-      { q: 'Is there a free plan?', a: "No, the free plan has been discontinued. Every new account starts at 0 credits and needs to top up (Egypt via InstaPay, international via Gumroad) before generating any video." },
+      { q: 'Is there a free plan?', a: "There is no permanent free plan: a new account starts at 0 credits and you top up (Egypt via InstaPay, international via Gumroad) before generating a video.\nBut there are one-time free trials per account: a free montage of your own videos (up to 2 minutes and 6 videos, with the Erivion watermark) and the first minute of a documentary narrated by your own voice (also watermarked)." },
       { q: 'When should I use the Agent vs. a specific model page directly?', a: "The Agent is the default, easiest path for any new video — it builds the whole thing from your description and automatically picks the latest available engines. The old numbered model pages (Model 3, 4, 5...) still work, but are now an extra option rather than the default — use them if you're already subscribed to one, or if you explicitly ask for a specific model by name." },
     ],
   },
@@ -79,18 +116,52 @@ const faqs_en = [
     ],
   },
   {
+    category: '🎞️ Documentaries & Montage',
+    questions: [
+      { q: 'What is the Documentary Studio?', a: 'Give it a topic, a ready script or a voiceover you recorded, and you get a full documentary: real and archive footage from public sources (NASA, Wikimedia Commons, Internet Archive, Pexels), motion graphics, maps, photo boards and captions. Landscape films up to 30 minutes and vertical 9:16 shorts up to 3 minutes. Priced in credits by film length, shown before you start.' },
+      { q: 'How do I get my own videos edited?', a: 'In the Agent chat: + button → upload videos for montage. Upload up to 20 videos (20 minutes of footage in total), an optional voiceover, and images or a video as a motion-graphics style reference. The Agent understands each scene, proposes a plan and a price, and starts after you approve. Uploads are kept for 3 hours only. Pricing starts at about 2 credits and grows with length (about 4 credits per minute).' },
+      { q: 'Does every montage look the same?', a: 'No — it follows your plan and mood: transitions only in your order, scenes synced to your voiceover for a story, a creator-style edit with lots of graphics and punch-ins, or a calm pace. You can set the sound-effects level (none, light, normal, heavy) and music (added only if you agree). Tell it what you have in mind and the Agent picks the rest.' },
+      { q: 'What are the 3D motion scenes in a montage?', a: 'When someone talks to the camera, the Agent separates the audio and replaces 2–8 moments of the footage with code-made 3D motion-graphics scenes about what is being said (headline, keywords, list, number, comparison). Your original audio keeps playing without a cut, the footage comes back afterwards, and captions pause during the scene. It needs clear speech, and it is not applied in transitions-only mode or if you decline it.' },
+      { q: 'Can I upload an image or video of a motion-graphics style and get the same look?', a: 'Yes. An image is used automatically as a reference for colours and the closest graphic type. A video is read by a low-cost video model that sees the motion and transitions (about 1–2 credits per reference video, refunded if the reader could not run). The result is the closest match in our graphics library — colours, types and pace — not an exact copy.' },
+      { q: 'What language are the captions in?', a: 'The language actually spoken in the video — it is detected from the audio, so an English video gets English captions even if you chat with the Agent in Arabic.' },
+      { q: 'Is there a free montage?', a: 'Yes, once per account: output up to 2 minutes and at most 6 videos, with the Erivion watermark. After that montage uses credits.' },
+    ],
+  },
+  {
+    category: '📺 Your YouTube Channels',
+    questions: [
+      { q: 'What does the My Channels page do?', a: 'You connect your channel through VidIQ and Erivion suggests a video every day based on a real analysis of your channel. You approve the idea, production starts, and you get an email when the idea, thumbnail, title, description and keywords are ready in a project named after the channel.' },
+      { q: 'Does Erivion publish to my channel?', a: 'No. Erivion prepares everything and you upload the video to your channel yourself.' },
+      { q: 'How is the thumbnail made?', a: 'With AI (Nano Banana 2.1), after researching successful examples in your niche, and it comes with the rest of the YouTube package.' },
+    ],
+  },
+  {
+    category: '🛍️ Product Ads',
+    questions: [
+      { q: 'Can I make an ad for my product from a single photo?', a: 'Yes. Upload the product photo (and an idea if you have one); the Agent recognises the product and proposes an idea and an engine (Wan 3.0, Seedance 2.5 or Gemini Omni Flash 1.1) with built-in voiceover. You choose and approve the plan and price before anything is charged, and music is added only if you agree.' },
+      { q: 'What is P-Video Animate?', a: 'Performance transfer: give it a video with movement and speech (up to 60 seconds) and a new character or place image, and you get the same movements and speech with the new character. Find it under + → Create video; its per-second price is shown next to it.' },
+    ],
+  },
+  {
+    category: '🤝 Team',
+    questions: [
+      { q: 'Can I share credits with my teammates?', a: 'Yes, from the Team page: invite a member by email, they sign in with their own account and use the team credits. Each member keeps their own plan and permissions, and you can remove anyone at any time.' },
+    ],
+  },
+  {
     category: '💳 Subscription & Payment',
     questions: [
       { q: 'How do credits work?', a: 'One credit balance works across every model — you top up once and the balance stays in your account, no weekly expiry or reset.' },
       { q: 'How do I pay if I\'m in Egypt?', a: 'Pick how many credits you want, transfer the amount via InstaPay to the site\'s number, upload a screenshot of the receipt, and tap "I\'ve Paid" — the Erivion team reviews it within 24 hours and activates your credits.' },
       { q: 'How do I pay if I\'m outside Egypt?', a: 'Choose the package that fits, pay directly by card via Gumroad, then click "I\'ve Paid" — activation follows after review.' },
       { q: 'Is there a refund?', a: "Egypt (InstaPay): you can request a refund only within 4 hours of the payment being approved. After that, no refunds except for a confirmed technical failure on our side — not liking the video's style isn't a valid reason. Full details are on the Refund Policy page." },
+      { q: 'Are there discounts on the packages?', a: 'Periodic discounts on Egyptian packages show up on the Pricing page, and the price shown after the discount is what you pay. If you started paying before the discount renewed, we honour the discounted price you entered with.' },
     ],
   },
   {
     category: '🎬 Models & Videos',
     questions: [
-      { q: "What's the difference between the models?", a: "You don't need to pick a model yourself anymore — the Agent automatically picks the best video or image engine for each scene based on what you're asking for (video engines like Veo, Kling, Seedance and others; image engines like Nano Banana and Seedream for scenes). If a scene needs dialogue between characters or on-screen text that needs to render clearly, the Agent automatically picks an engine built for that. The old numbered models (1 through 8) still exist as an extra option, but aren't the default anymore — ask for one by name if you'd like to use it." },
+      { q: "What's the difference between the models, and can I pick one myself?", a: "The Agent picks the best engine for each scene automatically and tells you the price before it starts, and you can also pick yourself from the + button next to the chat → Create video or Create image — every model is listed with its credit price per second.\nExamples: Veo, Kling, Seedance, Wan and Luma to animate video; Nano Banana and Seedream for images; P-Video Animate to move a video's movement and speech onto a new character; Gemini Omni Flash to edit an existing video. If a scene needs dialogue or on-screen text to render clearly, the Agent picks a suitable engine." },
       { q: 'Can I edit a video I already generated?', a: "Yes — just tell the Agent you want to change something in a video you already made (like the scene's mood or a specific detail) instead of generating it from scratch. The source video's real length automatically determines which engine is used for the edit." },
       { q: 'How long does rendering take?', a: "From under a minute to a few minutes depending on video length and model. If it's taking a while, check the \"My Videos\" page — it'll be there even if you closed the screen." },
       { q: 'Can I upload a ready-made script or voice recording?', a: "Yes — you can paste a full script (even scene-by-scene) or upload a voice recording and it becomes the video's actual narration." },
@@ -99,7 +170,7 @@ const faqs_en = [
   {
     category: '🎓 Courses',
     questions: [
-      { q: 'Are there courses to learn video creation on Erivion?', a: 'Yes, there\'s a dedicated "Courses" section in the top navigation — it covers how to use each model and make videos that perform well. Content is being added over time.' },
+      { q: 'Are there courses to learn video creation on Erivion?', a: 'Yes — the Courses page has a free intro video for everyone and courses that are either free or for subscribers (customers who bought credits). Each course has video lessons and attachments, and we keep adding more.' },
     ],
   },
   {
@@ -107,6 +178,7 @@ const faqs_en = [
     questions: [
       { q: 'My video stopped rendering and showed an error', a: "First check \"My Videos\" — it may have completed. In case of complete failure, contact support and we'll restore your credits." },
       { q: "I can't log in", a: 'Make sure your email is verified (check Spam). For other issues, contact support.' },
+      { q: 'The Agent cannot see the videos I uploaded for montage', a: 'Montage uploads are kept for 3 hours only. If that time passed, upload them again. If you get an empty reply, or nothing starts after "start", send the message again — nothing is charged unless the montage really starts.' },
     ],
   },
   {
@@ -118,106 +190,96 @@ const faqs_en = [
   },
 ];
 
+const ICONS = { '🌟': Sparkles, '🤖': Bot, '🎞️': Clapperboard, '📺': Tv, '🛍️': ShoppingBag, '💳': CreditCard, '🎬': Film, '🎓': GraduationCap, '⚙️': Wrench };
+// ترتيب العرض: من الأهم للعميل الجديد لحد الدعم الفني
+const ORDER = ['عن Erivion|About', 'الايجنت|Agent', 'الأفلام الوثائقية|Documentaries', 'إعلانات|Ads', 'قنواتك|Channels', 'الموديلات|Models', 'الاشتراك|Subscription', 'الفريق|Team', 'الكورسات|Courses', 'مشاكل|Technical', 'الشراكة|Affiliate'];
+const rank = (title) => { const i = ORDER.findIndex(k => k.split('|').some(w => title.includes(w))); return i < 0 ? 99 : i; };
+const catMeta = (category) => {
+  const m = /^(\S+)\s+(.*)$/.exec(category) || [null, '', category];
+  const title = m[2];
+  const Icon = /الفريق|Team/.test(title) ? Users : /الشراكة|Affiliate/.test(title) ? Handshake : (ICONS[m[1]] || HelpCircle);
+  return { title, Icon };
+};
+
 export default function FAQPage({ onBack, onNavigate }) {
-  const region   = localStorage.getItem('erivion_region') || 'eg';
-  const isAr     = region !== 'intl';
-  const faqs     = isAr ? faqs_ar : faqs_en;
-  const dir      = isAr ? 'rtl' : 'ltr';
+  const region = localStorage.getItem('erivion_region') || 'eg';
+  const isAr = region !== 'intl';
+  const dir = isAr ? 'rtl' : 'ltr';
 
   const [openItem, setOpenItem] = useState(null);
-  const [search, setSearch]     = useState('');
+  const [search, setSearch] = useState('');
+  const [activeCat, setActiveCat] = useState('all');
 
-  const filtered = faqs.map(cat => ({
-    ...cat,
-    questions: cat.questions.filter(
-      q => !search || q.q.includes(search) || q.a.includes(search)
-    ),
-  })).filter(cat => cat.questions.length > 0);
+  const cats = useMemo(() => (isAr ? faqs_ar : faqs_en).map((c, i) => ({ ...c, ...catMeta(c.category), id: `c${i}` })).sort((a, b) => rank(a.title) - rank(b.title)), [isAr]);
+  const needle = search.trim().toLowerCase();
+  const filtered = cats
+    .filter(c => activeCat === 'all' || c.id === activeCat)
+    .map(c => ({ ...c, questions: c.questions.filter(q => !needle || q.q.toLowerCase().includes(needle) || q.a.toLowerCase().includes(needle)) }))
+    .filter(c => c.questions.length > 0);
+  const total = cats.reduce((a, c) => a + c.questions.length, 0);
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0f)', color: 'var(--text, #fff)', fontFamily: "'DM Sans', sans-serif", padding: '40px 20px', direction: dir }}>
-      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+    <PageShell dir={dir} onBack={onBack} backLabel={isAr ? 'رجوع' : 'Back'} eyebrow={isAr ? 'مركز المساعدة' : 'Help center'} Icon={HelpCircle} accent="#60a5fa"
+      title={isAr ? 'الأسئلة الشائعة' : 'Frequently asked questions'}
+      subtitle={isAr ? `${total} سؤال عن Erivion — الأفلام الوثائقية والمونتاج والايجنت والقنوات والدفع وغيرهم.` : `${total} answers about Erivion — documentaries, montage, the Agent, channels, payments and more.`} maxWidth={900}>
+      <style>{`
+        .fq-search{position:relative;margin-bottom:18px}
+        .fq-search input{width:100%;box-sizing:border-box;padding:15px 48px;border-radius:16px;border:1px solid var(--border2);background:rgba(255,255,255,.04);color:var(--text);font:inherit;font-size:15px;outline:none;transition:border-color .15s,box-shadow .15s}
+        .fq-search input:focus{border-color:var(--pk-accent);box-shadow:0 0 0 4px var(--pk-accent-bg)}
+        .fq-search svg.s{position:absolute;top:50%;transform:translateY(-50%);inset-inline-start:16px;color:var(--text2);pointer-events:none}
+        .fq-search button{position:absolute;top:50%;transform:translateY(-50%);inset-inline-end:12px;background:rgba(255,255,255,.08);border:none;color:var(--text2);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;cursor:pointer}
+        .fq-q{width:100%;display:flex;align-items:center;gap:14px;padding:17px 20px;background:none;border:none;color:var(--text);font:inherit;font-size:15.5px;font-weight:600;line-height:1.6;cursor:pointer;text-align:start}
+        .fq-q svg{flex-shrink:0;color:var(--text2);transition:transform .2s}
+        .fq-open .fq-q svg{transform:rotate(180deg);color:var(--pk-accent)}
+        .fq-a{padding:0 20px 20px;color:var(--text2);font-size:14.5px;line-height:1.95;white-space:pre-line;max-width:72ch}
+        .fq-cat-h{display:flex;align-items:center;gap:10px;margin:34px 0 14px;font-size:17px;font-weight:800}
+        .fq-cat-h span{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--pk-accent-bg)}
+      `}</style>
 
-        {/* Back */}
-        {onBack && (
-          <button onClick={onBack} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, marginBottom: 24, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {isAr ? '← رجوع' : '← Back'}
-          </button>
-        )}
-
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>❓</div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            {isAr ? 'الأسئلة الشائعة' : 'Frequently Asked Questions'}
-          </h1>
-          <p style={{ color: 'rgba(255,255,255,0.4)', marginTop: 8, fontSize: 14 }}>
-            {isAr ? 'كل ما تحتاج معرفته عن Erivion' : 'Everything you need to know about Erivion'}
-          </p>
-        </div>
-
-        {/* Search */}
-        <div style={{ marginBottom: 32 }}>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder={isAr ? '🔍 ابحث في الأسئلة...' : '🔍 Search questions...'}
-            style={{
-              width: '100%', padding: '12px 16px', borderRadius: 12,
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.05)', color: '#fff',
-              fontSize: 14, outline: 'none', boxSizing: 'border-box',
-              direction: dir,
-            }}
-          />
-        </div>
-
-        {/* FAQ Categories */}
-        {filtered.map((cat, ci) => (
-          <div key={ci} style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.5)', marginBottom: 12, letterSpacing: isAr ? 0 : 1 }}>
-              {cat.category}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {cat.questions.map((item, qi) => {
-                const key  = `${ci}-${qi}`;
-                const open = openItem === key;
-                return (
-                  <div key={qi} style={{ background: open ? 'rgba(124,58,237,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${open ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, overflow: 'hidden', transition: 'all 0.2s' }}>
-                    <button
-                      onClick={() => setOpenItem(open ? null : key)}
-                      style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: isAr ? 'right' : 'left', direction: dir, fontFamily: "'DM Sans', sans-serif" }}>
-                      <span>{item.q}</span>
-                      <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.3)', flexShrink: 0, marginRight: isAr ? 12 : 0, marginLeft: isAr ? 0 : 12, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>⌄</span>
-                    </button>
-                    {open && (
-                      <div style={{ padding: '0 20px 18px', color: 'rgba(255,255,255,0.65)', fontSize: 13.5, lineHeight: 1.8, direction: dir, whiteSpace: 'pre-line' }}>
-                        {item.a}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-
-        {/* Contact */}
-        <div style={{ marginTop: 40, padding: '24px', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: 20, marginBottom: 8 }}>💬</div>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            {isAr ? 'لم تجد إجابتك؟' : "Didn't find your answer?"}
-          </div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginBottom: 16 }}>
-            {isAr ? 'فريق الدعم جاهز لمساعدتك' : 'Our support team is ready to help'}
-          </div>
-          <button onClick={() => onNavigate ? onNavigate('support') : (window.location.href = 'mailto:support@erivion.net')}
-            style={{ display: 'inline-block', padding: '10px 24px', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-            {isAr ? 'تواصل مع الدعم' : 'Contact Support'}
-          </button>
-        </div>
-
+      <div className="fq-search">
+        <Search className="s" size={18} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={isAr ? 'ابحث في الأسئلة...' : 'Search the questions...'} aria-label={isAr ? 'بحث' : 'Search'} />
+        {search && <button onClick={() => setSearch('')} aria-label="clear"><X size={14} /></button>}
       </div>
-    </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="pk-chip" aria-pressed={activeCat === 'all'} onClick={() => setActiveCat('all')}>{isAr ? 'الكل' : 'All'} <small>{total}</small></button>
+        {cats.map(c => <button key={c.id} className="pk-chip" aria-pressed={activeCat === c.id} onClick={() => setActiveCat(c.id)}><c.Icon size={13} /> {c.title} <small>{c.questions.length}</small></button>)}
+      </div>
+
+      {filtered.length === 0 && <div style={{ marginTop: 28 }}><Empty Icon={Search}>{isAr ? 'مفيش نتيجة للبحث ده — جرّب كلمة تانية أو كلّم الدعم.' : 'No results — try another word or contact support.'}</Empty></div>}
+
+      {filtered.map(cat => (
+        <section key={cat.id}>
+          <h2 className="fq-cat-h"><span><cat.Icon size={17} color="var(--pk-accent)" /></span>{cat.title}</h2>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {cat.questions.map((item, qi) => {
+              const key = `${cat.id}-${qi}`;
+              const open = openItem === key || !!needle;
+              return (
+                <div key={key} className={`pk-card ${open ? 'fq-open' : 'pk-hover'}`} style={open ? { borderColor: 'var(--pk-accent-line)' } : undefined}>
+                  <button className="fq-q" onClick={() => setOpenItem(openItem === key ? null : key)} aria-expanded={open}>
+                    <span style={{ flex: 1 }}>{item.q}</span><ChevronDown size={18} />
+                  </button>
+                  {open && <div className="fq-a">{item.a}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+
+      <section className="pk-card" style={{ marginTop: 44, padding: '26px 24px', display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', background: 'linear-gradient(135deg, rgba(96,165,250,.1), rgba(124,106,247,.08))' }}>
+        <span style={{ width: 48, height: 48, borderRadius: 15, display: 'grid', placeItems: 'center', background: 'rgba(96,165,250,.16)', flexShrink: 0 }}><MessageCircle size={22} color="#60a5fa" /></span>
+        <div style={{ flex: '1 1 240px' }}>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{isAr ? 'لسه مش لاقي إجابتك؟' : "Didn't find your answer?"}</div>
+          <div style={{ color: 'var(--text2)', fontSize: 13.5 }}>{isAr ? 'فريق الدعم جاهز يساعدك.' : 'Our support team is ready to help.'}</div>
+        </div>
+        <button onClick={() => onNavigate ? onNavigate('support') : (window.location.href = 'mailto:support@erivion.net')}
+          style={{ padding: '11px 24px', borderRadius: 999, border: 'none', font: 'inherit', fontWeight: 700, fontSize: 14, color: '#fff', cursor: 'pointer', background: 'linear-gradient(135deg,#60a5fa,#7c6af7)', boxShadow: '0 8px 24px rgba(96,165,250,.25)' }}>
+          {isAr ? 'تواصل مع الدعم' : 'Contact support'}
+        </button>
+      </section>
+    </PageShell>
   );
 }
