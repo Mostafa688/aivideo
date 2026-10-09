@@ -6,11 +6,14 @@ let state = { loaded: false, promo: null, offset: 0 };
 const listeners = new Set();
 let started = false;
 
+let loading = false;
 async function load() {
+  if (loading) return; loading = true;
   try {
     const d = await (await fetch('/api/auth/promo')).json();
     state = { loaded: true, promo: d.active ? { percent: d.percent, endsAt: new Date(d.endsAt).getTime() } : null, offset: d.serverNow ? new Date(d.serverNow).getTime() - Date.now() : 0 };
   } catch { state = { ...state, loaded: true }; }
+  loading = false;
   listeners.forEach(f => f());
 }
 function start() { if (started) return; started = true; load(); setInterval(load, 5 * 60 * 1000); }
@@ -35,7 +38,7 @@ export function usePromo() {
   useEffect(() => {
     const on = () => force(x => x + 1);
     listeners.add(on);
-    const t = setInterval(on, 1000);
+    const t = setInterval(() => { on(); if (state.promo && Date.now() + state.offset >= state.promo.endsAt) load(); }, 1000); // خلص التايمر → السيرفر بيبدأ دورة 24 ساعة جديدة، نجيبها فورًا
     return () => { listeners.delete(on); clearInterval(t); };
   }, []);
   const promo = getPromo();

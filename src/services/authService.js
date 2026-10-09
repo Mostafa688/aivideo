@@ -245,6 +245,10 @@ async function initDB() {
   // أول عرض: خصم 30% على باقات مصر لمدة 24 ساعة من أول تشغيل بالنسخة دي (مرة واحدة بس)
   const promoFlag = await pool.query(`INSERT INTO schema_flags (name) VALUES ('promo_eg_30_24h_2026_10') ON CONFLICT DO NOTHING RETURNING name`);
   if (promoFlag.rowCount === 1) await pool.query(`INSERT INTO site_promos (kind, percent, starts_at, ends_at) VALUES ('eg_credits', 30, NOW(), NOW() + INTERVAL '24 hours')`);
+  // ✅ العرض المستمر (evergreen): العرض شغال دايمًا، والتايمر 24 ساعة بيبدأ من جديد أول ما يخلص (بيتجدد تلقائيًا عند أول طلب بعد النهاية). الأدمن يقدر يوقفه أو يغيّر النسبة.
+  await pool.query(`CREATE TABLE IF NOT EXISTS site_promo_evergreen (kind TEXT PRIMARY KEY, enabled BOOLEAN NOT NULL DEFAULT TRUE, percent INT NOT NULL, hours NUMERIC NOT NULL DEFAULT 24)`);
+  const evFlag = await pool.query(`INSERT INTO schema_flags (name) VALUES ('promo_eg_evergreen_30_2026_10') ON CONFLICT DO NOTHING RETURNING name`);
+  if (evFlag.rowCount === 1) await pool.query(`INSERT INTO site_promo_evergreen (kind, enabled, percent, hours) VALUES ('eg_credits', TRUE, 30, 24) ON CONFLICT (kind) DO NOTHING`);
   // ✅ FIX: كان endpoint /api/auth/onboarding-answers بيعمل INSERT في الجدول ده من غير ما
   // يكون معمول له CREATE أصلاً — ده كان هيفشل (relation does not exist) على أي قاعدة بيانات جديدة
   await pool.query(`
@@ -827,10 +831,34 @@ export function egpPriceForCredits(credits, percent = 0) {
   return Math.max(10, Math.floor((base * (100 - percent)) / 100 / 10) * 10);
 }
 
-/** العرض الشغال حاليًا (أو null) */
+/** العرض الشغال حاليًا (أو null). لو مفيش عرض شغال وفيه عرض مستمر مفعّل → بنبدأ دورة 24 ساعة جديدة (مرة واحدة حتى مع طلبات متزامنة) */
 export async function getActivePromo(kind = 'eg_credits') {
-  const { rows } = await pool.query(`SELECT percent, starts_at, ends_at FROM site_promos WHERE kind = $1 AND starts_at <= NOW() AND ends_at > NOW() ORDER BY ends_at DESC LIMIT 1`, [kind]);
+  const q = (c) => c.query(`SELECT percent, starts_at, ends_at FROM site_promos WHERE kind = $1 AND starts_at <= NOW() AND ends_at > NOW() ORDER BY ends_at DESC LIMIT 1`, [kind]);
+  let { rows } = await q(pool);
+  if (!rows[0]) {
+    const c = await pool.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`promo_evergreen_${kind}`]);
+      // ممكن طلب تاني يكون جدّد وإحنا مستنيين القفل (من غير شرط starts_at: NOW() جوّه الترانزاكشن ثابت على وقت بدايتها فمش هيشوف دورة اتبدأت بعده)
+      rows = (await c.query(`SELECT percent, starts_at, ends_at FROM site_promos WHERE kind = $1 AND ends_at > clock_timestamp() ORDER BY ends_at DESC LIMIT 1`, [kind])).rows;
+      if (!rows[0]) {
+        const ev = (await c.query(`SELECT enabled, percent, hours FROM site_promo_evergreen WHERE kind = $1`, [kind])).rows[0];
+        if (ev?.enabled) rows = (await c.query(`INSERT INTO site_promos (kind, percent, starts_at, ends_at) VALUES ($1, $2, NOW(), NOW() + ($3 || ' hours')::interval) RETURNING percent, starts_at, ends_at`, [kind, ev.percent, String(ev.hours)])).rows;
+      }
+      await c.query('COMMIT');
+    } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
+  }
   return rows[0] ? { percent: rows[0].percent, startsAt: rows[0].starts_at, endsAt: rows[0].ends_at } : null;
+}
+/** تشغيل/إيقاف العرض المستمر وتغيير نسبته ومدة الدورة (الأدمن) */
+export async function setEvergreenPromo({ enabled, percent, hours, kind = 'eg_credits' }) {
+  const cur = (await pool.query(`SELECT enabled, percent, hours FROM site_promo_evergreen WHERE kind = $1`, [kind])).rows[0] || { enabled: false, percent: 30, hours: 24 };
+  const pct = percent === undefined ? cur.percent : Math.max(1, Math.min(90, Math.round(Number(percent) || 0)));
+  const h = hours === undefined ? Number(cur.hours) : Math.max(1, Math.min(24 * 14, Number(hours) || 24));
+  const en = enabled === undefined ? cur.enabled : !!enabled;
+  await pool.query(`INSERT INTO site_promo_evergreen (kind, enabled, percent, hours) VALUES ($1, $2, $3, $4) ON CONFLICT (kind) DO UPDATE SET enabled = $2, percent = $3, hours = $4`, [kind, en, pct, h]);
+  return { enabled: en, percent: pct, hours: h };
 }
 /** آخر عرض خلص (للسماح بدقايق سماح لمن بدأ الدفع قبل النهاية) */
 export async function getLastEndedPromo(kind = 'eg_credits', graceMinutes = 60) {
@@ -845,6 +873,7 @@ export async function startPromo({ percent, hours, kind = 'eg_credits' }) {
   return { percent: rows[0].percent, startsAt: rows[0].starts_at, endsAt: rows[0].ends_at };
 }
 export async function stopPromo(kind = 'eg_credits') {
+  await pool.query(`UPDATE site_promo_evergreen SET enabled = FALSE WHERE kind = $1`, [kind]); // الإيقاف بيوقف التجديد التلقائي كمان
   const { rowCount } = await pool.query(`UPDATE site_promos SET ends_at = NOW() WHERE kind = $1 AND ends_at > NOW()`, [kind]);
   return rowCount;
 }
