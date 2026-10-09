@@ -10,6 +10,9 @@ import { splitSentences, planCuts, zoomPlan } from './autoEdit.js';
 import { buildBeatClip } from '../documentary/clipBuilder.js';
 import { sanitizeTemplate, yearsIn, percentsIn } from '../documentary/planner.js';
 import { themeFromPalette, scenesNote } from './assets.js';
+import { renderMotionScene, composeScenePart } from './motionScenes.js';
+import { planCutaways } from './cutaways.js';
+import { getTheme } from '../documentary/themes.js';
 import { isRtlLang } from '../documentary/textutil.js';
 
 const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', '30'];
@@ -203,6 +206,11 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
   const subsMap = []; // {ci, start, end, offset, speed} — عشان نحوّل توقيت جوه المقطع لتوقيت الفيديو النهائي
   const stepSfx = [];
   let offset = 0, subIndex = 0, speechSec = 0, stepCount = 0;
+  // مشاهد موشن كاملة (cutaways) بتحل مكان لقطات من الفيديو الأصلي والصوت الأصلي بيكمّل: بنقسم الجزء عند حدودها (لقطة ← مشهد ← لقطة)
+  const cutaways = options.cutaways === false || options.mode === 'transitions' ? [] : (Array.isArray(plan.cutaways) ? plan.cutaways : []);
+  const sceneWins = []; // نوافذ ظهور المشاهد في الفيديو النهائي — الكابشن والجرافيكس الصغيرة بتفضل برّاها
+  const sceneTheme = (() => { const t = style?.theme || (plan.style === 'dramatic' || ['epic', 'tension'].includes(plan.musicMood) ? 'cinematic' : 'blue'); return typeof t === 'string' ? getTheme(t) : t; })();
+  const sceneLang = captionLang(clips.flatMap(c => c.words || []), options.language);
   for (let si = 0; si < plan.segments.length; si++) {
     onProgress({ stage: 'cut', frac: si / plan.segments.length });
     const sg = plan.segments[si];
@@ -224,11 +232,48 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
       const len = sub.end - sub.start;
       // لقطة طويلة: قفزات زوم على حدود الكلام (punch-in) بدل زوم واحد بطيء؛ القصيرة: حركة كاميرا متبدّلة
       const relWords = (c.words || []).filter(w => w.start >= sub.start && w.end <= sub.end).map(w => ({ start: w.start - sub.start, end: w.end - sub.start }));
-      const steps = options.zoom === false ? [] : stepKeys(len, sg.keep && c.hasSpeech ? relWords : [], { offset: stepCount });
+      const subCuts = cutaways.filter(k => k.clipIndex === sg.clipIndex && sg.keep && c.hasSpeech && k.start >= sub.start + 0.1 && k.end <= sub.end - 0.1).sort((a, b) => a.start - b.start);
+      const steps = options.zoom === false || subCuts.length ? [] : stepKeys(len, sg.keep && c.hasSpeech ? relWords : [], { offset: stepCount });
       const flashes = steps.filter((_, k) => (stepCount + k) % 3 === 2).map(st => st.t);
       stepCount += steps.length;
       const mo = steps.length ? { z0: 1, z1: 1 } : (sg.keep ? (() => { const [a, b] = zooms ? zooms[subIndex % zooms.length] : [1, 1]; return { z0: a, z1: b }; })() : motionFor(subIndex, options.zoom !== false && animate));
-      const dur = await renderSub({ src: c.file, dest, start: sub.start, len, W, H, srcW: c.width, srcH: c.height, ...mo, speed, keepAudio: sg.keep, steps, flashes });
+      let dur;
+      if (subCuts.length) {
+        // لقطة ← مشهد موشن (بصوت الفيديو الأصلي لنفس الفترة) ← لقطة تكمّل من نفس نقطة الصوت: التقسيم بيحافظ على الطول والصوت من غير أي قطع
+        const parts = []; let cursor = sub.start, rel = 0;
+        const addFootage = async (a, b) => {
+          const pl = b - a; if (pl < 0.25) return;
+          const pw = (c.words || []).filter(w => w.start >= a && w.end <= b).map(w => ({ start: w.start - a, end: w.end - a }));
+          const stp = options.zoom === false ? [] : stepKeys(pl, c.hasSpeech ? pw : [], { offset: stepCount });
+          const fl = stp.filter((_, k) => (stepCount + k) % 3 === 2).map(st => st.t);
+          stepCount += stp.length;
+          const mo2 = stp.length ? { z0: 1, z1: 1 } : (() => { const [za, zb] = zooms ? zooms[(subIndex + parts.length) % zooms.length] : [1, 1]; return { z0: za, z1: zb }; })();
+          const pf = path.join(workDir, `sub_${subIndex}_p${parts.length}.mp4`);
+          const pd = await renderSub({ src: c.file, dest: pf, start: a, len: pl, W, H, srcW: c.width, srcH: c.height, ...mo2, speed: 1, keepAudio: true, steps: stp, flashes: fl });
+          for (const st of stp) stepSfx.push({ t: offset + rel + st.t - 0.03, type: fl.includes(st.t) ? 'impact' : 'swish', vol: fl.includes(st.t) ? 0.26 : 0.14 });
+          parts.push(pf); rel += pd;
+        };
+        for (const k of subCuts) {
+          await addFootage(cursor, Math.max(cursor, k.start));
+          const kStart = Math.max(cursor, k.start), kLen = k.end - kStart;
+          const fdir = path.join(workDir, `scene_${subIndex}_${parts.length}`);
+          const frames = await renderMotionScene({ scene: k.scene, dur: kLen, w: W, h: H, theme: sceneTheme, lang: sceneLang, dir: fdir, scale: 0.75 });
+          const sf = path.join(workDir, `sub_${subIndex}_p${parts.length}.mp4`);
+          await composeScenePart({ frames, src: c.file, srcStart: kStart, len: kLen, dest: sf, W, H, enc: ENC });
+          rmQuiet(fdir);
+          sceneWins.push([offset + rel, offset + rel + kLen]);
+          stepSfx.push({ t: offset + rel + 0.02, type: 'impact', vol: 0.3 }, { t: offset + rel + kLen - 0.12, type: 'swish', vol: 0.16 });
+          parts.push(sf); rel += kLen; cursor = k.end;
+        }
+        await addFootage(cursor, sub.end);
+        const lst = path.join(workDir, `sub_${subIndex}_parts.txt`);
+        fs.writeFileSync(lst, parts.map(f => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
+        await ffmpeg(['-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', dest]);
+        parts.forEach(f => rmQuiet(f)); rmQuiet(lst);
+        dur = await probeDuration(dest);
+      } else {
+        dur = await renderSub({ src: c.file, dest, start: sub.start, len, W, H, srcW: c.width, srcH: c.height, ...mo, speed, keepAudio: sg.keep, steps, flashes });
+      }
       for (const st of steps) stepSfx.push({ t: offset + st.t / speed - 0.03, type: flashes.includes(st.t) ? 'impact' : 'swish', vol: flashes.includes(st.t) ? 0.26 : 0.14 });
       subsMap.push({ ci: sg.clipIndex, start: sub.start, end: sub.end, offset, speed, si });
       if (sg.keep && c.words?.length) {
@@ -268,12 +313,12 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
         if (ov) ovs.push({ ...timeOverlay(ov, at, newWords), prio: 1 });
       }
     });
-    if (newWords.length) ovs.push(...autoPhraseOverlays(newWords, total, ovs, style?.templates, { dense: options.graphicsLevel === 'high' }).map(o => ({ ...o, prio: 0 })));
-    ovs.push(...autoExtraOverlays(newWords, total, ovs, { dense: options.graphicsLevel === 'high' }));
+    if (newWords.length) ovs.push(...autoPhraseOverlays(newWords, total, [...ovs, ...sceneWins.map(([a, b]) => ({ at: a, dur: b - a }))], style?.templates, { dense: options.graphicsLevel === 'high' }).map(o => ({ ...o, prio: 0 })));
+    ovs.push(...autoExtraOverlays(newWords, total, [...ovs, ...sceneWins.map(([a, b]) => ({ at: a, dur: b - a }))], { dense: options.graphicsLevel === 'high' }));
   }
-  const overlays = resolveOverlays(ovs, total);
+  const overlays = resolveOverlays(ovs.filter(o => (o.prio || 0) >= 2 || !sceneWins.some(([a, b]) => o.at < b + 0.2 && a < o.at + o.dur + 0.2)), total);
   const extraSfx = [{ t: 0.04, type: 'impact', vol: 0.45 }, ...stepSfx, ...overlays.flatMap(o => overlaySfx(o, o.at))];
-  const hideCaps = overlays.filter(o => hidesCaptions(o.template, portraitShort)).map(o => [o.at - 0.05, o.at + o.dur - 0.2]);
+  const hideCaps = [...overlays.filter(o => hidesCaptions(o.template, portraitShort)).map(o => [o.at - 0.05, o.at + o.dur - 0.2]), ...sceneWins.map(([a, b]) => [a - 0.05, b + 0.02])];
   const theme = style?.theme || (plan.style === 'dramatic' || ['epic', 'tension'].includes(plan.musicMood) ? 'cinematic' : 'blue');
   const r = await montageVideos({
     files: chapters.map(c => c.file), workDir: path.join(workDir, 'final'), assumeNormalized: true,
@@ -288,7 +333,7 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
   return {
     file: r.file, duration: r.duration, words: newWords, transcript: newWords.map(w => w.w).join(' '),
     chapters: chapters.map(c => { const o = { t, title: c.clip }; t += c.dur; return o; }),
-    stats: { segments: plan.segments.length, subs: subIndex, punchIns: stepCount, graphics: overlays.length, speechShare: Number(speechShare.toFixed(2)), finalSec: r.duration, lengthRestored: !!plan.lengthRestored },
+    stats: { segments: plan.segments.length, subs: subIndex, scenes: sceneWins.length, punchIns: stepCount, graphics: overlays.length, speechShare: Number(speechShare.toFixed(2)), finalSec: r.duration, lengthRestored: !!plan.lengthRestored },
   };
 }
 
@@ -741,6 +786,11 @@ export async function smartMontage({ assets, workDir, instructions = '', options
   const plan = options.mode === 'transitions'
     ? { ...keepAllPlan(clips, { style: options.transitionStyle === 'soft' ? 'calm' : 'clean' }), source: 'transitions' } // بس ضم بالترتيب + انتقالات: من غير إعادة ترتيب أو قص
     : await planMontage({ clips, instructions, style, ask: deps.ask, dense: options.graphicsLevel === 'high' });
+  if (options.cutaways !== false && options.mode !== 'transitions') {
+    onProgress({ stage: 'plan', frac: 0.6 });
+    try { plan.cutaways = await planCutaways({ clips, instructions, style, dense: options.graphicsLevel === 'high', ask: deps.ask }); }
+    catch (e) { console.warn('[SmartMontage] cutaway planning failed:', e.message); plan.cutaways = []; }
+  }
   const result = await executePlan({ plan, clips, workDir: path.join(workDir, 'exec'), options, style, instructions, onProgress });
   return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: c.hasSpeech })) };
 }
