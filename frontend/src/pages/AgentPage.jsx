@@ -1451,11 +1451,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     // ✅ NEW: uid ثابت للرسالة دي — لازم عشان نقدر نلحقها بعدين برابط R2 الدائم لأي صورة
     // اترفعت فيها (uploadedPhotoUrls من رد السيرفر)، حتى لو المستخدم بعت رسايل تانية قبل ما الرد يرجع
     const msgUid = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid };
+    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid, montageItems: readyMontage.length ? readyMontage.map(x => ({ name: x.name, kind: x.kind || (/^style_/.test(x.name || '') ? 'image' : 'video'), durationSec: x.durationSec })) : undefined };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
     const currentVoice = voiceFile, currentImages = styleRegistered ? [] : imageFiles; // صور الستايل اتسجّلت كمراجع مونتاج — مش بتتبعت كصور عادية كمان
     setInput(''); setVoiceFile(null); setImageFiles([]);
+    if (readyMontage.length) setMontageAssets([]); // الفيديوهات اتبعتت جوه الرسالة (بتظهر في الشات) — السيرفر محتفظ بيها 3 ساعات والايجنت بيشوفها في كل رسالة
     if (videoRegistered) { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }
     else if (uploadedVideoFile) setVideoSentOnce(true);
     setLoading(true);
@@ -2836,6 +2837,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     {m.imagePreviews?.length > 0 && (
                       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                         {m.imagePreviews.map((src, idx) => <img key={idx} src={src} alt="upload" style={{ maxWidth: 120, borderRadius: 10, display: 'block' }} />)}
+                      </div>
+                    )}
+                    {m.montageItems?.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                        {m.montageItems.map((it, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.14)', fontSize: 12 }}>
+                            {it.kind === 'audio' ? <Mic size={12} strokeWidth={2} /> : it.kind === 'image' ? <ImageIcon size={12} strokeWidth={2} /> : <Film size={12} strokeWidth={2} />} {String(it.name || '').slice(0, 22)}{it.durationSec ? ` · ${Math.floor(it.durationSec / 60)}:${String(Math.round(it.durationSec % 60)).padStart(2, '0')}` : ''}
+                          </div>
+                        ))}
                       </div>
                     )}
                     {m.hasVoice && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, opacity: 0.8, marginBottom: 6 }}><Mic size={12} strokeWidth={2} /> {t.voiceAttached}</div>}
