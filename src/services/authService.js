@@ -312,6 +312,7 @@ async function initDB() {
   `);
   await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS description TEXT`);
   await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS kind TEXT`);
+  await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);
   // ── إدارة قناة العميل يوميًا: مفتاح VidIQ الشخصي بتاعه + تفضيلاته، وسجل كل يوم
   // اقترحنا فيه فكرة وانتظرنا موافقته قبل ما نعمل الفيديو ────────────────────────
   await pool.query(`
@@ -2006,16 +2007,16 @@ export async function listClonedVoicesForAdmin() {
 // ═══════════════════════════════════════════════════════════════════════════
 // مكتبة الشخصيات — صور مرجعية متعددة لكل عميل (مش واحدة زي الفويس كلون)
 // ═══════════════════════════════════════════════════════════════════════════
-export async function saveCharacterReference(userId, { label, imageUrl, kind = null, description = null }) {
+export async function saveCharacterReference(userId, { label, imageUrl, kind = null, description = null, hiddenRefs = [] }) {
   const { rows } = await pool.query(
-    `INSERT INTO character_references (user_id, label, image_url, kind, description) VALUES ($1, $2, $3, $4, $5) RETURNING id, label, image_url, kind, description, created_at`,
-    [userId, label || null, imageUrl, kind, description]
+    `INSERT INTO character_references (user_id, label, image_url, kind, description, hidden_refs) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id, label, image_url, kind, description, hidden_refs, created_at`,
+    [userId, label || null, imageUrl, kind, description, JSON.stringify(hiddenRefs || [])]
   );
   return rows[0];
 }
 
 export async function listCharacterReferencesForUser(userId) {
-  const { rows } = await pool.query('SELECT id, label, image_url, kind, description, created_at FROM character_references WHERE user_id = $1 ORDER BY id DESC', [userId]);
+  const { rows } = await pool.query('SELECT id, label, image_url, kind, description, hidden_refs, created_at FROM character_references WHERE user_id = $1 ORDER BY id DESC', [userId]);
   return rows;
 }
 

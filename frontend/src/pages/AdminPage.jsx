@@ -2049,7 +2049,7 @@ function CharacterStudioTab({ s }) {
   const [cats, setCats] = useState({ presets: [], templates: [] });
   const [toast, setToast] = useState('');
   const showToastMsg = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
-  const emptyPreset = { name_ar: '', name_en: '', description_ar: '', description_en: '', image_url: '', category: 'person' };
+  const emptyPreset = { name_ar: '', name_en: '', description_ar: '', description_en: '', image_url: '', category: 'person', hidden_refs: [] };
   const emptyTpl = { title_ar: '', title_en: '', description_ar: '', description_en: '', category: 'viral', cover_url: '', preview_url: '', source_video_url: '', duration_sec: 0, is_featured: false };
   const [pForm, setPForm] = useState(emptyPreset);
   const [tForm, setTForm] = useState(emptyTpl);
@@ -2076,6 +2076,23 @@ function CharacterStudioTab({ s }) {
         ...(field === 'source_video_url' ? { duration_sec: d.durationSec || f.duration_sec, preview_url: f.preview_url || d.url, cover_url: f.cover_url || d.coverUrl || '' } : {}),
       }));
       showToastMsg('✅ Uploaded');
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setBusy('');
+  };
+  // رفع صورة واحدة وإرجاع الرابط (لصور الزوايا المخفية)
+  const uploadRaw = async (file) => {
+    const fd = new FormData(); fd.append('file', file);
+    const r = await fetch(`${base}/upload`, { method: 'POST', headers: { Authorization: `Bearer ${adminToken}` }, body: fd });
+    const d = await r.json();
+    if (!d.url) throw new Error(d.error || 'Upload failed');
+    return d.url;
+  };
+  const addHidden = async (files, current, apply) => {
+    const list = [...current];
+    setBusy('hidden_refs');
+    try {
+      for (const f of Array.from(files)) { if (list.length >= 6) { showToastMsg('⚠️ Max 6 hidden images'); break; } list.push(await uploadRaw(f)); }
+      await apply(list);
     } catch (e) { showToastMsg('❌ ' + e.message); }
     setBusy('');
   };
@@ -2162,9 +2179,25 @@ function CharacterStudioTab({ s }) {
               <Field label="Description (English)"><input style={inp} value={pForm.description_en} onChange={e => setPForm(f => ({ ...f, description_en: e.target.value }))} /></Field>
               <Field label="Category"><select style={inp} value={pForm.category} onChange={e => setPForm(f => ({ ...f, category: e.target.value }))}>{(cats.presets.length ? cats.presets : ['person']).map(c => <option key={c} value={c}>{c}</option>)}</select></Field>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-              <Up label="Character image" accept="image/*" field="image_url" form={pForm} setForm={setPForm} />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+              <Up label="Face image (shown to customers)" accept="image/*" field="image_url" form={pForm} setForm={setPForm} />
               {pForm.image_url && <img src={pForm.image_url} alt="" style={{ height: 56, borderRadius: 8 }} />}
+            </div>
+            <div style={{ border: '1px dashed #4b5563', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fbbf24', marginBottom: 4 }}>🔒 Hidden reference images (all angles — never shown to customers)</div>
+              <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 10px' }}>ارفع لحد 6 صور (وش من الجنب، الضهر، جسم كامل، أو character sheet فيه كل الزوايا). العميل مش بيشوفها في الموقع، بتتستخدم داخليًا في التوليد: أول صورة هي صورة التوليد في قوالب الترند، وكلهم بيتبعتوا كمراجع للموديلات اللي بتقبل أكتر من صورة.</p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ ...s.btn('#374151'), cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, padding: '6px 12px' }}>
+                  {busy === 'hidden_refs' ? '⏳ Uploading...' : `🔒 Add hidden images (${(pForm.hidden_refs || []).length}/6)`}
+                  <input type="file" accept="image/*" multiple style={{ display: 'none' }} disabled={!!busy} onChange={e => { if (e.target.files.length) addHidden(e.target.files, pForm.hidden_refs || [], async (list) => setPForm(f => ({ ...f, hidden_refs: list }))); e.target.value = ''; }} />
+                </label>
+                {(pForm.hidden_refs || []).map((u, i) => (
+                  <span key={u} style={{ position: 'relative', display: 'inline-block' }}>
+                    <img src={u} alt="" style={{ height: 52, borderRadius: 6, opacity: 0.85 }} />
+                    <button onClick={() => setPForm(f => ({ ...f, hidden_refs: f.hidden_refs.filter((_, j) => j !== i) }))} style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#7f1d1d', color: '#fff', fontSize: 11, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                  </span>
+                ))}
+              </div>
             </div>
             <button style={s.btn('#22c55e')} disabled={!pForm.image_url || !pForm.name_ar.trim() || !pForm.name_en.trim()} onClick={async () => { if (await send(`${base}/presets`, 'POST', pForm, 'Preset added')) setPForm(emptyPreset); }}>Add preset</button>
           </div>
@@ -2173,7 +2206,13 @@ function CharacterStudioTab({ s }) {
               <div key={p.id} style={{ ...s.card, padding: 10, margin: 0, opacity: p.is_published ? 1 : 0.55 }}>
                 <img src={p.image_url} alt="" style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: 8 }} />
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', margin: '8px 0 2px' }}>{p.name_en}</div>
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.category}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.category} · 🔒 {(p.hidden_refs || []).length} hidden</div>
+                {(p.hidden_refs || []).length > 0 && <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>{p.hidden_refs.map(u => <img key={u} src={u} alt="" style={{ height: 30, borderRadius: 4, opacity: 0.8 }} />)}</div>}
+                <label style={{ ...s.btn('#374151'), cursor: 'pointer', display: 'inline-flex', fontSize: 11, padding: '4px 9px', marginTop: 8 }}>
+                  {busy === 'hidden_refs' ? '⏳' : '🔒 Hidden images'}
+                  <input type="file" accept="image/*" multiple style={{ display: 'none' }} disabled={!!busy} onChange={e => { if (e.target.files.length) addHidden(e.target.files, p.hidden_refs || [], (list) => send(`${base}/presets/${p.id}`, 'PUT', { hidden_refs: list }, 'Hidden images saved')); e.target.value = ''; }} />
+                </label>
+                {(p.hidden_refs || []).length > 0 && <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px', marginTop: 6, marginInlineStart: 6 }} onClick={() => send(`${base}/presets/${p.id}`, 'PUT', { hidden_refs: [] }, 'Hidden images cleared')}>Clear</button>}
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/presets/${p.id}`, 'PUT', { is_published: !p.is_published }, 'Updated')}>{p.is_published ? 'Hide' : 'Publish'}</button>
                   <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 9px' }} onClick={() => confirm('Delete this preset?') && send(`${base}/presets/${p.id}`, 'DELETE', null, 'Deleted')}>Delete</button>
