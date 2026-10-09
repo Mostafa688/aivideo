@@ -4,6 +4,12 @@
 
 ## Changelog
 
+### 2026-10-10 — جديد (new)
+- **العنوان (AR):** استوديو الشخصيات: سجّل شخصيتك واستخدمها في أي فيديو
+- **Title (EN):** Character Studio: save your character and use it in any video
+- **الوصف (AR):** سجّل شخصيتك أو وجهك بصورة واحدة، واستخدمها في أي فيديو أو صورة من شات المساعد (زرار + ← شخصياتي). فيه كمان شخصيات جاهزة، وقوالب ترند بتبدّل فيها الشخصية بشخصيتك وتطلع فيديو بنفس الحركات والكلام، بسعر واضح بالكريديت قبل ما تبدأ.
+- **Description (EN):** Register your character or face with one image and use it in any video or image from the agent chat (+ → My characters). There are also ready-made characters and trend templates where you swap in your own character and get the same movements and speech, with the credit price shown before you start.
+
 ### 2026-10-09 — جديد (new)
 - **العنوان (AR):** مشاهد موشن 3D بتحل مكان لقطات في المونتاج
 - **Title (EN):** 3D motion scenes that replace footage in your montage

@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
 import { visionDiagnostics } from './visionService.js';
 import { composeProductAdPrompt, agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
-import { getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
+import { listCharacterReferencesForUser, getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
 import { trialAvailable as docTrialAvailable } from './documentary/store.js';
@@ -548,6 +548,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     lastRequestAt.set(userId, now);
 
+    const characterId = Number.parseInt(req.body?.characterId, 10) || null;
     const { message, history, voiceBase64, imageBase64, imagesBase64, photoAlreadyUploaded, voiceAlreadyUploaded, videoAlreadyUploaded, videoDurationSec, hasStructuredScript: clientHasStructuredScript, hasAdsScenePlan: clientHasAdsScenePlan, styleHint, hasClonedVoice, forcedImageModel, forcedVideoModel, mediaLedger, montageAssetIds, lastVoiceUrl } = req.body;
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
 
@@ -614,7 +615,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
       : forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]
       ? `The user manually selected the video engine "${forcedVideoModel}" from a picker before sending this message — you MUST use exactly this engine for ANY video generation in this turn, INCLUDING animating a generated image (if they ask to animate/move a picture right now, use the ###GENERATE_VIDEO### marker with model:"${forcedVideoModel}" and "imageUrl" set to the exact image URL from history — do NOT silently switch to a different engine for this turn, that would ignore their explicit choice). Do not pick a different engine, do not ask which one, and state its real credit cost from the price list above.`
       : null;
-    let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote, forcedModelNote].filter(Boolean).join(' ') || null;
+    // ✅ شخصيات العميل المحفوظة (استوديو الشخصيات): الايجنت بيستخدمها في أي فيديو/صورة زي صورة مرفوعة (روابطها بتتحسب "معروفة" للماركرز)
+    let savedCharacters = [];
+    try { savedCharacters = (await listCharacterReferencesForUser(userId)).slice(0, 12); } catch (e) { console.warn('[Agent] characters note skipped:', e.message); }
+    const chosenCharacter = characterId ? savedCharacters.find(c => c.id === characterId) : null;
+    const charactersNote = savedCharacters.length ? `SAVED CHARACTERS (the customer's reusable characters/faces, kept permanently — rule: use them in ANY video or image they ask for): ${savedCharacters.map(c => `[id ${c.id}] "${c.label || 'unnamed'}" (${c.kind || 'person'})${c.description ? ` — appearance: ${c.description}` : ''} — reference image URL: ${c.image_url}`).join(' | ')}. When the customer mentions one by name, asks for "my character"/"شخصيتي", or picked one in the + menu, treat its exact URL like an uploaded reference photo: in ###GENERATE_IMAGE### put it in "referenceImageUrls"; for a single video clip animate it with "imageUrl" set to that URL (or "referenceImageUrls" for seedance_2_5/omni_flash_1_1); for a multi-scene story generate scene images with it as the shared reference. Copy the appearance text into every prompt so the face and look never change, never invent a different face for that character, and call the character by its name.${chosenCharacter ? ` THE CUSTOMER HAS SELECTED "${chosenCharacter.label || chosenCharacter.id}" FOR THIS CONVERSATION (${chosenCharacter.image_url}) — unless they say otherwise, this is the main character of whatever they ask next.` : ''}` : null;
+    const savedCharacterUrls = savedCharacters.map(c => c.image_url).filter(Boolean);
+    let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote, forcedModelNote, charactersNote].filter(Boolean).join(' ') || null;
     // ✅ NEW: فيديوهات (وفويس-أوفر) مرفوعة للمونتاج الذكي — بنوصّف للايجنت *كل* اللي متخزّن للعميل في كل رسالة (مش بس رسالة الرفع)،
     // وإلا بيفقد الـids في الرسالة التالية ("ابدأ") ويسأل عن روابط. الايجنت بيشوف تحليل كل فيديو ويتصرف حسب رغبة العميل
     const montageNoteFor = () => buildMontageNote(req.user.userId);
@@ -1013,7 +1020,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ NEW: أي رابط الايجنت "نسخه" بنفسه من الـ history (مش رابط جينا إحنا بيه من السيرفر)
     // لازم يتأكد إنه رابط حقيقي فعلاً ظهر قبل كده، دفاعًا ضد رابط مبتور بسبب انقطاع الرد
     // (+ روابط الصور اللي اترفعت في نفس الرسالة دي — الايجنت بينسخها من ملاحظة الرفع في نفس الدور)
-    const knownUrls = extractKnownUrls(history, [typeof mediaLedger === 'string' ? mediaLedger : '', ...uploadedPhotoUrls].filter(Boolean).join(' '));
+    const knownUrls = extractKnownUrls(history, [typeof mediaLedger === 'string' ? mediaLedger : '', ...uploadedPhotoUrls, ...savedCharacterUrls].filter(Boolean).join(' '));
     const isKnownUrl = (u) => typeof u === 'string' && knownUrls.has(u.trim());
 
     // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة — لو

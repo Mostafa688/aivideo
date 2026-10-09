@@ -9,7 +9,7 @@ import {
   CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
   ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
   MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2, Maximize2,
-  ChevronLeft, ChevronRight, Scissors,
+  ChevronLeft, ChevronRight, Scissors, Drama,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 import { downloadRemoteFile, fetchRemoteBlob } from '../utils/download.js';
@@ -914,6 +914,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const [imageModelOptions, setImageModelOptions] = useState([]);
   const [videoModelOptions, setVideoModelOptions] = useState([]);
   const [forcedModel, setForcedModel] = useState(null); // { type: 'image'|'video', key, label } | null
+  const [myCharacters, setMyCharacters] = useState([]); // شخصياتي المحفوظة (استوديو الشخصيات)
+  const [forcedCharacter, setForcedCharacter] = useState(null); // { id, label, imageUrl } الشخصية المختارة للرسايل الجاية
   // ✅ NEW: عرض تفاصيل/تعديل صورة أو فيديو بملء الشاشة — { jobUid, kind, imgIndex } | null
   const [detailView, setDetailView] = useState(null);
   const [editingImageJob, setEditingImageJob] = useState(false);
@@ -970,6 +972,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     // الموديلات الحقيقية بسعرها — بتتحمل مرة واحدة هنا، مش هاردكودد في الفرونت إند
     fetch('/api/images/models', { headers: tokenHeader() }).then(r => r.json()).then(d => setImageModelOptions(d.models || [])).catch(() => {});
     fetch('/api/videos/models', { headers: tokenHeader() }).then(r => r.json()).then(d => setVideoModelOptions(d.models || [])).catch(() => {});
+    fetch('/api/characters', { headers: tokenHeader() }).then(r => r.json()).then(d => setMyCharacters(d.characters || [])).catch(() => {});
+    try {
+      const pend = localStorage.getItem('erivion_pending_character');
+      if (pend) { localStorage.removeItem('erivion_pending_character'); const c = JSON.parse(pend); if (c?.id) setForcedCharacter({ id: c.id, label: c.label || '', imageUrl: c.imageUrl || '' }); }
+    } catch { /* storage blocked */ }
     return () => { clearInterval(pollRef.current); clearInterval(timerRef.current); };
   }, []);
 
@@ -1482,6 +1489,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         styleHint: selectedStyle || undefined,
         forcedImageModel: forcedModel?.type === 'image' ? forcedModel.key : undefined,
         forcedVideoModel: forcedModel?.type === 'video' ? forcedModel.key : undefined,
+        characterId: forcedCharacter?.id || undefined,
         hasClonedVoice: !!myClonedVoice,
       };
       if (currentVoice) body.voiceBase64 = await fileToBase64(currentVoice);
@@ -2565,6 +2573,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 <button onClick={() => setPlusMenuView('createVideo')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
                   <Film size={16} strokeWidth={2} /> Create video <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
                 </button>
+                <button onClick={() => setPlusMenuView('characters')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <Drama size={16} strokeWidth={2} /> {lang === 'ar' ? 'شخصياتي' : 'My characters'}{forcedCharacter ? `: ${forcedCharacter.label || '#' + forcedCharacter.id}` : ''}
+                  <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
+                </button>
                 <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 2px' }} />
                 <button onClick={() => setPlusMenuView('style')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
                   {(() => { const SelIcon = STYLE_OPTIONS.find(s => s.key === selectedStyle)?.icon || Sparkles; return <SelIcon size={16} strokeWidth={2} />; })()}
@@ -2576,6 +2588,32 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     style={{ ...plusItemStyle, borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2, paddingTop: 10, color: 'rgba(255,255,255,0.4)', fontSize: 12 }}
                     onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
                     <X size={14} strokeWidth={2.5} /> Clear engine/style selection
+                  </button>
+                )}
+              </>
+            )}
+
+            {plusMenuView === 'characters' && (
+              <>
+                <button onClick={() => setPlusMenuView('main')} style={{ ...plusItemStyle, color: 'rgba(255,255,255,0.5)', fontSize: 12 }} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <ChevronLeft size={14} strokeWidth={2} /> Back
+                </button>
+                {myCharacters.length === 0 && <div style={{ padding: '8px 12px', fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.7 }}>{lang === 'ar' ? 'لسه معندكش شخصيات محفوظة — ضيف واحدة من صفحة الشخصيات.' : 'No saved characters yet — add one from the Characters page.'}</div>}
+                {myCharacters.map(c => (
+                  <button key={c.id} onClick={() => { setForcedCharacter({ id: c.id, label: c.label || '', imageUrl: c.image_url }); closePlusMenu(); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderRadius: 8, background: forcedCharacter?.id === c.id ? 'rgba(124,106,247,0.15)' : 'none', border: 'none', color: '#e5e7eb', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = forcedCharacter?.id === c.id ? 'rgba(124,106,247,0.15)' : 'none'}>
+                    <img src={c.image_url} alt="" style={{ width: 30, height: 38, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label || `#${c.id}`}</span>
+                    {forcedCharacter?.id === c.id && <Check size={13} strokeWidth={3} style={{ color: 'var(--accent2)', flexShrink: 0 }} />}
+                  </button>
+                ))}
+                <button onClick={() => { closePlusMenu(); onNavigate?.('characters'); }} style={{ ...plusItemStyle, borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 2, paddingTop: 10, color: 'rgba(255,255,255,0.55)', fontSize: 12 }} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
+                  <Drama size={14} strokeWidth={2} /> {lang === 'ar' ? 'إدارة الشخصيات والقوالب' : 'Manage characters & templates'}
+                </button>
+                {forcedCharacter && (
+                  <button onClick={() => setForcedCharacter(null)} style={{ ...plusItemStyle, color: 'rgba(255,255,255,0.4)', fontSize: 12 }} onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
+                    <X size={14} strokeWidth={2.5} /> {lang === 'ar' ? 'إلغاء اختيار الشخصية' : 'Clear selected character'}
                   </button>
                 )}
               </>
@@ -2882,8 +2920,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         <div style={{ padding: '10px 14px 14px', flexShrink: 0, position: 'relative' }}>
           {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
-          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce) || forcedModel || montageAssets.length > 0) && (
+          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce) || forcedModel || forcedCharacter || montageAssets.length > 0) && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              {forcedCharacter && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 4px', borderRadius: 10, background: 'rgba(236,72,153,0.1)', border: '1px solid rgba(236,72,153,0.35)', fontSize: 12, color: '#f9a8d4' }}>
+                  {forcedCharacter.imageUrl && <img src={forcedCharacter.imageUrl} alt="" style={{ width: 26, height: 32, objectFit: 'cover', borderRadius: 6 }} />}
+                  <Drama size={13} strokeWidth={2} /> {forcedCharacter.label || `#${forcedCharacter.id}`}
+                  <button onClick={() => setForcedCharacter(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>✕</button>
+                </div>
+              )}
               {forcedModel && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}>{forcedModel.type === 'image' ? <ImageIcon size={13} strokeWidth={2} /> : <Film size={13} strokeWidth={2} />} {forcedModel.label} <button onClick={() => setForcedModel(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
               {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
               {imageFiles.map((_, idx) => (

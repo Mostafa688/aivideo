@@ -803,7 +803,7 @@ export default function App() {
         {page === 'team' && <TeamPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'documentary' && <DocumentaryPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}
         {page === 'channels' && <ChannelsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
-        {page === 'characters' && <CharactersPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
+        {page === 'characters' && <CharactersPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('dashboard')} />}
         {page === 'community' && <CommunityPage onBack={() => setPage('dashboard')} user={user} onNavigate={handleNavigate} />}
         {page === 'faq' && <FAQPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}

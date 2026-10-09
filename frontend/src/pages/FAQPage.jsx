@@ -55,6 +55,14 @@ const faqs_ar = [
     ],
   },
   {
+    category: '🎭 استوديو الشخصيات',
+    questions: [
+      { q: 'إيه هو استوديو الشخصيات؟', a: 'صفحة "شخصياتي": بتسجّل شخصيتك أو وجهك (أو شخصية كرتون أو ماسكوت) بصورة واحدة، وبتفضل محفوظة. بعد كده تقدر تستخدمها في أي فيديو أو صورة تعملها من شات الايجنت (زرار + ← My characters) من غير ما ترفع الصورة كل مرة، والايجنت بيحافظ على نفس الشكل. وفيه كمان شخصيات جاهزة بنضيفها إحنا تقدر تحفظها عندك.' },
+      { q: 'إيه هي قوالب الترند؟', a: 'فيديوهات ترند جاهزة (رقص، كوميدي، سينمائي...) بتختار منها قالب وبتبدّل الشخصية بشخصيتك أو وجهك، والناتج نفس الحركات والكلام بشخصيتك (بموديل P-Video Animate). السعر بيظهر قدام كل قالب حسب مدته وجودة الفيديو (720p أو 1080p) وبيتخصم لما تبدأ، ويترجّع لو التوليد فشل.' },
+      { q: 'أرفع صورة إزاي عشان الشخصية تطلع حلوة؟', a: 'صورة بوجه واضح في اتجاه الكاميرا، إضاءة كويسة، وشخص واحد بس في الصورة. بنقرأ مظهر الشخصية (الوجه والشعر...) تلقائيًا ونستخدمه في وصف الفيديو عشان الشكل يفضل ثابت.' },
+    ],
+  },
+  {
     category: '💳 الاشتراك والدفع',
     questions: [
       { q: 'إزاي الكريديت شغال؟', a: 'رصيد كريديت واحد بيشتغل مع كل الموديلات — تشحن مرة واحدة والكريديت بيفضل في حسابك من غير ما ينتهي أو يتصفّر أسبوعيًا.' },
@@ -149,6 +157,14 @@ const faqs_en = [
     ],
   },
   {
+    category: '🎭 Character Studio',
+    questions: [
+      { q: 'What is the Character Studio?', a: 'The "My Characters" page: register your character or face (or a cartoon/mascot) with a single image and it stays saved. Then use it in any video or image you make from the Agent chat (+ button → My characters) without uploading the picture each time, and the Agent keeps the same look. There are also ready-made characters we add that you can save to your own list.' },
+      { q: 'What are trend templates?', a: 'Ready-made trending videos (dance, comedy, cinematic...). Pick a template and swap the character with your own character or face — the result keeps the same movements and speech with your character (using the P-Video Animate model). The price is shown on each template based on its length and quality (720p or 1080p), charged when you start and refunded if generation fails.' },
+      { q: 'What kind of photo gives the best result?', a: 'A clear face looking at the camera, good light, and only one person in the picture. We read the character\'s appearance (face, hair...) automatically and use it in the video description so the look stays consistent.' },
+    ],
+  },
+  {
     category: '💳 Subscription & Payment',
     questions: [
       { q: 'How do credits work?', a: 'One credit balance works across every model — you top up once and the balance stays in your account, no weekly expiry or reset.' },
@@ -192,7 +208,7 @@ const faqs_en = [
 
 const ICONS = { '🌟': Sparkles, '🤖': Bot, '🎞️': Clapperboard, '📺': Tv, '🛍️': ShoppingBag, '💳': CreditCard, '🎬': Film, '🎓': GraduationCap, '⚙️': Wrench };
 // ترتيب العرض: من الأهم للعميل الجديد لحد الدعم الفني
-const ORDER = ['عن Erivion|About', 'الايجنت|Agent', 'الأفلام الوثائقية|Documentaries', 'إعلانات|Ads', 'قنواتك|Channels', 'الموديلات|Models', 'الاشتراك|Subscription', 'الفريق|Team', 'الكورسات|Courses', 'مشاكل|Technical', 'الشراكة|Affiliate'];
+const ORDER = ['عن Erivion|About', 'الايجنت|Agent', 'الأفلام الوثائقية|Documentaries', 'استوديو الشخصيات|Character Studio', 'إعلانات|Ads', 'قنواتك|Channels', 'الموديلات|Models', 'الاشتراك|Subscription', 'الفريق|Team', 'الكورسات|Courses', 'مشاكل|Technical', 'الشراكة|Affiliate'];
 const rank = (title) => { const i = ORDER.findIndex(k => k.split('|').some(w => title.includes(w))); return i < 0 ? 99 : i; };
 const catMeta = (category) => {
   const m = /^(\S+)\s+(.*)$/.exec(category) || [null, '', category];

@@ -310,6 +310,8 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS description TEXT`);
+  await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS kind TEXT`);
   // ── إدارة قناة العميل يوميًا: مفتاح VidIQ الشخصي بتاعه + تفضيلاته، وسجل كل يوم
   // اقترحنا فيه فكرة وانتظرنا موافقته قبل ما نعمل الفيديو ────────────────────────
   await pool.query(`
@@ -2004,17 +2006,29 @@ export async function listClonedVoicesForAdmin() {
 // ═══════════════════════════════════════════════════════════════════════════
 // مكتبة الشخصيات — صور مرجعية متعددة لكل عميل (مش واحدة زي الفويس كلون)
 // ═══════════════════════════════════════════════════════════════════════════
-export async function saveCharacterReference(userId, { label, imageUrl }) {
+export async function saveCharacterReference(userId, { label, imageUrl, kind = null, description = null }) {
   const { rows } = await pool.query(
-    `INSERT INTO character_references (user_id, label, image_url) VALUES ($1, $2, $3) RETURNING id, label, image_url, created_at`,
-    [userId, label || null, imageUrl]
+    `INSERT INTO character_references (user_id, label, image_url, kind, description) VALUES ($1, $2, $3, $4, $5) RETURNING id, label, image_url, kind, description, created_at`,
+    [userId, label || null, imageUrl, kind, description]
   );
   return rows[0];
 }
 
 export async function listCharacterReferencesForUser(userId) {
-  const { rows } = await pool.query('SELECT id, label, image_url, created_at FROM character_references WHERE user_id = $1 ORDER BY id DESC', [userId]);
+  const { rows } = await pool.query('SELECT id, label, image_url, kind, description, created_at FROM character_references WHERE user_id = $1 ORDER BY id DESC', [userId]);
   return rows;
+}
+
+export async function updateCharacterReference(id, userId, { label, kind, description }) {
+  const { rows } = await pool.query(
+    `UPDATE character_references SET label = COALESCE($3, label), kind = COALESCE($4, kind), description = COALESCE($5, description) WHERE id = $1 AND user_id = $2 RETURNING id, label, image_url, kind, description, created_at`,
+    [id, userId, label ?? null, kind ?? null, description ?? null]
+  );
+  return rows[0] || null;
+}
+
+export async function setCharacterDescription(id, description) {
+  await pool.query('UPDATE character_references SET description = $2 WHERE id = $1 AND description IS NULL', [id, description]);
 }
 
 export async function deleteCharacterReference(id, userId) {
