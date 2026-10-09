@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { GraduationCap, ChevronDown, Lock, PlayCircle, Paperclip, MessageCircle, Sparkles, Film } from 'lucide-react';
+import { PageShell, Stat, Pill, Skeletons, Empty } from '../components/PageKit.jsx';
 
 function authHeaders() {
   const token = localStorage.getItem('token');
@@ -7,8 +9,8 @@ function authHeaders() {
 
 const T = {
   ar: {
-    heading: 'كورسات Erivion', sub: 'دروس هتساعدك تتقن صناعة الفيديوهات واستخدام كل موديل في Erivion.',
-    back: '← رجوع', free: 'مجاني', locked: '🔒 للمشتركين بس', videos: (n) => `${n} فيديو`,
+    eyebrow: 'الأكاديمية', heading: 'كورسات Erivion', sub: 'دروس هتساعدك تتقن صناعة الفيديوهات واستخدام كل موديل في Erivion.',
+    back: 'رجوع', free: 'مجاني', locked: 'للمشتركين', videos: (n) => `${n} فيديو`,
     empty: 'لسه مفيش كورسات مضافة.', loading: 'جاري التحميل...',
     loginRequired: 'سجّل دخولك عشان تقدر تشوف تفاصيل الكورس ده.',
     subscribeCta: 'اشترك عشان تفتح الكورس ده', watchAttachment: 'تحميل الملف المرفق',
@@ -16,8 +18,8 @@ const T = {
     questionSub: 'الايجنت أو فريق الدعم جاهزين يساعدوك دلوقتي', contactSupport: 'تواصل مع الدعم',
   },
   en: {
-    heading: 'Erivion Courses', sub: 'Lessons to help you master video creation and every Erivion model.',
-    back: '← Back', free: 'Free', locked: '🔒 Subscribers only', videos: (n) => `${n} video${n === 1 ? '' : 's'}`,
+    eyebrow: 'Academy', heading: 'Erivion Courses', sub: 'Lessons to help you master video creation and every Erivion model.',
+    back: 'Back', free: 'Free', locked: 'Subscribers', videos: (n) => `${n} video${n === 1 ? '' : 's'}`,
     empty: 'No courses added yet.', loading: 'Loading...',
     loginRequired: 'Log in to see this course.',
     subscribeCta: 'Subscribe to unlock this course', watchAttachment: 'Download attachment',
@@ -80,144 +82,109 @@ export default function CoursesPage({ onBack, onNavigate, userRegion }) {
     setLoadingDetailId(null);
   };
 
-  const cardStyle = (open) => ({
-    background: open ? 'rgba(124,58,237,0.08)' : 'rgba(255,255,255,0.03)',
-    border: `1px solid ${open ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.07)'}`,
-    borderRadius: 14, overflow: 'hidden', transition: 'all 0.2s',
-  });
-
+  const freeCount = courses.filter(c => c.is_free).length;
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0f)', color: 'var(--text, #fff)', fontFamily: "'DM Sans', sans-serif", padding: '40px 20px', direction: dir }}>
-      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+    <PageShell dir={dir} onBack={onBack} backLabel={t.back} eyebrow={t.eyebrow} Icon={GraduationCap} accent="#fbbf24" title={t.heading} subtitle={t.sub} maxWidth={900}
+      aside={courses.length > 0 && <><Stat value={courses.length} label={isAr ? 'كورس' : 'courses'} />{freeCount > 0 && <Stat value={freeCount} label={t.free} />}</>}>
+      <style>{`
+        .cr-feature{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:0;overflow:hidden;border-color:rgba(52,211,153,.35)!important}
+        .cr-head{width:100%;display:flex;align-items:center;gap:16px;padding:16px 20px;background:none;border:none;color:inherit;font:inherit;cursor:pointer;text-align:start}
+        .cr-thumb{width:64px;height:64px;border-radius:16px;flex-shrink:0;object-fit:cover;display:grid;place-items:center;background:linear-gradient(135deg,rgba(251,191,36,.2),rgba(124,106,247,.2));border:1px solid var(--border2)}
+        .cr-chev{transition:transform .2s;color:var(--text2);flex-shrink:0}
+        .cr-open .cr-chev{transform:rotate(180deg)}
+        .cr-lesson{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--border)}
+        .cr-cta{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:999px;border:none;font:inherit;font-weight:700;font-size:14px;color:#1a1204;cursor:pointer;background:linear-gradient(135deg,#fde68a,#fbbf24);box-shadow:0 8px 24px rgba(251,191,36,.25)}
+        @media (max-width:720px){.cr-feature{grid-template-columns:1fr}.cr-thumb{width:52px;height:52px}}
+      `}</style>
 
-        {onBack && (
-          <button onClick={onBack} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, marginBottom: 24, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {t.back}
-          </button>
-        )}
-
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🎓</div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            {t.heading}
-          </h1>
-          <p style={{ color: 'rgba(255,255,255,0.4)', marginTop: 8, fontSize: 14, maxWidth: 460, marginInline: 'auto', lineHeight: 1.7 }}>
-            {t.sub}
-          </p>
-        </div>
-
-        {/* Free intro video — open to everyone, no subscription needed */}
-        {intro?.video_url && (
-          <div style={{ marginBottom: 28, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 16, padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#4ade80', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 999, padding: '3px 10px' }}>{t.free}</span>
-              <span style={{ fontWeight: 700, fontSize: 15 }}>{intro.title}</span>
-            </div>
-            <video controls poster={intro.thumbnail_url || undefined} src={intro.video_url} style={{ width: '100%', borderRadius: 10, display: 'block', background: '#000' }} />
-            {intro.description && <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 10, lineHeight: 1.7 }}>{intro.description}</p>}
+      {intro?.video_url && (
+        <section className="pk-card cr-feature" style={{ marginBottom: 26 }}>
+          <video controls poster={intro.thumbnail_url || undefined} src={intro.video_url} style={{ width: '100%', height: '100%', minHeight: 220, objectFit: 'cover', display: 'block', background: '#000' }} />
+          <div style={{ padding: '24px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
+            <div><Pill color="#34d399" dot>{t.free}</Pill></div>
+            <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 22, lineHeight: 1.4, fontWeight: 800 }}>{intro.title}</h2>
+            {intro.description && <p style={{ margin: 0, color: 'var(--text2)', fontSize: 14, lineHeight: 1.85 }}>{intro.description}</p>}
           </div>
-        )}
+        </section>
+      )}
 
-        {loadingCourses && <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', padding: '20px 0' }}>{t.loading}</div>}
-        {!loadingCourses && courses.length === 0 && (
-          <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', padding: '20px 0' }}>{t.empty}</div>
-        )}
+      {loadingCourses && <Skeletons n={3} h={96} />}
+      {!loadingCourses && courses.length === 0 && <Empty Icon={GraduationCap}>{t.empty}</Empty>}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {courses.map(c => {
-            const open = openId === c.id;
-            const detail = detailCache[c.id];
-            const err = detailError[c.id];
-            return (
-              <div key={c.id} style={cardStyle(open)}>
-                <button onClick={() => toggleCourse(c)}
-                  style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', color: '#fff', fontSize: 14.5, fontWeight: 700, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: isAr ? 'right' : 'left', direction: dir, fontFamily: "'DM Sans', sans-serif", gap: 12 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                    {c.thumbnail_url
-                      ? <img src={c.thumbnail_url} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
-                      : <span style={{ fontSize: 20 }}>🎬</span>}
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
+      <div style={{ display: 'grid', gap: 14 }}>
+        {courses.map(c => {
+          const open = openId === c.id;
+          const detail = detailCache[c.id];
+          const err = detailError[c.id];
+          const tone = c.is_free ? '#34d399' : '#c4b5fd';
+          return (
+            <article key={c.id} className={`pk-card ${open ? 'cr-open' : 'pk-hover'}`} style={open ? { borderColor: 'rgba(251,191,36,.45)' } : undefined}>
+              <button className="cr-head" onClick={() => toggleCourse(c)} aria-expanded={open}>
+                {c.thumbnail_url ? <img className="cr-thumb" src={c.thumbnail_url} alt="" loading="lazy" /> : <span className="cr-thumb"><Film size={26} color="#fbbf24" /></span>}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <Pill color={tone}>{c.is_free ? <Sparkles size={11} /> : <Lock size={11} />} {c.is_free ? t.free : t.locked}</Pill>
+                    {typeof c.video_count === 'number' && <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t.videos(c.video_count)}</span>}
                   </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, color: c.is_free ? '#4ade80' : '#c4b5fd', background: c.is_free ? 'rgba(34,197,94,0.12)' : 'rgba(124,106,247,0.12)', border: `1px solid ${c.is_free ? 'rgba(34,197,94,0.3)' : 'rgba(124,106,247,0.3)'}` }}>
-                      {c.is_free ? t.free : t.locked}
-                    </span>
-                    <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.3)', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>⌄</span>
-                  </span>
-                </button>
-                {open && (
-                  <div style={{ padding: '0 20px 18px', color: 'rgba(255,255,255,0.65)', fontSize: 13.5, lineHeight: 1.8, direction: dir }}>
-                    {c.description && <p style={{ margin: '0 0 14px' }}>{c.description}</p>}
+                  <span style={{ display: 'block', fontSize: 16.5, fontWeight: 700, lineHeight: 1.5 }}>{c.title}</span>
+                  {!open && c.description && <span style={{ marginTop: 4, color: 'var(--text2)', fontSize: 13.5, lineHeight: 1.7, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{c.description}</span>}
+                </span>
+                <ChevronDown className="cr-chev" size={20} />
+              </button>
 
-                    {loadingDetailId === c.id && <div style={{ color: 'rgba(255,255,255,0.4)' }}>{t.loading}</div>}
+              {open && (
+                <div style={{ padding: '0 20px 20px', color: 'var(--text2)', fontSize: 14, lineHeight: 1.85 }}>
+                  {c.description && <p style={{ margin: '0 0 16px' }}>{c.description}</p>}
+                  {loadingDetailId === c.id && <Skeletons n={2} h={64} />}
+                  {err === 'login_required' && <div className="pk-empty" style={{ padding: 16 }}>{t.loginRequired}</div>}
 
-                    {err === 'login_required' && (
-                      <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 13 }}>
-                        {t.loginRequired}
-                      </div>
-                    )}
-
-                    {detail && (
-                      <>
-                        {detail.locked && detail.course?.intro_video_url && (
-                          <div style={{ marginBottom: 14 }}>
-                            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a78bfa', marginBottom: 6 }}>{t.trailer}</div>
-                            <video controls src={detail.course.intro_video_url} style={{ width: '100%', borderRadius: 10, display: 'block', background: '#000' }} />
-                          </div>
-                        )}
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: detail.locked ? 14 : 0 }}>
-                          {(detail.videos || []).map(v => (
-                            <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px' }}>
-                              {v.thumbnail_url && <img src={v.thumbnail_url} alt="" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />}
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                <div style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>{detail.locked ? '🔒 ' : '▶ '}{v.title}</div>
-                                {v.description && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{v.description}</div>}
-                                {!detail.locked && v.video_url && (
-                                  <video controls poster={v.thumbnail_url || undefined} src={v.video_url} style={{ width: '100%', borderRadius: 8, marginTop: 8, background: '#000' }} />
-                                )}
-                                {!detail.locked && v.attachment_url && (
-                                  <a href={v.attachment_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#a78bfa' }}>
-                                    📎 {v.attachment_label || t.watchAttachment}
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                          ))}
+                  {detail && (
+                    <>
+                      {detail.locked && detail.course?.intro_video_url && (
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#fbbf24', marginBottom: 8 }}>{t.trailer}</div>
+                          <video controls src={detail.course.intro_video_url} style={{ width: '100%', borderRadius: 12, display: 'block', background: '#000' }} />
                         </div>
-
-                        {!detail.locked && detail.course?.attachment_url && (
-                          <a href={detail.course.attachment_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 12, fontSize: 12.5, color: '#a78bfa' }}>
-                            📎 {detail.course.attachment_label || t.watchAttachment}
-                          </a>
-                        )}
-
-                        {detail.locked && (
-                          <button onClick={() => onNavigate?.('pricing')}
-                            style={{ display: 'inline-block', marginTop: 4, padding: '10px 20px', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', border: 'none', borderRadius: 999, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                            {t.subscribeCta}
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ marginTop: 40, padding: '24px', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: 20, marginBottom: 8 }}>💬</div>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>{t.questionTitle}</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginBottom: 16 }}>{t.questionSub}</div>
-          <button onClick={() => onNavigate ? onNavigate('support') : (window.location.href = 'mailto:support@erivion.net')}
-            style={{ display: 'inline-block', padding: '10px 24px', background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-            {t.contactSupport}
-          </button>
-        </div>
-
+                      )}
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {(detail.videos || []).map((v, vi) => (
+                          <div key={v.id} className="cr-lesson">
+                            {v.thumbnail_url ? <img src={v.thumbnail_url} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} /> :
+                              <span style={{ width: 36, height: 36, borderRadius: 11, display: 'grid', placeItems: 'center', background: 'rgba(251,191,36,.12)', color: '#fbbf24', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>{vi + 1}</span>}
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: 14.5, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                                {detail.locked ? <Lock size={13} color="#94a3b8" /> : <PlayCircle size={15} color="#34d399" />} {v.title}
+                              </div>
+                              {v.description && <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2, lineHeight: 1.7 }}>{v.description}</div>}
+                              {!detail.locked && v.video_url && <video controls poster={v.thumbnail_url || undefined} src={v.video_url} style={{ width: '100%', borderRadius: 10, marginTop: 10, background: '#000' }} />}
+                              {!detail.locked && v.attachment_url && (
+                                <a href={v.attachment_url} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 13, color: '#fbbf24' }}><Paperclip size={13} /> {v.attachment_label || t.watchAttachment}</a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {!detail.locked && detail.course?.attachment_url && (
+                        <a href={detail.course.attachment_url} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 14, fontSize: 13.5, color: '#fbbf24' }}><Paperclip size={14} /> {detail.course.attachment_label || t.watchAttachment}</a>
+                      )}
+                      {detail.locked && <button className="cr-cta" style={{ marginTop: 16 }} onClick={() => onNavigate?.('pricing')}><Lock size={15} /> {t.subscribeCta}</button>}
+                    </>
+                  )}
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
-    </div>
+
+      <section className="pk-card" style={{ marginTop: 40, padding: '26px 24px', display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', background: 'linear-gradient(135deg, rgba(251,191,36,.1), rgba(124,106,247,.08))' }}>
+        <span style={{ width: 48, height: 48, borderRadius: 15, display: 'grid', placeItems: 'center', background: 'rgba(251,191,36,.16)', flexShrink: 0 }}><MessageCircle size={22} color="#fbbf24" /></span>
+        <div style={{ flex: '1 1 240px' }}>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{t.questionTitle}</div>
+          <div style={{ color: 'var(--text2)', fontSize: 13.5 }}>{t.questionSub}</div>
+        </div>
+        <button className="cr-cta" onClick={() => onNavigate ? onNavigate('support') : (window.location.href = 'mailto:support@erivion.net')}>{t.contactSupport}</button>
+      </section>
+    </PageShell>
   );
 }
