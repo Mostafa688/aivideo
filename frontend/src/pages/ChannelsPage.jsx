@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import CostGuideModal from './CostGuideModal.jsx';
+import { PageShell, Stat, Skeletons } from '../components/PageKit.jsx';
 import {
   Tv, ArrowLeft, ExternalLink, KeyRound, Bot, Pencil, Mic, MicOff, RefreshCw, Search,
   Sparkles, Drama, Play, CheckCircle2, XCircle, Pause, PlayCircle, Trash2, BarChart3,
@@ -420,15 +421,22 @@ export default function ChannelsPage({ onBack, userRegion }) {
     load();
   };
 
+  const activeCount = channels.filter(c => c.status === 'active').length;
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0f)', color: '#fff', fontFamily: "'DM Sans', sans-serif", padding: '40px 20px', direction: dir }}>
-      <div style={{ maxWidth: 640, margin: '0 auto' }}>
-        {onBack && (
-          <button onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, marginBottom: 24 }}>
-            <ArrowLeft size={13} style={{ transform: isAr ? 'scaleX(-1)' : 'none' }} /> {isAr ? 'رجوع' : 'Back'}
-          </button>
-        )}
-
+    <PageShell dir={dir} onBack={onBack} backLabel={isAr ? 'رجوع' : 'Back'} eyebrow={isAr ? 'إدارة القنوات' : 'Channel manager'} Icon={Tv} accent="#a78bfa"
+      title={t.title} subtitle={t.sub} maxWidth={1120}
+      aside={channels.length > 0 && <>
+        <Stat value={channels.length} label={isAr ? 'قناة' : 'channels'} />
+        <Stat value={activeCount} label={isAr ? 'شغّالة' : 'active'} />
+      </>}>
+      <style>{`
+        .chn-layout{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:24px;align-items:start}
+        .chn-aside{display:grid;gap:18px;position:sticky;top:16px}
+        .chn-main{min-width:0;order:2}
+        .chn-aside input:not([type=checkbox]):focus,.chn-aside select:focus,.chn-aside textarea:focus,.chn-main input:focus,.chn-main select:focus{outline:none;border-color:var(--pk-accent)!important;box-shadow:0 0 0 3px var(--pk-accent-bg)}
+        .chn-card{padding:20px 22px!important}
+        @media (max-width:900px){.chn-layout{grid-template-columns:1fr}.chn-aside{position:static}.chn-main{order:-1}}
+      `}</style>
         {costGuideId && <CostGuideModal channelId={costGuideId} isAr={isAr} onDone={() => { setCostGuideId(null); load(); }} />}
         {ackModal && (
           <div onClick={() => setAckModal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -449,7 +457,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
           </div>
         )}
         {toast && (
-          <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 10, background: toast.type === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${toast.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: toast.type === 'success' ? '#22c55e' : '#f87171', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+          <div style={{ marginBottom: 18, padding: '12px 16px', borderRadius: 10, background: toast.type === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${toast.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: toast.type === 'success' ? '#22c55e' : '#f87171', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {toast.type === 'success' ? <CheckCircle2 size={15} /> : <XCircle size={15} />} {toast.text}
             </span>
@@ -457,15 +465,10 @@ export default function ChannelsPage({ onBack, userRegion }) {
           </div>
         )}
 
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 16px', background: 'linear-gradient(135deg,rgba(124,106,247,0.18),rgba(124,106,247,0.05))', border: '1px solid rgba(124,106,247,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Tv size={26} color="#a78bfa" strokeWidth={1.75} />
-          </div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, background: 'linear-gradient(135deg,#a78bfa,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t.title}</h1>
-          <p style={{ color: 'rgba(255,255,255,0.45)', marginTop: 8, fontSize: 13.5, maxWidth: 440, marginInline: 'auto', lineHeight: 1.7 }}>{t.sub}</p>
-        </div>
 
-        <div style={{ background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.18)', borderRadius: 16, padding: 22, marginBottom: 20 }}>
+        <div className="chn-layout">
+          <aside className="chn-aside">
+        <div className="pk-card chn-card" style={{ background: 'linear-gradient(180deg, rgba(124,106,247,0.1), rgba(124,106,247,0.03))' }}>
           <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 18, color: '#c4b5fd', display: 'flex', alignItems: 'center', gap: 8 }}>
             <Sparkles size={15} /> {t.howTitle}
           </div>
@@ -476,13 +479,13 @@ export default function ChannelsPage({ onBack, userRegion }) {
               { title: t.step3Title, desc: t.step3Desc },
             ].map((s, i) => (
               <div key={i} style={{ display: 'flex', gap: 12 }}>
-                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.3)', color: '#a78bfa', fontSize: 11.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
+                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(124,106,247,0.15)', border: '1px solid rgba(124,106,247,0.3)', color: '#a78bfa', fontSize: 12.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{s.title}</div>
-                  <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', margin: s.href ? '0 0 8px' : 0, lineHeight: 1.7 }}>{s.desc}</p>
+                  <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.5)', margin: s.href ? '0 0 8px' : 0, lineHeight: 1.7 }}>{s.desc}</p>
                   {s.href && (
                     <a href={s.href} target="_blank" rel="noopener noreferrer"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, padding: '6px 14px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', color: '#a78bfa', textDecoration: 'none', border: '1px solid rgba(124,106,247,0.3)' }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, padding: '6px 14px', borderRadius: 8, background: 'rgba(124,106,247,0.15)', color: '#a78bfa', textDecoration: 'none', border: '1px solid rgba(124,106,247,0.3)' }}>
                       {i === 0 ? <ExternalLink size={12} /> : <KeyRound size={12} />} {s.btn}
                     </a>
                   )}
@@ -492,7 +495,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
           </div>
         </div>
 
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 24, marginBottom: 24 }}>
+        <div className="pk-card chn-card">
           <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
             <Tv size={15} color="#a78bfa" /> {t.addTitle}
           </div>
@@ -503,7 +506,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
             <input value={vidiqKey} onChange={e => setVidiqKey(e.target.value)} placeholder={t.vidiqKey} type="password"
               style={{ width: '100%', padding: isAr ? '11px 38px 11px 14px' : '11px 14px 11px 38px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13.5, boxSizing: 'border-box' }} />
           </div>
-          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '0 0 18px', lineHeight: 1.6 }}>{t.vidiqHelp}</p>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: '0 0 18px', lineHeight: 1.6 }}>{t.vidiqHelp}</p>
 
           <div style={{ padding: '14px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
             <div style={{ fontSize: 13, color: '#d1d5db', marginBottom: 10, fontWeight: 600 }}>{t.setupModeLabel}</div>
@@ -518,7 +521,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 </button>
               ))}
             </div>
-            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: 0, lineHeight: 1.6 }}>
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0, lineHeight: 1.6 }}>
               {setupMode === 'automatic' ? t.setupAutoDesc : t.setupManualDesc}
             </p>
           </div>
@@ -535,7 +538,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
           {setupMode === 'automatic' ? (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 18 }}>
               <span style={{ fontSize: 13, color: '#d1d5db', display: 'flex', alignItems: 'center', gap: 7 }}><Mic size={13} /> {t.voice}</span>
-              <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>{t.autoDetected}</span>
+              <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>{t.autoDetected}</span>
             </div>
           ) : (
             <>
@@ -560,7 +563,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 <div style={{ padding: '12px 12px', marginTop: 8, borderRadius: 10, background: 'rgba(236,72,153,0.06)', border: '1px solid rgba(236,72,153,0.18)', marginBottom: 18 }}>
                   <div style={{ fontSize: 12.5, color: '#f0abfc', marginBottom: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Drama size={13} /> {t.characterPickLabel}</div>
                   {characters.length === 0 ? (
-                    <p style={{ fontSize: 11.5, color: '#f59e0b', margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}><TriangleAlert size={13} style={{ flexShrink: 0, marginTop: 1 }} /> {t.characterPickNone} <span style={{ textDecoration: 'underline', cursor: 'default' }}>{t.characterPickLink}</span></p>
+                    <p style={{ fontSize: 12.5, color: '#f59e0b', margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}><TriangleAlert size={13} style={{ flexShrink: 0, marginTop: 1 }} /> {t.characterPickNone} <span style={{ textDecoration: 'underline', cursor: 'default' }}>{t.characterPickLink}</span></p>
                   ) : (
                     <select value={characterReferenceId} onChange={e => setCharacterReferenceId(e.target.value)}
                       style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '9px 10px', fontSize: 12.5, boxSizing: 'border-box' }}>
@@ -586,47 +589,49 @@ export default function ChannelsPage({ onBack, userRegion }) {
           </button>
         </div>
 
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, color: 'rgba(255,255,255,0.6)' }}>{t.yourChannels}</div>
-        {loading ? null : channels.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+          </aside>
+          <section className="chn-main">
+        <div className="pk-section-h" style={{ marginTop: 0 }}>{t.yourChannels}</div>
+        {loading ? <Skeletons n={2} h={150} /> : channels.length === 0 ? (
+          <div className="pk-empty">
             <Tv size={22} color="rgba(255,255,255,0.25)" style={{ marginBottom: 8 }} />
             <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, margin: 0 }}>{t.noChannels}</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {channels.map(ch => (
-              <div key={ch.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '16px 18px' }}>
+              <div key={ch.id} className="pk-card pk-hover chn-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Tv size={14} color="rgba(255,255,255,0.4)" /> {ch.label || ch.channel_id}
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 5, background: ch.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)', color: ch.status === 'active' ? '#22c55e' : '#f59e0b' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 5, background: ch.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)', color: ch.status === 'active' ? '#22c55e' : '#f59e0b' }}>
                     {ch.status === 'active' ? <PlayCircle size={11} /> : <Pause size={11} />} {ch.status}
                   </span>
                 </div>
-                <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.4)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <Clock size={11} /> {t.lastRun}: {ch.last_run_at ? new Date(ch.last_run_at).toLocaleString() : t.never} · {ch.format_pref} · {ch.uses_voice ? <Mic size={11} /> : <MicOff size={11} />}
                 </div>
 
                 {ch.setup_mode === 'automatic' && (
                   <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(124,106,247,0.06)', border: '1px solid rgba(124,106,247,0.15)' }}>
                     {analyzingIds[ch.id] ? (
-                      <span style={{ fontSize: 11.5, color: '#a78bfa', display: 'flex', alignItems: 'center', gap: 6 }}><Loader2 size={12} className="spinning" /> {t.analyzing}</span>
+                      <span style={{ fontSize: 12.5, color: '#a78bfa', display: 'flex', alignItems: 'center', gap: 6 }}><Loader2 size={12} className="spinning" /> {t.analyzing}</span>
                     ) : ch.auto_analyzed_at ? (
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#a78bfa', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Bot size={12} /> {t.analysisLabel}</div>
-                        <div style={{ fontSize: 11, color: '#d1d5db', display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#a78bfa', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Bot size={12} /> {t.analysisLabel}</div>
+                        <div style={{ fontSize: 12, color: '#d1d5db', display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
                           <span>{t.contentStyleL}: {ch.content_style || '–'}</span>
                           <span>{t.videoStyleL}: {ch.video_style || '–'}</span>
                           <span>{t.usesVoiceL}: {ch.uses_voice ? t.yes : t.no}</span>
                           <span>{t.targetDurationL}: {ch.target_duration_sec ? `${ch.target_duration_sec}s (${ch.target_scene_count} scenes)` : '–'}</span>
                         </div>
-                        <button onClick={() => analyzeChannel(ch.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 10.5, cursor: 'pointer' }}>
+                        <button onClick={() => analyzeChannel(ch.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}>
                           <RefreshCw size={10} /> {t.reanalyze}
                         </button>
                       </div>
                     ) : (
-                      <button onClick={() => analyzeChannel(ch.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}>
+                      <button onClick={() => analyzeChannel(ch.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 12.5, cursor: 'pointer' }}>
                         <Search size={12} /> {t.analyzeNow}
                       </button>
                     )}
@@ -636,12 +641,12 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 {ch.content_style === 'character_adventure' && (
                   <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(236,72,153,0.06)', border: '1px solid rgba(236,72,153,0.18)' }}>
                     {ch.character_reference_id ? (
-                      <span style={{ fontSize: 11.5, color: '#ec4899', display: 'flex', alignItems: 'center', gap: 6 }}><Drama size={13} /> {ch.character_label || `#${ch.character_reference_id}`}</span>
+                      <span style={{ fontSize: 12.5, color: '#ec4899', display: 'flex', alignItems: 'center', gap: 6 }}><Drama size={13} /> {ch.character_label || `#${ch.character_reference_id}`}</span>
                     ) : characters.length === 0 ? (
-                      <p style={{ fontSize: 11, color: '#f59e0b', margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}><TriangleAlert size={12} style={{ flexShrink: 0, marginTop: 1 }} /> {t.characterPickNone} {t.characterPickLink}</p>
+                      <p style={{ fontSize: 12, color: '#f59e0b', margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}><TriangleAlert size={12} style={{ flexShrink: 0, marginTop: 1 }} /> {t.characterPickNone} {t.characterPickLink}</p>
                     ) : (
                       <div>
-                        <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Drama size={12} /> {t.characterPickLabel}</div>
+                        <div style={{ fontSize: 12, color: '#d1d5db', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Drama size={12} /> {t.characterPickLabel}</div>
                         <select onChange={e => assignCharacter(ch.id, e.target.value)} defaultValue=""
                           style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
                           <option value="">—</option>
@@ -656,20 +661,20 @@ export default function ChannelsPage({ onBack, userRegion }) {
                   <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {imageModels.length > 0 && ch.content_style !== 'documentary' && (
                       <div>
-                        <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.imageModelLabel}</div>
+                        <div style={{ fontSize: 12, color: '#d1d5db', marginBottom: 6 }}>{t.imageModelLabel}</div>
                         <select value={ch.image_model || ''} onChange={e => assignModel(ch.id, 'imageModel', e.target.value)}
                           style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
                           <option value="">{t.modelDefaultOption}</option>
                           {[...imageModels].sort((a, b) => a.creditCostPerImage - b.creditCostPerImage).map((m, i) => <option key={m.key} value={m.key}>{m.label} — {m.creditCostPerImage} {t.perImage}{i === 0 ? ` (${t.cheapestTag})` : ''}{m.supportsReferenceImages === false ? ` — ${t.noRefTag}` : ''}</option>)}
                         </select>
                         {imageModels.find(m => m.key === ch.image_model)?.supportsReferenceImages === false && (
-                          <p style={{ fontSize: 11, color: '#f59e0b', margin: '6px 0 0', lineHeight: 1.6 }}>{t.noRefWarning}</p>
+                          <p style={{ fontSize: 12, color: '#f59e0b', margin: '6px 0 0', lineHeight: 1.6 }}>{t.noRefWarning}</p>
                         )}
                       </div>
                     )}
                     {!['whiteboard_sketch', 'documentary'].includes(ch.content_style) && videoModels.length > 0 && (
                       <div>
-                        <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.animationModelLabel}</div>
+                        <div style={{ fontSize: 12, color: '#d1d5db', marginBottom: 6 }}>{t.animationModelLabel}</div>
                         <select value={ch.animation_model || ''} onChange={e => assignModel(ch.id, 'animationModel', e.target.value)}
                           style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}>
                           <option value="">{t.modelDefaultOption}</option>
@@ -678,14 +683,14 @@ export default function ChannelsPage({ onBack, userRegion }) {
                       </div>
                     )}
                     {['realistic', 'map'].includes(ch.content_style) && (
-                      <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, lineHeight: 1.6 }}>{t.stockModelHint}</p>
+                      <p style={{ fontSize: 12, color: '#9ca3af', margin: 0, lineHeight: 1.6 }}>{t.stockModelHint}</p>
                     )}
                     {ch.content_style === 'documentary' && (
-                      <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, lineHeight: 1.6 }}>{t.documentaryHint}</p>
+                      <p style={{ fontSize: 12, color: '#9ca3af', margin: 0, lineHeight: 1.6 }}>{t.documentaryHint}</p>
                     )}
                     {ch.content_style !== 'documentary' && (
                     <div>
-                      <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.sceneCountLabel}</div>
+                      <div style={{ fontSize: 12, color: '#d1d5db', marginBottom: 6 }}>{t.sceneCountLabel}</div>
                       <input type="number" min={2} max={20} step={1}
                         value={sceneCountDrafts[ch.id] !== undefined ? sceneCountDrafts[ch.id] : (ch.target_scene_count || '')}
                         onChange={e => setSceneCountDrafts(prev => ({ ...prev, [ch.id]: e.target.value }))}
@@ -710,14 +715,14 @@ export default function ChannelsPage({ onBack, userRegion }) {
 
                 {ch.setup_mode !== 'automatic' && (
                   <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(124,106,247,0.05)', border: '1px solid rgba(124,106,247,0.12)' }}>
-                    <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 6 }}>{t.contentBriefLabel}</div>
+                    <div style={{ fontSize: 12, color: '#d1d5db', marginBottom: 6 }}>{t.contentBriefLabel}</div>
                     <textarea
                       value={briefDrafts[ch.id] !== undefined ? briefDrafts[ch.id] : (ch.content_brief || '')}
                       onChange={e => setBriefDrafts(prev => ({ ...prev, [ch.id]: e.target.value }))}
                       placeholder={t.contentBriefPlaceholder} rows={3} maxLength={2000}
                       style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 8, padding: '8px 10px', fontSize: 12, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.6, marginBottom: 8 }} />
                     <button onClick={() => saveBrief(ch.id)} disabled={savingBriefId === ch.id}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 11.5, cursor: savingBriefId === ch.id ? 'not-allowed' : 'pointer' }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,106,247,0.3)', background: 'rgba(124,106,247,0.1)', color: '#a78bfa', fontSize: 12.5, cursor: savingBriefId === ch.id ? 'not-allowed' : 'pointer' }}>
                       {savingBriefId === ch.id ? <Loader2 size={11} className="spinning" /> : <CheckCircle2 size={11} />} {t.save}
                     </button>
                   </div>
@@ -726,13 +731,13 @@ export default function ChannelsPage({ onBack, userRegion }) {
                 {publishEnabled && <div style={{ marginBottom: 12 }}>
                   {ch.youtube_channel_title ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11.5, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle2 size={13} /> {t.connectedAs} ({ch.youtube_channel_title})</span>
+                      <span style={{ fontSize: 12.5, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle2 size={13} /> {t.connectedAs} ({ch.youtube_channel_title})</span>
                       {!ch.youtube_publish_ack_at && (
-                        <button onClick={() => askPublishTerms(ch.id, false)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: 11, cursor: 'pointer' }}>
+                        <button onClick={() => askPublishTerms(ch.id, false)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: 12, cursor: 'pointer' }}>
                           {t.ptButton}
                         </button>
                       )}
-                      <button onClick={() => disconnectYoutube(ch.id)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.25)', background: 'transparent', color: '#ef4444', fontSize: 11, cursor: 'pointer' }}>
+                      <button onClick={() => disconnectYoutube(ch.id)} style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.25)', background: 'transparent', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>
                         {t.disconnect}
                       </button>
                     </div>
@@ -749,7 +754,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
                     {creditsBalance != null && <> · {t.yourBalance}: <strong style={{ color: creditsBalance >= ch.estimated_run_cost ? '#22c55e' : '#f59e0b' }}>{creditsBalance}</strong>{creditsBalance < ch.estimated_run_cost && <span style={{ color: '#f59e0b' }}> ({t.lowBal})</span>}</>}
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button onClick={() => toggleStatus(ch)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#d1d5db', fontSize: 12, cursor: 'pointer' }}>
                     {ch.status === 'active' ? <><Pause size={12} /> {t.pause}</> : <><PlayCircle size={12} /> {t.resume}</>}
                   </button>
@@ -776,22 +781,22 @@ export default function ChannelsPage({ onBack, userRegion }) {
                       return (
                         <div key={run.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px' }}>
                           <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{run.idea_title}</div>
-                          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>{new Date(run.created_at).toLocaleDateString()}</div>
+                          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>{new Date(run.created_at).toLocaleDateString()}</div>
 
                           {!run.youtube_video_id ? (
                             <div style={{ display: 'flex', gap: 6 }}>
                               <input value={linkInputs[run.id] || ''} onChange={e => setLinkInputs(prev => ({ ...prev, [run.id]: e.target.value }))} placeholder={t.linkPlaceholder}
-                                style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 11.5 }} />
-                              <button onClick={() => linkYoutube(ch.id, run.id)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 7, border: 'none', background: '#7c6af7', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}><Link2 size={11} /> {t.link}</button>
+                                style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 12.5 }} />
+                              <button onClick={() => linkYoutube(ch.id, run.id)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 7, border: 'none', background: '#7c6af7', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}><Link2 size={11} /> {t.link}</button>
                             </div>
                           ) : !perf ? (
-                            <button onClick={() => refreshPerformance(run.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 11.5, cursor: 'pointer' }}><RefreshCw size={11} /> {t.refreshStats}</button>
+                            <button onClick={() => refreshPerformance(run.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, border: '1px solid rgba(124,106,247,0.3)', background: 'transparent', color: '#a78bfa', fontSize: 12.5, cursor: 'pointer' }}><RefreshCw size={11} /> {t.refreshStats}</button>
                           ) : perf === 'loading' ? (
-                            <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: 6 }}><Loader2 size={12} className="spinning" /> {t.loadingStats}</span>
+                            <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: 6 }}><Loader2 size={12} className="spinning" /> {t.loadingStats}</span>
                           ) : perf.error ? (
-                            <span style={{ fontSize: 11.5, color: '#ef4444' }}>{perf.error}</span>
+                            <span style={{ fontSize: 12.5, color: '#ef4444' }}>{perf.error}</span>
                           ) : (
-                            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11.5, color: '#d1d5db' }}>
+                            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12.5, color: '#d1d5db' }}>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Eye size={12} /> {perf.views ?? '–'} {t.views}</span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><ThumbsUp size={12} /> {perf.likes ?? '–'} {t.likes}</span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><MessageSquare size={12} /> {perf.comments ?? '–'} {t.comments}</span>
@@ -807,7 +812,8 @@ export default function ChannelsPage({ onBack, userRegion }) {
             ))}
           </div>
         )}
-      </div>
-    </div>
+          </section>
+        </div>
+    </PageShell>
   );
 }
