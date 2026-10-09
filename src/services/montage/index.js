@@ -137,7 +137,7 @@ async function writeAss({ words, style, lang, W, H, duration, position, workDir,
  * @param {boolean} [o.sfx]
  * @returns {{file:string,duration:number,width:number,height:number,words:any[]|null,cuts:number[]}}
  */
-export async function montageVideos({ files, workDir, transitions = 'auto', narrationFile = null, words = null, captions = null, musicFile = null, musicVolume = 0.14, sfx = true, assumeNormalized = false, extraSfx = [], title = null, transitionStyle = 'auto', overlays = [], overlayTheme = 'blue', onProgress = () => {} }) {
+export async function montageVideos({ files, workDir, transitions = 'auto', narrationFile = null, words = null, captions = null, musicFile = null, musicVolume = 0.14, sfx = true, sfxGain = 1, assumeNormalized = false, extraSfx = [], title = null, transitionStyle = 'auto', overlays = [], overlayTheme = 'blue', onProgress = () => {} }) {
   if (!files?.length) throw new Error('no clips');
   fs.mkdirSync(workDir, { recursive: true });
   const size = await displaySize(files[0]);
@@ -178,6 +178,7 @@ export async function montageVideos({ files, workDir, transitions = 'auto', narr
     const sfxEvents = sfx && plan.d ? joined.cuts.map((t, i) => { const [type, vol] = SFX_BY_TRANSITION[plan.types[i]] || (i % 4 === 3 ? ['impact', 0.35] : ['whoosh', 0.3]); return { t: Math.max(0, t - 0.04), type, vol }; }) : [];
     audioFile = path.join(workDir, 'mixed.m4a');
     sfxEvents.push(...extraSfx);
+    if (sfxGain !== 1) for (const e of sfxEvents) e.vol = Math.min(0.9, (e.vol ?? 0.5) * sfxGain); // مستوى المؤثرات اللي العميل اختاره (خفيف/عادي/قوي)
     await mixAudio({ narrationFile: baseWav, musicFile, musicVolume, sfxEvents, sfxFiles, duration, outFile: audioFile });
   }
 

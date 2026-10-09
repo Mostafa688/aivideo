@@ -196,7 +196,7 @@ export default function ChannelsPage({ onBack, userRegion }) {
     // بس الموديلات اللي بتقبل صورة كمدخل صالحة كـ"موديل تحريك" هنا (البايبلاين بيبعتلها صورة
     // مشهد)، ومرتبة بالأرخص الأول عشان يبان الفرق في السعر بسهولة
     fetch('/api/videos/models', { headers: authHeaders() }).then(r => r.json())
-      .then(d => setVideoModels((d.models || []).filter(m => m.supportsImageInput).sort((a, b) => a.creditCostPerSecond - b.creditCostPerSecond)))
+      .then(d => setVideoModels((d.models || []).filter(m => m.supportsImageInput && !m.performanceTransfer).sort((a, b) => a.creditCostPerSecond - b.creditCostPerSecond)))
       .catch(() => {});
   }, []);
 

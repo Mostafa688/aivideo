@@ -2988,8 +2988,10 @@ app.get('/api/images/generate-status/:jobId', authMiddleware, (req, res) => {
 
 // ── New Video Models Routes ────────────────────────────────────────────────
 app.get('/api/videos/models', authMiddleware, (req, res) => {
-  const models = Object.keys(NEW_VIDEO_MODELS).filter(key => !NEW_VIDEO_MODELS[key].performanceTransfer).map(key => ({
+  // نقل الأداء (prunaai_p_video_animate) ظاهر في القايمة بعلامة performanceTransfer: بياخد فيديو مصدر + صورة شخصية بدل برومبت (الشات بيطلبهم، والصفحات اللي بتولّد من برومبت بتفلتره)
+  const models = Object.keys(NEW_VIDEO_MODELS).map(key => ({
     key,
+    performanceTransfer: !!NEW_VIDEO_MODELS[key].performanceTransfer,
     label: REPLICATE_MODEL_COSTS[key]?.label || key,
     tiers: getQualityTiers(key),
     maxClipSec: getMaxClipSeconds(key),

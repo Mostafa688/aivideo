@@ -151,7 +151,7 @@ export const REPLICATE_MODEL_COSTS = {
   // ✅ NEW (طلب العميل، سكرين شوت صفحة الموديل على Replicate): prunaai/p-video-animate — "نقل أداء":
   // فيديو مصدر (حركة + كلام) + صورة شخصية جديدة → نفس الأداء بالشخصية/المكان الجديد. السعر لكل ثانية
   // من الفيديو الناتج (= مدة فيديو المصدر): 720p $0.03، 1080p $0.06. maxClipSec سقف أمان مننا (مفيش حد مؤكد في الصفحة)
-  prunaai_p_video_animate: { label: 'P-Video Animate (performance transfer)', unit: 'second', usdCost: 0.03, maxClipSec: 60,
+  prunaai_p_video_animate: { label: 'P-Video Animate', unit: 'second', usdCost: 0.03, maxClipSec: 60,
                        tiers: { '720p': 0.03, '1080p': 0.06 } },
   decart_lucy_edit_2: { label: 'Lucy Edit 2', unit: 'second', usdCost: 0.04, maxClipSec: 1800 },
 
@@ -245,6 +245,14 @@ export const AUTO_EDIT_USD_PER_MINUTE = { asr: 0.002, render: 0.03 };
 export function getAutoEditCreditCost(minutes) {
   const perMin = AUTO_EDIT_USD_PER_MINUTE.asr + AUTO_EDIT_USD_PER_MINUTE.render;
   return usdToCredits(perMin * Math.max(0.5, Number(minutes) || 0.5), { multiplier: AUX_PROFIT_MULTIPLIER });
+}
+
+// ── قارئ فيديو رخيص (Gemini 2.5 Flash على Replicate): بيفهم الحركة والتحولات في فيديو مرجعي لستايل موشن جرافيك. التكلفة تقديرية بالتوكنز
+// (فيديو ~260 توكن/ثانية دخل + ردّ قصير) فمقربة لفوق، وبتتحسب بهامش الخدمات المساعدة. بيتخصم من العميل (مش مجاني).
+export const VIDEO_READ_USD = { base: 0.004, perSecond: 0.00012, maxSeconds: 90 };
+export function getVideoReadCreditCost(durationSec) {
+  const sec = Math.min(VIDEO_READ_USD.maxSeconds, Math.max(1, Number(durationSec) || 1));
+  return usdToCredits(VIDEO_READ_USD.base + VIDEO_READ_USD.perSecond * sec, { multiplier: AUX_PROFIT_MULTIPLIER });
 }
 
 // ── صورة مصغرة بالذكاء الاصطناعي لفيلم وثائقي (حزمة يوتيوب): بحث عن أمثلة + بحث إرشادات (كل بحث 1 كريديت) + توليد

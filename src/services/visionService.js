@@ -236,4 +236,62 @@ export async function visionDiagnostics() {
   return out;
 }
 
+
+// ── قارئ فيديو (Replicate): بيرفع نسخة صغيرة من الفيديو (480p، من غير صوت) ويسأل موديل بيفهم الفيديو مباشرة (Gemini 2.5 Flash افتراضيًا).
+// اسم الحقل والموديل قابلين للتغيير من البيئة لو Replicate غيّرت الـschema. أي فشل → بيرمي error والمتصل يرجع لقراءة الإطارات.
+const REPLICATE_VIDEO_MODEL = process.env.REPLICATE_VIDEO_MODEL || 'google/gemini-2.5-flash';
+const REPLICATE_VIDEO_FIELD = process.env.REPLICATE_VIDEO_FIELD || 'videos';
+export const videoReaderAvailable = () => !!process.env.REPLICATE_API_TOKEN;
+
+async function replicateUploadFile(file, mime = 'video/mp4') {
+  const fs = await import('fs');
+  const buf = fs.readFileSync(file);
+  const form = new FormData();
+  form.append('content', new Blob([buf], { type: mime }), 'clip.mp4');
+  const res = await fetch('https://api.replicate.com/v1/files', { method: 'POST', headers: { Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}` }, body: form, signal: AbortSignal.timeout(60000) });
+  if (!res.ok) throw new Error(`files ${res.status} ${(await res.text()).slice(0, 160)}`);
+  const d = await res.json();
+  const url = d?.urls?.get;
+  if (!url) throw new Error('files: no url');
+  return url;
+}
+
+/** يقرأ فيديو ويرجّع نص. file = مسار فيديو محلي. بيتحمّل طابور Replicate/429 زي الصور. */
+export async function videoUnderstand({ file, prompt, maxTokens = 700, timeoutMs = 120000, _run } = {}) {
+  if (!videoReaderAvailable() && !_run) throw new Error('video reader needs REPLICATE_API_TOKEN');
+  const os = await import('os'), path = await import('path'), fs = await import('fs');
+  const { execFile } = await import('child_process');
+  const small = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vread-')), 'small.mp4');
+  try {
+    await new Promise((res, rej) => execFile('ffmpeg', ['-v', 'error', '-y', '-i', file, '-t', '90', '-an', '-vf', 'scale=-2:480,fps=10', '-c:v', 'libx264', '-crf', '30', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', small], (e) => (e ? rej(e) : res())));
+    if (_run) return await _run(small, prompt);
+    const url = await replicateUploadFile(small);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await scheduleReplicate(async () => {
+          const headers = { Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`, 'Content-Type': 'application/json' };
+          const res = await fetch(`https://api.replicate.com/v1/models/${REPLICATE_VIDEO_MODEL}/predictions`, {
+            method: 'POST', signal: AbortSignal.timeout(timeoutMs), headers: { ...headers, Prefer: 'wait=60' },
+            body: JSON.stringify({ input: { prompt, [REPLICATE_VIDEO_FIELD]: [url], max_output_tokens: maxTokens, temperature: 0.2 } }),
+          });
+          if (!res.ok) { const body = (await res.text()).slice(0, 300); const err = new Error(`${res.status} ${body.slice(0, 200)}`); if (res.status === 429) { err.rateLimited = true; err.retryAfterMs = retryAfterMs(body, res.headers.get('retry-after')); } throw err; }
+          let data = await res.json(); const deadline = Date.now() + timeoutMs;
+          while (data.status && !['succeeded', 'failed', 'canceled'].includes(data.status) && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 2000));
+            const r2 = await fetch(`https://api.replicate.com/v1/predictions/${data.id}`, { headers, signal: AbortSignal.timeout(15000) });
+            if (!r2.ok) throw new Error(`poll ${r2.status}`); data = await r2.json();
+          }
+          if (data.status !== 'succeeded') throw new Error(`${data.status || 'no status'}: ${String(data.error || '').slice(0, 200)}`);
+          const text = (Array.isArray(data.output) ? data.output.join('') : String(data.output || '')).trim();
+          if (!text) throw new Error('empty output');
+          return text;
+        });
+      } catch (e) {
+        if (e.rateLimited && attempt < 2) { replicateGapUntil = Date.now() + 30 * 60 * 1000; await sleep(e.retryAfterMs || 11000); continue; }
+        throw e;
+      }
+    }
+  } finally { try { fs.rmSync(path.dirname(small), { recursive: true, force: true }); } catch { /* تنضيف مؤقت */ } }
+}
+
 export const _resetVisionForTest = () => { workingModel = null; workingReplicate = null; discovered = null; };

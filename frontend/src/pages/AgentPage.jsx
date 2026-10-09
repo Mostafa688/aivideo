@@ -2617,6 +2617,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     onMouseLeave={e => e.currentTarget.style.background = forcedModel?.type === 'video' && forcedModel.key === opt.key ? 'rgba(124,106,247,0.15)' : 'none'}>
                     <Film size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
+                    {opt.performanceTransfer && <span title={lang === 'ar' ? 'بياخد فيديو + صورة شخصية' : 'Takes a video + a character image'} style={{ fontSize: 10, color: 'var(--accent2)', border: '1px solid rgba(124,106,247,0.4)', borderRadius: 6, padding: '1px 5px', flexShrink: 0 }}>{lang === 'ar' ? 'فيديو + صورة' : 'video + image'}</span>}
                     <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>{opt.creditCostPerSecond}cr/s</span>
                     {forcedModel?.type === 'video' && forcedModel.key === opt.key && <Check size={13} strokeWidth={3} style={{ color: 'var(--accent2)', flexShrink: 0 }} />}
                   </button>

@@ -10,6 +10,7 @@ import { splitSentences, planCuts, zoomPlan } from './autoEdit.js';
 import { buildBeatClip } from '../documentary/clipBuilder.js';
 import { sanitizeTemplate, yearsIn, percentsIn } from '../documentary/planner.js';
 import { themeFromPalette, scenesNote } from './assets.js';
+import { describeStyleVideo } from './styleVideo.js';
 import { renderMotionScene, composeScenePart } from './motionScenes.js';
 import { planCutaways } from './cutaways.js';
 import { getTheme } from '../documentary/themes.js';
@@ -322,10 +323,10 @@ export async function executePlan({ plan, clips, workDir, options = {}, style = 
   const theme = style?.theme || (plan.style === 'dramatic' || ['epic', 'tension'].includes(plan.musicMood) ? 'cinematic' : 'blue');
   const r = await montageVideos({
     files: chapters.map(c => c.file), workDir: path.join(workDir, 'final'), assumeNormalized: true,
-    transitions: chapters.length > 1 && chapters.length <= 40 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: true,
+    transitions: chapters.length > 1 && chapters.length <= 40 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: sfxConfig(options.sfx).on, sfxGain: sfxConfig(options.sfx).gain,
     words: capStyle && newWords.length ? newWords.filter(w => !hideCaps.some(([a, b]) => (w.start + w.end) / 2 >= a && (w.start + w.end) / 2 <= b)) : null,
     captions: capStyle && newWords.length ? { style: capStyle, lang, position: 'auto', transcribe: false } : null,
-    musicFile: options.musicFile || null, musicVolume: speechShare > 0.35 ? 0.1 : 0.22, extraSfx,
+    musicFile: options.musicFile || null, musicVolume: speechShare > 0.35 ? 0.1 : 0.22, extraSfx: sfxConfig(options.sfx).on ? extraSfx : [],
     overlays: overlays.map(({ template, data, at, dur }) => ({ template, data, at, dur })), overlayTheme: theme,
   });
   chapters.forEach(c => rmQuiet(c.file));
@@ -706,10 +707,10 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   const extraOv = options.motionGraphics === false ? [] : autoExtraOverlays(narr.words, narr.duration, [...custom, ...bakedWins], { dense: options.graphicsLevel === 'high' }).map(({ template, data, at, dur }) => ({ template, data, at, dur }));
   const r = await montageVideos({
     files, workDir: path.join(workDir, 'final'), assumeNormalized: true, narrationFile: voiceFile,
-    transitions: files.length > 1 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: true,
+    transitions: files.length > 1 ? (plan.style === 'calm' ? 'soft' : 'auto') : 'none', transitionStyle: plan.style === 'calm' ? 'auto' : 'punchy', sfx: sfxConfig(options.sfx).on, sfxGain: sfxConfig(options.sfx).gain,
     words: capStyle ? narr.words.filter(w => !hideCaps.some(([a, b]) => (w.start + w.end) / 2 >= a && (w.start + w.end) / 2 <= b)) : null,
     captions: capStyle ? { style: capStyle, lang, position: 'auto', transcribe: false } : null,
-    musicFile: options.musicFile || null, musicVolume: 0.12, extraSfx,
+    musicFile: options.musicFile || null, musicVolume: 0.12, extraSfx: sfxConfig(options.sfx).on ? extraSfx : [],
     overlays: [...custom, ...extraOv], overlayTheme: theme,
   });
   files.forEach(f => rmQuiet(f));
@@ -721,12 +722,21 @@ export async function executeVoicePlan({ plan, clips, narr, voiceFile, workDir, 
   };
 }
 
-/** صور الستايل المرجعية → ثيم ألوان + أنواع الجرافيك الأقرب + وصف للمخطط */
-export function styleFrom(images) {
-  const im = (images || []).find(a => a.analysis);
+/** صور/فيديوهات الستايل المرجعية → ثيم ألوان + أنواع الجرافيك الأقرب + وصف (وسرعة الحركة) للمخطط. فيديو الستايل (حركة) له الأولوية على الصورة. */
+/** مستوى المؤثرات الصوتية اللي العميل اختاره: none = من غير مؤثرات، light = أهدى، normal (الافتراضي)، heavy = أقوى */
+export function sfxConfig(level) {
+  const l = ['none', 'light', 'normal', 'heavy'].includes(level) ? level : 'normal';
+  return { level: l, on: l !== 'none', gain: l === 'light' ? 0.5 : l === 'heavy' ? 1.35 : 1 };
+}
+
+export function styleFrom(images, extra = []) {
+  const list = [...(extra || []).map(analysis => ({ analysis })), ...(images || [])].filter(a => a.analysis);
+  const im = list[0];
   if (!im) return null;
-  const theme = themeFromPalette(im.analysis.palette);
-  return { description: im.analysis.description || '', templates: (im.analysis.templates || []).filter(t => OVERLAY_TEMPLATES.has(t)), theme: theme || null };
+  const theme = themeFromPalette(im.analysis.palette) || themeFromPalette(list.find(a => a.analysis.palette?.length)?.analysis.palette);
+  const templates = [...new Set(list.flatMap(a => a.analysis.templates || []))].filter(t => OVERLAY_TEMPLATES.has(t)).slice(0, 5);
+  const description = [...new Set(list.map(a => a.analysis.description).filter(Boolean))].join(' | ').slice(0, 600);
+  return { description, templates, theme: theme || null, energy: list.find(a => a.analysis.energy)?.analysis.energy };
 }
 
 /** كل الخطوات: (فويس-أوفر؟ ← خطة على الصوت) أو (تفريغ كلام الفيديوهات → خطة → تنفيذ) */
@@ -749,8 +759,16 @@ export async function smartMontage({ assets, workDir, instructions = '', options
   fs.mkdirSync(workDir, { recursive: true });
   const transcribe = deps.transcribe || transcribeAudioFile;
   const voice = assets.find(a => a.kind === 'audio') || null;
-  const videos = assets.filter(a => (a.kind || 'video') === 'video');
-  const style = styleFrom(assets.filter(a => a.kind === 'image'));
+  const videos = assets.filter(a => (a.kind || 'video') === 'video' && !a.styleRef);
+  // فيديوهات الستايل (styleRef): مش لقطات، بنقرأ منها شكل الجرافيك بس (قارئ الفيديو لو متاح ومدفوع، وإلا إطاراتها)
+  const vstyles = [];
+  for (const a of assets.filter(x => (x.kind || 'video') === 'video' && x.styleRef)) {
+    try { vstyles.push(await describeStyleVideo({ file: a.file, duration: a.duration, workDir: path.join(workDir, 'style'), read: deps.styleVideoRead || null, ask: deps.styleFrameAsk })); }
+    catch (e) { console.warn('[SmartMontage] style video skipped:', e.message); }
+  }
+  const style = styleFrom(assets.filter(a => a.kind === 'image'), vstyles);
+  if (style?.energy === 'high' && options.graphicsLevel !== 'high' && options.mode !== 'transitions') options = { ...options, graphicsLevel: 'high' }; // مرجع بحركة سريعة → جرافيكس أكتر
+  const styleReaderUsed = vstyles.some(v => v.source === 'video-model');
   if (!videos.length) { const e = new Error('no videos'); e.code = 'no_videos'; throw e; }
   const clips = [];
   for (let i = 0; i < videos.length; i++) {
@@ -779,7 +797,7 @@ export async function smartMontage({ assets, workDir, instructions = '', options
     onProgress({ stage: 'plan', frac: 0 });
     const plan = await planVoiceover({ clips, narr, instructions, style, ask: deps.ask, dense: options.graphicsLevel === 'high' });
     const result = await executeVoicePlan({ plan, clips, narr, voiceFile: voice.file, workDir: path.join(workDir, 'exec'), options, style, onProgress });
-    return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: false })) };
+    return { ...result, styleReaderUsed, styleSource: style ? (vstyles.length ? "video" : "image") : null, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: false })) };
   }
   if (deps.onTranscript) await deps.onTranscript(clips.flatMap(c => c.words || []));
   onProgress({ stage: 'plan', frac: 0 });
@@ -792,5 +810,5 @@ export async function smartMontage({ assets, workDir, instructions = '', options
     catch (e) { console.warn('[SmartMontage] cutaway planning failed:', e.message); plan.cutaways = []; }
   }
   const result = await executePlan({ plan, clips, workDir: path.join(workDir, 'exec'), options, style, instructions, onProgress });
-  return { ...result, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: c.hasSpeech })) };
+  return { ...result, styleReaderUsed, styleSource: style ? (vstyles.length ? "video" : "image") : null, plan: { title: plan.title, style: plan.style, musicMood: plan.musicMood, source: plan.source }, clips: clips.map(c => ({ name: c.name, duration: c.duration, hasSpeech: c.hasSpeech })) };
 }
