@@ -13,7 +13,8 @@ import { smartMontage } from '../montage/smartMontage.js';
 import { resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, sweepOldAssets, withAnalysis, MAX_TOTAL_MINUTES, MAX_ASSETS_PER_USER } from '../montage/assets.js';
 import { chargeCredits, addCreditsBalance, getCreditsBalance, getUserById } from '../authService.js';
 import { watermarkVideo } from '../watermark.js';
-import { getDocumentaryCreditCost, getAutoEditCreditCost } from '../creditPricingEngine.js';
+import { getDocumentaryCreditCost, getAutoEditCreditCost, getVideoReadCreditCost } from '../creditPricingEngine.js';
+import { videoUnderstand, videoReaderAvailable } from '../visionService.js';
 import { checkContentSafety } from '../scriptService.js';
 import { synthesizeNarration, getBackgroundMusicBuffer } from '../videoAudioService.js';
 import { ffmpeg, probeDuration, rmQuiet, probeVideo, hasAudio } from './ff.js';
@@ -180,11 +181,11 @@ async function runTask(task) {
       thumbUrl = await store.uploadFile(thumb, `${base}.jpg`, 'image/jpeg');
     } catch (e) { console.warn('[Documentary] thumbnail failed:', e.message); }
     // الدفع على الطول الفعلي: فرق الحجز المسبق بيترد
-    const actual = task.fixedCost ? task.charged : getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
+    const actual = task.fixedCost ? task.charged - (result.refundCredits || 0) : getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
     const back = Math.max(0, task.charged - actual);
-    if (back >= 2) await refund(task, back);
-    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio, ...(result.sceneStats ? { sceneStats: result.sceneStats } : {}), ...(result.editor ? { editor: result.editor } : {}) } });
-    task.hooks?.onDone?.({ videoUrl, thumbnailUrl: thumbUrl, durationSec: result.duration, title: result.title, credits: result.credits, creditsCharged: task.charged - (back >= 2 ? back : 0) });
+    if (back >= 2 || (task.fixedCost && back >= 1)) await refund(task, back);
+    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 || (task.fixedCost && back >= 1) ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio, ...(result.sceneStats ? { sceneStats: result.sceneStats } : {}), ...(result.editor ? { editor: result.editor } : {}) } });
+    task.hooks?.onDone?.({ videoUrl, thumbnailUrl: thumbUrl, durationSec: result.duration, title: result.title, credits: result.credits, creditsCharged: task.charged - (back >= 2 || (task.fixedCost && back >= 1) ? back : 0) });
   } catch (e) {
     console.error(`[Documentary] job ${id} failed:`, e.message);
     await refund(task, task.charged);
@@ -266,7 +267,10 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
   if (!ids.length || ids.length > MAX_ASSETS_PER_USER + 1 + 4) return { ok: false, status: 400, error: 'bad_assets', message: `Choose 1 to ${MAX_ASSETS_PER_USER} uploaded videos.` };
   const assets = resolveMontageAssets(userId, ids);
   if (!assets) return { ok: false, status: 400, error: 'assets_expired', message: 'The uploaded videos expired or were not found — please upload them again.' };
-  const videos = assets.filter(a => (a.kind || 'video') === 'video');
+  // فيديوهات مرجعية لستايل الموشن جرافيك (styleAssetIds): مش لقطات — بنقرأ منها الشكل بس
+  const styleIds = new Set((Array.isArray(options.styleAssetIds) ? options.styleAssetIds : []).map(String));
+  const styleVideos = assets.filter(a => (a.kind || 'video') === 'video' && styleIds.has(String(a.id)));
+  const videos = assets.filter(a => (a.kind || 'video') === 'video' && !styleIds.has(String(a.id)));
   const voice = assets.find(a => a.kind === 'audio') || null;
   if (!videos.length) return { ok: false, status: 400, error: 'bad_assets', message: 'Add at least one video to the montage.' };
   const footageSec = videos.reduce((a, x) => a + x.duration, 0);
@@ -280,6 +284,7 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
   opt.editMode = options.mode === 'transitions' ? 'transitions' : 'smart'; // مش "mode": ده اسم نوع الـjob نفسه (montage) وبيتكتب فوقه
   opt.graphicsLevel = options.graphicsLevel === 'high' ? 'high' : 'normal';
   opt.transitionStyle = options.transitionStyle === 'soft' ? 'soft' : 'punchy';
+  opt.sfx = ['none', 'light', 'heavy'].includes(options.sfx) ? options.sfx : undefined; // مستوى المؤثرات الصوتية (الافتراضي عادي)
   opt.cutaways = options.cutaways === false ? false : undefined; // مشاهد موشن 3D بتحل محل لقطات (الصوت بيكمّل)؛ false = العميل مش عايزها
   if (opt.editMode === 'transitions') {
     opt.cutSilence = false; opt.zoom = false;
@@ -287,7 +292,10 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
     if (opt.graphics.length === 0) opt.motionGraphics = false;
   }
   for (const g of opt.graphics) { const sf = await checkContentSafety(g.text); if (sf.unsafe) return { ok: false, status: 400, error: 'content_policy_violation', message: 'This on-screen text cannot be used.' }; }
-  const q = quoteAutoEdit(totalSec);
+  const q0 = quoteAutoEdit(totalSec);
+  // قارئ الفيديو (موديل Replicate رخيص بيفهم حركة الستايل المرجعي): رسم صغير على كل فيديو ستايل، بيترد لو القارئ ما اشتغلش فعلًا
+  const readerFee = videoReaderAvailable() ? styleVideos.reduce((a, v) => a + getVideoReadCreditCost(v.duration), 0) : 0;
+  const q = { ...q0, cost: q0.cost + readerFee };
   // مونتاج مجاني مرة واحدة لكل حساب: ناتج ≤ دقيقتين (طول الفويس أو طول اللقطات) وحد أقصى 6 فيديوهات، بعلامة مائية — للخطة المجانية أو لو الرصيد مش كفاية
   let trial = false;
   const rawOutSec = voice ? voice.duration : footageSec;
@@ -303,13 +311,13 @@ export async function startMontageJob(userId, { assetIds, instructions = '', opt
   if (!charge.success) return { ok: false, status: 403, error: 'quota_exceeded', message: `This montage needs ${q.cost} credits, you have ${charge.remaining}.`, cost: q.cost, remaining: charge.remaining };
   let job;
   try {
-    job = await store.createJob({ userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, durationSec: totalSec, voiceover: !!voice, watermark: trial || undefined, clips: videos.map(a => a.name) }, title: (options.title || videos[0].name || 'Montage').replace(/\.[a-z0-9]{2,4}$/i, '').slice(0, 120), creditsCharged: cost });
+    job = await store.createJob({ userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, styleAssetIds: styleVideos.map(a => a.id), styleReaderFee: trial ? 0 : readerFee, durationSec: totalSec, voiceover: !!voice, watermark: trial || undefined, clips: videos.map(a => a.name) }, title: (options.title || videos[0].name || 'Montage').replace(/\.[a-z0-9]{2,4}$/i, '').slice(0, 120), creditsCharged: cost });
     if (trial) await store.updateJob(job.id, { meta: { trial: true, trialKind: 'montage' } }).catch(() => {});
   } catch (e) {
     if (trial) await store.releaseTrial(userId, 'montage').catch(() => {}); else await addCreditsBalance(userId, q.cost).catch(() => {});
     return { ok: false, status: 500, error: 'job_create_failed', message: 'Could not start the job. Your credits were not charged.' };
   }
-  enqueue({ id: job.id, userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, durationSec: totalSec, voiceover: !!voice, watermark: trial || undefined }, charged: cost, minutes: q.minutes, fixedCost: true, hooks: {}, trial, trialKind: 'montage' });
+  enqueue({ id: job.id, userId, input: { mode: 'montage', ...opt, instructions: text, assetIds: ids, styleAssetIds: styleVideos.map(a => a.id), styleReaderFee: trial ? 0 : readerFee, durationSec: totalSec, voiceover: !!voice, watermark: trial || undefined }, charged: cost, minutes: q.minutes, fixedCost: true, hooks: {}, trial, trialKind: 'montage' });
   return { ok: true, job, cost, minutes: q.minutes, remaining: charge.remaining, trial };
 }
 
@@ -318,7 +326,11 @@ async function produceSmartMontage({ id, userId, input, workDir, prog }) {
   const assets = resolveMontageAssets(userId, input.assetIds);
   if (!assets) throw new Error('uploaded videos are no longer available');
   const analysed = [];
-  for (const a of assets) analysed.push((await withAnalysis(userId, a.id, a.kind === 'audio' ? 90000 : 20000)) || a);
+  const styleSet = new Set((input.styleAssetIds || []).map(String));
+  for (const a of assets) {
+    if (styleSet.has(String(a.id))) { analysed.push({ ...a, styleRef: true }); continue; } // فيديو ستايل: مش بنحلله كلقطة
+    analysed.push((await withAnalysis(userId, a.id, a.kind === 'audio' ? 90000 : 20000)) || a);
+  }
   let musicFile = null;
   if (input.music) {
     try {
@@ -330,16 +342,18 @@ async function produceSmartMontage({ id, userId, input, workDir, prog }) {
   }
   const r = await smartMontage({
     assets: analysed, workDir: path.join(workDir, 'smart'), instructions: input.instructions,
-    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile, graphics: input.graphics || [], mode: input.editMode, graphicsLevel: input.graphicsLevel, transitionStyle: input.transitionStyle, motionGraphics: input.motionGraphics === false ? false : undefined, cutaways: input.cutaways === false ? false : undefined },
+    options: { captions: input.captions, cutSilence: input.cutSilence, zoom: input.zoom, language: input.language, musicFile, graphics: input.graphics || [], mode: input.editMode, graphicsLevel: input.graphicsLevel, transitionStyle: input.transitionStyle, motionGraphics: input.motionGraphics === false ? false : undefined, cutaways: input.cutaways === false ? false : undefined, sfx: input.sfx },
     onProgress: ({ stage, frac = 0 }) => prog(stage === 'plan' ? 'cut' : stage, stage === 'plan' ? 0 : frac),
-    deps: { onTranscript: async (words) => {
+    deps: { styleVideoRead: input.styleReaderFee > 0 && !input.watermark ? (file, prompt) => videoUnderstand({ file, prompt }) : null, onTranscript: async (words) => {
       const safety = await checkContentSafety(words.map(w => w.w).join(' ').slice(0, 6000), { mode: 'footage' });
       if (safety.unsafe) { console.warn(`[Moderation] footage blocked (${safety.category}): ${safety.reason}`); const e = new Error(`content policy: ${safety.category} — ${safety.reason}`); e.code = 'content_policy'; throw e; }
     } },
   });
   const title = (await store.getJobAny(id))?.title || r.plan?.title || 'Montage';
   if (input.watermark) r.file = await watermarkVideo(r.file);
-  return { file: r.file, duration: r.duration, credits: [], script: r.transcript, title, chapters: [], srt: buildSrt(r.words) };
+  // لو دفع رسم قارئ الفيديو ومشتغلش (فشل/fallback على الإطارات) بنرد الرسم
+  const refundCredits = input.styleReaderFee > 0 && !r.styleReaderUsed ? input.styleReaderFee : 0;
+  return { file: r.file, duration: r.duration, credits: [], script: r.transcript, title, chapters: [], srt: buildSrt(r.words), refundCredits };
 }
 
 export async function startAutoEditFromUrl(userId, videoUrl, options = {}) {

@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { smartMontage, sanitizeVoicePlan, planVoiceover } from './smartMontage.js';
+import { smartMontage, sanitizeVoicePlan, planVoiceover, sfxConfig } from './smartMontage.js';
 import { analyzeScenes } from './assets.js';
 
 const D = fs.mkdtempSync(path.join(os.tmpdir(), 'modes-selftest-'));
@@ -20,6 +20,17 @@ console.log('transitions: plan', r.plan.source, 'dur', r.duration.toFixed(1), 's
 assert.equal(r.plan.source, 'transitions'); assert.equal(asked, false, 'no LLM planning in transitions mode');
 assert.equal(r.stats.segments, 3); assert.equal(r.stats.punchIns, 0); assert.equal(r.stats.graphics, 0);
 assert.ok(r.duration > 12 && r.duration <= 15.2, `duration ${r.duration}`);
+
+// ── 1b) مستوى المؤثرات الصوتية بيتغيّر مع رغبة العميل: none / light / normal / heavy بيدّوا صوت مختلف ──
+assert.deepEqual(sfxConfig('none'), { level: 'none', on: false, gain: 1 }); assert.equal(sfxConfig('heavy').gain, 1.35); assert.equal(sfxConfig('whatever').level, 'normal');
+const audioHash = (f) => execFileSync('sh', ['-c', `ffmpeg -v error -i "${f}" -vn -f s16le -ac 1 -ar 22050 - | md5sum`]).toString().split(' ')[0];
+const hashes = {};
+for (const lvl of ['none', 'light', 'normal', 'heavy']) {
+  const rr = await smartMontage({ assets, workDir: path.join(D, 'sfx_' + lvl), instructions: 'just transitions', options: { mode: 'transitions', captions: 'none', cutSilence: false, zoom: false, motionGraphics: false, language: 'en', sfx: lvl, musicFile: null }, deps: { ask: async () => ({}), transcribe: async () => [] } });
+  hashes[lvl] = audioHash(rr.file);
+}
+console.log('sfx levels distinct:', new Set(Object.values(hashes)).size);
+assert.equal(new Set(Object.values(hashes)).size, 4, 'each sound-effects level renders different audio');
 
 // ── 2) فيديو طويل بمشاهد + فويس-أوفر: المشاهد بتتكتشف والمخطط يشوفها والبداية بتتظبط على بداية مشهد ──
 ff('-f', 'lavfi', '-i', 'color=c=red:s=320x240:d=3:r=25', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:d=4:r=25', '-f', 'lavfi', '-i', 'color=c=blue:s=320x240:d=2:r=25', '-f', 'lavfi', '-i', 'mandelbrot=s=320x240:r=25',

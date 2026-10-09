@@ -602,6 +602,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // بيفرض نفس الاختيار حتى لو الموديل تجاهل التعليمة دي)
     const forcedModelNote = forcedImageModel && NEW_IMAGE_MODELS[forcedImageModel]
       ? `The user manually selected the image engine "${forcedImageModel}" from a picker before sending this message — you MUST use exactly this model for any image generation in this turn (do not pick a different one, do not ask which model), and state its real credit cost from the price list above.`
+      : forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]?.performanceTransfer
+      ? `The user manually selected the video engine "${forcedVideoModel}" (performance transfer) from the + menu. It takes TWO inputs, not a prompt: the customer's SOURCE VIDEO (the movements + speech to copy, uploaded with the + button, up to 60s) and a CHARACTER IMAGE (the new person/place). Check which of the two are present: if the video is missing ask them to upload it with +, if the image is missing ask them to upload one or offer to create it; once both exist confirm the price (per second of the source video, from the price list above) and wait for their go, then use the ###GENERATE_VIDEO### marker with model:"${forcedVideoModel}" and imageUrl set to the character image. Never turn this into a text-to-video request.`
       : forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]
       ? `The user manually selected the video engine "${forcedVideoModel}" from a picker before sending this message — you MUST use exactly this engine for ANY video generation in this turn, INCLUDING animating a generated image (if they ask to animate/move a picture right now, use the ###GENERATE_VIDEO### marker with model:"${forcedVideoModel}" and "imageUrl" set to the exact image URL from history — do NOT silently switch to a different engine for this turn, that would ignore their explicit choice). Do not pick a different engine, do not ask which one, and state its real credit cost from the price list above.`
       : null;
@@ -1551,15 +1553,19 @@ router.post('/chat', authMiddleware, async (req, res) => {
           // لو العميل رافع فويس-أوفر، هو دايمًا جزء من المونتاج (حتى لو الايجنت نسي يكتب voiceAssetId) — وإلا الفيديو يطلع بطول الفيديوهات ويتجاهل الصوت
           const storedVoice = listAssets(userId).find(a => a.kind === 'audio');
           if (storedVoice && !ids.includes(storedVoice.id)) ids.push(storedVoice.id);
+          // فيديوهات الستايل المرجعي (موشن جرافيك العميل عايز يتعمل زيه): الايجنت بيحدد ids بتاعتها في styleAssetIds، وبتتقرأ كستايل مش كلقطات
+          const storedIds = new Set(listAssets(userId).map(a => a.id));
+          const styleAssetIds = (Array.isArray(montagePayload.styleAssetIds) ? montagePayload.styleAssetIds : []).map(String).filter(x => storedIds.has(x));
+          for (const sid of styleAssetIds) if (!ids.includes(sid)) ids.push(sid);
           // صور الستايل المرجعية (موشن جرافيك من Pinterest مثلاً) دايمًا داخلة في المونتاج
           for (const im of listAssets(userId).filter(a => a.kind === 'image')) if (!ids.includes(im.id)) ids.push(im.id);
           // العميل رفع صور ستايل مرجعية أو طلب موشن جرافيكس/أنيميشن صراحة (في الرسالة أو في تعليمات الماركر): جرافيكس كتير تلقائيًا، إلا لو اختار انتقالات بس
           const askedGraphics = /موشن|جرافيك|انيميشن|أنيميشن|رسوم|graphic|animation|animated|motion/i.test(`${message || ''} ${montagePayload.instructions || ''}`);
-          const wantsManyGraphics = montagePayload.mode !== 'transitions' && (listAssets(userId).some(a => a.kind === 'image') || askedGraphics);
+          const wantsManyGraphics = montagePayload.mode !== 'transitions' && (listAssets(userId).some(a => a.kind === 'image') || styleAssetIds.length > 0 || askedGraphics);
           console.log(`[Agent] SMART_MONTAGE start: ${ids.length} id(s), voiceover=${!!storedVoice}`);
           const r = await startMontageJob(userId, {
             assetIds: ids, instructions: typeof montagePayload.instructions === 'string' ? montagePayload.instructions : '',
-            options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false, graphics: montagePayload.graphics, mode: montagePayload.mode, graphicsLevel: wantsManyGraphics ? 'high' : montagePayload.graphicsLevel, transitionStyle: montagePayload.transitionStyle, cutaways: montagePayload.cutaways },
+            options: { language: montagePayload.language, captions: montagePayload.captions, music: montagePayload.music !== false, cutSilence: montagePayload.cutSilence !== false, graphics: montagePayload.graphics, mode: montagePayload.mode, graphicsLevel: wantsManyGraphics ? 'high' : montagePayload.graphicsLevel, transitionStyle: montagePayload.transitionStyle, cutaways: montagePayload.cutaways, styleAssetIds, sfx: montagePayload.sfx },
           });
           if (r.ok && storedVoice?.srcUrl) consumedVoices.add(`${userId}:${storedVoice.srcUrl}`); // نفس التسجيل ما يتحطش تاني أوتوماتيك في مونتاج جديد
           if (r.ok) { docJob = { jobId: r.job.id, kind: 'montage', title: r.job.title }; reply += (reply ? '\n\n' : '') + (r.trial ? 'تمام، بدأت المونتاج المجاني (مرة واحدة، وعليه علامة Erivion المائية).' : `تمام، بدأت المونتاج (${r.cost} كريديت).`) + ` هتلاقي الفيديو هنا في المحادثة أول ما يخلص، وفي "استوديو الأفلام الوثائقية" ← "أفلامي".`; }
