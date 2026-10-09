@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Drama, ArrowLeft, CheckCircle2, ImagePlus, Trash2, Loader2, Users } from 'lucide-react';
+import { Drama, CheckCircle2, ImagePlus, Trash2, Loader2, Users, X } from 'lucide-react';
+import { PageShell, Stat, Skeletons } from '../components/PageKit.jsx';
 
 function authHeaders() {
   return { Authorization: 'Bearer ' + localStorage.getItem('token') };
@@ -74,101 +75,79 @@ export default function CharactersPage({ onBack, userRegion }) {
     load();
   };
 
+  const canAdd = !!file && !adding;
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg, #0a0a0f)', color: '#fff', fontFamily: "'DM Sans', sans-serif", padding: '40px 20px', direction: dir }}>
-      <div style={{ maxWidth: 640, margin: '0 auto' }}>
-        {onBack && (
-          <button onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, marginBottom: 24 }}>
-            <ArrowLeft size={13} style={{ transform: isAr ? 'scaleX(-1)' : 'none' }} /> {isAr ? 'رجوع' : 'Back'}
-          </button>
-        )}
-
-        {toast && (
-          <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 10, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CheckCircle2 size={15} /> {toast.text}</span>
-            <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
-          </div>
-        )}
-
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 16px', background: 'linear-gradient(135deg,rgba(236,72,153,0.18),rgba(236,72,153,0.05))', border: '1px solid rgba(236,72,153,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Drama size={26} color="#ec4899" strokeWidth={1.75} />
-          </div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, background: 'linear-gradient(135deg,#f0abfc,#ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t.title}</h1>
-          <p style={{ color: 'rgba(255,255,255,0.45)', marginTop: 8, fontSize: 13.5, maxWidth: 460, marginInline: 'auto', lineHeight: 1.7 }}>{t.sub}</p>
+    <PageShell dir={dir} onBack={onBack} backLabel={isAr ? 'رجوع' : 'Back'} eyebrow={isAr ? 'مكتبة الشخصيات' : 'Character library'} Icon={Drama} accent="#ec4899"
+      title={t.title} subtitle={t.sub} maxWidth={1040}
+      aside={characters.length > 0 && <Stat value={characters.length} label={isAr ? 'شخصية محفوظة' : 'saved characters'} />}
+      toast={toast && (
+        <div role="status" style={{ marginTop: 16, padding: '12px 16px', borderRadius: 12, background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.35)', color: '#34d399', fontSize: 13.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CheckCircle2 size={16} /> {toast.text}</span>
+          <button onClick={() => setToast(null)} aria-label="close" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'grid' }}><X size={16} /></button>
         </div>
+      )}>
+      <style>{`
+        .ch-layout{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:22px;align-items:start}
+        .ch-drop{width:100%;aspect-ratio:4/3;border-radius:16px;cursor:pointer;padding:0;overflow:hidden;position:relative;display:grid;place-items:center;font:inherit;color:var(--text2);transition:all .15s}
+        .ch-drop:hover{border-color:rgba(236,72,153,.6)!important;background:rgba(236,72,153,.06)!important}
+        .ch-input{width:100%;box-sizing:border-box;padding:12px 14px;border-radius:12px;border:1px solid var(--border2);background:rgba(255,255,255,.04);color:var(--text);font:inherit;font-size:14px;outline:none;transition:border-color .15s}
+        .ch-input:focus{border-color:rgba(236,72,153,.6)}
+        .ch-add{width:100%;padding:13px;border-radius:12px;border:none;font:inherit;font-weight:700;font-size:14.5px;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s}
+        .ch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px}
+        .ch-card{overflow:hidden;position:relative}
+        .ch-card img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;transition:transform .35s}
+        .ch-card:hover img{transform:scale(1.04)}
+        .ch-card .ch-rm{position:absolute;top:8px;inset-inline-end:8px;width:32px;height:32px;border-radius:10px;border:1px solid rgba(248,113,113,.45);background:rgba(10,10,14,.82);color:#f87171;cursor:pointer;display:grid;place-items:center;opacity:0;transition:opacity .15s;backdrop-filter:blur(6px)}
+        .ch-card:hover .ch-rm,.ch-card .ch-rm:focus-visible{opacity:1}
+        @media (hover:none){.ch-card .ch-rm{opacity:1}}
+        @media (max-width:820px){.ch-layout{grid-template-columns:1fr}}
+      `}</style>
 
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 24, marginBottom: 24 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Drama size={15} color="#ec4899" /> {t.addTitle}
-          </div>
+      <div className="ch-layout">
+        <section className="pk-card" style={{ padding: 20, position: 'sticky', top: 16 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 800, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 8 }}><ImagePlus size={16} color="#ec4899" /> {t.addTitle}</h2>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0] || null)} style={{ display: 'none' }} />
+          <button type="button" className="ch-drop" onClick={() => fileInputRef.current?.click()}
+            style={{ border: previewUrl ? '1px solid rgba(236,72,153,0.4)' : '1.5px dashed rgba(255,255,255,0.18)', background: previewUrl ? 'transparent' : 'rgba(255,255,255,0.03)' }}>
+            {previewUrl ? (
+              <>
+                <img src={previewUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                <span style={{ position: 'absolute', insetInline: 0, bottom: 0, padding: '18px 10px 8px', fontSize: 12, fontWeight: 600, color: '#fff', background: 'linear-gradient(transparent, rgba(0,0,0,.7))' }}>{t.changeImage}</span>
+              </>
+            ) : (
+              <span style={{ display: 'grid', justifyItems: 'center', gap: 8, padding: 12, textAlign: 'center', fontSize: 13 }}>
+                <span style={{ width: 44, height: 44, borderRadius: 14, display: 'grid', placeItems: 'center', background: 'rgba(236,72,153,.12)' }}><ImagePlus size={22} color="#ec4899" strokeWidth={1.8} /></span>
+                {t.dropHint}
+              </span>
+            )}
+          </button>
+          <input className="ch-input" value={label} onChange={e => setLabel(e.target.value)} placeholder={t.label} style={{ margin: '14px 0 12px' }} />
+          {error && <p role="alert" style={{ color: '#f87171', fontSize: 13, margin: '0 0 12px' }}>{error}</p>}
+          <button className="ch-add" onClick={addCharacter} disabled={!canAdd}
+            style={{ cursor: canAdd ? 'pointer' : 'not-allowed', background: canAdd ? 'linear-gradient(135deg,#ec4899,#be185d)' : 'rgba(236,72,153,0.22)', boxShadow: canAdd ? '0 8px 24px rgba(236,72,153,.28)' : 'none' }}>
+            {adding ? <><Loader2 size={16} className="spinning" /> {t.adding}</> : t.add}
+          </button>
+        </section>
 
-          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 16 }}>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0] || null)} style={{ display: 'none' }} />
-            <button type="button" onClick={() => fileInputRef.current?.click()}
-              style={{
-                width: 96, height: 96, borderRadius: 14, flexShrink: 0, cursor: 'pointer', padding: 0, overflow: 'hidden',
-                border: previewUrl ? '1px solid rgba(236,72,153,0.35)' : '1.5px dashed rgba(255,255,255,0.15)',
-                background: previewUrl ? 'transparent' : 'rgba(255,255,255,0.03)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
-              }}>
-              {previewUrl ? (
-                <>
-                  <img src={previewUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
-                    <span style={{ fontSize: 10, color: '#fff', fontWeight: 600, textAlign: 'center', padding: '0 6px' }}>{t.changeImage}</span>
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.35)' }}>
-                  <ImagePlus size={22} strokeWidth={1.75} />
-                </div>
-              )}
-            </button>
-
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <input value={label} onChange={e => setLabel(e.target.value)} placeholder={t.label}
-                style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13.5, marginBottom: 8, boxSizing: 'border-box' }} />
-              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: 0, lineHeight: 1.6 }}>{t.dropHint}</p>
+        <section aria-label={t.yourCharacters}>
+          <div className="pk-section-h" style={{ marginTop: 0 }}>{t.yourCharacters}</div>
+          {loading ? <Skeletons n={2} h={200} /> : characters.length === 0 ? (
+            <div className="pk-empty"><Users size={24} style={{ opacity: 0.5, marginBottom: 8 }} /><div>{t.noCharacters}</div></div>
+          ) : (
+            <div className="ch-grid">
+              {characters.map(c => (
+                <figure key={c.id} className="pk-card pk-hover ch-card" style={{ margin: 0 }}>
+                  <img src={c.image_url} alt={c.label || 'character'} loading="lazy" />
+                  <button className="ch-rm" onClick={() => removeCharacter(c.id)} aria-label={t.remove} title={t.remove}><Trash2 size={15} /></button>
+                  <figcaption style={{ padding: '10px 12px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Drama size={13} color="#ec4899" style={{ flexShrink: 0 }} /> {c.label || '—'}
+                  </figcaption>
+                </figure>
+              ))}
             </div>
-          </div>
-
-          {error && <p style={{ color: '#ef4444', fontSize: 12.5, marginBottom: 12 }}>{error}</p>}
-          <button onClick={addCharacter} disabled={adding || !file}
-            style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: (adding || !file) ? 'rgba(236,72,153,0.25)' : 'linear-gradient(135deg,#ec4899,#be185d)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: (adding || !file) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            {adding ? <><Loader2 size={15} className="spinning" /> {t.adding}</> : t.add}
-          </button>
-        </div>
-
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, color: 'rgba(255,255,255,0.6)' }}>{t.yourCharacters}</div>
-        {loading ? null : characters.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)' }}>
-            <Users size={22} color="rgba(255,255,255,0.25)" style={{ marginBottom: 8 }} />
-            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, margin: 0 }}>{t.noCharacters}</p>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-            {characters.map(c => (
-              <div key={c.id} className="char-card" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, overflow: 'hidden', position: 'relative' }}>
-                <div style={{ position: 'relative' }}>
-                  <img src={c.image_url} alt={c.label || 'character'} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', display: 'block' }} />
-                  <button onClick={() => removeCharacter(c.id)} className="char-card-remove"
-                    style={{ position: 'absolute', top: 6, [isAr ? 'left' : 'right']: 6, width: 26, height: 26, borderRadius: 8, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(17,17,20,0.85)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s' }}>
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-                <div style={{ padding: '8px 10px' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Drama size={11} color="#ec4899" /> {c.label || '—'}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        <style>{`.char-card:hover .char-card-remove { opacity: 1 !important; }`}</style>
+          )}
+        </section>
       </div>
-    </div>
+    </PageShell>
   );
 }
