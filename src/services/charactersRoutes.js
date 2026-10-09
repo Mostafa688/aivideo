@@ -35,7 +35,11 @@ async function uploadCharacterImageToR2(buffer, ext, mimetype) {
 
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const characters = await listCharacterReferencesForUser(req.user.userId);
+    const characters = (await listCharacterReferencesForUser(req.user.userId)).map(({ hidden_refs, ...c }) => {
+      const refs = Array.isArray(hidden_refs) ? hidden_refs : [];
+      // الوش (image_url) هو اللي بيتعرض للعميل؛ صور الزوايا المخفية بتتستخدم للتوليد بس
+      return { ...c, ref_urls: refs, generation_url: refs[0] || c.image_url };
+    });
     res.json({ characters });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -82,7 +86,7 @@ router.post('/from-preset/:id', authMiddleware, async (req, res) => {
     const p = await getPresetById(req.params.id);
     if (!p) return res.status(404).json({ error: 'not_found' });
     const lang = req.body?.language === 'en' ? 'en' : 'ar';
-    const character = await saveCharacterReference(req.user.userId, { label: lang === 'en' ? p.name_en : p.name_ar, imageUrl: p.image_url, kind: p.category === 'influencer' ? 'person' : p.category, description: (lang === 'en' ? p.description_en : p.description_ar) || null });
+    const character = await saveCharacterReference(req.user.userId, { label: lang === 'en' ? p.name_en : p.name_ar, imageUrl: p.image_url, kind: p.category === 'influencer' ? 'person' : p.category, description: (lang === 'en' ? p.description_en : p.description_ar) || null, hiddenRefs: p.hidden_refs || [] });
     res.json({ character });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

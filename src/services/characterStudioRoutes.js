@@ -35,6 +35,8 @@ export async function initCharacterStudioTables() {
     category TEXT NOT NULL DEFAULT 'viral', cover_url TEXT, preview_url TEXT, source_video_url TEXT NOT NULL, duration_sec NUMERIC NOT NULL DEFAULT 5,
     engine TEXT NOT NULL DEFAULT 'prunaai_p_video_animate', is_featured INTEGER DEFAULT 0, is_published INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0,
     uses_count INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`);
+  await pool.query(`ALTER TABLE character_presets ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);
+  await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS description TEXT`);
   await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS kind TEXT`);
 }
@@ -67,6 +69,16 @@ router.get('/presets', async (req, res) => {
     const lang = req.query.language === 'en' ? 'en' : 'ar';
     const { rows } = await pool.query(`SELECT * FROM character_presets WHERE is_published = 1 ORDER BY sort_order ASC, id DESC`);
     res.json({ presets: rows.map(r => ({ id: r.id, name: lang === 'en' ? r.name_en : r.name_ar, description: (lang === 'en' ? r.description_en : r.description_ar) || '', imageUrl: r.image_url, category: r.category })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// صور الشخصية المخفية (كل الزوايا) — مش بتظهر للعميل في أي قايمة؛ بتتجاب وقت الاستخدام للتوليد بس (للمسجّلين)
+router.get('/presets/:id/refs', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT image_url, hidden_refs FROM character_presets WHERE id = $1 AND is_published = 1`, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    const refs = refList(rows[0].hidden_refs);
+    res.json({ imageUrl: refs[0] || rows[0].image_url, refs });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -120,6 +132,7 @@ router.post('/admin/upload', adminAuth, upload.single('file'), async (req, res) 
 
 const text = (v, n = 300) => String(v ?? '').replace(/<[^>]*>/g, '').trim().slice(0, n);
 const flag = (v) => (v === true || v === 1 || v === '1' || v === 'true' ? 1 : 0);
+const refList = (v) => (Array.isArray(v) ? v : []).map(u => (/^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : null)).filter(Boolean).filter((u, i, a) => a.indexOf(u) === i).slice(0, 6);
 const httpUrl = (u) => (/^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : null);
 
 router.get('/admin/presets', adminAuth, async (req, res) => { try { res.json({ presets: (await pool.query(`SELECT * FROM character_presets ORDER BY sort_order ASC, id DESC`)).rows, categories: PRESET_CATEGORIES }); } catch (e) { res.status(500).json({ error: e.message }); } });
@@ -128,16 +141,16 @@ router.post('/admin/presets', adminAuth, async (req, res) => {
     const b = req.body || {};
     if (!text(b.name_ar) || !text(b.name_en)) return res.status(400).json({ error: 'name_ar and name_en are required' });
     if (!httpUrl(b.image_url)) return res.status(400).json({ error: 'image_url is required (upload an image first)' });
-    const { rows } = await pool.query(`INSERT INTO character_presets (name_ar,name_en,description_ar,description_en,image_url,category,is_published,sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [text(b.name_ar, 80), text(b.name_en, 80), text(b.description_ar, 400) || null, text(b.description_en, 400) || null, httpUrl(b.image_url), PRESET_CATEGORIES.includes(b.category) ? b.category : 'person', b.is_published === false || b.is_published === 0 ? 0 : 1, parseInt(b.sort_order, 10) || 0]);
+    const { rows } = await pool.query(`INSERT INTO character_presets (name_ar,name_en,description_ar,description_en,image_url,category,is_published,sort_order,hidden_refs) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING *`,
+      [text(b.name_ar, 80), text(b.name_en, 80), text(b.description_ar, 400) || null, text(b.description_en, 400) || null, httpUrl(b.image_url), PRESET_CATEGORIES.includes(b.category) ? b.category : 'person', b.is_published === false || b.is_published === 0 ? 0 : 1, parseInt(b.sort_order, 10) || 0, JSON.stringify(refList(b.hidden_refs))]);
     res.json({ preset: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.put('/admin/presets/:id', adminAuth, async (req, res) => {
   try {
     const b = req.body || {};
-    const { rows } = await pool.query(`UPDATE character_presets SET name_ar=COALESCE($2,name_ar), name_en=COALESCE($3,name_en), description_ar=COALESCE($4,description_ar), description_en=COALESCE($5,description_en), image_url=COALESCE($6,image_url), category=COALESCE($7,category), is_published=COALESCE($8,is_published), sort_order=COALESCE($9,sort_order) WHERE id=$1 RETURNING *`,
-      [req.params.id, b.name_ar !== undefined ? text(b.name_ar, 80) : null, b.name_en !== undefined ? text(b.name_en, 80) : null, b.description_ar !== undefined ? text(b.description_ar, 400) : null, b.description_en !== undefined ? text(b.description_en, 400) : null, httpUrl(b.image_url), PRESET_CATEGORIES.includes(b.category) ? b.category : null, b.is_published === undefined ? null : flag(b.is_published), b.sort_order === undefined ? null : parseInt(b.sort_order, 10) || 0]);
+    const { rows } = await pool.query(`UPDATE character_presets SET name_ar=COALESCE($2,name_ar), name_en=COALESCE($3,name_en), description_ar=COALESCE($4,description_ar), description_en=COALESCE($5,description_en), image_url=COALESCE($6,image_url), category=COALESCE($7,category), is_published=COALESCE($8,is_published), sort_order=COALESCE($9,sort_order), hidden_refs=COALESCE($10::jsonb,hidden_refs) WHERE id=$1 RETURNING *`,
+      [req.params.id, b.name_ar !== undefined ? text(b.name_ar, 80) : null, b.name_en !== undefined ? text(b.name_en, 80) : null, b.description_ar !== undefined ? text(b.description_ar, 400) : null, b.description_en !== undefined ? text(b.description_en, 400) : null, httpUrl(b.image_url), PRESET_CATEGORIES.includes(b.category) ? b.category : null, b.is_published === undefined ? null : flag(b.is_published), b.sort_order === undefined ? null : parseInt(b.sort_order, 10) || 0, b.hidden_refs === undefined ? null : JSON.stringify(refList(b.hidden_refs))]);
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ preset: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -173,5 +186,6 @@ router.put('/admin/templates/:id', adminAuth, async (req, res) => {
 });
 router.delete('/admin/templates/:id', adminAuth, async (req, res) => { try { await pool.query(`DELETE FROM trend_templates WHERE id = $1`, [req.params.id]); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
+export { refList };
 export async function getPresetById(id) { const { rows } = await pool.query(`SELECT * FROM character_presets WHERE id = $1 AND is_published = 1`, [id]); return rows[0] || null; }
 export default router;

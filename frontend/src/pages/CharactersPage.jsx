@@ -339,7 +339,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
       const res = await fetch('/api/characters', { method: 'POST', headers: authHeaders(), body: fd });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Failed');
-      setSel({ imageUrl: d.character.image_url, label: d.character.label || '' });
+      setSel({ face: d.character.image_url, imageUrl: d.character.generation_url || d.character.image_url, label: d.character.label || '' });
       onCharacterAdded?.();
     } catch (e) { setErr(e.message); }
     setUploading(false);
@@ -353,7 +353,12 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
       const sres = await fetch(`/api/character-studio/templates/${tpl.id}/source`, { headers: authHeaders() });
       const src = await sres.json();
       if (!sres.ok) throw new Error(src.error || 'Template unavailable');
-      const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ model: src.model, imageUrl: sel.imageUrl, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: '' }) });
+      let genImage = sel.imageUrl;
+      if (sel.presetId) { // شخصية جاهزة: صورة التوليد هي أول صورة مخفية (كل الزوايا) لو الأدمن رفعها
+        const rr = await fetch(`/api/character-studio/presets/${sel.presetId}/refs`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({}));
+        if (rr.imageUrl) genImage = rr.imageUrl;
+      }
+      const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ model: src.model, imageUrl: genImage, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: '' }) });
       const g = await gres.json();
       if (!gres.ok) { if (g.error === 'quota_exceeded' || g.error === 'no_access') setNeedsTopup(true); throw new Error(g.message || g.error || 'Failed'); }
       // استعلام عن الحالة لحد ما يخلص (نفس مسار الايجنت)
@@ -368,8 +373,9 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
     } catch (e) { clearInterval(timer.current); if (alive.current) { setErr(e.message); setPhase('failed'); } }
   };
 
-  const Pick = ({ img, label }) => (
-    <button type="button" className="cs-pick" aria-pressed={sel?.imageUrl === img} onClick={() => setSel({ imageUrl: img, label })} title={label}><img src={img} alt={label || ''} /></button>
+  // img = الوش (اللي بيظهر للعميل)، gen = صورة التوليد الفعلية (أول صورة مخفية لو الشخصية فيها صور زوايا)، presetId = شخصية جاهزة (بتتجاب مراجعها وقت التوليد)
+  const Pick = ({ img, label, gen, presetId }) => (
+    <button type="button" className="cs-pick" aria-pressed={sel?.face === img} onClick={() => setSel({ face: img, imageUrl: gen || img, label, presetId })} title={label}><img src={img} alt={label || ''} /></button>
   );
 
   return (
@@ -396,8 +402,8 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
                   <button type="button" className="cs-pick" onClick={() => fileRef.current?.click()} disabled={uploading} style={{ border: '1.5px dashed rgba(255,255,255,.25)', display: 'grid', placeItems: 'center', width: 78, height: 98, color: 'var(--text2)', fontSize: 11, textAlign: 'center', padding: 6 }}>
                     {uploading ? <Loader2 size={18} className="spinning" /> : <span style={{ display: 'grid', gap: 4, justifyItems: 'center' }}><ImagePlus size={18} />{t.uploadFace}</span>}
                   </button>
-                  {mine.map(c => <Pick key={`m${c.id}`} img={c.image_url} label={c.label} />)}
-                  {presets.map(p => <Pick key={`p${p.id}`} img={p.imageUrl} label={p.name} />)}
+                  {mine.map(c => <Pick key={`m${c.id}`} img={c.image_url} gen={c.generation_url} label={c.label} />)}
+                  {presets.map(p => <Pick key={`p${p.id}`} img={p.imageUrl} presetId={p.id} label={p.name} />)}
                 </div>
                 {mine.length > 0 && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{t.mineH} · {t.presetH}</div>}
               </div>
