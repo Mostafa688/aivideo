@@ -2041,6 +2041,152 @@ function TemplatesTab({ s }) {
 // تعريفي واحد بيشرح الموقع نفسه متاح للكل. كل كورس ممكن يحتوي على أكتر من فيديو، وكل
 // كورس/فيديو له عنوان/وصف/صورة مصغرة/ملف مرفق خاص بيه. لإضافة نفس الكورس بلغة تانية،
 // استخدم "Add translation of an existing course" بدل "New course".
+// ✅ استوديو الشخصيات: شخصيات جاهزة (presets) + قوالب ترند (فيديو حركة/كلام يبدّل العميل شخصيته فيه)
+function CharacterStudioTab({ s }) {
+  const [section, setSection] = useState('templates');
+  const [presets, setPresets] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [cats, setCats] = useState({ presets: [], templates: [] });
+  const [toast, setToast] = useState('');
+  const showToastMsg = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
+  const emptyPreset = { name_ar: '', name_en: '', description_ar: '', description_en: '', image_url: '', category: 'person' };
+  const emptyTpl = { title_ar: '', title_en: '', description_ar: '', description_en: '', category: 'viral', cover_url: '', preview_url: '', source_video_url: '', duration_sec: 0, is_featured: false };
+  const [pForm, setPForm] = useState(emptyPreset);
+  const [tForm, setTForm] = useState(emptyTpl);
+  const [busy, setBusy] = useState('');
+  const base = '/api/character-studio/admin';
+
+  const load = async () => {
+    try {
+      const [a, b] = await Promise.all([fetch(`${base}/presets`, { headers }).then(r => r.json()), fetch(`${base}/templates`, { headers }).then(r => r.json())]);
+      setPresets(a.presets || []); setTemplates(b.templates || []); setCats({ presets: a.categories || [], templates: b.categories || [] });
+    } catch (e) { console.error(e); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const upload = async (file, field, setForm) => {
+    setBusy(field);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const r = await fetch(`${base}/upload`, { method: 'POST', headers: { Authorization: `Bearer ${adminToken}` }, body: fd });
+      const d = await r.json();
+      if (!d.url) { showToastMsg('❌ ' + (d.error || 'Upload failed')); setBusy(''); return; }
+      setForm(f => ({
+        ...f, [field]: d.url,
+        ...(field === 'source_video_url' ? { duration_sec: d.durationSec || f.duration_sec, preview_url: f.preview_url || d.url, cover_url: f.cover_url || d.coverUrl || '' } : {}),
+      }));
+      showToastMsg('✅ Uploaded');
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    setBusy('');
+  };
+  const send = async (url, method, body, ok) => {
+    try {
+      const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+      const d = await r.json();
+      if (r.ok) { showToastMsg('✅ ' + ok); load(); return true; }
+      showToastMsg('❌ ' + (d.error || 'Failed'));
+    } catch (e) { showToastMsg('❌ ' + e.message); }
+    return false;
+  };
+
+  const Up = ({ label, accept, field, form, setForm }) => (
+    <label style={{ ...s.btn('#374151'), cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, padding: '6px 12px' }}>
+      {busy === field ? '⏳ Uploading...' : (form[field] ? '✅ ' : '📤 ') + label}
+      <input type="file" accept={accept} style={{ display: 'none' }} disabled={!!busy} onChange={e => { const f = e.target.files[0]; if (f) upload(f, field, setForm); e.target.value = ''; }} />
+    </label>
+  );
+  const Field = ({ label, children }) => <div><div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>{label}</div>{children}</div>;
+  const inp = { ...s.input, width: '100%', boxSizing: 'border-box' };
+
+  return (
+    <div>
+      {toast && <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 50, background: toast.startsWith('✅') ? '#166534' : '#7f1d1d', border: '1px solid ' + (toast.startsWith('✅') ? '#22c55e' : '#ef4444'), borderRadius: 10, padding: '10px 16px', color: '#fff', fontSize: 13 }}>{toast}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>🎭 Character Studio</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={s.btn(section === 'templates' ? '#7c3aed' : '#374151')} onClick={() => setSection('templates')}>🔥 Trend templates ({templates.length})</button>
+          <button style={s.btn(section === 'presets' ? '#7c3aed' : '#374151')} onClick={() => setSection('presets')}>🧑 Preset characters ({presets.length})</button>
+        </div>
+      </div>
+
+      {section === 'templates' && (
+        <>
+          <div style={s.card}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#c4b5fd', marginBottom: 4 }}>➕ New trend template</div>
+            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام (أقصى 60 ثانية). العميل يختار شخصيته أو يرفع وجهه، والناتج نفس الحركة والكلام بشخصيته (P-Video Animate). السعر بيتحسب لوحده من مدة الفيديو.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
+              <Field label="Title (Arabic)"><input style={inp} value={tForm.title_ar} onChange={e => setTForm(f => ({ ...f, title_ar: e.target.value }))} placeholder="رقصة الترند..." /></Field>
+              <Field label="Title (English)"><input style={inp} value={tForm.title_en} onChange={e => setTForm(f => ({ ...f, title_en: e.target.value }))} placeholder="Trending dance..." /></Field>
+              <Field label="Description (Arabic)"><input style={inp} value={tForm.description_ar} onChange={e => setTForm(f => ({ ...f, description_ar: e.target.value }))} /></Field>
+              <Field label="Description (English)"><input style={inp} value={tForm.description_en} onChange={e => setTForm(f => ({ ...f, description_en: e.target.value }))} /></Field>
+              <Field label="Category">
+                <select style={inp} value={tForm.category} onChange={e => setTForm(f => ({ ...f, category: e.target.value }))}>{(cats.templates.length ? cats.templates : ['viral']).map(c => <option key={c} value={c}>{c}</option>)}</select>
+              </Field>
+              <Field label="Duration (auto from the video)"><input style={inp} value={tForm.duration_sec || ''} readOnly placeholder="—" /></Field>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+              <Up label="Source video (motion + speech)" accept="video/*" field="source_video_url" form={tForm} setForm={setTForm} />
+              <Up label="Preview video (optional)" accept="video/*" field="preview_url" form={tForm} setForm={setTForm} />
+              <Up label="Cover image (optional)" accept="image/*" field="cover_url" form={tForm} setForm={setTForm} />
+              <label style={{ fontSize: 12, color: '#9ca3af', display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={tForm.is_featured} onChange={e => setTForm(f => ({ ...f, is_featured: e.target.checked }))} /> Featured</label>
+              {tForm.cover_url && <img src={tForm.cover_url} alt="" style={{ height: 44, borderRadius: 6 }} />}
+            </div>
+            <button style={s.btn('#22c55e')} disabled={!tForm.source_video_url || !tForm.title_ar.trim() || !tForm.title_en.trim()} onClick={async () => { if (await send(`${base}/templates`, 'POST', tForm, 'Template added')) setTForm(emptyTpl); }}>Add template</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12 }}>
+            {templates.map(t => (
+              <div key={t.id} style={{ ...s.card, padding: 10, margin: 0, opacity: t.is_published ? 1 : 0.55 }}>
+                {t.cover_url ? <img src={t.cover_url} alt="" style={{ width: '100%', aspectRatio: '9/12', objectFit: 'cover', borderRadius: 8 }} /> : <div style={{ height: 120, background: '#111', borderRadius: 8 }} />}
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', margin: '8px 0 2px' }}>{t.title_en} {t.is_featured ? '⭐' : ''}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>{t.category} · {Math.round(t.duration_sec)}s · {Object.entries(t.costs || {}).map(([k, v]) => `${k}: ${v}cr`).join(' · ')} · used {t.uses_count}</div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_published: !t.is_published }, t.is_published ? 'Hidden' : 'Published')}>{t.is_published ? 'Hide' : 'Publish'}</button>
+                  <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_featured: !t.is_featured }, 'Updated')}>{t.is_featured ? 'Unfeature' : 'Feature'}</button>
+                  <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 9px' }} onClick={() => confirm('Delete this template?') && send(`${base}/templates/${t.id}`, 'DELETE', null, 'Deleted')}>Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {section === 'presets' && (
+        <>
+          <div style={s.card}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#c4b5fd', marginBottom: 4 }}>➕ New preset character</div>
+            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>شخصية جاهزة (صورة واضحة للوجه/الجسم) العميل يستخدمها في قوالب الترند وفي أي فيديو، أو يحفظها في شخصياته.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
+              <Field label="Name (Arabic)"><input style={inp} value={pForm.name_ar} onChange={e => setPForm(f => ({ ...f, name_ar: e.target.value }))} /></Field>
+              <Field label="Name (English)"><input style={inp} value={pForm.name_en} onChange={e => setPForm(f => ({ ...f, name_en: e.target.value }))} /></Field>
+              <Field label="Description (Arabic)"><input style={inp} value={pForm.description_ar} onChange={e => setPForm(f => ({ ...f, description_ar: e.target.value }))} /></Field>
+              <Field label="Description (English)"><input style={inp} value={pForm.description_en} onChange={e => setPForm(f => ({ ...f, description_en: e.target.value }))} /></Field>
+              <Field label="Category"><select style={inp} value={pForm.category} onChange={e => setPForm(f => ({ ...f, category: e.target.value }))}>{(cats.presets.length ? cats.presets : ['person']).map(c => <option key={c} value={c}>{c}</option>)}</select></Field>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+              <Up label="Character image" accept="image/*" field="image_url" form={pForm} setForm={setPForm} />
+              {pForm.image_url && <img src={pForm.image_url} alt="" style={{ height: 56, borderRadius: 8 }} />}
+            </div>
+            <button style={s.btn('#22c55e')} disabled={!pForm.image_url || !pForm.name_ar.trim() || !pForm.name_en.trim()} onClick={async () => { if (await send(`${base}/presets`, 'POST', pForm, 'Preset added')) setPForm(emptyPreset); }}>Add preset</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: 12 }}>
+            {presets.map(p => (
+              <div key={p.id} style={{ ...s.card, padding: 10, margin: 0, opacity: p.is_published ? 1 : 0.55 }}>
+                <img src={p.image_url} alt="" style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: 8 }} />
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', margin: '8px 0 2px' }}>{p.name_en}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.category}</div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/presets/${p.id}`, 'PUT', { is_published: !p.is_published }, 'Updated')}>{p.is_published ? 'Hide' : 'Publish'}</button>
+                  <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 9px' }} onClick={() => confirm('Delete this preset?') && send(`${base}/presets/${p.id}`, 'DELETE', null, 'Deleted')}>Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CoursesTab({ s }) {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -3675,6 +3821,7 @@ export default function AdminPage() {
     { key: 'notifications', label: '🔔 Notifications' },
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'courses',    label: '🎓 Courses'     },
+    { key: 'characterStudio', label: '🎭 Character Studio' },
     { key: 'terms',      label: '✅ Terms'        },
     { key: 'finance',    label: '🧾 Finance'     },
     { key: 'changelog',  label: '📰 Changelog'   },
@@ -4189,6 +4336,7 @@ export default function AdminPage() {
         {/* ── TEMPLATES ── */}
         {tab === 'templates' && <TemplatesTab s={s} />}
         {tab === 'courses' && <CoursesTab s={s} />}
+        {tab === 'characterStudio' && <CharacterStudioTab s={s} />}
         {tab === 'terms' && <TermsTab s={s} />}
         {tab === 'finance' && <FinanceTab s={s} />}
         {tab === 'changelog' && <ChangelogTab s={s} />}

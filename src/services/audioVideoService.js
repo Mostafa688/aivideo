@@ -26,7 +26,7 @@ const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
 
 // ✅ نفس نمط رفع الملفات المستخدم فعليًا في voiceCloneService.js/templates upload —
 // نفس المتغيرات البيئية بالظبط. مشترك لكل ملفات المصنع ده (صوت مصدر، صور عناصر، فيديو نهائي)
-async function uploadBufferToR2(buffer, key, contentType) {
+export async function uploadBufferToR2(buffer, key, contentType) {
   const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
   const s3 = new S3Client({
     region: 'auto',

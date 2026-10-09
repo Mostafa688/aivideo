@@ -22,6 +22,7 @@ import channelRouter from './services/channelRoutes.js';
 import { runDailyChannelCheck } from './services/channelSchedulerService.js';
 import voiceCloneRouter from './services/voiceCloneRoutes.js';
 import charactersRouter from './services/charactersRoutes.js';
+import characterStudioRouter from './services/characterStudioRoutes.js';
 import audioVideoRouter from './services/audioVideoRoutes.js';
 import whiteboardVideoRouter from './services/whiteboardVideoRoutes.js';
 import coursesRouter from './services/coursesRoutes.js';
@@ -269,6 +270,7 @@ recoverDocumentaryJobs();
 app.use('/api/channels', channelRouter);
 app.use('/api/voice-clone', voiceCloneRouter);
 app.use('/api/characters', charactersRouter);
+app.use('/api/character-studio', characterStudioRouter);
 app.use('/api/admin/audio-video', audioVideoRouter);
 app.use('/api/whiteboard-video', whiteboardVideoRouter);
 app.use('/api/courses', coursesRouter);
@@ -3689,6 +3691,7 @@ const SEO_PAGES = {
       'مونتاج ذكي لفيديوهاتك: ارفع لحد 20 فيديو (وتعليق صوتي وصور أو فيديو كمرجع لستايل الموشن جرافيك) والمساعد يفهم كل مشهد ويرتّب المونتاج حسب خطتك ومزاجك: انتقالات بس، مشاهد متزامنة مع صوتك، أو مونتاج صنّاع محتوى بموشن جرافيك ومشاهد 3D بتحل مكان لقطات والصوت الأصلي بيكمّل، مع كابشن بلغة الكلام الفعلية ومستوى مؤثرات صوتية تختاره.',
       'إعلان منتج من صورة واحدة: ارفع صورة المنتج والمساعد يتعرف عليه ويقترح فكرة الإعلان ويرشّح لك محرك (Wan 3.0، Seedance 2.5، Gemini Omni Flash 1.1) بتعليق صوتي مدمج، وبيبدأ بعد موافقتك على الخطة والسعر.',
       'نقل الأداء (P-Video Animate): ارفع فيديو بحركة وكلام وصورة شخصية جديدة، وتطلع نفس الحركات والكلام بالشخصية والمكان الجديدين.',
+      'استوديو الشخصيات: سجّل شخصيتك أو وجهك بصورة واحدة واستخدمها في أي فيديو من شات المساعد، واختار شخصيات جاهزة، أو بدّل الشخصية بشخصيتك في قوالب ترند جاهزة (رقص، كوميدي، سينمائي) بسعر واضح بالكريديت.',
       'في إدارة القنوات: فكرة يومية للقناة بعد موافقتك، وإيميل لما الفكرة والصورة المصغرة (بـNano Banana 2.1) والعنوان والوصف والكلمات المفتاحية تجهز في مشروع بنفس اسم القناة.',
     ],
   },
@@ -3993,6 +3996,7 @@ Erivion (${SITE_URL}) موقع سعودي-مصري بيشغّل مساعد مح�
 - فيلم وثائقي كامل من موضوع أو سكريبت أو تعليق صوتي: لقطات أرشيفية وحقيقية من مصادر عامة (NASA، Wikimedia Commons، Internet Archive، Pexels)، موشن جرافيك، خرائط، لوحات صور، وكابشن. أفلام أفقية لحد 30 دقيقة وشورتس رأسي لحد 3 دقايق (${SITE_URL}/documentary)
 - مونتاج ذكي لفيديوهات العميل داخل شات المساعد: لحد 20 فيديو + تعليق صوتي + صور أو فيديو كمرجع لستايل الموشن جرافيك. المساعد يفهم المشاهد ويخطط المونتاج حسب رغبة العميل (انتقالات بس، تزامن مع الصوت، مونتاج صنّاع محتوى بجرافيكس ومشاهد 3D بتحل مكان لقطات والصوت الأصلي بيكمّل، مستوى مؤثرات صوتية، كابشن بلغة الكلام الفعلية)
 - نقل الأداء (P-Video Animate): فيديو بحركة وكلام + صورة شخصية جديدة = نفس الأداء بالشخصية والمكان الجديدين
+- استوديو الشخصيات: شخصيات محفوظة تُستخدم في أي فيديو من الشات، وشخصيات جاهزة، وقوالب ترند يبدّل فيها العميل الشخصية بشخصيته
 - إعلان منتج من صورة واحدة: المساعد يتعرف على المنتج ويرشّح محرك (Wan 3.0، Seedance 2.5، Gemini Omni Flash 1.1) بتعليق صوتي مدمج بعد موافقة العميل على الخطة والسعر
 - في My Channels: فكرة يومية بعد موافقة العميل، وإيميل لما الفكرة والصورة المصغرة (Nano Banana 2.1) والعنوان والوصف والكلمات المفتاحية تجهز
 
