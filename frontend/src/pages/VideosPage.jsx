@@ -38,7 +38,7 @@ export default function VideosPage({ onClose }) {
 
   const handleDelete = async (videoId, e) => {
     e.stopPropagation();
-    if (!confirm('Delete this video?')) return;
+    if (!(await confirmDialog({ title: 'Delete this video?', message: 'This cannot be undone.', confirmText: 'Delete', cancelText: 'Cancel', tone: 'danger', dir: 'ltr' }))) return;
     setDeleting(videoId);
     try {
       await fetch('/api/auth/videos/' + videoId, {

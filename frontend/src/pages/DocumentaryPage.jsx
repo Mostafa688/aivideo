@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { downloadRemoteFile } from '../utils/download.js';
+import FancySelect from '../components/FancySelect.jsx';
+import { confirmDialog } from '../components/confirmDialog.jsx';
 import {
   ArrowLeft, Clapperboard, FileText, Wand2, Mic, UploadCloud, Loader2, CheckCircle2,
-  XCircle, Download, Package, Sparkles, Scissors, Pencil, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film,
+  XCircle, Download, Package, Sparkles, Scissors, Pencil, Music, Captions, Palette, Volume2, Coins, TriangleAlert, RefreshCw, Film, Languages,
 } from 'lucide-react';
 
 const authHeaders = (json = true) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), Authorization: 'Bearer ' + localStorage.getItem('token') });
@@ -58,6 +60,7 @@ const T = {
     aiBtn: 'اعمل صورة مصغرة بالذكاء الاصطناعي', aiRegen: 'اعمل صورة مصغرة تانية', aiBusy: 'بيبحث عن صور مصغرة ناجحة في المجال ويفهم تصميمها ثم يرسم صورتك... (حوالي دقيقة)',
     aiTitle: 'الصورة المصغرة بالذكاء الاصطناعي', aiText: 'النص على الصورة', aiLearned: 'اللي فهمه من المجال', aiDl: 'نزّل الصورة', aiPolicy: 'مبنية على بحث عن صور مصغرة حقيقية في نفس المجال، وبمبادئ الـCTR وسياسات يوتيوب (من غير تضليل أو محتوى صادم). راجعها قبل النشر.',
     aiPrice: (c, cached) => (cached ? `${c} كريديت (البحث محفوظ من قبل)` : `${c} كريديت (صورة + بحثين)`),
+    aiConfirmTitle: 'عمل صورة مصغرة بالذكاء الاصطناعي', aiConfirmYes: 'كمّل واخصم', cancelBtn: 'إلغاء', dirKey: 'rtl', searchPh: 'ابحث…', noRes: 'مفيش نتائج',
     aiConfirm: (c) => `هيتخصم ${c} كريديت لعمل الصورة المصغرة. كمّل؟`, aiCharged: (c, r) => `اتخصم ${c} كريديت${r != null ? ` — رصيدك ${r}` : ''}`,
     tooShort: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.',
     errs: { script_too_short: 'السكريبت قصير جدًا — اكتب فقرتين على الأقل.', script_too_long: 'السكريبت طويل جدًا.', too_long_vertical: 'الفيلم الطولي (9:16) أقصى مدة له 3 دقائق.', too_short: 'الفيلم هيطلع أقل من 25 ثانية — زوّد النص شوية.', too_long: 'الحد الأقصى 30 دقيقة.', topic_required: 'اكتب الموضوع أولاً.', audio_required: 'ارفع الملف الصوتي أولاً.', bad_audio: 'الملف الصوتي مش صالح أو أقصر من 20 ثانية.', quota_exceeded: 'رصيدك مش كفاية لإنتاج الفيلم.', content_policy_violation: 'المحتوى ده مش مسموح بيه.', rate_limited: 'وصلت للحد الأقصى في الساعة، جرّب بعد شوية.', unsafe: 'فكرة الصورة دي اتفحصت واترفضت (سياسة المحتوى) واتردّ لك الكريديت.', ai_thumbnail_failed: 'مقدرتش أعمل الصورة المصغرة دلوقتي، واتردّ لك الكريديت.', video_required: 'اختر فيديو الأول.', bad_video: 'الملف ده مش فيديو صالح أو أقصر من 5 ثواني.', no_audio: 'الفيديو ده مفيهوش صوت.', file_too_large: 'الفيديو أكبر من 600 ميجا.', upload_failed: 'فشل الرفع، جرّب تاني.' },
@@ -113,6 +116,7 @@ const T = {
     aiBtn: 'Create a thumbnail with AI', aiRegen: 'Create another thumbnail', aiBusy: 'Researching successful thumbnails in your niche, studying their design, then drawing yours... (about a minute)',
     aiTitle: 'AI thumbnail', aiText: 'Text on the image', aiLearned: 'What it learned from your niche', aiDl: 'Download image', aiPolicy: 'Based on research of real thumbnails in the same niche, CTR principles and YouTube policy (no misleading or shocking content). Review it before publishing.',
     aiPrice: (c, cached) => (cached ? `${c} credits (research already saved)` : `${c} credits (image + 2 searches)`),
+    aiConfirmTitle: 'Create an AI thumbnail', aiConfirmYes: 'Continue & charge', cancelBtn: 'Cancel', dirKey: 'ltr', searchPh: 'Search…', noRes: 'No results',
     aiConfirm: (c) => `${c} credits will be charged to create the thumbnail. Continue?`, aiCharged: (c, r) => `${c} credits charged${r != null ? ` — balance ${r}` : ''}`,
     tooShort: 'The film would be under 25 seconds — add more text.',
     errs: { script_too_short: 'The script is too short — write at least two paragraphs.', script_too_long: 'The script is too long.', too_short: 'The film would be under 25 seconds — add more text.', too_long: 'The maximum length is 30 minutes.', too_long_vertical: 'Vertical (9:16) films can be up to 3 minutes.', topic_required: 'Enter a topic first.', audio_required: 'Upload your voiceover first.', bad_audio: 'The audio file is invalid or shorter than 20 seconds.', quota_exceeded: "You don't have enough credits for this film.", content_policy_violation: 'This content is not allowed.', rate_limited: 'You reached the hourly limit, try again later.', unsafe: 'This thumbnail idea was rejected by the content policy check. Credits refunded.', ai_thumbnail_failed: 'Could not create the thumbnail right now. Credits refunded.', video_required: 'Choose a video first.', bad_video: 'This file is not a readable video or is shorter than 5 seconds.', no_audio: 'This video has no audio.', file_too_large: 'The video is larger than 600 MB.', upload_failed: 'Upload failed, please try again.' },
@@ -143,7 +147,7 @@ function PackagePanel({ job, t }) {
   }, [hasPkg, job.id, ai?.createdAt]);
   const makeAi = async () => {
     const cost = aiQuote?.cost?.total ?? 10;
-    if (!window.confirm(t.aiConfirm(cost))) return;
+    if (!(await confirmDialog({ title: t.aiConfirmTitle, message: t.aiConfirm(cost), confirmText: t.aiConfirmYes, cancelText: t.cancelBtn, tone: 'default', dir: t.dirKey }))) return;
     setAiBusy(true); setErr(''); setAiNote('');
     try {
       const r = await fetch(`/api/documentary/jobs/${job.id}/ai-thumbnail`, { method: 'POST', headers: authHeaders(), body: '{}' });
@@ -308,9 +312,7 @@ function AutoEditForm({ t, opts, dir, onStarted, onBalance }) {
         <Section icon={Wand2} title={t.eOpts}>
           <div>
             <label style={labelStyle} htmlFor="ae-lang">{t.eLang}</label>
-            <select id="ae-lang" value={language} onChange={(e) => setLanguage(e.target.value)} style={fieldStyle}>
-              {Object.entries(opts.languages).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            <FancySelect id="ae-lang" value={language} onChange={setLanguage} options={langOptions(opts.languages)} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Toggle on={cutSilence} onChange={setCutSilence} label={t.eCut} />
@@ -524,6 +526,13 @@ function Section({ icon: Icon, title, children }) {
 }
 
 const fieldStyle = { width: '100%', background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 'var(--r-md)', color: 'var(--text)', padding: '10px 12px', fontSize: 14, fontFamily: 'inherit' };
+// خيارات القوائم: اللغات / الأصوات (أورب لكل صوت) / الموسيقى
+const langOptions = (languages) => Object.entries(languages).map(([k, v]) => ({ value: k, label: v, icon: Languages, badge: k.toUpperCase() }));
+const voiceOptions = (voices) => voices.map((v) => {
+  const [name, ...rest] = String(v.label).split(' — ');
+  return { value: v.key, label: name, sub: rest.join(' — ') || undefined, orb: v.key };
+});
+const trackOptions = (music, autoLabel) => [{ value: '', label: autoLabel, icon: Music }, ...music.map((m) => ({ value: m.id, label: m.title, sub: m.artist || undefined, icon: Music }))];
 const labelStyle = { fontSize: 12, color: 'var(--text2)', fontWeight: 600, marginBottom: 6, display: 'block' };
 
 function Chip({ active, onClick, children, disabled }) {
@@ -898,16 +907,12 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}>
             <div>
               <label style={labelStyle} htmlFor="doc-lang">{t.language}</label>
-              <select id="doc-lang" value={language} onChange={(e) => setLanguage(e.target.value)} style={fieldStyle}>
-                {Object.entries(opts.languages).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
+              <FancySelect id="doc-lang" value={language} onChange={setLanguage} options={langOptions(opts.languages)} />
             </div>
             {mode !== 'voiceover' && (
               <div>
                 <label style={labelStyle} htmlFor="doc-voice">{t.voice}</label>
-                <select id="doc-voice" value={voiceKey} onChange={(e) => setVoiceKey(e.target.value)} style={fieldStyle}>
-                  {opts.voices.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
-                </select>
+                <FancySelect id="doc-voice" value={voiceKey} onChange={setVoiceKey} options={voiceOptions(opts.voices)} searchPlaceholder={t.searchPh} emptyText={t.noRes} />
               </div>
             )}
           </div>
@@ -958,10 +963,7 @@ export default function DocumentaryPage({ onBack, onNavigate }) {
           {opts.music.length > 0 && (
             <div>
               <label style={labelStyle} htmlFor="doc-track"><Music size={13} style={{ verticalAlign: -2 }} /> {t.track}</label>
-              <select id="doc-track" disabled={musicOff} value={track} onChange={(e) => setTrack(e.target.value)} style={fieldStyle}>
-                <option value="">{t.auto}</option>
-                {opts.music.map((m) => <option key={m.id} value={m.id}>{m.title}{m.artist ? ` — ${m.artist}` : ''}</option>)}
-              </select>
+              <FancySelect id="doc-track" disabled={musicOff} value={track} onChange={setTrack} options={trackOptions(opts.music, t.auto)} searchPlaceholder={t.searchPh} emptyText={t.noRes} />
             </div>
           )}
         </Section>
