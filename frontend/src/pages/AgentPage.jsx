@@ -1839,6 +1839,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'محتاج الفيديو الأصلي (اللي فيه الحركة والكلام) — ارفعه من زرار + وبعدين كمّل.' : 'I need the source video (the one with the movements and speech) — upload it with the + button, then continue.' }]);
       return;
     }
+    // تبديل أكتر من شخصية: فيديو العميل بيتبعت كمرجع فيديو لـ seedance_2_5 (بيترفع هنا لرابط عام قبل التوليد)
+    const useVideoRef = !!gen.useUploadedVideo && !isPerf;
+    if (useVideoRef && !uploadedVideoFile) {
+      setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'محتاج الفيديو الأصلي — ارفعه من زرار + وبعدين كمّل.' : 'I need the original video — upload it with the + button, then continue.' }]);
+      return;
+    }
     if (isPerf && !gen.imageUrl) {
       setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'محتاج صورة الشخصية الجديدة — ارفعها أو اطلب مني أعملها، وبعدين كمّل.' : 'I need the new character image — upload one or ask me to create it, then continue.' }]);
       return;
@@ -1856,13 +1862,19 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     };
     try {
       let sourceVideoUrl = gen.sourceVideoUrl || undefined;
-      if (isPerf && !sourceVideoUrl) {
+      let refVideoUrls = gen.referenceVideoUrls?.length ? gen.referenceVideoUrls : undefined;
+      let genAspect = gen.aspectRatio || '16:9', genDuration = gen.durationSec || 5;
+      if ((isPerf && !sourceVideoUrl) || useVideoRef) {
         const form = new FormData();
         form.append('video', uploadedVideoFile, uploadedVideoFile.name || 'video.mp4');
-        const up = await fetch('/api/videos/upload-source', { method: 'POST', headers: tokenHeader(), body: form });
+        const up = await fetch(`/api/videos/upload-source${useVideoRef ? `?model=${encodeURIComponent(gen.model)}` : ''}`, { method: 'POST', headers: tokenHeader(), body: form });
         const upData = await safeJson(up, lang);
         if (!up.ok || !upData.url) { updateJob({ status: 'failed', error: upData.message || upData.error || 'Upload failed' }); return; }
-        sourceVideoUrl = upData.url;
+        if (useVideoRef) {
+          refVideoUrls = [upData.url];
+          if (upData.durationSec) genDuration = Math.min(30, Math.max(4, Math.ceil(upData.durationSec))); // الناتج بنفس طول الفيديو الأصلي
+          if (upData.width && upData.height) genAspect = upData.width >= upData.height ? '16:9' : '9:16';
+        } else sourceVideoUrl = upData.url;
       }
       const res = await fetch('/api/videos/generate', {
         method: 'POST', headers: authHeaders(),
@@ -1870,9 +1882,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           model: gen.model, prompt: gen.prompt, imageUrl: gen.imageUrl || undefined,
           sourceVideoUrl,
           referenceImageUrls: gen.referenceImageUrls?.length ? gen.referenceImageUrls : undefined,
-          referenceVideoUrls: gen.referenceVideoUrls?.length ? gen.referenceVideoUrls : undefined,
+          referenceVideoUrls: refVideoUrls,
           lastFrameUrl: gen.lastFrameUrl || undefined,
-          aspectRatio: gen.aspectRatio || '16:9', durationSec: gen.durationSec || 5, tier: gen.tier || undefined,
+          aspectRatio: genAspect, durationSec: genDuration, tier: gen.tier || undefined,
           narrationScript: gen.narrationScript || undefined, voiceKey: gen.voiceKey || undefined,
           narrationLanguage: gen.narrationLanguage || undefined, addCaptions: gen.addCaptions || undefined,
           musicStyle: gen.musicStyle || undefined, musicMood: gen.musicMood || undefined,
