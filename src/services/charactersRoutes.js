@@ -66,6 +66,18 @@ router.post('/', authMiddleware, upload.single('image'), async (req, res) => {
   }
 });
 
+// حفظ شخصية اتولّدت بالذكاء الاصطناعي (الصورة اتولّدت قبل كده من /api/images/generate واتخزنت على R2 بتاعنا) — بنقبل بس روابط مخزننا
+router.post('/from-url', authMiddleware, async (req, res) => {
+  try {
+    const url = String(req.body?.imageUrl || '').trim();
+    if (!R2_PUBLIC_URL || !url.startsWith(`${R2_PUBLIC_URL}/`)) return res.status(400).json({ error: 'imageUrl must be an image generated on Erivion' });
+    const kind = ['person', 'animal', 'cartoon', 'mascot', 'other'].includes(req.body?.kind) ? req.body.kind : 'person';
+    const clean = (v, n) => String(v || '').replace(/<[^>]*>/g, '').trim().slice(0, n);
+    const character = await saveCharacterReference(req.user.userId, { label: clean(req.body?.label, 60) || null, imageUrl: url, kind, description: clean(req.body?.description, 300) || null });
+    res.json({ character });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // تعديل اسم/نوع/وصف شخصية
 router.patch('/:id', authMiddleware, async (req, res) => {
   try {

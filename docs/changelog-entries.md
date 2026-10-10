@@ -5,6 +5,12 @@
 ## Changelog
 
 ### 2026-10-10 — جديد (new)
+- **العنوان (AR):** اعمل شخصية بالذكاء الاصطناعي من غير صورة
+- **Title (EN):** Create a character with AI — no photo needed
+- **الوصف (AR):** في "إضافة شخصية" اوصف شخصيتك واختار الشكل (واقعي، كرتون 3D، أنمي، رسم) وعدد الخيارات، واختار الأقرب واحفظها. السعر بيظهر قبل ما تبدأ ويترجع لو التوليد فشل.
+- **Description (EN):** In "Add character", describe your character, pick a look (realistic, 3D cartoon, anime, illustration) and the number of options, then pick your favourite and save it. The price is shown before you start and refunded if generation fails.
+
+### 2026-10-10 — جديد (new)
 - **العنوان (AR):** استوديو الشخصيات: سجّل شخصيتك واستخدمها في أي فيديو
 - **Title (EN):** Character Studio: save your character and use it in any video
 - **الوصف (AR):** سجّل شخصيتك أو وجهك بصورة واحدة، واستخدمها في أي فيديو أو صورة من شات المساعد (زرار + ← شخصياتي). فيه كمان شخصيات جاهزة، وقوالب ترند بتبدّل فيها الشخصية بشخصيتك وتطلع فيديو بنفس الحركات والكلام، بسعر واضح بالكريديت قبل ما تبدأ.

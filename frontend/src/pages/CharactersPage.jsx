@@ -12,6 +12,10 @@ const T = {
     tabs: { mine: 'شخصياتي', presets: 'شخصيات جاهزة', templates: 'قوالب الترند' },
     add: 'إضافة شخصية', addTitle: 'شخصية جديدة', name: 'اسم الشخصية', namePh: 'مثلًا: نورا، كابتن سام...', kind: 'النوع',
     kinds: { person: 'شخص', animal: 'حيوان', cartoon: 'كرتون', mascot: 'ماسكوت', other: 'آخر' },
+    modeUpload: 'ارفع صورة', modeAi: 'اعمل شخصية بالذكاء الاصطناعي',
+    aiDesc: 'وصف الشخصية', aiDescPh: 'مثلًا: شاب مصري عنده 28 سنة، شعر أسود قصير، ذقن خفيفة، ابتسامة هادية، لابس قميص أبيض', aiStyle: 'الشكل',
+    styles: { realistic: 'واقعي', cartoon3d: 'كرتون 3D', anime: 'أنمي', illustration: 'رسم' }, aiCount: 'عدد الخيارات', aiCost: 'التكلفة',
+    aiGenerate: 'ولّد الشخصية', aiGenerating: 'بنرسم شخصيتك… ثواني', aiPick: 'اختار الأقرب ليك', aiAgain: 'ولّد تاني', aiHint: 'اوصف الوش والشعر والسن والبشرة. متكتبش أسماء مشاهير أو أشخاص حقيقيين. لو التوليد فشل الكريديت بيرجع.', aiFail: 'فشل التوليد',
     drop: 'اسحب الصورة هنا أو اضغط للاختيار', dropTip: 'أفضل نتيجة: وجه واضح وفي الاتجاه للكاميرا، إضاءة كويسة، شخص واحد في الصورة.',
     save: 'احفظ الشخصية', saving: 'جاري الحفظ...', cancel: 'إلغاء', remove: 'حذف', rename: 'تعديل الاسم', confirmRm: 'تحذف الشخصية دي؟',
     none: 'لسه معندكش شخصيات. أضف أول شخصية أو اختار واحدة جاهزة.', appearance: 'المظهر',
@@ -28,6 +32,10 @@ const T = {
     tabs: { mine: 'My characters', presets: 'Ready-made', templates: 'Trend templates' },
     add: 'Add character', addTitle: 'New character', name: 'Character name', namePh: 'e.g. Nora, Captain Sam...', kind: 'Type',
     kinds: { person: 'Person', animal: 'Animal', cartoon: 'Cartoon', mascot: 'Mascot', other: 'Other' },
+    modeUpload: 'Upload a photo', modeAi: 'Create with AI',
+    aiDesc: 'Describe the character', aiDescPh: 'e.g. an Egyptian man in his late twenties, short black hair, light stubble, calm smile, white shirt', aiStyle: 'Look',
+    styles: { realistic: 'Realistic', cartoon3d: '3D cartoon', anime: 'Anime', illustration: 'Illustration' }, aiCount: 'Options', aiCost: 'Cost',
+    aiGenerate: 'Generate character', aiGenerating: 'Drawing your character… a few seconds', aiPick: 'Pick the one you like', aiAgain: 'Generate again', aiHint: 'Describe the face, hair, age and skin. Do not name celebrities or real people. If generation fails, your credits are refunded.', aiFail: 'Generation failed',
     drop: 'Drop an image here or click to choose', dropTip: 'Best results: a clear face looking at the camera, good light, one person in the picture.',
     save: 'Save character', saving: 'Saving...', cancel: 'Cancel', remove: 'Delete', rename: 'Rename', confirmRm: 'Delete this character?',
     none: "You don't have characters yet. Add your first one or pick a ready-made character.", appearance: 'Appearance',
@@ -255,8 +263,21 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
   );
 }
 
-// ═════════ إضافة شخصية ═════════
+// ═════════ إضافة شخصية (رفع صورة أو توليد بالذكاء الاصطناعي) ═════════
+const AI_MODEL = 'nano_banana_2';
+function buildCharacterPrompt(kind, style, desc) {
+  const subject = { person: 'a person', animal: 'an animal character', cartoon: 'a cartoon character', mascot: 'a brand mascot character', other: 'a character' }[kind] || 'a character';
+  const look = {
+    realistic: 'Photorealistic studio portrait photograph',
+    cartoon3d: 'High-quality 3D animated feature-film style render (Pixar-like)',
+    anime: 'Clean modern anime illustration',
+    illustration: 'Polished digital illustration, soft shading',
+  }[style] || 'Photorealistic studio portrait photograph';
+  return `${look} of ${subject}: ${desc.trim()}. Upper body, front-facing and looking at the camera, relaxed neutral expression, the face fully visible and sharp, clean plain light-grey studio background, soft even lighting, high detail, no text, no watermark, no other people.`;
+}
+
 function AddCharacterModal({ t, isAr, onClose, onDone }) {
+  const [mode, setMode] = useState('upload'); // upload | ai
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [label, setLabel] = useState('');
@@ -264,10 +285,24 @@ function AddCharacterModal({ t, isAr, onClose, onDone }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [over, setOver] = useState(false);
+  // توليد بالذكاء الاصطناعي
+  const [desc, setDesc] = useState('');
+  const [style, setStyle] = useState('realistic');
+  const [count, setCount] = useState(2);
+  const [costs, setCosts] = useState({});
+  const [phase, setPhase] = useState('form'); // form | working | pick
+  const [options, setOptions] = useState([]);
+  const [chosen, setChosen] = useState(null);
   const inputRef = useRef(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
   useEffect(() => { if (!file) { setPreview(null); return; } const u = URL.createObjectURL(file); setPreview(u); return () => URL.revokeObjectURL(u); }, [file]);
+  useEffect(() => {
+    [1, 2, 4].forEach(n => fetch(`/api/images/credit-cost?model=${AI_MODEL}&count=${n}`, { headers: authHeaders() }).then(r => r.json()).then(d => { if (d.creditCost != null) setCosts(c => ({ ...c, [n]: d.creditCost })); }).catch(() => {}));
+  }, []);
   const pick = (f) => { if (f && /^image\//.test(f.type)) { setFile(f); setErr(''); } else if (f) setErr(isAr ? 'لازم تختار صورة' : 'Please choose an image'); };
-  const submit = async () => {
+
+  const submitUpload = async () => {
     if (!file) return;
     setSaving(true); setErr('');
     try {
@@ -278,34 +313,143 @@ function AddCharacterModal({ t, isAr, onClose, onDone }) {
       onDone(d.character);
     } catch (e) { setErr(e.message); setSaving(false); }
   };
+
+  const generate = async () => {
+    if (desc.trim().length < 8) { setErr(isAr ? 'اكتب وصف أطول شوية للشخصية' : 'Please write a slightly longer description'); return; }
+    setErr(''); setPhase('working'); setOptions([]); setChosen(null);
+    try {
+      const gres = await fetch('/api/images/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ model: AI_MODEL, prompt: buildCharacterPrompt(kind, style, desc), aspectRatio: '3:4', count }) });
+      const g = await gres.json();
+      if (!gres.ok) throw new Error(g.message || g.error || 'Failed');
+      for (let i = 0; i < 90 && alive.current; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const sd = await fetch(`/api/images/generate-status/${g.jobId}`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({}));
+        if (sd.status === 'done') {
+          const urls = (sd.images || []).map(x => (typeof x === 'string' ? x : x?.url)).filter(Boolean);
+          if (!urls.length) throw new Error(t.aiFail);
+          setOptions(urls); setChosen(urls[0]); setPhase('pick'); return;
+        }
+        if (sd.status === 'failed') throw new Error(sd.error || t.aiFail);
+      }
+      throw new Error(t.aiFail);
+    } catch (e) { if (alive.current) { setErr(e.message); setPhase('form'); } }
+  };
+
+  const saveAi = async () => {
+    if (!chosen) return;
+    setSaving(true); setErr('');
+    try {
+      const res = await fetch('/api/characters/from-url', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ imageUrl: chosen, label: label.trim(), kind, description: desc.trim() }) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed');
+      onDone(d.character);
+    } catch (e) { setErr(e.message); setSaving(false); }
+  };
+
+  const CostLine = () => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, margin: '14px 0 12px' }}>
+      <span style={{ color: 'var(--text2)' }}>{t.aiCost}</span>
+      <b style={{ color: '#fde68a', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Coins size={14} /> {costs[count] ?? '—'} <small style={{ fontWeight: 500, color: 'var(--text2)' }}>{t.cr}</small></b>
+    </div>
+  );
+
   return (
-    <div className="cs-modal-bg" onClick={onClose}>
-      <div className="pk-card" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, padding: 22, background: 'var(--bg2,#0d0d14)', borderRadius: 22 }}>
+    <div className="cs-modal-bg" onClick={phase === 'working' ? undefined : onClose}>
+      <div className="pk-card" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 500, padding: 22, background: 'var(--bg2,#0d0d14)', borderRadius: 22, maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>{t.addTitle}</h2>
-          <button className="cs-icon-btn" onClick={onClose} aria-label={t.cancel}><X size={15} /></button>
+          {phase !== 'working' && <button className="cs-icon-btn" onClick={onClose} aria-label={t.cancel}><X size={15} /></button>}
         </div>
-        <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => pick(e.target.files?.[0])} />
-        <button type="button" className={`cs-drop ${over ? 'over' : ''}`} onClick={() => inputRef.current?.click()}
-          onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={e => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}
-          style={{ border: preview ? '1px solid rgba(236,72,153,.45)' : '1.5px dashed rgba(255,255,255,.2)', background: preview ? 'transparent' : 'rgba(255,255,255,.03)' }}>
-          {preview ? <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
-            <span style={{ display: 'grid', justifyItems: 'center', gap: 8, padding: 14, textAlign: 'center', fontSize: 13 }}>
-              <span style={{ width: 46, height: 46, borderRadius: 14, display: 'grid', placeItems: 'center', background: 'rgba(236,72,153,.13)' }}><ImagePlus size={22} color="#ec4899" /></span>{t.drop}
-            </span>
-          )}
-        </button>
-        <p style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, margin: '10px 0 14px' }}>{t.dropTip}</p>
-        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>{t.name}</div>
-        <input className="cs-input" value={label} onChange={e => setLabel(e.target.value)} placeholder={t.namePh} maxLength={60} />
-        <div style={{ fontSize: 12.5, fontWeight: 700, margin: '14px 0 8px' }}>{t.kind}</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {KINDS.map(k => { const KI = KIND_ICON[k]; return <button key={k} type="button" className="pk-chip" aria-pressed={kind === k} onClick={() => setKind(k)}><KI size={13} /> {t.kinds[k]}</button>; })}
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button type="button" className="pk-chip" aria-pressed={mode === 'upload'} onClick={() => { setMode('upload'); setErr(''); }} disabled={phase === 'working'}><ImagePlus size={13} /> {t.modeUpload}</button>
+          <button type="button" className="pk-chip" aria-pressed={mode === 'ai'} onClick={() => { setMode('ai'); setErr(''); }} disabled={phase === 'working'}><Sparkles size={13} /> {t.modeAi}</button>
         </div>
+
+        {mode === 'upload' && (
+          <>
+            <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => pick(e.target.files?.[0])} />
+            <button type="button" className={`cs-drop ${over ? 'over' : ''}`} onClick={() => inputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={e => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}
+              style={{ border: preview ? '1px solid rgba(236,72,153,.45)' : '1.5px dashed rgba(255,255,255,.2)', background: preview ? 'transparent' : 'rgba(255,255,255,.03)' }}>
+              {preview ? <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
+                <span style={{ display: 'grid', justifyItems: 'center', gap: 8, padding: 14, textAlign: 'center', fontSize: 13 }}>
+                  <span style={{ width: 46, height: 46, borderRadius: 14, display: 'grid', placeItems: 'center', background: 'rgba(236,72,153,.13)' }}><ImagePlus size={22} color="#ec4899" /></span>{t.drop}
+                </span>
+              )}
+            </button>
+            <p style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, margin: '10px 0 14px' }}>{t.dropTip}</p>
+          </>
+        )}
+
+        {mode === 'ai' && phase !== 'pick' && (
+          <>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>{t.aiDesc}</div>
+            <textarea className="cs-input" rows={4} value={desc} onChange={e => setDesc(e.target.value)} placeholder={t.aiDescPh} maxLength={400} disabled={phase === 'working'} style={{ resize: 'vertical', lineHeight: 1.7 }} />
+            <p style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.7, margin: '6px 0 12px' }}>{t.aiHint}</p>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>{t.aiStyle}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {Object.keys(t.styles).map(k => <button key={k} type="button" className="pk-chip" aria-pressed={style === k} onClick={() => setStyle(k)} disabled={phase === 'working'}>{t.styles[k]}</button>)}
+            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, margin: '14px 0 8px' }}>{t.aiCount}</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[1, 2, 4].map(n => <button key={n} type="button" className="pk-chip" aria-pressed={count === n} onClick={() => setCount(n)} disabled={phase === 'working'}>{n} <small>{costs[n] != null ? `${costs[n]} ${t.cr}` : ''}</small></button>)}
+            </div>
+          </>
+        )}
+
+        {mode === 'ai' && phase === 'pick' && (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{t.aiPick}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: options.length > 1 ? '1fr 1fr' : '1fr', gap: 10 }}>
+              {options.map(u => (
+                <button key={u} type="button" onClick={() => setChosen(u)} aria-pressed={chosen === u} style={{ padding: 0, border: chosen === u ? '2px solid #ec4899' : '2px solid transparent', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'none', boxShadow: chosen === u ? '0 0 0 3px rgba(236,72,153,.25)' : 'none' }}>
+                  <img src={u} alt="" style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', display: 'block' }} />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {!(mode === 'ai' && phase === 'working') && (
+          <>
+            <div style={{ fontSize: 12.5, fontWeight: 700, margin: '14px 0 6px' }}>{t.name}</div>
+            <input className="cs-input" value={label} onChange={e => setLabel(e.target.value)} placeholder={t.namePh} maxLength={60} />
+            <div style={{ fontSize: 12.5, fontWeight: 700, margin: '14px 0 8px' }}>{t.kind}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {KINDS.map(k => { const KI = KIND_ICON[k]; return <button key={k} type="button" className="pk-chip" aria-pressed={kind === k} onClick={() => setKind(k)}><KI size={13} /> {t.kinds[k]}</button>; })}
+            </div>
+          </>
+        )}
+
+        {mode === 'ai' && phase === 'working' && (
+          <div style={{ display: 'grid', gap: 12, justifyItems: 'center', textAlign: 'center', padding: '28px 0' }}>
+            <span style={{ width: 60, height: 60, borderRadius: 18, display: 'grid', placeItems: 'center', background: 'rgba(236,72,153,.14)' }}><Loader2 size={28} color="#ec4899" className="spinning" /></span>
+            <div style={{ fontWeight: 700 }}>{t.aiGenerating}</div>
+          </div>
+        )}
+
         {err && <p role="alert" style={{ color: '#f87171', fontSize: 13, margin: '12px 0 0' }}>{err}</p>}
-        <button className="cs-act primary" onClick={submit} disabled={!file || saving} style={{ marginTop: 18, padding: 13, fontSize: 14.5, opacity: !file || saving ? 0.5 : 1, cursor: !file || saving ? 'not-allowed' : 'pointer' }}>
-          {saving ? <><Loader2 size={15} className="spinning" /> {t.saving}</> : t.save}
-        </button>
+
+        {mode === 'upload' && (
+          <button className="cs-act primary" onClick={submitUpload} disabled={!file || saving} style={{ marginTop: 18, padding: 13, fontSize: 14.5, opacity: !file || saving ? 0.5 : 1, cursor: !file || saving ? 'not-allowed' : 'pointer' }}>
+            {saving ? <><Loader2 size={15} className="spinning" /> {t.saving}</> : t.save}
+          </button>
+        )}
+        {mode === 'ai' && phase === 'form' && (
+          <>
+            <CostLine />
+            <button className="cs-act primary" onClick={generate} style={{ padding: 13, fontSize: 14.5 }}><Sparkles size={15} /> {t.aiGenerate}</button>
+          </>
+        )}
+        {mode === 'ai' && phase === 'pick' && (
+          <div style={{ display: 'grid', gap: 8, marginTop: 18 }}>
+            <button className="cs-act primary" onClick={saveAi} disabled={!chosen || saving} style={{ padding: 13, fontSize: 14.5, opacity: !chosen || saving ? 0.5 : 1 }}>
+              {saving ? <><Loader2 size={15} className="spinning" /> {t.saving}</> : t.save}
+            </button>
+            <button className="cs-act" onClick={() => { setPhase('form'); setOptions([]); }} disabled={saving}><RefreshCw size={14} /> {t.aiAgain}</button>
+          </div>
+        )}
       </div>
     </div>
   );
