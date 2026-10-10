@@ -2185,7 +2185,7 @@ function CharacterStudioTab({ s }) {
             </div>
             <div style={{ border: '1px dashed #4b5563', borderRadius: 10, padding: 12, marginBottom: 12 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fbbf24', marginBottom: 4 }}>🔒 Hidden reference images (all angles — never shown to customers)</div>
-              <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 10px' }}>ارفع لحد 6 صور (وش من الجنب، الضهر، جسم كامل، أو character sheet فيه كل الزوايا). العميل مش بيشوفها في الموقع، بتتستخدم داخليًا في التوليد: أول صورة هي صورة التوليد في قوالب الترند، وكلهم بيتبعتوا كمراجع للموديلات اللي بتقبل أكتر من صورة.</p>
+              <p style={{ fontSize: 11, color: '#6b7280', margin: '0 0 10px' }}>ارفع لحد 6 صور (وش من الجنب، الضهر، جسم كامل، أو character sheet فيه كل الزوايا). العميل مش بيشوفها في الموقع، بتتستخدم داخليًا في التوليد: الصور دي (مش صورة الوش) هي اللي بتتبعت للموديلات. أول صورة هي صورة التوليد لما الموديل بياخد صورة واحدة (قوالب الترند، Wan 3...)، فخليها صورة واضحة للشخصية (جسم كامل أو وش 3/4)، مش character sheet فيه كذا زاوية في صورة واحدة. باقي الصور بتتبعت كمراجع للموديلات اللي بتقبل أكتر من صورة.</p>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <label style={{ ...s.btn('#374151'), cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, padding: '6px 12px' }}>
                   {busy === 'hidden_refs' ? '⏳ Uploading...' : `🔒 Add hidden images (${(pForm.hidden_refs || []).length}/6)`}

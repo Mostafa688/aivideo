@@ -1262,7 +1262,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       const uploadNote = Array.isArray(m.uploadedPhotoUrls) && m.uploadedPhotoUrls.length
         ? ` [Uploaded photo URL${m.uploadedPhotoUrls.length > 1 ? 's' : ''}: ${m.uploadedPhotoUrls.length > 1 ? m.uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}${ratioTag(i)}`).join(', ') : `${m.uploadedPhotoUrls[0]}${ratioTag(0)}`}]`
         : '';
-      return m.content + uploadNote;
+      const charNote = m.characterChip ? ` [using saved character "${m.characterChip.label || 'unnamed'}" (id ${m.characterChip.id})]` : '';
+      return m.content + uploadNote + charNote;
     }
     if (m.type === 'render') {
       // ✅ FIX (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد" — الايجنت مش عارف
@@ -1458,11 +1459,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     // ✅ NEW: uid ثابت للرسالة دي — لازم عشان نقدر نلحقها بعدين برابط R2 الدائم لأي صورة
     // اترفعت فيها (uploadedPhotoUrls من رد السيرفر)، حتى لو المستخدم بعت رسايل تانية قبل ما الرد يرجع
     const msgUid = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid, montageItems: readyMontage.length ? readyMontage.map(x => ({ name: x.name, kind: x.kind || (/^style_/.test(x.name || '') ? 'image' : 'video'), durationSec: x.durationSec })) : undefined };
+    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid, characterChip: forcedCharacter ? { id: forcedCharacter.id, label: forcedCharacter.label, imageUrl: forcedCharacter.imageUrl } : undefined, montageItems: readyMontage.length ? readyMontage.map(x => ({ name: x.name, kind: x.kind || (/^style_/.test(x.name || '') ? 'image' : 'video'), durationSec: x.durationSec })) : undefined };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
     const currentVoice = voiceFile, currentImages = styleRegistered ? [] : imageFiles; // صور الستايل اتسجّلت كمراجع مونتاج — مش بتتبعت كصور عادية كمان
     setInput(''); setVoiceFile(null); setImageFiles([]);
+    if (forcedCharacter) setForcedCharacter(null); // الشخصية اتبعتت جوه الرسالة (بتظهر في الشات) — الايجنت بيفتكرها من الـhistory
     if (readyMontage.length) setMontageAssets([]); // الفيديوهات اتبعتت جوه الرسالة (بتظهر في الشات) — السيرفر محتفظ بيها 3 ساعات والايجنت بيشوفها في كل رسالة
     if (videoRegistered) { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }
     else if (uploadedVideoFile) setVideoSentOnce(true);
@@ -2875,6 +2877,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     {m.imagePreviews?.length > 0 && (
                       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                         {m.imagePreviews.map((src, idx) => <img key={idx} src={src} alt="upload" style={{ maxWidth: 120, borderRadius: 10, display: 'block' }} />)}
+                      </div>
+                    )}
+                    {m.characterChip && (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 12px 4px 4px', borderRadius: 10, background: 'rgba(255,255,255,0.16)', fontSize: 12, marginBottom: 8 }}>
+                        {m.characterChip.imageUrl && <img src={m.characterChip.imageUrl} alt="" style={{ width: 28, height: 34, objectFit: 'cover', borderRadius: 6 }} />}
+                        <Drama size={13} strokeWidth={2} /> {m.characterChip.label || `#${m.characterChip.id}`}
                       </div>
                     )}
                     {m.montageItems?.length > 0 && (
