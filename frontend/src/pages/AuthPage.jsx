@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TERMS_EN, PRIVACY_EN, TERMS_VERSION } from '../data/legalContent.js';
 import LegalNotice from '../components/LegalNotice.jsx';
+import { SHOWCASE_VIDEOS as NEW_SHOWCASE } from '../../../src/services/showcaseVideos.js';
 
 // التنبيه الأحمر مخفي مؤقتًا في صفحة تسجيل الدخول (شاشة الموافقة ونوافذ الشروط/الخصوصية) لحد ما الموقع يتسجّل — غيّرها لـtrue لإظهاره
 const SHOW_AUTH_NOTICE = false;
@@ -15,6 +16,8 @@ const LOGO = 'https://i.ibb.co/xK4Sq6fP/Chat-GPT-Image-19-2026-09-08-47-Photoroo
 // ✅ NEW: كاروسيل فيديوهات صفحة اللوجين — بيتبادل بين فيديوهين، وبينهم أنيميشن تحميل باللوجو.
 // شغال بس على الديسكتوب لأنه جوه .auth-branding اللي أصلاً بيتخفي على الموبايل (مفيش مكان له هناك).
 const SHOWCASE_VIDEOS = [
+  // إعلانات + سينمائي + كوميدي (قايمة مشتركة مع الصفحة الرئيسية وشات الايجنت)
+  ...NEW_SHOWCASE.map(v => ({ url: v.url, label: `${v.title.en} · made with Erivion` })),
   { url: 'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/202608042037.mp4', prompt: 'A hooded warrior battles a colossal shadow beast, cinematic Hollywood action, photorealistic, 8K.' },
   { url: 'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/video_1778958974987.mp4', prompt: 'An explorer was born in his tomb and discovered a huge treasure' },
 ];
@@ -27,6 +30,7 @@ function LoginVideoCarousel() {
   // هو (عشان يفضل يشتغل لوحده من غير ما يحتاج ضغطة أول)، وبنضيف زرار صوت واضح يقدر يفعّله
   // بنفسه لو عايز يسمع البرومبت
   const [muted, setMuted] = useState(true);
+  const [portrait, setPortrait] = useState(false); // الفيديو الطولي بيتعرض كامل (contain) بدل ما يتقص في إطار 16:9
 
   useEffect(() => {
     if (phase !== 'loading') return;
@@ -66,6 +70,7 @@ function LoginVideoCarousel() {
           </div>
         ) : (
           <>
+            {portrait && <video key={`bg-${current.url}`} aria-hidden="true" src={current.url} autoPlay muted loop playsInline style={{ position: 'absolute', inset: -24, width: 'calc(100% + 48px)', height: 'calc(100% + 48px)', objectFit: 'cover', filter: 'blur(26px) brightness(0.5) saturate(1.3)', pointerEvents: 'none' }} />}
             <video
               key={current.url}
               src={current.url}
@@ -73,7 +78,9 @@ function LoginVideoCarousel() {
               muted={muted}
               playsInline
               onEnded={handleEnded}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onLoadedMetadata={(e) => { const v = e.currentTarget; setPortrait(v.videoHeight > v.videoWidth * 1.1); }}
+              onError={handleEnded}
+              style={{ width: '100%', height: '100%', objectFit: portrait ? 'contain' : 'cover', background: portrait ? 'transparent' : '#05050a', position: 'relative' }}
             />
             <button
               onClick={() => setMuted(m => !m)}
@@ -88,7 +95,7 @@ function LoginVideoCarousel() {
         )}
       </div>
       <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 1.6, fontStyle: 'italic', textAlign: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-        "{current.prompt}"
+        {current.prompt ? `"${current.prompt}"` : current.label}
       </div>
       <style>{`
         @keyframes loginCarouselLogoPulse {

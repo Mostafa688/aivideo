@@ -16,6 +16,7 @@ import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 import { getMaxClipSeconds, getAutoEditCreditCost } from './creditPricingEngine.js';
+import { detectShowcaseIntent, buildShowcaseReply } from './showcaseIntent.js';
 
 // ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين على أكتر من موديل صور، مش موديل واحد بس): تأكد إن
 // كل موديلات الصور فعليًا بتقبل حقل "aspect_ratio" بشكل صحيح (راجعنا الـ schema الحقيقي لكل
@@ -589,6 +590,15 @@ router.post('/chat', authMiddleware, async (req, res) => {
           d.lastError ? `Last real failure: ${d.lastError}` : ''];
         return res.json({ reply: lines.filter(Boolean).join('\n') });
       } catch (e) { return res.json({ reply: `Vision check failed: ${e.message}` }); }
+    }
+
+    // العميل بيطلب يشوف أمثلة/نتائج شغل الموقع: بنعرض فيديوهات حقيقية (إعلان/سينمائي/كوميدي)؛ ولو طلب وثائقي نقوله يجرّب الدقيقة المجانية بصوته (بكود عادي من غير LLM)
+    if (!voiceBase64 && !imageBase64 && !(Array.isArray(imagesBase64) && imagesBase64.length) && !videoAlreadyUploaded && !(Array.isArray(montageAssetIds) && montageAssetIds.length)) {
+      const showcaseIntent = detectShowcaseIntent(message);
+      if (showcaseIntent) {
+        const trialAvailable = showcaseIntent.kind === 'documentary' ? await docTrialAvailable(userId).catch(() => true) : true;
+        return res.json(buildShowcaseReply(message, showcaseIntent, { trialAvailable }));
+      }
     }
 
     // ✅ NEW: فحص بكود عادي (مفيش أي AI) — هل الرسالة فيها تقسيم مشاهد جاهز (Scene 1/Visual

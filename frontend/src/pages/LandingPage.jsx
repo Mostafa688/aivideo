@@ -3,7 +3,9 @@ import SubPage from './SubPage.jsx';
 import {
   CheckCircle2, ImageIcon, Film, Drama, Map, Mic,
   Smartphone, Scissors, Zap, Star, ShoppingBag, MessageSquare, Sparkles,
+  Play, Volume2, VolumeX, X, Clapperboard, Wand2, Tv, Plug, ArrowRight, Gift, Upload,
 } from 'lucide-react';
+import { SHOWCASE_VIDEOS, SHOWCASE_KINDS, showcaseFor } from '../../../src/services/showcaseVideos.js';
 
 // ─── Support Page ─────────────────────────────────────────────────────────────
 function SupportPage({ onBack }) {
@@ -119,41 +121,117 @@ function VideoCard({ title, tag, color, duration, views, img }) {
   );
 }
 
-// ─── Real Video Card ──────────────────────────────────────────────────────────
-function RealVideoCard({ src, label, tag, delay }) {
-  const [playing, setPlaying] = useState(false);
-  const videoRef = useRef(null);
-  const cardRef = useRef(null);
+// ─── Showcase videos (real results) ───────────────────────────────────────────
+const KIND_COLOR = { ad: '#10b981', cinematic: '#a855f7', comedy: '#f59e0b' };
 
+// بيشغّل الفيديو وهو ظاهر بس (وبيوقفه لما يخرج من الشاشة) — وبيقيس شكله الحقيقي (طولي/عرضي) عشان الكارت ياخد نسبته
+function AutoVideo({ src, onRatio, style, className, ...rest }) {
+  const ref = useRef(null);
   useEffect(() => {
-    const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting && videoRef.current) {
-        videoRef.current.play().catch(()=>{});
-        setPlaying(true);
-      } else if (videoRef.current) {
-        videoRef.current.pause();
-        setPlaying(false);
-      }
-    }, { threshold: 0.4 });
-    if (cardRef.current) io.observe(cardRef.current);
+    const el = ref.current; if (!el) return undefined;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) el.play().catch(() => {}); else el.pause(); }, { threshold: 0.25 });
+    io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [src]);
+  return <video ref={ref} className={className} src={`${src}#t=0.1`} muted loop playsInline preload="metadata" style={style}
+    onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth && onRatio) onRatio(v.videoWidth / v.videoHeight); }} {...rest} />;
+}
 
+function WallCard({ v, onOpen, delay = 0 }) {
+  const [ratio, setRatio] = useState(9 / 16);
+  const c = KIND_COLOR[v.kind] || '#7c6af7';
+  const landscape = ratio > 1.1;
   return (
-    <div ref={cardRef} className="ev-reveal" data-delay={delay}
-      style={{ borderRadius:20, overflow:'hidden', position:'relative', cursor:'pointer', background:'#0d0d14', border:'1px solid rgba(255,255,255,0.06)', aspectRatio:'9/16', maxHeight:480 }}
-      onMouseEnter={() => { if(videoRef.current) videoRef.current.play(); }}
-      onMouseLeave={() => { if(videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime=0; } }}>
-      <video ref={videoRef} src={src} muted loop playsInline
-        style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
-      {/* Overlay */}
-      <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(5,5,8,0.8) 0%, transparent 50%)', pointerEvents:'none' }} />
-      <div style={{ position:'absolute', top:12, left:12, padding:'4px 10px', borderRadius:8, background:'rgba(124,106,247,0.85)', backdropFilter:'blur(8px)', fontSize:9, fontWeight:700, color:'#fff', letterSpacing:'0.1em' }}>{tag}</div>
-      <div style={{ position:'absolute', bottom:16, left:16, right:16 }}>
-        <p style={{ fontSize:13, fontWeight:600, color:'#fff', margin:0 }}>{label}</p>
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
-          <div style={{ width:6, height:6, borderRadius:'50%', background:'#7c6af7', animation:'glow 2s ease infinite' }} />
-          <span style={{ fontSize:11, color:'rgba(255,255,255,0.5)' }}>Made with Erivion</span>
+    <button type="button" className="ev-wall-card" onClick={() => onOpen(v)} aria-label={`Play: ${v.title.en}`}
+      style={{ width: landscape ? 'calc(var(--ww) * 1.55)' : 'var(--ww)', aspectRatio: String(ratio), '--c': c, animationDelay: `${delay}ms` }}>
+      <AutoVideo src={v.url} onRatio={setRatio} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      <span className="ev-wall-shade" />
+      <span className="ev-wall-chip" style={{ background: c }}>{SHOWCASE_KINDS[v.kind]?.en}</span>
+      <span className="ev-wall-play"><Play size={16} fill="#fff" strokeWidth={0} /></span>
+      <span className="ev-wall-title">{v.title.en}</span>
+    </button>
+  );
+}
+
+function VideoWall({ onOpen }) {
+  const [a, b, c, d] = SHOWCASE_VIDEOS;
+  return (
+    <div className="ev-wall" aria-label="Videos made with Erivion">
+      <div className="ev-wall-glow" />
+      <div className="ev-wall-col"><WallCard v={a} onOpen={onOpen} delay={0} /><WallCard v={c} onOpen={onOpen} delay={120} /></div>
+      <div className="ev-wall-col ev-wall-col-b"><WallCard v={b} onOpen={onOpen} delay={60} /><WallCard v={d} onOpen={onOpen} delay={180} /></div>
+    </div>
+  );
+}
+
+// نافذة تشغيل كاملة بصوت (الضغط = تفاعل من العميل، فالمتصفح بيسمح بالصوت)
+function VideoLightbox({ v, onClose, onGetStarted }) {
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', k);
+    const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', k); document.body.style.overflow = prev; };
+  }, [onClose]);
+  if (!v) return null;
+  return (
+    <div className="ev-lb" role="dialog" aria-modal="true" aria-label={v.title.en} onClick={onClose}>
+      <button type="button" className="ev-lb-x" onClick={onClose} aria-label="Close"><X size={18} /></button>
+      <div className="ev-lb-body" onClick={(e) => e.stopPropagation()}>
+        <video src={v.url} controls autoPlay playsInline loop style={{ maxWidth: '100%', maxHeight: '78vh', borderRadius: 18, background: '#000', display: 'block' }} />
+        <div className="ev-lb-bar">
+          <span><b>{v.title.en}</b> · Made with Erivion</span>
+          <button type="button" className="ev-cta-btn" onClick={() => { onClose(); onGetStarted?.(); }} style={{ padding: '10px 20px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Make one like this <ArrowRight size={14} style={{ verticalAlign: -2 }} /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// معرض النتائج: تبويبات حسب النوع + مشغّل كبير + قايمة (الضغط على أي فيديو بيشغّله بصوت)
+function ShowcaseStage({ onGetStarted }) {
+  const [kind, setKind] = useState('all');
+  const [activeId, setActiveId] = useState(SHOWCASE_VIDEOS[0].id);
+  const [sound, setSound] = useState(false);
+  const [ratio, setRatio] = useState(16 / 9);
+  const list = showcaseFor(kind);
+  const active = list.find(v => v.id === activeId) || list[0];
+  const mainRef = useRef(null);
+  useEffect(() => { if (mainRef.current) { mainRef.current.muted = !sound; } }, [sound, active?.id]);
+  const pick = (v) => { setActiveId(v.id); setSound(true); }; // الضغط تفاعل → الصوت مسموح
+  const portrait = ratio < 0.9;
+  return (
+    <div>
+      <div className="ev-tabs" role="tablist" aria-label="Video types">
+        {[['all', 'All'], ...Object.entries(SHOWCASE_KINDS).map(([k, l]) => [k, l.en])].map(([k, l]) => (
+          <button key={k} type="button" role="tab" aria-selected={kind === k} className="ev-tab" onClick={() => { setKind(k); const first = showcaseFor(k)[0]; if (first) setActiveId(first.id); }}>{l}</button>
+        ))}
+      </div>
+      <div className="ev-stage">
+        <div className="ev-stage-main" style={{ '--c': KIND_COLOR[active?.kind] || '#7c6af7' }}>
+          {active && (
+            <div className="ev-stage-frame" style={{ aspectRatio: String(ratio), maxWidth: portrait ? 315 : '100%' }}>
+              <video key={active.id} ref={mainRef} src={active.url} autoPlay muted={!sound} loop playsInline controls
+                onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setRatio(v.videoWidth / v.videoHeight); v.muted = !sound; }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#000' }} />
+              <button type="button" className="ev-snd" onClick={() => setSound(s => !s)} aria-pressed={sound}>{sound ? <Volume2 size={14} /> : <VolumeX size={14} />} {sound ? 'Sound on' : 'Tap for sound'}</button>
+            </div>
+          )}
+        </div>
+        <div className="ev-stage-list">
+          {list.map(v => {
+            const on = v.id === active?.id; const c = KIND_COLOR[v.kind];
+            return (
+              <button key={v.id} type="button" className="ev-stage-item" aria-pressed={on} onClick={() => pick(v)} style={{ '--c': c }}>
+                <span className="ev-stage-thumb"><AutoVideo src={v.url} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /></span>
+                <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                  <span style={{ display: 'block', fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: c, textTransform: 'uppercase' }}>{SHOWCASE_KINDS[v.kind]?.en}</span>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#f3f4f6', marginTop: 2 }}>{v.title.en}</span>
+                </span>
+                <span className="ev-stage-go">{on ? <Volume2 size={15} /> : <Play size={15} />}</span>
+              </button>
+            );
+          })}
+          <button type="button" className="ev-cta-btn" onClick={() => onGetStarted?.()} style={{ marginTop: 6, padding: '14px 18px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#7c6af7,#6d28d9)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 8px 28px rgba(124,106,247,0.4)' }}>Create your own <ArrowRight size={15} /></button>
         </div>
       </div>
     </div>
@@ -199,6 +277,7 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
   const [typed, setTyped] = useState('');
   const [promptIdx, setPromptIdx] = useState(0);
   const [hovModel, setHovModel] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
 
   const PROMPTS = [
     'The rise of the Ottoman Empire...',
@@ -247,25 +326,6 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
   // الجمهور اللي المفروض يقرأ صفحة "من نحن" قبل ما يسجل أصلاً
   if (subPage === 'about')   return <SubPage page="about"   onBack={() => setSubPage(null)} />;
   if (subPage === 'refund')  return <SubPage page="refund"  onBack={() => setSubPage(null)} />;
-
-  const VIDEO_SHOWCASE = [
-    { title:'How Rome Changed the World', tag:'HISTORY', color:'#f59e0b', duration:'1:00', views:'124K', img:null },
-    { title:'The Power of Daily Discipline', tag:'MOTIVATION', color:'#7c6af7', duration:'0:45', views:'89K', img:null },
-    { title:'Secrets of the Deep Ocean', tag:'SCIENCE', color:'#06b6d4', duration:'1:30', views:'203K', img:null },
-    { title:'Why Rich People Think Differently', tag:'BUSINESS', color:'#10b981', duration:'0:30', views:'67K', img:null },
-    { title:'The Ottoman Empire Rise', tag:'HISTORY', color:'#a855f7', duration:'2:00', views:'341K', img:null },
-    { title:'How AI is Changing Everything', tag:'TECH', color:'#e11d48', duration:'1:15', views:'156K', img:null },
-    { title:'The Human Brain Explained', tag:'SCIENCE', color:'#06b6d4', duration:'0:45', views:'92K', img:null },
-  ];
-
-  const MODELS = [
-    { key:'characters', tag:'CHARACTERS', name:'AI Character Videos', icon:Drama, desc:'Upload a reference photo or just describe your character — the Agent keeps them perfectly consistent across every single scene.', color:'#e11d48', tags:['Seedance Motion','Photo or text reference','Consistent across scenes','Real narration'] },
-    { key:'cinematic', tag:'CINEMATIC', name:'Real AI Video Motion', icon:Film, desc:'Not static images — genuine AI-generated video clips with real cinematic movement, built from any idea or script.', color:'#a855f7', tags:['Seedance Video','True motion','Any idea or script','Captions & music'] },
-    { key:'images', tag:'IMAGES', name:'Standalone AI Images', icon:ImageIcon, desc:'Generate stunning images on their own — perfect for thumbnails, posters, or product shots, no video needed.', color:'#f59e0b', tags:['Nano Banana','Grok Imagine','Sharp text & logos','Batches up to 20'] },
-    { key:'ads', tag:'ADS', name:'Product & Brand Ads', icon:ShoppingBag, desc:'Upload one product photo and get a scroll-stopping ad — worn/shown automatically, voiceover and captions included.', color:'#10b981', tags:['One photo → full ad','Auto voiceover','Product link banner','Smooth transitions'] },
-    { key:'maps', tag:'MAPS', name:'Map & Documentary Videos', icon:Map, desc:'Viral map-explainer style videos — real borders, flags, and narration for history, geography, and geopolitics.', color:'#a78bfa', tags:['170+ countries','Auto narration','Cinematic zoom','One continuous shot'] },
-    { key:'editing', tag:'EDITING', name:'AI Video Editing', icon:Scissors, desc:'Already have a video? Change it with a plain-language instruction — colors, scenes, effects — while keeping the original motion.', color:'#06b6d4', tags:['Gemini Omni Flash','Lucy Edit 2','Plain-language edits','Keeps original motion'] },
-  ];
 
   const FEATURES = [
     { icon:MessageSquare, title:'One Agent, Full Production', desc:'Just chat what you want. The Agent writes the script, picks the right AI engine, and assembles the finished video for you.' },
@@ -341,6 +401,85 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
           box-shadow: 0 8px 24px rgba(124,106,247,0.4);
         }
 
+        /* hero */
+        .ev-hero { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr); gap:48px; align-items:center; width:100%; max-width:1240px; margin:0 auto; position:relative; z-index:1; text-align:left; }
+        .ev-hero-copy { display:flex; flex-direction:column; align-items:flex-start; }
+        .ev-wall { --ww:178px; position:relative; display:flex; gap:16px; justify-content:center; align-items:flex-start; padding:12px 0; }
+        .ev-wall-col { display:flex; flex-direction:column; gap:16px; align-items:center; }
+        .ev-wall-col-b { margin-top:64px; }
+        .ev-wall-glow { position:absolute; inset:-8% -4%; z-index:-1; background:radial-gradient(40% 40% at 28% 30%, rgba(124,106,247,.35), transparent 70%), radial-gradient(36% 36% at 78% 70%, rgba(6,182,212,.22), transparent 70%), radial-gradient(30% 30% at 60% 15%, rgba(225,29,72,.16), transparent 70%); filter:blur(30px); }
+        .ev-wall-card { position:relative; padding:0; overflow:hidden; cursor:pointer; border-radius:22px; border:1px solid rgba(255,255,255,.12); background:#0d0d14; box-shadow:0 24px 60px rgba(0,0,0,.55); transition:transform .35s cubic-bezier(.16,1,.3,1), box-shadow .35s, border-color .35s; animation:evFloat 7s ease-in-out infinite; font:inherit; color:#fff; }
+        .ev-wall-col-b .ev-wall-card { animation-duration:8.5s; animation-direction:alternate-reverse; }
+        .ev-wall-card:hover { transform:scale(1.035) translateY(-4px); border-color:var(--c); box-shadow:0 30px 70px rgba(0,0,0,.6), 0 0 0 1px var(--c), 0 0 40px color-mix(in srgb, var(--c) 35%, transparent); animation-play-state:paused; }
+        .ev-wall-card:focus-visible { outline:2px solid #fff; outline-offset:3px; }
+        .ev-wall-shade { position:absolute; inset:0; background:linear-gradient(to top, rgba(5,5,8,.88) 0%, transparent 52%); pointer-events:none; }
+        .ev-wall-chip { position:absolute; top:12px; left:12px; padding:4px 10px; border-radius:8px; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#fff; }
+        .ev-wall-play { position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; background:rgba(0,0,0,.55); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,.25); }
+        .ev-wall-title { position:absolute; left:14px; right:14px; bottom:12px; font-size:12.5px; font-weight:700; text-align:left; }
+        @keyframes evFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
+        /* showcase */
+        .ev-tabs { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:28px; }
+        .ev-tab { padding:9px 20px; border-radius:999px; font:inherit; font-size:13px; font-weight:700; cursor:pointer; color:#9ca3af; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); transition:all .2s; }
+        .ev-tab:hover { color:#fff; border-color:rgba(255,255,255,.22); }
+        .ev-tab[aria-selected=true] { color:#fff; background:linear-gradient(135deg,#7c6af7,#6d28d9); border-color:transparent; box-shadow:0 6px 22px rgba(124,106,247,.4); }
+        .ev-stage { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,.9fr); gap:28px; align-items:center; }
+        .ev-stage-main { position:relative; display:flex; justify-content:center; padding:18px; border-radius:30px; background:radial-gradient(70% 70% at 50% 40%, color-mix(in srgb, var(--c) 18%, transparent), transparent 75%), rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.07); }
+        .ev-stage-frame { position:relative; width:100%; max-height:560px; border-radius:20px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.12); background:#000; }
+        .ev-snd { position:absolute; top:12px; left:12px; z-index:2; display:inline-flex; align-items:center; gap:7px; padding:8px 13px; border-radius:999px; font:inherit; font-size:12px; font-weight:700; color:#fff; cursor:pointer; background:rgba(0,0,0,.6); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.22); }
+        .ev-snd:hover { background:rgba(124,106,247,.85); }
+        .ev-stage-list { display:flex; flex-direction:column; gap:10px; }
+        .ev-stage-item { display:flex; align-items:center; gap:14px; padding:10px 14px 10px 10px; border-radius:16px; cursor:pointer; font:inherit; color:inherit; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); transition:all .2s; }
+        .ev-stage-item:hover { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.18); }
+        .ev-stage-item[aria-pressed=true] { background:color-mix(in srgb, var(--c) 12%, transparent); border-color:var(--c); }
+        .ev-stage-thumb { width:64px; height:64px; border-radius:12px; overflow:hidden; flex-shrink:0; background:#0d0d14; }
+        .ev-stage-go { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; flex-shrink:0; color:#fff; background:rgba(255,255,255,.08); }
+        .ev-stage-item[aria-pressed=true] .ev-stage-go { background:var(--c); }
+        /* lightbox */
+        .ev-lb { position:fixed; inset:0; z-index:300; display:grid; place-items:center; padding:20px; background:rgba(3,3,8,.88); backdrop-filter:blur(10px); animation:fadeUp .2s ease both; }
+        .ev-lb-x { position:absolute; top:18px; right:18px; width:40px; height:40px; border-radius:50%; display:grid; place-items:center; cursor:pointer; color:#fff; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); }
+        .ev-lb-body { display:flex; flex-direction:column; align-items:center; gap:14px; max-width:min(92vw,980px); }
+        .ev-lb-bar { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; width:100%; font-size:13px; color:#9ca3af; }
+        .ev-lb-bar b { color:#fff; }
+        /* marquee */
+        .ev-marquee { overflow:hidden; mask-image:linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); -webkit-mask-image:linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+        .ev-marquee-track { display:flex; gap:14px; width:max-content; animation:scroll 38s linear infinite; }
+        .ev-marquee:hover .ev-marquee-track { animation-play-state:paused; }
+        .ev-pill { display:inline-flex; align-items:center; gap:9px; padding:11px 20px; border-radius:999px; font-size:14px; font-weight:700; color:#d1d5db; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.08); white-space:nowrap; }
+        /* bento */
+        .ev-bento { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:16px; }
+        .ev-bento-card { display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; position:relative; overflow:hidden; padding:28px; border-radius:24px; background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015)); border:1px solid rgba(255,255,255,.08); transition:transform .35s cubic-bezier(.16,1,.3,1), border-color .35s, box-shadow .35s; cursor:pointer; text-align:left; font:inherit; color:inherit; }
+        .ev-bento-card:hover { transform:translateY(-6px); border-color:color-mix(in srgb, var(--c) 55%, transparent); box-shadow:0 24px 56px color-mix(in srgb, var(--c) 18%, transparent); }
+        .ev-bento-card::before { content:''; position:absolute; top:-60px; right:-60px; width:200px; height:200px; border-radius:50%; background:radial-gradient(circle, color-mix(in srgb, var(--c) 28%, transparent), transparent 70%); pointer-events:none; }
+        .ev-bento-ic { width:46px; height:46px; border-radius:14px; display:grid; place-items:center; color:#fff; margin-bottom:18px; background:linear-gradient(135deg, var(--c), color-mix(in srgb, var(--c) 45%, #000)); box-shadow:0 8px 22px color-mix(in srgb, var(--c) 40%, transparent); }
+        .ev-bento-card h3 { font-family:'Bricolage Grotesque', sans-serif; font-size:21px; font-weight:800; letter-spacing:-.4px; margin:0 0 8px; }
+        .ev-bento-card p { font-size:14px; color:#9ca3af; line-height:1.7; margin:0; }
+        .ev-badge-free { display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:999px; font-size:11px; font-weight:800; letter-spacing:.04em; color:#052e1d; background:#34d399; margin-bottom:14px; }
+        .ev-chat-mock { margin-top:20px; display:grid; gap:8px; }
+        .ev-bubble { max-width:86%; padding:10px 14px; border-radius:16px; font-size:13px; line-height:1.55; }
+        .ev-bubble.u { justify-self:end; background:linear-gradient(135deg,#7c6af7,#9d4edd); color:#fff; border-bottom-right-radius:4px; }
+        .ev-bubble.a { justify-self:start; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.09); color:#e5e7eb; border-bottom-left-radius:4px; }
+        .ev-faces { display:flex; margin-top:18px; }
+        .ev-faces i { width:46px; height:46px; border-radius:50%; border:3px solid #0b0b12; margin-left:-12px; display:block; }
+        .ev-faces i:first-child { margin-left:0; }
+        .ev-trial { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:36px; align-items:center; padding:44px; border-radius:30px; position:relative; overflow:hidden; background:linear-gradient(135deg, rgba(52,211,153,.10), rgba(124,106,247,.10)); border:1px solid rgba(52,211,153,.25); }
+        .ev-trial-step { display:flex; gap:14px; align-items:flex-start; padding:14px 16px; border-radius:16px; background:rgba(5,5,8,.5); border:1px solid rgba(255,255,255,.08); }
+        .ev-trial-step b { font-family:'Bricolage Grotesque', sans-serif; width:30px; height:30px; border-radius:10px; display:grid; place-items:center; flex-shrink:0; background:#34d399; color:#052e1d; font-size:14px; }
+        @media (prefers-reduced-motion:reduce) { .ev-wall-card, .ev-marquee-track { animation:none; } }
+        @media (max-width:1024px) {
+          .ev-hero { grid-template-columns:minmax(0,1fr); text-align:center; gap:40px; }
+          .ev-hero-copy { align-items:center; }
+          .ev-stage { grid-template-columns:minmax(0,1fr); }
+          .ev-trial { grid-template-columns:minmax(0,1fr); padding:30px 22px; }
+        }
+        @media (max-width:600px) {
+          .ev-wall { --ww:132px; gap:10px; }
+          .ev-wall-col { gap:10px; }
+          .ev-wall-col-b { margin-top:36px; }
+          .ev-stage-main { padding:10px; border-radius:22px; }
+        }
+        @media (max-width:900px) {
+          .ev-bento-card { grid-column:span 12 !important; }
+        }
         @media (max-width:768px) {
           .ev-nav-links { display:none !important; }
           .ev-hero-h1 { font-size:clamp(36px,10vw,56px) !important; }
@@ -393,119 +532,89 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
       </nav>
 
       {/* ── HERO ───────────────────────────────────────────────────────────── */}
-      <section style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'120px 24px 80px', position:'relative', textAlign:'center' }}>
-        {/* Background glows */}
-        <div style={{ position:'absolute', top:'10%', left:'50%', transform:'translateX(-50%)', width:800, height:500, borderRadius:'50%', background:'radial-gradient(ellipse, rgba(124,106,247,0.12) 0%, transparent 70%)', pointerEvents:'none', filter:'blur(40px)' }} />
-        <div style={{ position:'absolute', top:'30%', left:'20%', width:400, height:400, borderRadius:'50%', background:'radial-gradient(circle, rgba(6,182,212,0.06) 0%, transparent 70%)', pointerEvents:'none', filter:'blur(60px)' }} />
-        <div style={{ position:'absolute', top:'20%', right:'15%', width:300, height:300, borderRadius:'50%', background:'radial-gradient(circle, rgba(225,29,72,0.05) 0%, transparent 70%)', pointerEvents:'none', filter:'blur(50px)' }} />
+      <section style={{ minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'116px 24px 70px', position:'relative' }}>
+        <div style={{ position:'absolute', top:'6%', left:'30%', transform:'translateX(-50%)', width:820, height:520, borderRadius:'50%', background:'radial-gradient(ellipse, rgba(124,106,247,0.14) 0%, transparent 70%)', pointerEvents:'none', filter:'blur(40px)' }} />
+        <div style={{ position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)', backgroundSize:'64px 64px', maskImage:'radial-gradient(ellipse at 40% 45%, black 15%, transparent 75%)', WebkitMaskImage:'radial-gradient(ellipse at 40% 45%, black 15%, transparent 75%)', pointerEvents:'none' }} />
 
-        {/* Grid */}
-        <div style={{ position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)', backgroundSize:'64px 64px', maskImage:'radial-gradient(ellipse at 50% 50%, black 20%, transparent 80%)', pointerEvents:'none' }} />
+        <div className="ev-hero">
+          <div className="ev-hero-copy">
+            <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 16px', borderRadius:999, border:'1px solid rgba(124,106,247,0.3)', background:'rgba(124,106,247,0.08)', marginBottom:26, animation:'fadeUp 0.6s ease both' }}>
+              <div style={{ width:6, height:6, borderRadius:'50%', background:'#7c6af7', animation:'glow 2s ease infinite' }} />
+              <span style={{ fontSize:12, fontWeight:600, color:'#a78bfa', letterSpacing:'0.05em' }}>The AI Agent That Plans, Generates & Assembles Your Video</span>
+            </div>
 
-        {/* Badge */}
-        <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 16px', borderRadius:999, border:'1px solid rgba(124,106,247,0.3)', background:'rgba(124,106,247,0.08)', marginBottom:28, animation:'fadeUp 0.6s ease both' }}>
-          <div style={{ width:6, height:6, borderRadius:'50%', background:'#7c6af7', animation:'glow 2s ease infinite' }} />
-          <span style={{ fontSize:12, fontWeight:600, color:'#a78bfa', letterSpacing:'0.05em' }}>The AI Agent That Plans, Generates & Assembles Your Video</span>
-        </div>
+            <h1 className="ev-hero-h1" style={{ fontSize:'clamp(44px,6vw,80px)', fontWeight:900, letterSpacing:'-3px', lineHeight:1.0, marginBottom:22, animation:'fadeUp 0.7s ease 0.1s both', fontFamily:"'Bricolage Grotesque', sans-serif" }}>
+              Turn any idea into{' '}
+              <span style={{ background:'linear-gradient(135deg,#7c6af7 0%,#a78bfa 40%,#06b6d4 100%)', backgroundSize:'200%', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', animation:'gradMove 4s ease infinite' }}>ads, films & viral clips</span>
+            </h1>
 
-        {/* Headline */}
-        <h1 className="ev-hero-h1" style={{ fontSize:'clamp(48px,7vw,88px)', fontWeight:900, letterSpacing:'-3px', lineHeight:1.0, marginBottom:24, animation:'fadeUp 0.7s ease 0.1s both', fontFamily:"'Bricolage Grotesque', sans-serif", maxWidth:900 }}>
-          Turn Any Idea Into a{' '}
-          <span style={{ display:'inline-block', position:'relative' }}>
-            <span style={{ background:'linear-gradient(135deg,#7c6af7 0%,#a78bfa 40%,#06b6d4 100%)', backgroundSize:'200%', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', animation:'gradMove 4s ease infinite' }}>
-              Viral Video
-            </span>
-          </span>
-        </h1>
+            <p style={{ fontSize:'clamp(16px,2vw,19px)', color:'#9ca3af', maxWidth:560, lineHeight:1.7, marginBottom:34, animation:'fadeUp 0.7s ease 0.2s both' }}>
+              Just chat. Erivion's Agent writes the script, picks the right AI engine, keeps your characters consistent, and delivers a finished video with real narration, captions and music — in 8+ languages.
+            </p>
 
-        {/* Subhead */}
-        <p style={{ fontSize:'clamp(16px,2.5vw,20px)', color:'#6b7280', maxWidth:620, lineHeight:1.7, marginBottom:48, animation:'fadeUp 0.7s ease 0.2s both', fontWeight:400 }}>
-          Chat with Erivion's AI Agent — it writes the script, picks the right AI engine, generates every scene with a consistent character, and assembles a finished video with real narration, captions, and music in 8+ languages.
-        </p>
-
-        {/* Prompt Input */}
-        <div style={{ width:'100%', maxWidth:620, marginBottom:20, animation:'fadeUp 0.7s ease 0.3s both' }}>
-          <div style={{ display:'flex', alignItems:'center', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:18, padding:'8px 8px 8px 20px', boxShadow:'0 8px 40px rgba(0,0,0,0.4)', backdropFilter:'blur(12px)', transition:'border-color 0.2s' }}
-            onFocus={e=>e.currentTarget.style.borderColor='rgba(124,106,247,0.5)'}
-            onBlur={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.1)'}>
-            <div style={{ flex:1, position:'relative', minWidth:0 }}>
-              <input placeholder="" style={{ width:'100%', background:'transparent', border:'none', outline:'none', color:'#fff', fontSize:15, padding:'8px 0', fontFamily:'inherit' }} onFocus={e=>e.currentTarget.parentElement.parentElement.style.borderColor='rgba(124,106,247,0.5)'} onBlur={e=>e.currentTarget.parentElement.parentElement.style.borderColor='rgba(255,255,255,0.1)'} onKeyDown={e=>e.key==='Enter'&&onGetStarted?.()} />
-              <div style={{ position:'absolute', top:'50%', left:0, transform:'translateY(-50%)', pointerEvents:'none', display:'flex', alignItems:'center' }}>
-                <span style={{ fontSize:15, color:'rgba(255,255,255,0.25)' }}>{typed}</span>
-                <span style={{ width:2, height:18, background:'rgba(124,106,247,0.7)', display:'inline-block', animation:'blink 1s ease infinite', marginLeft:1, borderRadius:1 }} />
+            <div style={{ width:'100%', maxWidth:560, marginBottom:18, animation:'fadeUp 0.7s ease 0.3s both' }}>
+              <div style={{ display:'flex', alignItems:'center', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:18, padding:'8px 8px 8px 20px', boxShadow:'0 8px 40px rgba(0,0,0,0.45)', backdropFilter:'blur(12px)', transition:'border-color 0.2s' }}
+                onFocus={e=>e.currentTarget.style.borderColor='rgba(124,106,247,0.6)'}
+                onBlur={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.12)'}>
+                <div style={{ flex:1, position:'relative', minWidth:0 }}>
+                  <input aria-label="Describe your video" placeholder="" style={{ width:'100%', background:'transparent', border:'none', outline:'none', color:'#fff', fontSize:15, padding:'8px 0', fontFamily:'inherit' }} onKeyDown={e=>e.key==='Enter'&&onGetStarted?.()} />
+                  <div style={{ position:'absolute', top:'50%', left:0, transform:'translateY(-50%)', pointerEvents:'none', display:'flex', alignItems:'center' }}>
+                    <span style={{ fontSize:15, color:'rgba(255,255,255,0.3)' }}>{typed}</span>
+                    <span style={{ width:2, height:18, background:'rgba(124,106,247,0.8)', display:'inline-block', animation:'blink 1s ease infinite', marginLeft:1, borderRadius:1 }} />
+                  </div>
+                </div>
+                <button onClick={() => onGetStarted?.()} className="ev-cta-btn" style={{ padding:'12px 24px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#7c6af7,#6d28d9)', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(124,106,247,0.5)', fontFamily:'inherit' }}>Generate →</button>
               </div>
             </div>
-            <button onClick={() => onGetStarted?.()} style={{ padding:'12px 24px', borderRadius:12, border:'none', background:'linear-gradient(135deg,#7c6af7,#6d28d9)', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(124,106,247,0.5)', fontFamily:'inherit', transition:'all 0.2s' }}
-              onMouseEnter={e=>e.target.style.transform='scale(1.03)'} onMouseLeave={e=>e.target.style.transform='scale(1)'}>
-              Generate →
-            </button>
-          </div>
-        </div>
 
-        <p style={{ fontSize:12, color:'rgba(255,255,255,0.2)', animation:'fadeUp 0.6s ease 0.4s both' }}>
-          No credit card required to sign up · Powered by Nano Banana, Seedance & Gemini
-        </p>
+            <p style={{ fontSize:12, color:'rgba(255,255,255,0.28)', animation:'fadeUp 0.6s ease 0.4s both', margin:'0 0 26px' }}>
+              No credit card required to sign up · Powered by Nano Banana, Seedance & Gemini
+            </p>
 
-        {/* Social proof */}
-        <div style={{ display:'flex', alignItems:'center', gap:24, marginTop:32, animation:'fadeUp 0.6s ease 0.5s both', flexWrap:'wrap', justifyContent:'center' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <div style={{ display:'flex' }}>
-              {['#7c6af7','#06b6d4','#f59e0b','#e11d48','#10b981'].map((c,i) => (
-                <div key={i} style={{ width:28, height:28, borderRadius:'50%', border:'2px solid #050508', background:`linear-gradient(135deg,${c},${c}88)`, marginLeft:i?-8:0, zIndex:5-i }} />
-              ))}
+            <div style={{ display:'flex', alignItems:'center', gap:20, animation:'fadeUp 0.6s ease 0.5s both', flexWrap:'wrap', justifyContent:'inherit' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ display:'flex' }}>
+                  {['#7c6af7','#06b6d4','#f59e0b','#e11d48','#10b981'].map((c,i) => (
+                    <div key={i} style={{ width:28, height:28, borderRadius:'50%', border:'2px solid #050508', background:`linear-gradient(135deg,${c},${c}88)`, marginLeft:i?-8:0, zIndex:5-i }} />
+                  ))}
+                </div>
+                <span style={{ fontSize:13, color:'#6b7280' }}>Loved by <strong style={{ color:'#9ca3af' }}>10,000+</strong> creators</span>
+              </div>
+              <div style={{ display:'flex', gap:2 }}>
+                {[1,2,3,4,5].map(i => <Star key={i} size={15} fill="#f59e0b" color="#f59e0b" />)}
+              </div>
+              <span style={{ fontSize:13, color:'#6b7280' }}>4.9/5 rating</span>
             </div>
-            <span style={{ fontSize:13, color:'#6b7280' }}>Loved by <strong style={{ color:'#9ca3af' }}>10,000+</strong> creators</span>
           </div>
-          <div style={{ display:'flex', gap:2 }}>
-            {[1,2,3,4,5].map(i => <Star key={i} size={16} fill="#f59e0b" color="#f59e0b" />)}
-          </div>
-          <span style={{ fontSize:13, color:'#6b7280' }}>4.9/5 rating</span>
+
+          <VideoWall onOpen={setLightbox} />
         </div>
       </section>
 
-      {/* ── POWERED BY BAR ─────────────────────────────────────────────────── */}
-      <section className="ev-reveal" style={{ padding:'0 24px 90px', maxWidth:1000, margin:'0 auto' }}>
-        <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.18em', color:'#374151', textTransform:'uppercase', textAlign:'center', marginBottom:22 }}>
-          Powered by industry-leading AI
-        </div>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'20px 44px', flexWrap:'wrap' }}>
-          {['Google Gemini', 'Nano Banana', 'Seedance', 'Grok Imagine', 'Lucy Edit'].map(name => (
-            <span key={name} style={{ fontSize:17, fontWeight:800, color:'#374151', letterSpacing:'-0.3px', fontFamily:"'Bricolage Grotesque', sans-serif", opacity:0.9, transition:'color 0.2s, opacity 0.2s', cursor:'default' }}
-              onMouseEnter={e=>{e.target.style.color='#9ca3af';e.target.style.opacity=1}}
-              onMouseLeave={e=>{e.target.style.color='#374151';e.target.style.opacity=0.9}}>
-              {name}
-            </span>
-          ))}
+      {/* ── USE-CASE MARQUEE ───────────────────────────────────────────────── */}
+      <section className="ev-reveal" aria-label="What you can make" style={{ padding:'0 0 90px' }}>
+        <div className="ev-marquee">
+          <div className="ev-marquee-track">
+            {[0,1].flatMap(rep => [
+              [Tv,'Product ads','#10b981'],[Film,'Cinematic scenes','#a855f7'],[Sparkles,'Comedy & viral clips','#f59e0b'],[Clapperboard,'Documentaries','#06b6d4'],
+              [Drama,'Consistent characters','#e11d48'],[Wand2,'Trending templates','#ec4899'],[Scissors,'Smart montage','#60a5fa'],[Map,'Map explainers','#a78bfa'],[Mic,'Voiceovers in 8+ languages','#34d399'],
+            ].map(([Icon,label,color],i) => (
+              <span key={`${rep}-${i}`} className="ev-pill"><Icon size={16} color={color} strokeWidth={2} /> {label}</span>
+            )))}
+          </div>
         </div>
       </section>
 
-      {/* ── REAL VIDEO SHOWCASE ──────────────────────────────────────────────── */}
-      <section style={{ padding:'0 24px 100px', maxWidth:1200, margin:'0 auto' }}>
-        <div className="ev-reveal" style={{ textAlign:'center', marginBottom:48 }}>
+      {/* ── REAL RESULTS ───────────────────────────────────────────────────── */}
+      <section style={{ padding:'0 24px 110px', maxWidth:1200, margin:'0 auto' }}>
+        <div className="ev-reveal" style={{ textAlign:'center', marginBottom:40 }}>
           <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.15em', color:'#a78bfa', textTransform:'uppercase', marginBottom:12 }}>Made with Erivion</div>
-          <h2 style={{ fontSize:'clamp(28px,4vw,44px)', fontWeight:900, letterSpacing:'-1.5px', fontFamily:"'Bricolage Grotesque', sans-serif", color:'#fff' }}>
+          <h2 style={{ fontSize:'clamp(30px,4.4vw,48px)', fontWeight:900, letterSpacing:'-1.8px', fontFamily:"'Bricolage Grotesque', sans-serif", color:'#fff', lineHeight:1.1 }}>
             Real videos, real results
           </h2>
-          <p style={{ fontSize:15, color:'#6b7280', marginTop:12 }}>Every video below was created using Erivion — no editing skills required.</p>
+          <p style={{ fontSize:15, color:'#6b7280', marginTop:12 }}>Ads, cinematic scenes and comedy — every clip below was made with Erivion. Tap one to hear it.</p>
         </div>
-
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20 }}>
-          {[
-            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780696103015.mp4', label:'Historical · Arabic', tag:'HISTORY' },
-            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780699995271.mp4', label:'Educational · English', tag:'EDUCATION' },
-            { src:'https://pub-e44d8497276f4a3e9139b814466baf3d.r2.dev/templates/tpl_1780956846973.mp4', label:'Motivational · Arabic', tag:'MOTIVATION' },
-          ].map((v,i) => (
-            <RealVideoCard key={i} {...v} delay={i*100} />
-          ))}
-        </div>
-
-        <div style={{ textAlign:'center', marginTop:36 }}>
-          <button onClick={() => onGetStarted?.()} style={{ padding:'13px 32px', borderRadius:12, border:'1px solid rgba(124,106,247,0.3)', background:'rgba(124,106,247,0.08)', color:'#a78bfa', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit', transition:'all 0.2s' }}
-            onMouseEnter={e=>{e.target.style.background='rgba(124,106,247,0.15)';e.target.style.color='#fff'}}
-            onMouseLeave={e=>{e.target.style.background='rgba(124,106,247,0.08)';e.target.style.color='#a78bfa'}}>
-            Create your own video →
-          </button>
-        </div>
+        <div className="ev-reveal"><ShowcaseStage onGetStarted={onGetStarted} /></div>
       </section>
 
       {/* ── STATS ──────────────────────────────────────────────────────────── */}
@@ -538,51 +647,78 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
         </div>
       </section>
 
-      {/* ── AI MODELS SECTION ──────────────────────────────────────────────── */}
+      {/* ── WHAT YOU CAN MAKE (bento) ───────────────────────────────────────── */}
       <section style={{ padding:'80px 24px', maxWidth:1200, margin:'0 auto' }}>
-        <div className="ev-reveal" style={{ textAlign:'center', marginBottom:60 }}>
+        <div className="ev-reveal" style={{ textAlign:'center', marginBottom:56 }}>
           <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.15em', color:'#7c6af7', textTransform:'uppercase', marginBottom:16 }}>One Agent, Every Kind of Video</div>
           <h2 style={{ fontSize:'clamp(32px,5vw,52px)', fontWeight:900, letterSpacing:'-2px', fontFamily:"'Bricolage Grotesque', sans-serif", lineHeight:1.1 }}>Just describe it.<br />The Agent builds it.</h2>
-          <p style={{ fontSize:16, color:'#6b7280', marginTop:16, maxWidth:520, margin:'16px auto 0' }}>Chat with the Agent and it silently picks the right AI engine for what you're making — no menus, no guesswork.</p>
+          <p style={{ fontSize:16, color:'#6b7280', maxWidth:540, margin:'16px auto 0' }}>No menus, no guesswork — the Agent picks the right AI engine for what you're making and tells you the price before it starts.</p>
         </div>
 
-        <div className="ev-models-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16 }}>
-          {MODELS.map((m,i) => (
-            <div key={m.key} className="ev-reveal ev-model-card" data-delay={i*80}
-              onClick={() => onGetStarted?.()}
-              onMouseEnter={() => setHovModel(m.key)}
-              onMouseLeave={() => setHovModel(null)}
-              style={{ borderRadius:20, border:`1px solid ${hovModel===m.key?m.color+'44':'rgba(255,255,255,0.06)'}`, background: hovModel===m.key?`linear-gradient(160deg,${m.color}0d,rgba(5,5,8,0.95))`:'rgba(255,255,255,0.02)', padding:'28px 24px', position:'relative', overflow:'hidden', boxShadow:hovModel===m.key?`0 20px 48px ${m.color}18`:'none' }}>
-              <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:`radial-gradient(circle,${m.color}18,transparent 70%)`, pointerEvents:'none' }} />
-              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
-                <div style={{ width:44, height:44, borderRadius:12, background:`linear-gradient(135deg,${m.color}cc,${m.color}66)`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', boxShadow:`0 4px 16px ${m.color}40` }}><m.icon size={20} strokeWidth={2} /></div>
-                <div>
-                  <div style={{ fontSize:9, fontWeight:700, color:m.color, letterSpacing:'0.12em', opacity:0.8 }}>{m.tag}</div>
-                  <div style={{ fontSize:17, fontWeight:800, color:'#fff', fontFamily:"'Bricolage Grotesque', sans-serif", letterSpacing:'-0.3px' }}>{m.name}</div>
-                </div>
-              </div>
-              <p style={{ fontSize:13, color:'#6b7280', lineHeight:1.7, marginBottom:20 }}>{m.desc}</p>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                {m.tags.map(t => (
-                  <span key={t} style={{ padding:'3px 10px', borderRadius:999, fontSize:10, fontWeight:600, background:`${m.color}12`, border:`1px solid ${m.color}28`, color:m.color }}>{t}</span>
-                ))}
-              </div>
-              <div style={{ marginTop:20, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontSize:12, fontWeight:700, color:m.color, opacity: hovModel===m.key?1:0, transition:'opacity 0.2s' }}>Try this →</span>
-                <div style={{ width:32, height:32, borderRadius:10, background:`${m.color}18`, border:`1px solid ${m.color}28`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>→</div>
-              </div>
+        <div className="ev-bento">
+          <button type="button" className="ev-reveal ev-bento-card" data-delay={0} onClick={() => onGetStarted?.()} style={{ '--c':'#7c6af7', gridColumn:'span 7' }}>
+            <div className="ev-bento-ic"><MessageSquare size={22} /></div>
+            <h3>Chat. Review. Done.</h3>
+            <p>Describe an idea, paste a script or upload a photo. The Agent plans every scene, generates the visuals and assembles the finished video — all inside one conversation.</p>
+            <div className="ev-chat-mock">
+              <div className="ev-bubble u">Make a 20-second ad for my coffee brand, vertical, with a friendly voiceover</div>
+              <div className="ev-bubble a">Got it ☕ Seedance 2.5, 9:16, with narration — about 190 credits. Shall I start?</div>
             </div>
-          ))}
+          </button>
 
-          {/* CTA Card */}
-          <div className="ev-reveal ev-model-card" data-delay={400}
-            onClick={() => onGetStarted?.()}
-            style={{ borderRadius:20, border:'1px dashed rgba(124,106,247,0.3)', background:'rgba(124,106,247,0.04)', padding:'28px 24px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', gap:16 }}>
-            <div style={{ width:56, height:56, borderRadius:16, border:'2px dashed rgba(124,106,247,0.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24 }}>+</div>
-            <div>
-              <h3 style={{ fontSize:16, fontWeight:800, color:'#fff', marginBottom:6, fontFamily:"'Bricolage Grotesque', sans-serif" }}>More coming soon</h3>
-              <p style={{ fontSize:12, color:'#4b5563', lineHeight:1.6 }}>We're building new AI models and features every week. Stay tuned.</p>
-            </div>
+          <button type="button" className="ev-reveal ev-bento-card" data-delay={80} onClick={() => onGetStarted?.()} style={{ '--c':'#06b6d4', gridColumn:'span 5' }}>
+            <span className="ev-badge-free"><Gift size={12} /> First minute free</span>
+            <div className="ev-bento-ic"><Clapperboard size={22} /></div>
+            <h3>Documentary Studio</h3>
+            <p>Turn a script or topic into a full documentary with real footage, narration, animated captions and motion graphics — horizontal or vertical, with a ready YouTube package.</p>
+          </button>
+
+          <button type="button" className="ev-reveal ev-bento-card" data-delay={0} onClick={() => onGetStarted?.()} style={{ '--c':'#e11d48', gridColumn:'span 4' }}>
+            <div className="ev-bento-ic"><Drama size={22} /></div>
+            <h3>Character Studio</h3>
+            <p>Save a character once — or create one with AI — and use it in any video. Swap yourself into trending templates and keep the same moves and sound.</p>
+            <div className="ev-faces" aria-hidden="true">{['#e11d48','#f59e0b','#7c6af7','#06b6d4'].map(c => <i key={c} style={{ background:`linear-gradient(135deg,${c},${c}77)` }} />)}</div>
+          </button>
+
+          <button type="button" className="ev-reveal ev-bento-card" data-delay={80} onClick={() => onGetStarted?.()} style={{ '--c':'#10b981', gridColumn:'span 4' }}>
+            <div className="ev-bento-ic"><ShoppingBag size={22} /></div>
+            <h3>Product & brand ads</h3>
+            <p>One product photo in, a scroll-stopping ad out — voiceover, captions, transitions and a product link banner included.</p>
+          </button>
+
+          <button type="button" className="ev-reveal ev-bento-card" data-delay={160} onClick={() => onGetStarted?.()} style={{ '--c':'#60a5fa', gridColumn:'span 4' }}>
+            <div className="ev-bento-ic"><Scissors size={22} /></div>
+            <h3>Smart montage</h3>
+            <p>Upload up to 20 clips and a voiceover — cuts that follow your voice, transitions, sound effects and captions, even in the style of a reference you give.</p>
+          </button>
+
+          <button type="button" className="ev-reveal ev-bento-card" data-delay={0} onClick={() => onNavigate?.('channels')} style={{ '--c':'#f59e0b', gridColumn:'span 6' }}>
+            <div className="ev-bento-ic"><Zap size={22} /></div>
+            <h3>Run a YouTube channel on autopilot</h3>
+            <p>A trend-aware idea every day, a finished video, and a review email with title, description and thumbnail ready to upload — you stay in control of what goes public.</p>
+          </button>
+
+          <button type="button" className="ev-reveal ev-bento-card" data-delay={80} onClick={() => onNavigate?.('api-docs')} style={{ '--c':'#a855f7', gridColumn:'span 6' }}>
+            <div className="ev-bento-ic"><Plug size={22} /></div>
+            <h3>Works inside Claude & ChatGPT</h3>
+            <p>Connect Erivion as an MCP connector and generate images, videos and character swaps from your own AI assistant — with your own credits.</p>
+          </button>
+        </div>
+      </section>
+
+      {/* ── FREE DOCUMENTARY TRIAL ─────────────────────────────────────────── */}
+      <section style={{ padding:'20px 24px 90px', maxWidth:1200, margin:'0 auto' }}>
+        <div className="ev-reveal ev-trial">
+          <div>
+            <span className="ev-badge-free"><Gift size={12} /> Try it free</span>
+            <h2 style={{ fontSize:'clamp(28px,4vw,42px)', fontWeight:900, letterSpacing:'-1.5px', fontFamily:"'Bricolage Grotesque', sans-serif", lineHeight:1.1, margin:'0 0 14px' }}>Your first documentary minute is on us.</h2>
+            <p style={{ fontSize:15, color:'#9ca3af', lineHeight:1.75, margin:'0 0 26px', maxWidth:460 }}>Record a one-minute voiceover, upload it to the Agent or the Documentary Studio, and Erivion builds the film around your voice — real footage, captions and motion graphics. The free minute carries a small watermark.</p>
+            <button onClick={() => onGetStarted?.()} className="ev-cta-btn" style={{ padding:'14px 30px', borderRadius:14, border:'none', background:'linear-gradient(135deg,#34d399,#059669)', color:'#052e1d', fontWeight:800, fontSize:15, cursor:'pointer', fontFamily:'inherit', boxShadow:'0 8px 28px rgba(52,211,153,0.35)' }}>Try the free minute →</button>
+          </div>
+          <div style={{ display:'grid', gap:12 }}>
+            {[['Record','Speak for about a minute — your story, a lesson, a script.'],['Upload','Drop the audio into the Agent chat or the Documentary Studio.'],['Get your film','Footage, captions and music are added around your voice.']].map(([t,d],i) => (
+              <div key={t} className="ev-trial-step"><b>{i+1}</b><div><div style={{ fontWeight:800, fontSize:15, marginBottom:2 }}>{t}</div><div style={{ fontSize:13, color:'#9ca3af', lineHeight:1.6 }}>{d}</div></div></div>
+            ))}
           </div>
         </div>
       </section>
@@ -736,6 +872,8 @@ export default function LandingPage({ onGetStarted, onNavigate, onOpenBlog }) {
           </div>
         </div>
       </section>
+
+      {lightbox && <VideoLightbox v={lightbox} onClose={() => setLightbox(null)} onGetStarted={onGetStarted} />}
 
       {/* ── FOOTER ─────────────────────────────────────────────────────────── */}
       <AppFooter onNavigate={(p) => { if(p==='support'){setSubPage('support');return;} if(p==='terms'){setSubPage('terms');return;} if(p==='privacy'){setSubPage('privacy');return;} onNavigate?.(p); }} onGetStarted={onGetStarted} />
