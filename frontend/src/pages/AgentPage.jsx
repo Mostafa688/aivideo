@@ -1084,6 +1084,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       const toSave = messages.map(m => {
         // ✅ الصور المرفوعة (base64) تقيلة ومش محتاجة تتخزن — النص والميديا المتولدة كفاية
         const { imagePreview, imagePreviews, ...rest } = m;
+        if (rest.videoItem) rest.videoItem = { name: rest.videoItem.name, durationSec: rest.videoItem.durationSec }; // رابط المعاينة مؤقت (blob) — بنخزّن الاسم والمدة بس
         if (rest.job && ['render', 'imageBatch', 'videoModel'].includes(rest.type)) {
           const nonTerminal = rest.type === 'render'
             ? ['scenes', 'rendering'].includes(rest.job.status)
@@ -1449,8 +1450,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         return;
       }
     }
+    const newVideoThisMsg = !!uploadedVideoFile && !videoSentOnce && !videoRegistered; // الفيديو بيتبعت جوه الرسالة دي لأول مرة
     const attachmentLabel = voiceFile
       ? (lang === 'ar' ? 'رسالة صوتية' : 'Voice message')
+      : (imageFiles.length && newVideoThisMsg)
+      ? (lang === 'ar' ? 'فيديو وصورة مرفوعين' : 'Uploaded video and photo')
       : imageFiles.length
       ? (lang === 'ar' ? (imageFiles.length > 1 ? 'صور مرفوعة' : 'صورة مرفوعة') : (imageFiles.length > 1 ? 'Uploaded photos' : 'Uploaded photo'))
       : uploadedVideoFile
@@ -1459,7 +1463,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     // ✅ NEW: uid ثابت للرسالة دي — لازم عشان نقدر نلحقها بعدين برابط R2 الدائم لأي صورة
     // اترفعت فيها (uploadedPhotoUrls من رد السيرفر)، حتى لو المستخدم بعت رسايل تانية قبل ما الرد يرجع
     const msgUid = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid, characterChip: forcedCharacter ? { id: forcedCharacter.id, label: forcedCharacter.label, imageUrl: forcedCharacter.imageUrl } : undefined, montageItems: readyMontage.length ? readyMontage.map(x => ({ name: x.name, kind: x.kind || (/^style_/.test(x.name || '') ? 'image' : 'video'), durationSec: x.durationSec })) : undefined };
+    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid, videoItem: newVideoThisMsg ? { name: uploadedVideoFile.name || 'video.mp4', durationSec: uploadedVideoDurationSec, previewUrl: URL.createObjectURL(uploadedVideoFile) } : undefined, characterChip: forcedCharacter ? { id: forcedCharacter.id, label: forcedCharacter.label, imageUrl: forcedCharacter.imageUrl } : undefined, montageItems: readyMontage.length ? readyMontage.map(x => ({ name: x.name, kind: x.kind || (/^style_/.test(x.name || '') ? 'image' : 'video'), durationSec: x.durationSec })) : undefined };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
     const currentVoice = voiceFile, currentImages = styleRegistered ? [] : imageFiles; // صور الستايل اتسجّلت كمراجع مونتاج — مش بتتبعت كصور عادية كمان
@@ -2877,6 +2881,16 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     {m.imagePreviews?.length > 0 && (
                       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                         {m.imagePreviews.map((src, idx) => <img key={idx} src={src} alt="upload" style={{ maxWidth: 120, borderRadius: 10, display: 'block' }} />)}
+                      </div>
+                    )}
+                    {m.videoItem && (
+                      <div style={{ marginBottom: 8 }}>
+                        {m.videoItem.previewUrl
+                          ? <video src={m.videoItem.previewUrl} controls muted playsInline preload="metadata" style={{ display: 'block', maxWidth: 220, maxHeight: 280, borderRadius: 10, background: '#000' }} />
+                          : null}
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.14)', fontSize: 12, marginTop: m.videoItem.previewUrl ? 6 : 0 }}>
+                          <Film size={12} strokeWidth={2} /> {String(m.videoItem.name || '').slice(0, 24)}{m.videoItem.durationSec ? ` · ${Math.floor(m.videoItem.durationSec / 60)}:${String(Math.round(m.videoItem.durationSec % 60)).padStart(2, '0')}` : ''}
+                        </div>
                       </div>
                     )}
                     {m.characterChip && (
