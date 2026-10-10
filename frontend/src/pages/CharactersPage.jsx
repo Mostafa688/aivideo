@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  Drama, Sparkles, Flame, Plus, Trash2, Loader2, Users, X, Pencil, Check, Play, Wand2, Download, Coins, UserRound, PawPrint, Smile, Bot, ImagePlus, Clapperboard, RefreshCw, Film, AlertCircle,
+  Drama, Sparkles, Flame, Plus, Trash2, Loader2, Users, X, Pencil, Check, Play, Wand2, Download, Coins, UserRound, PawPrint, Smile, Bot, ImagePlus, Clapperboard, RefreshCw, Film, AlertCircle, Volume2, VolumeX, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { PageShell, Stat, Pill, Skeletons, Empty } from '../components/PageKit.jsx';
 import { confirmDialog } from '../components/confirmDialog.jsx';
@@ -18,7 +18,7 @@ const T = {
     styles: { realistic: 'واقعي', cartoon3d: 'كرتون 3D', anime: 'أنمي', illustration: 'رسم' }, aiCount: 'عدد الخيارات', aiCost: 'التكلفة',
     aiGenerate: 'ولّد الشخصية', aiGenerating: 'بنرسم شخصيتك… ثواني', aiPick: 'اختار الأقرب ليك', aiAgain: 'ولّد تاني', aiHint: 'اوصف الوش والشعر والسن والبشرة واللبس. بنولّد الشخصية بجسم كامل كمرجع، وهتظهر لك بالوش بس. متكتبش أسماء مشاهير أو أشخاص حقيقيين. لو التوليد فشل الكريديت بيرجع.', aiFail: 'فشل التوليد',
     drop: 'اسحب الصورة هنا أو اضغط للاختيار', dropTip: 'أفضل نتيجة: وجه واضح وفي الاتجاه للكاميرا، إضاءة كويسة، شخص واحد في الصورة.',
-    save: 'احفظ الشخصية', saving: 'جاري الحفظ...', cancel: 'إلغاء', remove: 'حذف', rename: 'تعديل الاسم', confirmRm: 'تحذف الشخصية دي؟', confirmRmSub: 'الشخصية هتتمسح من شخصياتك، ومش هتقدر ترجعها. الفيديوهات اللي اتعملت بيها مش هتتأثر.',
+    save: 'احفظ الشخصية', saving: 'جاري الحفظ...', cancel: 'إلغاء', remove: 'حذف', rename: 'تعديل الاسم', soundOn: 'شغّل الصوت', soundOff: 'اكتم الصوت', scrollPrev: 'السابق', scrollNext: 'التالي', confirmRm: 'تحذف الشخصية دي؟', confirmRmSub: 'الشخصية هتتمسح من شخصياتك، ومش هتقدر ترجعها. الفيديوهات اللي اتعملت بيها مش هتتأثر.',
     none: 'لسه معندكش شخصيات. أضف أول شخصية أو اختار واحدة جاهزة.', appearance: 'المظهر',
     useVideo: 'استخدمها في فيديو', useTpl: 'استخدمها في قالب', fromPreset: 'احفظها عندي', saved: 'اتحفظت في شخصياتك',
     all: 'الكل', cats: { person: 'أشخاص', influencer: 'مؤثرين', cartoon: 'كرتون', animal: 'حيوانات', mascot: 'ماسكوت', other: 'أخرى', dance: 'رقص', comedy: 'كوميدي', cinematic: 'سينمائي', talking: 'كلام', product: 'منتجات', viral: 'ترند' },
@@ -38,7 +38,7 @@ const T = {
     styles: { realistic: 'Realistic', cartoon3d: '3D cartoon', anime: 'Anime', illustration: 'Illustration' }, aiCount: 'Options', aiCost: 'Cost',
     aiGenerate: 'Generate character', aiGenerating: 'Drawing your character… a few seconds', aiPick: 'Pick the one you like', aiAgain: 'Generate again', aiHint: 'Describe the face, hair, age, skin and clothes. The character is generated full-body as the reference and shown to you as the face only. Do not name celebrities or real people. If generation fails, your credits are refunded.', aiFail: 'Generation failed',
     drop: 'Drop an image here or click to choose', dropTip: 'Best results: a clear face looking at the camera, good light, one person in the picture.',
-    save: 'Save character', saving: 'Saving...', cancel: 'Cancel', remove: 'Delete', rename: 'Rename', confirmRm: 'Delete this character?', confirmRmSub: 'It will be removed from your characters and cannot be restored. Videos already made with it are not affected.',
+    save: 'Save character', saving: 'Saving...', cancel: 'Cancel', remove: 'Delete', rename: 'Rename', soundOn: 'Turn sound on', soundOff: 'Mute', scrollPrev: 'Previous', scrollNext: 'Next', confirmRm: 'Delete this character?', confirmRmSub: 'It will be removed from your characters and cannot be restored. Videos already made with it are not affected.',
     none: "You don't have characters yet. Add your first one or pick a ready-made character.", appearance: 'Appearance',
     useVideo: 'Use in a video', useTpl: 'Use in a template', fromPreset: 'Save to mine', saved: 'Saved to your characters',
     all: 'All', cats: { person: 'People', influencer: 'Influencers', cartoon: 'Cartoon', animal: 'Animals', mascot: 'Mascots', other: 'Other', dance: 'Dance', comedy: 'Comedy', cinematic: 'Cinematic', talking: 'Talking', product: 'Product', viral: 'Viral' },
@@ -150,6 +150,15 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
         .cs-drop:hover,.cs-drop.over{border-color:rgba(236,72,153,.7)!important;background:rgba(236,72,153,.07)!important}
         .cs-input{width:100%;box-sizing:border-box;padding:12px 14px;border-radius:12px;border:1px solid var(--border2);background:rgba(255,255,255,.04);color:var(--text);font:inherit;font-size:14px;outline:none}
         .cs-input:focus{border-color:rgba(236,72,153,.7)}
+        .cs-strip-wrap{position:relative}
+        .cs-strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:none;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+        .cs-strip::-webkit-scrollbar{display:none}
+        .cs-arrow{position:absolute;top:50%;margin-top:-22px;z-index:2;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:#fff;background:rgba(20,20,32,.92);border:1px solid var(--border3,rgba(255,255,255,.2));box-shadow:0 6px 18px rgba(0,0,0,.5);transition:all .15s}
+        .cs-arrow:hover{background:#ec4899;border-color:#ec4899}
+        .cs-arrow[data-side=start]{inset-inline-start:-6px}
+        .cs-arrow[data-side=end]{inset-inline-end:-6px}
+        .cs-sound{position:absolute;bottom:14px;inset-inline-end:14px;display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:999px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#fff;background:rgba(0,0,0,.62);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.22);transition:background .15s}
+        .cs-sound:hover{background:rgba(236,72,153,.85)}
         @media (max-width:760px){.cs-modal{grid-template-columns:1fr}.cs-modal video.pv{max-height:260px}}
       `}</style>
 
@@ -469,6 +478,32 @@ function AddCharacterModal({ t, isAr, onClose, onDone }) {
 }
 
 // ═════════ تبديل الشخصية في قالب ترند ═════════
+// شريط أفقي فيه أسهم يمين/شمال (بتظهر بس لو في محتوى مخفي) + دعم عجلة الماوس
+function ScrollStrip({ t, isAr, children }) {
+  const ref = useRef(null);
+  const [can, setCan] = useState({ start: false, end: false });
+  const update = () => {
+    const el = ref.current; if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const pos = Math.abs(el.scrollLeft); // في RTL قيمة scrollLeft سالبة
+    setCan({ start: pos > 4, end: pos < max - 4 });
+  };
+  useEffect(() => { update(); const el = ref.current; if (!el) return undefined; const ro = new ResizeObserver(update); ro.observe(el); return () => ro.disconnect(); }, [children]);
+  const go = (dir) => { // dir: +1 = ناحية آخر القايمة
+    const el = ref.current; if (!el) return;
+    el.scrollBy({ left: dir * (isAr ? -1 : 1) * Math.max(160, el.clientWidth * 0.75), behavior: 'smooth' });
+  };
+  const onWheel = (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && ref.current) { ref.current.scrollLeft += e.deltaY; } };
+  const Prev = isAr ? ChevronRight : ChevronLeft, Next = isAr ? ChevronLeft : ChevronRight;
+  return (
+    <div className="cs-strip-wrap">
+      {can.start && <button type="button" className="cs-arrow" data-side="start" onClick={() => go(-1)} aria-label={t.scrollPrev}><Prev size={17} /></button>}
+      <div className="cs-strip" ref={ref} onScroll={update} onWheel={onWheel}>{children}</div>
+      {can.end && <button type="button" className="cs-arrow" data-side="end" onClick={() => go(1)} aria-label={t.scrollNext}><Next size={17} /></button>}
+    </div>
+  );
+}
+
 function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacterAdded, onNavigate }) {
   const [sel, setSel] = useState(null); // { imageUrl, label }
   const [tier, setTier] = useState(tpl.tiers?.[0] || '720p');
@@ -477,6 +512,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
   const [result, setResult] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [sound, setSound] = useState(false); // المتصفح بيمنع التشغيل التلقائي بصوت، فبنخلي العميل يفتح الصوت بنفسه
   const [balance, setBalance] = useState(null);
   const [needsTopup, setNeedsTopup] = useState(false);
   const fileRef = useRef(null);
@@ -539,11 +575,16 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
     <div className="cs-modal-bg" onClick={phase === 'working' ? undefined : onClose}>
       <div className="cs-modal" onClick={e => e.stopPropagation()}>
         <div style={{ background: '#000', position: 'relative', minHeight: 240 }}>
-          <video className="pv" src={result?.url || tpl.previewUrl || undefined} poster={tpl.coverUrl || undefined} controls={!!result} autoPlay={!result} muted={!result} loop={!result} playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <video className="pv" src={result?.url || tpl.previewUrl || undefined} poster={tpl.coverUrl || undefined} controls={!!result} autoPlay={!result} muted={!result && !sound} loop={!result} playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          {!result && tpl.previewUrl && (
+            <button type="button" className="cs-sound" onClick={() => setSound(v => !v)} aria-pressed={sound}>
+              {sound ? <VolumeX size={16} /> : <Volume2 size={16} />} {sound ? t.soundOff : t.soundOn}
+            </button>
+          )}
         </div>
-        <div style={{ padding: 22, overflowY: 'auto', display: 'grid', gap: 14, alignContent: 'start' }}>
+        <div style={{ padding: 22, overflowY: 'auto', overflowX: 'hidden', minWidth: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 14, alignContent: 'start' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12, color: '#ec4899', fontWeight: 700, marginBottom: 4 }}>{t.modalTitle}</div>
               <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, lineHeight: 1.4 }}>{tpl.title}</h2>
             </div>
@@ -554,14 +595,14 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
             <>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t.step1}</div>
-                <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
+                <ScrollStrip t={t} isAr={isAr}>
                   <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { uploadFace(e.target.files?.[0]); e.target.value = ''; }} />
                   <button type="button" className="cs-pick" onClick={() => fileRef.current?.click()} disabled={uploading} style={{ border: '1.5px dashed rgba(255,255,255,.25)', display: 'grid', placeItems: 'center', width: 78, height: 98, color: 'var(--text2)', fontSize: 11, textAlign: 'center', padding: 6 }}>
                     {uploading ? <Loader2 size={18} className="spinning" /> : <span style={{ display: 'grid', gap: 4, justifyItems: 'center' }}><ImagePlus size={18} />{t.uploadFace}</span>}
                   </button>
                   {mine.map(c => <Pick key={`m${c.id}`} img={c.image_url} gen={c.generation_url} label={c.label} />)}
                   {presets.map(p => <Pick key={`p${p.id}`} img={p.imageUrl} presetId={p.id} label={p.name} />)}
-                </div>
+                </ScrollStrip>
                 {mine.length > 0 && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{t.mineH} · {t.presetH}</div>}
               </div>
               {tpl.tiers?.length > 1 && (
