@@ -23,6 +23,12 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
 export const DEFAULT_TEMPLATE_ENGINE = 'prunaai_p_video_animate';
+// محركات القوالب: نقل الأداء (P-Video Animate: حركة وكلام الفيديو الأصلي بالظبط، تبديل شخصية واحدة، لحد 60ث) أو Seedance 2.5
+// (بيعيد بناء الفيديو بالذكاء الاصطناعي من فيديو مرجعي + صورة الشخصية + برومبت — بيقدر يغيّر الشكل زي لون الشعر والعضلات، لحد 30ث وأغلى)
+export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
+const isTemplateEngine = (e) => e === REFERENCE_TEMPLATE_ENGINE || !!NEW_VIDEO_MODELS[e]?.performanceTransfer;
+const engineMaxSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? (NEW_VIDEO_MODELS[e]?.refCaps?.videoMaxTotalSec || 30) : (getMaxClipSeconds(e) || 60));
+const billSecFor = (engine, sec) => (engine === REFERENCE_TEMPLATE_ENGINE ? Math.min(30, Math.max(4, Math.ceil(sec))) : Math.max(1, Math.ceil(sec)));
 export const PRESET_CATEGORIES = ['person', 'influencer', 'cartoon', 'animal', 'mascot', 'other'];
 export const TEMPLATE_CATEGORIES = ['dance', 'comedy', 'cinematic', 'talking', 'product', 'viral', 'other'];
 
@@ -35,6 +41,8 @@ export async function initCharacterStudioTables() {
     category TEXT NOT NULL DEFAULT 'viral', cover_url TEXT, preview_url TEXT, source_video_url TEXT NOT NULL, duration_sec NUMERIC NOT NULL DEFAULT 5,
     engine TEXT NOT NULL DEFAULT 'prunaai_p_video_animate', is_featured INTEGER DEFAULT 0, is_published INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0,
     uses_count INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`);
+  await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS prompt TEXT`);
+  await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS aspect TEXT`);
   await pool.query(`ALTER TABLE character_presets ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS description TEXT`);
@@ -92,10 +100,10 @@ export async function splitGeneratedCharacter(fullUrl, { locate } = {}) {
 }
 
 const tiersFor = (engine) => { try { const t = getQualityTiers(engine); return Array.isArray(t) && t.length ? t : ['720p']; } catch { return ['720p']; } };
-const costsFor = (engine, sec) => Object.fromEntries(tiersFor(engine).map(t => { try { return [t, getPerSecondCreditCost(engine, Math.max(1, Math.ceil(sec)), t)]; } catch { return [t, null]; } }));
+const costsFor = (engine, sec) => Object.fromEntries(tiersFor(engine).map(t => { try { return [t, getPerSecondCreditCost(engine, billSecFor(engine, sec), t, { videoIn: engine === REFERENCE_TEMPLATE_ENGINE })]; } catch { return [t, null]; } }));
 const pub = (r, lang) => ({
   id: r.id, title: lang === 'en' ? r.title_en : r.title_ar, description: (lang === 'en' ? r.description_en : r.description_ar) || '',
-  category: r.category, coverUrl: r.cover_url, previewUrl: r.preview_url || null, durationSec: Number(r.duration_sec), engine: r.engine,
+  category: r.category, coverUrl: r.cover_url, previewUrl: r.preview_url || null, durationSec: Number(r.duration_sec), engine: r.engine, mode: r.engine === REFERENCE_TEMPLATE_ENGINE ? 'reference' : 'transfer',
   tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), featured: !!r.is_featured, uses: r.uses_count || 0,
 });
 
@@ -133,7 +141,7 @@ router.get('/templates/:id/source', authMiddleware, async (req, res) => {
     const r = rows[0];
     if (!r) return res.status(404).json({ error: 'not_found' });
     pool.query(`UPDATE trend_templates SET uses_count = uses_count + 1 WHERE id = $1`, [r.id]).catch(() => {});
-    res.json({ sourceVideoUrl: r.source_video_url, model: r.engine, durationSec: Number(r.duration_sec), tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)) });
+    res.json({ sourceVideoUrl: r.source_video_url, model: r.engine, mode: r.engine === REFERENCE_TEMPLATE_ENGINE ? 'reference' : 'transfer', prompt: r.prompt || '', aspect: r.aspect || '9:16', durationSec: Number(r.duration_sec), tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -158,10 +166,12 @@ router.post('/admin/upload', adminAuth, upload.single('file'), async (req, res) 
     if (!durationSec) return res.status(400).json({ error: 'Could not read this video — use an MP4 file' });
     const maxSec = getMaxClipSeconds(DEFAULT_TEMPLATE_ENGINE) || 60;
     if (durationSec > maxSec + 0.5) return res.status(400).json({ error: `Video is ${Math.round(durationSec)}s — the limit for the template engine is ${maxSec}s` });
+    let aspect = null;
+    try { const dims = await new Promise((resolve) => execFile('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', tmp], (e, out) => resolve(e ? '' : String(out).trim()))); const [w, h] = dims.split('x').map(Number); if (w && h) aspect = w >= h ? '16:9' : '9:16'; } catch { /* اختياري */ }
     const url = await uploadBufferToR2(f.buffer, `character-studio/vid_${stamp}.mp4`, 'video/mp4');
     let coverUrl = null;
     try { const jpg = tmp.replace('in.mp4', 'cover.jpg'); await ffmpegFrame(tmp, jpg, Math.min(1, durationSec / 3)); coverUrl = await uploadBufferToR2(fs.readFileSync(jpg), `character-studio/cover_${stamp}.jpg`, 'image/jpeg'); } catch (e) { console.warn('[CharacterStudio] cover failed:', e.message); }
-    res.json({ url, durationSec: Math.round(durationSec * 10) / 10, coverUrl });
+    res.json({ url, durationSec: Math.round(durationSec * 10) / 10, coverUrl, aspect });
   } catch (e) { console.error('[CharacterStudio] upload failed:', e.message); res.status(500).json({ error: e.message }); }
   finally { if (tmp) fs.rm(path.dirname(tmp), { recursive: true, force: true }, () => {}); }
 });
@@ -196,7 +206,7 @@ router.delete('/admin/presets/:id', adminAuth, async (req, res) => { try { await
 router.get('/admin/templates', adminAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`SELECT * FROM trend_templates ORDER BY is_featured DESC, sort_order ASC, id DESC`);
-    res.json({ templates: rows.map(r => ({ ...r, costs: costsFor(r.engine, Number(r.duration_sec)) })), categories: TEMPLATE_CATEGORIES, engines: Object.keys(NEW_VIDEO_MODELS).filter(k => NEW_VIDEO_MODELS[k].performanceTransfer) });
+    res.json({ templates: rows.map(r => ({ ...r, costs: costsFor(r.engine, Number(r.duration_sec)) })), categories: TEMPLATE_CATEGORIES, engines: [...Object.keys(NEW_VIDEO_MODELS).filter(k => NEW_VIDEO_MODELS[k].performanceTransfer), REFERENCE_TEMPLATE_ENGINE] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.post('/admin/templates', adminAuth, async (req, res) => {
@@ -204,18 +214,20 @@ router.post('/admin/templates', adminAuth, async (req, res) => {
     const b = req.body || {};
     if (!text(b.title_ar) || !text(b.title_en)) return res.status(400).json({ error: 'title_ar and title_en are required' });
     if (!httpUrl(b.source_video_url)) return res.status(400).json({ error: 'source_video_url is required (upload the video first)' });
-    const engine = NEW_VIDEO_MODELS[b.engine]?.performanceTransfer ? b.engine : DEFAULT_TEMPLATE_ENGINE;
-    const dur = Math.max(1, Math.min(getMaxClipSeconds(engine) || 60, Number(b.duration_sec) || 5));
-    const { rows } = await pool.query(`INSERT INTO trend_templates (title_ar,title_en,description_ar,description_en,category,cover_url,preview_url,source_video_url,duration_sec,engine,is_featured,is_published,sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [text(b.title_ar, 100), text(b.title_en, 100), text(b.description_ar, 500) || null, text(b.description_en, 500) || null, text(b.category, 30) || 'viral', httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), dur, engine, flag(b.is_featured), b.is_published === false || b.is_published === 0 ? 0 : 1, parseInt(b.sort_order, 10) || 0]);
+    const engine = isTemplateEngine(b.engine) ? b.engine : DEFAULT_TEMPLATE_ENGINE;
+    const dur = Math.max(1, Math.min(engineMaxSec(engine), Number(b.duration_sec) || 5));
+    const aspect = b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null;
+    if (Number(b.duration_sec) > engineMaxSec(engine) + 0.5) return res.status(400).json({ error: `This engine supports videos up to ${engineMaxSec(engine)} seconds — the source video is ${Math.round(Number(b.duration_sec))}s` });
+    const { rows } = await pool.query(`INSERT INTO trend_templates (title_ar,title_en,description_ar,description_en,category,cover_url,preview_url,source_video_url,duration_sec,engine,is_featured,is_published,sort_order,prompt,aspect) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [text(b.title_ar, 100), text(b.title_en, 100), text(b.description_ar, 500) || null, text(b.description_en, 500) || null, text(b.category, 30) || 'viral', httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), dur, engine, flag(b.is_featured), b.is_published === false || b.is_published === 0 ? 0 : 1, parseInt(b.sort_order, 10) || 0, text(b.prompt, 800) || null, aspect]);
     res.json({ template: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.put('/admin/templates/:id', adminAuth, async (req, res) => {
   try {
     const b = req.body || {};
-    const { rows } = await pool.query(`UPDATE trend_templates SET title_ar=COALESCE($2,title_ar), title_en=COALESCE($3,title_en), description_ar=COALESCE($4,description_ar), description_en=COALESCE($5,description_en), category=COALESCE($6,category), cover_url=COALESCE($7,cover_url), preview_url=COALESCE($8,preview_url), source_video_url=COALESCE($9,source_video_url), duration_sec=COALESCE($10,duration_sec), is_featured=COALESCE($11,is_featured), is_published=COALESCE($12,is_published), sort_order=COALESCE($13,sort_order) WHERE id=$1 RETURNING *`,
-      [req.params.id, b.title_ar !== undefined ? text(b.title_ar, 100) : null, b.title_en !== undefined ? text(b.title_en, 100) : null, b.description_ar !== undefined ? text(b.description_ar, 500) : null, b.description_en !== undefined ? text(b.description_en, 500) : null, b.category ? text(b.category, 30) : null, httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), b.duration_sec ? Math.max(1, Number(b.duration_sec)) : null, b.is_featured === undefined ? null : flag(b.is_featured), b.is_published === undefined ? null : flag(b.is_published), b.sort_order === undefined ? null : parseInt(b.sort_order, 10) || 0]);
+    const { rows } = await pool.query(`UPDATE trend_templates SET title_ar=COALESCE($2,title_ar), title_en=COALESCE($3,title_en), description_ar=COALESCE($4,description_ar), description_en=COALESCE($5,description_en), category=COALESCE($6,category), cover_url=COALESCE($7,cover_url), preview_url=COALESCE($8,preview_url), source_video_url=COALESCE($9,source_video_url), duration_sec=COALESCE($10,duration_sec), is_featured=COALESCE($11,is_featured), is_published=COALESCE($12,is_published), sort_order=COALESCE($13,sort_order), engine=COALESCE($14,engine), prompt=COALESCE($15,prompt), aspect=COALESCE($16,aspect) WHERE id=$1 RETURNING *`,
+      [req.params.id, b.title_ar !== undefined ? text(b.title_ar, 100) : null, b.title_en !== undefined ? text(b.title_en, 100) : null, b.description_ar !== undefined ? text(b.description_ar, 500) : null, b.description_en !== undefined ? text(b.description_en, 500) : null, b.category ? text(b.category, 30) : null, httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), b.duration_sec ? Math.max(1, Number(b.duration_sec)) : null, b.is_featured === undefined ? null : flag(b.is_featured), b.is_published === undefined ? null : flag(b.is_published), b.sort_order === undefined ? null : parseInt(b.sort_order, 10) || 0, isTemplateEngine(b.engine) ? b.engine : null, b.prompt !== undefined ? text(b.prompt, 800) : null, b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null]);
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ template: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
