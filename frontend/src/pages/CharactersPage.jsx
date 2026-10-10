@@ -534,7 +534,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
       const refBody = {
         model: src.model, tier, aspectRatio: src.aspect || '9:16', durationSec: Math.min(30, Math.max(4, Math.ceil(src.durationSec || 5))),
         referenceImageUrls: [genImage], referenceVideoUrls: [src.sourceVideoUrl],
-        prompt: `Recreate [Video1] exactly — same camera, timing, body movements, facial expressions and sound energy — but replace the main person with the character in [Image1], keeping the character's face and look. ${src.prompt || ''}`.trim(),
+        prompt: `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and sound energy, but the main person must be completely replaced by the character in [Image1]: use that character's face, hairstyle, skin tone and clothing, and do not keep the original person's appearance anywhere in the video. ${src.prompt || ''}`.trim(),
       };
       const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(isRef ? refBody : { model: src.model, imageUrl: genImage, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: src.prompt || '' }) });
       const g = await gres.json();
@@ -560,7 +560,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
     <div className="cs-modal-bg" onClick={phase === 'working' ? undefined : onClose}>
       <div className="cs-modal" onClick={e => e.stopPropagation()}>
         <div style={{ background: '#000', position: 'relative', minHeight: 240 }}>
-          <video className="pv" src={result?.url || tpl.previewUrl || undefined} poster={tpl.coverUrl || undefined} controls={!!result} autoPlay={!result} muted={!result && !sound} loop={!result} playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <video className="pv" src={result?.url || tpl.previewUrl || undefined} poster={tpl.coverUrl || undefined} key={result?.url || 'preview'} controls={!!result} autoPlay muted={!result && !sound} loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           {!result && tpl.previewUrl && (
             <button type="button" className="cs-sound" onClick={() => setSound(v => !v)} aria-pressed={sound}>
               {sound ? <VolumeX size={16} /> : <Volume2 size={16} />} {sound ? t.soundOff : t.soundOn}

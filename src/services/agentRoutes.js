@@ -17,6 +17,7 @@ import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 import { getMaxClipSeconds, getAutoEditCreditCost } from './creditPricingEngine.js';
 import { detectShowcaseIntent, buildShowcaseReply } from './showcaseIntent.js';
+import { orderSingleSubjectFirst } from './characterStudioRoutes.js';
 
 // ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين على أكتر من موديل صور، مش موديل واحد بس): تأكد إن
 // كل موديلات الصور فعليًا بتقبل حقل "aspect_ratio" بشكل صحيح (راجعنا الـ schema الحقيقي لكل
@@ -654,7 +655,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       : null;
     // ✅ شخصيات العميل المحفوظة (استوديو الشخصيات): الايجنت بيستخدمها في أي فيديو/صورة زي صورة مرفوعة (روابطها بتتحسب "معروفة" للماركرز)
     let savedCharacters = [];
-    try { savedCharacters = (await listCharacterReferencesForUser(userId)).slice(0, 12); } catch (e) { console.warn('[Agent] characters note skipped:', e.message); }
+    try { savedCharacters = await Promise.all((await listCharacterReferencesForUser(userId)).slice(0, 12).map(async c => (Array.isArray(c.hidden_refs) && c.hidden_refs.length ? { ...c, hidden_refs: await orderSingleSubjectFirst(c.hidden_refs, c.image_url) } : c))); } catch (e) { console.warn('[Agent] characters note skipped:', e.message); }
     // العميل ممكن يكون اختار الشخصية في رسالة قبل كده (الفرونت بيشيل الشريحة من خانة الكتابة بعد الإرسال ويكتب علامة في الـhistory)
     const historyCharId = characterId || (() => { for (let i = (history || []).length - 1; i >= 0; i--) { const m = /\[using saved character [^\]]*?\(id (\d+)\)\]/.exec(String(history[i]?.content || '')); if (m) return Number.parseInt(m[1], 10); } return null; })();
     const chosenCharacter = historyCharId ? savedCharacters.find(c => c.id === historyCharId) : null;

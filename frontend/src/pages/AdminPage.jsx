@@ -2085,6 +2085,7 @@ function CharacterStudioTab({ s }) {
     const r = await fetch(`${base}/upload`, { method: 'POST', headers: { Authorization: `Bearer ${adminToken}` }, body: fd });
     const d = await r.json();
     if (!d.url) throw new Error(d.error || 'Upload failed');
+    if (d.looksLikeSheet) showToastMsg('⚠️ This image looks like a multi-angle sheet (very wide). It is kept as an extra reference but is never used as the single character image — make sure at least one image shows ONE person.');
     return d.url;
   };
   const addHidden = async (files, current, apply) => {

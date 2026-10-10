@@ -8,7 +8,7 @@ import express from 'express';
 import multer from 'multer';
 import { authMiddleware } from './authRoutes.js';
 import { saveCharacterReference, listCharacterReferencesForUser, deleteCharacterReference, updateCharacterReference, setCharacterDescription } from './authService.js';
-import { describeCharacterImage, getPresetById, splitGeneratedCharacter } from './characterStudioRoutes.js';
+import { describeCharacterImage, getPresetById, splitGeneratedCharacter, orderSingleSubjectFirst } from './characterStudioRoutes.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 const router = express.Router();
@@ -35,7 +35,10 @@ async function uploadCharacterImageToR2(buffer, ext, mimetype) {
 
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const characters = (await listCharacterReferencesForUser(req.user.userId)).map(({ hidden_refs, ...c }) => {
+    const rawList = await listCharacterReferencesForUser(req.user.userId);
+    // أول صورة مخفية لازم تبقى لشخص واحد (مش شيت زوايا) — الشخصيات اللي اتحفظت قبل كده ممكن يكون ترتيبها غلط
+    const orderedList = await Promise.all(rawList.map(async c => (Array.isArray(c.hidden_refs) && c.hidden_refs.length ? { ...c, hidden_refs: await orderSingleSubjectFirst(c.hidden_refs, c.image_url) } : c)));
+    const characters = orderedList.map(({ hidden_refs, ...c }) => {
       const refs = Array.isArray(hidden_refs) ? hidden_refs : [];
       // الوش (image_url) هو اللي بيتعرض للعميل؛ صور الزوايا المخفية بتتستخدم للتوليد بس
       return { ...c, ref_urls: refs, generation_url: refs[0] || c.image_url };
@@ -103,7 +106,8 @@ router.post('/from-preset/:id', authMiddleware, async (req, res) => {
     const p = await getPresetById(req.params.id);
     if (!p) return res.status(404).json({ error: 'not_found' });
     const lang = req.body?.language === 'en' ? 'en' : 'ar';
-    const character = await saveCharacterReference(req.user.userId, { label: lang === 'en' ? p.name_en : p.name_ar, imageUrl: p.image_url, kind: p.category === 'influencer' ? 'person' : p.category, description: (lang === 'en' ? p.description_en : p.description_ar) || null, hiddenRefs: p.hidden_refs || [] });
+    const hiddenRefs = await orderSingleSubjectFirst(p.hidden_refs || [], p.hidden_refs?.length ? p.image_url : null); // أول صورة لشخص واحد (مش شيت زوايا)
+    const character = await saveCharacterReference(req.user.userId, { label: lang === 'en' ? p.name_en : p.name_ar, imageUrl: p.image_url, kind: p.category === 'influencer' ? 'person' : p.category, description: (lang === 'en' ? p.description_en : p.description_ar) || null, hiddenRefs });
     res.json({ character });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
