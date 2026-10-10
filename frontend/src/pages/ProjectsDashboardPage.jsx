@@ -3,6 +3,18 @@ import { FolderKanban, Plus, MoreVertical, Pencil, Trash2, Check, X } from 'luci
 
 const LOGO = '/logo.png';
 
+// كاش للمشاريع في الذاكرة: لما العميل يرجع للهوم تظهر المشاريع فورًا (من آخر مرة)، ونحدّثها في الخلفية
+let projectsCache = { token: null, list: null };
+export function prefetchProjects() {
+  const token = localStorage.getItem('token');
+  if (!token) return Promise.resolve();
+  return fetch('/api/projects', { headers: { Authorization: 'Bearer ' + token } })
+    .then(r => (r.ok ? r.json() : null))
+    .then(d => { if (d?.projects) projectsCache = { token, list: d.projects }; })
+    .catch(() => {});
+}
+const cachedProjects = () => (projectsCache.token && projectsCache.token === localStorage.getItem('token') ? projectsCache.list : null);
+
 function authHeaders() {
   return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') };
 }
@@ -65,7 +77,7 @@ function timeAgo(iso, lang) {
   return lang === 'ar' ? `من ${days} يوم` : `${days}d ago`;
 }
 
-function ProjectCard({ project, lang, onOpen, onRename, onDelete }) {
+function ProjectCard({ project, lang, onOpen, onRename, onDelete, index = 0, animate = true }) {
   const t = T[lang];
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -85,6 +97,7 @@ function ProjectCard({ project, lang, onOpen, onRename, onDelete }) {
         position: 'relative', cursor: renaming || confirmingDelete ? 'default' : 'pointer',
         background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)',
         padding: 18, transition: 'border-color 0.15s ease, transform 0.15s ease',
+        ...(animate ? { animation: 'pdCardIn .42s cubic-bezier(.16,1,.3,1) both', animationDelay: `${Math.min(index, 12) * 45}ms` } : null),
       }}
       onMouseEnter={e => { if (!renaming && !confirmingDelete) { e.currentTarget.style.borderColor = 'var(--border3)'; e.currentTarget.style.transform = 'translateY(-2px)'; } }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; }}
@@ -98,7 +111,7 @@ function ProjectCard({ project, lang, onOpen, onRename, onDelete }) {
           project.cover_type === 'video' ? (
             <video src={project.cover_url} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-            <img src={project.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={project.cover_url} alt="" loading="lazy" onLoad={e => { e.currentTarget.style.opacity = 1; }} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0, transition: 'opacity .35s ease' }} />
           )
         ) : (
           <FolderKanban size={28} strokeWidth={1.5} color="var(--text3)" />
@@ -158,6 +171,16 @@ function ProjectCard({ project, lang, onOpen, onRename, onDelete }) {
   );
 }
 
+function ProjectSkeleton({ index }) {
+  return (
+    <div className="pd-skel" style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', padding: 18, background: 'var(--bg2)', animationDelay: `${index * 60}ms` }}>
+      <div className="shimmer-surface" style={{ width: '100%', aspectRatio: '16/10', borderRadius: 'var(--r-lg)', marginBottom: 14 }} />
+      <div className="shimmer-surface" style={{ height: 14, width: '62%', borderRadius: 7, marginBottom: 8 }} />
+      <div className="shimmer-surface" style={{ height: 11, width: '38%', borderRadius: 6 }} />
+    </div>
+  );
+}
+
 // ✅ NEW (طلب العميل: "لما حد يعمل مشروع جديد يظهر له نافذة تطلب منه يكتب اسم المشروع"):
 // نافذة بسيطة بتاخد اسم المشروع قبل الإنشاء الفعلي، بدل ما يتعمل المشروع فورًا باسم افتراضي
 function NewProjectModal({ lang, onCreate, onCancel, creating }) {
@@ -203,7 +226,8 @@ function CoursesWelcomeModal({ lang, onVisit, onSkip }) {
 
 export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNavigate }) {
   const t = T[lang];
-  const [projects, setProjects] = useState(null);
+  const [projects, setProjects] = useState(cachedProjects);
+  const [fromCache] = useState(() => cachedProjects() !== null);
   const [creating, setCreating] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
   const [showCoursesWelcome, setShowCoursesWelcome] = useState(() => localStorage.getItem('erivion_show_courses_welcome') === '1');
@@ -213,8 +237,9 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNa
     try {
       const res = await fetch('/api/projects', { headers: authHeaders() });
       const data = await res.json();
-      if (res.ok) setProjects(data.projects || []);
-    } catch { setProjects([]); }
+      if (res.ok) { setProjects(data.projects || []); projectsCache = { token: localStorage.getItem('token'), list: data.projects || [] }; }
+      else setProjects(p => p ?? []);
+    } catch { setProjects(p => p ?? []); }
   };
 
   useEffect(() => { load(); }, []);
@@ -226,7 +251,7 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNa
       const res = await fetch('/api/projects', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ name: name || t.untitled }) });
       const data = await res.json();
       if (res.ok && data.project) {
-        setProjects(p => [data.project, ...(p || [])]);
+        setProjects(p => { const n = [data.project, ...(p || [])]; projectsCache = { token: localStorage.getItem('token'), list: n }; return n; });
         setShowNewModal(false);
         onOpenProject?.(data.project);
       }
@@ -234,19 +259,26 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNa
   };
 
   const renameProject = async (id, name) => {
-    setProjects(p => p.map(pr => pr.id === id ? { ...pr, name } : pr));
+    setProjects(p => { const n = p.map(pr => pr.id === id ? { ...pr, name } : pr); projectsCache = { token: localStorage.getItem('token'), list: n }; return n; });
     fetch(`/api/projects/${id}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ name }) }).catch(() => {});
   };
 
   const deleteProject = async (id) => {
-    setProjects(p => p.filter(pr => pr.id !== id));
+    setProjects(p => { const n = p.filter(pr => pr.id !== id); projectsCache = { token: localStorage.getItem('token'), list: n }; return n; });
     fetch(`/api/projects/${id}`, { method: 'DELETE', headers: authHeaders() }).catch(() => {});
   };
 
-  if (projects === null) return null;
+  const loading = projects === null;
+  const list = projects || [];
 
   return (
     <div style={{ minHeight: 'calc(100vh - 74px)', padding: '32px 24px 60px', maxWidth: 1100, margin: '0 auto' }}>
+      <style>{`
+        @keyframes pdCardIn{from{opacity:0;transform:translateY(14px) scale(.975)}to{opacity:1;transform:none}}
+        @keyframes pdFade{from{opacity:0}to{opacity:1}}
+        .pd-skel{animation:pdFade .3s ease both}
+        @media (prefers-reduced-motion:reduce){.pd-skel{animation:none}}
+      `}</style>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={LOGO} alt="Erivion" style={{ width: 30, height: 30, objectFit: 'contain' }} />
@@ -255,15 +287,19 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNa
             <p style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>{t.subtitle}</p>
           </div>
         </div>
-        {projects.length > 0 && (
+        {list.length > 0 && (
           <button className="btn-primary" onClick={() => setShowNewModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Plus size={16} strokeWidth={2.5} /> {t.newProject}
           </button>
         )}
       </div>
 
-      {projects.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+      {loading ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }} aria-busy="true">
+          {Array.from({ length: 6 }, (_, i) => <ProjectSkeleton key={i} index={i} />)}
+        </div>
+      ) : list.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '80px 20px', animation: 'pdCardIn .42s cubic-bezier(.16,1,.3,1) both' }}>
           <div style={{ width: 64, height: 64, borderRadius: 18, background: 'var(--bg2)', border: '1px solid var(--border2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
             <FolderKanban size={28} strokeWidth={1.5} color="var(--text3)" />
           </div>
@@ -275,8 +311,8 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNa
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-          {projects.map(p => (
-            <ProjectCard key={p.id} project={p} lang={lang} onOpen={onOpenProject} onRename={renameProject} onDelete={deleteProject} />
+          {list.map((p, i) => (
+            <ProjectCard key={p.id} project={p} lang={lang} index={i} animate={!fromCache} onOpen={onOpenProject} onRename={renameProject} onDelete={deleteProject} />
           ))}
         </div>
       )}
