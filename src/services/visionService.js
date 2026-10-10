@@ -294,4 +294,27 @@ export async function videoUnderstand({ file, prompt, maxTokens = 700, timeoutMs
   } finally { try { fs.rmSync(path.dirname(small), { recursive: true, force: true }); } catch { /* تنضيف مؤقت */ } }
 }
 
+
+/** مربع الوش في صورة (0..1000: [ymin,xmin,ymax,xmax]) من Gemini على Replicate. null لو مش متاح/فشل — المتصل بيرجع لتقدير ثابت. */
+export async function locateFaceBox(dataUrl, { timeoutMs = 40000, _run } = {}) {
+  const payload = { max_tokens: 120, temperature: 0, messages: [{ role: 'user', content: [
+    { type: 'text', text: 'Find the head/face of the main character in this image. Return ONLY JSON: {"box_2d":[ymin,xmin,ymax,xmax]} with integer coordinates normalised to 0-1000 (the box must tightly contain the whole head including hair, not the body).' },
+    { type: 'image_url', image_url: { url: dataUrl } }] }] };
+  try {
+    let text;
+    if (_run) text = await _run(payload);
+    else {
+      if (!process.env.REPLICATE_API_TOKEN) return null;
+      const out = await scheduleReplicate(() => replicateVisionOne('google/gemini-2.5-flash', payload, timeoutMs));
+      text = out?.choices?.[0]?.message?.content;
+    }
+    const m = /\{[\s\S]*\}/.exec(String(text || ''));
+    const b = m ? JSON.parse(m[0]).box_2d : null;
+    if (!Array.isArray(b) || b.length !== 4 || b.some(v => !Number.isFinite(Number(v)))) return null;
+    const [y0, x0, y1, x1] = b.map(Number);
+    if (y1 <= y0 || x1 <= x0 || y1 > 1000 || x1 > 1000 || y0 < 0 || x0 < 0) return null;
+    return [y0, x0, y1, x1];
+  } catch (e) { console.warn('[Vision] face box failed:', e.message); return null; }
+}
+
 export const _resetVisionForTest = () => { workingModel = null; workingReplicate = null; discovered = null; };

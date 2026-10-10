@@ -15,7 +15,7 @@ const T = {
     modeUpload: 'ارفع صورة', modeAi: 'اعمل شخصية بالذكاء الاصطناعي',
     aiDesc: 'وصف الشخصية', aiDescPh: 'مثلًا: شاب مصري عنده 28 سنة، شعر أسود قصير، ذقن خفيفة، ابتسامة هادية، لابس قميص أبيض', aiStyle: 'الشكل',
     styles: { realistic: 'واقعي', cartoon3d: 'كرتون 3D', anime: 'أنمي', illustration: 'رسم' }, aiCount: 'عدد الخيارات', aiCost: 'التكلفة',
-    aiGenerate: 'ولّد الشخصية', aiGenerating: 'بنرسم شخصيتك… ثواني', aiPick: 'اختار الأقرب ليك', aiAgain: 'ولّد تاني', aiHint: 'اوصف الوش والشعر والسن والبشرة. متكتبش أسماء مشاهير أو أشخاص حقيقيين. لو التوليد فشل الكريديت بيرجع.', aiFail: 'فشل التوليد',
+    aiGenerate: 'ولّد الشخصية', aiGenerating: 'بنرسم شخصيتك… ثواني', aiPick: 'اختار الأقرب ليك', aiAgain: 'ولّد تاني', aiHint: 'اوصف الوش والشعر والسن والبشرة واللبس. بنولّد الشخصية بجسم كامل كمرجع، وهتظهر لك بالوش بس. متكتبش أسماء مشاهير أو أشخاص حقيقيين. لو التوليد فشل الكريديت بيرجع.', aiFail: 'فشل التوليد',
     drop: 'اسحب الصورة هنا أو اضغط للاختيار', dropTip: 'أفضل نتيجة: وجه واضح وفي الاتجاه للكاميرا، إضاءة كويسة، شخص واحد في الصورة.',
     save: 'احفظ الشخصية', saving: 'جاري الحفظ...', cancel: 'إلغاء', remove: 'حذف', rename: 'تعديل الاسم', confirmRm: 'تحذف الشخصية دي؟',
     none: 'لسه معندكش شخصيات. أضف أول شخصية أو اختار واحدة جاهزة.', appearance: 'المظهر',
@@ -35,7 +35,7 @@ const T = {
     modeUpload: 'Upload a photo', modeAi: 'Create with AI',
     aiDesc: 'Describe the character', aiDescPh: 'e.g. an Egyptian man in his late twenties, short black hair, light stubble, calm smile, white shirt', aiStyle: 'Look',
     styles: { realistic: 'Realistic', cartoon3d: '3D cartoon', anime: 'Anime', illustration: 'Illustration' }, aiCount: 'Options', aiCost: 'Cost',
-    aiGenerate: 'Generate character', aiGenerating: 'Drawing your character… a few seconds', aiPick: 'Pick the one you like', aiAgain: 'Generate again', aiHint: 'Describe the face, hair, age and skin. Do not name celebrities or real people. If generation fails, your credits are refunded.', aiFail: 'Generation failed',
+    aiGenerate: 'Generate character', aiGenerating: 'Drawing your character… a few seconds', aiPick: 'Pick the one you like', aiAgain: 'Generate again', aiHint: 'Describe the face, hair, age, skin and clothes. The character is generated full-body as the reference and shown to you as the face only. Do not name celebrities or real people. If generation fails, your credits are refunded.', aiFail: 'Generation failed',
     drop: 'Drop an image here or click to choose', dropTip: 'Best results: a clear face looking at the camera, good light, one person in the picture.',
     save: 'Save character', saving: 'Saving...', cancel: 'Cancel', remove: 'Delete', rename: 'Rename', confirmRm: 'Delete this character?',
     none: "You don't have characters yet. Add your first one or pick a ready-made character.", appearance: 'Appearance',
@@ -264,7 +264,7 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
 }
 
 // ═════════ إضافة شخصية (رفع صورة أو توليد بالذكاء الاصطناعي) ═════════
-const AI_MODEL = 'nano_banana_2';
+const AI_MODEL = 'nano_banana_2_1';
 function buildCharacterPrompt(kind, style, desc) {
   const subject = { person: 'a person', animal: 'an animal character', cartoon: 'a cartoon character', mascot: 'a brand mascot character', other: 'a character' }[kind] || 'a character';
   const look = {
@@ -273,7 +273,7 @@ function buildCharacterPrompt(kind, style, desc) {
     anime: 'Clean modern anime illustration',
     illustration: 'Polished digital illustration, soft shading',
   }[style] || 'Photorealistic studio portrait photograph';
-  return `${look} of ${subject}: ${desc.trim()}. Upper body, front-facing and looking at the camera, relaxed neutral expression, the face fully visible and sharp, clean plain light-grey studio background, soft even lighting, high detail, no text, no watermark, no other people.`;
+  return `${look} of ${subject}: ${desc.trim()}. Full-body standing pose, the entire body visible from head to feet, centred in the frame, front-facing and looking at the camera, relaxed natural pose with arms slightly away from the body, the head in the top 15-20% of the image, relaxed neutral expression, the face sharp and clearly visible, clean plain light-grey studio background, soft even lighting, high detail, no text, no watermark, no other people.`;
 }
 
 function AddCharacterModal({ t, isAr, onClose, onDone }) {

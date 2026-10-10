@@ -15,7 +15,7 @@ import { authMiddleware } from './authRoutes.js';
 import { uploadBufferToR2 } from './audioVideoService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 import { getPerSecondCreditCost, getQualityTiers, getMaxClipSeconds } from './creditPricingEngine.js';
-import { groqVision, toVisionDataUrl } from './visionService.js';
+import { groqVision, toVisionDataUrl, locateFaceBox } from './visionService.js';
 
 const { Pool } = pkg;
 const router = express.Router();
@@ -53,6 +53,42 @@ export async function describeCharacterImage(buffer) {
     { type: 'text', text: 'Describe the PERMANENT physical appearance of the main person/character in this image in at most 35 words, English: apparent age range, face shape, hair (colour/length/style), skin tone, build, distinctive features (glasses, beard, freckles…). Do NOT describe clothing, background or pose. If it is an animal, cartoon or mascot, describe its species/design and colours instead. Output only the description.' },
     { type: 'image_url', image_url: { url } }] }] });
   return String(data.choices?.[0]?.message?.content || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
+
+/**
+ * صورة الوش (للعرض بس) من صورة شخصية بجسم كامل: بنحدد مكان الوش بـGemini، ولو مش متاح بنقدّره من التركيب
+ * (البرومبت بيخلي الراس في أعلى الصورة). بترجّع JPEG مربع 768px. locate قابلة للحقن للاختبار.
+ */
+export async function makeFaceCrop(buffer, { locate = locateFaceBox } = {}) {
+  const img = sharp(buffer, { failOn: 'none' }).rotate();
+  const meta = await img.metadata();
+  const W = meta.width, H = meta.height;
+  if (!W || !H) throw new Error('bad image');
+  let box = null;
+  try { box = await locate(await toVisionDataUrl(`data:image/jpeg;base64,${(await sharp(buffer, { failOn: 'none' }).rotate().resize(768, 768, { fit: 'inside' }).jpeg({ quality: 80 }).toBuffer()).toString('base64')}`, { max: 768 })); } catch { /* تقدير ثابت */ }
+  let cx, cy, side;
+  if (box) {
+    const [y0, x0, y1, x1] = box;
+    cx = ((x0 + x1) / 2 / 1000) * W; cy = ((y0 + y1) / 2 / 1000) * H;
+    side = Math.max(((x1 - x0) / 1000) * W, ((y1 - y0) / 1000) * H) * 1.9;
+  } else {
+    cx = W / 2; cy = H * 0.13; side = Math.min(W, H) * 0.42;
+  }
+  side = Math.round(Math.min(Math.max(side, Math.min(W, H) * 0.22), Math.min(W, H)));
+  const left = Math.round(Math.min(Math.max(0, cx - side / 2), W - side));
+  const top = Math.round(Math.min(Math.max(0, cy - side / 2), H - side));
+  return sharp(buffer, { failOn: 'none' }).rotate().extract({ left, top, width: side, height: side }).resize(768, 768, { fit: 'cover' }).jpeg({ quality: 90 }).toBuffer();
+}
+
+/** صورة شخصية متولّدة (جسم كامل) → { faceUrl (للعرض)، fullUrl (المرجع المخفي) } على R2 بتاعنا */
+export async function splitGeneratedCharacter(fullUrl, { locate } = {}) {
+  const res = await fetch(fullUrl, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`could not read the generated image (${res.status})`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const face = await makeFaceCrop(buf, { locate });
+  const faceUrl = await uploadBufferToR2(face, `characters/face_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`, 'image/jpeg');
+  return { faceUrl, fullUrl };
 }
 
 const tiersFor = (engine) => { try { const t = getQualityTiers(engine); return Array.isArray(t) && t.length ? t : ['720p']; } catch { return ['720p']; } };
