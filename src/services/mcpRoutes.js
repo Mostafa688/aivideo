@@ -21,12 +21,13 @@ import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 // (مش أي منطق تسعير/توليد) عشان نبني منها enum الـzod الصحيح لأدوات generate_image/
 // generate_video — نفس الاستيراد المستخدم فعليًا في agentService.js لنفس الغرض بالظبط
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
-import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
+import { NEW_VIDEO_MODELS, measureVideoDurationSec } from './newVideoModelsService.js';
+import { buildCharacterPrompt } from './characterPrompt.js';
 
 // ✅ FIX: كانت بتتحسب من جديد جوه buildMcpServer() في كل طلب MCP رغم إنها ثابتة طول عمر
 // الـprocess — بنحسبها مرة واحدة هنا بدل ما نعيد بناء enum الـzod في كل نداء
 const IMAGE_MODEL_KEYS = Object.keys(NEW_IMAGE_MODELS);
-const VIDEO_MODEL_KEYS = Object.keys(NEW_VIDEO_MODELS).filter(k => !NEW_VIDEO_MODELS[k].performanceTransfer); // نقل الأداء محتاج رفع فيديو مصدر — مش متاح من MCP
+const VIDEO_MODEL_KEYS = Object.keys(NEW_VIDEO_MODELS).filter(k => !NEW_VIDEO_MODELS[k].performanceTransfer); // نقل الأداء بيتعمل من أداة swap_character_in_video (فيديو مصدر برابط + صورة شخصية) مش من generate_video
 
 const router = express.Router();
 const SITE_URL = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://erivion.net';
@@ -81,7 +82,7 @@ function ytGuardGet(key) {
 }
 
 function buildMcpServer(userId, email) {
-  const server = new McpServer({ name: 'erivion', version: '1.0.0' });
+  const server = new McpServer({ name: 'erivion', version: '1.1.0' });
   const authHeaders = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer ' + mintInternalToken(userId, email) });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -219,6 +220,9 @@ function buildMcpServer(userId, email) {
             'VIDEO ENGINES (use with generate_video, "model" = the exact key in brackets):',
             ...vidLines,
             '',
+            'SPECIAL ENGINE: "prunaai_p_video_animate" (P-Video Animate) is performance transfer — it is NOT used with generate_video; use swap_character_in_video instead (a video with movement + speech plus ONE character image → the same movements and original speech performed by the new character, up to 60 s). For SEVERAL characters in one video, swap_character_in_video switches to Seedance 2.5 automatically (video up to 30 s, motion close but not frame-exact, voices regenerated, ~4x price).',
+            'CHARACTERS: list_characters shows the user\'s saved characters (reusable in any generation); create_character makes a new AI character with Nano Banana 2.1 (full-body reference on a white background unless the description says otherwise); list_character_templates / apply_character_template put the user\'s character into ready-made trending videos.',
+            '',
             'Typical flow: generate_image to create a scene/character image, then generate_video with "imageUrl" set to that image to animate it — or generate_video directly for pure text-to-video. edit_video applies a precise AI edit to an existing short (max 15s) video from a public URL. ' + (YOUTUBE_PUBLISH_ENABLED ? 'To publish a finished video: list_youtube_channels → (optional generate_image 16:9 thumbnail) → confirm title/description/tags/privacy with the user → publish_to_youtube.' : 'Erivion does not publish to YouTube: after generating, give the user the video URL plus a strong title, description, tags and (via generate_image, 16:9) a thumbnail so they can upload it themselves in YouTube Studio.'),
           ].join('\n'),
         }],
@@ -249,7 +253,7 @@ function buildMcpServer(userId, email) {
       title: 'Generate an image',
       description: 'Generate one or more AI images from a text prompt using Erivion\'s real current image engines — call list_models first to see the exact engine keys, what each is best at, and real per-image pricing. Waits for the result and returns the final image URL(s) automatically (usually well under a minute).',
       inputSchema: {
-        model: z.enum(IMAGE_MODEL_KEYS).describe('The exact engine key from list_models (e.g. "nano_banana_2").'),
+        model: z.enum(IMAGE_MODEL_KEYS).describe('The exact engine key from list_models (e.g. "nano_banana_2_1" — the newest Nano Banana — or "nano_banana_2").'),
         prompt: z.string().min(3).describe('A detailed English image-generation prompt — concrete subject, style, lighting, composition.'),
         referenceImageUrls: z.array(z.string().url()).max(14).optional().describe('Optional: existing image URL(s) to use as visual reference for a consistent subject/style.'),
         aspectRatio: z.enum(['9:16', '16:9', '1:1']).default('9:16').describe('9:16 for Reels/TikTok/Shorts, 16:9 for YouTube/banners, 1:1 for feed posts.'),
@@ -526,6 +530,180 @@ function buildMcpServer(userId, email) {
       } catch (e) {
         return { content: [{ type: 'text', text: `Failed to edit video: ${e.message}` }], isError: true };
       }
+    }
+  );
+
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  ✅ استوديو الشخصيات + تبديل الشخصية في فيديو (نفس مسارات الموقع بالظبط — loopback)
+  // ══════════════════════════════════════════════════════════════════════════
+  // بيبدأ جوب فيديو على /api/videos/generate وبيراقبه لحد 90 ثانية (زي generate_video)
+  const runVideoJob = async (body, label = 'Video') => {
+    const genRes = await fetch(`${INTERNAL_BASE}/api/videos/generate`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+    const genData = await genRes.json();
+    if (!genRes.ok) {
+      throw new Error(genData.error === 'quota_exceeded'
+        ? `Not enough credits — this needs ${genData.cost} credits, you have ${genData.remaining}.`
+        : (genData.message || genData.error || `${label} failed to start`));
+    }
+    const jobId = genData.jobId;
+    const maxWaitMs = 90_000, pollIntervalMs = 5_000, startedAt = Date.now();
+    while (Date.now() - startedAt < maxWaitMs) {
+      await new Promise(r => setTimeout(r, pollIntervalMs));
+      try {
+        const sd = await (await fetch(`${INTERNAL_BASE}/api/videos/generate-status/${encodeURIComponent(jobId)}`, { headers: authHeaders() })).json();
+        if (sd.status === 'done') {
+          const videoUrl = resolveUrl(sd.videoUrl);
+          return { content: [{ type: 'text', text: `✅ ${label} ready: ${videoUrl}\nCredits charged: ${genData.creditCost ?? 'see check_credits'}` }, videoResourceLink(videoUrl)], structuredContent: { status: 'done', videoUrl, jobId } };
+        }
+        if (sd.status === 'failed') throw new Error(sd.error || `${label} failed`);
+      } catch (pollErr) { if (/failed/i.test(pollErr.message || '')) throw pollErr; /* شبكة متقطعة — نكمل */ }
+    }
+    return { content: [{ type: 'text', text: `⏳ Still rendering after 90 seconds. Job ID: ${jobId}\nCredits charged: ${genData.creditCost ?? 'see check_credits'}\n\nUse check_render_status with this jobId in a bit to get the final video.` }], structuredContent: { status: 'processing', jobId } };
+  };
+  const loadCharacters = async () => {
+    const r = await fetch(`${INTERNAL_BASE}/api/characters`, { headers: authHeaders() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Could not load characters');
+    return d.characters || [];
+  };
+  // رابط مرجع الشخصية اللي بيتبعت للموديلات (الصورة المخفية بجسم كامل لو موجودة، وإلا صورة العرض)
+  const referenceOf = (c) => c.generation_url || (Array.isArray(c.ref_urls) && c.ref_urls[0]) || c.image_url;
+
+  server.registerTool(
+    'list_characters',
+    {
+      title: 'List my saved characters',
+      description: "List the user's saved Erivion characters (reusable faces/characters from the Character Studio) with their id, name, type, description and the reference image URL to use in generate_image (referenceImageUrls), generate_video, swap_character_in_video and apply_character_template. Call this when the user says \"my character\" or names one.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const chars = await loadCharacters();
+        if (!chars.length) return { content: [{ type: 'text', text: 'The user has no saved characters yet. They can add one in Erivion → Characters (upload a photo), or you can create one with create_character.' }] };
+        const lines = chars.map(c => `- [id ${c.id}] "${c.label || 'unnamed'}" (${c.kind || 'person'})${c.description ? ` — ${c.description}` : ''}\n  reference image URL: ${resolveUrl(referenceOf(c))}\n  face thumbnail: ${resolveUrl(c.image_url)}`);
+        return { content: [{ type: 'text', text: `Saved characters:\n${lines.join('\n')}\n\nUse the "reference image URL" (not the thumbnail) whenever a tool asks for the character image.` }] };
+      } catch (e) { return { content: [{ type: 'text', text: `Failed to list characters: ${e.message}` }], isError: true }; }
+    }
+  );
+
+  server.registerTool(
+    'create_character',
+    {
+      title: 'Create a character with AI',
+      description: "Create a new reusable character with Nano Banana 2.1 and save it to the user's Character Studio. It is generated as ONE full-body reference image (shown to the user as a face crop). By default the background is plain white and nothing is held or worn as an accessory — only mention a background, a place or items in the description if the user explicitly asked for them. Costs one Nano Banana 2.1 image (see list_models). Never use names of real people/celebrities. Returns the character id and its reference image URL.",
+      inputSchema: {
+        name: z.string().min(1).max(60).describe('Character name, e.g. "Nora" or "Captain Sam".'),
+        description: z.string().min(3).max(300).describe('What the character looks like: age, hair, skin, features, outfit. Add a background/place/held items ONLY if the user explicitly wants them.'),
+        kind: z.enum(['person', 'animal', 'cartoon', 'mascot', 'other']).default('person'),
+        style: z.enum(['realistic', 'cartoon3d', 'anime', 'illustration']).default('realistic'),
+      },
+    },
+    async ({ name, description, kind, style }) => {
+      try {
+        const genRes = await fetch(`${INTERNAL_BASE}/api/images/generate`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ model: 'nano_banana_2_1', prompt: buildCharacterPrompt(kind, style, description), aspectRatio: '3:4', count: 1 }) });
+        const genData = await genRes.json();
+        if (!genRes.ok) throw new Error(genData.error === 'quota_exceeded' ? `Not enough credits — this needs ${genData.cost} credits, you have ${genData.remaining}.` : (genData.message || genData.error || 'Image generation failed to start'));
+        let imageUrl = null; const startedAt = Date.now();
+        while (Date.now() - startedAt < 120_000 && !imageUrl) {
+          await new Promise(r => setTimeout(r, 4_000));
+          try {
+            const sd = await (await fetch(`${INTERNAL_BASE}/api/images/generate-status/${encodeURIComponent(genData.jobId)}`, { headers: authHeaders() })).json();
+            if (sd.status === 'done') { const first = (sd.images || [])[0]; imageUrl = typeof first === 'string' ? first : first?.url; if (!imageUrl) throw new Error('No image returned'); }
+            if (sd.status === 'failed') throw new Error(sd.error || 'Image generation failed');
+          } catch (pollErr) { if (/failed|No image/i.test(pollErr.message || '')) throw pollErr; }
+        }
+        if (!imageUrl) return { content: [{ type: 'text', text: `⏳ The character image is still generating (job ${genData.jobId}). Credits charged: ${genData.creditCost ?? 'see check_credits'}. Try create_character again later only if no image appears — check_render_status with this jobId gives the image URL.` }], structuredContent: { status: 'processing', jobId: genData.jobId } };
+        const saveRes = await fetch(`${INTERNAL_BASE}/api/characters/from-url`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ imageUrl, label: name, kind, description }) });
+        const saveData = await saveRes.json();
+        if (!saveRes.ok) throw new Error(saveData.error || 'Could not save the character');
+        const c = saveData.character;
+        const ref = resolveUrl(referenceOf(c));
+        return { content: [{ type: 'text', text: `✅ Character "${c.label || name}" saved (id ${c.id}).\nReference image URL: ${ref}\nFace thumbnail: ${resolveUrl(c.image_url)}\nCredits charged for the image: ${genData.creditCost ?? 'see check_credits'}` }, imageResourceLink(ref, c.label || 'Character')], structuredContent: { status: 'done', characterId: c.id, imageUrls: [ref] } };
+      } catch (e) { return { content: [{ type: 'text', text: `Failed to create the character: ${e.message}` }], isError: true }; }
+    }
+  );
+
+  safeRegisterAppTool(
+    'swap_character_in_video',
+    {
+      title: 'Put a character into a video',
+      description: "Replace the person in the user's own video with a different character — the result keeps the same movements, expressions and (for one character) the ORIGINAL speech. ONE character image → P-Video Animate (up to 60 s of video, 720p/1080p, per-second price × video length; the original voice is kept). TWO OR MORE character images → Seedance 2.5 with the video as a reference (video up to 30 s; movements are close but not frame-exact, voices/words are regenerated, about 4x more expensive per second) — say which person each image replaces in `prompt`. Needs a direct public video URL (MCP cannot receive attached files — the user gets one from Erivion → Settings → API & MCP → \"Upload video, get link\", ticking the character-swap option for videos up to 60 s) and character image URL(s) — use list_characters / create_character, or generate_image, or Erivion image links; characterIds can be used instead of URLs. Tell the user the price first (list_models) when it is large. Only for photos the user owns, AI characters, or people who agreed — never real public figures/celebrities.",
+      inputSchema: {
+        videoUrl: z.string().url().describe('Direct public URL of the user\'s source video (the motion + speech to copy).'),
+        characterImageUrls: z.array(z.string().url()).max(10).optional().describe('One image URL per character, in the order of the people they replace. Exactly one → P-Video Animate; two or more → Seedance 2.5.'),
+        characterIds: z.array(z.number().int()).max(10).optional().describe('Saved character ids from list_characters, used instead of (or in addition to) characterImageUrls.'),
+        aspectRatio: z.enum(['16:9', '9:16']).default('16:9').describe('Only for several characters (Seedance 2.5): the video\'s orientation. One character keeps the source video\'s own shape.'),
+        prompt: z.string().optional().describe('Optional extra instruction (English). REQUIRED in practice for several characters: say who replaces whom, e.g. "the person on the left becomes [Image1], the one on the right [Image2]".'),
+        tier: z.enum(['720p', '1080p']).default('720p'),
+      },
+      _meta: { ui: { resourceUri: videoPlayerResourceUri } },
+    },
+    async ({ videoUrl, characterImageUrls, characterIds, aspectRatio, prompt, tier }) => {
+      try {
+        const urls = [...(characterImageUrls || [])];
+        if (characterIds?.length) {
+          const chars = await loadCharacters();
+          for (const id of characterIds) { const c = chars.find(x => x.id === id); if (!c) throw new Error(`Saved character id ${id} was not found — call list_characters.`); urls.push(referenceOf(c)); }
+        }
+        const images = [...new Set(urls.map(resolveUrl))];
+        if (!images.length) throw new Error('Provide at least one character image (characterImageUrls or characterIds).');
+        if (images.length === 1) {
+          return await runVideoJob({ model: 'prunaai_p_video_animate', imageUrl: images[0], sourceVideoUrl: videoUrl, prompt: prompt || 'Match the original performance exactly: same body movements, facial expressions, lip-sync and timing', tier }, 'Character-swapped video');
+        }
+        const dur = await measureVideoDurationSec(videoUrl);
+        if (dur > 30.5) throw new Error(`The video is ${Math.round(dur)}s — swapping several characters (Seedance 2.5) supports videos up to 30 seconds. Trim it, or swap just one character (up to 60 s).`);
+        const mapping = images.map((_, i) => `[Image${i + 1}]`).join(', ');
+        const finalPrompt = prompt || `Recreate [Video1] exactly — same camera, timing, body movements, facial expressions and lip movements — but replace the people in it, in order from left to right, with the characters in ${mapping}. Keep the original setting.`;
+        return await runVideoJob({ model: 'seedance_2_5', prompt: finalPrompt, referenceImageUrls: images, referenceVideoUrls: [videoUrl], durationSec: Math.min(30, Math.max(4, Math.ceil(dur))), aspectRatio: aspectRatio || '16:9', tier }, 'Character-swapped video');
+      } catch (e) { return { content: [{ type: 'text', text: `Failed to swap the character: ${e.message}` }], isError: true }; }
+    }
+  );
+
+  server.registerTool(
+    'list_character_templates',
+    {
+      title: 'List trending character templates',
+      description: 'List the ready-made trending video templates (dance, comedy, cinematic…) where the user\'s own character replaces the original one. Each shows its id, duration and real price per quality tier. Use apply_character_template to make one.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const d = await (await fetch(`${INTERNAL_BASE}/api/character-studio/templates?language=en`)).json();
+        const list = d.templates || [];
+        if (!list.length) return { content: [{ type: 'text', text: 'There are no trending templates yet.' }] };
+        return { content: [{ type: 'text', text: list.map(t => `- [id ${t.id}] ${t.title} (${t.category}, ${t.durationSec}s) — ${Object.entries(t.costs || {}).map(([k, v]) => `${k}: ${v} credits`).join(' / ')}${t.description ? ` — ${t.description}` : ''}`).join('\n') }] };
+      } catch (e) { return { content: [{ type: 'text', text: `Failed to list templates: ${e.message}` }], isError: true }; }
+    }
+  );
+
+  safeRegisterAppTool(
+    'apply_character_template',
+    {
+      title: 'Make a trending template with my character',
+      description: "Make a trending template video with the user's character: same movements, expressions and sound as the template, performed by their character. Needs a template id (list_character_templates) and ONE character: a saved characterId (list_characters) or a direct characterImageUrl. Charged at the template's price for the chosen tier; refunded automatically if generation fails.",
+      inputSchema: {
+        templateId: z.number().int().describe('Template id from list_character_templates.'),
+        characterId: z.number().int().optional().describe('Saved character id from list_characters.'),
+        characterImageUrl: z.string().url().optional().describe('Direct URL of the character image (instead of characterId).'),
+        tier: z.enum(['720p', '1080p']).default('720p'),
+      },
+      _meta: { ui: { resourceUri: videoPlayerResourceUri } },
+    },
+    async ({ templateId, characterId, characterImageUrl, tier }) => {
+      try {
+        let imageUrl = characterImageUrl ? resolveUrl(characterImageUrl) : null;
+        if (!imageUrl && characterId != null) {
+          const c = (await loadCharacters()).find(x => x.id === characterId);
+          if (!c) throw new Error(`Saved character id ${characterId} was not found — call list_characters.`);
+          imageUrl = resolveUrl(referenceOf(c));
+        }
+        if (!imageUrl) throw new Error('Provide characterId or characterImageUrl.');
+        const srcRes = await fetch(`${INTERNAL_BASE}/api/character-studio/templates/${templateId}/source`, { headers: authHeaders() });
+        const src = await srcRes.json();
+        if (!srcRes.ok) throw new Error(src.error === 'not_found' ? `Template ${templateId} was not found — call list_character_templates.` : (src.error || 'Could not load the template'));
+        return await runVideoJob({ model: src.model, imageUrl, sourceVideoUrl: src.sourceVideoUrl, prompt: 'Match the original performance exactly: same body movements, facial expressions, lip-sync and timing', tier: (src.tiers || ['720p']).includes(tier) ? tier : (src.tiers || ['720p'])[0] }, 'Template video');
+      } catch (e) { return { content: [{ type: 'text', text: `Failed to apply the template: ${e.message}` }], isError: true }; }
     }
   );
 

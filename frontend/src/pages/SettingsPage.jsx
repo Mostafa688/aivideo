@@ -95,6 +95,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
   const [videoLinkUploading, setVideoLinkUploading] = useState(false);
   const [videoLinkResult, setVideoLinkResult]       = useState(null); // { videoUrl, durationSec }
   const [videoLinkError, setVideoLinkError]         = useState('');
+  const [videoLinkForSwap, setVideoLinkForSwap]     = useState(false); // فيديو لتبديل الشخصية: سقف 60 ثانية بدل 15
   const [copiedVideoLink, setCopiedVideoLink]       = useState(false);
   // ✅ NEW (طلب العميل: "حرك الصورة دي" لصورة مرفقة في Claude/MCP كان بيخترع فيديو تاني
   // بدل ما يقول محتاج رابط) — نفس فكرة رفع الفيديو فوق بالظبط، بس للصور
@@ -189,7 +190,7 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
     try {
       const form = new FormData();
       form.append('video', file, file.name || 'video.mp4');
-      const res = await fetch('/api/upload-video-link', { method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }, body: form });
+      const res = await fetch(`/api/upload-video-link${videoLinkForSwap ? '?use=swap' : ''}`, { method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }, body: form });
       const data = await res.json();
       if (!res.ok) { setVideoLinkError(data.error || 'Upload failed'); }
       else { setVideoLinkResult(data); }
@@ -506,8 +507,12 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
 
               <Section title="Upload video, get link" icon={<Film size={14} strokeWidth={2} />}>
                 <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
-                  MCP tools (like in Claude) can't accept an uploaded file directly — they can only work with a public link. Upload your video here (max 15 seconds) to get a direct link, then paste that link when asking Claude to edit your video.
+                  MCP tools (like in Claude) can't accept an uploaded file directly — they can only work with a public link. Upload your video here (max 15 seconds, or 60 seconds if you tick the character-swap option) to get a direct link, then paste that link when asking Claude to edit your video or to put a character into it.
                 </p>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)', margin: '0 0 12px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={videoLinkForSwap} onChange={(e) => setVideoLinkForSwap(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                  This video is for a character swap (up to 60 seconds)
+                </label>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
                   {videoLinkUploading ? <Loader2 size={14} className="spinning" /> : <Film size={14} strokeWidth={2} />} {videoLinkUploading ? 'Uploading...' : 'Choose video file'}
                   <input type="file" accept="video/*" onChange={handleVideoLinkUpload} disabled={videoLinkUploading} style={{ display: 'none' }} />
