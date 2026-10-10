@@ -3225,10 +3225,14 @@ app.post('/api/videos/upload-source', authMiddleware, renderLimiter, videoUpload
     let durationSec = 0;
     try { durationSec = parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tmp}"`, { encoding: 'utf8' }).trim()); } catch { /* handled below */ }
     if (!durationSec) return res.status(400).json({ error: 'Could not read this video — try an MP4 file.' });
-    const maxSec = getMaxClipSeconds('prunaai_p_video_animate');
+    // السقف حسب المحرك: نقل الأداء 60ث؛ seedance_2_5 (مرجع فيديو لتبديل أكتر من شخصية) مجموع الفيديوهات المرجعية فيه 30ث
+    const capModel = typeof req.query.model === 'string' && NEW_VIDEO_MODELS[req.query.model] ? req.query.model : 'prunaai_p_video_animate';
+    const maxSec = NEW_VIDEO_MODELS[capModel].refCaps?.videoMaxTotalSec || getMaxClipSeconds(capModel) || getMaxClipSeconds('prunaai_p_video_animate');
     if (maxSec && durationSec > maxSec + 0.5) return res.status(400).json({ error: `This video is ${Math.round(durationSec)}s — the limit for this engine is ${maxSec}s.` });
+    let width = null, height = null;
+    try { [width, height] = execSync(`ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "${tmp}"`, { encoding: 'utf8' }).trim().split('x').map(Number); } catch { /* الأبعاد اختيارية */ }
     const url = await uploadUserSourceVideoToR2(req.file.buffer);
-    res.json({ url, durationSec: Math.round(durationSec * 10) / 10 });
+    res.json({ url, durationSec: Math.round(durationSec * 10) / 10, width: width || null, height: height || null });
   } catch (e) {
     console.error('[UploadSource] failed:', e.message);
     res.status(500).json({ error: 'Upload failed — please try again.' });
