@@ -8,7 +8,7 @@ import express from 'express';
 import multer from 'multer';
 import { authMiddleware } from './authRoutes.js';
 import { saveCharacterReference, listCharacterReferencesForUser, deleteCharacterReference, updateCharacterReference, setCharacterDescription } from './authService.js';
-import { describeCharacterImage, getPresetById } from './characterStudioRoutes.js';
+import { describeCharacterImage, getPresetById, splitGeneratedCharacter } from './characterStudioRoutes.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 const router = express.Router();
@@ -73,8 +73,13 @@ router.post('/from-url', authMiddleware, async (req, res) => {
     if (!R2_PUBLIC_URL || !url.startsWith(`${R2_PUBLIC_URL}/`)) return res.status(400).json({ error: 'imageUrl must be an image generated on Erivion' });
     const kind = ['person', 'animal', 'cartoon', 'mascot', 'other'].includes(req.body?.kind) ? req.body.kind : 'person';
     const clean = (v, n) => String(v || '').replace(/<[^>]*>/g, '').trim().slice(0, n);
-    const character = await saveCharacterReference(req.user.userId, { label: clean(req.body?.label, 60) || null, imageUrl: url, kind, description: clean(req.body?.description, 300) || null });
-    res.json({ character });
+    // الشخصية المتولّدة بالـAI صورة واحدة بجسم كامل: بتتخزن كمرجع مخفي، والعميل بيشوف قصّة الوش بس
+    let imageUrl = url, hiddenRefs = [];
+    try { const { faceUrl, fullUrl } = await splitGeneratedCharacter(url); imageUrl = faceUrl; hiddenRefs = [fullUrl]; }
+    catch (e) { console.warn('[Characters] face crop failed, saving the full image only:', e.message); }
+    const character = await saveCharacterReference(req.user.userId, { label: clean(req.body?.label, 60) || null, imageUrl, kind, description: clean(req.body?.description, 300) || null, hiddenRefs });
+    const { hidden_refs, ...pub } = character;
+    res.json({ character: { ...pub, ref_urls: hidden_refs || [], generation_url: (hidden_refs || [])[0] || pub.image_url } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
