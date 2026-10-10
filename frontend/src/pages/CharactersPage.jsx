@@ -3,6 +3,7 @@ import {
   Drama, Sparkles, Flame, Plus, Trash2, Loader2, Users, X, Pencil, Check, Play, Wand2, Download, Coins, UserRound, PawPrint, Smile, Bot, ImagePlus, Clapperboard, RefreshCw, Film, AlertCircle,
 } from 'lucide-react';
 import { PageShell, Stat, Pill, Skeletons, Empty } from '../components/PageKit.jsx';
+import { confirmDialog } from '../components/confirmDialog.jsx';
 
 const authHeaders = (json) => ({ Authorization: 'Bearer ' + localStorage.getItem('token'), ...(json ? { 'Content-Type': 'application/json' } : {}) });
 
@@ -17,7 +18,7 @@ const T = {
     styles: { realistic: 'واقعي', cartoon3d: 'كرتون 3D', anime: 'أنمي', illustration: 'رسم' }, aiCount: 'عدد الخيارات', aiCost: 'التكلفة',
     aiGenerate: 'ولّد الشخصية', aiGenerating: 'بنرسم شخصيتك… ثواني', aiPick: 'اختار الأقرب ليك', aiAgain: 'ولّد تاني', aiHint: 'اوصف الوش والشعر والسن والبشرة واللبس. بنولّد الشخصية بجسم كامل كمرجع، وهتظهر لك بالوش بس. متكتبش أسماء مشاهير أو أشخاص حقيقيين. لو التوليد فشل الكريديت بيرجع.', aiFail: 'فشل التوليد',
     drop: 'اسحب الصورة هنا أو اضغط للاختيار', dropTip: 'أفضل نتيجة: وجه واضح وفي الاتجاه للكاميرا، إضاءة كويسة، شخص واحد في الصورة.',
-    save: 'احفظ الشخصية', saving: 'جاري الحفظ...', cancel: 'إلغاء', remove: 'حذف', rename: 'تعديل الاسم', confirmRm: 'تحذف الشخصية دي؟',
+    save: 'احفظ الشخصية', saving: 'جاري الحفظ...', cancel: 'إلغاء', remove: 'حذف', rename: 'تعديل الاسم', confirmRm: 'تحذف الشخصية دي؟', confirmRmSub: 'الشخصية هتتمسح من شخصياتك، ومش هتقدر ترجعها. الفيديوهات اللي اتعملت بيها مش هتتأثر.',
     none: 'لسه معندكش شخصيات. أضف أول شخصية أو اختار واحدة جاهزة.', appearance: 'المظهر',
     useVideo: 'استخدمها في فيديو', useTpl: 'استخدمها في قالب', fromPreset: 'احفظها عندي', saved: 'اتحفظت في شخصياتك',
     all: 'الكل', cats: { person: 'أشخاص', influencer: 'مؤثرين', cartoon: 'كرتون', animal: 'حيوانات', mascot: 'ماسكوت', other: 'أخرى', dance: 'رقص', comedy: 'كوميدي', cinematic: 'سينمائي', talking: 'كلام', product: 'منتجات', viral: 'ترند' },
@@ -37,7 +38,7 @@ const T = {
     styles: { realistic: 'Realistic', cartoon3d: '3D cartoon', anime: 'Anime', illustration: 'Illustration' }, aiCount: 'Options', aiCost: 'Cost',
     aiGenerate: 'Generate character', aiGenerating: 'Drawing your character… a few seconds', aiPick: 'Pick the one you like', aiAgain: 'Generate again', aiHint: 'Describe the face, hair, age, skin and clothes. The character is generated full-body as the reference and shown to you as the face only. Do not name celebrities or real people. If generation fails, your credits are refunded.', aiFail: 'Generation failed',
     drop: 'Drop an image here or click to choose', dropTip: 'Best results: a clear face looking at the camera, good light, one person in the picture.',
-    save: 'Save character', saving: 'Saving...', cancel: 'Cancel', remove: 'Delete', rename: 'Rename', confirmRm: 'Delete this character?',
+    save: 'Save character', saving: 'Saving...', cancel: 'Cancel', remove: 'Delete', rename: 'Rename', confirmRm: 'Delete this character?', confirmRmSub: 'It will be removed from your characters and cannot be restored. Videos already made with it are not affected.',
     none: "You don't have characters yet. Add your first one or pick a ready-made character.", appearance: 'Appearance',
     useVideo: 'Use in a video', useTpl: 'Use in a template', fromPreset: 'Save to mine', saved: 'Saved to your characters',
     all: 'All', cats: { person: 'People', influencer: 'Influencers', cartoon: 'Cartoon', animal: 'Animals', mascot: 'Mascots', other: 'Other', dance: 'Dance', comedy: 'Comedy', cinematic: 'Cinematic', talking: 'Talking', product: 'Product', viral: 'Viral' },
@@ -82,7 +83,7 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
   }, [lang]);
 
   const removeCharacter = async (c) => {
-    if (!confirm(t.confirmRm)) return;
+    if (!(await confirmDialog({ title: t.confirmRm, message: t.confirmRmSub, confirmText: t.remove, cancelText: t.cancel, tone: 'danger', dir: isAr ? 'rtl' : 'ltr' }))) return;
     await fetch(`/api/characters/${c.id}`, { method: 'DELETE', headers: authHeaders() });
     loadMine();
   };

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Users, Mail, Crown, UserMinus, X, Send, LogOut, Coins, ShieldCheck, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { confirmDialog } from '../components/confirmDialog.jsx';
 import { PageShell, Stat, Pill, Skeletons } from '../components/PageKit.jsx';
 
 const T = {
@@ -78,7 +79,7 @@ export default function TeamPage({ onBack, userRegion }) {
   };
 
   const handleRemoveMember = async (userId) => {
-    if (!confirm('Remove this member from your team?')) return;
+    if (!(await confirmDialog({ title: 'Remove this member?', message: 'They will lose access to your team credits right away.', confirmText: 'Remove', cancelText: 'Cancel', tone: 'danger', dir: 'ltr' }))) return;
     try {
       const r = await fetch(`/api/team/members/${userId}`, { method: 'DELETE', headers: authHeaders() });
       const d = await r.json();
@@ -87,7 +88,7 @@ export default function TeamPage({ onBack, userRegion }) {
   };
 
   const handleLeave = async () => {
-    if (!confirm('Leave this team? You will go back to your own credit balance.')) return;
+    if (!(await confirmDialog({ title: 'Leave this team?', message: 'You will go back to your own credit balance.', confirmText: 'Leave', cancelText: 'Stay', tone: 'warn', dir: 'ltr' }))) return;
     try {
       const r = await fetch('/api/team/leave', { method: 'POST', headers: authHeaders() });
       const d = await r.json();

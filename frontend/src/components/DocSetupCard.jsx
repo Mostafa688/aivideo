@@ -1,7 +1,8 @@
 // ── DocSetupCard.jsx ── بطاقة إعدادات الفيلم الوثائقي جوه شات الايجنت: العميل بيختار كل حاجة (مصدر السكريبت، المدة، المقاس،
 // الصوت، الستايل، الكابشن، الموسيقى) ويشوف السعر لحظيًا ويبدأ الفيلم بزرار واحد — بنفس API استوديو الأفلام الوثائقية.
 import { useEffect, useRef, useState } from 'react';
-import { Film, Wand2, FileText, Mic, Play, Loader2, CheckCircle2, Upload } from 'lucide-react';
+import { Film, Wand2, FileText, Mic, Play, Loader2, CheckCircle2, Upload, Languages } from 'lucide-react';
+import FancySelect from './FancySelect.jsx';
 
 const tokenHeader = () => ({ Authorization: 'Bearer ' + localStorage.getItem('token') });
 const MINUTES = [1, 2, 3, 5, 8, 10, 15, 20, 30];
@@ -177,9 +178,7 @@ export default function DocSetupCard({ setup = {}, lang = 'ar', started = false,
 
       <Row>
         <span style={label}>{t.language}</span>
-        <select value={language} onChange={e => setLanguage(e.target.value)} style={inputStyle}>
-          {Object.entries(opts?.languages || { ar: 'العربية', en: 'English' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+        <FancySelect value={language} onChange={setLanguage} options={Object.entries(opts?.languages || { ar: 'العربية', en: 'English' }).map(([k, v]) => ({ value: k, label: v, icon: Languages, badge: k.toUpperCase() }))} />
       </Row>
 
       <Row>
@@ -191,7 +190,7 @@ export default function DocSetupCard({ setup = {}, lang = 'ar', started = false,
       {mode !== 'voiceover' && voices.length > 0 && (
         <Row>
           <span style={label}>{t.narrator}</span>
-          <select value={voiceKey} onChange={e => setVoiceKey(e.target.value)} style={inputStyle}>{voices.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}</select>
+          <FancySelect value={voiceKey} onChange={setVoiceKey} options={voices.map(v => { const [n, ...r] = String(v.label).split(' \u2014 '); return { value: v.key, label: n, sub: r.join(' \u2014 ') || undefined, orb: v.key }; })} />
         </Row>
       )}
 
