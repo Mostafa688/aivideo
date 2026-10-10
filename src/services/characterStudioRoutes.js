@@ -99,6 +99,30 @@ export async function splitGeneratedCharacter(fullUrl, { locate } = {}) {
   return { faceUrl, fullUrl };
 }
 
+// ── صورة "شيت زوايا" (كذا نسخة من الشخصية جنب بعض في صورة واحدة) مينفعش تتبعت كصورة وحيدة لموديل بياخد شخصية واحدة (P-Video Animate بيحرّك كل النسخ؛
+//    وSeedance بيتلخبط في الاستبدال). بنكتشفها من النسبة (عريضة جدًا) ونرتّب الصور بحيث أول واحدة تبقى لشخص واحد.
+const SHEET_ASPECT = 1.6;
+const aspectCache = new Map();
+async function imageAspect(url) {
+  if (aspectCache.has(url)) return aspectCache.get(url);
+  let a = null;
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (r.ok) { const m = await sharp(Buffer.from(await r.arrayBuffer()), { failOn: 'none' }).metadata(); if (m.width && m.height) a = m.width / m.height; }
+  } catch { /* مش قادرين نقيس: نعتبرها صورة عادية */ }
+  if (a != null) aspectCache.set(url, a);
+  return a;
+}
+/** بيرجّع الصور بترتيب أول واحدة فيها شخص واحد (مش شيت). لو كلها شيتات، بنحط صورة الوش الأول كبديل. */
+export async function orderSingleSubjectFirst(urls, faceUrl = null) {
+  const list = (Array.isArray(urls) ? urls : []).filter(Boolean);
+  const withA = await Promise.all(list.map(async u => [u, await imageAspect(u)]));
+  const singles = withA.filter(([, a]) => a == null || a <= SHEET_ASPECT).map(([u]) => u);
+  const sheets = withA.filter(([, a]) => a != null && a > SHEET_ASPECT).map(([u]) => u);
+  if (!singles.length && faceUrl) singles.push(faceUrl);
+  return [...singles, ...sheets];
+}
+
 const tiersFor = (engine) => { try { const t = getQualityTiers(engine); return Array.isArray(t) && t.length ? t : ['720p']; } catch { return ['720p']; } };
 const costsFor = (engine, sec) => Object.fromEntries(tiersFor(engine).map(t => { try { return [t, getPerSecondCreditCost(engine, billSecFor(engine, sec), t, { videoIn: engine === REFERENCE_TEMPLATE_ENGINE })]; } catch { return [t, null]; } }));
 const pub = (r, lang) => ({
@@ -121,7 +145,7 @@ router.get('/presets/:id/refs', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(`SELECT image_url, hidden_refs FROM character_presets WHERE id = $1 AND is_published = 1`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    const refs = refList(rows[0].hidden_refs);
+    const refs = await orderSingleSubjectFirst(refList(rows[0].hidden_refs), rows[0].image_url);
     res.json({ imageUrl: refs[0] || rows[0].image_url, refs });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -158,7 +182,8 @@ router.post('/admin/upload', adminAuth, upload.single('file'), async (req, res) 
     const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     if (isImage) {
       const buf = await sharp(f.buffer, { failOn: 'none' }).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
-      return res.json({ url: await uploadBufferToR2(buf, `character-studio/img_${stamp}.jpg`, 'image/jpeg') });
+      const meta = await sharp(buf).metadata();
+      return res.json({ url: await uploadBufferToR2(buf, `character-studio/img_${stamp}.jpg`, 'image/jpeg'), aspect: meta.width && meta.height ? Math.round((meta.width / meta.height) * 100) / 100 : null, looksLikeSheet: !!(meta.width && meta.height && meta.width / meta.height > SHEET_ASPECT) });
     }
     tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cstudio-')), 'in.mp4');
     fs.writeFileSync(tmp, f.buffer);
