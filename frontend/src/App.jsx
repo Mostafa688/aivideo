@@ -27,7 +27,7 @@ import SupportPage from './pages/SupportPage.jsx';
 import CommunityPage from './pages/CommunityPage.jsx';
 import AgentPage from './pages/AgentPage.jsx';
 import SidePanel from './components/SidePanel.jsx';
-import ProjectsDashboardPage from './pages/ProjectsDashboardPage.jsx';
+import ProjectsDashboardPage, { prefetchProjects } from './pages/ProjectsDashboardPage.jsx';
 import CoursesPage from './pages/CoursesPage.jsx';
 import ChangelogPage from './pages/ChangelogPage.jsx';
 import RoadmapPage from './pages/RoadmapPage.jsx';
@@ -476,6 +476,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
+    prefetchProjects(); // المشاريع تبقى جاهزة قبل ما العميل يفتح الهوم
     fetchCredits();
     const interval = setInterval(async () => {
       try {
