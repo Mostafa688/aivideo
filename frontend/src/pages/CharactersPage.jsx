@@ -265,6 +265,10 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
 
 // ═════════ إضافة شخصية (رفع صورة أو توليد بالذكاء الاصطناعي) ═════════
 const AI_MODEL = 'nano_banana_2_1';
+// وصف "مفصّل" = العميل حدّد تفاصيل بنفسه (خلفية/لبس/إكسسوار/وضعية) أو كتب وصف طويل → بنسيبه زي ما كتب
+const DETAIL_HINTS = /خلفي|لابس|لبس|ترتدي|يرتدي|بدل|قميص|تيشيرت|فستان|جاكت|حجاب|نظارة|شنطة|حقيبة|يحمل|تحمل|ماسك|قبعة|كاب|اضاءة|إضاءة|وضعية|جالس|يجري|يمشي|مبتسم|background|wearing|wears|dressed|outfit|holding|carrying|holds|bag|backpack|glasses|hat|jacket|suit|dress|pose|sitting|lighting|setting|street|office|beach|forest|room/i;
+const isDetailedDesc = (d) => d.trim().split(/\s+/).filter(Boolean).length >= 14 || DETAIL_HINTS.test(d);
+
 function buildCharacterPrompt(kind, style, desc) {
   const subject = { person: 'a person', animal: 'an animal character', cartoon: 'a cartoon character', mascot: 'a brand mascot character', other: 'a character' }[kind] || 'a character';
   const look = {
@@ -273,7 +277,15 @@ function buildCharacterPrompt(kind, style, desc) {
     anime: 'Clean modern anime illustration',
     illustration: 'Polished digital illustration, soft shading',
   }[style] || 'Photorealistic studio portrait photograph';
-  return `${look} of ${subject}: ${desc.trim()}. Full-body standing pose, the entire body visible from head to feet, centred in the frame, front-facing and looking at the camera, relaxed natural pose with arms slightly away from the body, the head in the top 15-20% of the image, relaxed neutral expression, the face sharp and clearly visible, clean plain light-grey studio background, soft even lighting, high detail, no text, no watermark, no other people.`;
+  const d = desc.trim();
+  // الإطار ثابت دايمًا (جسم كامل، الوش واضح) عشان الصورة تنفع مرجع
+  const frame = 'Full-body standing pose, the entire body visible from head to feet, centred in the frame, front-facing and looking at the camera, arms relaxed at the sides slightly away from the body, the head in the top 15-20% of the image, relaxed neutral expression, the face sharp and clearly visible';
+  if (isDetailedDesc(d)) {
+    // وصف مفصّل: نلتزم بيه (الخلفية واللبس والإكسسوار زي ما العميل كتب)
+    return `${look} of ${subject}: ${d}. ${frame}, soft even lighting, high detail, no text, no watermark, no other people.`;
+  }
+  // وصف بسيط: خلفية بيضاء سادة، الشخصية كاملة، من غير شنط أو أي إكسسوار أو أغراض
+  return `${look} of ${subject}: ${d}. ${frame}, plain simple everyday outfit, no bags, no backpacks, no accessories, no props, nothing held in the hands, isolated on a pure clean white studio background, soft even lighting, high detail, no text, no watermark, no other people.`;
 }
 
 function AddCharacterModal({ t, isAr, onClose, onDone }) {
