@@ -137,6 +137,22 @@ export function enforceCharacterEngine(generateVideo, savedCharacterUrls = [], f
   return true;
 }
 
+// ✅ صورة الوش (image_url) بتتعرض للعميل بس؛ لو الشخصية ليها صور مخفية (كل الزوايا) هي اللي بتتبعت للموديلات بدل الوش، حتى لو الايجنت حط رابط الوش في الماركر
+export function applyCharacterRefs(marker, savedCharacters = []) {
+  const map = new Map((savedCharacters || []).filter(c => Array.isArray(c.hidden_refs) && c.hidden_refs.length).map(c => [c.image_url, c.hidden_refs]));
+  if (!marker || !map.size) return false;
+  let changed = false;
+  const swap = (arr) => {
+    const out = [];
+    for (const u of arr) { if (map.has(u)) { out.push(...map.get(u)); changed = true; } else out.push(u); }
+    return [...new Set(out)];
+  };
+  if (typeof marker.imageUrl === 'string' && map.has(marker.imageUrl)) { marker.imageUrl = map.get(marker.imageUrl)[0]; changed = true; }
+  if (Array.isArray(marker.referenceImageUrls)) marker.referenceImageUrls = swap(marker.referenceImageUrls);
+  if (Array.isArray(marker.scenes)) for (const sc of marker.scenes) if (sc && Array.isArray(sc.referenceImageUrls)) sc.referenceImageUrls = swap(sc.referenceImageUrls);
+  return changed;
+}
+
 const router = express.Router();
 
 // ✅ NEW: بيلاقي نهاية أول JSON object حقيقي جوه نص (بعدّ الأقواس/الاقتباسات) بدل ما
@@ -628,8 +644,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ شخصيات العميل المحفوظة (استوديو الشخصيات): الايجنت بيستخدمها في أي فيديو/صورة زي صورة مرفوعة (روابطها بتتحسب "معروفة" للماركرز)
     let savedCharacters = [];
     try { savedCharacters = (await listCharacterReferencesForUser(userId)).slice(0, 12); } catch (e) { console.warn('[Agent] characters note skipped:', e.message); }
-    const chosenCharacter = characterId ? savedCharacters.find(c => c.id === characterId) : null;
-    const charactersNote = savedCharacters.length ? `SAVED CHARACTERS (the customer's reusable characters/faces, kept permanently — rule: use them in ANY video or image they ask for): ${savedCharacters.map(c => `[id ${c.id}] "${c.label || 'unnamed'}" (${c.kind || 'person'})${c.description ? ` — appearance: ${c.description}` : ''} — reference image URL: ${c.image_url}${Array.isArray(c.hidden_refs) && c.hidden_refs.length ? ` — extra angle references of the SAME character (use them together with the main URL in "referenceImageUrls" whenever the engine accepts several references; for single-image engines prefer ${c.hidden_refs[0]}): ${c.hidden_refs.join(' , ')}` : ''}`).join(' | ')}. When the customer mentions one by name, asks for "my character"/"شخصيتي", or picked one in the + menu, treat its exact URL like an uploaded reference photo: in ###GENERATE_IMAGE### put it in "referenceImageUrls"; for a single video clip animate it with "imageUrl" set to that URL (or "referenceImageUrls" for seedance_2_5/omni_flash_1_1); for a multi-scene story generate scene images with it as the shared reference. ENGINE RULE for videos with a saved character when the customer did NOT choose an engine: use ONLY seedance_2_5 (the default: multi-scene stories, longer clips, several references), wan_3 (one clip, best for Arabic speech) or omni_flash_1_1 (a short clip with dialogue) — never veo/kling/luma/pixverse/p-video for a character — and tell the customer which engine you picked and its real credit price before starting. If the customer names another engine, follow them. Copy the appearance text into every prompt so the face and look never change, never invent a different face for that character, and call the character by its name.${chosenCharacter ? ` THE CUSTOMER HAS SELECTED "${chosenCharacter.label || chosenCharacter.id}" FOR THIS CONVERSATION (${chosenCharacter.image_url}) — unless they say otherwise, this is the main character of whatever they ask next.` : ''}` : null;
+    // العميل ممكن يكون اختار الشخصية في رسالة قبل كده (الفرونت بيشيل الشريحة من خانة الكتابة بعد الإرسال ويكتب علامة في الـhistory)
+    const historyCharId = characterId || (() => { for (let i = (history || []).length - 1; i >= 0; i--) { const m = /\[using saved character [^\]]*?\(id (\d+)\)\]/.exec(String(history[i]?.content || '')); if (m) return Number.parseInt(m[1], 10); } return null; })();
+    const chosenCharacter = historyCharId ? savedCharacters.find(c => c.id === historyCharId) : null;
+    const charactersNote = savedCharacters.length ? `SAVED CHARACTERS (the customer's reusable characters/faces, kept permanently — rule: use them in ANY video or image they ask for): ${savedCharacters.map(c => `[id ${c.id}] "${c.label || 'unnamed'}" (${c.kind || 'person'})${c.description ? ` — appearance: ${c.description}` : ''} ${Array.isArray(c.hidden_refs) && c.hidden_refs.length ? `— REFERENCE IMAGE URL(S) TO USE for this character (all its angles; for a single-image engine use the first one, for reference-capable engines send all of them): ${c.hidden_refs.join(' , ')} — the face picture ${c.image_url} is display-only: NEVER put it in a marker` : `— reference image URL: ${c.image_url}`}`).join(' | ')}. When the customer mentions one by name, asks for "my character"/"شخصيتي", or picked one in the + menu, treat its exact URL like an uploaded reference photo: in ###GENERATE_IMAGE### put it in "referenceImageUrls"; for a single video clip animate it with "imageUrl" set to that URL (or "referenceImageUrls" for seedance_2_5/omni_flash_1_1); for a multi-scene story generate scene images with it as the shared reference. ENGINE RULE for videos with a saved character when the customer did NOT choose an engine: use ONLY seedance_2_5 (the default: multi-scene stories, longer clips, several references), wan_3 (one clip, best for Arabic speech) or omni_flash_1_1 (a short clip with dialogue) — never veo/kling/luma/pixverse/p-video for a character — and tell the customer which engine you picked and its real credit price before starting. If the customer names another engine, follow them. Copy the appearance text into every prompt so the face and look never change, never invent a different face for that character, and call the character by its name.${chosenCharacter ? ` THE CUSTOMER HAS SELECTED "${chosenCharacter.label || chosenCharacter.id}" FOR THIS CONVERSATION (${chosenCharacter.image_url}) — unless they say otherwise, this is the main character of whatever they ask next.` : ''}` : null;
     const savedCharacterUrls = savedCharacters.flatMap(c => [c.image_url, ...(Array.isArray(c.hidden_refs) ? c.hidden_refs : [])]).filter(Boolean);
     let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote, forcedModelNote, charactersNote].filter(Boolean).join(' ') || null;
     // ✅ NEW: فيديوهات (وفويس-أوفر) مرفوعة للمونتاج الذكي — بنوصّف للايجنت *كل* اللي متخزّن للعميل في كل رسالة (مش بس رسالة الرفع)،
@@ -1030,6 +1048,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ NEW: أي رابط الايجنت "نسخه" بنفسه من الـ history (مش رابط جينا إحنا بيه من السيرفر)
     // لازم يتأكد إنه رابط حقيقي فعلاً ظهر قبل كده، دفاعًا ضد رابط مبتور بسبب انقطاع الرد
     // (+ روابط الصور اللي اترفعت في نفس الرسالة دي — الايجنت بينسخها من ملاحظة الرفع في نفس الدور)
+    // الوش للعرض بس: لو الشخصية ليها صور زوايا مخفية، هي اللي بتتبعت للموديلات
+    if (applyCharacterRefs(generateImage, savedCharacters) | applyCharacterRefs(generateVideo, savedCharacters)) console.log('[Agent] saved character face swapped for its hidden reference images');
     const knownUrls = extractKnownUrls(history, [typeof mediaLedger === 'string' ? mediaLedger : '', ...uploadedPhotoUrls, ...savedCharacterUrls].filter(Boolean).join(' '));
     const isKnownUrl = (u) => typeof u === 'string' && knownUrls.has(u.trim());
 
