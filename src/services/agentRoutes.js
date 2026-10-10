@@ -127,6 +127,16 @@ function extractTrailingMarker(text, markerName) {
   }
 }
 
+// ✅ فيديو بشخصية محفوظة من غير ما العميل يحدد موديل: المحركات التلقائية بس seedance_2_5 (القصص/المقاطع الطويلة/أكتر من مرجع) أو wan_3 (مقطع واحد، الأفضل للكلام العربي) أو omni_flash_1_1 (مقطع قصير بحوار)
+export const CHARACTER_ENGINES = ['seedance_2_5', 'wan_3', 'omni_flash_1_1'];
+export function enforceCharacterEngine(generateVideo, savedCharacterUrls = [], forcedVideoModel = null) {
+  if (!generateVideo || forcedVideoModel || !savedCharacterUrls.length) return false;
+  const used = [generateVideo.imageUrl, ...(Array.isArray(generateVideo.referenceImageUrls) ? generateVideo.referenceImageUrls : [])].some(u => typeof u === 'string' && savedCharacterUrls.includes(u));
+  if (!used || CHARACTER_ENGINES.includes(generateVideo.model)) return false;
+  generateVideo.model = 'seedance_2_5';
+  return true;
+}
+
 const router = express.Router();
 
 // ✅ NEW: بيلاقي نهاية أول JSON object حقيقي جوه نص (بعدّ الأقواس/الاقتباسات) بدل ما
@@ -619,7 +629,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     let savedCharacters = [];
     try { savedCharacters = (await listCharacterReferencesForUser(userId)).slice(0, 12); } catch (e) { console.warn('[Agent] characters note skipped:', e.message); }
     const chosenCharacter = characterId ? savedCharacters.find(c => c.id === characterId) : null;
-    const charactersNote = savedCharacters.length ? `SAVED CHARACTERS (the customer's reusable characters/faces, kept permanently — rule: use them in ANY video or image they ask for): ${savedCharacters.map(c => `[id ${c.id}] "${c.label || 'unnamed'}" (${c.kind || 'person'})${c.description ? ` — appearance: ${c.description}` : ''} — reference image URL: ${c.image_url}${Array.isArray(c.hidden_refs) && c.hidden_refs.length ? ` — extra angle references of the SAME character (use them together with the main URL in "referenceImageUrls" whenever the engine accepts several references; for single-image engines prefer ${c.hidden_refs[0]}): ${c.hidden_refs.join(' , ')}` : ''}`).join(' | ')}. When the customer mentions one by name, asks for "my character"/"شخصيتي", or picked one in the + menu, treat its exact URL like an uploaded reference photo: in ###GENERATE_IMAGE### put it in "referenceImageUrls"; for a single video clip animate it with "imageUrl" set to that URL (or "referenceImageUrls" for seedance_2_5/omni_flash_1_1); for a multi-scene story generate scene images with it as the shared reference. Copy the appearance text into every prompt so the face and look never change, never invent a different face for that character, and call the character by its name.${chosenCharacter ? ` THE CUSTOMER HAS SELECTED "${chosenCharacter.label || chosenCharacter.id}" FOR THIS CONVERSATION (${chosenCharacter.image_url}) — unless they say otherwise, this is the main character of whatever they ask next.` : ''}` : null;
+    const charactersNote = savedCharacters.length ? `SAVED CHARACTERS (the customer's reusable characters/faces, kept permanently — rule: use them in ANY video or image they ask for): ${savedCharacters.map(c => `[id ${c.id}] "${c.label || 'unnamed'}" (${c.kind || 'person'})${c.description ? ` — appearance: ${c.description}` : ''} — reference image URL: ${c.image_url}${Array.isArray(c.hidden_refs) && c.hidden_refs.length ? ` — extra angle references of the SAME character (use them together with the main URL in "referenceImageUrls" whenever the engine accepts several references; for single-image engines prefer ${c.hidden_refs[0]}): ${c.hidden_refs.join(' , ')}` : ''}`).join(' | ')}. When the customer mentions one by name, asks for "my character"/"شخصيتي", or picked one in the + menu, treat its exact URL like an uploaded reference photo: in ###GENERATE_IMAGE### put it in "referenceImageUrls"; for a single video clip animate it with "imageUrl" set to that URL (or "referenceImageUrls" for seedance_2_5/omni_flash_1_1); for a multi-scene story generate scene images with it as the shared reference. ENGINE RULE for videos with a saved character when the customer did NOT choose an engine: use ONLY seedance_2_5 (the default: multi-scene stories, longer clips, several references), wan_3 (one clip, best for Arabic speech) or omni_flash_1_1 (a short clip with dialogue) — never veo/kling/luma/pixverse/p-video for a character — and tell the customer which engine you picked and its real credit price before starting. If the customer names another engine, follow them. Copy the appearance text into every prompt so the face and look never change, never invent a different face for that character, and call the character by its name.${chosenCharacter ? ` THE CUSTOMER HAS SELECTED "${chosenCharacter.label || chosenCharacter.id}" FOR THIS CONVERSATION (${chosenCharacter.image_url}) — unless they say otherwise, this is the main character of whatever they ask next.` : ''}` : null;
     const savedCharacterUrls = savedCharacters.flatMap(c => [c.image_url, ...(Array.isArray(c.hidden_refs) ? c.hidden_refs : [])]).filter(Boolean);
     let attachmentNote = [structuredNote, adsScenePlanNote, styleHintNote, forcedModelNote, charactersNote].filter(Boolean).join(' ') || null;
     // ✅ NEW: فيديوهات (وفويس-أوفر) مرفوعة للمونتاج الذكي — بنوصّف للايجنت *كل* اللي متخزّن للعميل في كل رسالة (مش بس رسالة الرفع)،
@@ -1169,6 +1179,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (generateVideo && forcedVideoModel && NEW_VIDEO_MODELS[forcedVideoModel]) {
       generateVideo.model = forcedVideoModel;
     }
+    // شخصية محفوظة مستخدمة في فيديو والعميل ماحددش موديل → واحد من (seedance 2.5 / wan 3.0 / omni flash 1.1) تلقائيًا (لو ذكر موديل صراحة بالنص، الفحص اللي بعد كده بيحترمه)
+    if (enforceCharacterEngine(generateVideo, savedCharacterUrls, forcedVideoModel)) console.log('[Agent] saved character in a video → engine set to seedance_2_5 (character engines: seedance_2_5 / wan_3 / omni_flash_1_1)');
     // ✅ NEW (باج حقيقي: عميل كتب "wan 3.0" بالنص العادي في الشات — مفيش أي picker في صفحة
     // الشات العامة دي، بس forcedVideoModel/forcedImageModel فوق بيتفعّلوا بس من قيمة جاية من
     // الفرونت إند (اختيار من واجهة)، مش من تحليل نص الرسالة. لو العميل اسم موديل صراحة بالنص

@@ -57,7 +57,7 @@ const faqs_ar = [
   {
     category: '🎭 استوديو الشخصيات',
     questions: [
-      { q: 'إيه هو استوديو الشخصيات؟', a: 'صفحة "شخصياتي": بتسجّل شخصيتك أو وجهك (أو شخصية كرتون أو ماسكوت) بصورة واحدة، وبتفضل محفوظة. بعد كده تقدر تستخدمها في أي فيديو أو صورة تعملها من شات الايجنت (زرار + ← My characters) من غير ما ترفع الصورة كل مرة، والايجنت بيحافظ على نفس الشكل. وفيه كمان شخصيات جاهزة بنضيفها إحنا تقدر تحفظها عندك.' },
+      { q: 'إيه هو استوديو الشخصيات؟', a: 'صفحة "شخصياتي": بتسجّل شخصيتك أو وجهك (أو شخصية كرتون أو ماسكوت) بصورة واحدة، وبتفضل محفوظة. بعد كده تقدر تستخدمها في أي فيديو أو صورة تعملها من شات الايجنت (زرار + ← My characters) من غير ما ترفع الصورة كل مرة، والايجنت بيحافظ على نفس الشكل. وفيه كمان شخصيات جاهزة بنضيفها إحنا تقدر تحفظها عندك. لو ما اخترتش موديل بنفسك، الفيديوهات اللي فيها شخصية بتتعمل تلقائيًا بـ Seedance 2.5 أو Wan 3.0 أو Gemini Omni Flash 1.1، والايجنت بيقولك الموديل وسعره قبل ما يبدأ.' },
       { q: 'إيه هي قوالب الترند؟', a: 'فيديوهات ترند جاهزة (رقص، كوميدي، سينمائي...) بتختار منها قالب وبتبدّل الشخصية بشخصيتك أو وجهك، والناتج نفس الحركات والكلام بشخصيتك (بموديل P-Video Animate). السعر بيظهر قدام كل قالب حسب مدته وجودة الفيديو (720p أو 1080p) وبيتخصم لما تبدأ، ويترجّع لو التوليد فشل.' },
       { q: 'أرفع صورة إزاي عشان الشخصية تطلع حلوة؟', a: 'صورة بوجه واضح في اتجاه الكاميرا، إضاءة كويسة، وشخص واحد بس في الصورة. بنقرأ مظهر الشخصية (الوجه والشعر...) تلقائيًا ونستخدمه في وصف الفيديو عشان الشكل يفضل ثابت.' },
     ],
@@ -159,7 +159,7 @@ const faqs_en = [
   {
     category: '🎭 Character Studio',
     questions: [
-      { q: 'What is the Character Studio?', a: 'The "My Characters" page: register your character or face (or a cartoon/mascot) with a single image and it stays saved. Then use it in any video or image you make from the Agent chat (+ button → My characters) without uploading the picture each time, and the Agent keeps the same look. There are also ready-made characters we add that you can save to your own list.' },
+      { q: 'What is the Character Studio?', a: 'The "My Characters" page: register your character or face (or a cartoon/mascot) with a single image and it stays saved. Then use it in any video or image you make from the Agent chat (+ button → My characters) without uploading the picture each time, and the Agent keeps the same look. There are also ready-made characters we add that you can save to your own list. If you do not choose an engine yourself, videos with a character are made automatically with Seedance 2.5, Wan 3.0 or Gemini Omni Flash 1.1, and the Agent tells you the engine and its price before it starts.' },
       { q: 'What are trend templates?', a: 'Ready-made trending videos (dance, comedy, cinematic...). Pick a template and swap the character with your own character or face — the result keeps the same movements and speech with your character (using the P-Video Animate model). The price is shown on each template based on its length and quality (720p or 1080p), charged when you start and refunded if generation fails.' },
       { q: 'What kind of photo gives the best result?', a: 'A clear face looking at the camera, good light, and only one person in the picture. We read the character\'s appearance (face, hair...) automatically and use it in the video description so the look stays consistent.' },
     ],
