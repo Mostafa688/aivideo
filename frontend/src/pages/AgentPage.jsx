@@ -1514,7 +1514,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       if (!res.ok) throw new Error(data.error || 'Failed');
       // ✅ NEW (طلب العميل: زرار سريع "ابدأ/لأ" بدل الكتابة اليدوية كل مرة): لو الرد سؤال
       // تأكيد قبل التوليد، بنعلّم الرسالة عشان نعرض أزرار سريعة تحتها
-      setMessages(m => [...m, { role: 'assistant', content: data.reply, awaitingConfirmation: !!data.awaitingConfirmation }]);
+      setMessages(m => [...m, { role: 'assistant', content: data.reply, awaitingConfirmation: !!data.awaitingConfirmation, showcase: Array.isArray(data.showcase) && data.showcase.length ? data.showcase : undefined, docCta: data.docCta || undefined }]);
       if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
       // ✅ NEW: بنحفظ الرابط الدائم (R2) لأي صورة اترفعت في الرسالة دي جوه الرسالة نفسها —
       // كده تفضل قابلة للاستشهاد بيها في history/mediaLedger في أي رسالة جاية، مش بس دلوقتي
@@ -2801,6 +2801,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
         .agent-bubble{animation:fadeUp 0.25s ease}
+        .agent-showcase{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px;min-width:min(100%,320px)}
+        .agent-showcase-item{margin:0;border-radius:12px;overflow:hidden;background:#000;border:1px solid rgba(255,255,255,.12)}
+        .agent-showcase-item video{width:100%;max-height:260px;display:block;object-fit:contain;background:#000}
+        .agent-showcase-item figcaption{font-size:11.5px;padding:6px 10px;color:rgba(255,255,255,.75);background:rgba(0,0,0,.35)}
         .agent-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;animation:bounce 1s ease infinite}
         .agent-models-btn:hover{background:rgba(124,106,247,0.16) !important;border-color:rgba(124,106,247,0.45) !important;}
         .agent-icon-btn:hover{background:var(--bg3) !important;color:var(--text) !important;}
@@ -2922,6 +2926,21 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     )}
                     {m.hasVoice && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, opacity: 0.8, marginBottom: 6 }}><Mic size={12} strokeWidth={2} /> {t.voiceAttached}</div>}
                     {m.content}
+                    {m.showcase?.length > 0 && (
+                      <div className="agent-showcase">
+                        {m.showcase.map(v => (
+                          <figure key={v.id} className="agent-showcase-item">
+                            <video src={`${v.url}#t=0.1`} controls playsInline preload="metadata" />
+                            <figcaption>{v.title?.[ar ? 'ar' : 'en'] || v.title?.en}</figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    )}
+                    {m.docCta && (
+                      <button type="button" onClick={() => onNavigate?.('documentary')} style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, border: '1px solid rgba(52,211,153,0.5)', background: 'rgba(52,211,153,0.12)', color: '#6ee7b7', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <Clapperboard size={14} strokeWidth={2} /> {m.docCta.label}
+                      </button>
+                    )}
                   </div>
                   {/* ✅ NEW (طلب العميل: زرار سريع "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة) —
                       بيظهر بس تحت آخر رسالة من الايجنت لو كانت سؤال تأكيد فعلاً، وبيختفي أول
