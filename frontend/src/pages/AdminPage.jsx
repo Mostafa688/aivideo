@@ -2050,7 +2050,7 @@ function CharacterStudioTab({ s }) {
   const [toast, setToast] = useState('');
   const showToastMsg = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
   const emptyPreset = { name_ar: '', name_en: '', description_ar: '', description_en: '', image_url: '', category: 'person', hidden_refs: [] };
-  const emptyTpl = { title_ar: '', title_en: '', description_ar: '', description_en: '', category: 'viral', cover_url: '', preview_url: '', source_video_url: '', duration_sec: 0, is_featured: false };
+  const emptyTpl = { title_ar: '', title_en: '', description_ar: '', description_en: '', category: 'viral', cover_url: '', preview_url: '', source_video_url: '', duration_sec: 0, is_featured: false, engine: 'prunaai_p_video_animate', prompt: '', aspect: '' };
   const [pForm, setPForm] = useState(emptyPreset);
   const [tForm, setTForm] = useState(emptyTpl);
   const [busy, setBusy] = useState('');
@@ -2073,7 +2073,7 @@ function CharacterStudioTab({ s }) {
       if (!d.url) { showToastMsg('❌ ' + (d.error || 'Upload failed')); setBusy(''); return; }
       setForm(f => ({
         ...f, [field]: d.url,
-        ...(field === 'source_video_url' ? { duration_sec: d.durationSec || f.duration_sec, preview_url: f.preview_url || d.url, cover_url: f.cover_url || d.coverUrl || '' } : {}),
+        ...(field === 'source_video_url' ? { duration_sec: d.durationSec || f.duration_sec, aspect: d.aspect || f.aspect, preview_url: f.preview_url || d.url, cover_url: f.cover_url || d.coverUrl || '' } : {}),
       }));
       showToastMsg('✅ Uploaded');
     } catch (e) { showToastMsg('❌ ' + e.message); }
@@ -2140,6 +2140,16 @@ function CharacterStudioTab({ s }) {
                 <select style={inp} value={tForm.category} onChange={e => setTForm(f => ({ ...f, category: e.target.value }))}>{(cats.templates.length ? cats.templates : ['viral']).map(c => <option key={c} value={c}>{c}</option>)}</select>
               </Field>
               <Field label="Duration (auto from the video)"><input style={inp} value={tForm.duration_sec || ''} readOnly placeholder="—" /></Field>
+              <Field label="Engine">
+                <select style={inp} value={tForm.engine} onChange={e => setTForm(f => ({ ...f, engine: e.target.value }))}>
+                  <option value="prunaai_p_video_animate">P-Video Animate — exact motion + original speech, ONE character, up to 60s, cheaper</option>
+                  <option value="seedance_2_5">Seedance 2.5 — re-creates the video (can change looks: hair/eyes colour, muscles, effects), up to 30s, ~4x price</option>
+                </select>
+              </Field>
+              <Field label={tForm.engine === 'seedance_2_5' ? 'Prompt — describe the transformation/effects (English)' : 'Extra instruction (optional, English)'}>
+                <textarea style={{ ...inp, minHeight: 74, fontFamily: 'inherit' }} value={tForm.prompt || ''} maxLength={800} onChange={e => setTForm(f => ({ ...f, prompt: e.target.value }))}
+                  placeholder={tForm.engine === 'seedance_2_5' ? 'e.g. At the peak of the scream his muscles swell, his hair turns spiky golden-yellow and his eyes glow yellow, golden lightning around him.' : 'e.g. Keep the same expressions and lip-sync.'} />
+              </Field>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
               <Up label="Source video (motion + speech)" accept="video/*" field="source_video_url" form={tForm} setForm={setTForm} />
@@ -2155,10 +2165,12 @@ function CharacterStudioTab({ s }) {
               <div key={t.id} style={{ ...s.card, padding: 10, margin: 0, opacity: t.is_published ? 1 : 0.55 }}>
                 {t.cover_url ? <img src={t.cover_url} alt="" style={{ width: '100%', aspectRatio: '9/12', objectFit: 'cover', borderRadius: 8 }} /> : <div style={{ height: 120, background: '#111', borderRadius: 8 }} />}
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', margin: '8px 0 2px' }}>{t.title_en} {t.is_featured ? '⭐' : ''}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.engine === 'seedance_2_5' ? '#fbbf24' : '#34d399', margin: '0 0 2px' }}>{t.engine === 'seedance_2_5' ? 'Seedance 2.5 (re-creates the video)' : 'P-Video Animate (exact motion + speech)'}</div>
                 <div style={{ fontSize: 11, color: '#9ca3af' }}>{t.category} · {Math.round(t.duration_sec)}s · {Object.entries(t.costs || {}).map(([k, v]) => `${k}: ${v}cr`).join(' · ')} · used {t.uses_count}</div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_published: !t.is_published }, t.is_published ? 'Hidden' : 'Published')}>{t.is_published ? 'Hide' : 'Publish'}</button>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_featured: !t.is_featured }, 'Updated')}>{t.is_featured ? 'Unfeature' : 'Feature'}</button>
+                  <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { engine: t.engine === 'seedance_2_5' ? 'prunaai_p_video_animate' : 'seedance_2_5' }, 'Engine changed')}>Switch to {t.engine === 'seedance_2_5' ? 'P-Video' : 'Seedance'}</button>
                   <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 9px' }} onClick={() => confirm('Delete this template?') && send(`${base}/templates/${t.id}`, 'DELETE', null, 'Deleted')}>Delete</button>
                 </div>
               </div>

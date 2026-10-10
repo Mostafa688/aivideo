@@ -27,7 +27,7 @@ const T = {
     featured: 'مميز', sec: 'ث', from: 'من', cr: 'كريديت', makeTpl: 'اعمل الفيديو ده بشخصيتك',
     modalTitle: 'غيّر الشخصية في القالب', step1: '1. اختار الشخصية', step2: '2. الجودة', mineH: 'شخصياتي', presetH: 'جاهزة', uploadFace: 'ارفع وجه/صورة', uploading: 'جاري الرفع...',
     pickFirst: 'اختار شخصية الأول', cost: 'التكلفة', balance: 'رصيدك', generate: 'ابدأ التوليد', generating: 'بنجهّز الفيديو… ممكن ياخد من دقيقة لعدة دقايق', done: 'الفيديو جاهز', download: 'تحميل', another: 'جرّب شخصية تانية',
-    failed: 'فشل التوليد', retry: 'حاول تاني', topup: 'اشحن كريديت', lowCredits: 'رصيدك مش كفاية', how: 'الناتج: نفس حركات وكلام القالب بشخصيتك. الكريديت بيرجع تلقائي لو التوليد فشل.',
+    failed: 'فشل التوليد', retry: 'حاول تاني', topup: 'اشحن كريديت', lowCredits: 'رصيدك مش كفاية', howRef: 'القالب ده بيعيد بناء الفيديو بالذكاء الاصطناعي (Seedance 2.5) عشان يطلع بشخصيتك وبالتأثيرات بتاعته: الحركة قريبة جدًا بس مش مطابقة لقطة بلقطة، والصوت بيتولد من جديد. الكريديت بيرجع تلقائي لو التوليد فشل.', how: 'الناتج: نفس حركات وكلام القالب بشخصيتك. الكريديت بيرجع تلقائي لو التوليد فشل.',
   },
   en: {
     eyebrow: 'Character Studio', title: 'My Characters', sub: 'Register your character or face once and use it in any video — and swap yourself into trending templates to make viral videos.',
@@ -47,7 +47,7 @@ const T = {
     featured: 'Featured', sec: 's', from: 'from', cr: 'credits', makeTpl: 'Make this video with your character',
     modalTitle: 'Swap the character in this template', step1: '1. Choose the character', step2: '2. Quality', mineH: 'Mine', presetH: 'Ready-made', uploadFace: 'Upload a face/photo', uploading: 'Uploading...',
     pickFirst: 'Choose a character first', cost: 'Cost', balance: 'Your balance', generate: 'Start generating', generating: 'Preparing your video… it can take from one minute to a few minutes', done: 'Your video is ready', download: 'Download', another: 'Try another character',
-    failed: 'Generation failed', retry: 'Try again', topup: 'Top up credits', lowCredits: 'Not enough credits', how: 'Result: the same movements and speech as the template, with your character. Credits are refunded automatically if generation fails.',
+    failed: 'Generation failed', retry: 'Try again', topup: 'Top up credits', lowCredits: 'Not enough credits', howRef: 'This template re-creates the video with AI (Seedance 2.5) so it features your character and the template\'s effects: the movement is very close but not frame-exact, and the sound is generated again. Credits are refunded automatically if generation fails.', how: 'Result: the same movements and speech as the template, with your character. Credits are refunded automatically if generation fails.',
   },
 };
 const KIND_ICON = { person: UserRound, animal: PawPrint, cartoon: Smile, mascot: Bot, other: Drama };
@@ -529,7 +529,14 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
         const rr = await fetch(`/api/character-studio/presets/${sel.presetId}/refs`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({}));
         if (rr.imageUrl) genImage = rr.imageUrl;
       }
-      const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ model: src.model, imageUrl: genImage, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: '' }) });
+      // قالب Seedance 2.5: الفيديو الأصلي بيتبعت كمرجع فيديو + صورة الشخصية كمرجع + برومبت القالب (بيعيد بناء المشهد ويقدر يغيّر الشكل)؛ قالب نقل الأداء: صورة + فيديو مصدر
+      const isRef = src.mode === 'reference';
+      const refBody = {
+        model: src.model, tier, aspectRatio: src.aspect || '9:16', durationSec: Math.min(30, Math.max(4, Math.ceil(src.durationSec || 5))),
+        referenceImageUrls: [genImage], referenceVideoUrls: [src.sourceVideoUrl],
+        prompt: `Recreate [Video1] exactly — same camera, timing, body movements, facial expressions and sound energy — but replace the main person with the character in [Image1], keeping the character's face and look. ${src.prompt || ''}`.trim(),
+      };
+      const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(isRef ? refBody : { model: src.model, imageUrl: genImage, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: src.prompt || '' }) });
       const g = await gres.json();
       if (!gres.ok) { if (g.error === 'quota_exceeded' || g.error === 'no_access') setNeedsTopup(true); throw new Error(g.message || g.error || 'Failed'); }
       // استعلام عن الحالة لحد ما يخلص (نفس مسار الايجنت)
@@ -594,7 +601,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
                 <span style={{ fontWeight: 800, fontSize: 18, display: 'inline-flex', alignItems: 'center', gap: 6, color: '#fde68a', fontVariantNumeric: 'tabular-nums' }}><Coins size={16} /> {cost ?? '—'} <small style={{ fontSize: 12, fontWeight: 500, color: 'var(--text2)' }}>{t.cr}</small></span>
               </div>
               {balance != null && <div style={{ fontSize: 12.5, color: enough ? 'var(--text2)' : '#f87171' }}>{t.balance}: {balance} {t.cr}{!enough && ` — ${t.lowCredits}`}</div>}
-              <p style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, margin: 0 }}>{t.how}</p>
+              <p style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, margin: 0 }}>{tpl.mode === 'reference' ? t.howRef : t.how}</p>
               {err && <p role="alert" style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{err}</p>}
               {enough ? (
                 <button className="cs-act primary" onClick={start} disabled={!sel} style={{ padding: 13, fontSize: 15, opacity: sel ? 1 : 0.5, cursor: sel ? 'pointer' : 'not-allowed' }}><Wand2 size={16} /> {sel ? t.generate : t.pickFirst}</button>
