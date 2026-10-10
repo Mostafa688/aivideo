@@ -275,9 +275,21 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
 
 // ═════════ إضافة شخصية (رفع صورة أو توليد بالذكاء الاصطناعي) ═════════
 const AI_MODEL = 'nano_banana_2_1';
-// وصف "مفصّل" = العميل حدّد تفاصيل بنفسه (خلفية/لبس/إكسسوار/وضعية) أو كتب وصف طويل → بنسيبه زي ما كتب
-const DETAIL_HINTS = /خلفي|لابس|لبس|ترتدي|يرتدي|بدل|قميص|تيشيرت|فستان|جاكت|حجاب|نظارة|شنطة|حقيبة|يحمل|تحمل|ماسك|قبعة|كاب|اضاءة|إضاءة|وضعية|جالس|يجري|يمشي|مبتسم|background|wearing|wears|dressed|outfit|holding|carrying|holds|bag|backpack|glasses|hat|jacket|suit|dress|pose|sitting|lighting|setting|street|office|beach|forest|room/i;
-const isDetailedDesc = (d) => d.trim().split(/\s+/).filter(Boolean).length >= 14 || DETAIL_HINTS.test(d);
+// وصف "مفصّل" = العميل حدّد تفاصيل بنفسه (خلفية/لبس/إكسسوار/وضعية/مكان) أو كتب وصف طويل → بنسيبه زي ما كتب.
+// المطابقة بكلمات كاملة (مع إسقاط بادئات العربي ال/و/ب/ف/ل) عشان "كابتن" متتحسبش "كاب" و"address" متتحسبش "dress".
+const norm = (w) => w.toLowerCase().replace(/[\u064B-\u065F\u0640]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+const DETAIL_AR = new Set(['خلفيه', 'لابس', 'لابسه', 'لبس', 'ترتدي', 'يرتدي', 'بدله', 'قميص', 'تيشيرت', 'فستان', 'جاكيت', 'حجاب', 'نظاره', 'نظارات', 'شنطه', 'حقيبه', 'يحمل', 'تحمل', 'ماسك', 'ماسكه', 'قبعه', 'كاب', 'اضاءه', 'وضعيه', 'جالس', 'جالسه', 'يجري', 'تجري', 'يمشي', 'واقف', 'واقفه', 'ملعب', 'مكتب', 'شارع', 'غابه', 'شاطي', 'غرفه', 'مطبخ', 'مدينه', 'صحرا', 'صحراء', 'مستشفي', 'مدرسه', 'سياره', 'بحر', 'جبل', 'سماء', 'خارج', 'داخل']);
+const DETAIL_EN = new Set(['background', 'wearing', 'wears', 'wear', 'dressed', 'outfit', 'holding', 'holds', 'carrying', 'carries', 'bag', 'backpack', 'glasses', 'sunglasses', 'hat', 'cap', 'helmet', 'jacket', 'suit', 'dress', 'uniform', 'pose', 'posing', 'sitting', 'standing', 'running', 'walking', 'lighting', 'setting', 'street', 'office', 'beach', 'forest', 'room', 'court', 'stadium', 'city', 'desert', 'kitchen', 'indoors', 'outdoors', 'studio']);
+const isDetailedDesc = (d) => {
+  const words = d.trim().split(/[\s,.،؛:!?؟()"'-]+/).filter(Boolean);
+  if (words.length >= 14) return true;
+  return words.some((w) => {
+    const n = norm(w);
+    if (DETAIL_EN.has(n) || DETAIL_AR.has(n)) return true;
+    const stripped = n.replace(/^(ال|و|ب|ف|ل)+/, '');
+    return stripped.length > 1 && (DETAIL_AR.has(stripped) || DETAIL_EN.has(stripped));
+  });
+};
 
 function buildCharacterPrompt(kind, style, desc) {
   const subject = { person: 'a person', animal: 'an animal character', cartoon: 'a cartoon character', mascot: 'a brand mascot character', other: 'a character' }[kind] || 'a character';
@@ -295,7 +307,7 @@ function buildCharacterPrompt(kind, style, desc) {
     return `${look} of ${subject}: ${d}. ${frame}, soft even lighting, high detail, no text, no watermark, no other people.`;
   }
   // وصف بسيط: خلفية بيضاء سادة، الشخصية كاملة، من غير شنط أو أي إكسسوار أو أغراض
-  return `${look} of ${subject}: ${d}. ${frame}, plain simple everyday outfit, no bags, no backpacks, no accessories, no props, nothing held in the hands, isolated on a pure clean white studio background, soft even lighting, high detail, no text, no watermark, no other people.`;
+  return `${look} of ${subject}: ${d}. ${frame}, plain simple outfit (a profession or sport only suggests the clothing, never a location, equipment or props), no bags, no backpacks, no accessories, no props, no ball or equipment, nothing held in the hands, no scenery, isolated on a pure clean white studio background with nothing else in the frame, soft even lighting, high detail, no text, no watermark, no other people.`;
 }
 
 function AddCharacterModal({ t, isAr, onClose, onDone }) {
