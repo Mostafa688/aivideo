@@ -220,7 +220,7 @@ function buildMcpServer(userId, email) {
             'VIDEO ENGINES (use with generate_video, "model" = the exact key in brackets):',
             ...vidLines,
             '',
-            'SPECIAL ENGINE: "prunaai_p_video_animate" (P-Video Animate) is performance transfer — it is NOT used with generate_video; use swap_character_in_video instead (a video with movement + speech plus ONE character image → the same movements and original speech performed by the new character, up to 60 s). For SEVERAL characters in one video, swap_character_in_video switches to Seedance 2.5 automatically (video up to 30 s, motion close but not frame-exact, voices regenerated, ~4x price).',
+            'SPECIAL ENGINE: "prunaai_p_video_animate" (P-Video Animate) ANIMATES an image with a video\'s motion and speech (the image\'s character, in the image\'s own setting, performs the video\'s movements and words; original speech kept; up to 60 s) — it is NOT used with generate_video and it does NOT replace a person inside the video; use swap_character_in_video (mode "animate"). To replace the person/people inside the video\'s own scene use swap_character_in_video with mode "replace" (Seedance 2.5: video up to 30 s, motion close but not frame-exact, voices regenerated, much higher price).',
             'CHARACTERS: list_characters shows the user\'s saved characters (reusable in any generation); create_character makes a new AI character with Nano Banana 2.1 (full-body reference on a white background unless the description says otherwise); list_character_templates / apply_character_template put the user\'s character into ready-made trending videos.',
             '',
             'Typical flow: generate_image to create a scene/character image, then generate_video with "imageUrl" set to that image to animate it — or generate_video directly for pure text-to-video. edit_video applies a precise AI edit to an existing short (max 15s) video from a public URL. ' + (YOUTUBE_PUBLISH_ENABLED ? 'To publish a finished video: list_youtube_channels → (optional generate_image 16:9 thumbnail) → confirm title/description/tags/privacy with the user → publish_to_youtube.' : 'Erivion does not publish to YouTube: after generating, give the user the video URL plus a strong title, description, tags and (via generate_image, 16:9) a thumbnail so they can upload it themselves in YouTube Studio.'),
@@ -628,9 +628,10 @@ function buildMcpServer(userId, email) {
     'swap_character_in_video',
     {
       title: 'Put a character into a video',
-      description: "Replace the person in the user's own video with a different character — the result keeps the same movements, expressions and (for one character) the ORIGINAL speech. ONE character image → P-Video Animate (up to 60 s of video, 720p/1080p, per-second price × video length; the original voice is kept). TWO OR MORE character images → Seedance 2.5 with the video as a reference (video up to 30 s; movements are close but not frame-exact, voices/words are regenerated, about 4x more expensive per second) — say which person each image replaces in `prompt`. Needs a direct public video URL (MCP cannot receive attached files — the user gets one from Erivion → Settings → API & MCP → \"Upload video, get link\", ticking the character-swap option for videos up to 60 s) and character image URL(s) — use list_characters / create_character, or generate_image, or Erivion image links; characterIds can be used instead of URLs. Tell the user the price first (list_models) when it is large. Only for photos the user owns, AI characters, or people who agreed — never real public figures/celebrities.",
+      description: "Put a character into the user's own video. TWO MODES: mode \"replace\" (default) replaces the person/people inside the video's OWN scene with the given character(s) and keeps the place — done with Seedance 2.5 using the video as a reference (video up to 30 s; movement close but not frame-exact; voices/words regenerated; much more expensive; say which person each image replaces in `prompt`). Mode \"animate\" uses P-Video Animate: ONE character image is ANIMATED with the video's movements and original speech, but the result happens in the IMAGE's own setting/background — it does not keep the video's scene (up to 60 s, 720p/1080p, cheap). Pick the mode from what the user wants (keep my place = replace; make my character act like my video = animate); ask if unclear. Needs a direct public video URL (MCP cannot receive attached files — the user gets one from Erivion → Settings → API & MCP → \"Upload video, get link\", ticking the character-swap option for videos up to 60 s) and character image URL(s) — use list_characters / create_character, or generate_image, or Erivion image links; characterIds can be used instead of URLs. Tell the user the price first (list_models) when it is large. Only for photos the user owns, AI characters, or people who agreed — never real public figures/celebrities.",
       inputSchema: {
         videoUrl: z.string().url().describe('Direct public URL of the user\'s source video (the motion + speech to copy).'),
+        mode: z.enum(['replace', 'animate']).default('replace').describe('"replace" = swap the person inside the video and keep its place (Seedance 2.5, ≤30 s, pricey). "animate" = make ONE character image move and speak like the video, in the image\'s own setting (P-Video Animate, ≤60 s, cheap).'),
         characterImageUrls: z.array(z.string().url()).max(10).optional().describe('One image URL per character, in the order of the people they replace. Exactly one → P-Video Animate; two or more → Seedance 2.5.'),
         characterIds: z.array(z.number().int()).max(10).optional().describe('Saved character ids from list_characters, used instead of (or in addition to) characterImageUrls.'),
         aspectRatio: z.enum(['16:9', '9:16']).default('16:9').describe('Only for several characters (Seedance 2.5): the video\'s orientation. One character keeps the source video\'s own shape.'),
@@ -639,7 +640,7 @@ function buildMcpServer(userId, email) {
       },
       _meta: { ui: { resourceUri: videoPlayerResourceUri } },
     },
-    async ({ videoUrl, characterImageUrls, characterIds, aspectRatio, prompt, tier }) => {
+    async ({ videoUrl, mode, characterImageUrls, characterIds, aspectRatio, prompt, tier }) => {
       try {
         const urls = [...(characterImageUrls || [])];
         if (characterIds?.length) {
@@ -648,13 +649,14 @@ function buildMcpServer(userId, email) {
         }
         const images = [...new Set(urls.map(resolveUrl))];
         if (!images.length) throw new Error('Provide at least one character image (characterImageUrls or characterIds).');
-        if (images.length === 1) {
+        if (mode === 'animate') {
+          if (images.length !== 1) throw new Error('Animate mode takes exactly ONE character image. For several characters (or to keep the video\'s scene) use mode "replace".');
           return await runVideoJob({ model: 'prunaai_p_video_animate', imageUrl: images[0], sourceVideoUrl: videoUrl, prompt: prompt || 'Match the original performance exactly: same body movements, facial expressions, lip-sync and timing', tier }, 'Character-swapped video');
         }
         const dur = await measureVideoDurationSec(videoUrl);
-        if (dur > 30.5) throw new Error(`The video is ${Math.round(dur)}s — swapping several characters (Seedance 2.5) supports videos up to 30 seconds. Trim it, or swap just one character (up to 60 s).`);
+        if (dur > 30.5) throw new Error(`The video is ${Math.round(dur)}s — replacing people inside the video scene (Seedance 2.5) supports videos up to 30 seconds. Trim it, or use mode "animate" (one character in its own setting, up to 60 s).`);
         const mapping = images.map((_, i) => `[Image${i + 1}]`).join(', ');
-        const finalPrompt = prompt || `Recreate [Video1] exactly — same camera, timing, body movements, facial expressions and lip movements — but replace the people in it, in order from left to right, with the characters in ${mapping}. Keep the original setting.`;
+        const finalPrompt = prompt || `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and lip movements, but ${images.length === 1 ? 'the main person' : 'the people in it, in order from left to right,'} must be completely replaced by ${images.length === 1 ? 'the character' : 'the characters'} in ${mapping}: use their face, hairstyle, skin tone and clothing and do not keep the original appearance of anyone. Keep the original setting.`;
         return await runVideoJob({ model: 'seedance_2_5', prompt: finalPrompt, referenceImageUrls: images, referenceVideoUrls: [videoUrl], durationSec: Math.min(30, Math.max(4, Math.ceil(dur))), aspectRatio: aspectRatio || '16:9', tier }, 'Character-swapped video');
       } catch (e) { return { content: [{ type: 'text', text: `Failed to swap the character: ${e.message}` }], isError: true }; }
     }

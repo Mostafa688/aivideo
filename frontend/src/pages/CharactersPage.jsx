@@ -27,7 +27,7 @@ const T = {
     featured: 'مميز', sec: 'ث', from: 'من', cr: 'كريديت', makeTpl: 'اعمل الفيديو ده بشخصيتك',
     modalTitle: 'غيّر الشخصية في القالب', step1: '1. اختار الشخصية', step2: '2. الجودة', mineH: 'شخصياتي', presetH: 'جاهزة', uploadFace: 'ارفع وجه/صورة', uploading: 'جاري الرفع...',
     pickFirst: 'اختار شخصية الأول', cost: 'التكلفة', balance: 'رصيدك', generate: 'ابدأ التوليد', generating: 'بنجهّز الفيديو… ممكن ياخد من دقيقة لعدة دقايق', done: 'الفيديو جاهز', download: 'تحميل', another: 'جرّب شخصية تانية',
-    failed: 'فشل التوليد', retry: 'حاول تاني', topup: 'اشحن كريديت', lowCredits: 'رصيدك مش كفاية', howRef: 'القالب ده بيعيد بناء الفيديو بالذكاء الاصطناعي (Seedance 2.5) عشان يطلع بشخصيتك وبالتأثيرات بتاعته: الحركة قريبة جدًا بس مش مطابقة لقطة بلقطة، والصوت بيتولد من جديد. الكريديت بيرجع تلقائي لو التوليد فشل.', how: 'الناتج: نفس حركات وكلام القالب بشخصيتك. الكريديت بيرجع تلقائي لو التوليد فشل.',
+    failed: 'فشل التوليد', retry: 'حاول تاني', topup: 'اشحن كريديت', lowCredits: 'رصيدك مش كفاية', howRef: 'القالب ده بيعيد بناء الفيديو بالذكاء الاصطناعي (Seedance 2.5) عشان يطلع بشخصيتك وبالتأثيرات بتاعته: الحركة قريبة جدًا بس مش مطابقة لقطة بلقطة، والصوت بيتولد من جديد. الكريديت بيرجع تلقائي لو التوليد فشل.', how: 'شخصيتك (بصورتها وخلفيتها) بتتحرك وتتكلم زي القالب بالظبط. المكان هيبقى مكان صورة شخصيتك مش مكان القالب. الكريديت بيرجع تلقائي لو التوليد فشل.',
   },
   en: {
     eyebrow: 'Character Studio', title: 'My Characters', sub: 'Register your character or face once and use it in any video — and swap yourself into trending templates to make viral videos.',
@@ -47,7 +47,7 @@ const T = {
     featured: 'Featured', sec: 's', from: 'from', cr: 'credits', makeTpl: 'Make this video with your character',
     modalTitle: 'Swap the character in this template', step1: '1. Choose the character', step2: '2. Quality', mineH: 'Mine', presetH: 'Ready-made', uploadFace: 'Upload a face/photo', uploading: 'Uploading...',
     pickFirst: 'Choose a character first', cost: 'Cost', balance: 'Your balance', generate: 'Start generating', generating: 'Preparing your video… it can take from one minute to a few minutes', done: 'Your video is ready', download: 'Download', another: 'Try another character',
-    failed: 'Generation failed', retry: 'Try again', topup: 'Top up credits', lowCredits: 'Not enough credits', howRef: 'This template re-creates the video with AI (Seedance 2.5) so it features your character and the template\'s effects: the movement is very close but not frame-exact, and the sound is generated again. Credits are refunded automatically if generation fails.', how: 'Result: the same movements and speech as the template, with your character. Credits are refunded automatically if generation fails.',
+    failed: 'Generation failed', retry: 'Try again', topup: 'Top up credits', lowCredits: 'Not enough credits', howRef: 'This template re-creates the video with AI (Seedance 2.5) so it features your character and the template\'s effects: the movement is very close but not frame-exact, and the sound is generated again. Credits are refunded automatically if generation fails.', how: 'Your character, with the background of its own image, moves and speaks exactly like the template. The setting will be your character image setting, not the template one. Credits are refunded automatically if generation fails.',
   },
 };
 const KIND_ICON = { person: UserRound, animal: PawPrint, cartoon: Smile, mascot: Bot, other: Drama };
