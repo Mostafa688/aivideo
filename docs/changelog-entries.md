@@ -4,6 +4,11 @@
 
 ## Changelog
 
+### 2026-10-12 — جديد (new)
+- **العنوان (AR):** الفيديو بالكود بقى يبتكر شخصياته ورسوماته بنفسه
+- **Title (EN):** Code-made videos now invent their own characters and drawings
+- **الوصف (AR):** في فيديوهات الكارتون، الذكاء الاصطناعي بيصمم كاست على مقاس القصة (حوت، قطة، وحش، روبوت، تميمة...) وبيرسم مشاهد مخصصة من الصفر لأي فكرة مفيهاش قالب جاهز، وكل ده بيتحقق منه الكود قبل الرسم.
+- **Description (EN):** In cartoon videos the AI now designs a cast to fit the story (a whale, a cat, a monster, a robot, a mascot…) and draws custom scenes from scratch for any idea without a ready template — everything is validated by code before rendering.
 ### 2026-10-11 — جديد (new)
 - **العنوان (AR):** فيديو أنيميشن احترافي بالكود من الايجنت
 - **Title (EN):** Professional coded animation videos from the Agent

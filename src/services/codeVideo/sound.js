@@ -4,6 +4,7 @@ import path from 'path';
 import { ffmpeg } from '../documentary/ff.js';
 import { ensureSfx } from '../documentary/sfx.js';
 import { mixAudio } from '../documentary/audioMix.js';
+import { appearTimes } from './art.js';
 
 // كل مؤثر = وسائط ffmpeg كاملة (lavfi) → wav ستيريو 44.1k
 const noise = (d, color = 'pink') => ['-f', 'lavfi', '-i', `anoisesrc=d=${d}:c=${color}:r=44100`];
@@ -75,6 +76,13 @@ export const SCENE_SFX = {
   },
   char_prop: () => [E(0.02, 'whoosh_s', 0.5), E(0.3, 'pop', 0.65), E(0.34, 'shimmer', 0.45), E(0.8, 'ding', 0.4)],
   char_duo: (d, sc) => { const tk = sc.tokens || []; const half = tk.length ? tk[Math.floor(tk.length / 2)].start : 2; return [E(0.02, 'whoosh_s', 0.45), E(0.14, 'pop', 0.6), E(0.3, 'pop', 0.55), E(Math.max(0.5, half - 0.05), 'pop', 0.55)]; },
+  // رسم حر: whoosh + pop عند ظهور أجزاء الرسمة
+  art: (d, sc) => {
+    const dur = (sc.end - sc.start) || 4, ev = [E(0.03, 'whoosh_s', 0.5)]; let last = -1;
+    for (const tm of appearTimes(d.elements || [], dur)) { if (tm - last >= 0.22 && ev.length < 9) { ev.push(E(tm + 0.05, 'pop', 0.5)); last = tm; } }
+    ev.push(E(Math.min(dur * 0.7, last + 0.5), 'shimmer', 0.35));
+    return ev;
+  },
   // Vox
   photo: () => [E(0.04, 'whoosh_s', 0.55), E(0.16, 'click', 0.75), E(0.9, 'pop', 0.3)],
   fullphoto: () => [E(0.0, 'whoosh_l', 0.5), E(0.22, 'hit', 0.6), E(0.5, 'shimmer', 0.3)],
