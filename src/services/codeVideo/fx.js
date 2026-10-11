@@ -1,5 +1,6 @@
 // ── fx.js ── خلفيات متحركة (من غير فلاتر تقيلة: تدرّجات شعاعية بس) + كاميرا + طبقات نهائية
 import { f1, f2, rand, clamp01, lerp, easeInOutCubic, rgba, mix, lighten, darken, uid } from './design.js';
+import { LOOK_BACKDROPS } from './fxLooks.js';
 
 export const BACKDROPS = ['aurora', 'grid', 'particles', 'rays', 'waves', 'hex', 'bokeh', 'stripes', 'orbits'];
 
@@ -147,7 +148,7 @@ function orbits(c, t, seed) {
   return { soft: '', crisp: o };
 }
 
-const FNS = { aurora, grid, particles, rays, waves, hex, bokeh, stripes, orbits };
+const FNS = { aurora, grid, particles, rays, waves, hex, bokeh, stripes, orbits, ...LOOK_BACKDROPS };
 
 const parallax = (c, cam, inner) => (cam ? `<g transform="translate(${f1(cam.x * 0.35)} ${f1(cam.y * 0.35)}) translate(${c.w / 2} ${c.h / 2}) scale(${f2(1 + (cam.z - 1) * 0.5)}) translate(${-c.w / 2} ${-c.h / 2})">${inner}</g>` : inner);
 

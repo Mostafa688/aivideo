@@ -10,6 +10,12 @@
 - **الوصف (AR):** ارفع صوتك أو خلّي الذكاء الاصطناعي يكتب ويقرأ الموضوع، والايجنت يبني فيديو موشن جرافيك لحد دقيقتين (16:9 أو 9:16) بإحصائيات ورسوم بيانية وانتقالات ومؤثرات صوتية وموسيقى. السعر بيظهر قبل البدء (الصوت بالذكاء الاصطناعي بيتحسب) ويترجع لو الفيديو فشل.
 - **Description (EN):** Upload your voice or let AI write and narrate a topic, and the Agent builds a motion-graphics video up to 2 minutes (16:9 or 9:16) with stats, charts, transitions, sound effects and music. The price is shown up front (AI voice is included) and refunded if the video fails.
 
+### 2026-10-11 — جديد (new)
+- **العنوان (AR):** أنماط جديدة لفيديو الأنيميشن: Vox وكارتون 2D وكارتون 3D + أول 15 ثانية مجانًا
+- **Title (EN):** New animation looks: Vox, 2D cartoon and 3D cartoon + a free first 15 seconds
+- **الوصف (AR):** نمط Vox بيجيب صور حقيقية من الأرشيف ويركّبها مع الرسوم والخرائط والعناوين. الكارتون 2D/3D شخصيات مرسومة بالكود بتتكلم بتزامن حقيقي مع الصوت. وكل حساب ياخد أول 15 ثانية مجانًا (حتى مع صوت الذكاء الاصطناعي).
+- **Description (EN):** The Vox look pulls real archive photos and mixes them with charts, maps and headlines. The 2D/3D cartoon looks use characters drawn by code with true lip-sync to the voice. Every account gets its first 15 seconds free, AI voice included.
+
 ### 2026-10-10 — جديد (new)
 - **العنوان (AR):** اعمل شخصية بالذكاء الاصطناعي من غير صورة
 - **Title (EN):** Create a character with AI — no photo needed

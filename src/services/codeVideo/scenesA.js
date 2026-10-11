@@ -48,8 +48,8 @@ export function kinetic(c, d, t, dur, sc) {
       const x = w / 2 + it.cx, yy = y + dy;
       if (active) o += `<rect x="${f1(x - it.width / 2 - size * 0.12)}" y="${f1(yy - size * 0.86)}" width="${f1(it.width + size * 0.24)}" height="${f1(size * 1.12)}" rx="${f1(size * 0.2)}" fill="${pal.a1}" opacity="0.24"/>`;
       o += `<g transform="translate(${f1(x)} ${f1(yy)}) scale(${f2(sc2)}) translate(${f1(-x)} ${f1(-yy)})">`
-        + txt(c, wd.text, x, yy, size, { weight: 900, fill: isE ? pal.a2 : pal.text, opacity: e.o, glow: isE ? pal.a2 : null, glowW: 0.16 }) + '</g>';
-      if (isE) o += `<rect x="${f1(x - it.width / 2)}" y="${f1(yy + size * 0.12)}" width="${f1(it.width * easeOutCubic(seg(t, st + 0.1, st + 0.5)))}" height="${f1(size * 0.07)}" rx="${f1(size * 0.035)}" fill="${pal.a2}"/>`;
+        + txt(c, wd.text, x, yy, size, { weight: 900, fill: isE ? (pal.emph || pal.a2) : pal.text, opacity: e.o, glow: isE && pal.dark ? pal.a2 : null, glowW: 0.16 }) + '</g>';
+      if (isE) o += `<rect x="${f1(x - it.width / 2)}" y="${f1(yy + size * 0.12)}" width="${f1(it.width * easeOutCubic(seg(t, st + 0.1, st + 0.5)))}" height="${f1(size * 0.07)}" rx="${f1(size * 0.035)}" fill="${pal.emph || pal.a2}"/>`;
     }
   });
   return o;
