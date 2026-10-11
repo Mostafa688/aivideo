@@ -28,8 +28,8 @@ export function mouthAt(tokens, t) {
 }
 export const blinkAt = (t, seed = 0) => { const ph = (t + seed * 1.7) % 3.4; return ph < 0.15 ? Math.sin(Math.PI * ph / 0.15) : 0; };
 
-const SEG = { up: 118, fo: 104 };
-function poseAngles(name, t, armT) {
+export const SEG = { up: 118, fo: 104 };
+export function poseAngles(name, t, armT) {
   const w = Math.sin(t * 9), e = (a, b) => a + (b - a) * armT;
   switch (name) {
     case 'wave': return [e(10, 112), e(8, 168 + 22 * w)];
@@ -70,7 +70,7 @@ export function drawCharacter(c, spec, st = {}, o = {}) {
 }
 
 // ── أدوات رسم مشتركة ──
-function arm(side, st, armT, t, { sleeve, skin, ST, G, stroke, long }) {
+export function arm(side, st, armT, t, { sleeve, skin, ST, G, stroke, long }) {
   const name = side < 0 ? st.armL : st.armR; const [a1, a2] = poseAngles(name || 'rest', t + (side < 0 ? 0.4 : 0), armT);
   const S = [side * 132, -168], r1 = a1 * Math.PI / 180, r2 = a2 * Math.PI / 180;
   const E = [S[0] + side * SEG.up * Math.sin(r1), S[1] + SEG.up * Math.cos(r1)];
@@ -84,7 +84,7 @@ function arm(side, st, armT, t, { sleeve, skin, ST, G, stroke, long }) {
   return o + thumb + hid;
 }
 
-function eyebrowPath(emo, side, bx, by) {
+export function eyebrowPath(emo, side, bx, by) {
   // side: -1 شمال | +1 يمين — بنرسم من الخارج للداخل
   const out = bx + side * 34, inn = bx - side * 30;
   switch (emo) {
@@ -97,8 +97,8 @@ function eyebrowPath(emo, side, bx, by) {
   }
 }
 
-function mouthShape(emo, mouth, ST) {
-  const cy = -262; const smile = emo === 'happy' || emo === 'excited' ? 1 : emo === 'sad' ? -1 : emo === 'angry' ? -0.5 : 0.35;
+export function mouthShape(emo, mouth, ST, cy = -262) {
+  const smile = emo === 'happy' || emo === 'excited' ? 1 : emo === 'sad' ? -1 : emo === 'angry' ? -0.5 : 0.35;
   if (mouth < 0.07) {
     const wd = 26 + (emo === 'happy' || emo === 'excited' ? 14 : 0), ctl = 16 * smile;
     return `<path d="M${-wd} ${cy} Q0 ${cy + ctl * 2} ${wd} ${cy}" fill="none" stroke="#6b2a2a" stroke-width="7" stroke-linecap="round"/>`;
@@ -115,7 +115,10 @@ function drawHuman({ spec, t, mouth, blink, emo, look, st, armT, ST, G, LG, stro
   const skin = spec.skin, skinD = darken(skin, 0.16), hair = spec.hair, shirt = spec.shirt;
   const longSleeve = spec.shirtStyle === 'suit';
   let o = '';
-  const hairBack = spec.hairStyle === 'long' ? `<path d="M-116 -330 C-130 -440 -60 -470 0 -470 C60 -470 130 -440 116 -330 L126 -150 Q0 -120 -126 -150 Z" fill="${G(hair)}"${stroke(hair)}/>` : '';
+  const hairBack = spec.hairStyle === 'afro' ? `<circle cx="0" cy="-372" r="150" fill="${G(hair)}"${stroke(hair)}/>`
+    : spec.hairStyle === 'ponytail' ? `<path d="M70 -430 C150 -440 170 -330 130 -250 C120 -330 110 -380 70 -400 Z" fill="${G(hair)}"${stroke(hair)}/>`
+    : spec.hairStyle === 'curly' ? [[-96, -400], [-48, -440], [0, -452], [48, -440], [96, -400], [-112, -350], [112, -350]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="42" fill="${G(hair)}"${stroke(hair)}/>`).join('')
+    : spec.hairStyle === 'long' ? `<path d="M-116 -330 C-130 -440 -60 -470 0 -470 C60 -470 130 -440 116 -330 L126 -150 Q0 -120 -126 -150 Z" fill="${G(hair)}"${stroke(hair)}/>` : '';
   const hijabBack = spec.hairStyle === 'hijab' ? `<path d="M-128 -320 C-135 -450 -60 -482 0 -482 C60 -482 135 -450 128 -320 C130 -250 150 -190 150 -150 L-150 -150 C-150 -190 -130 -250 -128 -320 Z" fill="${G(spec.scarf || '#7c3aed')}"${stroke(spec.scarf || '#7c3aed')}/>` : '';
   // الجسم
   const tor = `<g transform="scale(1 ${f2(breath)})"><path d="M-152 6 L-152 -125 Q-152 -196 -80 -206 L80 -206 Q152 -196 152 -125 L152 6 Z" fill="${LG(shirt, 0, 0, 1, 1)}"${stroke(shirt)}/>`;
@@ -162,6 +165,10 @@ function drawHuman({ spec, t, mouth, blink, emo, look, st, armT, ST, G, LG, stro
   switch (spec.hairStyle) {
     case 'short': hairF = `<path d="M-104 ${hy - 6} C-112 ${hy - 96} -56 ${hy - 128} 4 ${hy - 126} C70 ${hy - 124} 112 ${hy - 90} 104 ${hy - 6} C96 ${hy - 52} 64 ${hy - 70} 24 ${hy - 70} C-16 ${hy - 68} -66 ${hy - 64} -104 ${hy - 6} Z" fill="${G(hair)}"${stroke(hair)}/>`; break;
     case 'long': hairF = `<path d="M-108 ${hy + 10} C-120 ${hy - 100} -50 ${hy - 130} 0 ${hy - 128} C66 ${hy - 126} 120 ${hy - 90} 108 ${hy + 10} C104 ${hy - 34} 84 ${hy - 56} 44 ${hy - 70} C14 ${hy - 40} -40 ${hy - 56} -108 ${hy + 10} Z" fill="${G(hair)}"${stroke(hair)}/>`; break;
+    case 'afro': hairF = `<path d="M-100 ${hy - 20} C-104 ${hy - 100} -50 ${hy - 120} 0 ${hy - 118} C50 ${hy - 120} 104 ${hy - 100} 100 ${hy - 20} C86 ${hy - 56} 50 ${hy - 70} 0 ${hy - 68} C-50 ${hy - 70} -86 ${hy - 56} -100 ${hy - 20} Z" fill="${G(hair)}"${stroke(hair)}/>`; break;
+    case 'ponytail': hairF = `<path d="M-104 ${hy - 4} C-112 ${hy - 96} -56 ${hy - 124} 0 ${hy - 122} C60 ${hy - 122} 112 ${hy - 90} 104 ${hy - 4} C92 ${hy - 56} 50 ${hy - 76} 0 ${hy - 74} C-50 ${hy - 72} -92 ${hy - 54} -104 ${hy - 4} Z" fill="${G(hair)}"${stroke(hair)}/>`; break;
+    case 'curly': hairF = `<path d="M-100 ${hy - 20} C-104 ${hy - 96} -50 ${hy - 112} 0 ${hy - 110} C50 ${hy - 112} 104 ${hy - 96} 100 ${hy - 20} C86 ${hy - 56} 50 ${hy - 64} 0 ${hy - 62} C-50 ${hy - 64} -86 ${hy - 56} -100 ${hy - 20} Z" fill="${G(hair)}"${stroke(hair)}/>`; break;
+    case 'mohawk': hairF = `<path d="M-26 ${hy - 100} L-16 ${hy - 190} L0 ${hy - 150} L16 ${hy - 196} L26 ${hy - 100} Z" fill="${G(hair)}"${stroke(hair)}/>`; break;
     case 'bun': hairF = `<circle cx="0" cy="${hy - 142}" r="38" fill="${G(hair)}"${stroke(hair)}/><path d="M-104 ${hy - 4} C-112 ${hy - 96} -56 ${hy - 124} 0 ${hy - 122} C60 ${hy - 122} 112 ${hy - 90} 104 ${hy - 4} C92 ${hy - 56} 50 ${hy - 76} 0 ${hy - 74} C-50 ${hy - 72} -92 ${hy - 54} -104 ${hy - 4} Z" fill="${G(hair)}"${stroke(hair)}/>`; break;
     case 'cap': hairF = `<path d="M-104 ${hy - 44} C-108 ${hy - 126} -50 ${hy - 144} 0 ${hy - 144} C56 ${hy - 144} 108 ${hy - 126} 104 ${hy - 44} Z" fill="${G(spec.cap || '#ef4444')}"${stroke(spec.cap || '#ef4444')}/><path d="M-30 ${hy - 58} Q60 ${hy - 76} 150 ${hy - 52} Q130 ${hy - 36} 20 ${hy - 40} Z" fill="${G(darken(spec.cap || '#ef4444', 0.18))}"${stroke(spec.cap || '#ef4444')}/>`; break;
     case 'bald': hairF = `<ellipse cx="-97" cy="${hy - 40}" rx="13" ry="30" fill="${G(hair)}"${stroke(hair)}/><ellipse cx="97" cy="${hy - 40}" rx="13" ry="30" fill="${G(hair)}"${stroke(hair)}/><path d="M-70 ${hy - 90} Q0 ${hy - 120} 70 ${hy - 90}" fill="none" stroke="${hair}" stroke-width="10" stroke-linecap="round" opacity="0.85"/>`; break;

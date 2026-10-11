@@ -2,9 +2,11 @@
 import fs from 'fs';
 import path from 'path';
 import { buildNarration, writeAnimationScript, MAX_SECONDS } from './narration.js';
-import { segmentScenes, directVideo, trDuration, LOOKS, isCartoon, LOOK_PALETTES } from './director.js';
+import { segmentScenes, directVideo, trDuration, LOOKS, isCartoon, LOOK_PALETTES, isGrounded } from './director.js';
 import { pickPalette } from './design.js';
 import { resolveVoxImages } from './images.js';
+import { designCast, makeCastMap } from './cast.js';
+import { designArt } from './art.js';
 import { GEMINI_VOICE_NAMES } from '../videoAudioService.js';
 import { makeMeasurer } from './measure.js';
 import { renderCodeVideo, RATIO_SIZE } from './render.js';
@@ -45,7 +47,13 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   // 3) المخرج
   const spoken = segmentScenes(nar.tokens, nar.total);
   if (!spoken.length) throw new Error('no scenes');
-  const plan = await (deps.directVideo || directVideo)({ spoken, language: lang, ratio, topic: input.topic || title, style: input.style || null, look, voiceGender: voiceGenderOf(input), onProgress: (f) => prog('plan', f) });
+  // كاست الكارتون: الـLLM بيبتكر شخصيات/مخلوقات على مقاس القصة (لو فشل بنستخدم الشخصيات الجاهزة)
+  let castMap = makeCastMap([]);
+  if (isCartoon(look)) {
+    const cr = await (deps.designCast || designCast)({ text: spoken.map(x => x.text).join(' '), topic: input.topic || title, language: lang, look, voiceGender: voiceGenderOf(input) });
+    if (cr.characters.length) castMap = makeCastMap(cr.characters);
+  }
+  const plan = await (deps.directVideo || directVideo)({ spoken, language: lang, ratio, topic: input.topic || title, style: input.style || null, look, voiceGender: voiceGenderOf(input), castMap, onProgress: (f) => prog('plan', f) });
   title = title || plan.title || 'Animated video';
   await prog('plan', 1, { title });
 
@@ -62,6 +70,27 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
       tokens: sc.tokens.map(t => ({ w: t.w, start: Math.max(0, t.start - sc.start), end: Math.max(0.05, t.end - sc.start) })),
     };
   });
+  // رسم حر: رسّام (LLM) بيرسم كل مشهد "art" كـ JSON آمن (بيتحقق منه الكود) — اللي ما يتحققش بيتحوّل لمشهد بديل
+  const artIdx = scenes.map((sc, i) => (sc.type === 'art' ? i : -1)).filter(i => i >= 0);
+  if (artIdx.length) {
+    await prog('assets', 0);
+    let doneArt = 0, next = 0;
+    const worker = async () => {
+      while (next < artIdx.length) {
+        const i = artIdx[next++], sc = scenes[i], txt0 = spoken[i].text;
+        const r = await (deps.designArt || designArt)({ idea: sc.data.idea, text: txt0, language: lang, palette: pal, castMap: isCartoon(look) ? castMap : null, look, textOk: (x) => isGrounded(x, txt0, 0.5) });
+        if (r) sc.data = { ...sc.data, bg: r.bg, elements: r.elements };
+        else { // بديل حسب النمط
+          const words = txt0.split(/\s+/);
+          if (isCartoon(look)) { sc.type = 'char_say'; sc.data = { character: plan.host, emotion: 'happy', pose: 'point', emphasis: sc.data.emphasis || [] }; }
+          else if (look === 'vox' && words.length >= 4) { sc.type = 'headline'; sc.data = { headline: words.slice(0, 8).join(' '), emphasis: [] }; }
+          else { sc.type = 'kinetic'; sc.data = { emphasis: sc.data.emphasis || [] }; }
+        }
+        await prog('assets', ++doneArt / artIdx.length * 0.5);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, artIdx.length) }, worker));
+  }
   // نمط Vox: صور أرشيفية حقيقية (اللي مالقيناش ليه صورة بنحوّله لقصاصة جريدة أو نص متحرك)
   let images = null, imageCredits = [];
   if (look === 'vox') {
@@ -88,7 +117,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   }
   const rtl = ['ar', 'he', 'fa', 'ur'].includes(String(lang).split(/[-_]/)[0]);
   const mm = await makeMeasurer(nar.tokens.map(t => t.w), { rtl });
-  const story = { w, h, palette: pal, lang, scenes, mm, duration: nar.total, look, cast: isCartoon(look) ? { host: plan.host } : null, images };
+  const story = { w, h, palette: pal, lang, scenes, mm, duration: nar.total, look, cast: isCartoon(look) ? { host: plan.host, map: castMap } : { host: null, map: castMap }, images };
 
   // 5) الموسيقى
   let musicFile = null;

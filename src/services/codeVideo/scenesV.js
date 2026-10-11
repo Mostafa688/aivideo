@@ -7,7 +7,7 @@ import { kinetic } from './scenesA.js';
 const imgOf = (c, id) => (c.images && id ? c.images[id] : null);
 
 /** كلمات متزامنة بحبر على ورق (أو أبيض على صورة) مع هايلايت أصفر للكلمات المهمة */
-function inkWords(c, tokens, t, box, { emphasis = [], color = c.pal.text, onDark = false, align = 'center', maxLines = 6, startSize = 92 } = {}) {
+export function inkWords(c, tokens, t, box, { emphasis = [], color = c.pal.text, onDark = false, align = 'center', maxLines = 6, startSize = 92 } = {}) {
   const { s, pal, rtl } = c; let o = '';
   const words = (tokens || []).map(x => ({ text: x.w, start: x.start, end: x.end }));
   if (!words.length) return '';

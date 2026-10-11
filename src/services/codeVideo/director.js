@@ -7,6 +7,7 @@ import { BACKDROPS } from './fx.js';
 import { CARTOON_BACKDROPS, VOX_BACKDROPS } from './fxLooks.js';
 import { SCENE_TYPES } from './scenes.js';
 import { CAST, CAST_IDS, EMOTIONS, POSES } from './characters.js';
+import { genderOf } from './cast.js';
 
 // أنماط الفيديو: motion = موشن جرافيك/إنفوجرافيك | vox = فيديو شرح بصور أرشيفية (على طريقة Vox) | cartoon = شخصيات كارتون 2D | cartoon3d = شخصيات كارتون 3D
 export const LOOKS = ['motion', 'vox', 'cartoon', 'cartoon3d'];
@@ -24,13 +25,14 @@ export const CAMS = ['push', 'pull', 'left', 'right', 'up', 'drift'];
 export const TRANSITIONS = ['cut', 'slide', 'slideup', 'zoom', 'wipe', 'iris', 'flash', 'glitch'];
 const TR_DUR = { cut: 0, slide: 0.55, slideup: 0.55, zoom: 0.6, wipe: 0.6, iris: 0.65, flash: 0.5, glitch: 0.5 };
 const CALM_BG = ['aurora', 'bokeh', 'stripes', 'particles'];
-const DATA_TYPES = new Set(['stat', 'bars', 'donut', 'line', 'list', 'compare', 'timeline', 'icons', 'steps', 'gridstats', 'network', 'globe']);
+const DATA_TYPES = new Set(['art', 'stat', 'bars', 'donut', 'line', 'list', 'compare', 'timeline', 'icons', 'steps', 'gridstats', 'network', 'globe']);
 
 // ── تطبيع نص (عربي/إنجليزي) للمطابقة ──
 const norm = (s) => String(s || '').toLowerCase().replace(/[ً-ٰٟـ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const stripAl = (w) => (w.length > 4 && w.startsWith('ال') ? w.slice(2) : w);
 const toks = (s) => norm(s).split(' ').filter(w => w.length > 1).map(stripAl);
 const stemHit = (a, said) => said.has(a) || [...said].some(b => Math.min(a.length, b.length) >= 3 && (b.startsWith(a.slice(0, 3)) && a.startsWith(b.slice(0, 3))) && (Math.min(a.length, b.length) >= 4 ? b.startsWith(a.slice(0, 4)) || a.startsWith(b.slice(0, 4)) : a === b));
+export const isGrounded = (text, spoken, ratio = 0.5) => grounded(text, new Set(toks(spoken)), ratio);
 const grounded = (text, said, ratio = 0.5) => { const t = toks(text); if (!t.length) return false; return t.filter(x => stemHit(x, said)).length / t.length >= ratio; };
 const clean = (s, max) => String(s ?? '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -96,7 +98,7 @@ export function segmentScenes(tokens, total, { minLen = 3.0, maxLen = 8.5, softM
 
 // ── تنضيف بيانات مشهد (نوع + بيانات + تأريض في الكلام) ──
 const strs = (arr, n, len) => (Array.isArray(arr) ? arr : []).map(x => clean(typeof x === 'string' ? x : x?.text ?? x?.label, len)).filter(Boolean).slice(0, n);
-export function sanitizeScene(raw, spoken, { first = false, last = false, look = 'motion', host = 'sam' } = {}) {
+export function sanitizeScene(raw, spoken, { first = false, last = false, look = 'motion', host = 'sam', castMap = CAST } = {}) {
   if (!raw || !allowedTypes(look).has(raw.type)) return null;
   const said = new Set(toks(spoken)); const nums = spokenNumbers(spoken); const d = raw.data || {};
   switch (raw.type) {
@@ -162,15 +164,15 @@ export function sanitizeScene(raw, spoken, { first = false, last = false, look =
       return { type: 'globe', data: { title: clean(d.title, 40) || undefined, pins } };
     }
     case 'char_say': {
-      const character = CAST[d.character] ? d.character : host;
+      const character = castMap[d.character] ? d.character : host;
       return { type: 'char_say', data: { character, emotion: EMOTIONS.includes(d.emotion) ? d.emotion : 'neutral', pose: POSES.includes(d.pose) ? d.pose : undefined, emphasis: strs(d.emphasis, 3, 24) } };
     }
     case 'char_prop': {
       const label = clean(d.label, 34); if (!label || !grounded(label, said, 0.5)) return null;
-      return { type: 'char_prop', data: { character: CAST[d.character] ? d.character : host, icon: resolveIcon(d.icon), label, emotion: EMOTIONS.includes(d.emotion) ? d.emotion : 'happy', pose: POSES.includes(d.pose) ? d.pose : 'point' } };
+      return { type: 'char_prop', data: { character: castMap[d.character] ? d.character : host, icon: resolveIcon(d.icon), label, emotion: EMOTIONS.includes(d.emotion) ? d.emotion : 'happy', pose: POSES.includes(d.pose) ? d.pose : 'point' } };
     }
     case 'char_duo': {
-      const a = CAST[d.a] ? d.a : host, b = CAST[d.b] && d.b !== a ? d.b : CAST_IDS.find(x => x !== a && x !== 'robo');
+      const a = castMap[d.a] ? d.a : host, b = castMap[d.b] && d.b !== a ? d.b : (Object.keys(castMap).find(x => x !== a && x !== 'robo' && castMap[x].custom) || CAST_IDS.find(x => x !== a && x !== 'robo'));
       return { type: 'char_duo', data: { a, b, first: d.first === 'b' ? 'b' : 'a', emphasis: strs(d.emphasis, 3, 24) } };
     }
     case 'photo': case 'fullphoto': {
@@ -183,6 +185,10 @@ export function sanitizeScene(raw, spoken, { first = false, last = false, look =
       const headline = clean(d.headline, 60);
       if (slots.length < 2 || (headline && !grounded(headline, said, 0.5))) return null;
       return { type: 'collage', data: { slots, headline: headline || undefined } };
+    }
+    case 'art': {
+      const idea = clean(d.idea, 260); if (idea.length < 8) return null;
+      return { type: 'art', data: { idea, layout: d.layout === 'full' ? 'full' : 'side', emphasis: strs(d.emphasis, 2, 24) } };
     }
     case 'headline': {
       const headline = clean(d.headline, 90); if (!headline || !grounded(headline, said, 0.6)) return null;
@@ -211,6 +217,7 @@ Scene types and their "data":
 - steps {"title?","steps":[{"label"}]} 3-5 — a process in order.
 - globe {"title?","pins?":[{"lat","lon","label"}]} — worldwide/geography/countries.
 - network {"title?","center","nodes":[{"label","icon?"}]} 3-6 — an ecosystem/connected parts.
+- art {"idea":"a concrete description of the drawing that illustrates this scene: what objects/creatures/places there are and what they do (8-30 words, e.g. 'a whale diving past a submarine while bubbles rise', 'the water cycle: sun, cloud and rain over a hill', 'a factory conveyor belt carrying boxes')","layout":"side|full","emphasis":["1-2 words said"]} — a custom ANIMATED ILLUSTRATION drawn from scratch by an illustrator. Use it for anything the other scene types cannot show: an object, place, process, creature, situation or diagram. At most 35% of the scenes; mix with the other types.
 - outro {"headline","sub?","cta?"} — closing card: ONLY for the very last scene when it is a conclusion / call to action.
 Icon names: ${ICON_NAMES.join(', ')}.
 
@@ -235,6 +242,7 @@ const CATALOG = `Scene types and their "data":
 - steps {"title?","steps":[{"label"}]} 3-5 — a process in order.
 - globe {"title?","pins?":[{"lat","lon","label"}]} — worldwide/geography/countries.
 - network {"title?","center","nodes":[{"label","icon?"}]} 3-6 — an ecosystem/connected parts.
+- art {"idea":"a concrete description of the drawing that illustrates this scene: what objects/creatures/places there are and what they do (8-30 words, e.g. 'a whale diving past a submarine while bubbles rise', 'the water cycle: sun, cloud and rain over a hill', 'a factory conveyor belt carrying boxes')","layout":"side|full","emphasis":["1-2 words said"]} — a custom ANIMATED ILLUSTRATION drawn from scratch by an illustrator. Use it for anything the other scene types cannot show: an object, place, process, creature, situation or diagram. At most 35% of the scenes; mix with the other types.
 - outro {"headline","sub?","cta?"} — closing card: ONLY for the very last scene when it is a conclusion / call to action.
 Icon names: ${ICON_NAMES.join(', ')}.
 
@@ -282,12 +290,13 @@ export function buildSystem(look = 'motion') {
 
 const fmtScene = (sc, i) => `[${i}] (${(sc.end - sc.start).toFixed(1)}s, ${sc.tokens.length} words) ${sc.text}`;
 
-export async function directVideo({ spoken, language = 'en', ratio = '16:9', topic = '', style = null, look = 'motion', voiceGender = 'unknown', onProgress = () => {} }, deps = {}) {
+export async function directVideo({ spoken, language = 'en', ratio = '16:9', topic = '', style = null, look = 'motion', voiceGender = 'unknown', castMap = CAST, onProgress = () => {} }, deps = {}) {
   const ask = deps.llmJson || llmJson;
   const scenes = spoken;
   const plans = new Array(scenes.length).fill(null); let meta = { title: topic || '', mood: 'tech', palette: null, host: null, cast: [] };
   const CH = 14, system = buildSystem(look);
-  const castLine = isCartoon(look) ? `Cast ids: ${CAST_IDS.map(id => `${id} (${CAST[id].label})`).join('; ')}. The narrator voice is ${voiceGender}${voiceGender === 'unknown' ? '' : ' — pick a host of the same gender (male: sam, omar, prof; female: lina, noor, maya)'}. ` : '';
+  const castIds = Object.keys(castMap), customIds = castIds.filter(id => castMap[id].custom);
+  const castLine = isCartoon(look) ? `Cast ids: ${(customIds.length ? customIds : castIds).map(id => `${id} (${castMap[id].label})`).join('; ')}. The narrator voice is ${voiceGender}${voiceGender === 'unknown' ? '' : ' — pick a host of the same gender (male/female per cast gender; creatures and robots fit any voice)'}. ` : '';
   for (let from = 0; from < scenes.length; from += CH) {
     const chunk = scenes.slice(from, from + CH);
     const user = `Narration language: ${language}. Video format: ${ratio === '9:16' ? 'vertical 9:16 (short-form)' : 'horizontal 16:9'}. ${castLine}${topic ? `Topic: ${topic}. ` : ''}${style ? `Requested style/mood: ${style}. ` : ''}Total scenes: ${scenes.length}.${from > 0 ? ' (Continuing — earlier scenes already planned; do not repeat the title.' + (meta.host ? ` Host: ${meta.host}.` : '') + ')' : ''}\nScenes:\n` + chunk.map((sc, k) => fmtScene(sc, from + k)).join('\n') + (from + CH >= scenes.length ? '\n(The last scene is index ' + (scenes.length - 1) + '.)' : '');
@@ -295,14 +304,14 @@ export async function directVideo({ spoken, language = 'en', ratio = '16:9', top
       const r = await ask({ system, user, maxTokens: 6000, temperature: 0.4 });
       if (from === 0) {
         const pals = LOOK_PALETTES[look] || MOTION_PALETTES;
-        meta = { title: clean(r.title, 70) || meta.title, mood: MOODS.includes(r.mood) ? r.mood : 'tech', palette: pals.includes(r.palette) ? r.palette : null, host: CAST[r.host] ? r.host : null, cast: (Array.isArray(r.cast) ? r.cast : []).filter(x => CAST[x]).slice(0, 3) };
+        meta = { title: clean(r.title, 70) || meta.title, mood: MOODS.includes(r.mood) ? r.mood : 'tech', palette: pals.includes(r.palette) ? r.palette : null, host: castMap[r.host] ? r.host : null, cast: (Array.isArray(r.cast) ? r.cast : []).filter(x => castMap[x]).slice(0, 4) };
       }
       const byI = new Map((Array.isArray(r.scenes) ? r.scenes : []).map(x => [Number(x.i), x]));
       chunk.forEach((sc, k) => { plans[from + k] = byI.get(from + k) || null; });
     } catch (e) { console.warn(`[CodeVideo/director] chunk ${from} failed (${e.message}) — fallback scenes`); }
     onProgress(Math.min(1, (from + CH) / scenes.length));
   }
-  return finalizePlan({ scenes, plans, meta, ratio, look, voiceGender });
+  return finalizePlan({ scenes, plans, meta, ratio, look, voiceGender, castMap });
 }
 
 const POSE_CYCLE = ['point', 'up', 'hold', 'shrug', 'point', 'cheer'];
@@ -310,21 +319,22 @@ const EMO_CYCLE = ['happy', 'neutral', 'excited', 'think'];
 const TOON_TR = ['slide', 'zoom', 'wipe', 'slideup', 'iris'], VOX_TR = ['slide', 'wipe', 'zoom', 'slideup', 'cut'];
 
 /** يطبّق قواعد التنويع بالكود وبيطلّع قايمة المشاهد النهائية (type/data/bg/cam/transition) */
-export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'motion', voiceGender = 'unknown' }) {
+export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'motion', voiceGender = 'unknown', castMap = CAST }) {
   const n = scenes.length; const out = [];
   const cartoon = isCartoon(look), vox = look === 'vox';
-  let host = CAST[meta.host] ? meta.host : null;
+  let host = castMap[meta.host] ? meta.host : null;
   if (cartoon) {
-    const ok = (id) => (voiceGender === 'female' ? !MALE_CAST.has(id) : voiceGender === 'male' ? !FEMALE_CAST.has(id) : true);
-    if (!host || !ok(host)) host = (meta.cast || []).find(ok) || defaultHost(voiceGender);
+    const ok = (id) => { const g = genderOf(id, castMap); return voiceGender === 'female' ? g !== 'male' : voiceGender === 'male' ? g !== 'female' : true; };
+    if (!host || !ok(host)) host = (meta.cast || []).find(ok) || Object.keys(castMap).find(id => castMap[id].custom && ok(id)) || defaultHost(voiceGender);
   }
-  let bigwords = 0, titles = 0, flashGlitch = 0, collages = 0, headlines = 0, duos = 0, kinetics = 0;
+  let bigwords = 0, titles = 0, flashGlitch = 0, collages = 0, headlines = 0, duos = 0, kinetics = 0, arts = 0;
   scenes.forEach((sc, i) => {
     const raw = plans[i]; let clean0 = null;
-    try { clean0 = sanitizeScene(raw, sc.text, { first: i === 0, last: i === n - 1, look, host: host || 'sam' }); } catch { clean0 = null; }
+    try { clean0 = sanitizeScene(raw, sc.text, { first: i === 0, last: i === n - 1, look, host: host || 'sam', castMap }); } catch { clean0 = null; }
     if (clean0?.type === 'outro' && i !== n - 1) clean0 = null;
     if (clean0?.type === 'bigword' && ++bigwords > (cartoon ? 2 : 3)) clean0 = null;
     if (clean0?.type === 'title' && (++titles > 2 || (i !== 0 && sc.end - sc.start < 3))) clean0 = null;
+    if (clean0?.type === 'art' && (++arts > 8 || arts > Math.max(2, Math.ceil(n * 0.4)))) clean0 = null;
     if (clean0?.type === 'collage' && ++collages > 3) clean0 = null;
     if (clean0?.type === 'headline' && ++headlines > 3) clean0 = null;
     if (clean0?.type === 'char_duo' && (++duos > 3 || (sc.end - sc.start) < 3.5)) clean0 = { type: 'char_say', data: { character: host, emotion: 'neutral', emphasis: [] } };

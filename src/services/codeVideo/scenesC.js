@@ -1,10 +1,11 @@
 // ── scenesC.js ── مشاهد الكارتون (2D / 3D): شخصية بتتكلم في فقاعة كلام متزامنة مع الصوت، شخصية + عنصر (أيقونة)، حوار بين شخصيتين، ومذيع صغير فوق مشاهد الإنفوجرافيك
 import { f1, f2, clamp01, easeOutCubic, seg, spring, rgba, darken, lighten, txt, icon, wrapText } from './design.js';
 import { ent, layoutWords } from './common.js';
-import { drawCharacter, CAST, mouthAt, blinkAt } from './characters.js';
+import { CAST, mouthAt, blinkAt } from './characters.js';
+import { drawAny } from './creatures.js';
 
 const styleOf = (c) => (c.look === 'cartoon3d' ? '3d' : 'flat');
-const specOf = (c, id) => CAST[id] || CAST[c.cast?.host] || CAST.sam;
+const specOf = (c, id) => c.cast?.map?.[id] || CAST[id] || c.cast?.map?.[c.cast?.host] || CAST[c.cast?.host] || CAST.sam;
 
 const armsFor = (pose) => (['point', 'wave', 'up'].includes(pose) ? { armR: pose } : ['cheer', 'shrug', 'hold'].includes(pose) ? { armL: pose, armR: pose } : {});
 
@@ -14,7 +15,7 @@ function figure(c, id, { t, tokens, side, size, cx, emotion = 'neutral', pose = 
   const ep = spring((t - enterAt) * 0.6, { k: 9, d: 6 }), dx = (1 - Math.min(1.05, ep)) * (side === 'left' ? -1 : 1) * w * 0.3;
   const base = h + 8; // الخصر عند حافة الإطار السفلية (الشخصية "نصفية" ومقصوصة بالإطار)
   const st = { t, mouth: speaking ? mouthAt(tokens, t) : 0, blink: blinkAt(t, seed), emotion, look: lookAt, armT: clamp01((t - enterAt - 0.3) / 0.5), ...armsFor(pose) };
-  return drawCharacter(c, specOf(c, id), st, { x: cx + dx, y: base, size, flip: side === 'right', style: styleOf(c), tag });
+  return drawAny(c, specOf(c, id), st, { x: cx + dx, y: base, size, flip: side === 'right', style: styleOf(c), tag });
 }
 
 /** فقاعة كلام بكلمات متزامنة مع النطق. rect = {x,y,w,h}، tail = {x,y} (مكان فم الشخصية) */
@@ -129,7 +130,7 @@ export function hostOverlay(c, sc, t) {
   const k = size / 440, ep = spring((t - 0.25) * 0.55, { k: 9, d: 6 });
   const rise = (1 - Math.min(1, ep)) * size * 0.8;
   const st = { t, mouth: mouthAt(sc.tokens, t), blink: blinkAt(t, sc.index), emotion, look: portrait ? 0 : (c.rtl ? 0.5 : -0.5), armT: clamp01((t - 0.55) / 0.5), ...armsFor(pose) };
-  return drawCharacter(c, specOf(c, hostId), st, { x: cx, y: h + 8 + rise, size, flip: !portrait && !c.rtl, style: styleOf(c), tag: `hh${sc.index}` });
+  return drawAny(c, specOf(c, hostId), st, { x: cx, y: h + 8 + rise, size, flip: !portrait && !c.rtl, style: styleOf(c), tag: `hh${sc.index}` });
 }
 
 export const SCENES_C = { char_say, char_prop, char_duo };
