@@ -3210,7 +3210,7 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       await addCreditsBalance(req.user.userId, vidCreditCost);
       // فلتر الأمان بتاع المزوّد (Seedance E005 / P-Video safety checker / NSFW): رسالة أوضح من "فشل" عام عشان العميل يعرف يغيّر المدخلات
       const flagged = /E005|flagged as sensitive|sensitive content|safety (checker|filter)|nsfw|content policy/i.test(genErr.message || '');
-      setRenderJob(jobId, { status: 'failed', error: flagged ? 'The model\'s safety filter flagged the video or the character image (real-looking faces in the image or the video are often flagged). Try a different character image — an illustrated or AI-generated character works best — or another model. Your credits were refunded.' : 'Video generation failed, your credits were refunded.', completedAt: Date.now() });
+      setRenderJob(jobId, { status: 'failed', error: flagged ? 'The model\'s safety filter flagged the video or the character image (very realistic human faces are often flagged, even when AI-generated, and it can be the template video too). Try a stylized character (cartoon, anime or 3D) or another model such as Wan 2.2 Replace. Your credits were refunded.' : 'Video generation failed, your credits were refunded.', completedAt: Date.now() });
     } finally {
       scheduleRenderJobCleanup(jobId);
     }
