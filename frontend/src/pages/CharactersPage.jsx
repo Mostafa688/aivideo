@@ -143,7 +143,8 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
         .cs-tpl:hover .cover img,.cs-tpl:hover .cover video{transform:scale(1.04)}
         .cs-tpl .shade{position:absolute;inset:auto 0 0 0;padding:34px 12px 10px;background:linear-gradient(transparent,rgba(0,0,0,.82));display:flex;justify-content:space-between;align-items:flex-end;gap:6px}
         .cs-modal-bg{position:fixed;inset:0;background:rgba(3,3,8,.78);backdrop-filter:blur(6px);z-index:80;display:grid;place-items:center;padding:16px;overflow-y:auto}
-        .cs-modal{width:100%;max-width:880px;background:var(--bg2,#0d0d14);border:1px solid var(--border3);border-radius:22px;box-shadow:0 30px 80px rgba(0,0,0,.6);display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);overflow:hidden;max-height:92vh}
+        .cs-modal{width:100%;max-width:880px;background:var(--bg2,#0d0d14);border:1px solid var(--border3);border-radius:22px;box-shadow:0 30px 80px rgba(0,0,0,.6);display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:hidden;max-height:92vh}
+        .cs-sticky-act{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 14px -6px var(--bg2,#0d0d14)}
         .cs-pick{position:relative;width:78px;flex-shrink:0;cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid transparent;padding:0;background:none}
         .cs-pick img{width:78px;height:98px;object-fit:cover;display:block}
         .cs-pick[aria-pressed=true]{border-color:#ec4899;box-shadow:0 0 0 3px rgba(236,72,153,.25)}
@@ -160,7 +161,7 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
         .cs-arrow[data-side=end]{inset-inline-end:-6px}
         .cs-sound{position:absolute;bottom:14px;inset-inline-end:14px;display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:999px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#fff;background:rgba(0,0,0,.62);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.22);transition:background .15s}
         .cs-sound:hover{background:rgba(236,72,153,.85)}
-        @media (max-width:760px){.cs-modal{grid-template-columns:1fr}.cs-modal video.pv{max-height:260px}}
+        @media (max-width:760px){.cs-modal{grid-template-columns:1fr;grid-template-rows:none;overflow-y:auto}.cs-modal>div:last-child{overflow:visible!important}.cs-modal video.pv{max-height:260px}}
       `}</style>
 
       <div className="cs-tabs">
@@ -625,9 +626,9 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
               <p style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, margin: 0 }}>{curOpt.mode === 'reference' ? t.howRef : curOpt.mode === 'replace' ? t.howReplace : t.how}</p>
               {err && <p role="alert" style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{err}</p>}
               {enough ? (
-                <button className="cs-act primary" onClick={start} disabled={!sel} style={{ padding: 13, fontSize: 15, opacity: sel ? 1 : 0.5, cursor: sel ? 'pointer' : 'not-allowed' }}><Wand2 size={16} /> {sel ? t.generate : t.pickFirst}</button>
+                <button className="cs-act primary cs-sticky-act" onClick={start} disabled={!sel} style={{ padding: 13, fontSize: 15, filter: sel ? 'none' : 'grayscale(.5) brightness(.65)', cursor: sel ? 'pointer' : 'not-allowed' }}><Wand2 size={16} /> {sel ? t.generate : t.pickFirst}</button>
               ) : (
-                <button className="cs-act primary" onClick={() => onNavigate?.('pricing')} style={{ padding: 13, fontSize: 15 }}><Coins size={16} /> {t.topup}</button>
+                <button className="cs-act primary cs-sticky-act" onClick={() => onNavigate?.('pricing')} style={{ padding: 13, fontSize: 15 }}><Coins size={16} /> {t.topup}</button>
               )}
             </>
           )}
