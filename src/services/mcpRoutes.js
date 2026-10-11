@@ -677,7 +677,7 @@ function buildMcpServer(userId, email) {
         const d = await (await fetch(`${INTERNAL_BASE}/api/character-studio/templates?language=en`)).json();
         const list = d.templates || [];
         if (!list.length) return { content: [{ type: 'text', text: 'There are no trending templates yet.' }] };
-        return { content: [{ type: 'text', text: list.map(t => `- [id ${t.id}] ${t.title} (${t.category}, ${t.durationSec}s) — ${Object.entries(t.costs || {}).map(([k, v]) => `${k}: ${v} credits`).join(' / ')}${t.description ? ` — ${t.description}` : ''}`).join('\n') }] };
+        return { content: [{ type: 'text', text: list.map(t => `- [id ${t.id}] ${t.title} (${t.category}, ${t.durationSec}s${t.people > 1 ? `, ${t.people} people — needs ${t.people} characters` : ''}) — ${Object.entries(t.costs || {}).map(([k, v]) => `${k}: ${v} credits`).join(' / ')}${t.description ? ` — ${t.description}` : ''}`).join('\n') }] };
       } catch (e) { return { content: [{ type: 'text', text: `Failed to list templates: ${e.message}` }], isError: true }; }
     }
   );
@@ -686,17 +686,19 @@ function buildMcpServer(userId, email) {
     'apply_character_template',
     {
       title: 'Make a trending template with my character',
-      description: "Make a trending template video with the user's character: same movements, expressions and sound as the template, performed by their character. Needs a template id (list_character_templates) and ONE character: a saved characterId (list_characters) or a direct characterImageUrl. Charged at the template's price for the chosen tier; refunded automatically if generation fails.",
+      description: "Make a trending template video with the user's character: same movements, expressions and sound as the template, performed by their character. Needs a template id (list_character_templates) and the character(s): ONE for normal templates (saved characterId from list_characters or a direct characterImageUrl); templates that show several people (people > 1 in list_character_templates) need exactly that many characters in `characterIds` / `characterImageUrls`, in order from left to right, and are made with Seedance 2.5. Charged at the template's price for the chosen tier; refunded automatically if generation fails.",
       inputSchema: {
         templateId: z.number().int().describe('Template id from list_character_templates.'),
         characterId: z.number().int().optional().describe('Saved character id from list_characters.'),
         characterImageUrl: z.string().url().optional().describe('Direct URL of the character image (instead of characterId).'),
+        characterIds: z.array(z.number().int()).max(5).optional().describe('For templates with several people: saved character ids from list_characters, in order from left to right.'),
+        characterImageUrls: z.array(z.string().url()).max(5).optional().describe('For templates with several people: direct character image URLs, in order from left to right.'),
         tier: z.enum(['720p', '1080p']).default('720p'),
-        engine: z.enum(['kling', 'p_video']).optional().describe('Which model makes it (the user chooses; omit for the template\'s own recommended engine): kling = Kling 3.0 Omni (templates of 3–10 s, recommended), p_video = P-Video Replace (up to 30 s).'),
+        engine: z.enum(['kling', 'p_video', 'seedance']).optional().describe('Which model makes it (the user chooses; omit for the template\'s own recommended engine): kling = Kling 3.0 Omni (templates of 3–10 s, recommended), p_video = P-Video Replace (up to 30 s), seedance = Seedance 2.5 (several people / look changes, much pricier, voices regenerated).'),
       },
       _meta: { ui: { resourceUri: videoPlayerResourceUri } },
     },
-    async ({ templateId, characterId, characterImageUrl, tier, engine }) => {
+    async ({ templateId, characterId, characterImageUrl, characterIds, characterImageUrls, tier, engine }) => {
       try {
         let imageUrl = characterImageUrl ? resolveUrl(characterImageUrl) : null;
         if (!imageUrl && characterId != null) {
@@ -704,11 +706,21 @@ function buildMcpServer(userId, email) {
           if (!c) throw new Error(`Saved character id ${characterId} was not found — call list_characters.`);
           imageUrl = resolveUrl(referenceOf(c));
         }
-        if (!imageUrl) throw new Error('Provide characterId or characterImageUrl.');
+        // قوالب فيها أكتر من شخص: كل الصور بالترتيب
+        const multi = [...(characterImageUrls || []).map(resolveUrl)];
+        if (characterIds?.length) {
+          const chars = await loadCharacters();
+          for (const id of characterIds) { const c = chars.find(x => x.id === id); if (!c) throw new Error(`Saved character id ${id} was not found — call list_characters.`); multi.push(resolveUrl(referenceOf(c))); }
+        }
+        if (!imageUrl && multi.length) imageUrl = multi[0];
+        if (!imageUrl) throw new Error('Provide characterId or characterImageUrl (or characterIds / characterImageUrls for a template with several people).');
         const srcRes = await fetch(`${INTERNAL_BASE}/api/character-studio/templates/${templateId}/source`, { headers: authHeaders() });
         const src = await srcRes.json();
         if (!srcRes.ok) throw new Error(src.error === 'not_found' ? `Template ${templateId} was not found — call list_character_templates.` : (src.error || 'Could not load the template'));
-        const wanted = engine ? { p_video: 'prunaai_p_video_replace', kling: 'kling_3_0_omni_replace' }[engine] : null;
+        const people = src.people || 1;
+        if (people > 1 && multi.length !== people) throw new Error(`This template shows ${people} people — provide exactly ${people} characters (characterIds or characterImageUrls, in order from left to right).`);
+        if (people === 1 && multi.length > 1) throw new Error('This template has ONE person — provide a single character.');
+        const wanted = engine ? { p_video: 'prunaai_p_video_replace', kling: 'kling_3_0_omni_replace', seedance: 'seedance_2_5' }[engine] : null;
         if (wanted && wanted !== src.model) {
           const opt = (src.options || []).find(o => o.engine === wanted);
           if (!opt) throw new Error(`This template (${Math.round(src.durationSec)}s) cannot be made with that engine (too long for it). Pick another engine or omit it.`);
@@ -716,7 +728,9 @@ function buildMcpServer(userId, email) {
         }
         const useTier = (src.tiers || ['720p']).includes(tier) ? tier : (src.tiers || ['720p'])[0];
         if (src.mode === 'reference') { // قالب Seedance 2.5: الفيديو الأصلي مرجع + صورة الشخصية + برومبت القالب
-          return await runVideoJob({ model: src.model, prompt: `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and sound energy, but the main person must be completely replaced by the character in [Image1]: use that character's face, hairstyle, skin tone and clothing, and do not keep the original person's appearance anywhere in the video. ${src.prompt || ''}`.trim(), referenceImageUrls: [imageUrl], referenceVideoUrls: [src.sourceVideoUrl], durationSec: Math.min(30, Math.max(4, Math.ceil(src.durationSec || 5))), aspectRatio: src.aspect || '9:16', tier: useTier }, 'Template video');
+          const imgs = people > 1 ? multi : [imageUrl];
+          const who = people > 1 ? `the ${people} people in it, in order from left to right, must be completely replaced by the characters in ${imgs.map((_, i) => `[Image${i + 1}]`).join(', ')}` : 'the main person must be completely replaced by the character in [Image1]';
+          return await runVideoJob({ model: src.model, prompt: `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and sound energy, but ${who}: use their face, hairstyle, skin tone and clothing, and do not keep the original appearance of anyone in the video. ${src.prompt || ''}`.trim(), referenceImageUrls: imgs, referenceVideoUrls: [src.sourceVideoUrl], durationSec: Math.min(30, Math.max(4, Math.ceil(src.durationSec || 5))), aspectRatio: src.aspect || '9:16', tier: useTier }, 'Template video');
         }
         return await runVideoJob({ model: src.model, imageUrl, sourceVideoUrl: src.sourceVideoUrl, prompt: src.prompt || 'Match the original performance exactly: same body movements, facial expressions, lip-sync and timing', tier: useTier }, 'Template video');
       } catch (e) { return { content: [{ type: 'text', text: `Failed to apply the template: ${e.message}` }], isError: true }; }

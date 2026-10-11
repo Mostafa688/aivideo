@@ -22,14 +22,17 @@ const router = express.Router();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
-// قوالب الترند وتبديل الشخص: Kling 3.0 Omni (الموصى به، فيديو 3-10ث) أو P-Video Replace (لحد 30ث). Wan Replace وSeedance اتشالوا من التبديل بقرار العميل.
+// قوالب الترند وتبديل الشخص: Kling 3.0 Omni (الموصى به، فيديو 3-10ث) أو P-Video Replace (لحد 30ث) لشخص واحد، وSeedance 2.5 (القوالب اللي فيها أكتر من شخص أو تغيير شكل). Wan Replace اتشال بقرار العميل.
 export const DEFAULT_TEMPLATE_ENGINE = 'kling_3_0_omni_replace';
 // محركات القوالب: نقل الأداء (P-Video Animate: حركة وكلام الفيديو الأصلي بالظبط، تبديل شخصية واحدة، لحد 60ث) أو Seedance 2.5
 // (بيعيد بناء الفيديو بالذكاء الاصطناعي من فيديو مرجعي + صورة الشخصية + برومبت — بيقدر يغيّر الشكل زي لون الشعر والعضلات، لحد 30ث وأغلى)
 export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
 // محركات تبديل الشخص اللي العميل يقدر يختار منها في القالب (الأدمن بيحدد الافتراضي)
-export const SWAP_ENGINES = ['kling_3_0_omni_replace', 'prunaai_p_video_replace'];
-const engineOptions = (sec) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && sec <= engineMaxSec(e) + 0.5 && sec >= engineMinSec(e) - 0.3).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
+export const SWAP_ENGINES = ['kling_3_0_omni_replace', 'prunaai_p_video_replace', 'seedance_2_5'];
+export const MAX_TEMPLATE_PEOPLE = 5;
+const clampPeople = (v) => Math.min(MAX_TEMPLATE_PEOPLE, Math.max(1, parseInt(v, 10) || 1));
+// قالب فيه أكتر من شخص: Seedance بس (الوحيد اللي بياخد أكتر من صورة شخصية)
+const engineOptions = (sec, people = 1) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && (people <= 1 || e === REFERENCE_TEMPLATE_ENGINE) && sec <= engineMaxSec(e) + 0.5 && sec >= engineMinSec(e) - 0.3).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
 const templateMode = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 'reference' : (NEW_VIDEO_MODELS[e]?.swapMode === 'replace' ? 'replace' : 'transfer'));
 const isTemplateEngine = (e) => SWAP_ENGINES.includes(e) && !!NEW_VIDEO_MODELS[e];
 const engineMinSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 4 : (getMinClipSeconds(e) || 0)); // Seedance (تعديل فيديو): الفيديو الأصلي 4-30 ثانية
@@ -48,10 +51,11 @@ export async function initCharacterStudioTables() {
     engine TEXT NOT NULL DEFAULT 'prunaai_p_video_animate', is_featured INTEGER DEFAULT 0, is_published INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0,
     uses_count INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`);
   // P-Video Animate مقصور على شات الايجنت: أي قالب قديم عليه المحرك ده (ومدته داخل حد Wan Replace) بيتحوّل تلقائي لـ Wan 2.2 Animate Replace
-  // محركات اتشالت من التبديل (P-Video Animate / Wan Replace / Seedance): القوالب القديمة بتتحوّل لـ Kling لو الفيديو 3-10ث، وإلا P-Video Replace
-  await pool.query(`UPDATE trend_templates SET engine = CASE WHEN duration_sec BETWEEN 2.7 AND 10.5 THEN 'kling_3_0_omni_replace' ELSE 'prunaai_p_video_replace' END WHERE engine IN ('prunaai_p_video_animate','wan_2_2_animate_replace','seedance_2_5')`).catch(() => {});
+  // محركات اتشالت من التبديل (P-Video Animate / Wan Replace): القوالب القديمة بتتحوّل لـ Kling لو الفيديو 3-10ث، وإلا P-Video Replace
+  await pool.query(`UPDATE trend_templates SET engine = CASE WHEN duration_sec BETWEEN 2.7 AND 10.5 THEN 'kling_3_0_omni_replace' ELSE 'prunaai_p_video_replace' END WHERE engine IN ('prunaai_p_video_animate','wan_2_2_animate_replace')`).catch(() => {});
   await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS prompt TEXT`);
   await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS aspect TEXT`);
+  await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS people INTEGER DEFAULT 1`);
   await pool.query(`ALTER TABLE character_presets ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE character_references ADD COLUMN IF NOT EXISTS description TEXT`);
@@ -137,7 +141,7 @@ const costsFor = (engine, sec) => Object.fromEntries(tiersFor(engine).map(t => {
 const pub = (r, lang) => ({
   id: r.id, title: lang === 'en' ? r.title_en : r.title_ar, description: (lang === 'en' ? r.description_en : r.description_ar) || '',
   category: r.category, coverUrl: r.cover_url, previewUrl: r.preview_url || null, durationSec: Number(r.duration_sec), engine: r.engine, mode: templateMode(r.engine),
-  tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), options: engineOptions(Number(r.duration_sec)), featured: !!r.is_featured, uses: r.uses_count || 0,
+  tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), options: engineOptions(Number(r.duration_sec), r.people || 1), people: r.people || 1, featured: !!r.is_featured, uses: r.uses_count || 0,
 });
 
 // ══════════ عام ══════════
@@ -174,7 +178,7 @@ router.get('/templates/:id/source', authMiddleware, async (req, res) => {
     const r = rows[0];
     if (!r) return res.status(404).json({ error: 'not_found' });
     pool.query(`UPDATE trend_templates SET uses_count = uses_count + 1 WHERE id = $1`, [r.id]).catch(() => {});
-    res.json({ sourceVideoUrl: r.source_video_url, model: r.engine, mode: templateMode(r.engine), prompt: r.prompt || '', aspect: r.aspect || '9:16', durationSec: Number(r.duration_sec), tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), options: engineOptions(Number(r.duration_sec)) });
+    res.json({ sourceVideoUrl: r.source_video_url, model: r.engine, mode: templateMode(r.engine), prompt: r.prompt || '', aspect: r.aspect || '9:16', durationSec: Number(r.duration_sec), tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), options: engineOptions(Number(r.duration_sec), r.people || 1), people: r.people || 1 });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -248,21 +252,22 @@ router.post('/admin/templates', adminAuth, async (req, res) => {
     const b = req.body || {};
     if (!text(b.title_ar) || !text(b.title_en)) return res.status(400).json({ error: 'title_ar and title_en are required' });
     if (!httpUrl(b.source_video_url)) return res.status(400).json({ error: 'source_video_url is required (upload the video first)' });
-    const engine = isTemplateEngine(b.engine) ? b.engine : DEFAULT_TEMPLATE_ENGINE;
+    const people = clampPeople(b.people);
+    const engine = people > 1 ? REFERENCE_TEMPLATE_ENGINE : (isTemplateEngine(b.engine) ? b.engine : DEFAULT_TEMPLATE_ENGINE); // أكتر من شخص = Seedance بس
     const dur = Math.max(1, Math.min(engineMaxSec(engine), Number(b.duration_sec) || 5));
     if (engine === REFERENCE_TEMPLATE_ENGINE && Number(b.duration_sec) > 0 && Number(b.duration_sec) < 3.7) return res.status(400).json({ error: `Seedance needs a source video of at least 4 seconds — the source video is ${Math.round(Number(b.duration_sec) * 10) / 10}s` });
     const aspect = b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null;
     if (Number(b.duration_sec) > engineMaxSec(engine) + 0.5) return res.status(400).json({ error: `This engine supports videos up to ${engineMaxSec(engine)} seconds — the source video is ${Math.round(Number(b.duration_sec))}s` });
-    const { rows } = await pool.query(`INSERT INTO trend_templates (title_ar,title_en,description_ar,description_en,category,cover_url,preview_url,source_video_url,duration_sec,engine,is_featured,is_published,sort_order,prompt,aspect) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-      [text(b.title_ar, 100), text(b.title_en, 100), text(b.description_ar, 500) || null, text(b.description_en, 500) || null, text(b.category, 30) || 'viral', httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), dur, engine, flag(b.is_featured), b.is_published === false || b.is_published === 0 ? 0 : 1, parseInt(b.sort_order, 10) || 0, text(b.prompt, 800) || null, aspect]);
+    const { rows } = await pool.query(`INSERT INTO trend_templates (title_ar,title_en,description_ar,description_en,category,cover_url,preview_url,source_video_url,duration_sec,engine,is_featured,is_published,sort_order,prompt,aspect,people) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [text(b.title_ar, 100), text(b.title_en, 100), text(b.description_ar, 500) || null, text(b.description_en, 500) || null, text(b.category, 30) || 'viral', httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), dur, engine, flag(b.is_featured), b.is_published === false || b.is_published === 0 ? 0 : 1, parseInt(b.sort_order, 10) || 0, text(b.prompt, 800) || null, aspect, people]);
     res.json({ template: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.put('/admin/templates/:id', adminAuth, async (req, res) => {
   try {
     const b = req.body || {};
-    const { rows } = await pool.query(`UPDATE trend_templates SET title_ar=COALESCE($2,title_ar), title_en=COALESCE($3,title_en), description_ar=COALESCE($4,description_ar), description_en=COALESCE($5,description_en), category=COALESCE($6,category), cover_url=COALESCE($7,cover_url), preview_url=COALESCE($8,preview_url), source_video_url=COALESCE($9,source_video_url), duration_sec=COALESCE($10,duration_sec), is_featured=COALESCE($11,is_featured), is_published=COALESCE($12,is_published), sort_order=COALESCE($13,sort_order), engine=COALESCE($14,engine), prompt=COALESCE($15,prompt), aspect=COALESCE($16,aspect) WHERE id=$1 RETURNING *`,
-      [req.params.id, b.title_ar !== undefined ? text(b.title_ar, 100) : null, b.title_en !== undefined ? text(b.title_en, 100) : null, b.description_ar !== undefined ? text(b.description_ar, 500) : null, b.description_en !== undefined ? text(b.description_en, 500) : null, b.category ? text(b.category, 30) : null, httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), b.duration_sec ? Math.max(1, Number(b.duration_sec)) : null, b.is_featured === undefined ? null : flag(b.is_featured), b.is_published === undefined ? null : flag(b.is_published), b.sort_order === undefined ? null : parseInt(b.sort_order, 10) || 0, isTemplateEngine(b.engine) ? b.engine : null, b.prompt !== undefined ? text(b.prompt, 800) : null, b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null]);
+    const { rows } = await pool.query(`UPDATE trend_templates SET title_ar=COALESCE($2,title_ar), title_en=COALESCE($3,title_en), description_ar=COALESCE($4,description_ar), description_en=COALESCE($5,description_en), category=COALESCE($6,category), cover_url=COALESCE($7,cover_url), preview_url=COALESCE($8,preview_url), source_video_url=COALESCE($9,source_video_url), duration_sec=COALESCE($10,duration_sec), is_featured=COALESCE($11,is_featured), is_published=COALESCE($12,is_published), sort_order=COALESCE($13,sort_order), engine=COALESCE($14,engine), prompt=COALESCE($15,prompt), aspect=COALESCE($16,aspect), people=COALESCE($17,people) WHERE id=$1 RETURNING *`,
+      [req.params.id, b.title_ar !== undefined ? text(b.title_ar, 100) : null, b.title_en !== undefined ? text(b.title_en, 100) : null, b.description_ar !== undefined ? text(b.description_ar, 500) : null, b.description_en !== undefined ? text(b.description_en, 500) : null, b.category ? text(b.category, 30) : null, httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), b.duration_sec ? Math.max(1, Number(b.duration_sec)) : null, b.is_featured === undefined ? null : flag(b.is_featured), b.is_published === undefined ? null : flag(b.is_published), b.sort_order === undefined ? null : parseInt(b.sort_order, 10) || 0, (b.people !== undefined && clampPeople(b.people) > 1) ? REFERENCE_TEMPLATE_ENGINE : (isTemplateEngine(b.engine) ? b.engine : null), b.prompt !== undefined ? text(b.prompt, 800) : null, b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null, b.people !== undefined ? clampPeople(b.people) : null]);
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ template: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }

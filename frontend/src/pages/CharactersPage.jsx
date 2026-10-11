@@ -25,7 +25,7 @@ const T = {
     all: 'الكل', cats: { person: 'أشخاص', influencer: 'مؤثرين', cartoon: 'كرتون', animal: 'حيوانات', mascot: 'ماسكوت', other: 'أخرى', dance: 'رقص', comedy: 'كوميدي', cinematic: 'سينمائي', talking: 'كلام', product: 'منتجات', viral: 'ترند' },
     noPresets: 'مفيش شخصيات جاهزة لسه — هتتضاف قريب.', noTemplates: 'مفيش قوالب لسه — أول قوالب الترند جاية قريب.',
     featured: 'مميز', sec: 'ث', from: 'من', cr: 'كريديت', makeTpl: 'اعمل الفيديو ده بشخصيتك',
-    modalTitle: 'غيّر الشخصية في القالب', step1: '1. اختار الشخصية', stepEngine: 'الموديل', recommended: 'موصى به', eng: { prunaai_p_video_replace: ['P-Video Replace', 'سريع، بيحافظ على المكان والصوت'], kling_3_0_omni_replace: ['Kling 3.0 Omni', 'تعديل بتعليمات، فيديو 3–10 ثواني (أغلى)'] }, step2: '2. الجودة', mineH: 'شخصياتي', presetH: 'جاهزة', uploadFace: 'ارفع وجه/صورة', uploading: 'جاري الرفع...',
+    modalTitle: 'غيّر الشخصية في القالب', step1: '1. اختار الشخصية', stepEngine: 'الموديل', peopleWord: 'أشخاص', stepMulti: (n, k) => `1. اختار ${n} شخصيات بالترتيب من الشمال لليمين (${k}/${n})`, pickMore: (k) => `اختار ${k} شخصية كمان`, recommended: 'موصى به', eng: { prunaai_p_video_replace: ['P-Video Replace', 'سريع، بيحافظ على المكان والصوت'], kling_3_0_omni_replace: ['Kling 3.0 Omni', 'تعديل بتعليمات، فيديو 3–10 ثواني (أغلى)'], seedance_2_5: ['Seedance 2.5', 'بيعيد بناء المشهد وبيغيّر الشكل، الصوت بيتولد من جديد (الأغلى)'] }, step2: '2. الجودة', mineH: 'شخصياتي', presetH: 'جاهزة', uploadFace: 'ارفع وجه/صورة', uploading: 'جاري الرفع...',
     pickFirst: 'اختار شخصية الأول', cost: 'التكلفة', balance: 'رصيدك', generate: 'ابدأ التوليد', generating: 'بنجهّز الفيديو… ممكن ياخد من دقيقة لعدة دقايق', done: 'الفيديو جاهز', download: 'تحميل', another: 'جرّب شخصية تانية',
     failed: 'فشل التوليد', retry: 'حاول تاني', topup: 'اشحن كريديت', lowCredits: 'رصيدك مش كفاية', howReplace: 'القالب ده بيبدّل الشخص اللي في الفيديو بشخصيتك ويحافظ على مكان وحركة القالب وصوته الأصلي. الأحسن تكون صورة شخصيتك لشخص واحد بجسم قريب من جسم الشخص في القالب. الكريديت بيرجع تلقائي لو التوليد فشل.', howRef: 'القالب ده بيعيد بناء الفيديو بالذكاء الاصطناعي (Seedance 2.5) عشان يطلع بشخصيتك وبالتأثيرات بتاعته: الحركة قريبة جدًا بس مش مطابقة لقطة بلقطة، والصوت بيتولد من جديد. الكريديت بيرجع تلقائي لو التوليد فشل.', how: 'شخصيتك (بصورتها وخلفيتها) بتتحرك وتتكلم زي القالب بالظبط. المكان هيبقى مكان صورة شخصيتك مش مكان القالب. الكريديت بيرجع تلقائي لو التوليد فشل.',
   },
@@ -45,7 +45,7 @@ const T = {
     all: 'All', cats: { person: 'People', influencer: 'Influencers', cartoon: 'Cartoon', animal: 'Animals', mascot: 'Mascots', other: 'Other', dance: 'Dance', comedy: 'Comedy', cinematic: 'Cinematic', talking: 'Talking', product: 'Product', viral: 'Viral' },
     noPresets: 'No ready-made characters yet — coming soon.', noTemplates: 'No templates yet — the first trend templates are coming soon.',
     featured: 'Featured', sec: 's', from: 'from', cr: 'credits', makeTpl: 'Make this video with your character',
-    modalTitle: 'Swap the character in this template', step1: '1. Choose the character', stepEngine: 'Model', recommended: 'Recommended', eng: { prunaai_p_video_replace: ['P-Video Replace', 'Fast, keeps the place and audio'], kling_3_0_omni_replace: ['Kling 3.0 Omni', 'Prompt-based edit, 3–10s video (pricier)'] }, step2: '2. Quality', mineH: 'Mine', presetH: 'Ready-made', uploadFace: 'Upload a face/photo', uploading: 'Uploading...',
+    modalTitle: 'Swap the character in this template', step1: '1. Choose the character', stepEngine: 'Model', peopleWord: 'people', stepMulti: (n, k) => `1. Choose ${n} characters in order, left to right (${k}/${n})`, pickMore: (k) => `Choose ${k} more`, recommended: 'Recommended', eng: { prunaai_p_video_replace: ['P-Video Replace', 'Fast, keeps the place and audio'], kling_3_0_omni_replace: ['Kling 3.0 Omni', 'Prompt-based edit, 3–10s video (pricier)'], seedance_2_5: ['Seedance 2.5', 'Re-creates the scene, can change looks, new voices (priciest)'] }, step2: '2. Quality', mineH: 'Mine', presetH: 'Ready-made', uploadFace: 'Upload a face/photo', uploading: 'Uploading...',
     pickFirst: 'Choose a character first', cost: 'Cost', balance: 'Your balance', generate: 'Start generating', generating: 'Preparing your video… it can take from one minute to a few minutes', done: 'Your video is ready', download: 'Download', another: 'Try another character',
     failed: 'Generation failed', retry: 'Try again', topup: 'Top up credits', lowCredits: 'Not enough credits', howReplace: 'This template replaces the person in the video with your character and keeps the template\'s place, movement and original sound. Best with a character image of ONE person with a body similar to the person in the template. Credits are refunded automatically if generation fails.', howRef: 'This template re-creates the video with AI (Seedance 2.5) so it features your character and the template\'s effects: the movement is very close but not frame-exact, and the sound is generated again. Credits are refunded automatically if generation fails.', how: 'Your character, with the background of its own image, moves and speaks exactly like the template. The setting will be your character image setting, not the template one. Credits are refunded automatically if generation fails.',
   },
@@ -144,6 +144,7 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
         .cs-tpl .shade{position:absolute;inset:auto 0 0 0;padding:34px 12px 10px;background:linear-gradient(transparent,rgba(0,0,0,.82));display:flex;justify-content:space-between;align-items:flex-end;gap:6px}
         .cs-modal-bg{position:fixed;inset:0;background:rgba(3,3,8,.78);backdrop-filter:blur(6px);z-index:80;display:grid;place-items:center;padding:16px;overflow-y:auto}
         .cs-modal{width:100%;max-width:880px;background:var(--bg2,#0d0d14);border:1px solid var(--border3);border-radius:22px;box-shadow:0 30px 80px rgba(0,0,0,.6);display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:hidden;max-height:92vh}
+        .cs-order{position:absolute;top:6px;inset-inline-start:6px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#ec4899;color:#fff;font-size:12px;font-weight:800;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.5)}
         .cs-sticky-act{position:sticky;bottom:0;z-index:2;box-shadow:0 -14px 14px -6px var(--bg2,#0d0d14)}
         .cs-pick{position:relative;width:78px;flex-shrink:0;cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid transparent;padding:0;background:none}
         .cs-pick img{width:78px;height:98px;object-fit:cover;display:block}
@@ -252,7 +253,7 @@ export default function CharactersPage({ onBack, onNavigate, userRegion }) {
                         {x.featured && <Pill color="#fbbf24"><Sparkles size={11} /> {t.featured}</Pill>}
                       </div>
                       <div className="shade">
-                        <span style={{ fontSize: 12, color: '#fff', fontWeight: 700 }}>{Math.round(x.durationSec)}{t.sec}</span>
+                        <span style={{ fontSize: 12, color: '#fff', fontWeight: 700 }}>{Math.round(x.durationSec)}{t.sec}{x.people > 1 ? ` · ${x.people} ${t.peopleWord}` : ''}</span>
                         {Number.isFinite(minCost) && <span style={{ fontSize: 12, fontWeight: 800, color: '#fde68a', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Coins size={12} /> {t.from} {minCost}</span>}
                       </div>
                     </div>
@@ -484,7 +485,16 @@ function ScrollStrip({ t, isAr, children }) {
 }
 
 function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacterAdded, onNavigate }) {
-  const [sel, setSel] = useState(null); // { imageUrl, label }
+  const people = tpl.people || 1; // قالب فيه أكتر من شخص: العميل يختار شخصية لكل واحد بالترتيب (من الشمال لليمين)
+  const [picked, setPicked] = useState([]); // [{ face, imageUrl, label, presetId }]
+  const sel = picked[0] || null;
+  const ready = picked.length === people;
+  const choose = (x) => setPicked(prev => {
+    if (people === 1) return [x];
+    const at = prev.findIndex(p => p.face === x.face);
+    if (at >= 0) return prev.filter((_, i) => i !== at); // ضغطة تانية تشيله
+    return prev.length < people ? [...prev, x] : [...prev.slice(1), x]; // لو الاختيار كامل بيستبدل الأقدم
+  });
   const [engine, setEngine] = useState(tpl.engine); // العميل يختار الموديل؛ الافتراضي هو اللي الأدمن حدده للقالب
   const engOpts = tpl.options?.length ? tpl.options : [{ engine: tpl.engine, mode: tpl.mode, tiers: tpl.tiers, costs: tpl.costs }];
   const curOpt = engOpts.find(o => o.engine === engine) || engOpts[0];
@@ -515,31 +525,36 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
       const res = await fetch('/api/characters', { method: 'POST', headers: authHeaders(), body: fd });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Failed');
-      setSel({ face: d.character.image_url, imageUrl: d.character.generation_url || d.character.image_url, label: d.character.label || '' });
+      choose({ face: d.character.image_url, imageUrl: d.character.generation_url || d.character.image_url, label: d.character.label || '' });
       onCharacterAdded?.();
     } catch (e) { setErr(e.message); }
     setUploading(false);
   };
 
   const start = async () => {
-    if (!sel) return;
+    if (!ready) return;
     setErr(''); setNeedsTopup(false); setPhase('working'); setElapsed(0);
     clearInterval(timer.current); const t0 = Date.now(); timer.current = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
     try {
       const sres = await fetch(`/api/character-studio/templates/${tpl.id}/source`, { headers: authHeaders() });
       const src = await sres.json();
       if (!sres.ok) throw new Error(src.error || 'Template unavailable');
-      let genImage = sel.imageUrl;
-      if (sel.presetId) { // شخصية جاهزة: صورة التوليد هي أول صورة مخفية (كل الزوايا) لو الأدمن رفعها
-        const rr = await fetch(`/api/character-studio/presets/${sel.presetId}/refs`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({}));
-        if (rr.imageUrl) genImage = rr.imageUrl;
+      const genImages = [];
+      for (const pk of picked) {
+        let gi = pk.imageUrl;
+        if (pk.presetId) { // شخصية جاهزة: صورة التوليد هي أول صورة مخفية (كل الزوايا) لو الأدمن رفعها
+          const rr = await fetch(`/api/character-studio/presets/${pk.presetId}/refs`, { headers: authHeaders() }).then(r => r.json()).catch(() => ({}));
+          if (rr.imageUrl) gi = rr.imageUrl;
+        }
+        genImages.push(gi);
       }
+      const genImage = genImages[0];
       // قالب Seedance 2.5: الفيديو الأصلي بيتبعت كمرجع فيديو + صورة الشخصية كمرجع + برومبت القالب (بيعيد بناء المشهد ويقدر يغيّر الشكل)؛ قالب نقل الأداء: صورة + فيديو مصدر
       const isRef = curOpt.mode === 'reference';
       const refBody = {
         model: engine, tier, aspectRatio: src.aspect || '9:16', durationSec: Math.min(30, Math.max(4, Math.ceil(src.durationSec || 5))),
-        referenceImageUrls: [genImage], referenceVideoUrls: [src.sourceVideoUrl],
-        prompt: `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and sound energy, but the main person must be completely replaced by the character in [Image1]: use that character's face, hairstyle, skin tone and clothing, and do not keep the original person's appearance anywhere in the video. ${src.prompt || ''}`.trim(),
+        referenceImageUrls: genImages, referenceVideoUrls: [src.sourceVideoUrl],
+        prompt: `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and sound energy, but ${people > 1 ? `the ${people} people in it, in order from left to right, must be completely replaced by the characters in ${genImages.map((_, i) => `[Image${i + 1}]`).join(', ')}` : 'the main person must be completely replaced by the character in [Image1]'}: use their face, hairstyle, skin tone and clothing, and do not keep the original appearance of anyone in the video. ${src.prompt || ''}`.trim(),
       };
       const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(isRef ? refBody : { model: engine, imageUrl: genImage, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: engine === src.model ? (src.prompt || '') : '' }) });
       const g = await gres.json();
@@ -558,7 +573,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
 
   // img = الوش (اللي بيظهر للعميل)، gen = صورة التوليد الفعلية (أول صورة مخفية لو الشخصية فيها صور زوايا)، presetId = شخصية جاهزة (بتتجاب مراجعها وقت التوليد)
   const Pick = ({ img, label, gen, presetId }) => (
-    <button type="button" className="cs-pick" aria-pressed={sel?.face === img} onClick={() => setSel({ face: img, imageUrl: gen || img, label, presetId })} title={label}><img src={img} alt={label || ''} /></button>
+    <button type="button" className="cs-pick" aria-pressed={picked.some(p => p.face === img)} onClick={() => choose({ face: img, imageUrl: gen || img, label, presetId })} title={label}><img src={img} alt={label || ''} />{people > 1 && picked.findIndex(p => p.face === img) >= 0 && <span className="cs-order">{picked.findIndex(p => p.face === img) + 1}</span>}</button>
   );
 
   return (
@@ -584,7 +599,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
           {phase === 'pick' && (
             <>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t.step1}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{people > 1 ? t.stepMulti(people, picked.length) : t.step1}</div>
                 <ScrollStrip t={t} isAr={isAr}>
                   <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { uploadFace(e.target.files?.[0]); e.target.value = ''; }} />
                   <button type="button" className="cs-pick" onClick={() => fileRef.current?.click()} disabled={uploading} style={{ border: '1.5px dashed rgba(255,255,255,.25)', display: 'grid', placeItems: 'center', width: 78, height: 98, color: 'var(--text2)', fontSize: 11, textAlign: 'center', padding: 6 }}>
@@ -626,7 +641,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
               <p style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, margin: 0 }}>{curOpt.mode === 'reference' ? t.howRef : curOpt.mode === 'replace' ? t.howReplace : t.how}</p>
               {err && <p role="alert" style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{err}</p>}
               {enough ? (
-                <button className="cs-act primary cs-sticky-act" onClick={start} disabled={!sel} style={{ padding: 13, fontSize: 15, filter: sel ? 'none' : 'grayscale(.5) brightness(.65)', cursor: sel ? 'pointer' : 'not-allowed' }}><Wand2 size={16} /> {sel ? t.generate : t.pickFirst}</button>
+                <button className="cs-act primary cs-sticky-act" onClick={start} disabled={!ready} style={{ padding: 13, fontSize: 15, filter: ready ? 'none' : 'grayscale(.5) brightness(.65)', cursor: ready ? 'pointer' : 'not-allowed' }}><Wand2 size={16} /> {ready ? t.generate : (people > 1 ? t.pickMore(people - picked.length) : t.pickFirst)}</button>
               ) : (
                 <button className="cs-act primary cs-sticky-act" onClick={() => onNavigate?.('pricing')} style={{ padding: 13, fontSize: 15 }}><Coins size={16} /> {t.topup}</button>
               )}
