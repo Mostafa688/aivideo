@@ -1834,7 +1834,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   // startImageGeneration بالظبط — طلب واحد بيستنى الفيديو جاهز (backend بيعمل Prefer: wait)
   const startVideoModelGeneration = async (gen) => {
     // نقل الأداء: محتاج فيديو العميل المرفوع + صورة الشخصية — الفيديو بيترفع هنا لرابط عام قبل التوليد
-    const isPerf = gen.model === 'prunaai_p_video_animate' || gen.model === 'wan_2_2_animate_replace'; // محركات بتاخد فيديو العميل + صورة شخصية
+    const isPerf = ['prunaai_p_video_animate', 'wan_2_2_animate_replace', 'prunaai_p_video_replace', 'kling_3_0_omni_replace'].includes(gen.model); // محركات بتاخد فيديو العميل + صورة شخصية
     if (isPerf && !gen.sourceVideoUrl && !uploadedVideoFile) {
       setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'محتاج الفيديو الأصلي (اللي فيه الحركة والكلام) — ارفعه من زرار + وبعدين كمّل.' : 'I need the source video (the one with the movements and speech) — upload it with the + button, then continue.' }]);
       return;
@@ -1865,7 +1865,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       let refVideoUrls = gen.referenceVideoUrls?.length ? gen.referenceVideoUrls : undefined;
       let genAspect = gen.aspectRatio || '16:9', genDuration = gen.durationSec || 5;
       if ((isPerf && !sourceVideoUrl) || useVideoRef) {
-        const capQuery = (useVideoRef || gen.model === 'wan_2_2_animate_replace') ? `?model=${encodeURIComponent(gen.model)}` : ''; // السقف حسب المحرك (Seedance/Wan Replace: 30 ثانية)
+        const capQuery = (useVideoRef || (isPerf && gen.model !== 'prunaai_p_video_animate')) ? `?model=${encodeURIComponent(gen.model)}` : ''; // السقف حسب المحرك (Seedance/Wan/P-Video Replace: 30 ثانية، Kling: 15)
         const form = new FormData();
         form.append('video', uploadedVideoFile, uploadedVideoFile.name || 'video.mp4');
         const up = await fetch(`/api/videos/upload-source${capQuery}`, { method: 'POST', headers: tokenHeader(), body: form });

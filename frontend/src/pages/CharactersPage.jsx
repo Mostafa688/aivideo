@@ -25,7 +25,7 @@ const T = {
     all: 'الكل', cats: { person: 'أشخاص', influencer: 'مؤثرين', cartoon: 'كرتون', animal: 'حيوانات', mascot: 'ماسكوت', other: 'أخرى', dance: 'رقص', comedy: 'كوميدي', cinematic: 'سينمائي', talking: 'كلام', product: 'منتجات', viral: 'ترند' },
     noPresets: 'مفيش شخصيات جاهزة لسه — هتتضاف قريب.', noTemplates: 'مفيش قوالب لسه — أول قوالب الترند جاية قريب.',
     featured: 'مميز', sec: 'ث', from: 'من', cr: 'كريديت', makeTpl: 'اعمل الفيديو ده بشخصيتك',
-    modalTitle: 'غيّر الشخصية في القالب', step1: '1. اختار الشخصية', step2: '2. الجودة', mineH: 'شخصياتي', presetH: 'جاهزة', uploadFace: 'ارفع وجه/صورة', uploading: 'جاري الرفع...',
+    modalTitle: 'غيّر الشخصية في القالب', step1: '1. اختار الشخصية', stepEngine: 'الموديل', recommended: 'موصى به', eng: { wan_2_2_animate_replace: ['Wan 2.2 Replace', 'رخيص، بيحافظ على المكان والصوت'], prunaai_p_video_replace: ['P-Video Replace', 'سريع، بيحافظ على المكان والصوت'], kling_3_0_omni_replace: ['Kling 3.0 Omni', 'تعديل بتعليمات (أغلى)'], seedance_2_5: ['Seedance 2.5', 'بيعيد بناء المشهد وبيغيّر الشكل (الأغلى)'] }, step2: '2. الجودة', mineH: 'شخصياتي', presetH: 'جاهزة', uploadFace: 'ارفع وجه/صورة', uploading: 'جاري الرفع...',
     pickFirst: 'اختار شخصية الأول', cost: 'التكلفة', balance: 'رصيدك', generate: 'ابدأ التوليد', generating: 'بنجهّز الفيديو… ممكن ياخد من دقيقة لعدة دقايق', done: 'الفيديو جاهز', download: 'تحميل', another: 'جرّب شخصية تانية',
     failed: 'فشل التوليد', retry: 'حاول تاني', topup: 'اشحن كريديت', lowCredits: 'رصيدك مش كفاية', howReplace: 'القالب ده بيبدّل الشخص اللي في الفيديو بشخصيتك ويحافظ على مكان وحركة القالب وصوته الأصلي. الأحسن تكون صورة شخصيتك لشخص واحد بجسم قريب من جسم الشخص في القالب. الكريديت بيرجع تلقائي لو التوليد فشل.', howRef: 'القالب ده بيعيد بناء الفيديو بالذكاء الاصطناعي (Seedance 2.5) عشان يطلع بشخصيتك وبالتأثيرات بتاعته: الحركة قريبة جدًا بس مش مطابقة لقطة بلقطة، والصوت بيتولد من جديد. الكريديت بيرجع تلقائي لو التوليد فشل.', how: 'شخصيتك (بصورتها وخلفيتها) بتتحرك وتتكلم زي القالب بالظبط. المكان هيبقى مكان صورة شخصيتك مش مكان القالب. الكريديت بيرجع تلقائي لو التوليد فشل.',
   },
@@ -45,7 +45,7 @@ const T = {
     all: 'All', cats: { person: 'People', influencer: 'Influencers', cartoon: 'Cartoon', animal: 'Animals', mascot: 'Mascots', other: 'Other', dance: 'Dance', comedy: 'Comedy', cinematic: 'Cinematic', talking: 'Talking', product: 'Product', viral: 'Viral' },
     noPresets: 'No ready-made characters yet — coming soon.', noTemplates: 'No templates yet — the first trend templates are coming soon.',
     featured: 'Featured', sec: 's', from: 'from', cr: 'credits', makeTpl: 'Make this video with your character',
-    modalTitle: 'Swap the character in this template', step1: '1. Choose the character', step2: '2. Quality', mineH: 'Mine', presetH: 'Ready-made', uploadFace: 'Upload a face/photo', uploading: 'Uploading...',
+    modalTitle: 'Swap the character in this template', step1: '1. Choose the character', stepEngine: 'Model', recommended: 'Recommended', eng: { wan_2_2_animate_replace: ['Wan 2.2 Replace', 'Cheap, keeps the place and audio'], prunaai_p_video_replace: ['P-Video Replace', 'Fast, keeps the place and audio'], kling_3_0_omni_replace: ['Kling 3.0 Omni', 'Prompt-based edit (pricier)'], seedance_2_5: ['Seedance 2.5', 'Re-creates the scene, can change looks (priciest)'] }, step2: '2. Quality', mineH: 'Mine', presetH: 'Ready-made', uploadFace: 'Upload a face/photo', uploading: 'Uploading...',
     pickFirst: 'Choose a character first', cost: 'Cost', balance: 'Your balance', generate: 'Start generating', generating: 'Preparing your video… it can take from one minute to a few minutes', done: 'Your video is ready', download: 'Download', another: 'Try another character',
     failed: 'Generation failed', retry: 'Try again', topup: 'Top up credits', lowCredits: 'Not enough credits', howReplace: 'This template replaces the person in the video with your character and keeps the template\'s place, movement and original sound. Best with a character image of ONE person with a body similar to the person in the template. Credits are refunded automatically if generation fails.', howRef: 'This template re-creates the video with AI (Seedance 2.5) so it features your character and the template\'s effects: the movement is very close but not frame-exact, and the sound is generated again. Credits are refunded automatically if generation fails.', how: 'Your character, with the background of its own image, moves and speaks exactly like the template. The setting will be your character image setting, not the template one. Credits are refunded automatically if generation fails.',
   },
@@ -484,7 +484,11 @@ function ScrollStrip({ t, isAr, children }) {
 
 function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacterAdded, onNavigate }) {
   const [sel, setSel] = useState(null); // { imageUrl, label }
-  const [tier, setTier] = useState(tpl.tiers?.[0] || '720p');
+  const [engine, setEngine] = useState(tpl.engine); // العميل يختار الموديل؛ الافتراضي هو اللي الأدمن حدده للقالب
+  const engOpts = tpl.options?.length ? tpl.options : [{ engine: tpl.engine, mode: tpl.mode, tiers: tpl.tiers, costs: tpl.costs }];
+  const curOpt = engOpts.find(o => o.engine === engine) || engOpts[0];
+  const [tier, setTier] = useState(curOpt.tiers?.[0] || '720p');
+  const pickEngine = (o) => { setEngine(o.engine); setTier(o.tiers?.[0] || '720p'); };
   const [phase, setPhase] = useState('pick'); // pick | working | done | failed
   const [err, setErr] = useState('');
   const [result, setResult] = useState(null);
@@ -499,7 +503,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
   useEffect(() => () => { alive.current = false; clearInterval(timer.current); }, []);
   useEffect(() => { fetch('/api/auth/credits/balance', { headers: authHeaders() }).then(r => r.json()).then(d => { if (typeof d.balance === 'number') setBalance(d.balance); }).catch(() => {}); }, []);
 
-  const cost = tpl.costs?.[tier];
+  const cost = curOpt.costs?.[tier];
   const enough = balance == null || cost == null || balance >= cost;
 
   const uploadFace = async (file) => {
@@ -530,13 +534,13 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
         if (rr.imageUrl) genImage = rr.imageUrl;
       }
       // قالب Seedance 2.5: الفيديو الأصلي بيتبعت كمرجع فيديو + صورة الشخصية كمرجع + برومبت القالب (بيعيد بناء المشهد ويقدر يغيّر الشكل)؛ قالب نقل الأداء: صورة + فيديو مصدر
-      const isRef = src.mode === 'reference';
+      const isRef = curOpt.mode === 'reference';
       const refBody = {
-        model: src.model, tier, aspectRatio: src.aspect || '9:16', durationSec: Math.min(30, Math.max(4, Math.ceil(src.durationSec || 5))),
+        model: engine, tier, aspectRatio: src.aspect || '9:16', durationSec: Math.min(30, Math.max(4, Math.ceil(src.durationSec || 5))),
         referenceImageUrls: [genImage], referenceVideoUrls: [src.sourceVideoUrl],
         prompt: `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and sound energy, but the main person must be completely replaced by the character in [Image1]: use that character's face, hairstyle, skin tone and clothing, and do not keep the original person's appearance anywhere in the video. ${src.prompt || ''}`.trim(),
       };
-      const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(isRef ? refBody : { model: src.model, imageUrl: genImage, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: src.prompt || '' }) });
+      const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(isRef ? refBody : { model: engine, imageUrl: genImage, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: engine === src.model ? (src.prompt || '') : '' }) });
       const g = await gres.json();
       if (!gres.ok) { if (g.error === 'quota_exceeded' || g.error === 'no_access') setNeedsTopup(true); throw new Error(g.message || g.error || 'Failed'); }
       // استعلام عن الحالة لحد ما يخلص (نفس مسار الايجنت)
@@ -590,10 +594,27 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
                 </ScrollStrip>
                 {mine.length > 0 && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{t.mineH} · {t.presetH}</div>}
               </div>
-              {tpl.tiers?.length > 1 && (
+              {engOpts.length > 1 && (
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t.stepEngine}</div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {engOpts.map(o => {
+                      const [nm, hint] = t.eng[o.engine] || [o.engine, ''];
+                      const low = Math.min(...Object.values(o.costs || {}).filter(v => v != null));
+                      return (
+                        <button key={o.engine} type="button" className="pk-chip" aria-pressed={engine === o.engine} onClick={() => pickEngine(o)} style={{ justifyContent: 'space-between', borderRadius: 14, padding: '10px 14px', textAlign: 'start' }}>
+                          <span style={{ display: 'grid', gap: 2 }}><b style={{ fontSize: 13.5 }}>{nm}{o.engine === tpl.engine && <span style={{ marginInlineStart: 8, fontSize: 10.5, fontWeight: 700, color: '#34d399' }}>{t.recommended}</span>}</b><small style={{ opacity: 0.75 }}>{hint}</small></span>
+                          <small style={{ whiteSpace: 'nowrap' }}>{Number.isFinite(low) ? `${t.from} ${low} ${t.cr}` : ''}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {curOpt.tiers?.length > 1 && (
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t.step2}</div>
-                  <div style={{ display: 'flex', gap: 8 }}>{tpl.tiers.map(x => <button key={x} className="pk-chip" aria-pressed={tier === x} onClick={() => setTier(x)}>{x} <small>{tpl.costs?.[x]} {t.cr}</small></button>)}</div>
+                  <div style={{ display: 'flex', gap: 8 }}>{curOpt.tiers.map(x => <button key={x} className="pk-chip" aria-pressed={tier === x} onClick={() => setTier(x)}>{x} <small>{curOpt.costs?.[x]} {t.cr}</small></button>)}</div>
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 14, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border2)' }}>
@@ -601,7 +622,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
                 <span style={{ fontWeight: 800, fontSize: 18, display: 'inline-flex', alignItems: 'center', gap: 6, color: '#fde68a', fontVariantNumeric: 'tabular-nums' }}><Coins size={16} /> {cost ?? '—'} <small style={{ fontSize: 12, fontWeight: 500, color: 'var(--text2)' }}>{t.cr}</small></span>
               </div>
               {balance != null && <div style={{ fontSize: 12.5, color: enough ? 'var(--text2)' : '#f87171' }}>{t.balance}: {balance} {t.cr}{!enough && ` — ${t.lowCredits}`}</div>}
-              <p style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, margin: 0 }}>{tpl.mode === 'reference' ? t.howRef : tpl.mode === 'replace' ? t.howReplace : t.how}</p>
+              <p style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, margin: 0 }}>{curOpt.mode === 'reference' ? t.howRef : curOpt.mode === 'replace' ? t.howReplace : t.how}</p>
               {err && <p role="alert" style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{err}</p>}
               {enough ? (
                 <button className="cs-act primary" onClick={start} disabled={!sel} style={{ padding: 13, fontSize: 15, opacity: sel ? 1 : 0.5, cursor: sel ? 'pointer' : 'not-allowed' }}><Wand2 size={16} /> {sel ? t.generate : t.pickFirst}</button>

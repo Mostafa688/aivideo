@@ -158,6 +158,14 @@ export const REPLICATE_MODEL_COSTS = {
   // maxClipSec سقف أمان مننا (مفيش حد مؤكد في الصفحة)
   wan_2_2_animate_replace: { label: 'Wan 2.2 Animate Replace', unit: 'second', usdCost: 0.05, maxClipSec: 30,
                        tiers: { '480p': 0.02, '720p': 0.05 } },
+  // ✅ NEW (طلب العميل، سكرين شوت السعر والـschema): prunaai/p-video-replace — تبديل الشخص جوه الفيديو بصورة هوية (1-3 صور).
+  // السعر لكل ثانية من الفيديو الناتج: 720p $0.03، 1080p $0.06. maxClipSec سقف أمان مننا (الصفحة مش بتذكر حد)
+  prunaai_p_video_replace: { label: 'P-Video Replace', unit: 'second', usdCost: 0.03, maxClipSec: 30,
+                       tiers: { '720p': 0.03, '1080p': 0.06 } },
+  // تبديل الشخص بـKling 3.0 Omni (وضع تعديل الفيديو: reference_video + reference_images). ⚠️ السعر هنا هو سعر Kling Omni العادي
+  // (مع صوت) — لسه ماتأكدش من سعر وضع التعديل بفيديو مدخل على صفحة الموديل. maxClipSec = حد Kling (15 ثانية)
+  kling_3_0_omni_replace: { label: 'Kling 3.0 Omni Replace', unit: 'second', usdCost: 0.224, maxClipSec: 15,
+                       tiers: { '720p': 0.224, '1080p': 0.28 } },
   decart_lucy_edit_2: { label: 'Lucy Edit 2', unit: 'second', usdCost: 0.04, maxClipSec: 1800 },
 
   // ✅ CONFIRMED (سكرين شوت العميل لصفحة الـinput schema الحقيقية بعد كده): Kling Video 3.0

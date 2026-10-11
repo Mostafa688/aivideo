@@ -27,6 +27,9 @@ export const DEFAULT_TEMPLATE_ENGINE = 'wan_2_2_animate_replace';
 // محركات القوالب: نقل الأداء (P-Video Animate: حركة وكلام الفيديو الأصلي بالظبط، تبديل شخصية واحدة، لحد 60ث) أو Seedance 2.5
 // (بيعيد بناء الفيديو بالذكاء الاصطناعي من فيديو مرجعي + صورة الشخصية + برومبت — بيقدر يغيّر الشكل زي لون الشعر والعضلات، لحد 30ث وأغلى)
 export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
+// محركات تبديل الشخص اللي العميل يقدر يختار منها في القالب (الأدمن بيحدد الافتراضي)
+export const SWAP_ENGINES = ['wan_2_2_animate_replace', 'prunaai_p_video_replace', 'kling_3_0_omni_replace', 'seedance_2_5'];
+const engineOptions = (sec) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && sec <= engineMaxSec(e) + 0.5).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
 const templateMode = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 'reference' : (NEW_VIDEO_MODELS[e]?.swapMode === 'replace' ? 'replace' : 'transfer'));
 const isTemplateEngine = (e) => e === REFERENCE_TEMPLATE_ENGINE || NEW_VIDEO_MODELS[e]?.swapMode === 'replace';
 const engineMaxSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? (NEW_VIDEO_MODELS[e]?.refCaps?.videoMaxTotalSec || 30) : (getMaxClipSeconds(e) || 60));
@@ -132,7 +135,7 @@ const costsFor = (engine, sec) => Object.fromEntries(tiersFor(engine).map(t => {
 const pub = (r, lang) => ({
   id: r.id, title: lang === 'en' ? r.title_en : r.title_ar, description: (lang === 'en' ? r.description_en : r.description_ar) || '',
   category: r.category, coverUrl: r.cover_url, previewUrl: r.preview_url || null, durationSec: Number(r.duration_sec), engine: r.engine, mode: templateMode(r.engine),
-  tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), featured: !!r.is_featured, uses: r.uses_count || 0,
+  tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), options: engineOptions(Number(r.duration_sec)), featured: !!r.is_featured, uses: r.uses_count || 0,
 });
 
 // ══════════ عام ══════════
@@ -169,7 +172,7 @@ router.get('/templates/:id/source', authMiddleware, async (req, res) => {
     const r = rows[0];
     if (!r) return res.status(404).json({ error: 'not_found' });
     pool.query(`UPDATE trend_templates SET uses_count = uses_count + 1 WHERE id = $1`, [r.id]).catch(() => {});
-    res.json({ sourceVideoUrl: r.source_video_url, model: r.engine, mode: templateMode(r.engine), prompt: r.prompt || '', aspect: r.aspect || '9:16', durationSec: Number(r.duration_sec), tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)) });
+    res.json({ sourceVideoUrl: r.source_video_url, model: r.engine, mode: templateMode(r.engine), prompt: r.prompt || '', aspect: r.aspect || '9:16', durationSec: Number(r.duration_sec), tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), options: engineOptions(Number(r.duration_sec)) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

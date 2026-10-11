@@ -370,6 +370,42 @@ export const NEW_VIDEO_MODELS = {
       merge_audio: true,
     }),
   },
+  // ✅ NEW (طلب العميل — schema الحقيقي من سكرين شوت): prunaai/p-video-replace — "تبديل الشخص جوه الفيديو" بصور هوية. الحقول: video
+  // (حركة + صوت)، images (1-3 صور هوية للشخصية)، resolution (720p/1080p)، save_audio (افتراضي true)، target_fps ('original')،
+  // ignore_audio، instruction_prompt (توجيه إضافي عن مكان وضع الشخصيات)، turbo، seed، no_op، disable_safety_checker. بنبعت صورة واحدة هنا.
+  prunaai_p_video_replace: {
+    slug: 'prunaai/p-video-replace',
+    supportsImageInput: true,
+    performanceTransfer: true,
+    swapMode: 'replace',
+    promptOptional: true,
+    buildInput: ({ prompt, imageUrl, sourceVideoUrl, tier }) => ({
+      video: sourceVideoUrl,
+      images: [imageUrl],
+      resolution: tier || '720p',
+      save_audio: true,
+      ignore_audio: false,
+      target_fps: 'original',
+      disable_safety_checker: false,
+      ...(prompt?.trim() ? { instruction_prompt: prompt.trim() } : {}),
+    }),
+  },
+  // ✅ NEW: تبديل الشخص بـKling 3.0 Omni (نفس slug بتاع kling_3_0_omni) في وضع تعديل الفيديو: reference_video + video_reference_type:'base'
+  // + reference_images (الحقول من سكرين شوت العميل القديم لصفحة الموديل). ⚠️ مش متجرّب فعليًا: صياغة البرومبت وسلوك الصوت في وضع التعديل مش مؤكدين.
+  kling_3_0_omni_replace: {
+    slug: 'kwaivgi/kling-v3-omni-video',
+    supportsImageInput: true,
+    performanceTransfer: true,
+    swapMode: 'replace',
+    promptOptional: true,
+    buildInput: ({ prompt, imageUrl, sourceVideoUrl, tier }) => ({
+      prompt: `Replace the main person in the reference video with the character shown in the reference image. Keep everything else exactly the same: the scene, camera, timing, body movements and expressions; use the character's face, hairstyle and clothing and do not keep the original person's appearance. ${prompt?.trim() || ''}`.trim(),
+      mode: tier === '1080p' ? 'pro' : 'standard',
+      reference_video: sourceVideoUrl,
+      video_reference_type: 'base',
+      reference_images: [imageUrl],
+    }),
+  },
   // ✅ Luma Ray 2 — Replicate بيعرضه كـ slug منفصل لكل دقة (مش باراميتر resolution داخل نفس
   // الموديل زي الباقي)، فمفتاح الموديل هنا نفسه بيحدد الجودة
   luma_ray2_540p: {
