@@ -220,7 +220,7 @@ function buildMcpServer(userId, email) {
             'VIDEO ENGINES (use with generate_video, "model" = the exact key in brackets):',
             ...vidLines,
             '',
-            'SPECIAL ENGINES: "prunaai_p_video_animate" (P-Video Animate, animates an image with a video motion) is available ONLY inside the Erivion Agent chat, not through this connector. To replace the person inside a video use swap_character_in_video: pick the engine with the `engine` parameter: wan (Wan 2.2 Animate Replace, cheap), p_video (P-Video Replace), kling (Kling 3.0 Omni edit, video 3–10 s) — each for ONE person, keeping the scene and the original audio, up to 30 s (Kling 15 s) — or seedance (Seedance 2.5, SEVERAL characters / look changes, up to 30 s, motion close but not frame-exact, voices regenerated, much higher price).',
+            'SPECIAL ENGINES: "prunaai_p_video_animate" (P-Video Animate, animates an image with a video motion) is available ONLY inside the Erivion Agent chat, not through this connector. To replace the person inside a video use swap_character_in_video: pick the model with the `engine` parameter: kling (Kling 3.0 Omni edit, recommended, video 3–10 s) or p_video (P-Video Replace, up to 30 s) — for ONE person, keeping the scene and the original audio.',
             'CHARACTERS: list_characters shows the user\'s saved characters (reusable in any generation); create_character makes a new AI character with Nano Banana 2.1 (full-body reference on a white background unless the description says otherwise); list_character_templates / apply_character_template put the user\'s character into ready-made trending videos.',
             '',
             'Typical flow: generate_image to create a scene/character image, then generate_video with "imageUrl" set to that image to animate it — or generate_video directly for pure text-to-video. edit_video applies a precise AI edit to an existing short (max 15s) video from a public URL. ' + (YOUTUBE_PUBLISH_ENABLED ? 'To publish a finished video: list_youtube_channels → (optional generate_image 16:9 thumbnail) → confirm title/description/tags/privacy with the user → publish_to_youtube.' : 'Erivion does not publish to YouTube: after generating, give the user the video URL plus a strong title, description, tags and (via generate_image, 16:9) a thumbnail so they can upload it themselves in YouTube Studio.'),
@@ -628,19 +628,18 @@ function buildMcpServer(userId, email) {
     'swap_character_in_video',
     {
       title: 'Put a character into a video',
-      description: "Replace the person inside the user's own video with a character and keep the video's place. The `engine` parameter picks the model (ask the user which one when they have no preference; default for ONE image is wan): `wan` = Wan 2.2 Animate Replace, `p_video` = P-Video Replace (720p/1080p), `kling` = Kling 3.0 Omni edit (video 3–10 s, prompt-driven, pricier), `seedance` = Seedance 2.5 (several people / look changes). ONE character image → by default Wan 2.2 Animate Replace (the video must contain ONE person; keeps the scene and the ORIGINAL audio; up to 30 s; 480p/720p; cheap; best when the character body proportions are close to the person in the video). TWO OR MORE character images → Seedance 2.5 with the video as a reference (video up to 30 s; movement close but not frame-exact; voices/words regenerated; much more expensive; say which person each image replaces in `prompt`). Needs a direct public video URL (MCP cannot receive attached files — the user gets one from Erivion → Settings → API & MCP → \"Upload video, get link\", ticking the character-swap option for videos up to 60 s) and character image URL(s) — use list_characters / create_character, or generate_image, or Erivion image links; characterIds can be used instead of URLs. Tell the user the price first (list_models) when it is large. Only for photos the user owns, AI characters, or people who agreed — never real public figures/celebrities.",
+      description: "Replace the ONE person inside the user's own video with a character and keep the video's place and original sound. Two models: `kling` = Kling 3.0 Omni edit (RECOMMENDED and the default when the video is 3–10 s: best result, prompt-driven, 720p/1080p) and `p_video` = P-Video Replace (cheaper, video up to 30 s, 720p/1080p; the default when the video is longer than 10 s). The video must contain ONE person and the character image should show ONE person (several people are not supported). Needs a direct public video URL (MCP cannot receive attached files — the user gets one from Erivion → Settings → API & MCP → \"Upload video, get link\", ticking the character-swap option) and ONE character image URL — use list_characters / create_character, or generate_image, or Erivion image links; characterIds can be used instead of URLs. Tell the user the price first (list_models) when it is large. Only for photos the user owns, AI characters, or people who agreed — never real public figures/celebrities. Very realistic human faces can be refused by the provider's safety filter (credits are refunded) — a stylized character works best.",
       inputSchema: {
-        videoUrl: z.string().url().describe('Direct public URL of the user\'s source video (the motion + speech to copy).'),
-        characterImageUrls: z.array(z.string().url()).max(10).optional().describe('One image URL per character, in the order of the people they replace. Exactly one → P-Video Animate; two or more → Seedance 2.5.'),
-        characterIds: z.array(z.number().int()).max(10).optional().describe('Saved character ids from list_characters, used instead of (or in addition to) characterImageUrls.'),
-        aspectRatio: z.enum(['16:9', '9:16']).default('16:9').describe('Only for several characters (Seedance 2.5): the video\'s orientation. One character keeps the source video\'s own shape.'),
-        prompt: z.string().optional().describe('Optional extra instruction (English). REQUIRED in practice for several characters: say who replaces whom, e.g. "the person on the left becomes [Image1], the one on the right [Image2]".'),
-        tier: z.enum(['480p', '720p', '1080p']).default('720p').describe('Quality. Wan: 480p or 720p. P-Video Replace / Kling: 720p or 1080p. Seedance: 480p or 720p.'),
-        engine: z.enum(['wan', 'p_video', 'kling', 'seedance']).optional().describe('Which model replaces the person. Omit for the default (wan for one image, seedance for several).'),
+        videoUrl: z.string().url().describe('Direct public URL of the user\'s source video.'),
+        characterImageUrls: z.array(z.string().url()).max(1).optional().describe('ONE character image URL.'),
+        characterIds: z.array(z.number().int()).max(1).optional().describe('A saved character id from list_characters, used instead of characterImageUrls.'),
+        prompt: z.string().optional().describe('Optional extra instruction (English), e.g. a look change or effect to add.'),
+        tier: z.enum(['720p', '1080p']).default('720p').describe('Quality.'),
+        engine: z.enum(['kling', 'p_video']).optional().describe('Which model replaces the person. Omit for the default (kling for videos of 3–10 s, otherwise p_video).'),
       },
       _meta: { ui: { resourceUri: videoPlayerResourceUri } },
     },
-    async ({ videoUrl, characterImageUrls, characterIds, aspectRatio, prompt, tier, engine }) => {
+    async ({ videoUrl, characterImageUrls, characterIds, prompt, tier, engine }) => {
       try {
         const urls = [...(characterImageUrls || [])];
         if (characterIds?.length) {
@@ -648,22 +647,14 @@ function buildMcpServer(userId, email) {
           for (const id of characterIds) { const c = chars.find(x => x.id === id); if (!c) throw new Error(`Saved character id ${id} was not found — call list_characters.`); urls.push(referenceOf(c)); }
         }
         const images = [...new Set(urls.map(resolveUrl))];
-        if (!images.length) throw new Error('Provide at least one character image (characterImageUrls or characterIds).');
+        if (!images.length) throw new Error('Provide a character image (characterImageUrls or characterIds).');
+        if (images.length > 1) throw new Error('Replacing the person works with ONE character image — several characters are not supported.');
         const dur = await measureVideoDurationSec(videoUrl);
-        const eng = engine || (images.length === 1 ? 'wan' : 'seedance');
-        if (eng !== 'seedance' && images.length !== 1) throw new Error('This engine replaces ONE person with ONE character image — for several characters use engine "seedance".');
-        const single = { wan: ['wan_2_2_animate_replace', 30], p_video: ['prunaai_p_video_replace', 30], kling: ['kling_3_0_omni_replace', 10] }[eng];
-        if (single) {
-          if (dur > single[1] + 0.5) throw new Error(`The video is ${Math.round(dur)}s — this engine supports videos up to ${single[1]} seconds. Trim it, or pick another engine.`);
-          if (eng === 'kling' && dur < 2.7) throw new Error(`The video is ${Math.round(dur * 10) / 10}s — Kling 3.0 Omni needs a source video of 3 to 10 seconds. Pick another engine.`);
-          const okTier = eng === 'wan' ? (tier === '480p' ? '480p' : '720p') : (tier === '1080p' ? '1080p' : '720p');
-          return await runVideoJob({ model: single[0], imageUrl: images[0], sourceVideoUrl: videoUrl, prompt: prompt || '', tier: okTier }, 'Character-swapped video');
-        }
-        if (dur > 30.5) throw new Error(`The video is ${Math.round(dur)}s — replacing people inside the video scene (Seedance 2.5) supports videos up to 30 seconds. Trim it to 30 seconds or less.`);
-        if (dur < 3.7) throw new Error(`The video is ${Math.round(dur * 10) / 10}s — Seedance 2.5 needs a source video of at least 4 seconds.`);
-        const mapping = images.map((_, i) => `[Image${i + 1}]`).join(', ');
-        const finalPrompt = prompt || `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and lip movements, but ${images.length === 1 ? 'the main person' : 'the people in it, in order from left to right,'} must be completely replaced by ${images.length === 1 ? 'the character' : 'the characters'} in ${mapping}: use their face, hairstyle, skin tone and clothing and do not keep the original appearance of anyone. Keep the original setting.`;
-        return await runVideoJob({ model: 'seedance_2_5', prompt: finalPrompt, referenceImageUrls: images, referenceVideoUrls: [videoUrl], durationSec: Math.min(30, Math.max(4, Math.ceil(dur))), aspectRatio: aspectRatio || '16:9', tier: tier === '480p' ? '480p' : '720p' }, 'Character-swapped video');
+        const eng = engine || (dur >= 2.7 && dur <= 10.5 ? 'kling' : 'p_video');
+        const single = { p_video: ['prunaai_p_video_replace', 30], kling: ['kling_3_0_omni_replace', 10] }[eng];
+        if (dur > single[1] + 0.5) throw new Error(`The video is ${Math.round(dur)}s — this model supports videos up to ${single[1]} seconds. Trim it${eng === 'kling' ? ', or use engine "p_video" (up to 30 s)' : ''}.`);
+        if (eng === 'kling' && dur < 2.7) throw new Error(`The video is ${Math.round(dur * 10) / 10}s — Kling 3.0 Omni needs a source video of 3 to 10 seconds. Use engine "p_video" or a longer video.`);
+        return await runVideoJob({ model: single[0], imageUrl: images[0], sourceVideoUrl: videoUrl, prompt: prompt || '', tier: tier === '1080p' ? '1080p' : '720p' }, 'Character-swapped video');
       } catch (e) { return { content: [{ type: 'text', text: `Failed to swap the character: ${e.message}` }], isError: true }; }
     }
   );
@@ -694,8 +685,8 @@ function buildMcpServer(userId, email) {
         templateId: z.number().int().describe('Template id from list_character_templates.'),
         characterId: z.number().int().optional().describe('Saved character id from list_characters.'),
         characterImageUrl: z.string().url().optional().describe('Direct URL of the character image (instead of characterId).'),
-        tier: z.enum(['480p', '720p', '1080p']).default('720p'),
-        engine: z.enum(['wan', 'p_video', 'kling', 'seedance']).optional().describe('Which model makes it (the user chooses; omit for the template\'s own recommended engine): wan = Wan 2.2 Animate Replace, p_video = P-Video Replace, kling = Kling 3.0 Omni (templates of 3–10 s), seedance = Seedance 2.5 (much pricier, re-creates the scene).'),
+        tier: z.enum(['720p', '1080p']).default('720p'),
+        engine: z.enum(['kling', 'p_video']).optional().describe('Which model makes it (the user chooses; omit for the template\'s own recommended engine): kling = Kling 3.0 Omni (templates of 3–10 s, recommended), p_video = P-Video Replace (up to 30 s).'),
       },
       _meta: { ui: { resourceUri: videoPlayerResourceUri } },
     },
@@ -711,7 +702,7 @@ function buildMcpServer(userId, email) {
         const srcRes = await fetch(`${INTERNAL_BASE}/api/character-studio/templates/${templateId}/source`, { headers: authHeaders() });
         const src = await srcRes.json();
         if (!srcRes.ok) throw new Error(src.error === 'not_found' ? `Template ${templateId} was not found — call list_character_templates.` : (src.error || 'Could not load the template'));
-        const wanted = engine ? { wan: 'wan_2_2_animate_replace', p_video: 'prunaai_p_video_replace', kling: 'kling_3_0_omni_replace', seedance: 'seedance_2_5' }[engine] : null;
+        const wanted = engine ? { p_video: 'prunaai_p_video_replace', kling: 'kling_3_0_omni_replace' }[engine] : null;
         if (wanted && wanted !== src.model) {
           const opt = (src.options || []).find(o => o.engine === wanted);
           if (!opt) throw new Error(`This template (${Math.round(src.durationSec)}s) cannot be made with that engine (too long for it). Pick another engine or omit it.`);
