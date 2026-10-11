@@ -8,15 +8,17 @@ import { CARTOON_BACKDROPS, VOX_BACKDROPS } from './fxLooks.js';
 import { SCENE_TYPES } from './scenes.js';
 import { CAST, CAST_IDS, EMOTIONS, POSES } from './characters.js';
 import { genderOf } from './cast.js';
+import { ENV_NAMES } from './w3d/envs.js';
 
 // أنماط الفيديو: motion = موشن جرافيك/إنفوجرافيك | vox = فيديو شرح بصور أرشيفية (على طريقة Vox) | cartoon = شخصيات كارتون 2D | cartoon3d = شخصيات كارتون 3D
-export const LOOKS = ['motion', 'vox', 'cartoon', 'cartoon3d'];
+export const LOOKS = ['motion', 'vox', 'cartoon', 'cartoon3d', 'world3d'];
+export const isWorld3d = (look) => look === 'world3d';
 export const isCartoon = (look) => look === 'cartoon' || look === 'cartoon3d';
 const CARTOON_TYPES = ['char_say', 'char_prop', 'char_duo'];
 const VOX_TYPES = ['photo', 'fullphoto', 'collage', 'headline'];
-const BASE_TYPES = SCENE_TYPES.filter(t => !CARTOON_TYPES.includes(t) && !VOX_TYPES.includes(t));
-export const allowedTypes = (look) => new Set([...BASE_TYPES, ...(isCartoon(look) ? CARTOON_TYPES : look === 'vox' ? VOX_TYPES : [])]);
-export const LOOK_PALETTES = { motion: MOTION_PALETTES, vox: VOX_PALETTES, cartoon: TOON_PALETTES, cartoon3d: TOON_PALETTES };
+const BASE_TYPES = SCENE_TYPES.filter(t => !CARTOON_TYPES.includes(t) && !VOX_TYPES.includes(t) && t !== 'world');
+export const allowedTypes = (look) => (look === 'world3d' ? new Set([...BASE_TYPES.filter(t => t !== 'art' && t !== 'bigword'), 'world']) : new Set([...BASE_TYPES, ...(isCartoon(look) ? CARTOON_TYPES : look === 'vox' ? VOX_TYPES : [])]));
+export const LOOK_PALETTES = { motion: MOTION_PALETTES, vox: VOX_PALETTES, cartoon: TOON_PALETTES, cartoon3d: TOON_PALETTES, world3d: ['daylight'] };
 const FEMALE_CAST = new Set(['lina', 'noor', 'maya']), MALE_CAST = new Set(['sam', 'omar', 'prof']);
 export function defaultHost(voiceGender = 'unknown') { return voiceGender === 'female' ? 'lina' : voiceGender === 'male' ? 'sam' : 'robo'; }
 
@@ -186,6 +188,10 @@ export function sanitizeScene(raw, spoken, { first = false, last = false, look =
       if (slots.length < 2 || (headline && !grounded(headline, said, 0.5))) return null;
       return { type: 'collage', data: { slots, headline: headline || undefined } };
     }
+    case 'world': {
+      const idea = clean(d.idea, 300); if (idea.length < 8) return null;
+      return { type: 'world', data: { idea, env: ENV_NAMES.includes(d.env) ? d.env : null, time: ['day', 'dusk', 'night'].includes(d.time) ? d.time : null, emphasis: strs(d.emphasis, 3, 24) } };
+    }
     case 'art': {
       const idea = clean(d.idea, 260); if (idea.length < 8) return null;
       return { type: 'art', data: { idea, layout: d.layout === 'full' ? 'full' : 'side', emphasis: strs(d.emphasis, 2, 24) } };
@@ -262,6 +268,9 @@ const CARTOON_DOC = `Cartoon scenes (the video is a cartoon with characters):
 Do NOT use kinetic scenes (use char_say instead).
 `;
 
+const WORLD_DOC = `3D scenes (the video is a low-poly 3D animation made by code: a stylised game-like world with articulated characters, props and cinematic cameras):
+- world {"idea":"what happens in the 3D scene — WHO does WHAT and WHERE, with concrete actions and objects (e.g. 'a striker dribbles past a defender and scores while the keeper dives', 'the chef chops tomatoes then stirs the pan on the stove', 'two explorers walk through the forest to a campfire and point at the mountain'), 12-40 words","env":"${ENV_NAMES.join('|')}","time":"day|dusk|night","emphasis":["1-3 words said"]} — a full animated 3D scene with the narration shown as big captions. The workhorse: 70-85% of all scenes. Pick the environment that fits the story (football → pitch, cooking → kitchen, adventure → forest/desert/snow/beach, daily life → village/room, space → moon) and keep it consistent, changing it only when the story moves.
+`;
 const COMMON_HEAD = (what) => `You are the director of professional animated explainer videos made entirely with code. ${what} You receive a voice-over split into scenes (with durations). For EACH scene choose the on-screen visual that best illustrates what is being said at that moment.
 
 Return ONLY JSON: {"title":"short video title (max 7 words, narration language)","mood":"epic|tech|business|nature|energetic|serious|clean|minimal","palette":"PALETTES","PLUS_META","scenes":[{"i":0,"type":"...","data":{},"bg":"BGS","cam":"push","transition":"slide"}]}
@@ -280,6 +289,11 @@ export function buildSystem(look = 'motion') {
       + VOX_DOC + CATALOG + icons + COMMON_RULES
       + '\n- For Vox style: at least 45% of scenes should be photo / fullphoto / collage — a mention of a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is always paper.';
   }
+  if (look === 'world3d') {
+    return COMMON_HEAD('The style is a 3D animated video (low-poly stylised 3D world with characters, like a modern mobile game) that tells or explains the story visually.').replace('PALETTES', 'daylight').replace('"PLUS_META",', '').replace('BGS', 'aurora')
+      + WORLD_DOC + CATALOG + icons + COMMON_RULES
+      + '\n- For 3D style: scenes are mostly "world" scenes whose idea shows the narration as concrete action; use stat/bars/list/timeline/compare/steps (2D infographic cards) only when the voice states numbers or lists; title/outro only for the first/last scene when it is a card. Make each idea a DIFFERENT visual moment (different action, camera situation or place) — never repeat the same idea. Describe actions the engine can show: run, walk, kick, throw, jump, dive, chop, stir, carry, point, wave, dance, celebrate, sit, talk, fall, swing.';
+  }
   if (isCartoon(look)) {
     return COMMON_HEAD(`The style is a ${look === 'cartoon3d' ? '3D cartoon' : '2D cartoon'} animation: friendly cartoon characters (a narrator host and others) talk, react and point, with infographic scenes when numbers or lists appear.`).replace('PALETTES', 'toon|candy|mint|sunny').replace('"PLUS_META"', '"host":"cast id of the main narrator character","cast":["up to 3 cast ids"]').replace('BGS', 'sky|room|studio|city')
       + CARTOON_DOC + CATALOG + icons + COMMON_RULES
@@ -290,13 +304,14 @@ export function buildSystem(look = 'motion') {
 
 const fmtScene = (sc, i) => `[${i}] (${(sc.end - sc.start).toFixed(1)}s, ${sc.tokens.length} words) ${sc.text}`;
 
-export async function directVideo({ spoken, language = 'en', ratio = '16:9', topic = '', style = null, look = 'motion', voiceGender = 'unknown', castMap = CAST, onProgress = () => {} }, deps = {}) {
+export async function directVideo({ spoken, language = 'en', ratio = '16:9', topic = '', style = null, look = 'motion', voiceGender = 'unknown', castMap = CAST, worldMeta = null, onProgress = () => {} }, deps = {}) {
   const ask = deps.llmJson || llmJson;
   const scenes = spoken;
   const plans = new Array(scenes.length).fill(null); let meta = { title: topic || '', mood: 'tech', palette: null, host: null, cast: [] };
   const CH = 14, system = buildSystem(look);
   const castIds = Object.keys(castMap), customIds = castIds.filter(id => castMap[id].custom);
-  const castLine = isCartoon(look) ? `Cast ids: ${(customIds.length ? customIds : castIds).map(id => `${id} (${castMap[id].label})`).join('; ')}. The narrator voice is ${voiceGender}${voiceGender === 'unknown' ? '' : ' — pick a host of the same gender (male/female per cast gender; creatures and robots fit any voice)'}. ` : '';
+  const wcast = worldMeta?.castSpecs ? Object.keys(worldMeta.castSpecs) : [];
+  const castLine = look === 'world3d' ? (wcast.length ? `Cast (recurring characters, used automatically): ${wcast.map(id => `${id} (${worldMeta.castSpecs[id].label})`).join('; ')}. Default environment: ${worldMeta.env || 'studio'}. ` : '') : isCartoon(look) ? `Cast ids: ${(customIds.length ? customIds : castIds).map(id => `${id} (${castMap[id].label})`).join('; ')}. The narrator voice is ${voiceGender}${voiceGender === 'unknown' ? '' : ' — pick a host of the same gender (male/female per cast gender; creatures and robots fit any voice)'}. ` : '';
   for (let from = 0; from < scenes.length; from += CH) {
     const chunk = scenes.slice(from, from + CH);
     const user = `Narration language: ${language}. Video format: ${ratio === '9:16' ? 'vertical 9:16 (short-form)' : 'horizontal 16:9'}. ${castLine}${topic ? `Topic: ${topic}. ` : ''}${style ? `Requested style/mood: ${style}. ` : ''}Total scenes: ${scenes.length}.${from > 0 ? ' (Continuing — earlier scenes already planned; do not repeat the title.' + (meta.host ? ` Host: ${meta.host}.` : '') + ')' : ''}\nScenes:\n` + chunk.map((sc, k) => fmtScene(sc, from + k)).join('\n') + (from + CH >= scenes.length ? '\n(The last scene is index ' + (scenes.length - 1) + '.)' : '');
@@ -311,7 +326,7 @@ export async function directVideo({ spoken, language = 'en', ratio = '16:9', top
     } catch (e) { console.warn(`[CodeVideo/director] chunk ${from} failed (${e.message}) — fallback scenes`); }
     onProgress(Math.min(1, (from + CH) / scenes.length));
   }
-  return finalizePlan({ scenes, plans, meta, ratio, look, voiceGender, castMap });
+  return finalizePlan({ scenes, plans, meta, ratio, look, voiceGender, castMap, worldMeta });
 }
 
 const POSE_CYCLE = ['point', 'up', 'hold', 'shrug', 'point', 'cheer'];
@@ -319,9 +334,9 @@ const EMO_CYCLE = ['happy', 'neutral', 'excited', 'think'];
 const TOON_TR = ['slide', 'zoom', 'wipe', 'slideup', 'iris'], VOX_TR = ['slide', 'wipe', 'zoom', 'slideup', 'cut'];
 
 /** يطبّق قواعد التنويع بالكود وبيطلّع قايمة المشاهد النهائية (type/data/bg/cam/transition) */
-export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'motion', voiceGender = 'unknown', castMap = CAST }) {
+export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'motion', voiceGender = 'unknown', castMap = CAST, worldMeta = null }) {
   const n = scenes.length; const out = [];
-  const cartoon = isCartoon(look), vox = look === 'vox';
+  const cartoon = isCartoon(look), vox = look === 'vox', w3 = look === 'world3d';
   let host = castMap[meta.host] ? meta.host : null;
   if (cartoon) {
     const ok = (id) => { const g = genderOf(id, castMap); return voiceGender === 'female' ? g !== 'male' : voiceGender === 'male' ? g !== 'female' : true; };
@@ -339,30 +354,32 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
     if (clean0?.type === 'headline' && ++headlines > 3) clean0 = null;
     if (clean0?.type === 'char_duo' && (++duos > 3 || (sc.end - sc.start) < 3.5)) clean0 = { type: 'char_say', data: { character: host, emotion: 'neutral', emphasis: [] } };
     if (cartoon && clean0?.type === 'kinetic') clean0 = null;
-    const kin = cartoon ? { type: 'char_say', data: { character: host, emotion: EMO_CYCLE[i % 4], emphasis: [] } } : { type: 'kinetic', data: { emphasis: [] } };
+    if (w3 && (clean0?.type === 'kinetic' || clean0?.type === 'quote')) clean0 = null;
+    const kin = w3 ? { type: 'world', data: { idea: sc.text, env: null, time: null, emphasis: [] } } : cartoon ? { type: 'char_say', data: { character: host, emotion: EMO_CYCLE[i % 4], emphasis: [] } } : { type: 'kinetic', data: { emphasis: [] } };
     let pick = clean0 || kin;
     if (vox && pick.type === 'kinetic' && ++kinetics > Math.ceil(n * 0.3) && sc.text.split(/\s+/).length >= 4) pick = { type: 'headline', data: { headline: sc.text.split(/\s+/).slice(0, 8).join(' '), emphasis: [] } };
-    if (out.length >= 2 && out[out.length - 1].type === pick.type && out[out.length - 2].type === pick.type && pick.type !== 'kinetic' && pick.type !== 'char_say') pick = kin;
+    if (out.length >= 2 && out[out.length - 1].type === pick.type && out[out.length - 2].type === pick.type && pick.type !== 'kinetic' && pick.type !== 'char_say' && pick.type !== 'world') pick = kin;
     if (pick.type === 'char_say' && !pick.data.pose) pick = { ...pick, data: { ...pick.data, pose: POSE_CYCLE[i % POSE_CYCLE.length] } };
     out.push({ type: pick.type, data: pick.data, raw });
   });
   // المشهد الأول: عنوان (أو كلمة/نص قوي)
-  const firstOk = cartoon ? ['title', 'char_say', 'bigword'] : vox ? ['title', 'bigword', 'kinetic', 'fullphoto', 'photo'] : ['title', 'bigword', 'kinetic'];
+  const firstOk = w3 ? ['world', 'title'] : cartoon ? ['title', 'char_say', 'bigword'] : vox ? ['title', 'bigword', 'kinetic', 'fullphoto', 'photo'] : ['title', 'bigword', 'kinetic'];
   if (out.length && !firstOk.includes(out[0].type)) out[0] = { type: 'title', data: { title: meta.title || scenes[0].text.split(/\s+/).slice(0, 7).join(' ') }, raw: null };
   if (out.length && ['kinetic', 'char_say'].includes(out[0].type) && meta.title && scenes.length >= 4 && (scenes[0].end - scenes[0].start) >= 3) out[0] = { type: 'title', data: { title: meta.title }, raw: null };
   if (cartoon && out.length) { const lt = out[out.length - 1]; if (lt.type === 'char_say' && n >= 5 && !lt.raw?.data) lt.data = { ...lt.data, emotion: 'excited', pose: 'cheer' }; }
   const pals = LOOK_PALETTES[look] || MOTION_PALETTES;
   const palette = pals.includes(meta.palette) ? meta.palette : null;
   let lastTr = null;
-  const bgList = cartoon ? CARTOON_BACKDROPS : vox ? ['paper'] : BACKDROPS;
-  const trPool = cartoon ? TOON_TR : vox ? VOX_TR : ['slide', 'zoom', 'wipe', 'slideup', 'iris'];
+  const bgList = w3 ? ['aurora'] : cartoon ? CARTOON_BACKDROPS : vox ? ['paper'] : BACKDROPS;
+  const trPool = (cartoon || w3) ? TOON_TR : vox ? VOX_TR : ['slide', 'zoom', 'wipe', 'slideup', 'iris'];
   return {
-    title: meta.title, mood: meta.mood, palette, host, look,
+    title: meta.title, mood: meta.mood, palette, host: w3 ? (worldMeta?.host || null) : host, look,
     scenes: out.map((o, i) => {
       const raw = o.raw || {};
       const isData = DATA_TYPES.has(o.type);
       let bg;
       if (vox) bg = 'paper';
+      else if (w3) bg = isData ? CALM_BG[(i * 3 + 1) % CALM_BG.length] : 'aurora';
       else if (cartoon) { bg = CARTOON_BACKDROPS.includes(raw.bg) ? raw.bg : bgList[i % bgList.length]; if (isData && !['sky', 'studio'].includes(bg)) bg = i % 2 ? 'sky' : 'studio'; if (i > 0 && bg === out[i - 1]._bg) bg = bgList[(bgList.indexOf(bg) + 1) % bgList.length]; if (isData && !['sky', 'studio'].includes(bg)) bg = 'studio'; }
       else {
         bg = BACKDROPS.includes(raw.bg) ? raw.bg : null;
@@ -371,13 +388,14 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
         if (i > 0 && bg === out[i - 1]._bg && !isData) bg = BACKDROPS[(BACKDROPS.indexOf(bg) + 3) % BACKDROPS.length];
       }
       o._bg = bg;
-      const cam = CAMS.includes(raw.cam) ? raw.cam : CAMS[i % CAMS.length];
+      const cam = o.type === 'world' ? 'none' : CAMS.includes(raw.cam) ? raw.cam : CAMS[i % CAMS.length];
       let tr = TRANSITIONS.includes(raw.transition) ? raw.transition : trPool[i % trPool.length];
-      if ((cartoon || vox) && (tr === 'glitch' || tr === 'flash')) tr = trPool[i % trPool.length];
+      if ((cartoon || vox || w3) && (tr === 'glitch' || tr === 'flash')) tr = trPool[i % trPool.length];
       if (i === 0) tr = 'cut';
       if ((tr === 'flash' || tr === 'glitch') && ++flashGlitch > 5) tr = 'zoom';
       if (tr === lastTr && tr !== 'cut') tr = trPool.find(x => x !== tr && x !== 'cut') || 'slide';
       lastTr = tr;
+      if (o.type === 'world') o.data = { ...o.data, env: o.data.env || worldMeta?.env || 'studio', time: o.data.time || worldMeta?.time || 'day' };
       return { type: o.type, data: o.data, bg, cam, transition: tr };
     }),
   };
