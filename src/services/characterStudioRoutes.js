@@ -22,12 +22,13 @@ const router = express.Router();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
-export const DEFAULT_TEMPLATE_ENGINE = 'prunaai_p_video_animate';
+// P-Video Animate (تحريك صورة بحركة فيديو) مقصور على شات الايجنت — مش محرك قوالب. قوالب الترند: Wan Replace (الافتراضي) أو Seedance.
+export const DEFAULT_TEMPLATE_ENGINE = 'wan_2_2_animate_replace';
 // محركات القوالب: نقل الأداء (P-Video Animate: حركة وكلام الفيديو الأصلي بالظبط، تبديل شخصية واحدة، لحد 60ث) أو Seedance 2.5
 // (بيعيد بناء الفيديو بالذكاء الاصطناعي من فيديو مرجعي + صورة الشخصية + برومبت — بيقدر يغيّر الشكل زي لون الشعر والعضلات، لحد 30ث وأغلى)
 export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
 const templateMode = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 'reference' : (NEW_VIDEO_MODELS[e]?.swapMode === 'replace' ? 'replace' : 'transfer'));
-const isTemplateEngine = (e) => e === REFERENCE_TEMPLATE_ENGINE || !!NEW_VIDEO_MODELS[e]?.performanceTransfer;
+const isTemplateEngine = (e) => e === REFERENCE_TEMPLATE_ENGINE || NEW_VIDEO_MODELS[e]?.swapMode === 'replace';
 const engineMaxSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? (NEW_VIDEO_MODELS[e]?.refCaps?.videoMaxTotalSec || 30) : (getMaxClipSeconds(e) || 60));
 const billSecFor = (engine, sec) => (engine === REFERENCE_TEMPLATE_ENGINE ? Math.min(30, Math.max(4, Math.ceil(sec))) : Math.max(1, Math.ceil(sec)));
 export const PRESET_CATEGORIES = ['person', 'influencer', 'cartoon', 'animal', 'mascot', 'other'];
@@ -232,7 +233,7 @@ router.delete('/admin/presets/:id', adminAuth, async (req, res) => { try { await
 router.get('/admin/templates', adminAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`SELECT * FROM trend_templates ORDER BY is_featured DESC, sort_order ASC, id DESC`);
-    res.json({ templates: rows.map(r => ({ ...r, costs: costsFor(r.engine, Number(r.duration_sec)) })), categories: TEMPLATE_CATEGORIES, engines: [...Object.keys(NEW_VIDEO_MODELS).filter(k => NEW_VIDEO_MODELS[k].performanceTransfer), REFERENCE_TEMPLATE_ENGINE] });
+    res.json({ templates: rows.map(r => ({ ...r, costs: costsFor(r.engine, Number(r.duration_sec)) })), categories: TEMPLATE_CATEGORIES, engines: [...Object.keys(NEW_VIDEO_MODELS).filter(k => NEW_VIDEO_MODELS[k].swapMode === 'replace'), REFERENCE_TEMPLATE_ENGINE] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.post('/admin/templates', adminAuth, async (req, res) => {

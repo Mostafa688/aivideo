@@ -2131,7 +2131,7 @@ function CharacterStudioTab({ s }) {
         <>
           <div style={s.card}>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#c4b5fd', marginBottom: 4 }}>➕ New trend template</div>
-            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام. العميل يختار شخصيته، وبتتعمل بواحد من 3 محركات: Wan 2.2 Animate Replace بيبدّل الشخص اللي في الفيديو (لازم شخص واحد) ويحافظ على المشهد والصوت الأصلي (أقصى 30 ثانية، رخيص)، أو P-Video Animate بيحرّك صورة شخصيته (بمكانها وخلفيتها) بنفس حركة وكلام الفيديو (أقصى 60 ثانية — المكان مش مكان الفيديو)، أو Seedance 2.5 بيعيد بناء المشهد وبيقدر يغيّر الشكل (أقصى 30 ثانية، أغلى). السعر بيتحسب لوحده من مدة الفيديو.</p>
+            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام. العميل يختار شخصيته، وبتتعمل بواحد من محركين: Wan 2.2 Animate Replace بيبدّل الشخص اللي في الفيديو (لازم شخص واحد) ويحافظ على المشهد والصوت الأصلي (أقصى 30 ثانية، رخيص)، أو Seedance 2.5 بيعيد بناء المشهد وبيقدر يغيّر الشكل زي لون الشعر والعضلات (أقصى 30 ثانية، أغلى). P-Video Animate مقصور على شات الايجنت. السعر بيتحسب لوحده من مدة الفيديو.</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
               <Field label="Title (Arabic)"><input style={inp} value={tForm.title_ar} onChange={e => setTForm(f => ({ ...f, title_ar: e.target.value }))} placeholder="رقصة الترند..." /></Field>
               <Field label="Title (English)"><input style={inp} value={tForm.title_en} onChange={e => setTForm(f => ({ ...f, title_en: e.target.value }))} placeholder="Trending dance..." /></Field>
@@ -2144,11 +2144,10 @@ function CharacterStudioTab({ s }) {
               <Field label="Engine">
                 <select style={inp} value={tForm.engine} onChange={e => setTForm(f => ({ ...f, engine: e.target.value }))}>
                   <option value="wan_2_2_animate_replace">Wan 2.2 Animate Replace — REPLACES the person in the video with the character and keeps the video scene + original audio (video must have ONE person), up to 30s, cheap (480p $0.02/s, 720p $0.05/s)</option>
-                  <option value="prunaai_p_video_animate">P-Video Animate — animates the character image (in ITS OWN setting) with the exact video motion + original speech, up to 60s, cheap</option>
                   <option value="seedance_2_5">Seedance 2.5 — keeps the video scene and replaces the person (can also change looks: hair/eyes colour, muscles, effects), up to 30s, much pricier</option>
                 </select>
               </Field>
-              <Field label={tForm.engine === 'seedance_2_5' ? 'Prompt — describe the transformation/effects (English)' : tForm.engine === 'wan_2_2_animate_replace' ? 'Prompt (not used by Wan Replace)' : 'Extra instruction (optional, English)'}>
+              <Field label={tForm.engine === 'seedance_2_5' ? 'Prompt — describe the transformation/effects (English)' : 'Prompt (not used by Wan Replace)'}>
                 <textarea style={{ ...inp, minHeight: 74, fontFamily: 'inherit' }} value={tForm.prompt || ''} maxLength={800} onChange={e => setTForm(f => ({ ...f, prompt: e.target.value }))}
                   placeholder={tForm.engine === 'seedance_2_5' ? 'e.g. At the peak of the scream his muscles swell, his hair turns spiky golden-yellow and his eyes glow yellow, golden lightning around him.' : 'e.g. Keep the same expressions and lip-sync.'} />
               </Field>
@@ -2174,7 +2173,7 @@ function CharacterStudioTab({ s }) {
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_featured: !t.is_featured }, 'Updated')}>{t.is_featured ? 'Unfeature' : 'Feature'}</button>
                   <select value={t.engine} style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 6px' }} onChange={e => send(`${base}/templates/${t.id}`, 'PUT', { engine: e.target.value }, 'Engine changed')}>
                     <option value="wan_2_2_animate_replace">Wan Replace</option>
-                    <option value="prunaai_p_video_animate">P-Video Animate</option>
+                    {t.engine === 'prunaai_p_video_animate' && <option value="prunaai_p_video_animate" disabled>P-Video Animate (legacy)</option>}
                     <option value="seedance_2_5">Seedance 2.5</option>
                   </select>
                   <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 9px' }} onClick={() => confirm('Delete this template?') && send(`${base}/templates/${t.id}`, 'DELETE', null, 'Deleted')}>Delete</button>
