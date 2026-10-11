@@ -26,6 +26,7 @@ export const DEFAULT_TEMPLATE_ENGINE = 'prunaai_p_video_animate';
 // محركات القوالب: نقل الأداء (P-Video Animate: حركة وكلام الفيديو الأصلي بالظبط، تبديل شخصية واحدة، لحد 60ث) أو Seedance 2.5
 // (بيعيد بناء الفيديو بالذكاء الاصطناعي من فيديو مرجعي + صورة الشخصية + برومبت — بيقدر يغيّر الشكل زي لون الشعر والعضلات، لحد 30ث وأغلى)
 export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
+const templateMode = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 'reference' : (NEW_VIDEO_MODELS[e]?.swapMode === 'replace' ? 'replace' : 'transfer'));
 const isTemplateEngine = (e) => e === REFERENCE_TEMPLATE_ENGINE || !!NEW_VIDEO_MODELS[e]?.performanceTransfer;
 const engineMaxSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? (NEW_VIDEO_MODELS[e]?.refCaps?.videoMaxTotalSec || 30) : (getMaxClipSeconds(e) || 60));
 const billSecFor = (engine, sec) => (engine === REFERENCE_TEMPLATE_ENGINE ? Math.min(30, Math.max(4, Math.ceil(sec))) : Math.max(1, Math.ceil(sec)));
@@ -127,7 +128,7 @@ const tiersFor = (engine) => { try { const t = getQualityTiers(engine); return A
 const costsFor = (engine, sec) => Object.fromEntries(tiersFor(engine).map(t => { try { return [t, getPerSecondCreditCost(engine, billSecFor(engine, sec), t, { videoIn: engine === REFERENCE_TEMPLATE_ENGINE })]; } catch { return [t, null]; } }));
 const pub = (r, lang) => ({
   id: r.id, title: lang === 'en' ? r.title_en : r.title_ar, description: (lang === 'en' ? r.description_en : r.description_ar) || '',
-  category: r.category, coverUrl: r.cover_url, previewUrl: r.preview_url || null, durationSec: Number(r.duration_sec), engine: r.engine, mode: r.engine === REFERENCE_TEMPLATE_ENGINE ? 'reference' : 'transfer',
+  category: r.category, coverUrl: r.cover_url, previewUrl: r.preview_url || null, durationSec: Number(r.duration_sec), engine: r.engine, mode: templateMode(r.engine),
   tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)), featured: !!r.is_featured, uses: r.uses_count || 0,
 });
 
@@ -165,7 +166,7 @@ router.get('/templates/:id/source', authMiddleware, async (req, res) => {
     const r = rows[0];
     if (!r) return res.status(404).json({ error: 'not_found' });
     pool.query(`UPDATE trend_templates SET uses_count = uses_count + 1 WHERE id = $1`, [r.id]).catch(() => {});
-    res.json({ sourceVideoUrl: r.source_video_url, model: r.engine, mode: r.engine === REFERENCE_TEMPLATE_ENGINE ? 'reference' : 'transfer', prompt: r.prompt || '', aspect: r.aspect || '9:16', durationSec: Number(r.duration_sec), tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)) });
+    res.json({ sourceVideoUrl: r.source_video_url, model: r.engine, mode: templateMode(r.engine), prompt: r.prompt || '', aspect: r.aspect || '9:16', durationSec: Number(r.duration_sec), tiers: tiersFor(r.engine), costs: costsFor(r.engine, Number(r.duration_sec)) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -153,6 +153,11 @@ export const REPLICATE_MODEL_COSTS = {
   // من الفيديو الناتج (= مدة فيديو المصدر): 720p $0.03، 1080p $0.06. maxClipSec سقف أمان مننا (مفيش حد مؤكد في الصفحة)
   prunaai_p_video_animate: { label: 'P-Video Animate', unit: 'second', usdCost: 0.03, maxClipSec: 60,
                        tiers: { '720p': 0.03, '1080p': 0.06 } },
+  // ✅ NEW (طلب العميل، سكرين شوت السعر والـschema من Replicate): wan-video/wan-2.2-animate-replace — تبديل الشخص اللي في الفيديو
+  // بصورة شخصية جديدة مع الحفاظ على مشهد الفيديو. السعر لكل ثانية من الفيديو الناتج: 480p $0.02، 720p $0.05.
+  // maxClipSec سقف أمان مننا (مفيش حد مؤكد في الصفحة)
+  wan_2_2_animate_replace: { label: 'Wan 2.2 Animate Replace', unit: 'second', usdCost: 0.05, maxClipSec: 30,
+                       tiers: { '480p': 0.02, '720p': 0.05 } },
   decart_lucy_edit_2: { label: 'Lucy Edit 2', unit: 'second', usdCost: 0.04, maxClipSec: 1800 },
 
   // ✅ CONFIRMED (سكرين شوت العميل لصفحة الـinput schema الحقيقية بعد كده): Kling Video 3.0

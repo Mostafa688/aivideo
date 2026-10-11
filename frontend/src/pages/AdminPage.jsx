@@ -2050,7 +2050,7 @@ function CharacterStudioTab({ s }) {
   const [toast, setToast] = useState('');
   const showToastMsg = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
   const emptyPreset = { name_ar: '', name_en: '', description_ar: '', description_en: '', image_url: '', category: 'person', hidden_refs: [] };
-  const emptyTpl = { title_ar: '', title_en: '', description_ar: '', description_en: '', category: 'viral', cover_url: '', preview_url: '', source_video_url: '', duration_sec: 0, is_featured: false, engine: 'prunaai_p_video_animate', prompt: '', aspect: '' };
+  const emptyTpl = { title_ar: '', title_en: '', description_ar: '', description_en: '', category: 'viral', cover_url: '', preview_url: '', source_video_url: '', duration_sec: 0, is_featured: false, engine: 'wan_2_2_animate_replace', prompt: '', aspect: '' };
   const [pForm, setPForm] = useState(emptyPreset);
   const [tForm, setTForm] = useState(emptyTpl);
   const [busy, setBusy] = useState('');
@@ -2131,7 +2131,7 @@ function CharacterStudioTab({ s }) {
         <>
           <div style={s.card}>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#c4b5fd', marginBottom: 4 }}>➕ New trend template</div>
-            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام. العميل يختار شخصيته، وبتتعمل بواحد من محركين: P-Video Animate بيحرّك صورة شخصيته (بمكانها وخلفيتها) بنفس حركة وكلام الفيديو (أقصى 60 ثانية — المكان مش مكان الفيديو)، أو Seedance 2.5 بيحافظ على مشهد الفيديو ويبدّل الشخص فيه (أقصى 30 ثانية، أغلى). السعر بيتحسب لوحده من مدة الفيديو.</p>
+            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام. العميل يختار شخصيته، وبتتعمل بواحد من 3 محركات: Wan 2.2 Animate Replace بيبدّل الشخص اللي في الفيديو (لازم شخص واحد) ويحافظ على المشهد والصوت الأصلي (أقصى 30 ثانية، رخيص)، أو P-Video Animate بيحرّك صورة شخصيته (بمكانها وخلفيتها) بنفس حركة وكلام الفيديو (أقصى 60 ثانية — المكان مش مكان الفيديو)، أو Seedance 2.5 بيعيد بناء المشهد وبيقدر يغيّر الشكل (أقصى 30 ثانية، أغلى). السعر بيتحسب لوحده من مدة الفيديو.</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
               <Field label="Title (Arabic)"><input style={inp} value={tForm.title_ar} onChange={e => setTForm(f => ({ ...f, title_ar: e.target.value }))} placeholder="رقصة الترند..." /></Field>
               <Field label="Title (English)"><input style={inp} value={tForm.title_en} onChange={e => setTForm(f => ({ ...f, title_en: e.target.value }))} placeholder="Trending dance..." /></Field>
@@ -2143,11 +2143,12 @@ function CharacterStudioTab({ s }) {
               <Field label="Duration (auto from the video)"><input style={inp} value={tForm.duration_sec || ''} readOnly placeholder="—" /></Field>
               <Field label="Engine">
                 <select style={inp} value={tForm.engine} onChange={e => setTForm(f => ({ ...f, engine: e.target.value }))}>
+                  <option value="wan_2_2_animate_replace">Wan 2.2 Animate Replace — REPLACES the person in the video with the character and keeps the video scene + original audio (video must have ONE person), up to 30s, cheap (480p $0.02/s, 720p $0.05/s)</option>
                   <option value="prunaai_p_video_animate">P-Video Animate — animates the character image (in ITS OWN setting) with the exact video motion + original speech, up to 60s, cheap</option>
                   <option value="seedance_2_5">Seedance 2.5 — keeps the video scene and replaces the person (can also change looks: hair/eyes colour, muscles, effects), up to 30s, much pricier</option>
                 </select>
               </Field>
-              <Field label={tForm.engine === 'seedance_2_5' ? 'Prompt — describe the transformation/effects (English)' : 'Extra instruction (optional, English)'}>
+              <Field label={tForm.engine === 'seedance_2_5' ? 'Prompt — describe the transformation/effects (English)' : tForm.engine === 'wan_2_2_animate_replace' ? 'Prompt (not used by Wan Replace)' : 'Extra instruction (optional, English)'}>
                 <textarea style={{ ...inp, minHeight: 74, fontFamily: 'inherit' }} value={tForm.prompt || ''} maxLength={800} onChange={e => setTForm(f => ({ ...f, prompt: e.target.value }))}
                   placeholder={tForm.engine === 'seedance_2_5' ? 'e.g. At the peak of the scream his muscles swell, his hair turns spiky golden-yellow and his eyes glow yellow, golden lightning around him.' : 'e.g. Keep the same expressions and lip-sync.'} />
               </Field>
@@ -2166,12 +2167,16 @@ function CharacterStudioTab({ s }) {
               <div key={t.id} style={{ ...s.card, padding: 10, margin: 0, opacity: t.is_published ? 1 : 0.55 }}>
                 {t.cover_url ? <img src={t.cover_url} alt="" style={{ width: '100%', aspectRatio: '9/12', objectFit: 'cover', borderRadius: 8 }} /> : <div style={{ height: 120, background: '#111', borderRadius: 8 }} />}
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', margin: '8px 0 2px' }}>{t.title_en} {t.is_featured ? '⭐' : ''}</div>
-                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.engine === 'seedance_2_5' ? '#fbbf24' : '#34d399', margin: '0 0 2px' }}>{t.engine === 'seedance_2_5' ? 'Seedance 2.5 (keeps the scene, replaces the person)' : 'P-Video Animate (animates the character image)'}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.engine === 'seedance_2_5' ? '#fbbf24' : '#34d399', margin: '0 0 2px' }}>{t.engine === 'seedance_2_5' ? 'Seedance 2.5 (re-creates the scene, can change looks)' : t.engine === 'wan_2_2_animate_replace' ? 'Wan 2.2 Animate Replace (replaces the person, keeps scene + audio)' : 'P-Video Animate (animates the character image)'}</div>
                 <div style={{ fontSize: 11, color: '#9ca3af' }}>{t.category} · {Math.round(t.duration_sec)}s · {Object.entries(t.costs || {}).map(([k, v]) => `${k}: ${v}cr`).join(' · ')} · used {t.uses_count}</div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_published: !t.is_published }, t.is_published ? 'Hidden' : 'Published')}>{t.is_published ? 'Hide' : 'Publish'}</button>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_featured: !t.is_featured }, 'Updated')}>{t.is_featured ? 'Unfeature' : 'Feature'}</button>
-                  <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { engine: t.engine === 'seedance_2_5' ? 'prunaai_p_video_animate' : 'seedance_2_5' }, 'Engine changed')}>Switch to {t.engine === 'seedance_2_5' ? 'P-Video' : 'Seedance'}</button>
+                  <select value={t.engine} style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 6px' }} onChange={e => send(`${base}/templates/${t.id}`, 'PUT', { engine: e.target.value }, 'Engine changed')}>
+                    <option value="wan_2_2_animate_replace">Wan Replace</option>
+                    <option value="prunaai_p_video_animate">P-Video Animate</option>
+                    <option value="seedance_2_5">Seedance 2.5</option>
+                  </select>
                   <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 9px' }} onClick={() => confirm('Delete this template?') && send(`${base}/templates/${t.id}`, 'DELETE', null, 'Deleted')}>Delete</button>
                 </div>
               </div>
