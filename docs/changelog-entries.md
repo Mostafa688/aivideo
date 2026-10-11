@@ -4,6 +4,12 @@
 
 ## Changelog
 
+### 2026-10-11 — جديد (new)
+- **العنوان (AR):** فيديو أنيميشن احترافي بالكود من الايجنت
+- **Title (EN):** Professional coded animation videos from the Agent
+- **الوصف (AR):** ارفع صوتك أو خلّي الذكاء الاصطناعي يكتب ويقرأ الموضوع، والايجنت يبني فيديو موشن جرافيك لحد دقيقتين (16:9 أو 9:16) بإحصائيات ورسوم بيانية وانتقالات ومؤثرات صوتية وموسيقى. السعر بيظهر قبل البدء (الصوت بالذكاء الاصطناعي بيتحسب) ويترجع لو الفيديو فشل.
+- **Description (EN):** Upload your voice or let AI write and narrate a topic, and the Agent builds a motion-graphics video up to 2 minutes (16:9 or 9:16) with stats, charts, transitions, sound effects and music. The price is shown up front (AI voice is included) and refunded if the video fails.
+
 ### 2026-10-10 — جديد (new)
 - **العنوان (AR):** اعمل شخصية بالذكاء الاصطناعي من غير صورة
 - **Title (EN):** Create a character with AI — no photo needed

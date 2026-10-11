@@ -8,8 +8,9 @@ import { visionDiagnostics } from './visionService.js';
 import { composeProductAdPrompt, agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { listCharacterReferencesForUser, getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
-import { startJob as startDocumentaryJob, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
+import { startJob as startDocumentaryJob, startAnimationJob, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
 import { trialAvailable as docTrialAvailable } from './documentary/store.js';
+import { probeDuration as ffProbeDuration, hasAudio as ffHasAudio, rmQuiet as ffRmQuiet } from './documentary/ff.js';
 import { registerAsset, registerVoiceFile, buildMontageNote, listAssets, resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, withAnalysis as montageWithAnalysis, MAX_ASSETS_PER_USER } from './montage/assets.js';
 import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, startResumeChannelRun } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
@@ -1467,7 +1468,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload, autoEditPayload, montagePayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload, animationPayload, autoEditPayload, montagePayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
@@ -1475,6 +1476,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     ({ text: reply, payload: channelGeneratePayload } = extractTrailingMarker(reply, '###CHANNEL_GENERATE###'));
     ({ text: reply, payload: channelResumePayload } = extractTrailingMarker(reply, '###CHANNEL_RESUME###'));
     ({ text: reply, payload: documentaryPayload } = extractTrailingMarker(reply, '###DOCUMENTARY###'));
+    ({ text: reply, payload: animationPayload } = extractTrailingMarker(reply, '###ANIMATION###'));
     ({ text: reply, payload: autoEditPayload } = extractTrailingMarker(reply, '###AUTOEDIT###'));
     {
       const rawBeforeMontage = reply;
@@ -1621,6 +1623,57 @@ router.post('/chat', authMiddleware, async (req, res) => {
         } catch (e) {
           console.warn('[Agent] DOCUMENTARY marker failed:', e.message);
           reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ الفيلم الوثائقي — جرب تاني بعد شوية.';
+        }
+      }
+    }
+
+    // ✅ NEW: فيديو أنيميشن/موشن جرافيك بالكود (من صوت العميل المرفوع أو سكريبت أو موضوع) — نفس مسار الاستوديو (حجز كريديت ذري + رد كامل عند الفشل)
+    if (animationPayload && typeof animationPayload === 'object') {
+      if (userPlan === 'free') {
+        reply += (reply ? '\n\n' : '') + 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ فيديو أنيميشن قبل ما تشترك.';
+      } else {
+        let tmpDir = null;
+        try {
+          const a = animationPayload;
+          const src = ['voiceover', 'script', 'topic'].includes(a.source) ? a.source : (a.script ? 'script' : 'topic');
+          const raw = {
+            source: src, topic: String(a.topic || '').slice(0, 300), script: String(a.script || '').slice(0, 4200), brief: String(a.brief || '').slice(0, 400),
+            seconds: Number(a.seconds) || undefined, language: a.language, ratio: a.ratio, palette: a.palette, style: a.style,
+            voiceKey: a.voice, music: a.music !== false, captions: a.captions,
+          };
+          let blocked = null;
+          if (src === 'voiceover') {
+            const uid = req.user.userId;
+            const voiceUrl = uploadedVoiceUrl || (lastVoiceUrl && voiceOwners.get(uid)?.has(lastVoiceUrl) ? lastVoiceUrl : null);
+            const abs = voiceUrl ? path.join(process.cwd(), String(voiceUrl).replace(/^\//, '')) : null;
+            if (!abs || !abs.startsWith(process.cwd()) || !fs.existsSync(abs)) {
+              blocked = 'مش لاقي تسجيل صوتك في المحادثة — ابعته تاني (رفع أو تسجيل) وقولّي "ابدأ".';
+            } else {
+              tmpDir = path.join(process.platform === 'win32' ? 'temp' : '/tmp/aivideo', `anim_${uid}_${Date.now()}`);
+              fs.mkdirSync(tmpDir, { recursive: true });
+              const file = path.join(tmpDir, `voiceover${(path.extname(abs).replace(/[^.\w]/g, '') || '.mp3').slice(0, 6)}`);
+              fs.copyFileSync(abs, file);
+              if (!(await ffHasAudio(file))) blocked = 'الملف ده مفيهوش صوت — ابعتلي تسجيل تاني.';
+              raw.audioFile = file; raw.audioDurationSec = await ffProbeDuration(file);
+            }
+          }
+          if (blocked) {
+            if (tmpDir) ffRmQuiet(tmpDir);
+            reply += (reply ? '\n\n' : '') + blocked;
+          } else {
+            const r = await startAnimationJob(userId, raw);
+            if (r.ok) {
+              docJob = { jobId: r.job.id, kind: 'animation', title: r.job.title, ratio: raw.ratio === '9:16' ? '9:16' : '16:9' };
+              reply += (reply ? '\n\n' : '') + `تمام، بدأت فيديو الأنيميشن (${r.cost} كريديت لمدة حوالي ${Math.max(1, Math.round(r.seconds || r.minutes * 60))} ثانية). هيظهر هنا في المحادثة أول ما يخلص (بياخد كام دقيقة).`;
+            } else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: الفيديو محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
+            else if (r.error === 'too_long') reply += (reply ? '\n\n' : '') + 'أقصى طول لفيديو الأنيميشن دقيقتين — قصّر الصوت/السكريبت وقولّي.';
+            else if (r.error === 'too_short') reply += (reply ? '\n\n' : '') + 'الصوت قصير أوي (أقل حاجة 5 ثواني).';
+            else reply += (reply ? '\n\n' : '') + 'معلش، مقدرتش أبدأ فيديو الأنيميشن ده' + (r.error === 'content_policy_violation' ? ' (المحتوى مش مسموح).' : '.');
+          }
+        } catch (e) {
+          if (tmpDir) ffRmQuiet(tmpDir);
+          console.warn('[Agent] ANIMATION marker failed:', e.message);
+          reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ فيديو الأنيميشن — جرب تاني بعد شوية.';
         }
       }
     }

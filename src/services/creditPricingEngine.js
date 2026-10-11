@@ -248,6 +248,15 @@ export function getDocumentaryCreditCost(minutes, { userVoiceover = false } = {}
   return usdToCredits(perMin * Math.max(0.5, Number(minutes) || 0.5));
 }
 
+// ── فيديو أنيميشن بالكود (موشن جرافيك + نص متحرك + مؤثرات صوتية): سرد (TTS لو الصوت بالـAI) + تفريغ/توقيت (Whisper) + مخرج LLM
+// + رندر إطارات على السيرفر (الأغلى: CPU) + خلط صوت. بيتحاسب على الطول النهائي الفعلي (فرق الحجز المسبق بيترد بعد الرندر).
+export const ANIMATION_USD_PER_MINUTE = { tts: 0.018, asr: 0.003, llm: 0.012, render: 0.09 };
+export function getAnimationCreditCost(minutes, { userVoiceover = false } = {}) {
+  const d = ANIMATION_USD_PER_MINUTE;
+  const perMin = d.render + d.llm + d.asr + (userVoiceover ? 0 : d.tts);
+  return usdToCredits(perMin * Math.max(0.4, Number(minutes) || 0.4));
+}
+
 // ── مونتاج تلقائي لفيديو العميل (ffmpeg محلي + Whisper): بالدقيقة من الفيديو الأصلي — compute بس، هامش العمليات الداخلية
 export const AUTO_EDIT_USD_PER_MINUTE = { asr: 0.002, render: 0.03 };
 export function getAutoEditCreditCost(minutes) {
