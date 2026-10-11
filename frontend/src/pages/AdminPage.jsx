@@ -2131,7 +2131,7 @@ function CharacterStudioTab({ s }) {
         <>
           <div style={s.card}>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#c4b5fd', marginBottom: 4 }}>➕ New trend template</div>
-            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام (أقصى 60 ثانية). العميل يختار شخصيته أو يرفع وجهه، والناتج نفس الحركة والكلام بشخصيته (P-Video Animate). السعر بيتحسب لوحده من مدة الفيديو.</p>
+            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام. العميل يختار شخصيته، وبتتعمل بواحد من محركين: P-Video Animate بيحرّك صورة شخصيته (بمكانها وخلفيتها) بنفس حركة وكلام الفيديو (أقصى 60 ثانية — المكان مش مكان الفيديو)، أو Seedance 2.5 بيحافظ على مشهد الفيديو ويبدّل الشخص فيه (أقصى 30 ثانية، أغلى). السعر بيتحسب لوحده من مدة الفيديو.</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
               <Field label="Title (Arabic)"><input style={inp} value={tForm.title_ar} onChange={e => setTForm(f => ({ ...f, title_ar: e.target.value }))} placeholder="رقصة الترند..." /></Field>
               <Field label="Title (English)"><input style={inp} value={tForm.title_en} onChange={e => setTForm(f => ({ ...f, title_en: e.target.value }))} placeholder="Trending dance..." /></Field>
@@ -2143,8 +2143,8 @@ function CharacterStudioTab({ s }) {
               <Field label="Duration (auto from the video)"><input style={inp} value={tForm.duration_sec || ''} readOnly placeholder="—" /></Field>
               <Field label="Engine">
                 <select style={inp} value={tForm.engine} onChange={e => setTForm(f => ({ ...f, engine: e.target.value }))}>
-                  <option value="prunaai_p_video_animate">P-Video Animate — exact motion + original speech, ONE character, up to 60s, cheaper</option>
-                  <option value="seedance_2_5">Seedance 2.5 — re-creates the video (can change looks: hair/eyes colour, muscles, effects), up to 30s, ~4x price</option>
+                  <option value="prunaai_p_video_animate">P-Video Animate — animates the character image (in ITS OWN setting) with the exact video motion + original speech, up to 60s, cheap</option>
+                  <option value="seedance_2_5">Seedance 2.5 — keeps the video scene and replaces the person (can also change looks: hair/eyes colour, muscles, effects), up to 30s, much pricier</option>
                 </select>
               </Field>
               <Field label={tForm.engine === 'seedance_2_5' ? 'Prompt — describe the transformation/effects (English)' : 'Extra instruction (optional, English)'}>
@@ -2166,7 +2166,7 @@ function CharacterStudioTab({ s }) {
               <div key={t.id} style={{ ...s.card, padding: 10, margin: 0, opacity: t.is_published ? 1 : 0.55 }}>
                 {t.cover_url ? <img src={t.cover_url} alt="" style={{ width: '100%', aspectRatio: '9/12', objectFit: 'cover', borderRadius: 8 }} /> : <div style={{ height: 120, background: '#111', borderRadius: 8 }} />}
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', margin: '8px 0 2px' }}>{t.title_en} {t.is_featured ? '⭐' : ''}</div>
-                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.engine === 'seedance_2_5' ? '#fbbf24' : '#34d399', margin: '0 0 2px' }}>{t.engine === 'seedance_2_5' ? 'Seedance 2.5 (re-creates the video)' : 'P-Video Animate (exact motion + speech)'}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.engine === 'seedance_2_5' ? '#fbbf24' : '#34d399', margin: '0 0 2px' }}>{t.engine === 'seedance_2_5' ? 'Seedance 2.5 (keeps the scene, replaces the person)' : 'P-Video Animate (animates the character image)'}</div>
                 <div style={{ fontSize: 11, color: '#9ca3af' }}>{t.category} · {Math.round(t.duration_sec)}s · {Object.entries(t.costs || {}).map(([k, v]) => `${k}: ${v}cr`).join(' · ')} · used {t.uses_count}</div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_published: !t.is_published }, t.is_published ? 'Hidden' : 'Published')}>{t.is_published ? 'Hide' : 'Publish'}</button>
