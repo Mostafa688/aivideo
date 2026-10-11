@@ -557,7 +557,11 @@ async function pollPrediction(predictionId, label) {
     if (!res.ok) continue;
     const data = await res.json();
     if (data.status === 'succeeded') return data.output;
-    if (data.status === 'failed' || data.status === 'canceled') throw new Error(`${label} failed: ${data.error}`);
+    if (data.status === 'failed' || data.status === 'canceled') {
+      // أحيانًا Replicate بيرجّع error: null (مثلًا فلتر أمان) — بنضم آخر سطور اللوج عشان السبب الحقيقي يبان في السجل ونقدر نصنّفه
+      const logTail = typeof data.logs === 'string' ? data.logs.trim().split('\n').slice(-4).join(' | ').slice(0, 400) : '';
+      throw new Error(`${label} failed: ${data.error || logTail || data.status}`);
+    }
   }
   throw new Error(`${label} timed out`);
 }
