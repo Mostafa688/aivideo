@@ -21,8 +21,19 @@ export const PALETTES = {
   ocean: { dark: true, bg: ['#021526', '#033260', '#07589a'], a1: '#38bdf8', a2: '#fde047', a3: '#5eead4', text: '#ffffff', muted: '#a8cdee' },
   mono: { dark: true, bg: ['#050505', '#101010', '#202020'], a1: '#ffffff', a2: '#ef4444', a3: '#a3a3a3', text: '#ffffff', muted: '#a3a3a3' },
   daylight: { dark: false, bg: ['#f8fafc', '#e6edfd', '#d4e2ff'], a1: '#2563eb', a2: '#f97316', a3: '#16a34a', text: '#0f172a', muted: '#475569' },
+  // ألوان أنماط الكارتون (فاتحة ومبهجة) وفوكس (ورق + ماركر)
+  toon: { dark: false, bg: ['#bfe6ff', '#d9f0ff', '#fff3d6'], a1: '#ff6b6b', a2: '#ffc833', a3: '#3bb273', text: '#1f2a44', muted: '#4a5d80' },
+  candy: { dark: false, bg: ['#ffd6ec', '#ffe9f4', '#e9dcff'], a1: '#ff4fa3', a2: '#8b5cf6', a3: '#22c1c3', text: '#2a1747', muted: '#6b5a8a' },
+  mint: { dark: false, bg: ['#c9f2e3', '#e3faf1', '#fff6d9'], a1: '#10b981', a2: '#f97316', a3: '#3b82f6', text: '#12332a', muted: '#456b5e' },
+  sunny: { dark: false, bg: ['#ffe29a', '#ffedc0', '#ffd0a6'], a1: '#ef4444', a2: '#2563eb', a3: '#16a34a', text: '#3a2108', muted: '#7a5a34' },
+  vox: { dark: false, bg: ['#f3eee2', '#ece5d3', '#e1d7bd'], a1: '#e63946', a2: '#f2a900', a3: '#1d3557', text: '#16161a', muted: '#5f594b', mark: '#ffd23f', emph: '#e63946' },
+  voxdark: { dark: true, bg: ['#0d0d10', '#17171b', '#222227'], a1: '#ffd23f', a2: '#e63946', a3: '#8ecae6', text: '#ffffff', muted: '#a9a9b3', mark: '#ffd23f' },
 };
-export const PALETTE_NAMES = Object.keys(PALETTES);
+export const MOTION_PALETTES = ['neon', 'sunset', 'emerald', 'royal', 'crimson', 'ocean', 'mono', 'daylight'];
+export const TOON_PALETTES = ['toon', 'candy', 'mint', 'sunny'];
+export const VOX_PALETTES = ['vox', 'voxdark'];
+export const PALETTE_NAMES = MOTION_PALETTES;
+export const ALL_PALETTE_NAMES = Object.keys(PALETTES);
 const MOOD_PALETTE = { epic: 'royal', tech: 'neon', business: 'ocean', nature: 'emerald', energetic: 'sunset', serious: 'crimson', clean: 'daylight', minimal: 'mono' };
 export function pickPalette(name, mood) {
   const key = PALETTES[name] ? name : (MOOD_PALETTE[mood] || 'neon');

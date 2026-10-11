@@ -251,9 +251,11 @@ export function getDocumentaryCreditCost(minutes, { userVoiceover = false } = {}
 // ── فيديو أنيميشن بالكود (موشن جرافيك + نص متحرك + مؤثرات صوتية): سرد (TTS لو الصوت بالـAI) + تفريغ/توقيت (Whisper) + مخرج LLM
 // + رندر إطارات على السيرفر (الأغلى: CPU) + خلط صوت. بيتحاسب على الطول النهائي الفعلي (فرق الحجز المسبق بيترد بعد الرندر).
 export const ANIMATION_USD_PER_MINUTE = { tts: 0.018, asr: 0.003, llm: 0.012, render: 0.09 };
-export function getAnimationCreditCost(minutes, { userVoiceover = false } = {}) {
+// نمط Vox (صور بتتفك كل إطار + بحث أرشيف) والكارتون 3D أتقل في الرندر شوية من الموشن جرافيك العادي
+export const ANIMATION_LOOK_RENDER_MULT = { motion: 1, cartoon: 1, cartoon3d: 1.15, vox: 1.4 };
+export function getAnimationCreditCost(minutes, { userVoiceover = false, look = 'motion' } = {}) {
   const d = ANIMATION_USD_PER_MINUTE;
-  const perMin = d.render + d.llm + d.asr + (userVoiceover ? 0 : d.tts);
+  const perMin = d.render * (ANIMATION_LOOK_RENDER_MULT[look] || 1) + d.llm + d.asr + (userVoiceover ? 0 : d.tts);
   return usdToCredits(perMin * Math.max(0.4, Number(minutes) || 0.4));
 }
 

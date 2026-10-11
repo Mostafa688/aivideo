@@ -131,7 +131,7 @@ export async function adminStats({ days = 30 } = {}) {
 }
 
 // ── التجارب المجانية (مرة واحدة لكل حساب، بتتاخد بشكل ذري): 'doc' = أول دقيقة وثائقي بصوت العميل، 'montage' = مونتاج لحد دقيقتين ──
-const TRIAL_COLS = { doc: 'free_doc_trial_used', montage: 'free_montage_trial_used' };
+const TRIAL_COLS = { doc: 'free_doc_trial_used', montage: 'free_montage_trial_used', animation: 'free_animation_trial_used' };
 const trialColReady = {};
 function ensureTrialCol(kind = 'doc') {
   const col = TRIAL_COLS[kind]; if (!col) throw new Error('unknown trial kind');

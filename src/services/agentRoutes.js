@@ -8,7 +8,7 @@ import { visionDiagnostics } from './visionService.js';
 import { composeProductAdPrompt, agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { listCharacterReferencesForUser, getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
-import { startJob as startDocumentaryJob, startAnimationJob, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
+import { startJob as startDocumentaryJob, startAnimationJob, animationTrialAvailable, ANIMATION_TRIAL_SECONDS, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
 import { trialAvailable as docTrialAvailable } from './documentary/store.js';
 import { probeDuration as ffProbeDuration, hasAudio as ffHasAudio, rmQuiet as ffRmQuiet } from './documentary/ff.js';
 import { registerAsset, registerVoiceFile, buildMontageNote, listAssets, resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, withAnalysis as montageWithAnalysis, MAX_ASSETS_PER_USER } from './montage/assets.js';
@@ -732,6 +732,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
     if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote + voiceMissingNote + freeNote;
+    try {
+      const avail = await animationTrialAvailable(req.user.userId);
+      attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + (avail
+        ? `ANIMATION FREE TRIAL: this account still has its ONE free ${ANIMATION_TRIAL_SECONDS}-second animated video (any look, AI voice included, 0 credits, small Erivion watermark).`
+        : `ANIMATION FREE TRIAL: this account already used its free ${ANIMATION_TRIAL_SECONDS}-second animated video — further animated videos are paid.`);
+    } catch { /* مش حرج */ }
     // عرض مؤقت على باقات مصر: الايجنت لازم يعرف السعر الحقيقي الحالي (اللي هيتحاسب بيه العميل) ووقت الانتهاء
     try {
       const promo = await getActivePromo();
@@ -1629,8 +1635,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     // ✅ NEW: فيديو أنيميشن/موشن جرافيك بالكود (من صوت العميل المرفوع أو سكريبت أو موضوع) — نفس مسار الاستوديو (حجز كريديت ذري + رد كامل عند الفشل)
     if (animationPayload && typeof animationPayload === 'object') {
-      if (userPlan === 'free') {
-        reply += (reply ? '\n\n' : '') + 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ فيديو أنيميشن قبل ما تشترك.';
+      const trialLeft = await animationTrialAvailable(userId);
+      if (userPlan === 'free' && !trialLeft) {
+        reply += (reply ? '\n\n' : '') + `الخطة المجانية معندهاش رصيد كريديت حقيقي، وانت استخدمت أول ${ANIMATION_TRIAL_SECONDS} ثانية المجانية قبل كده — اشترك أو اشحن كريديت عشان نعمل فيديو أنيميشن.`;
       } else {
         let tmpDir = null;
         try {
@@ -1639,7 +1646,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           const raw = {
             source: src, topic: String(a.topic || '').slice(0, 300), script: String(a.script || '').slice(0, 4200), brief: String(a.brief || '').slice(0, 400),
             seconds: Number(a.seconds) || undefined, language: a.language, ratio: a.ratio, palette: a.palette, style: a.style,
-            voiceKey: a.voice, music: a.music !== false, captions: a.captions,
+            voiceKey: a.voice, music: a.music !== false, captions: a.captions, look: a.look, trial: a.trial === true || userPlan === 'free',
           };
           let blocked = null;
           if (src === 'voiceover') {
@@ -1663,9 +1670,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
           } else {
             const r = await startAnimationJob(userId, raw);
             if (r.ok) {
-              docJob = { jobId: r.job.id, kind: 'animation', title: r.job.title, ratio: raw.ratio === '9:16' ? '9:16' : '16:9' };
-              reply += (reply ? '\n\n' : '') + `تمام، بدأت فيديو الأنيميشن (${r.cost} كريديت لمدة حوالي ${Math.max(1, Math.round(r.seconds || r.minutes * 60))} ثانية). هيظهر هنا في المحادثة أول ما يخلص (بياخد كام دقيقة).`;
-            } else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: الفيديو محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ".`;
+              docJob = { jobId: r.job.id, kind: 'animation', title: r.job.title, ratio: raw.ratio === '9:16' ? '9:16' : '16:9', trial: !!r.trial };
+              reply += (reply ? '\n\n' : '') + (r.trial
+                ? `تمام، بدأت فيديو الأنيميشن المجاني (أول ${ANIMATION_TRIAL_SECONDS} ثانية على الحساب — من غير أي كريديت، وعليه علامة Erivion المائية). هيظهر هنا في المحادثة أول ما يخلص.`
+                : `تمام، بدأت فيديو الأنيميشن (${r.cost} كريديت لمدة حوالي ${Math.max(1, Math.round(r.seconds || r.minutes * 60))} ثانية). هيظهر هنا في المحادثة أول ما يخلص (بياخد كام دقيقة).`);
+            } else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: الفيديو محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ"` + (trialLeft ? ` — أو أعمله لك مجانًا في أول ${ANIMATION_TRIAL_SECONDS} ثانية بس.` : '.');
+            else if (r.error === 'trial_used') reply += (reply ? '\n\n' : '') + `أول ${ANIMATION_TRIAL_SECONDS} ثانية المجانية اتستخدمت قبل كده على الحساب ده — الفيديو هيتحاسب بالسعر العادي، قولّي لو عايز أبدأه.`;
             else if (r.error === 'too_long') reply += (reply ? '\n\n' : '') + 'أقصى طول لفيديو الأنيميشن دقيقتين — قصّر الصوت/السكريبت وقولّي.';
             else if (r.error === 'too_short') reply += (reply ? '\n\n' : '') + 'الصوت قصير أوي (أقل حاجة 5 ثواني).';
             else reply += (reply ? '\n\n' : '') + 'معلش، مقدرتش أبدأ فيديو الأنيميشن ده' + (r.error === 'content_policy_violation' ? ' (المحتوى مش مسموح).' : '.');

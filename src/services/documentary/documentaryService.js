@@ -16,7 +16,8 @@ import { watermarkVideo } from '../watermark.js';
 import { getDocumentaryCreditCost, getAutoEditCreditCost, getVideoReadCreditCost, getAnimationCreditCost } from '../creditPricingEngine.js';
 import { produceAnimation } from '../codeVideo/produce.js';
 import { MAX_SECONDS as ANIMATION_MAX_SECONDS, estimateSeconds as estimateAnimationSeconds } from '../codeVideo/narration.js';
-import { PALETTE_NAMES as ANIMATION_PALETTES } from '../codeVideo/design.js';
+import { ALL_PALETTE_NAMES as ANIMATION_PALETTES } from '../codeVideo/design.js';
+import { LOOKS as ANIMATION_LOOKS } from '../codeVideo/director.js';
 import { videoUnderstand, videoReaderAvailable } from '../visionService.js';
 import { checkContentSafety } from '../scriptService.js';
 import { synthesizeNarration, getBackgroundMusicBuffer } from '../videoAudioService.js';
@@ -184,7 +185,7 @@ async function runTask(task) {
       thumbUrl = await store.uploadFile(thumb, `${base}.jpg`, 'image/jpeg');
     } catch (e) { console.warn('[Documentary] thumbnail failed:', e.message); }
     // الدفع على الطول الفعلي: فرق الحجز المسبق بيترد
-    const actual = task.fixedCost ? task.charged - (result.refundCredits || 0) : input.mode === 'animation' ? getAnimationCreditCost(result.duration / 60, { userVoiceover: input.source === 'voiceover' }) : getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
+    const actual = task.fixedCost ? task.charged - (result.refundCredits || 0) : input.mode === 'animation' ? getAnimationCreditCost(result.duration / 60, { userVoiceover: input.source === 'voiceover', look: input.look }) : getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
     const back = Math.max(0, task.charged - actual);
     if (back >= 2 || (task.fixedCost && back >= 1)) await refund(task, back);
     await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 || (task.fixedCost && back >= 1) ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio, ...(result.sceneStats ? { sceneStats: result.sceneStats } : {}), ...(result.editor ? { editor: result.editor } : {}) } });
@@ -212,10 +213,10 @@ function userFacingError(e) { return USER_ERRORS[e?.code] || 'The video could no
 
 // ── فيديو أنيميشن بالكود (حتى دقيقتين): صوت مرفوع أو سكريبت (صوت AI) أو موضوع → مخرج + رندر بالكود + مؤثرات صوتية ──
 export const ANIMATION_RATIOS = ['16:9', '9:16'];
-export function quoteAnimation({ source, script, seconds, audioDurationSec, language = 'en' }) {
+export function quoteAnimation({ source, script, seconds, audioDurationSec, language = 'en', look = 'motion' }) {
   const sec = source === 'voiceover' ? Number(audioDurationSec) || 0 : source === 'script' ? estimateAnimationSeconds(script, language) : Number(seconds) || 60;
   const minutes = Math.round((sec / 60) * 100) / 100;
-  return { seconds: Math.round(sec), minutes, cost: getAnimationCreditCost(sec / 60, { userVoiceover: source === 'voiceover' }), userVoiceover: source === 'voiceover' };
+  return { seconds: Math.round(sec), minutes, cost: getAnimationCreditCost(sec / 60, { userVoiceover: source === 'voiceover', look }), userVoiceover: source === 'voiceover' };
 }
 function normalizeAnimationInput(raw = {}) {
   const source = ['voiceover', 'script', 'topic'].includes(raw.source) ? raw.source : (raw.audioFile ? 'voiceover' : raw.script ? 'script' : 'topic');
@@ -225,10 +226,12 @@ function normalizeAnimationInput(raw = {}) {
     script: String(raw.script || '').replace(/\r/g, '').trim().slice(0, 4200),
     topic: String(raw.topic || '').replace(/<[^>]*>/g, '').trim().slice(0, 300),
     brief: String(raw.brief || '').replace(/<[^>]*>/g, '').trim().slice(0, 400),
-    seconds: Math.min(ANIMATION_MAX_SECONDS - 6, Math.max(20, Number(raw.seconds) || 60)),
+    seconds: Math.min(ANIMATION_MAX_SECONDS - 6, Math.max(10, Number(raw.seconds) || 60)),
     language: LANGUAGES[raw.language] ? raw.language : 'en',
     voiceKey: typeof raw.voiceKey === 'string' && /^[\w-]{1,40}$/.test(raw.voiceKey) ? raw.voiceKey : 'male_wise',
     ratio: raw.ratio === '9:16' ? '9:16' : '16:9',
+    look: ANIMATION_LOOKS.includes(raw.look) ? raw.look : 'motion',
+    wantTrial: raw.trial === true,
     palette: ANIMATION_PALETTES.includes(raw.palette) ? raw.palette : null,
     style: String(raw.style || '').replace(/<[^>]*>/g, '').trim().slice(0, 80) || null,
     music: bool(raw.music, true), musicMood: MOODS.includes(raw.musicMood) ? raw.musicMood : null,
@@ -239,32 +242,70 @@ function normalizeAnimationInput(raw = {}) {
   };
 }
 
+// أول 15 ثانية مجانية لكل حساب (مرة واحدة بس) — بتشمل صوت الذكاء الاصطناعي، وعليها علامة Erivion المائية
+export const ANIMATION_TRIAL_SECONDS = 15;
+export const animationTrialAvailable = (userId) => store.trialAvailable(userId, 'animation').catch(() => false);
+const sentenceTrim = (text, lang, maxSec) => {
+  const parts = String(text).split(/(?<=[.!?؟…])\s+/); let out = '';
+  for (const p of parts) { const next = out ? `${out} ${p}` : p; if (estimateAnimationSeconds(next, lang) > maxSec) break; out = next; }
+  if (out) return out;
+  const words = String(text).split(/\s+/); let k = words.length; while (k > 3 && estimateAnimationSeconds(words.slice(0, k).join(' '), lang) > maxSec) k--;
+  return words.slice(0, k).join(' ');
+};
+async function trimAudio(file, seconds) {
+  const out = path.join(path.dirname(file), 'voiceover_trial.wav');
+  await ffmpeg(['-i', file, '-t', String(seconds), '-af', `afade=t=out:st=${Math.max(0, seconds - 0.4)}:d=0.4`, '-ac', '1', '-ar', '44100', out]);
+  rmQuiet(file);
+  return out;
+}
+
 export async function startAnimationJob(userId, raw = {}) {
   const input = normalizeAnimationInput(raw);
   const fail = (status, error, message) => { if (input.audioFile) rmQuiet(path.dirname(input.audioFile)); return { ok: false, status, error, message }; };
+  const secTrial = ANIMATION_TRIAL_SECONDS;
   if (input.source === 'voiceover') {
     if (!input.audioFile || !fs.existsSync(input.audioFile)) return fail(400, 'audio_required', 'Please upload your voice-over first.');
     if (!(input.audioDurationSec >= 5)) return fail(400, 'too_short', 'The voice-over is too short (minimum 5 seconds).');
     if (input.audioDurationSec > ANIMATION_MAX_SECONDS + 0.5) return fail(400, 'too_long', `The voice-over can be up to ${ANIMATION_MAX_SECONDS / 60} minutes (${Math.round(input.audioDurationSec)}s uploaded). Please trim it.`);
   } else if (input.source === 'script') {
     if (input.script.length < 40) return fail(400, 'script_too_short', 'The script is too short (minimum 40 characters).');
-    if (estimateAnimationSeconds(input.script, input.language) > ANIMATION_MAX_SECONDS + 4) return fail(400, 'too_long', `This script would run longer than ${ANIMATION_MAX_SECONDS / 60} minutes. Please shorten it.`);
+    if (estimateAnimationSeconds(input.script, input.language) > ANIMATION_MAX_SECONDS + 4 && !input.wantTrial) return fail(400, 'too_long', `This script would run longer than ${ANIMATION_MAX_SECONDS / 60} minutes. Please shorten it.`);
   } else if (input.topic.length < 3) return fail(400, 'topic_required', 'Please tell me what the video is about.');
   const safety = await checkContentSafety([input.title, input.topic, input.brief, input.script.slice(0, 6000)].filter(Boolean).join('\n'));
   if (safety.unsafe) return fail(400, 'content_policy_violation', 'This content cannot be generated.');
+
+  // التجربة المجانية: لو الفيديو ≤ 15 ثانية (أو العميل طلبها صراحةً فبنقصّه لـ15 ثانية) والتجربة لسه متاحة
+  const natural = input.source === 'voiceover' ? input.audioDurationSec : input.source === 'script' ? estimateAnimationSeconds(input.script, input.language) : input.seconds;
+  let trial = false;
+  if (input.wantTrial || natural <= secTrial + 0.6) {
+    let ok = false;
+    try { ok = await store.claimTrial(userId, 'animation'); } catch (e) { console.warn('[Animation] trial check failed:', e.message); }
+    if (ok) trial = true;
+    else if (input.wantTrial) return fail(403, 'trial_used', 'The free 15-second trial was already used on this account.');
+  }
+  if (trial) {
+    try {
+      if (input.source === 'voiceover' && input.audioDurationSec > secTrial + 0.3) { input.audioFile = await trimAudio(input.audioFile, secTrial); input.audioDurationSec = secTrial; }
+      else if (input.source === 'script' && natural > secTrial + 0.6) input.script = sentenceTrim(input.script, input.language, secTrial);
+      else if (input.source === 'topic') input.seconds = Math.min(secTrial, input.seconds);
+    } catch (e) { await store.releaseTrial(userId, 'animation').catch(() => {}); return fail(500, 'trial_prepare_failed', 'Could not prepare the free trial. Please try again.'); }
+    input.trialMax = secTrial; input.watermark = true;
+  }
   const q = quoteAnimation(input);
-  const charge = await chargeCredits(userId, q.cost);
+  const cost = trial ? 0 : q.cost;
+  const charge = trial ? { success: true, remaining: await getCreditsBalance(userId).catch(() => null) } : await chargeCredits(userId, q.cost);
   if (!charge.success) { if (input.audioFile) rmQuiet(path.dirname(input.audioFile)); return { ok: false, status: 403, error: 'quota_exceeded', message: `This video needs ${q.cost} credits, you have ${charge.remaining}.`, cost: q.cost, remaining: charge.remaining }; }
   let job;
   try {
     const stored = { ...input }; delete stored.audioFile;
-    job = await store.createJob({ userId, input: stored, title: input.title || input.topic.slice(0, 80) || null, creditsCharged: q.cost });
+    job = await store.createJob({ userId, input: stored, title: input.title || input.topic.slice(0, 80) || null, creditsCharged: cost });
+    if (trial) await store.updateJob(job.id, { meta: { trial: true, trialKind: 'animation' } }).catch(() => {});
   } catch (e) {
-    await addCreditsBalance(userId, q.cost).catch(() => {});
+    if (trial) await store.releaseTrial(userId, 'animation').catch(() => {}); else await addCreditsBalance(userId, q.cost).catch(() => {});
     return fail(500, 'job_create_failed', 'Could not start the job. Your credits were not charged.');
   }
-  enqueue({ id: job.id, userId, input, charged: q.cost, minutes: q.minutes, hooks: {} });
-  return { ok: true, job, cost: q.cost, minutes: q.minutes, seconds: q.seconds, remaining: charge.remaining };
+  enqueue({ id: job.id, userId, input, charged: cost, minutes: q.minutes, hooks: {}, trial, trialKind: 'animation' });
+  return { ok: true, job, cost, minutes: q.minutes, seconds: trial ? Math.min(secTrial, q.seconds) : q.seconds, remaining: charge.remaining, trial };
 }
 
 // ── مونتاج تلقائي لفيديو مرفوع (ffmpeg + Whisper): قص صمت + زوم + انتقالات + مؤثرات + كابشن + موسيقى ──

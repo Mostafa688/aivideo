@@ -2,18 +2,31 @@
 import fs from 'fs';
 import path from 'path';
 import { buildNarration, writeAnimationScript, MAX_SECONDS } from './narration.js';
-import { segmentScenes, directVideo, trDuration } from './director.js';
+import { segmentScenes, directVideo, trDuration, LOOKS, isCartoon, LOOK_PALETTES } from './director.js';
 import { pickPalette } from './design.js';
+import { resolveVoxImages } from './images.js';
+import { GEMINI_VOICE_NAMES } from '../videoAudioService.js';
 import { makeMeasurer } from './measure.js';
 import { renderCodeVideo, RATIO_SIZE } from './render.js';
 import { getBackgroundMusicBuffer } from '../videoAudioService.js';
 import { buildCaptionsAss } from '../documentary/captions.js';
 import { buildSrt } from '../documentary/uploadPackage.js';
+import { watermarkVideo } from '../watermark.js';
 
+const FEMALE_VOICES = new Set(['Zephyr', 'Kore', 'Leda', 'Aoede', 'Callirrhoe', 'Autonoe', 'Despina', 'Erinome', 'Laomedeia', 'Achernar', 'Gacrux', 'Pulcherrima', 'Vindemiatrix', 'Sulafat']);
+export function voiceGenderOf(input) {
+  if (input.source === 'voiceover') return 'unknown';
+  const k = String(input.voiceKey || '');
+  if (/^female_/.test(k) || FEMALE_VOICES.has(k)) return 'female';
+  if (/^male_/.test(k) || GEMINI_VOICE_NAMES.has(k)) return 'male';
+  return 'unknown';
+}
+const LOOK_MUSIC = { cartoon: 'upbeat', cartoon3d: 'upbeat', vox: 'chill' };
 const MUSIC_MOOD = { epic: 'epic', tech: 'upbeat', business: 'chill', nature: 'chill', energetic: 'upbeat', serious: 'tension', clean: 'chill', minimal: 'chill' };
 
 export async function produceAnimation({ id, userId, input, workDir, prog }, deps = {}) {
   const lang = input.language || 'en', ratio = input.ratio === '9:16' ? '9:16' : '16:9';
+  const look = LOOKS.includes(input.look) ? input.look : 'motion';
   const { w, h } = RATIO_SIZE[ratio];
   let title = input.title || '', script = input.script || '';
 
@@ -32,12 +45,12 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   // 3) المخرج
   const spoken = segmentScenes(nar.tokens, nar.total);
   if (!spoken.length) throw new Error('no scenes');
-  const plan = await (deps.directVideo || directVideo)({ spoken, language: lang, ratio, topic: input.topic || title, style: input.style || null, onProgress: (f) => prog('plan', f) });
+  const plan = await (deps.directVideo || directVideo)({ spoken, language: lang, ratio, topic: input.topic || title, style: input.style || null, look, voiceGender: voiceGenderOf(input), onProgress: (f) => prog('plan', f) });
   title = title || plan.title || 'Animated video';
   await prog('plan', 1, { title });
 
   // 4) تجميع القصة (storyboard)
-  const pal = pickPalette(input.palette || plan.palette, plan.mood);
+  const pal = pickPalette((LOOK_PALETTES[look] || []).includes(input.palette) ? input.palette : plan.palette || (look === 'cartoon' ? 'toon' : look === 'cartoon3d' ? 'candy' : look === 'vox' ? 'vox' : null), plan.mood);
   const scenes = spoken.map((sc, i) => {
     const p = plan.scenes[i], dur = sc.end - sc.start;
     const prevDur = i > 0 ? spoken[i - 1].end - spoken[i - 1].start : dur;
@@ -49,9 +62,33 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
       tokens: sc.tokens.map(t => ({ w: t.w, start: Math.max(0, t.start - sc.start), end: Math.max(0.05, t.end - sc.start) })),
     };
   });
+  // نمط Vox: صور أرشيفية حقيقية (اللي مالقيناش ليه صورة بنحوّله لقصاصة جريدة أو نص متحرك)
+  let images = null, imageCredits = [];
+  if (look === 'vox') {
+    const slots = [];
+    scenes.forEach((sc, i) => {
+      if (sc.type === 'photo' || sc.type === 'fullphoto') slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: sc.data.query, named: sc.data.named, caption: sc.data.caption });
+      else if (sc.type === 'collage') sc.data.slots.forEach((q, k) => slots.push({ key: `s${i}_${k}`, scene: i, text: spoken[i].text, query: q.query, named: q.named }));
+    });
+    await prog('assets', 0);
+    const res = slots.length ? await (deps.resolveVoxImages || resolveVoxImages)({ slots, ratio, assetsDir: path.join(workDir, 'images'), onProgress: (f) => prog('assets', f) }) : { images: {}, credits: [], missing: new Set() };
+    images = res.images; imageCredits = res.credits;
+    scenes.forEach((sc, i) => {
+      if (sc.type === 'photo' || sc.type === 'fullphoto') {
+        if (images[`s${i}`]) sc.data = { ...sc.data, img: `s${i}` };
+        else { const txt = spoken[i].text; sc.type = txt.split(/\s+/).length >= 4 ? 'headline' : 'kinetic'; sc.data = sc.type === 'headline' ? { headline: txt.split(/\s+/).slice(0, 8).join(' '), emphasis: [] } : { emphasis: [] }; }
+      } else if (sc.type === 'collage') {
+        const ids = sc.data.slots.map((_, k) => `s${i}_${k}`).filter(id => images[id]);
+        if (ids.length >= 2) sc.data = { imgs: ids, headline: sc.data.headline };
+        else if (ids.length === 1) { sc.type = 'photo'; sc.data = { img: ids[0], emphasis: [] }; }
+        else { sc.type = 'kinetic'; sc.data = { emphasis: [] }; }
+      }
+    });
+    await prog('assets', 1);
+  }
   const rtl = ['ar', 'he', 'fa', 'ur'].includes(String(lang).split(/[-_]/)[0]);
   const mm = await makeMeasurer(nar.tokens.map(t => t.w), { rtl });
-  const story = { w, h, palette: pal, lang, scenes, mm, duration: nar.total };
+  const story = { w, h, palette: pal, lang, scenes, mm, duration: nar.total, look, cast: isCartoon(look) ? { host: plan.host } : null, images };
 
   // 5) الموسيقى
   let musicFile = null;
@@ -60,7 +97,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
       musicFile = path.join(workDir, 'music.mp3');
       const track = input.musicTrack && /^[\w ',.&()\-]+\.mp3$/i.test(input.musicTrack) && fs.existsSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack));
       if (track) fs.copyFileSync(path.join(process.cwd(), 'assets', 'music', input.musicTrack), musicFile);
-      else fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', MUSIC_MOOD[plan.mood] || input.musicMood || 'upbeat'));
+      else fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', LOOK_MUSIC[look] || MUSIC_MOOD[plan.mood] || input.musicMood || 'upbeat'));
     } catch (e) { console.warn('[CodeVideo] music unavailable:', e.message); musicFile = null; }
   }
 
@@ -80,7 +117,8 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     story, narrationFile: nar.narrationFile, musicFile, assFile, workDir: path.join(workDir, 'render'), outFile,
     onProgress: (stage, f) => prog('render', stage === 'frames' ? f * 0.9 : 0.9 + f * 0.1),
   });
-  const sceneStats = { scenes: scenes.length, types: scenes.reduce((a, s) => { a[s.type] = (a[s.type] || 0) + 1; return a; }, {}), sfxEvents: r.sfxEvents, palette: pal.name };
+  if (input.watermark) r.file = await (deps.watermarkVideo || watermarkVideo)(r.file); // التجربة المجانية عليها علامة Erivion
+  const sceneStats = { look, scenes: scenes.length, types: scenes.reduce((a, s) => { a[s.type] = (a[s.type] || 0) + 1; return a; }, {}), sfxEvents: r.sfxEvents, palette: pal.name };
   console.log(`[CodeVideo] job ${id}:`, JSON.stringify(sceneStats));
-  return { sceneStats, file: r.file, duration: r.duration, credits: [], script, title, chapters: [], srt: buildSrt(nar.tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
+  return { sceneStats, file: r.file, duration: r.duration, credits: imageCredits, script, title, chapters: [], srt: buildSrt(nar.tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
 }

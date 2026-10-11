@@ -349,6 +349,7 @@ function DocJobCard({ job: initial, lang, onNavigate }) {
         <video src={job.videoUrl} controls playsInline style={{ width: '100%', borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ fontSize: 12.5, color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={13} color="#22c55e" /> {tt.done}</div>
+          {initial.trial && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>{ar ? 'التجربة المجانية (أول 15 ثانية على الحساب) — عليها علامة Erivion المائية' : 'Free trial (first 15 seconds on your account) — includes a small Erivion watermark'}</div>}
           <button onClick={() => downloadRemoteFile(job.videoUrl, `erivion-${job.kind || 'video'}-${initial.jobId}.mp4`)} style={{ fontSize: 11.5, color: '#fff', background: 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}><Download size={12} /> {ar ? 'تنزيل' : 'Download'}</button>
           {job.kind !== 'animation' && <button onClick={() => onNavigate?.('documentary')} style={{ fontSize: 11.5, color: '#a78bfa', background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}>{tt.studio}</button>}
         </div>

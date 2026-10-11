@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { makeCtx, f1, f2, clamp01, easeInOutCubic, easeOutCubic } from './design.js';
 import { backdropSoftSvg, backdropCrisp, camera, finish } from './fx.js';
 import { SCENES } from './scenes.js';
+import { hostOverlay, HOST_TYPES } from './scenesC.js';
 
 // الخلفية الناعمة بتترندر مرة كل 1/PLATE_FPS ثانية بدقة PLATE_K من الأصل وبتتكبّر داخل الإطار (أرخص بكتير)
 export const PLATE_FPS = 15;
@@ -51,7 +52,8 @@ export function sceneGroup(base, sc, tLocal, plates) {
   const dur = sc.end - sc.start;
   const cam = camera(c, sc.cam || 'push', tLocal, dur);
   const fn = SCENES[sc.type] || SCENES.kinetic;
-  const inner = fn(c, sc.data || {}, Math.max(0, tLocal), dur, { tokens: sc.tokens || [], mm: base.mm, index: sc.index });
+  let inner = fn(c, sc.data || {}, Math.max(0, tLocal), dur, { tokens: sc.tokens || [], mm: base.mm, index: sc.index });
+  if ((c.look === 'cartoon' || c.look === 'cartoon3d') && c.cast?.host && HOST_TYPES.has(sc.type) && sc.host !== false) inner += hostOverlay(c, sc, Math.max(0, tLocal));
   const uri = plates?.get(plateKey(sc, tLocal));
   const bg = uri ? `<image href="${uri}" x="0" y="0" width="${c.w}" height="${c.h}" preserveAspectRatio="none"/>` : '';
   return bg + backdropCrisp(c, tLocal, sc.bg || 'aurora', sc.seed || sc.index * 1.7, cam) + `<g transform="${cam.tf}">${inner}</g>`;
@@ -59,7 +61,7 @@ export function sceneGroup(base, sc, tLocal, plates) {
 
 export function frameSvg(story, T, plates = null) {
   const { w, h, palette, lang, mm } = story;
-  const base = { ...makeCtx({ w, h, palette, lang, id: 'x' }), mm };
+  const base = { ...makeCtx({ w, h, palette, lang, id: 'x' }), mm, look: story.look, cast: story.cast, images: story.images };
   const v = visibleScenes(story, T);
   const body = v.kind === 'transition' ? transition(base, v.out, v.inn, T, v.p, v.inn.trKind, plates) : sceneGroup(base, v.sc, T - v.sc.start, plates);
   return svgWrap(base, body); // الـvignette جوه الـplate

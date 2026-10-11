@@ -66,6 +66,20 @@ export const SCENE_SFX = {
   gridstats: (d) => [E(0.2, 'whoosh_s', 0.5), ...d.items.slice(0, 4).map((_, i) => E(0.35 + i * 0.22, 'pop', 0.55)), E(2.1, 'ding', 0.45)],
   globe: (d) => [E(0.1, 'whoosh_l', 0.5), ...(d.pins || []).slice(0, 4).map((_, i) => E(0.9 + i * 0.5, 'ding', 0.5))],
   network: (d) => [E(0.15, 'whoosh_s', 0.5), ...d.nodes.slice(0, 6).map((_, i) => E(0.5 + i * 0.3, 'pop', 0.55))],
+  // كارتون
+  char_say: (d, sc) => {
+    const ev = [E(0.02, 'whoosh_s', 0.45), E(0.3, 'pop', 0.65)];
+    const emph = new Set((d.emphasis || []).map(x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')));
+    (sc.tokens || []).forEach((tk) => { if (emph.has(String(tk.w).toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))) ev.push(E(Math.max(0, tk.start - 0.04), 'pop', 0.6), E(Math.max(0, tk.start - 0.04), 'shimmer', 0.22)); });
+    return ev;
+  },
+  char_prop: () => [E(0.02, 'whoosh_s', 0.5), E(0.3, 'pop', 0.65), E(0.34, 'shimmer', 0.45), E(0.8, 'ding', 0.4)],
+  char_duo: (d, sc) => { const tk = sc.tokens || []; const half = tk.length ? tk[Math.floor(tk.length / 2)].start : 2; return [E(0.02, 'whoosh_s', 0.45), E(0.14, 'pop', 0.6), E(0.3, 'pop', 0.55), E(Math.max(0.5, half - 0.05), 'pop', 0.55)]; },
+  // Vox
+  photo: () => [E(0.04, 'whoosh_s', 0.55), E(0.16, 'click', 0.75), E(0.9, 'pop', 0.3)],
+  fullphoto: () => [E(0.0, 'whoosh_l', 0.5), E(0.22, 'hit', 0.6), E(0.5, 'shimmer', 0.3)],
+  collage: () => [E(0.1, 'whoosh_s', 0.5), E(0.2, 'click', 0.7), E(0.55, 'click', 0.7), E(0.9, 'click', 0.7), E(1.5, 'hit', 0.65)],
+  headline: () => [E(0.04, 'whoosh_s', 0.5), E(0.3, 'hit', 0.75), E(0.45, 'tick', 0.5), E(0.67, 'tick', 0.5), E(0.89, 'tick', 0.5), E(1.1, 'ding', 0.35)],
 };
 // صوت الانتقالات (عند حدّ المشهد)
 export const TRANSITION_SFX = {
