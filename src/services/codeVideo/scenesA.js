@@ -22,7 +22,7 @@ export function title(c, d, t, dur) {
   });
   const bw = Math.min(w * 0.34, 480 * s) * easeOutCubic(seg(t, 0.55, 1.1)), by = y0 + total - fit.size * 0.62 + 36 * s;
   o += gradientDef(c, 'tl', pal.a1, pal.a2) + `<rect x="${f1(w / 2 - bw / 2)}" y="${f1(by)}" width="${f1(bw)}" height="${f1(9 * s)}" rx="${f1(4.5 * s)}" fill="url(#${uid(c, 'tl')})"/>`;
-  if (d.subtitle) { const e = ent(t, 0.95, 0.6); o += txt(c, d.subtitle, w / 2, by + 78 * s + (1 - e.p) * 20 * s, (portrait ? 46 : 50) * s, { weight: 600, fill: pal.muted, opacity: e.o }); }
+  if (d.subtitle) { const e = ent(t, 0.95, 0.6), ss = (portrait ? 46 : 50) * s; wrapText(d.subtitle, w * 0.84, ss, { bold: false, maxLines: 2 }).forEach((ln, i) => { o += txt(c, ln, w / 2, by + 78 * s + i * ss * 1.3 + (1 - e.p) * 20 * s, ss, { weight: 600, fill: pal.muted, opacity: e.o }); }); }
   return o;
 }
 
@@ -71,7 +71,7 @@ export function bigword(c, d, t, dur) {
   o += '</g>';
   const bw = w * 0.5 * easeOutCubic(seg(t, 0.3, 0.8));
   o += `<rect x="${f1(w / 2 - bw / 2)}" y="${f1(cy + total / 2 + 40 * s)}" width="${f1(bw)}" height="${f1(12 * s)}" rx="${f1(6 * s)}" fill="${pal.a2}"/>`;
-  if (d.sub) { const e2 = ent(t, 0.7, 0.5); o += txt(c, d.sub, w / 2, cy + total / 2 + 150 * s + (1 - e2.p) * 20 * s, (portrait ? 54 : 58) * s, { weight: 700, fill: pal.muted, opacity: e2.o }); }
+  if (d.sub) { const e2 = ent(t, 0.7, 0.5), ss = (portrait ? 54 : 58) * s; wrapText(d.sub, w * 0.84, ss, { bold: true, maxLines: 2 }).forEach((ln, i) => { o += txt(c, ln, w / 2, cy + total / 2 + 150 * s + i * ss * 1.3 + (1 - e2.p) * 20 * s, ss, { weight: 700, fill: pal.muted, opacity: e2.o }); }); }
   const flash = t < 0.2 ? 0.8 * (1 - t / 0.2) : 0;
   if (flash > 0.01) o += `<rect width="${w}" height="${h}" fill="#fff" opacity="${f2(flash)}"/>`;
   return o;
@@ -105,7 +105,7 @@ export function outro(c, d, t, dur) {
   const fit = fitText(d.headline, w * (portrait ? 0.86 : 0.76), h * 0.3, { max: (portrait ? 118 : 128) * s, min: 50 * s, maxLines: 3, lineGap: 1.15 });
   const total = fit.lines.length * fit.size * 1.15, y0 = cy - total / 2 + fit.size * 0.88;
   fit.lines.forEach((ln, i) => { const e = ent(t, 0.15 + i * 0.14, 0.7); o += txt(c, ln, w / 2, y0 + i * fit.size * 1.15 + (1 - Math.min(1, e.p)) * 70 * s, fit.size, { weight: 900, glow: pal.a1, opacity: e.o }); });
-  if (d.sub) { const e = ent(t, 0.7, 0.6); o += txt(c, d.sub, w / 2, y0 + total + 20 * s + (1 - e.p) * 20 * s, 50 * s, { weight: 600, fill: pal.muted, opacity: e.o }); }
+  if (d.sub) { const e = ent(t, 0.7, 0.6); wrapText(d.sub, w * 0.84, 50 * s, { bold: false, maxLines: 2 }).forEach((ln, i) => { o += txt(c, ln, w / 2, y0 + total + 20 * s + i * 65 * s + (1 - e.p) * 20 * s, 50 * s, { weight: 600, fill: pal.muted, opacity: e.o }); }); }
   if (d.cta) {
     const e = ent(t, 1.1, 0.6), pulse = 1 + 0.035 * Math.sin(t * 5), py = y0 + total + 170 * s;
     o += `<g transform="translate(${f1(w / 2)} ${f1(py)}) scale(${f2(e.p * pulse)}) translate(${f1(-w / 2)} ${f1(-py)})" opacity="${f2(e.o)}">` + pill(c, w / 2, py, d.cta, 40 * s, { fill: pal.a1, solid: true, padX: 1.2 }) + '</g>';

@@ -64,8 +64,12 @@ export const f2 = (n) => (Number.isFinite(n) ? n.toFixed(2) : '0');
  * نص SVG: size بالـpx بعد المقياس (مش مضروب في s)، glow = خط عريض شفاف تحت النص (تأثير توهّج من غير فلاتر)
  */
 export function txt(c, str, x, y, size, o = {}) {
-  const { weight = 800, fill = c.pal.text, anchor = 'middle', opacity = 1, glow = null, glowW = 0.085, stroke = null, strokeW = 0, spacing = null, italic = false, transform = null, rtl = c.rtl } = o;
+  let { weight = 800, fill = c.pal.text, anchor = 'middle', opacity = 1, glow = null, glowW = 0.085, stroke = null, strokeW = 0, spacing = null, italic = false, transform = null, rtl = c.rtl } = o;
   if (!str && str !== 0) return '';
+  // العربي: الخط الأسود/الـ900 بيعرّض الحروف أكتر من القياس (Bold) وبيلزّق الكلمات، والتباعد بين الحروف بيفصل الحروف المتصلة، والحواف السميكة بتطمس النقط
+  if (rtl) { weight = Math.min(weight, 700); spacing = null; glowW *= 0.5; strokeW *= 0.55; }
+  // شبكة أمان: أي سطر طويل بيتصغّر عشان ميخرجش برا الإطار
+  if (c.w > 400 && size > 20 && anchor === 'middle') { const est = textWidth(String(str), size, weight >= 700); const lim = c.w * 0.94; if (est > lim) size *= lim / est; }
   // الاتجاه rtl بيقلب معنى start/end في SVG — بنثبّت المعنى الفيزيائي (start = الحافة الشمال، end = الحافة اليمين) لكل المشاهد
   const anch = rtl && anchor !== 'middle' ? (anchor === 'start' ? 'end' : 'start') : anchor;
   const base = `x="${f1(x)}" y="${f1(y)}" font-family="${c.ff}" font-size="${f1(size)}" font-weight="${weight}" text-anchor="${anch}"${rtl ? ' direction="rtl" unicode-bidi="embed"' : ''}${spacing != null ? ` letter-spacing="${f1(spacing)}"` : ''}${italic ? ' font-style="italic"' : ''}`;
