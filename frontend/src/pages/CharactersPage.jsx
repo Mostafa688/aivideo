@@ -556,7 +556,7 @@ function TemplateModal({ t, isAr, lang, tpl, mine, presets, onClose, onCharacter
         referenceImageUrls: genImages, referenceVideoUrls: [src.sourceVideoUrl],
         prompt: `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and sound energy, but ${people > 1 ? `the ${people} people in it, in order from left to right, must be completely replaced by the characters in ${genImages.map((_, i) => `[Image${i + 1}]`).join(', ')}` : 'the main person must be completely replaced by the character in [Image1]'}: use their face, hairstyle, skin tone and clothing, and do not keep the original appearance of anyone in the video. ${src.prompt || ''}`.trim(),
       };
-      const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(isRef ? refBody : { model: engine, imageUrl: genImage, sourceVideoUrl: src.sourceVideoUrl, tier, prompt: engine === src.model ? (src.prompt || '') : '' }) });
+      const gres = await fetch('/api/videos/generate', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(isRef ? refBody : { model: engine, imageUrl: genImage, ...(genImages.length > 1 ? { referenceImageUrls: genImages.slice(1) } : {}), sourceVideoUrl: src.sourceVideoUrl, tier, prompt: engine === src.model ? (src.prompt || '') : '' }) });
       const g = await gres.json();
       if (!gres.ok) { if (g.error === 'quota_exceeded' || g.error === 'no_access') setNeedsTopup(true); throw new Error(g.message || g.error || 'Failed'); }
       // استعلام عن الحالة لحد ما يخلص (نفس مسار الايجنت)

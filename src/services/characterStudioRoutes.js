@@ -29,10 +29,16 @@ export const DEFAULT_TEMPLATE_ENGINE = 'kling_3_0_omni_replace';
 export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
 // محركات تبديل الشخص اللي العميل يقدر يختار منها في القالب (الأدمن بيحدد الافتراضي)
 export const SWAP_ENGINES = ['kling_3_0_omni_replace', 'prunaai_p_video_replace', 'seedance_2_5'];
-export const MAX_TEMPLATE_PEOPLE = 5;
+export const MAX_TEMPLATE_PEOPLE = 8;
 const clampPeople = (v) => Math.min(MAX_TEMPLATE_PEOPLE, Math.max(1, parseInt(v, 10) || 1));
-// قالب فيه أكتر من شخص: Seedance بس (الوحيد اللي بياخد أكتر من صورة شخصية)
-const engineOptions = (sec, people = 1) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && (people <= 1 || e === REFERENCE_TEMPLATE_ENGINE) && sec <= engineMaxSec(e) + 0.5 && sec >= engineMinSec(e) - 0.3).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
+// المحركات المسموحة حسب عدد الأشخاص: شخص واحد = الثلاثة، 2-4 = Kling (لحد 4 صور مع الفيديو) أو Seedance، أكتر من 4 = Seedance بس
+const enginesForPeople = (people) => SWAP_ENGINES.filter(e => (people <= 1) || (e === 'kling_3_0_omni_replace' && people <= (NEW_VIDEO_MODELS[e]?.maxSwapImages || 1)) || e === REFERENCE_TEMPLATE_ENGINE);
+const pickTemplateEngine = (requested, people, sec) => {
+  const ok = enginesForPeople(people).filter(e => NEW_VIDEO_MODELS[e] && (!sec || (sec <= engineMaxSec(e) + 0.5 && sec >= engineMinSec(e) - 0.3)));
+  if (ok.includes(requested)) return requested;
+  return ok[0] || REFERENCE_TEMPLATE_ENGINE;
+};
+const engineOptions = (sec, people = 1) => enginesForPeople(people).filter(e => NEW_VIDEO_MODELS[e] && sec <= engineMaxSec(e) + 0.5 && sec >= engineMinSec(e) - 0.3).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
 const templateMode = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 'reference' : (NEW_VIDEO_MODELS[e]?.swapMode === 'replace' ? 'replace' : 'transfer'));
 const isTemplateEngine = (e) => SWAP_ENGINES.includes(e) && !!NEW_VIDEO_MODELS[e];
 const engineMinSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 4 : (getMinClipSeconds(e) || 0)); // Seedance (تعديل فيديو): الفيديو الأصلي 4-30 ثانية
@@ -253,7 +259,7 @@ router.post('/admin/templates', adminAuth, async (req, res) => {
     if (!text(b.title_ar) || !text(b.title_en)) return res.status(400).json({ error: 'title_ar and title_en are required' });
     if (!httpUrl(b.source_video_url)) return res.status(400).json({ error: 'source_video_url is required (upload the video first)' });
     const people = clampPeople(b.people);
-    const engine = people > 1 ? REFERENCE_TEMPLATE_ENGINE : (isTemplateEngine(b.engine) ? b.engine : DEFAULT_TEMPLATE_ENGINE); // أكتر من شخص = Seedance بس
+    const engine = pickTemplateEngine(isTemplateEngine(b.engine) ? b.engine : DEFAULT_TEMPLATE_ENGINE, people, Number(b.duration_sec) || 0); // 2-4 أشخاص: Kling أو Seedance، أكتر من 4: Seedance
     const dur = Math.max(1, Math.min(engineMaxSec(engine), Number(b.duration_sec) || 5));
     if (engine === REFERENCE_TEMPLATE_ENGINE && Number(b.duration_sec) > 0 && Number(b.duration_sec) < 3.7) return res.status(400).json({ error: `Seedance needs a source video of at least 4 seconds — the source video is ${Math.round(Number(b.duration_sec) * 10) / 10}s` });
     const aspect = b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null;
@@ -266,8 +272,18 @@ router.post('/admin/templates', adminAuth, async (req, res) => {
 router.put('/admin/templates/:id', adminAuth, async (req, res) => {
   try {
     const b = req.body || {};
+    // لو اتغيّر عدد الأشخاص أو الموديل، نظبط الموديل على المسموح لعدد الأشخاص ومدة القالب
+    if (b.people !== undefined || b.engine !== undefined) {
+      const cur = (await pool.query(`SELECT engine, people, duration_sec FROM trend_templates WHERE id=$1`, [req.params.id])).rows[0];
+      if (cur) {
+        const ppl = b.people !== undefined ? clampPeople(b.people) : (cur.people || 1);
+        const want = isTemplateEngine(b.engine) ? b.engine : cur.engine;
+        b.people = ppl;
+        b.engine = pickTemplateEngine(want, ppl, Number(cur.duration_sec) || 0);
+      }
+    }
     const { rows } = await pool.query(`UPDATE trend_templates SET title_ar=COALESCE($2,title_ar), title_en=COALESCE($3,title_en), description_ar=COALESCE($4,description_ar), description_en=COALESCE($5,description_en), category=COALESCE($6,category), cover_url=COALESCE($7,cover_url), preview_url=COALESCE($8,preview_url), source_video_url=COALESCE($9,source_video_url), duration_sec=COALESCE($10,duration_sec), is_featured=COALESCE($11,is_featured), is_published=COALESCE($12,is_published), sort_order=COALESCE($13,sort_order), engine=COALESCE($14,engine), prompt=COALESCE($15,prompt), aspect=COALESCE($16,aspect), people=COALESCE($17,people) WHERE id=$1 RETURNING *`,
-      [req.params.id, b.title_ar !== undefined ? text(b.title_ar, 100) : null, b.title_en !== undefined ? text(b.title_en, 100) : null, b.description_ar !== undefined ? text(b.description_ar, 500) : null, b.description_en !== undefined ? text(b.description_en, 500) : null, b.category ? text(b.category, 30) : null, httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), b.duration_sec ? Math.max(1, Number(b.duration_sec)) : null, b.is_featured === undefined ? null : flag(b.is_featured), b.is_published === undefined ? null : flag(b.is_published), b.sort_order === undefined ? null : parseInt(b.sort_order, 10) || 0, (b.people !== undefined && clampPeople(b.people) > 1) ? REFERENCE_TEMPLATE_ENGINE : (isTemplateEngine(b.engine) ? b.engine : null), b.prompt !== undefined ? text(b.prompt, 800) : null, b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null, b.people !== undefined ? clampPeople(b.people) : null]);
+      [req.params.id, b.title_ar !== undefined ? text(b.title_ar, 100) : null, b.title_en !== undefined ? text(b.title_en, 100) : null, b.description_ar !== undefined ? text(b.description_ar, 500) : null, b.description_en !== undefined ? text(b.description_en, 500) : null, b.category ? text(b.category, 30) : null, httpUrl(b.cover_url), httpUrl(b.preview_url), httpUrl(b.source_video_url), b.duration_sec ? Math.max(1, Number(b.duration_sec)) : null, b.is_featured === undefined ? null : flag(b.is_featured), b.is_published === undefined ? null : flag(b.is_published), b.sort_order === undefined ? null : parseInt(b.sort_order, 10) || 0, (isTemplateEngine(b.engine) ? b.engine : null), b.prompt !== undefined ? text(b.prompt, 800) : null, b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null, b.people !== undefined ? clampPeople(b.people) : null]);
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ template: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
