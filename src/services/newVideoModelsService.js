@@ -354,24 +354,6 @@ export const NEW_VIDEO_MODELS = {
       ...(prompt?.trim() ? { instruction_prompt: prompt.trim() } : {}),
     }),
   },
-  // ✅ NEW (طلب العميل — schema الحقيقي من سكرين شوت صفحة الموديل): wan-video/wan-2.2-animate-replace = "تبديل الشخص جوه الفيديو".
-  // بياخد فيديو فيه الشخصية اللي هتتبدّل ("video") + صورة الشخصية الجديدة ("character_image")، والناتج نفس مشهد الفيديو وحركته
-  // بالشخصية الجديدة (على عكس p-video-animate اللي بيحرّك الصورة في مكانها هي). الحقول: resolution ('480' أو '720' — نص من غير p،
-  // الافتراضي 720)، merge_audio (افتراضي true: صوت الفيديو الأصلي بيتحط في الناتج)، go_fast، seed، refert_num (deprecated — مش بنبعتها).
-  // swapMode:'replace' + performanceTransfer: نفس شكل المدخلات (sourceVideoUrl + imageUrl)، فبيعدّي في نفس المسارات
-  wan_2_2_animate_replace: {
-    slug: 'wan-video/wan-2.2-animate-replace',
-    supportsImageInput: true,
-    performanceTransfer: true,
-    swapMode: 'replace',
-    promptOptional: true,
-    buildInput: ({ imageUrl, sourceVideoUrl, tier }) => ({
-      video: sourceVideoUrl,
-      character_image: imageUrl,
-      resolution: String(tier || '720p').replace(/p$/i, ''),
-      merge_audio: true,
-    }),
-  },
   // ✅ NEW (طلب العميل — schema الحقيقي من سكرين شوت): prunaai/p-video-replace — "تبديل الشخص جوه الفيديو" بصور هوية. الحقول: video
   // (حركة + صوت)، images (1-3 صور هوية للشخصية)، resolution (720p/1080p)، save_audio (افتراضي true)، target_fps ('original')،
   // ignore_audio، instruction_prompt (توجيه إضافي عن مكان وضع الشخصيات)، turbo، seed، no_op، disable_safety_checker. بنبعت صورة واحدة هنا.

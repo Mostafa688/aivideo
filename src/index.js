@@ -104,7 +104,7 @@ const renderJobs = new Map();
 // رسالة فشل التوليد للعميل: فلتر الأمان بتاع المزوّد (Seedance E005 / P-Video safety checker / NSFW) له رسالة أوضح من "فشل" عام
 function friendlyVideoError(msg) {
   return /E005|flagged as sensitive|sensitive content|safety (checker|filter)|nsfw|content policy/i.test(msg || '')
-    ? 'The model\'s safety filter flagged the video or the character image (very realistic human faces are often flagged, even when AI-generated, and it can be the template video too). Try a stylized character (cartoon, anime or 3D) or another model such as Wan 2.2 Replace. Your credits were refunded.'
+    ? 'The model\'s safety filter flagged the video or the character image (very realistic human faces are often flagged, even when AI-generated, and it can be the template video too). Try a stylized character (cartoon, anime or 3D) or the other model (P-Video Replace / Kling 3.0 Omni). Your credits were refunded.'
     : 'Video generation failed, your credits were refunded.';
 }
 
@@ -1458,7 +1458,7 @@ app.post('/api/upload-video-link', authMiddleware, renderLimiter, videoUpload.si
       return res.status(400).json({ error: 'Could not determine video duration.' });
     }
     // ?use=swap: فيديو لتبديل الشخصية (P-Video Animate) — سقفه 60 ثانية بدل 15 بتاعة تعديل الفيديو
-    const linkMaxSec = req.query.use === 'swap' ? (getMaxClipSeconds('wan_2_2_animate_replace') || 30) : VIDEO_EDIT_MAX_SECONDS;
+    const linkMaxSec = req.query.use === 'swap' ? (getMaxClipSeconds('prunaai_p_video_replace') || 30) : VIDEO_EDIT_MAX_SECONDS;
     if (durationSec > linkMaxSec + 0.5) {
       fs.unlinkSync(tmpUploadPath);
       return res.status(400).json({ error: `Video is ${durationSec.toFixed(1)}s — max allowed for ${req.query.use === 'swap' ? 'character swap' : 'video-to-video editing'} is ${linkMaxSec} seconds.` });
@@ -3859,7 +3859,7 @@ const SEO_PAGES = {
       { q: 'إزاي أعمل مونتاج لفيديوهاتي؟', a: 'من شات الايجنت ارفع لحد 20 فيديو (وتعليق صوتي وصور أو فيديو كمرجع لستايل الموشن جرافيك)، والايجنت يفهم المشاهد ويقترح خطة وسعر وبيبدأ بعد موافقتك — انتقالات بس، تزامن مع الصوت، أو مونتاج صنّاع محتوى بمشاهد موشن 3D، مع كابشن بلغة الكلام ومستوى مؤثرات صوتية تختاره.' },
       { q: 'أقدر أعمل إعلان لمنتجي من صورة واحدة؟', a: 'أيوه، الايجنت يتعرف على المنتج ويقترح فكرة وموديل (Wan 3.0 أو Seedance 2.5 أو Gemini Omni Flash 1.1) بتعليق صوتي مدمج، وبيبدأ بعد موافقتك على الخطة والسعر.' },
       { q: 'إيه هو P-Video Animate؟', a: 'تحريك صورة: فيديو فيه حركة وكلام وصورة شخصية، والناتج الشخصية (بمكان صورتها) بتعمل نفس الحركات وتقول نفس الكلام، مش بيبدّل شخص جوه الفيديو. موجود في زرار + ← Create video.' },
-      { q: 'أقدر أبدّل الشخصية في فيديو صورته، وأبدّل أكتر من شخصية؟', a: 'فيه طريقتين: P-Video Animate بيخلّي الشخصية تعمل نفس حركات وكلام فيديوك (لحد 60 ثانية) في مكان صورتها هي؛ ولو عايز تبدّل الشخص جوه مشهد الفيديو وتحافظ على المكان والصوت الأصلي، انت بتختار من Wan 2.2 Animate Replace أو P-Video Replace أو Kling 3.0 Omni (شخص واحد، لحد 30 ثانية، وKling من 3 لـ 10 ثواني)، ولو أكتر من شخص أو تحوّل في الشكل بيستخدم Seedance 2.5 (الحركة قريبة مش مطابقة والأصوات بتتولد من جديد، والسعر أعلى).' },
+      { q: 'أقدر أبدّل الشخصية في فيديو صورته، وأبدّل أكتر من شخصية؟', a: 'فيه طريقتين: P-Video Animate بيخلّي الشخصية تعمل نفس حركات وكلام فيديوك (لحد 60 ثانية) في مكان صورتها هي؛ ولو عايز تبدّل الشخص جوه مشهد الفيديو وتحافظ على المكان والصوت الأصلي، انت بتختار بين Kling 3.0 Omni (الموصى به، فيديو من 3 لـ 10 ثواني) وP-Video Replace (لحد 30 ثانية) لشخص واحد في الفيديو.' },
       { q: 'إيه اللي بتعمله صفحة قنواتي؟', a: 'بتربط قناتك عن طريق VidIQ ويقترح عليك Erivion فيديو كل يوم، وبعد موافقتك بيجيلك إيميل لما الفكرة والصورة المصغرة والعنوان والوصف والكلمات المفتاحية تجهز — وانت اللي بترفعها على قناتك.' },
       { q: 'كيف أصنع فيديو؟', a: 'اكتب فكرتك أو نصك في صفحة الإنشاء، اختر المدة والصوت، ثم اضغط Generate Scenes. بعدها راجع المشاهد واضغط Render Video لتوليد الفيديو النهائي.' },
       { q: 'ما الفرق بين النماذج المختلفة؟', a: 'كل موديل له طريقة توليد مختلفة: من صور AI ثابتة، لفيديو حقيقي بالذكاء الاصطناعي، لفيديو سينمائي بشخصيات ثابتة، وصولًا لإعلانات فيديو كاملة من صورة منتج واحدة.' },

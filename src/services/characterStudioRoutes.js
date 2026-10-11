@@ -22,16 +22,16 @@ const router = express.Router();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
-// P-Video Animate (تحريك صورة بحركة فيديو) مقصور على شات الايجنت — مش محرك قوالب. قوالب الترند: Wan Replace (الافتراضي) أو Seedance.
-export const DEFAULT_TEMPLATE_ENGINE = 'wan_2_2_animate_replace';
+// قوالب الترند وتبديل الشخص: Kling 3.0 Omni (الموصى به، فيديو 3-10ث) أو P-Video Replace (لحد 30ث). Wan Replace وSeedance اتشالوا من التبديل بقرار العميل.
+export const DEFAULT_TEMPLATE_ENGINE = 'kling_3_0_omni_replace';
 // محركات القوالب: نقل الأداء (P-Video Animate: حركة وكلام الفيديو الأصلي بالظبط، تبديل شخصية واحدة، لحد 60ث) أو Seedance 2.5
 // (بيعيد بناء الفيديو بالذكاء الاصطناعي من فيديو مرجعي + صورة الشخصية + برومبت — بيقدر يغيّر الشكل زي لون الشعر والعضلات، لحد 30ث وأغلى)
 export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
 // محركات تبديل الشخص اللي العميل يقدر يختار منها في القالب (الأدمن بيحدد الافتراضي)
-export const SWAP_ENGINES = ['wan_2_2_animate_replace', 'prunaai_p_video_replace', 'kling_3_0_omni_replace', 'seedance_2_5'];
+export const SWAP_ENGINES = ['kling_3_0_omni_replace', 'prunaai_p_video_replace'];
 const engineOptions = (sec) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && sec <= engineMaxSec(e) + 0.5 && sec >= engineMinSec(e) - 0.3).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
 const templateMode = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 'reference' : (NEW_VIDEO_MODELS[e]?.swapMode === 'replace' ? 'replace' : 'transfer'));
-const isTemplateEngine = (e) => e === REFERENCE_TEMPLATE_ENGINE || NEW_VIDEO_MODELS[e]?.swapMode === 'replace';
+const isTemplateEngine = (e) => SWAP_ENGINES.includes(e) && !!NEW_VIDEO_MODELS[e];
 const engineMinSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 4 : (getMinClipSeconds(e) || 0)); // Seedance (تعديل فيديو): الفيديو الأصلي 4-30 ثانية
 const engineMaxSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? (NEW_VIDEO_MODELS[e]?.refCaps?.videoMaxTotalSec || 30) : (getMaxClipSeconds(e) || 60));
 const billSecFor = (engine, sec) => (engine === REFERENCE_TEMPLATE_ENGINE ? Math.min(30, Math.max(4, Math.ceil(sec))) : Math.max(1, Math.ceil(sec)));
@@ -48,7 +48,8 @@ export async function initCharacterStudioTables() {
     engine TEXT NOT NULL DEFAULT 'prunaai_p_video_animate', is_featured INTEGER DEFAULT 0, is_published INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0,
     uses_count INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`);
   // P-Video Animate مقصور على شات الايجنت: أي قالب قديم عليه المحرك ده (ومدته داخل حد Wan Replace) بيتحوّل تلقائي لـ Wan 2.2 Animate Replace
-  await pool.query(`UPDATE trend_templates SET engine = 'wan_2_2_animate_replace' WHERE engine = 'prunaai_p_video_animate' AND duration_sec <= 30`).catch(() => {});
+  // محركات اتشالت من التبديل (P-Video Animate / Wan Replace / Seedance): القوالب القديمة بتتحوّل لـ Kling لو الفيديو 3-10ث، وإلا P-Video Replace
+  await pool.query(`UPDATE trend_templates SET engine = CASE WHEN duration_sec BETWEEN 2.7 AND 10.5 THEN 'kling_3_0_omni_replace' ELSE 'prunaai_p_video_replace' END WHERE engine IN ('prunaai_p_video_animate','wan_2_2_animate_replace','seedance_2_5')`).catch(() => {});
   await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS prompt TEXT`);
   await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS aspect TEXT`);
   await pool.query(`ALTER TABLE character_presets ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);
@@ -197,7 +198,7 @@ router.post('/admin/upload', adminAuth, upload.single('file'), async (req, res) 
     fs.writeFileSync(tmp, f.buffer);
     const durationSec = await ffprobeDuration(tmp);
     if (!durationSec) return res.status(400).json({ error: 'Could not read this video — use an MP4 file' });
-    const maxSec = getMaxClipSeconds(DEFAULT_TEMPLATE_ENGINE) || 60;
+    const maxSec = Math.max(...SWAP_ENGINES.map(e => getMaxClipSeconds(e) || 0)) || 30;
     if (durationSec > maxSec + 0.5) return res.status(400).json({ error: `Video is ${Math.round(durationSec)}s — the limit for the template engine is ${maxSec}s` });
     let aspect = null;
     try { const dims = await new Promise((resolve) => execFile('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', tmp], (e, out) => resolve(e ? '' : String(out).trim()))); const [w, h] = dims.split('x').map(Number); if (w && h) aspect = w >= h ? '16:9' : '9:16'; } catch { /* اختياري */ }
@@ -239,7 +240,7 @@ router.delete('/admin/presets/:id', adminAuth, async (req, res) => { try { await
 router.get('/admin/templates', adminAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`SELECT * FROM trend_templates ORDER BY is_featured DESC, sort_order ASC, id DESC`);
-    res.json({ templates: rows.map(r => ({ ...r, costs: costsFor(r.engine, Number(r.duration_sec)) })), categories: TEMPLATE_CATEGORIES, engines: [...Object.keys(NEW_VIDEO_MODELS).filter(k => NEW_VIDEO_MODELS[k].swapMode === 'replace'), REFERENCE_TEMPLATE_ENGINE] });
+    res.json({ templates: rows.map(r => ({ ...r, costs: costsFor(r.engine, Number(r.duration_sec)) })), categories: TEMPLATE_CATEGORIES, engines: SWAP_ENGINES.filter(k => NEW_VIDEO_MODELS[k]) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.post('/admin/templates', adminAuth, async (req, res) => {
