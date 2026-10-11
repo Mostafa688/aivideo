@@ -41,7 +41,7 @@ import { mergeVideos } from './services/videoMergeService.js';
 import { finishVideos } from './services/montage/postProduction.js';
 import { analyzeActiveSpeaker, estimateAnalysisCreditCost } from './services/videoAnalysisService.js';
 import { synthesizeNarration, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer, composeVideoAudio } from './services/videoAudioService.js';
-import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getFlatCreditCost, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
+import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getMinClipSeconds, getFlatCreditCost, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
 // ✅ NEW: عدد المشاهد "العادي" لكل مدة — لازم يطابق نفس الجدول في AgentPage.jsx بالظبط،
 // عشان نحسب صح لو خطة العميل عندها مشاهد أكتر من العدد الافتراضي لنفس المدة
 const MODEL3_STANDARD_SCENE_COUNT = { '30s': 3, '1min': 6, '3min': 18, '5min': 30 };
@@ -3081,7 +3081,8 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
     if (isPerfTransfer) {
       const maxPerf = getMaxClipSeconds(model);
       if (maxPerf && sourceVideoDurationSec > maxPerf + 0.5) return res.status(400).json({ error: 'source_video_too_long', message: `This engine supports source videos up to ${maxPerf} seconds — yours is ${Math.round(sourceVideoDurationSec)}s. Trim it and try again.` });
-      if (sourceVideoDurationSec < 1) return res.status(400).json({ error: 'source_video_too_short', message: 'The source video is too short.' });
+      const minPerf = getMinClipSeconds(model) || 1;
+      if (sourceVideoDurationSec < minPerf - 0.3) return res.status(400).json({ error: 'source_video_too_short', message: `This engine needs a source video of at least ${minPerf} seconds — yours is ${Math.round(sourceVideoDurationSec * 10) / 10}s.` });
     } else model = sourceVideoDurationSec <= 10 ? 'omni_flash_1_1' : 'decart_lucy_edit_2';
     // ✅ NEW (طلب العميل: "الفيديو يكون أقل من 200 ميجا زي ما Replicate بيقول وتأكد من كده"):
     // decart/lucy-edit-2's الحد الحقيقي المعلن هو حجم الملف (200MB)، مش مدة زمنية — نتحقق
@@ -3843,7 +3844,7 @@ const SEO_PAGES = {
       { q: 'إزاي أعمل مونتاج لفيديوهاتي؟', a: 'من شات الايجنت ارفع لحد 20 فيديو (وتعليق صوتي وصور أو فيديو كمرجع لستايل الموشن جرافيك)، والايجنت يفهم المشاهد ويقترح خطة وسعر وبيبدأ بعد موافقتك — انتقالات بس، تزامن مع الصوت، أو مونتاج صنّاع محتوى بمشاهد موشن 3D، مع كابشن بلغة الكلام ومستوى مؤثرات صوتية تختاره.' },
       { q: 'أقدر أعمل إعلان لمنتجي من صورة واحدة؟', a: 'أيوه، الايجنت يتعرف على المنتج ويقترح فكرة وموديل (Wan 3.0 أو Seedance 2.5 أو Gemini Omni Flash 1.1) بتعليق صوتي مدمج، وبيبدأ بعد موافقتك على الخطة والسعر.' },
       { q: 'إيه هو P-Video Animate؟', a: 'تحريك صورة: فيديو فيه حركة وكلام وصورة شخصية، والناتج الشخصية (بمكان صورتها) بتعمل نفس الحركات وتقول نفس الكلام، مش بيبدّل شخص جوه الفيديو. موجود في زرار + ← Create video.' },
-      { q: 'أقدر أبدّل الشخصية في فيديو صورته، وأبدّل أكتر من شخصية؟', a: 'فيه طريقتين: P-Video Animate بيخلّي الشخصية تعمل نفس حركات وكلام فيديوك (لحد 60 ثانية) في مكان صورتها هي؛ ولو عايز تبدّل الشخص جوه مشهد الفيديو وتحافظ على المكان والصوت الأصلي، انت بتختار من Wan 2.2 Animate Replace أو P-Video Replace أو Kling 3.0 Omni (شخص واحد، لحد 30 ثانية، وKling لحد 15)، ولو أكتر من شخص أو تحوّل في الشكل بيستخدم Seedance 2.5 (الحركة قريبة مش مطابقة والأصوات بتتولد من جديد، والسعر أعلى).' },
+      { q: 'أقدر أبدّل الشخصية في فيديو صورته، وأبدّل أكتر من شخصية؟', a: 'فيه طريقتين: P-Video Animate بيخلّي الشخصية تعمل نفس حركات وكلام فيديوك (لحد 60 ثانية) في مكان صورتها هي؛ ولو عايز تبدّل الشخص جوه مشهد الفيديو وتحافظ على المكان والصوت الأصلي، انت بتختار من Wan 2.2 Animate Replace أو P-Video Replace أو Kling 3.0 Omni (شخص واحد، لحد 30 ثانية، وKling من 3 لـ 10 ثواني)، ولو أكتر من شخص أو تحوّل في الشكل بيستخدم Seedance 2.5 (الحركة قريبة مش مطابقة والأصوات بتتولد من جديد، والسعر أعلى).' },
       { q: 'إيه اللي بتعمله صفحة قنواتي؟', a: 'بتربط قناتك عن طريق VidIQ ويقترح عليك Erivion فيديو كل يوم، وبعد موافقتك بيجيلك إيميل لما الفكرة والصورة المصغرة والعنوان والوصف والكلمات المفتاحية تجهز — وانت اللي بترفعها على قناتك.' },
       { q: 'كيف أصنع فيديو؟', a: 'اكتب فكرتك أو نصك في صفحة الإنشاء، اختر المدة والصوت، ثم اضغط Generate Scenes. بعدها راجع المشاهد واضغط Render Video لتوليد الفيديو النهائي.' },
       { q: 'ما الفرق بين النماذج المختلفة؟', a: 'كل موديل له طريقة توليد مختلفة: من صور AI ثابتة، لفيديو حقيقي بالذكاء الاصطناعي، لفيديو سينمائي بشخصيات ثابتة، وصولًا لإعلانات فيديو كاملة من صورة منتج واحدة.' },

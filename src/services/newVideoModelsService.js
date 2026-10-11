@@ -391,18 +391,21 @@ export const NEW_VIDEO_MODELS = {
     }),
   },
   // ✅ NEW: تبديل الشخص بـKling 3.0 Omni (نفس slug بتاع kling_3_0_omni) في وضع تعديل الفيديو: reference_video + video_reference_type:'base'
-  // + reference_images (الحقول من سكرين شوت العميل القديم لصفحة الموديل). ⚠️ مش متجرّب فعليًا: صياغة البرومبت وسلوك الصوت في وضع التعديل مش مؤكدين.
+  // + reference_images (الحقول والسعر من سكرين شوتات العميل لصفحة الموديل). ⚠️ مش متجرّب فعليًا على Replicate.
   kling_3_0_omni_replace: {
     slug: 'kwaivgi/kling-v3-omni-video',
     supportsImageInput: true,
     performanceTransfer: true,
     swapMode: 'replace',
     promptOptional: true,
+    // schema (سكرين شوت العميل): reference_video 3-10 ثواني و720-2160px للضلع، reference_images لحد 4 مع الفيديو،
+    // prompt بيدعم <<<image_1>>> و<<<video_1>>> (حد 2500 حرف)، keep_original_sound الافتراضي true وgenerate_audio ممنوع مع الفيديو المرجعي
     buildInput: ({ prompt, imageUrl, sourceVideoUrl, tier }) => ({
-      prompt: `Replace the main person in the reference video with the character shown in the reference image. Keep everything else exactly the same: the scene, camera, timing, body movements and expressions; use the character's face, hairstyle and clothing and do not keep the original person's appearance. ${prompt?.trim() || ''}`.trim(),
+      prompt: `Edit <<<video_1>>>: replace the main person with the character shown in <<<image_1>>>. Keep everything else exactly the same: the scene, camera, timing, body movements and expressions; use the character's face, hairstyle and clothing and do not keep the original person's appearance. ${prompt?.trim() || ''}`.trim().slice(0, 2500),
       mode: tier === '1080p' ? 'pro' : 'standard',
       reference_video: sourceVideoUrl,
       video_reference_type: 'base',
+      keep_original_sound: true,
       reference_images: [imageUrl],
     }),
   },

@@ -1865,7 +1865,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       let refVideoUrls = gen.referenceVideoUrls?.length ? gen.referenceVideoUrls : undefined;
       let genAspect = gen.aspectRatio || '16:9', genDuration = gen.durationSec || 5;
       if ((isPerf && !sourceVideoUrl) || useVideoRef) {
-        const capQuery = (useVideoRef || (isPerf && gen.model !== 'prunaai_p_video_animate')) ? `?model=${encodeURIComponent(gen.model)}` : ''; // السقف حسب المحرك (Seedance/Wan/P-Video Replace: 30 ثانية، Kling: 15)
+        const capQuery = (useVideoRef || (isPerf && gen.model !== 'prunaai_p_video_animate')) ? `?model=${encodeURIComponent(gen.model)}` : ''; // السقف حسب المحرك (Seedance/Wan/P-Video Replace: 30 ثانية، Kling: 10)
         const form = new FormData();
         form.append('video', uploadedVideoFile, uploadedVideoFile.name || 'video.mp4');
         const up = await fetch(`/api/videos/upload-source${capQuery}`, { method: 'POST', headers: tokenHeader(), body: form });
