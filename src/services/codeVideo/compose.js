@@ -36,7 +36,7 @@ export async function renderPlate(story, sc, tLocal) {
 
 /** كل plate مطلوب للإطار T (مع كاش بيتشاركه كل الـworkers) */
 export async function ensurePlates(story, T, cache) {
-  const need = visibleScenes(story, T).list; const out = new Map();
+  const need = visibleScenes(story, T).list.filter(({ sc }) => sc.type !== 'world'); const out = new Map();
   await Promise.all(need.map(async ({ sc, t }) => {
     const key = plateKey(sc, t);
     let pr = cache.get(key);
@@ -56,6 +56,7 @@ export function sceneGroup(base, sc, tLocal, plates) {
   if ((c.look === 'cartoon' || c.look === 'cartoon3d') && c.cast?.host && HOST_TYPES.has(sc.type) && sc.host !== false) inner += hostOverlay(c, sc, Math.max(0, tLocal));
   const uri = plates?.get(plateKey(sc, tLocal));
   const bg = uri ? `<image href="${uri}" x="0" y="0" width="${c.w}" height="${c.h}" preserveAspectRatio="none"/>` : '';
+  if (sc.type === 'world') return inner; // عالم 3D بيرسم سماه وأرضه بنفسه
   return bg + backdropCrisp(c, tLocal, sc.bg || 'aurora', sc.seed || sc.index * 1.7, cam) + `<g transform="${cam.tf}">${inner}</g>`;
 }
 

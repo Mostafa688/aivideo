@@ -252,10 +252,11 @@ export function getDocumentaryCreditCost(minutes, { userVoiceover = false } = {}
 // + رندر إطارات على السيرفر (الأغلى: CPU) + خلط صوت. بيتحاسب على الطول النهائي الفعلي (فرق الحجز المسبق بيترد بعد الرندر).
 export const ANIMATION_USD_PER_MINUTE = { tts: 0.018, asr: 0.003, llm: 0.02, render: 0.09 }; // llm = المخرج + كاست الشخصيات + رسّام المشاهد الحرة
 // نمط Vox (صور بتتفك كل إطار + بحث أرشيف) والكارتون 3D أتقل في الرندر شوية من الموشن جرافيك العادي
-export const ANIMATION_LOOK_RENDER_MULT = { motion: 1, cartoon: 1, cartoon3d: 1.15, vox: 1.4 };
+export const ANIMATION_LOOK_RENDER_MULT = { motion: 1, cartoon: 1, cartoon3d: 1.15, vox: 1.4, world3d: 1.7 };
+export const ANIMATION_LOOK_LLM_MULT = { world3d: 2 }; // مخرج حركة لكل مشهد + كاست
 export function getAnimationCreditCost(minutes, { userVoiceover = false, look = 'motion' } = {}) {
   const d = ANIMATION_USD_PER_MINUTE;
-  const perMin = d.render * (ANIMATION_LOOK_RENDER_MULT[look] || 1) + d.llm + d.asr + (userVoiceover ? 0 : d.tts);
+  const perMin = d.render * (ANIMATION_LOOK_RENDER_MULT[look] || 1) + d.llm * (ANIMATION_LOOK_LLM_MULT[look] || 1) + d.asr + (userVoiceover ? 0 : d.tts);
   return usdToCredits(perMin * Math.max(0.4, Number(minutes) || 0.4));
 }
 

@@ -24,6 +24,9 @@ const SPECS = {
   ding: [...expr('0.5*sin(2*PI*1320*t)*exp(-5*t)+0.3*sin(2*PI*1980*t)*exp(-6.5*t)+0.15*sin(2*PI*2640*t)*exp(-8*t)', 1.2), '-af', 'volume=0.9'],
   shimmer: [...expr('0.35*(sin(2*PI*1046*t)*exp(-4*t)+sin(2*PI*1318*max(0,t-0.07))*exp(-4*max(0,t-0.07))*gte(t,0.07)+sin(2*PI*1568*max(0,t-0.14))*exp(-4*max(0,t-0.14))*gte(t,0.14)+sin(2*PI*2093*max(0,t-0.21))*exp(-4*max(0,t-0.21))*gte(t,0.21))', 1.4), '-af', 'volume=0.95'],
   zap: [...expr('0.5*sin(2*PI*(2400-1900*t/0.28)*t)*exp(-9*t)', 0.32), '-af', 'volume=0.85'],
+  cheer: [...noise(2.4, 'pink'), '-af', "bandpass=f=1500:width_type=h:w=2200,tremolo=f=7:d=0.6,volume='min(1,t/0.25)*exp(-0.9*t)*2.4':eval=frame,alimiter=limit=0.95"],
+  splash: [...noise(1.0, 'white'), '-af', "highpass=f=900,lowpass=f=9000,volume='1.7*exp(-4*t)':eval=frame,alimiter=limit=0.95"],
+  sizzle: [...noise(1.4, 'white'), '-af', "highpass=f=3500,tremolo=f=28:d=0.7,volume='0.9*min(1,t/0.1)*exp(-1.2*t)':eval=frame"],
   rumble: [...noise(2.0, 'brown'), '-af', "lowpass=f=140,volume='1.6*sin(PI*min(1,t/2.0))':eval=frame"],
 };
 export const CV_SFX_TYPES = Object.keys(SPECS);
@@ -81,6 +84,31 @@ export const SCENE_SFX = {
     const dur = (sc.end - sc.start) || 4, ev = [E(0.03, 'whoosh_s', 0.5)]; let last = -1;
     for (const tm of appearTimes(d.elements || [], dur)) { if (tm - last >= 0.22 && ev.length < 9) { ev.push(E(tm + 0.05, 'pop', 0.5)); last = tm; } }
     ev.push(E(Math.min(dur * 0.7, last + 0.5), 'shimmer', 0.35));
+    return ev;
+  },
+  // عالم 3D: مؤثرات من حركات الشخصيات والأغراض
+  world: (d, sc) => {
+    const dur = (sc.end - sc.start) || 4, ev = [E(0.02, 'whoosh_s', 0.4)];
+    for (const a of d.actors || []) for (const t of a.tracks) {
+      const s = t.at * dur, len = t.dur * dur;
+      switch (t.act) {
+        case 'kick': ev.push(E(s + 0.55 * len, 'hit', 0.85)); break;
+        case 'pass': ev.push(E(s + 0.55 * len, 'hit', 0.5)); break;
+        case 'throw': ev.push(E(s + 0.55 * len, 'whoosh_s', 0.5)); break;
+        case 'dive': ev.push(E(s + 0.1 * len, 'whoosh_s', 0.5), E(s + 0.85 * len, 'slam', 0.7)); break;
+        case 'fall': ev.push(E(s + 0.7 * len, 'slam', 0.7)); break;
+        case 'celebrate': case 'cheer': ev.push(E(s, 'cheer', 0.7)); break;
+        case 'jump': ev.push(E(s + 0.1 * len, 'pop', 0.5)); break;
+        case 'chop': for (let k = 0; k < 6 && k * 0.35 < len; k++) ev.push(E(s + k * 0.35, 'tick', 0.55)); break;
+        case 'stir': ev.push(E(s, 'sizzle', 0.45)); break;
+        case 'swing': ev.push(E(s + 0.4 * len, 'whoosh_s', 0.55), E(s + 0.65 * len, 'hit', 0.7)); break;
+        case 'clap': for (let k = 0; k < 6 && k * 0.4 < len; k++) ev.push(E(s + k * 0.4, 'tick', 0.45)); break;
+        case 'dance': ev.push(E(s, 'shimmer', 0.3)); break;
+        default: break;
+      }
+    }
+    for (const p of d.props || []) for (const m of p.moves || []) { if (m.arc > 0) ev.push(E(m.at * dur, 'whoosh_s', 0.35), E(Math.min(dur - 0.05, (m.at + m.dur) * dur), 'hit', 0.45)); }
+    for (const x of d.sfx || []) ev.push(E(x.at * dur, x.type, 0.8));
     return ev;
   },
   // Vox

@@ -4,6 +4,11 @@
 
 ## Changelog
 
+### 2026-10-13 — جديد (new)
+- **العنوان (AR):** فيديو 3D بالكود: عالم ثلاثي الأبعاد بشخصيات وكاميرا سينمائية
+- **Title (EN):** 3D videos by code: a 3D world with characters and a cinematic camera
+- **الوصف (AR):** نمط جديد "world3d": الذكاء الاصطناعي يبتكر القصة والشخصيات والأحداث، والمحرك يرسمها عالم 3D (ملعب كورة، مطبخ، غابة، شاطئ، صحراء، ثلج، غرفة، قمر…) بشخصيات بتجري وتشوط وتطبخ وترقص، وأغراض، وكاميرا بتتحرك مع الأكشن، وكابشن كبير متزامن، ومؤثرات صوتية.
+- **Description (EN):** New "world3d" look: the AI invents the story, characters and action, and the engine renders it as a low-poly 3D world (football pitch, kitchen, forest, beach, desert, snow, room, moon…) with characters that run, kick, cook and dance, props, a camera that follows the action, big synced captions and sound effects.
 ### 2026-10-12 — جديد (new)
 - **العنوان (AR):** الفيديو بالكود بقى يبتكر شخصياته ورسوماته بنفسه
 - **Title (EN):** Code-made videos now invent their own characters and drawings

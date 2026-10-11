@@ -7,6 +7,7 @@ import { pickPalette } from './design.js';
 import { resolveVoxImages } from './images.js';
 import { designCast, makeCastMap } from './cast.js';
 import { designArt } from './art.js';
+import { choreograph, designWorldCast, FALLBACK_CAST } from './w3d/choreo.js';
 import { GEMINI_VOICE_NAMES } from '../videoAudioService.js';
 import { makeMeasurer } from './measure.js';
 import { renderCodeVideo, RATIO_SIZE } from './render.js';
@@ -23,7 +24,7 @@ export function voiceGenderOf(input) {
   if (/^male_/.test(k) || GEMINI_VOICE_NAMES.has(k)) return 'male';
   return 'unknown';
 }
-const LOOK_MUSIC = { cartoon: 'upbeat', cartoon3d: 'upbeat', vox: 'chill' };
+const LOOK_MUSIC = { cartoon: 'upbeat', cartoon3d: 'upbeat', world3d: 'upbeat', vox: 'chill' };
 const MUSIC_MOOD = { epic: 'epic', tech: 'upbeat', business: 'chill', nature: 'chill', energetic: 'upbeat', serious: 'tension', clean: 'chill', minimal: 'chill' };
 
 export async function produceAnimation({ id, userId, input, workDir, prog }, deps = {}) {
@@ -53,12 +54,19 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     const cr = await (deps.designCast || designCast)({ text: spoken.map(x => x.text).join(' '), topic: input.topic || title, language: lang, look, voiceGender: voiceGenderOf(input) });
     if (cr.characters.length) castMap = makeCastMap(cr.characters);
   }
-  const plan = await (deps.directVideo || directVideo)({ spoken, language: lang, ratio, topic: input.topic || title, style: input.style || null, look, voiceGender: voiceGenderOf(input), castMap, onProgress: (f) => prog('plan', f) });
+  // عالم 3D: كاست (شخصيات/حيوانات بملابس وألوان) + بيئة افتراضية على مقاس القصة
+  let worldMeta = null;
+  if (look === 'world3d') {
+    const wc = await (deps.designWorldCast || designWorldCast)({ text: spoken.map(x => x.text).join(' '), topic: input.topic || title, language: lang, voiceGender: voiceGenderOf(input) });
+    const castSpecs = Object.keys(wc.castSpecs || {}).length ? wc.castSpecs : { ...FALLBACK_CAST };
+    worldMeta = { castSpecs, host: wc.host && castSpecs[wc.host] ? wc.host : Object.keys(castSpecs)[0], env: wc.env, time: wc.time || 'day' };
+  }
+  const plan = await (deps.directVideo || directVideo)({ spoken, language: lang, ratio, topic: input.topic || title, style: input.style || null, look, voiceGender: voiceGenderOf(input), castMap, worldMeta, onProgress: (f) => prog('plan', f) });
   title = title || plan.title || 'Animated video';
   await prog('plan', 1, { title });
 
   // 4) تجميع القصة (storyboard)
-  const pal = pickPalette((LOOK_PALETTES[look] || []).includes(input.palette) ? input.palette : plan.palette || (look === 'cartoon' ? 'toon' : look === 'cartoon3d' ? 'candy' : look === 'vox' ? 'vox' : null), plan.mood);
+  const pal = pickPalette((LOOK_PALETTES[look] || []).includes(input.palette) ? input.palette : plan.palette || (look === 'cartoon' ? 'toon' : look === 'cartoon3d' ? 'candy' : look === 'vox' ? 'vox' : look === 'world3d' ? 'daylight' : null), plan.mood);
   const scenes = spoken.map((sc, i) => {
     const p = plan.scenes[i], dur = sc.end - sc.start;
     const prevDur = i > 0 ? spoken[i - 1].end - spoken[i - 1].start : dur;
@@ -70,6 +78,21 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
       tokens: sc.tokens.map(t => ({ w: t.w, start: Math.max(0, t.start - sc.start), end: Math.max(0.05, t.end - sc.start) })),
     };
   });
+  // عالم 3D: "مخرج الحركة" بيحوّل كل مشهد world لعالم 3D (بيئة + شخصيات + مسارات + أغراض + كاميرا) — دايمًا بيرجّع عالم سليم (افتراضي لو فشل)
+  const worldIdx = scenes.map((sc, i) => (sc.type === 'world' ? i : -1)).filter(i => i >= 0);
+  if (worldIdx.length) {
+    await prog('assets', 0);
+    let doneW = 0, nextW = 0;
+    const workerW = async () => {
+      while (nextW < worldIdx.length) {
+        const i = worldIdx[nextW++], sc = scenes[i];
+        const wd = await (deps.choreograph || choreograph)({ idea: sc.data.idea, text: spoken[i].text, duration: sc.end - sc.start, language: lang, castSpecs: worldMeta.castSpecs, host: worldMeta.host, env: sc.data.env, time: sc.data.time, portrait: ratio === '9:16' });
+        sc.data = { ...wd, caption: true, emphasis: sc.data.emphasis || [] };
+        await prog('assets', ++doneW / worldIdx.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, worldIdx.length) }, workerW));
+  }
   // رسم حر: رسّام (LLM) بيرسم كل مشهد "art" كـ JSON آمن (بيتحقق منه الكود) — اللي ما يتحققش بيتحوّل لمشهد بديل
   const artIdx = scenes.map((sc, i) => (sc.type === 'art' ? i : -1)).filter(i => i >= 0);
   if (artIdx.length) {
