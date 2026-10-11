@@ -84,7 +84,7 @@ async function downloadWithRetry(url, maxRetries = 3) {
   throw lastErr;
 }
 
-async function persistVideoToR2(url, modelKey) {
+export async function persistVideoToR2(url, modelKey) {
   if (!S3_ENDPOINT_URL || !S3_ACCESS_KEY || !S3_SECRET_KEY) return url;
   const res = await downloadWithRetry(url);
   const contentType = res.headers.get('content-type') || 'video/mp4';
@@ -597,7 +597,7 @@ export function validateReferenceInputs(modelKey, { imageUrl = null, lastFrameUr
  * permanent (R2-persisted) URL. `tier` is a resolution string ("720p" etc.)
  * for models that support it — ignored otherwise.
  */
-export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null, sourceVideoUrl = null, aspectRatio = '16:9', durationSec = 5, tier = null, lastFrameUrl = null, referenceImageUrls = [], referenceVideoUrls = [], referenceAudioUrls = [], generateAudio = null }) {
+export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null, sourceVideoUrl = null, aspectRatio = '16:9', durationSec = 5, tier = null, lastFrameUrl = null, referenceImageUrls = [], referenceVideoUrls = [], referenceAudioUrls = [], generateAudio = null, onPrediction = null }) {
   if (!REPLICATE_API_TOKEN) throw new Error('REPLICATE_API_TOKEN not set');
   const model = NEW_VIDEO_MODELS[modelKey];
   if (!model) throw new Error(`Unknown video model: ${modelKey}`);
@@ -617,7 +617,7 @@ export async function generateNewModelVideo({ modelKey, prompt, imageUrl = null,
     const data = await res.json();
     if (data.error) throw new Error(`${label}: ${data.error}`);
     let out = data.status === 'succeeded' ? data.output : null;
-    if (!out && data.id) out = await pollPrediction(data.id, label);
+    if (!out && data.id) { try { await onPrediction?.(data.id); } catch {} out = await pollPrediction(data.id, label); }
     if (!out) throw new Error(`${label} returned no output`);
     return out;
   });

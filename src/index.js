@@ -31,11 +31,12 @@ import financeRouter from './services/financeRoutes.js';
 import roadmapRouter from './services/roadmapRoutes.js';
 import statusRouter from './services/statusRoutes.js';
 import statsRouter, { logGeneration } from './services/statsRoutes.js';
+import { trackJob, finishJob, getJobFromDb, startVideoJobRecovery } from './services/videoJobRecovery.js';
 import teamRouter from './services/teamRoutes.js';
 import authRouter, { authMiddleware } from './services/authRoutes.js';
 import { getUserById, PLANS, getUserCredits, chargeCredits, getCreditsBalance, addCreditsBalance, MODEL12_CREDIT_COSTS, MODEL3_CREDIT_COSTS, MODEL4_CREDIT_COSTS, MODEL5_CREDIT_COSTS, MODEL5_CREDIT_COSTS_WITH_PHOTO, MODEL5_EXTRA_CREDITS_PER_PHOTO, getModel5CreditCost, ADS_CREDIT_COST, submitFeedbackRating, getAllFeedbackRatings, sendBroadcastEmail, getReferralSourceStats, getClonedVoiceForUser } from './services/authService.js';
 import { generateNewModelImages, NEW_IMAGE_MODELS } from './services/newImageModelsService.js';
-import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureVideoDurationSec, validateReferenceInputs } from './services/newVideoModelsService.js';
+import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureVideoDurationSec, validateReferenceInputs, persistVideoToR2 as persistNewModelVideo } from './services/newVideoModelsService.js';
 import { uploadUserSourceVideoToR2 } from './services/audioVideoService.js';
 import { mergeVideos } from './services/videoMergeService.js';
 import { finishVideos } from './services/montage/postProduction.js';
@@ -99,6 +100,13 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 const renderJobs = new Map();
+
+// رسالة فشل التوليد للعميل: فلتر الأمان بتاع المزوّد (Seedance E005 / P-Video safety checker / NSFW) له رسالة أوضح من "فشل" عام
+function friendlyVideoError(msg) {
+  return /E005|flagged as sensitive|sensitive content|safety (checker|filter)|nsfw|content policy/i.test(msg || '')
+    ? 'The model\'s safety filter flagged the video or the character image (very realistic human faces are often flagged, even when AI-generated, and it can be the template video too). Try a stylized character (cartoon, anime or 3D) or another model such as Wan 2.2 Replace. Your credits were refunded.'
+    : 'Video generation failed, your credits were refunded.';
+}
 
 // ── Render Limiter ────────────────────────────────────────────────────────────
 let activeRenderCount = 0;
@@ -3184,6 +3192,8 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
         referenceVideoUrls: sourceVideoUrl ? [] : referenceVideoUrls,
         referenceAudioUrls: sourceVideoUrl ? [] : referenceAudioUrls,
         generateAudio: typeof generateAudio === 'boolean' ? generateAudio : null,
+        // الطلبات البسيطة (من غير سرد/كابشن/موسيقى) بنحفظ الـprediction في الداتابيز عشان نكمّل لو السيرفر اتعمله restart وسط التوليد
+        onPrediction: (!narration && !addCaptions && !musicStyle) ? (predictionId) => trackJob({ jobId, userId: req.user.userId, model, creditCost: vidCreditCost, predictionId }) : null,
       });
 
       // ✅ مونتاج ffmpeg محلي (سرد + كابشن بنفس محرك الأفلام الوثائقية + موسيقى بتهدّى تحت الكلام) — بدل
@@ -3204,14 +3214,15 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
         if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
       }
       setRenderJob(jobId, { status: 'done', videoUrl, creditCost: vidCreditCost, completedAt: Date.now() });
+      finishJob(jobId, { status: 'done', videoUrl });
       logGeneration({ userId: req.user.userId, kind: sourceVideoUrl ? 'edit' : 'video', modelKey: model, creditCost: vidCreditCost });
     } catch (genErr) {
       console.error('[NewVideoModels] generation failed:', genErr.message);
       if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
       await addCreditsBalance(req.user.userId, vidCreditCost);
-      // فلتر الأمان بتاع المزوّد (Seedance E005 / P-Video safety checker / NSFW): رسالة أوضح من "فشل" عام عشان العميل يعرف يغيّر المدخلات
-      const flagged = /E005|flagged as sensitive|sensitive content|safety (checker|filter)|nsfw|content policy/i.test(genErr.message || '');
-      setRenderJob(jobId, { status: 'failed', error: flagged ? 'The model\'s safety filter flagged the video or the character image (very realistic human faces are often flagged, even when AI-generated, and it can be the template video too). Try a stylized character (cartoon, anime or 3D) or another model such as Wan 2.2 Replace. Your credits were refunded.' : 'Video generation failed, your credits were refunded.', completedAt: Date.now() });
+      const failMsg = friendlyVideoError(genErr.message);
+      setRenderJob(jobId, { status: 'failed', error: failMsg, completedAt: Date.now() });
+      finishJob(jobId, { status: 'failed', error: failMsg });
     } finally {
       scheduleRenderJobCleanup(jobId);
     }
@@ -3246,9 +3257,10 @@ app.post('/api/videos/upload-source', authMiddleware, renderLimiter, videoUpload
   } finally { if (tmp) fs.rm(tmp, { force: true }, () => {}); }
 });
 
-app.get('/api/videos/generate-status/:jobId', authMiddleware, (req, res) => {
+app.get('/api/videos/generate-status/:jobId', authMiddleware, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-  const job = getRenderJob(req.params.jobId);
+  let job = getRenderJob(req.params.jobId);
+  if (!job) job = await getJobFromDb(req.params.jobId, req.user.userId); // بعد restart/deploy: الحالة محفوظة في الداتابيز
   if (!job) return res.status(404).json({ error: 'job_not_found' });
   if (job.userId && job.userId !== req.user.userId) return res.status(404).json({ error: 'job_not_found' });
   res.json(job);
@@ -4044,6 +4056,14 @@ app.get('*', (req, res) => {
 
 const server = app.listen(PORT, () => {
   console.log('AI Video Backend running on http://localhost:' + PORT);
+});
+
+// استكمال توليدات الفيديو اللي السيرفر القديم مات وسطها (deploy/restart): نفس الـprediction، ولو فشل نرجّع الكريديت
+startVideoJobRecovery({
+  persistVideo: persistNewModelVideo,
+  refund: (userId, cost) => addCreditsBalance(userId, cost),
+  friendlyError: friendlyVideoError,
+  onDone: (row) => logGeneration({ userId: row.user_id, kind: 'video', modelKey: row.model, creditCost: row.credit_cost }),
 });
 
 // ── القناة اليومية: بنفحص كل ساعة مين مستحق (آخر تشغيل من أكتر من 20 ساعة) —
