@@ -3208,7 +3208,9 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
       console.error('[NewVideoModels] generation failed:', genErr.message);
       if (narration) fs.rmSync(narration.workDir, { recursive: true, force: true });
       await addCreditsBalance(req.user.userId, vidCreditCost);
-      setRenderJob(jobId, { status: 'failed', error: 'Video generation failed, your credits were refunded.', completedAt: Date.now() });
+      // فلتر الأمان بتاع المزوّد (Seedance E005 / P-Video safety checker / NSFW): رسالة أوضح من "فشل" عام عشان العميل يعرف يغيّر المدخلات
+      const flagged = /E005|flagged as sensitive|sensitive content|safety (checker|filter)|nsfw|content policy/i.test(genErr.message || '');
+      setRenderJob(jobId, { status: 'failed', error: flagged ? 'The model\'s safety filter flagged the video or the character image (real-looking faces in the image or the video are often flagged). Try a different character image — an illustrated or AI-generated character works best — or another model. Your credits were refunded.' : 'Video generation failed, your credits were refunded.', completedAt: Date.now() });
     } finally {
       scheduleRenderJobCleanup(jobId);
     }
