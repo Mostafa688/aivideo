@@ -384,14 +384,23 @@ export const NEW_VIDEO_MODELS = {
     promptOptional: true,
     // schema (سكرين شوت العميل): reference_video 3-10 ثواني و720-2160px للضلع، reference_images لحد 4 مع الفيديو،
     // prompt بيدعم <<<image_1>>> و<<<video_1>>> (حد 2500 حرف)، keep_original_sound الافتراضي true وgenerate_audio ممنوع مع الفيديو المرجعي
-    buildInput: ({ prompt, imageUrl, sourceVideoUrl, tier }) => ({
-      prompt: `Edit <<<video_1>>>: replace the main person with the character shown in <<<image_1>>>. Keep everything else exactly the same: the scene, camera, timing, body movements and expressions; use the character's face, hairstyle and clothing and do not keep the original person's appearance. ${prompt?.trim() || ''}`.trim().slice(0, 2500),
-      mode: tier === '1080p' ? 'pro' : 'standard',
-      reference_video: sourceVideoUrl,
-      video_reference_type: 'base',
-      keep_original_sound: true,
-      reference_images: [imageUrl],
-    }),
+    // لحد 4 صور مع الفيديو (reference_images: "Max 7 without video, 4 with video"): imageUrl + referenceImageUrls (الباقي) بالترتيب من الشمال لليمين
+    maxSwapImages: 4,
+    buildInput: ({ prompt, imageUrl, sourceVideoUrl, tier, referenceImageUrls }) => {
+      const images = [imageUrl, ...(Array.isArray(referenceImageUrls) ? referenceImageUrls : [])].filter(Boolean).slice(0, 4);
+      const refs = images.map((_, i) => `<<<image_${i + 1}>>>`);
+      const who = images.length > 1
+        ? `replace the ${images.length} people, in order from left to right, with the characters shown in ${refs.join(', ')} respectively (the first person on the left becomes ${refs[0]}, and so on)`
+        : `replace the main person with the character shown in ${refs[0]}`;
+      return {
+        prompt: `Edit <<<video_1>>>: ${who}. Keep everything else exactly the same: the scene, camera, timing, body movements and expressions; use each character's face, hairstyle and clothing and do not keep anyone's original appearance. ${prompt?.trim() || ''}`.trim().slice(0, 2500),
+        mode: tier === '1080p' ? 'pro' : 'standard',
+        reference_video: sourceVideoUrl,
+        video_reference_type: 'base',
+        keep_original_sound: true,
+        reference_images: images,
+      };
+    },
   },
   // ✅ Luma Ray 2 — Replicate بيعرضه كـ slug منفصل لكل دقة (مش باراميتر resolution داخل نفس
   // الموديل زي الباقي)، فمفتاح الموديل هنا نفسه بيحدد الجودة

@@ -3050,6 +3050,8 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
     if (!httpUrl(sourceVideoUrl) || !httpUrl(imageUrl)) return res.status(400).json({ error: 'performance_transfer_needs_inputs', message: 'This engine needs BOTH a source video (the motion + speech) and a character image.' });
     sourceVideoUrl = sourceVideoUrl.trim(); imageUrl = imageUrl.trim();
     prompt = typeof prompt === 'string' ? prompt : '';
+    const swapExtra = Array.isArray(req.body.referenceImageUrls) ? req.body.referenceImageUrls.filter(httpUrl).length : 0;
+    if (NEW_VIDEO_MODELS[model].maxSwapImages && swapExtra + 1 > NEW_VIDEO_MODELS[model].maxSwapImages) return res.status(400).json({ error: 'too_many_characters', message: `This engine replaces up to ${NEW_VIDEO_MODELS[model].maxSwapImages} people in one video — use Seedance 2.5 for more.` });
   } else if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
   // ✅ NEW: مدخلات مرجعية (صور/فيديوهات/صوت مرجعي + آخر فريم) للموديلات اللي الـschema بتاعها
   // بيدعمها فعلاً (seedance_2_5، omni_flash_1_1) — بتتحقق كلها هنا قبل أي خصم كريديت
@@ -3188,7 +3190,8 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
         tier: tier || null,
         // (تعديل فيديو موجود = مسار منفصل، بيتجاهل أي مراجع)
         lastFrameUrl: sourceVideoUrl ? null : lastFrameUrl,
-        referenceImageUrls: sourceVideoUrl ? [] : referenceImageUrls,
+        // تعديل فيديو: بيتجاهل المراجع، ما عدا Kling Replace (بياخد لحد 3 صور شخصيات إضافية مع imageUrl = 4 أشخاص)
+        referenceImageUrls: sourceVideoUrl ? (NEW_VIDEO_MODELS[model].maxSwapImages ? referenceImageUrls.slice(0, NEW_VIDEO_MODELS[model].maxSwapImages - 1) : []) : referenceImageUrls,
         referenceVideoUrls: sourceVideoUrl ? [] : referenceVideoUrls,
         referenceAudioUrls: sourceVideoUrl ? [] : referenceAudioUrls,
         generateAudio: typeof generateAudio === 'boolean' ? generateAudio : null,

@@ -2141,11 +2141,11 @@ function CharacterStudioTab({ s }) {
                 <select style={inp} value={tForm.category} onChange={e => setTForm(f => ({ ...f, category: e.target.value }))}>{(cats.templates.length ? cats.templates : ['viral']).map(c => <option key={c} value={c}>{c}</option>)}</select>
               </Field>
               <Field label="Duration (auto from the video)"><input style={inp} value={tForm.duration_sec || ''} readOnly placeholder="—" /></Field>
-              <Field label="People to replace (a video with several people = Seedance 2.5, the customer picks one character per person)">
-                <select style={inp} value={tForm.people || 1} onChange={e => { const n = +e.target.value; setTForm(f => ({ ...f, people: n, engine: n > 1 ? 'seedance_2_5' : f.engine })); }}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}</select>
+              <Field label="People to replace (2–4 people: Kling 3.0 Omni (recommended, video 3–10s) or Seedance; 5+ people: Seedance 2.5 only — the customer picks one character per person)">
+                <select style={inp} value={tForm.people || 1} onChange={e => { const n = +e.target.value; setTForm(f => ({ ...f, people: n, engine: n > 4 ? 'seedance_2_5' : (n > 1 && f.engine === 'prunaai_p_video_replace') ? 'kling_3_0_omni_replace' : f.engine })); }}>{[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n}</option>)}</select>
               </Field>
               <Field label="Engine">
-                <select style={inp} disabled={(tForm.people || 1) > 1} value={tForm.engine} onChange={e => setTForm(f => ({ ...f, engine: e.target.value }))}>
+                <select style={inp} disabled={(tForm.people || 1) > 4} value={tForm.engine} onChange={e => setTForm(f => ({ ...f, engine: e.target.value }))}>
                   <option value="kling_3_0_omni_replace">Kling 3.0 Omni (edit) — RECOMMENDED. Replaces the person via a text instruction, keeps the scene + original sound; the video must be 3–10s; pricier (720p $0.168/s, 1080p $0.224/s)</option>
                   <option value="prunaai_p_video_replace">P-Video Replace — replaces the person, keeps the scene + original audio, up to 30s, cheaper (720p $0.03/s, 1080p $0.06/s)</option>
                   <option value="seedance_2_5">Seedance 2.5 — re-creates the scene from the video (can change looks / several people), video 4–30s, voices regenerated, much pricier</option>
@@ -2175,13 +2175,13 @@ function CharacterStudioTab({ s }) {
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_published: !t.is_published }, t.is_published ? 'Hidden' : 'Published')}>{t.is_published ? 'Hide' : 'Publish'}</button>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_featured: !t.is_featured }, 'Updated')}>{t.is_featured ? 'Unfeature' : 'Feature'}</button>
-                  <select value={['kling_3_0_omni_replace', 'prunaai_p_video_replace', 'seedance_2_5'].includes(t.engine) ? t.engine : ''} disabled={(t.people || 1) > 1} style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 6px' }} onChange={e => send(`${base}/templates/${t.id}`, 'PUT', { engine: e.target.value }, 'Engine changed')}>
+                  <select value={['kling_3_0_omni_replace', 'prunaai_p_video_replace', 'seedance_2_5'].includes(t.engine) ? t.engine : ''} disabled={(t.people || 1) > 4} style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 6px' }} onChange={e => send(`${base}/templates/${t.id}`, 'PUT', { engine: e.target.value }, 'Engine changed')}>
                     <option value="kling_3_0_omni_replace">Kling 3.0 Omni</option>
                     <option value="prunaai_p_video_replace">P-Video Replace</option>
                     <option value="seedance_2_5">Seedance 2.5</option>
                     {!['kling_3_0_omni_replace', 'prunaai_p_video_replace', 'seedance_2_5'].includes(t.engine) && <option value="" disabled>Pick a new engine…</option>}
                   </select>
-                  <select value={t.people || 1} title="People to replace" style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 6px' }} onChange={e => send(`${base}/templates/${t.id}`, 'PUT', { people: +e.target.value }, 'People count changed')}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} {n === 1 ? 'person' : 'people'}</option>)}</select>
+                  <select value={t.people || 1} title="People to replace" style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 6px' }} onChange={e => send(`${base}/templates/${t.id}`, 'PUT', { people: +e.target.value }, 'People count changed')}>{[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n} {n === 1 ? 'person' : 'people'}</option>)}</select>
                   <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 9px' }} onClick={() => confirm('Delete this template?') && send(`${base}/templates/${t.id}`, 'DELETE', null, 'Deleted')}>Delete</button>
                 </div>
               </div>
