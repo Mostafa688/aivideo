@@ -660,6 +660,7 @@ function buildMcpServer(userId, email) {
           return await runVideoJob({ model: single[0], imageUrl: images[0], sourceVideoUrl: videoUrl, prompt: prompt || '', tier: okTier }, 'Character-swapped video');
         }
         if (dur > 30.5) throw new Error(`The video is ${Math.round(dur)}s — replacing people inside the video scene (Seedance 2.5) supports videos up to 30 seconds. Trim it to 30 seconds or less.`);
+        if (dur < 3.7) throw new Error(`The video is ${Math.round(dur * 10) / 10}s — Seedance 2.5 needs a source video of at least 4 seconds.`);
         const mapping = images.map((_, i) => `[Image${i + 1}]`).join(', ');
         const finalPrompt = prompt || `Recreate [Video1] with exactly the same camera, timing, body movements, facial expressions and lip movements, but ${images.length === 1 ? 'the main person' : 'the people in it, in order from left to right,'} must be completely replaced by ${images.length === 1 ? 'the character' : 'the characters'} in ${mapping}: use their face, hairstyle, skin tone and clothing and do not keep the original appearance of anyone. Keep the original setting.`;
         return await runVideoJob({ model: 'seedance_2_5', prompt: finalPrompt, referenceImageUrls: images, referenceVideoUrls: [videoUrl], durationSec: Math.min(30, Math.max(4, Math.ceil(dur))), aspectRatio: aspectRatio || '16:9', tier: tier === '480p' ? '480p' : '720p' }, 'Character-swapped video');

@@ -3060,6 +3060,7 @@ app.post('/api/videos/generate', authMiddleware, renderLimiter, async (req, res)
     try {
       let total = 0;
       for (const u of referenceVideoUrls) total += await measureVideoDurationSec(u);
+      if (model === 'seedance_2_5' && total < 3.7) return res.status(400).json({ error: 'invalid_reference_inputs', message: `Seedance needs a reference video of at least 4 seconds — yours is ${Math.round(total * 10) / 10}s.` });
       const maxTotal = NEW_VIDEO_MODELS[model].refCaps?.videoMaxTotalSec;
       if (maxTotal && total > maxTotal + 0.5) return res.status(400).json({ error: 'invalid_reference_inputs', message: `Reference videos add up to ${Math.round(total)}s — the limit is ${maxTotal}s combined.` });
     } catch (e) {

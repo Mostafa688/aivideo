@@ -29,9 +29,10 @@ export const DEFAULT_TEMPLATE_ENGINE = 'wan_2_2_animate_replace';
 export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
 // محركات تبديل الشخص اللي العميل يقدر يختار منها في القالب (الأدمن بيحدد الافتراضي)
 export const SWAP_ENGINES = ['wan_2_2_animate_replace', 'prunaai_p_video_replace', 'kling_3_0_omni_replace', 'seedance_2_5'];
-const engineOptions = (sec) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && sec <= engineMaxSec(e) + 0.5 && sec >= (getMinClipSeconds(e) || 0) - 0.3).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
+const engineOptions = (sec) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && sec <= engineMaxSec(e) + 0.5 && sec >= engineMinSec(e) - 0.3).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
 const templateMode = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 'reference' : (NEW_VIDEO_MODELS[e]?.swapMode === 'replace' ? 'replace' : 'transfer'));
 const isTemplateEngine = (e) => e === REFERENCE_TEMPLATE_ENGINE || NEW_VIDEO_MODELS[e]?.swapMode === 'replace';
+const engineMinSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 4 : (getMinClipSeconds(e) || 0)); // Seedance (تعديل فيديو): الفيديو الأصلي 4-30 ثانية
 const engineMaxSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? (NEW_VIDEO_MODELS[e]?.refCaps?.videoMaxTotalSec || 30) : (getMaxClipSeconds(e) || 60));
 const billSecFor = (engine, sec) => (engine === REFERENCE_TEMPLATE_ENGINE ? Math.min(30, Math.max(4, Math.ceil(sec))) : Math.max(1, Math.ceil(sec)));
 export const PRESET_CATEGORIES = ['person', 'influencer', 'cartoon', 'animal', 'mascot', 'other'];
@@ -248,6 +249,7 @@ router.post('/admin/templates', adminAuth, async (req, res) => {
     if (!httpUrl(b.source_video_url)) return res.status(400).json({ error: 'source_video_url is required (upload the video first)' });
     const engine = isTemplateEngine(b.engine) ? b.engine : DEFAULT_TEMPLATE_ENGINE;
     const dur = Math.max(1, Math.min(engineMaxSec(engine), Number(b.duration_sec) || 5));
+    if (engine === REFERENCE_TEMPLATE_ENGINE && Number(b.duration_sec) > 0 && Number(b.duration_sec) < 3.7) return res.status(400).json({ error: `Seedance needs a source video of at least 4 seconds — the source video is ${Math.round(Number(b.duration_sec) * 10) / 10}s` });
     const aspect = b.aspect === '16:9' || b.aspect === '9:16' ? b.aspect : null;
     if (Number(b.duration_sec) > engineMaxSec(engine) + 0.5) return res.status(400).json({ error: `This engine supports videos up to ${engineMaxSec(engine)} seconds — the source video is ${Math.round(Number(b.duration_sec))}s` });
     const { rows } = await pool.query(`INSERT INTO trend_templates (title_ar,title_en,description_ar,description_en,category,cover_url,preview_url,source_video_url,duration_sec,engine,is_featured,is_published,sort_order,prompt,aspect) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,

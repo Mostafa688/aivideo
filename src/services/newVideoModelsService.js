@@ -216,11 +216,13 @@ export const NEW_VIDEO_MODELS = {
     refCaps: { images: 30, videos: 10, audios: 10, lastFrame: true, videoMaxTotalSec: 30, audioMaxTotalSec: 30 },
     minDurationSec: 4,
     maxDurationSec: 30,
+    // مع فيديو مرجعي Seedance بيعتبر المهمة "تعديل فيديو" (من كلمات زي replace/recreate في البرومبت) وساعتها بيرفض أي قيمة غير
+    // aspect_ratio: 'adaptive' و duration: -1 (الناتج بيتبع الفيديو الأصلي) — رسالة الخطأ الفعلية من Replicate: "ratio must be adaptive, duration must be -1"
     buildInput: ({ prompt, imageUrl, lastFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls, generateAudio, aspectRatio, durationSec, tier }) => ({
       prompt,
       resolution: tier || '720p',
-      aspect_ratio: lastFrameUrl ? 'adaptive' : (aspectRatio || '16:9'),
-      duration: Math.min(Math.max(durationSec || 5, 4), 30),
+      aspect_ratio: (lastFrameUrl || referenceVideoUrls?.length) ? 'adaptive' : (aspectRatio || '16:9'),
+      duration: referenceVideoUrls?.length ? -1 : Math.min(Math.max(durationSec || 5, 4), 30),
       ...(generateAudio === false ? { generate_audio: false } : {}),
       ...(imageUrl ? { image: imageUrl } : {}),
       ...(lastFrameUrl ? { last_frame_image: lastFrameUrl } : {}),
