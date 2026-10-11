@@ -43,6 +43,8 @@ export async function initCharacterStudioTables() {
     category TEXT NOT NULL DEFAULT 'viral', cover_url TEXT, preview_url TEXT, source_video_url TEXT NOT NULL, duration_sec NUMERIC NOT NULL DEFAULT 5,
     engine TEXT NOT NULL DEFAULT 'prunaai_p_video_animate', is_featured INTEGER DEFAULT 0, is_published INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0,
     uses_count INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`);
+  // P-Video Animate مقصور على شات الايجنت: أي قالب قديم عليه المحرك ده (ومدته داخل حد Wan Replace) بيتحوّل تلقائي لـ Wan 2.2 Animate Replace
+  await pool.query(`UPDATE trend_templates SET engine = 'wan_2_2_animate_replace' WHERE engine = 'prunaai_p_video_animate' AND duration_sec <= 30`).catch(() => {});
   await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS prompt TEXT`);
   await pool.query(`ALTER TABLE trend_templates ADD COLUMN IF NOT EXISTS aspect TEXT`);
   await pool.query(`ALTER TABLE character_presets ADD COLUMN IF NOT EXISTS hidden_refs JSONB DEFAULT '[]'::jsonb`);

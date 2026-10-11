@@ -2131,7 +2131,7 @@ function CharacterStudioTab({ s }) {
         <>
           <div style={s.card}>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#c4b5fd', marginBottom: 4 }}>➕ New trend template</div>
-            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام. العميل يختار شخصيته، وبتتعمل بواحد من محركين: Wan 2.2 Animate Replace بيبدّل الشخص اللي في الفيديو (لازم شخص واحد) ويحافظ على المشهد والصوت الأصلي (أقصى 30 ثانية، رخيص)، أو Seedance 2.5 بيعيد بناء المشهد وبيقدر يغيّر الشكل زي لون الشعر والعضلات (أقصى 30 ثانية، أغلى). P-Video Animate مقصور على شات الايجنت. السعر بيتحسب لوحده من مدة الفيديو.</p>
+            <p style={{ fontSize: 11.5, color: '#6b7280', margin: '0 0 14px' }}>ارفع الفيديو اللي فيه الحركة والكلام. العميل يختار شخصيته، وبتتعمل بواحد من محركين: Wan 2.2 Animate Replace بيبدّل الشخص اللي في الفيديو (لازم شخص واحد) ويحافظ على المشهد والصوت الأصلي (أقصى 30 ثانية، رخيص)، أو Seedance 2.5 بيعيد بناء المشهد وبيقدر يغيّر الشكل زي لون الشعر والعضلات (أقصى 30 ثانية، أغلى). السعر بيتحسب لوحده من مدة الفيديو.</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }} className="admin-grid-2">
               <Field label="Title (Arabic)"><input style={inp} value={tForm.title_ar} onChange={e => setTForm(f => ({ ...f, title_ar: e.target.value }))} placeholder="رقصة الترند..." /></Field>
               <Field label="Title (English)"><input style={inp} value={tForm.title_en} onChange={e => setTForm(f => ({ ...f, title_en: e.target.value }))} placeholder="Trending dance..." /></Field>
@@ -2166,14 +2166,14 @@ function CharacterStudioTab({ s }) {
               <div key={t.id} style={{ ...s.card, padding: 10, margin: 0, opacity: t.is_published ? 1 : 0.55 }}>
                 {t.cover_url ? <img src={t.cover_url} alt="" style={{ width: '100%', aspectRatio: '9/12', objectFit: 'cover', borderRadius: 8 }} /> : <div style={{ height: 120, background: '#111', borderRadius: 8 }} />}
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', margin: '8px 0 2px' }}>{t.title_en} {t.is_featured ? '⭐' : ''}</div>
-                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.engine === 'seedance_2_5' ? '#fbbf24' : '#34d399', margin: '0 0 2px' }}>{t.engine === 'seedance_2_5' ? 'Seedance 2.5 (re-creates the scene, can change looks)' : t.engine === 'wan_2_2_animate_replace' ? 'Wan 2.2 Animate Replace (replaces the person, keeps scene + audio)' : 'P-Video Animate (animates the character image)'}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.engine === 'seedance_2_5' ? '#fbbf24' : '#34d399', margin: '0 0 2px' }}>{t.engine === 'seedance_2_5' ? 'Seedance 2.5 (re-creates the scene, can change looks)' : t.engine === 'wan_2_2_animate_replace' ? 'Wan 2.2 Animate Replace (replaces the person, keeps scene + audio)' : '⚠️ Old engine — pick Wan Replace or Seedance'}</div>
                 <div style={{ fontSize: 11, color: '#9ca3af' }}>{t.category} · {Math.round(t.duration_sec)}s · {Object.entries(t.costs || {}).map(([k, v]) => `${k}: ${v}cr`).join(' · ')} · used {t.uses_count}</div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_published: !t.is_published }, t.is_published ? 'Hidden' : 'Published')}>{t.is_published ? 'Hide' : 'Publish'}</button>
                   <button style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 9px' }} onClick={() => send(`${base}/templates/${t.id}`, 'PUT', { is_featured: !t.is_featured }, 'Updated')}>{t.is_featured ? 'Unfeature' : 'Feature'}</button>
-                  <select value={t.engine} style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 6px' }} onChange={e => send(`${base}/templates/${t.id}`, 'PUT', { engine: e.target.value }, 'Engine changed')}>
+                  <select value={t.engine === 'prunaai_p_video_animate' ? '' : t.engine} style={{ ...s.btn('#374151'), fontSize: 11, padding: '4px 6px' }} onChange={e => send(`${base}/templates/${t.id}`, 'PUT', { engine: e.target.value }, 'Engine changed')}>
                     <option value="wan_2_2_animate_replace">Wan Replace</option>
-                    {t.engine === 'prunaai_p_video_animate' && <option value="prunaai_p_video_animate" disabled>P-Video Animate (legacy)</option>}
+                    {t.engine === 'prunaai_p_video_animate' && <option value="" disabled>Pick a new engine…</option>}
                     <option value="seedance_2_5">Seedance 2.5</option>
                   </select>
                   <button style={{ ...s.btn('#7f1d1d'), fontSize: 11, padding: '4px 9px' }} onClick={() => confirm('Delete this template?') && send(`${base}/templates/${t.id}`, 'DELETE', null, 'Deleted')}>Delete</button>
