@@ -162,10 +162,10 @@ export const REPLICATE_MODEL_COSTS = {
   // السعر لكل ثانية من الفيديو الناتج: 720p $0.03، 1080p $0.06. maxClipSec سقف أمان مننا (الصفحة مش بتذكر حد)
   prunaai_p_video_replace: { label: 'P-Video Replace', unit: 'second', usdCost: 0.03, maxClipSec: 30,
                        tiers: { '720p': 0.03, '1080p': 0.06 } },
-  // تبديل الشخص بـKling 3.0 Omni (وضع تعديل الفيديو: reference_video + reference_images). ⚠️ السعر هنا هو سعر Kling Omni العادي
-  // (مع صوت) — لسه ماتأكدش من سعر وضع التعديل بفيديو مدخل على صفحة الموديل. maxClipSec = حد Kling (15 ثانية)
-  kling_3_0_omni_replace: { label: 'Kling 3.0 Omni Replace', unit: 'second', usdCost: 0.224, maxClipSec: 15,
-                       tiers: { '720p': 0.224, '1080p': 0.28 } },
+  // تبديل الشخص بـKling 3.0 Omni (وضع تعديل الفيديو: reference_video + reference_images). الأسعار من سكرين شوت العميل لصفحة الموديل:
+  // بدون صوت 720p $0.168 / 1080p $0.224 (التعديل بيمنع generate_audio فبيتحاسب بدون صوت). الفيديو المرجعي لازم 3-10 ثواني
+  kling_3_0_omni_replace: { label: 'Kling 3.0 Omni Replace', unit: 'second', usdCost: 0.168, maxClipSec: 10, minClipSec: 3,
+                       tiers: { '720p': 0.168, '1080p': 0.224 } },
   decart_lucy_edit_2: { label: 'Lucy Edit 2', unit: 'second', usdCost: 0.04, maxClipSec: 1800 },
 
   // ✅ CONFIRMED (سكرين شوت العميل لصفحة الـinput schema الحقيقية بعد كده): Kling Video 3.0
@@ -313,6 +313,11 @@ export function getPerSecondCreditCost(modelKey, durationSec, tier = null, { vid
 /** Real max seconds per single clip for a video model (Replicate/provider limit), or null if not capped. */
 export function getMaxClipSeconds(modelKey) {
   return REPLICATE_MODEL_COSTS[modelKey]?.maxClipSec ?? null;
+}
+
+/** Real minimum source-video seconds for a model that requires one (e.g. Kling reference video: 3s), or null. */
+export function getMinClipSeconds(modelKey) {
+  return REPLICATE_MODEL_COSTS[modelKey]?.minClipSec ?? null;
 }
 
 // عمليات ffmpeg الداخلية البحتة (مفيهاش أي فاتورة API خارجية) — بتاخد AUX_PROFIT_MULTIPLIER

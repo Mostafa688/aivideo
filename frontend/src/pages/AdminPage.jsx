@@ -2145,7 +2145,7 @@ function CharacterStudioTab({ s }) {
                 <select style={inp} value={tForm.engine} onChange={e => setTForm(f => ({ ...f, engine: e.target.value }))}>
                   <option value="wan_2_2_animate_replace">Wan 2.2 Animate Replace — REPLACES the person in the video with the character and keeps the video scene + original audio (video must have ONE person), up to 30s, cheap (480p $0.02/s, 720p $0.05/s)</option>
                   <option value="prunaai_p_video_replace">P-Video Replace — replaces the person, keeps the scene + original audio, up to 30s (720p $0.03/s, 1080p $0.06/s)</option>
-                  <option value="kling_3_0_omni_replace">Kling 3.0 Omni (edit) — replaces the person via a text instruction, keeps the scene, up to 15s, pricier (720p ~$0.224/s, 1080p ~$0.28/s)</option>
+                  <option value="kling_3_0_omni_replace">Kling 3.0 Omni (edit) — replaces the person via a text instruction, keeps the scene, video must be 3–10s, pricier (720p $0.168/s, 1080p $0.224/s)</option>
                   <option value="seedance_2_5">Seedance 2.5 — keeps the video scene and replaces the person (can also change looks: hair/eyes colour, muscles, effects), up to 30s, much pricier</option>
                 </select>
               </Field>

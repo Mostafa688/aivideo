@@ -14,7 +14,7 @@ import { adminAuth } from './adminAuthMiddleware.js';
 import { authMiddleware } from './authRoutes.js';
 import { uploadBufferToR2 } from './audioVideoService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
-import { getPerSecondCreditCost, getQualityTiers, getMaxClipSeconds } from './creditPricingEngine.js';
+import { getPerSecondCreditCost, getQualityTiers, getMaxClipSeconds, getMinClipSeconds } from './creditPricingEngine.js';
 import { groqVision, toVisionDataUrl, locateFaceBox } from './visionService.js';
 
 const { Pool } = pkg;
@@ -29,7 +29,7 @@ export const DEFAULT_TEMPLATE_ENGINE = 'wan_2_2_animate_replace';
 export const REFERENCE_TEMPLATE_ENGINE = 'seedance_2_5';
 // محركات تبديل الشخص اللي العميل يقدر يختار منها في القالب (الأدمن بيحدد الافتراضي)
 export const SWAP_ENGINES = ['wan_2_2_animate_replace', 'prunaai_p_video_replace', 'kling_3_0_omni_replace', 'seedance_2_5'];
-const engineOptions = (sec) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && sec <= engineMaxSec(e) + 0.5).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
+const engineOptions = (sec) => SWAP_ENGINES.filter(e => NEW_VIDEO_MODELS[e] && sec <= engineMaxSec(e) + 0.5 && sec >= (getMinClipSeconds(e) || 0) - 0.3).map(e => ({ engine: e, mode: templateMode(e), tiers: tiersFor(e), costs: costsFor(e, sec) }));
 const templateMode = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? 'reference' : (NEW_VIDEO_MODELS[e]?.swapMode === 'replace' ? 'replace' : 'transfer'));
 const isTemplateEngine = (e) => e === REFERENCE_TEMPLATE_ENGINE || NEW_VIDEO_MODELS[e]?.swapMode === 'replace';
 const engineMaxSec = (e) => (e === REFERENCE_TEMPLATE_ENGINE ? (NEW_VIDEO_MODELS[e]?.refCaps?.videoMaxTotalSec || 30) : (getMaxClipSeconds(e) || 60));
