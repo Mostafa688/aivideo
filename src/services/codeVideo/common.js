@@ -58,7 +58,7 @@ export const decimalsOf = (v) => { const m = String(v).split('.')[1]; return m ?
 
 /** ترتيب كلمات في أسطر بعرض حقيقي (من measurer) — بيرجّع الأسطر + إزاحة x لكل كلمة (من مركز السطر) */
 export function layoutWords(words, size, maxW, mm, rtl) {
-  const sp = mm.space(size); const lines = []; let cur = [], curW = 0;
+  const sp = rtl ? Math.max(mm.space(size), size * 0.3) : mm.space(size); const lines = []; let cur = [], curW = 0;
   words.forEach((wd, i) => {
     const ww = mm.word(wd.text, size);
     const add = cur.length ? sp + ww : ww;

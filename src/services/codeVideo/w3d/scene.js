@@ -137,7 +137,7 @@ function captionStamp(c, tokens, t, emphasis) {
       const wd = words[it.i], e = ent(t, wd.start - 0.04, 0.3); if (t < wd.start - 0.05) continue;
       const x = w / 2 + it.cx, y = y0 + li * lh + (1 - Math.min(1, e.p)) * 22 * s, isE = emph.has(clean(wd.text)) || lastIdx.has(it.i);
       if (isE) o += `<rect x="${f1(x - it.width / 2 - size * 0.16)}" y="${f1(y - size * 0.86)}" width="${f1(it.width + size * 0.32)}" height="${f1(size * 1.12)}" rx="${f1(size * 0.14)}" fill="#ffd23f" opacity="${f2(e.o)}" transform="rotate(-1 ${f1(x)} ${f1(y)})"/>`;
-      o += txt(c, wd.text, x, y, size, { weight: 900, fill: isE ? '#16161a' : '#ffffff', opacity: e.o, stroke: isE ? null : 'rgba(10,12,20,0.75)', strokeW: isE ? 0 : size * 0.12 });
+      o += txt(c, wd.text, x, y, size, { weight: 900, fill: isE ? '#16161a' : '#ffffff', opacity: e.o, stroke: isE ? null : 'rgba(10,12,20,0.8)', strokeW: isE ? 0 : size * 0.1 });
     }
   });
   return o;
