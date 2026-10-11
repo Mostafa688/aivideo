@@ -156,6 +156,21 @@ export function applyCharacterRefs(marker, savedCharacters = []) {
   return changed;
 }
 
+// لما العميل يكتب "اعملي فيديو 10 ثواني بال prompt ده : <البرومبت>" بنبعت للموديل البرومبت نفسه بس — مش جملة التعليمة اللي قبله
+// (كان بيتبعت الكلام العربي كله جوه برومبت الفيديو). بيشيل أول سطر/جملة تعليمة بتنتهي بـ ":" وفيها كلمة prompt/برومبت، أو سطر عربي قصير بينتهي بـ ":"
+export function stripPromptWrapper(text) {
+  const t = String(text || '').trim();
+  const keep = (rest) => (rest.trim().length >= 120 ? rest.trim() : t);
+  const m = t.match(/^[^\n:：]{0,160}?(?:prompt|برومبت|بروميت|برومت)[^\n:：]{0,40}[:：]\s*/i);
+  if (m) return keep(t.slice(m[0].length));
+  const nl = t.indexOf('\n');
+  if (nl > 0 && nl < 170) {
+    const first = t.slice(0, nl).trim();
+    if (/[:：]$/.test(first) && /[\u0600-\u06FF]/.test(first)) return keep(t.slice(nl + 1));
+  }
+  return t;
+}
+
 const router = express.Router();
 
 // ✅ NEW: بيلاقي نهاية أول JSON object حقيقي جوه نص (بعدّ الأقواس/الاقتباسات) بدل ما
@@ -1191,12 +1206,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // برومبت قديم لمشهد سابق كان ممكن يتطبق غلط على طلب جديد مختلف تمامًا. دلوقتي بيوقف البحث
     // فورًا أول ما يلاقي رسالة قديمة طويلة (>150 حرف) مش هي نفسها برومبت كامل — طول كده يبقى
     // على الأغلب طلب تاني مختلف اتحط في النص، مش مجرد تأكيد قصير ("تمام"/"ابدأ"/"لا مش عايز صور")
-    let rawPromptOverride = looksLikeCompleteGenerationPrompt(message) ? message.trim() : null;
+    let rawPromptOverride = looksLikeCompleteGenerationPrompt(message) ? stripPromptWrapper(message) : null;
     if (!rawPromptOverride && Array.isArray(history)) {
       for (let i = history.length - 1; i >= 0 && i >= history.length - 8; i--) {
         const h = history[i];
         if (h?.role !== 'user' || typeof h.content !== 'string') continue;
-        if (looksLikeCompleteGenerationPrompt(h.content)) { rawPromptOverride = h.content.trim(); break; }
+        if (looksLikeCompleteGenerationPrompt(h.content)) { rawPromptOverride = stripPromptWrapper(h.content); break; }
         if (h.content.trim().length > 150) break; // رسالة تانية جوهرية اتحطت في النص — بلاش نكمل لورا
       }
     }
