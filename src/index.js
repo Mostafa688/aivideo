@@ -1450,7 +1450,7 @@ app.post('/api/upload-video-link', authMiddleware, renderLimiter, videoUpload.si
       return res.status(400).json({ error: 'Could not determine video duration.' });
     }
     // ?use=swap: فيديو لتبديل الشخصية (P-Video Animate) — سقفه 60 ثانية بدل 15 بتاعة تعديل الفيديو
-    const linkMaxSec = req.query.use === 'swap' ? (getMaxClipSeconds('prunaai_p_video_animate') || 60) : VIDEO_EDIT_MAX_SECONDS;
+    const linkMaxSec = req.query.use === 'swap' ? (getMaxClipSeconds('wan_2_2_animate_replace') || 30) : VIDEO_EDIT_MAX_SECONDS;
     if (durationSec > linkMaxSec + 0.5) {
       fs.unlinkSync(tmpUploadPath);
       return res.status(400).json({ error: `Video is ${durationSec.toFixed(1)}s — max allowed for ${req.query.use === 'swap' ? 'character swap' : 'video-to-video editing'} is ${linkMaxSec} seconds.` });

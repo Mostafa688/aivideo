@@ -507,11 +507,11 @@ export default function SettingsPage({ onBack, user, onNavigate }) {
 
               <Section title="Upload video, get link" icon={<Film size={14} strokeWidth={2} />}>
                 <p style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.7, margin: '0 0 14px' }}>
-                  MCP tools (like in Claude) can't accept an uploaded file directly — they can only work with a public link. Upload your video here (max 15 seconds, or 60 seconds if you tick the character-swap option) to get a direct link, then paste that link when asking Claude to edit your video or to put a character into it.
+                  MCP tools (like in Claude) can't accept an uploaded file directly — they can only work with a public link. Upload your video here (max 15 seconds, or 30 seconds if you tick the character-swap option) to get a direct link, then paste that link when asking Claude to edit your video or to put a character into it.
                 </p>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text2)', margin: '0 0 12px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={videoLinkForSwap} onChange={(e) => setVideoLinkForSwap(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
-                  This video is for a character swap (up to 60 seconds)
+                  This video is for a character swap (up to 30 seconds)
                 </label>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
                   {videoLinkUploading ? <Loader2 size={14} className="spinning" /> : <Film size={14} strokeWidth={2} />} {videoLinkUploading ? 'Uploading...' : 'Choose video file'}
