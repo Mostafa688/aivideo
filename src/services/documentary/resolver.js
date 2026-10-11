@@ -12,7 +12,7 @@ async function pool(items, limit, fn) {
 const STOP = new Set('the a an and or of in on at to for with from by as is was were are be been it this that these those his her their its into over about after before than then them they he she we you i'.split(' '));
 const toks = (s) => String(s || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2 && !STOP.has(w));
 
-export function scoreCandidate(c, beatText, queries, { wantKind = 'either', used = new Set() } = {}) {
+export function scoreCandidate(c, beatText, queries, { wantKind = 'either', used = new Set(), brief = null } = {}) {
   const hay = new Set(toks(`${c.title} ${c.description}`));
   const qTok = new Set(toks((queries || []).join(' ')));
   const bTok = new Set(toks(beatText));
@@ -23,6 +23,11 @@ export function scoreCandidate(c, beatText, queries, { wantKind = 'either', used
   if (c.kind === 'video' && (c.width || 0) >= 1280) s += 1;
   if (c.kind === 'image' && (c.width || 0) >= 1600) s += 1;
   if (c.source === 'wikimedia' || c.source === 'archive' || c.source === 'nasa') s += 0.5;
+  if (brief?.subject) { // موضوع الفيلم الحقيقي: مكافأة لو العنوان/الوصف فيه الموضوع، وخصم لو فيه حاجة قال الملخص "ما تعرضهاش"
+    const subj = toks(brief.subject);
+    if (subj.length && subj.every(t => hay.has(t))) s += 4; else if (subj.some(t => hay.has(t))) s += 1.5;
+    for (const a of brief.avoid || []) { const at = toks(a); if (at.length && at.every(t => hay.has(t))) { s -= 5; break; } }
+  }
   if (used.has(c.id)) s -= 6;
   return s;
 }
@@ -67,13 +72,14 @@ const kindsFor = (plan, group) => {
   return ['video', 'image'];
 };
 
-async function llmRank(items, deps) {
+async function llmRank(items, deps, brief = null) {
   const ask = deps.llmJson || llmJson;
+  const briefLine = brief?.subject ? `The whole documentary is about: ${brief.subject}${brief.aliases?.length ? ` (the narration may call it: ${brief.aliases.join(', ')})` : ''}.${brief.avoid?.length ? ` Never pick: ${brief.avoid.join(', ')}.` : ''} A sentence that only refers to it indirectly ("a huge creature", "this animal", "he") means THIS subject — pick footage of it, not of a literal reading of the vague wording.\n\n` : '';
   const picks = new Map();
   const CH = 8;
   for (let from = 0; from < items.length; from += CH) {
     const chunk = items.slice(from, from + CH);
-    const user = chunk.map(it => `Beat [${it.i}]: "${it.text}"\nCandidates:\n` + it.cands.slice(0, 8).map(c => `- ${c.id} | ${c.kind} | ${String(c.title).slice(0, 80)} | ${String(c.description).slice(0, 110)}`).join('\n')).join('\n\n');
+    const user = briefLine + chunk.map(it => `Beat [${it.i}]: "${it.text}"\nCandidates:\n` + it.cands.slice(0, 8).map(c => `- ${c.id} | ${c.kind} | ${String(c.title).slice(0, 80)} | ${String(c.description).slice(0, 110)}`).join('\n')).join('\n\n');
     try {
       const r = await ask({
         system: 'You pick the best photo/video for each documentary narration beat. For each beat choose up to 3 candidate ids that visually match what the sentence says (right subject, place, era, mood), best first. Prefer concrete matches over generic ones; skip candidates that show something unrelated or contradictory. Return ONLY JSON: {"picks":[{"i":0,"ids":["id1","id2"]}]}. Use [] if nothing fits.',
@@ -88,7 +94,7 @@ async function llmRank(items, deps) {
 /**
  * @returns {{assets: Array<null|{file,kind,width,height,duration,credit,license,source,pageUrl}>, credits: string[]}}
  */
-export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, onProgress = () => {}, concurrency = 4 }, deps = {}) {
+export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, onProgress = () => {}, concurrency = 4, brief = null }, deps = {}) {
   const orientation = ratio === '9:16' ? 'portrait' : 'landscape';
   const search = deps.searchCandidates || searchCandidates;
   const mat = deps.materialize || materialize;
@@ -113,14 +119,14 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
     }
     const seen = new Set();
     cands = cands.filter(c => (seen.has(c.id) ? false : seen.add(c.id)));
-    cands.sort((x, y) => scoreCandidate(y, b.text, plan.queries, { wantKind: plan.kind, used }) - scoreCandidate(x, b.text, plan.queries, { wantKind: plan.kind, used }));
+    cands.sort((x, y) => scoreCandidate(y, b.text, plan.queries, { wantKind: plan.kind, used, brief }) - scoreCandidate(x, b.text, plan.queries, { wantKind: plan.kind, used, brief }));
     found.set(i, cands);
     onProgress({ stage: 'search', done: ++done, total: need.length });
   });
 
   // B) ترتيب بالـLLM
   const rankInput = need.map(({ b, i }) => ({ i, text: b.text, cands: found.get(i) || [] })).filter(x => x.cands.length > 1);
-  const picks = deps.skipLlmRank ? new Map() : await llmRank(rankInput, deps);
+  const picks = deps.skipLlmRank ? new Map() : await llmRank(rankInput, deps, brief);
   const ordered = new Map();
   for (const { i } of need) {
     const cands = found.get(i) || [];

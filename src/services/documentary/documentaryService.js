@@ -515,7 +515,7 @@ async function produce({ id, userId, input, workDir, prog }) {
   // 4) الأصول
   const plans = plan.plans;
   if (input.sources === 'stock') plans.forEach(p => { if (p.visual === 'archive' || p.visual === 'nasa') p.visual = 'stock'; });
-  const { assets, allCredits, boards } = await resolveAssets({ beats, plans, ratio: input.ratio, assetsDir: path.join(workDir, 'assets'), onProgress: ({ stage, done, total: t }) => prog('assets', stage === 'search' ? (done / t) * 0.3 : 0.3 + (done / t) * 0.7) });
+  const { assets, allCredits, boards } = await resolveAssets({ beats, plans, brief: plan.brief, ratio: input.ratio, assetsDir: path.join(workDir, 'assets'), onProgress: ({ stage, done, total: t }) => prog('assets', stage === 'search' ? (done / t) * 0.3 : 0.3 + (done / t) * 0.7) });
   await prog('assets', 1);
   // إحصائيات المشاهد (للتشخيص): كام خريطة/لوحة اتخططت وكام اتحل فعليًا، ونسبة الأرشيف — بتتسجل في اللوج وفي meta بتاع الفيلم
   const sceneStats = (() => {

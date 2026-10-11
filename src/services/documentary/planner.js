@@ -240,6 +240,7 @@ const SYSTEM = `You are the editor of a documentary YouTube channel. You receive
 Return ONLY JSON: {"title":"short documentary title","mood":"epic|documentary|tension|emotional|chill|upbeat","beats":[{"i":0,"visual":"stock|archive|nasa|text","kind":"video|image|either","queries":["specific search","broader search"],"grade":"none|bw_archive|sepia|cinematic|warm|cool","emphasis":["word"],"transition":"cut|dip|flash","chapter":"Chapter title (only on the first beat of a new chapter)","template":{"name":"...","data":{}}}]}
 
 Rules:
+- SUBJECT RESOLUTION — you are given a DOCUMENTARY SUBJECT brief (what the whole film is really about, plus the indirect phrases the narration uses for it). Narration often refers to its subject indirectly ("a huge creature", "this animal", "the beast", "he", "the machine", "that place"). NEVER search for the vague wording itself: resolve every such reference to the documentary's real subject using the whole film's context and write queries for the concrete subject (for a film about sperm whales, "a huge creature rose from the deep" → "sperm whale surfacing", not "huge creature" or "giant monster"). Every query must stay on the real subject: its real footage, its habitat, its behaviour, its scale compared to real references — never fantasy monsters, CGI or unrelated lookalikes.
 - ARCHIVE FIRST — the film must feel like a real archival documentary: whenever the topic is a true story, history, a biography, war, science, an investigation or any real event, MORE THAN HALF of the beats that show footage must be "archive" (real photographs, newsreels, government/archival films, documents, newspapers, paintings, engravings, artefacts, portraits of the specific people/places/events/objects the sentence names). Use "stock" only for abstract ideas or generic atmosphere that has no specific archival subject. For events after 1895 prefer kind "video" (newsreels, archival films), for older periods "image" (paintings, engravings, artefacts, manuscripts).
 - "visual": "archive" = real historical photos/films, named people, places, events, documents (queries MUST include proper names and years, e.g. "Winston Churchill 1941"); "nasa" = space, rockets, planets, astronauts; "stock" = generic b-roll that illustrates the idea (nature, cities, machines, crowds); "text" = a motion-graphic scene with no footage (use sparingly).
 - Queries are English search terms for photo/video libraries (2-3, from specific to broad). Never ask for text, logos, maps with labels, or identifiable private individuals. Show what the sentence concretely says.
@@ -254,14 +255,42 @@ Rules:
 - "transition": mostly "cut"; "dip" at chapter changes; "flash" for sudden dramatic moments.
 Output every beat index given, in order.`;
 
-export async function planBeats({ beats, language = 'en', topic = '', onProgress = () => {} }, deps = {}) {
+// ── 4.5) ملخص موضوع الفيلم: النص بيشير للموضوع بعبارات غير مباشرة ("كائن ضخم"، "هذا الحيوان"، "هو")؛ لو الـLLM شاف جملة جملة بس
+// هيدوّر على الوصف نفسه ("huge creature") بدل الموضوع الحقيقي (حوت العنبر). بنقرا السكريبت كله مرة وبنطلّع الموضوع الحقيقي ومرادفاته
+// ومصطلحات بحث محددة، وبتتحط في كل دفعة تخطيط وفي ترتيب اللقطات.
+const BRIEF_SYSTEM = `You read the whole narration of a documentary and identify what the film is REALLY about, so that the right footage can be found for sentences that only refer to the subject indirectly.
+Return ONLY JSON: {"subject":"precise English name of the main subject (species with its common name, person with full name, place, event, object or phenomenon)","kind":"animal|person|place|event|science|object|other","aliases":["indirect phrases the narration uses for it, in the narration language and in English, e.g. huge creature"],"searchTerms":["4-8 concrete English search phrases that a stock/archive footage library would have real clips for, specific to the subject (behaviour, habitat, scale, close-ups)"],"avoid":["things that must NOT be shown, e.g. cartoon monsters, unrelated animals"]}
+Be specific (\"sperm whale\", not \"whale\" or \"sea creature\"). If the film has no single clear subject (a mix of topics) return {"subject":""}.`;
+
+export async function briefSubject({ beats = [], topic = '', language = 'en' }, deps = {}) {
   const ask = deps.llmJson || llmJson;
+  const script = beats.map(b => b.text).join(' ').slice(0, 7000);
+  if (!script.trim() && !topic) return null;
+  try {
+    const r = await ask({ system: BRIEF_SYSTEM, user: `Language of the narration: ${language}.${topic ? ` Topic/title: ${topic}.` : ''}\nNarration:\n${script}`, maxTokens: 700, temperature: 0.1 });
+    const list = (v, n, len) => (Array.isArray(v) ? v : []).map(x => clip(String(x || ''), len)).filter(Boolean).slice(0, n);
+    const subject = clip(String(r?.subject || ''), 80);
+    if (!subject) return null;
+    return { subject, kind: clip(String(r.kind || 'other'), 20), aliases: list(r.aliases, 10, 50), searchTerms: list(r.searchTerms, 8, 70), avoid: list(r.avoid, 6, 50) };
+  } catch (e) { console.warn('[Documentary/planner] subject brief failed:', e.message); return null; }
+}
+
+export function briefToPrompt(brief) {
+  if (!brief?.subject) return '';
+  return `DOCUMENTARY SUBJECT (what the whole film is about): ${brief.subject}${brief.aliases?.length ? `. The narration also refers to it indirectly as: ${brief.aliases.join(' | ')}` : ''}.${brief.searchTerms?.length ? ` Footage that exists for it: ${brief.searchTerms.join(' | ')}.` : ''}${brief.avoid?.length ? ` Never show: ${brief.avoid.join(' | ')}.` : ''}`;
+}
+
+
+export async function planBeats({ beats, language = 'en', topic = '', brief: givenBrief = undefined, onProgress = () => {} }, deps = {}) {
+  const ask = deps.llmJson || llmJson;
+  const brief = givenBrief !== undefined ? givenBrief : await briefSubject({ beats, topic, language }, deps);
+  const briefLine = briefToPrompt(brief);
   const plans = new Array(beats.length).fill(null);
   let title = topic || '', mood = 'documentary';
   const CH = 18;
   for (let from = 0; from < beats.length; from += CH) {
     const chunk = beats.slice(from, from + CH);
-    const user = `Language of the narration: ${language}. ${topic ? `Topic: ${topic}.` : ''}\n${from > 0 ? `(Continuing; earlier beats already planned. Do not repeat the title.)\n` : ''}Beats:\n` + chunk.map(b => `[${b.i}] (${b.dur.toFixed(1)}s) ${b.text}`).join('\n');
+    const user = `Language of the narration: ${language}. ${topic ? `Topic: ${topic}.` : ''}${briefLine ? `\n${briefLine}` : ''}\n${from > 0 ? `(Continuing; earlier beats already planned. Do not repeat the title.)\n` : ''}Beats:\n` + chunk.map(b => `[${b.i}] (${b.dur.toFixed(1)}s) ${b.text}`).join('\n');
     try {
       const r = await ask({ system: SYSTEM, user, maxTokens: 5000 });
       if (from === 0) { title = clip(r.title, 90) || title; if (MOODS.includes(r.mood)) mood = r.mood; }
@@ -277,9 +306,9 @@ export async function planBeats({ beats, language = 'en', topic = '', onProgress
   enforcePacing(plans, beats);
   // لو الإيقاع شال خريطة/لوحة (مشهدين نصيين ورا بعض مثلًا) نعوّضها في مكان تاني مناسب بنفس شروط التأريض، وبعدها نطبّق الإيقاع تاني
   try { await ensureRichScenes({ beats, plans, language, ask }); enforcePacing(plans, beats); } catch (e) { console.warn('[Documentary/planner] refill pass failed:', e.message); }
-  try { await ensureArchiveShare({ beats, plans, topic: topic || title, language, ask }); } catch (e) { console.warn('[Documentary/planner] archive upgrade failed:', e.message); }
+  try { await ensureArchiveShare({ beats, plans, topic: [topic || title, brief?.subject].filter(Boolean).join(' — '), language, ask }); } catch (e) { console.warn('[Documentary/planner] archive upgrade failed:', e.message); }
   try { injectMotion({ beats, plans }); } catch (e) { console.warn('[Documentary/planner] motion injection failed:', e.message); }
-  return { title, mood, plans };
+  return { title, mood, plans, brief };
 }
 
 
