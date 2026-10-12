@@ -40,8 +40,8 @@ export const ENVS = {
     parts.push(...put('stove', 1, 3.65), ...put('fridge', -6.5, 3.6), ...put('counter', -6, 1.6, { yaw: Math.PI / 2 }));
     for (const x of [-4, -2, 0, 2, 4]) parts.push(box('#c2874a', 1.95, 0.9, 0.4, x, 3.6, 3.95));
     parts.push(box('#9bd1ff', 2.2, 1.3, 0.05, -2.5, 2.6, 4.08), box('#f8fafc', 2.4, 0.08, 0.1, -2.5, 3.28, 4.05));
-    parts.push(...put('table', 0, 0.9, { scale: 1.1 }), ...put('chair', -1.4, 0.9, { yaw: Math.PI / 2 }), ...put('chair', 1.4, 0.9, { yaw: -Math.PI / 2 }));
-    return { parts, sky: 'indoor', fog: '#f5f7fb', light: { ambient: 0.68 }, anchors: { center: [0, -1], island: [0, 0.2], stove: [1, 2.9], counter: [-2, 2.9], fridge: [-6.5, 2.9], sink: [-3.5, 2.9], door: [7, -4], tableSeatLeft: [-1.3, 0.9], tableSeatRight: [1.3, 0.9] }, cam: { dist: 8, height: 3, angle: 12, bounds: [-9, 9, -9, 3.6] } };
+    parts.push(...put('table', 5.2, -0.5, { scale: 1.1 }), ...put('chair', 3.9, -0.5, { yaw: Math.PI / 2 }), ...put('chair', 6.5, -0.5, { yaw: -Math.PI / 2 }));
+    return { parts, sky: 'indoor', fog: '#f5f7fb', light: { ambient: 0.68 }, anchors: { center: [0, -1], openFloor: [0, 0.4], stove: [1, 2.9], counter: [-2, 2.9], fridge: [-6.5, 2.9], sink: [-3.5, 2.9], door: [7, -4], table: [5.2, -0.5], tableSeatLeft: [3.9, -0.5], tableSeatRight: [6.5, -0.5] }, cam: { dist: 8, height: 3, angle: 12, bounds: [-8.2, 8.2, -9, 2.5] } };
   },
   forest: () => {
     const parts = [plane('#5aa65a', 900, 900, 0, 0, 0), plane('#b98a56', 3, 60, 0, 0.003, 10, { layer: 0 })];
@@ -85,7 +85,7 @@ export const ENVS = {
     for (let i = -5; i < 5; i++) parts.push(plane(i % 2 ? '#cdb68f' : '#d9c3a0', 20, 0.9, 0, 0.004, i + 0.5, { layer: 0 }));
     parts.push(box('#eef2f9', 16, 5, 0.2, 0, 2.5, 5, { k: 4 }), box('#e6ebf4', 0.2, 5, 12, -8, 2.5, -1, { k: 4 }), box('#e6ebf4', 0.2, 5, 12, 8, 2.5, -1, { k: 4 }), plane('#a78bfa', 5, 3.5, 0, 0.01, -0.5));
     parts.push(...put('sofa', -4.5, 3.8), ...put('tv', 0, 4.8, { y: 0.4, scale: 1.5 }), ...put('bookshelf', 6.6, 4.5), ...put('lamp', -7, 4.2), ...put('table', 0.2, 0.2, { scale: 0.8 }), box('#9bd1ff', 2.2, 1.6, 0.05, 4, 2.6, 4.9), ...put('bed', 6, -3.5, { yaw: Math.PI / 2 }));
-    return { parts, sky: 'indoor', fog: '#f5f7fb', light: { ambient: 0.7 }, anchors: { center: [0, -1], sofa: [-4.5, 2.8], tv: [0, 3.6], shelf: [6.4, 3.6], table: [0.2, 0.2], bed: [5.2, -3.5], door: [-6.5, -4] }, cam: { dist: 8, height: 3, angle: 12, bounds: [-7.4, 7.4, -9, 4.6] } };
+    return { parts, sky: 'indoor', fog: '#f5f7fb', light: { ambient: 0.7 }, anchors: { center: [0, -1], sofa: [-4.5, 2.8], tv: [0, 3.6], shelf: [6.4, 3.6], table: [0.2, 0.2], bed: [5.2, -3.5], door: [-6.5, -4] }, cam: { dist: 8, height: 3, angle: 12, bounds: [-6.8, 6.8, -9, 3.0] } };
   },
   studio: () => {
     const parts = [plane('#cdd7ea', 900, 900, 0, 0, 0), prim('cyl', '#eef2ff', [14, 0.12, 14], place(0, 0.06, 0), { n: 24 }), prim('cyl', '#a5b4fc', [14.4, 0.06, 14.4], place(0, 0.03, 0), { n: 24 })];

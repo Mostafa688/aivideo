@@ -4,6 +4,11 @@
 
 ## Changelog
 
+### 2026-10-13 — تحسين (improved)
+- **العنوان (AR):** فيديو 3D أوضح: لقطات متعددة وكاميرا أقرب ومؤثرات صوتية أنضف
+- **Title (EN):** Clearer 3D videos: multiple shots, closer camera and cleaner sound effects
+- **الوصف (AR):** كل مشهد 3D بقى فيه عدة لقطات بقطع مباشر (واسعة ثم قريبة على الأكشن ثم زاوية تانية)، والكاميرا بتتأطر تلقائيًا فالشخصيات بتملا الكادر، وأدوات الشغل (سكينة، معلقة، سيف) بتظهر في إيد الشخصية، والمشاهد أقصر وأكتر. ومؤثرات الصوت بقت أقل وأنضف من غير تكرار.
+- **Description (EN):** Each 3D scene now has several hard-cut shots (wide, then close on the action, then another angle), the camera auto-frames so characters fill the picture, work tools (knife, spoon, sword) appear in hand, and scenes are shorter and more numerous. Sound effects are sparser and cleaner with no repetitive patterns.
 ### 2026-10-13 — جديد (new)
 - **العنوان (AR):** فيديو 3D بالكود: عالم ثلاثي الأبعاد بشخصيات وكاميرا سينمائية
 - **Title (EN):** 3D videos by code: a 3D world with characters and a cinematic camera

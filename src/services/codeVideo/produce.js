@@ -46,7 +46,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   script = nar.script || script;
 
   // 3) المخرج
-  const spoken = segmentScenes(nar.tokens, nar.total);
+  const spoken = segmentScenes(nar.tokens, nar.total, look === 'world3d' ? { minLen: 2.2, softMax: 4.2, maxLen: 5.5, maxScenes: 40 } : undefined); // الـ3D: لقطات أقصر وقطع أكتر
   if (!spoken.length) throw new Error('no scenes');
   // كاست الكارتون: الـLLM بيبتكر شخصيات/مخلوقات على مقاس القصة (لو فشل بنستخدم الشخصيات الجاهزة)
   let castMap = makeCastMap([]);

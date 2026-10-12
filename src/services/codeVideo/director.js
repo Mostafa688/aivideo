@@ -371,7 +371,7 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
   const palette = pals.includes(meta.palette) ? meta.palette : null;
   let lastTr = null;
   const bgList = w3 ? ['aurora'] : cartoon ? CARTOON_BACKDROPS : vox ? ['paper'] : BACKDROPS;
-  const trPool = (cartoon || w3) ? TOON_TR : vox ? VOX_TR : ['slide', 'zoom', 'wipe', 'slideup', 'iris'];
+  const trPool = w3 ? ['cut', 'cut', 'wipe', 'cut', 'slide'] : cartoon ? TOON_TR : vox ? VOX_TR : ['slide', 'zoom', 'wipe', 'slideup', 'iris'];
   return {
     title: meta.title, mood: meta.mood, palette, host: w3 ? (worldMeta?.host || null) : host, look,
     scenes: out.map((o, i) => {
@@ -391,6 +391,7 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
       const cam = o.type === 'world' ? 'none' : CAMS.includes(raw.cam) ? raw.cam : CAMS[i % CAMS.length];
       let tr = TRANSITIONS.includes(raw.transition) ? raw.transition : trPool[i % trPool.length];
       if ((cartoon || vox || w3) && (tr === 'glitch' || tr === 'flash')) tr = trPool[i % trPool.length];
+      if (w3 && o.type === 'world' && out[i - 1]?.type === 'world') tr = i % 4 === 0 ? 'wipe' : 'cut';
       if (i === 0) tr = 'cut';
       if ((tr === 'flash' || tr === 'glitch') && ++flashGlitch > 5) tr = 'zoom';
       if (tr === lastTr && tr !== 'cut') tr = trPool.find(x => x !== tr && x !== 'cut') || 'slide';

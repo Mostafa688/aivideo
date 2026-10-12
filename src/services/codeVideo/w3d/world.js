@@ -81,7 +81,12 @@ export function sanitizeWorld(raw, { castSpecs = {}, envName = 'studio' } = {}) 
   if (!actors.length && !props.length && !custom.length) return null;
   const c = raw.camera && typeof raw.camera === 'object' ? raw.camera : {};
   const tgt = typeof c.target === 'string' && !anchors[c.target] ? { ref: slug(c.target, '') } : (pt(c.target, anchors) ? { pt: pt(c.target, anchors) } : null);
-  const camera = { target: tgt, dist: c.dist == null ? null : num(c.dist, 2, 60, 10), dist2: c.dist2 == null ? null : num(c.dist2, 2, 60, 10), height: c.height == null ? null : num(c.height, 0.3, 40, 3.5), height2: c.height2 == null ? null : num(c.height2, 0.3, 40, 3.5), angle: num(c.angle, -180, 180, 20), sweep: num(c.sweep, -360, 360, 0), fov: num(c.fov, 25, 70, 42), follow: c.follow !== false, shake: num(c.shake, 0, 1, 0) };
+  const camFields = (c) => {
+    const tg = typeof c.target === 'string' && !anchors[c.target] ? { ref: slug(c.target, '') } : (pt(c.target, anchors) ? { pt: pt(c.target, anchors) } : null);
+    return { target: tg, dist: c.dist == null ? null : num(c.dist, 2, 60, 10), dist2: c.dist2 == null ? null : num(c.dist2, 2, 60, 10), height: c.height == null ? null : num(c.height, 0.3, 40, 3.5), height2: c.height2 == null ? null : num(c.height2, 0.3, 40, 3.5), angle: num(c.angle, -180, 180, 20), side: ['front', 'left', 'right'].includes(c.side) ? c.side : null, sweep: num(c.sweep, -360, 360, 0), fov: num(c.fov, 25, 70, 42), follow: c.follow !== false, shake: num(c.shake, 0, 1, 0) };
+  };
+  const shots = (Array.isArray(c.shots) ? c.shots : []).slice(0, 4).filter(q => q && typeof q === 'object').map(q => ({ at: num(q.at, 0, 0.95, 0), ...camFields(q) }));
+  const camera = { ...camFields(c), shots, _x: 0 };
   const sfx = (Array.isArray(raw.sfx) ? raw.sfx : []).slice(0, 12).map(s => ({ at: num(s?.at, 0, 1, 0), type: one(s?.type, ['hit', 'whoosh', 'pop', 'cheer', 'boom', 'ding', 'splash', 'sizzle', 'slam', 'shimmer'], null) })).filter(s => s.type);
   const time = one(raw.time, ['day', 'dusk', 'night'], 'day');
   return { env, time, actors, props, custom, camera, sfx };

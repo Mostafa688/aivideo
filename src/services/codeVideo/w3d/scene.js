@@ -41,6 +41,26 @@ function propState(p, t, dur, actors, rtPos) {
   return { pos, roll, yaw, held };
 }
 
+
+const shotCache = new WeakMap();
+/** لقطات المشهد: اللي الـLLM حدده، أو لقطات تلقائية (واسعة ← قريبة على البطل ← زاوية تانية) لو المشهد أطول من 3 ثواني */
+function shotsFor(d, rt, dur, cam0) {
+  let c = shotCache.get(d); if (c) return c;
+  const cd = d.camera || {};
+  const base = { target: cd.target, dist: cd.dist ?? undefined, dist2: cd.dist2 ?? undefined, height: cd.height ?? undefined, height2: cd.height2 ?? undefined, angle: cd.angle ?? cam0.angle, sweep: cd.sweep || 0, fov: cd.fov ?? 42, follow: cd.follow, shake: cd.shake };
+  let shots;
+  if (cd.shots?.length) { shots = cd.shots.map(q => ({ ...base, ...q })).sort((a, b) => a.at - b.at); shots[0] = { ...shots[0], at: 0 }; }
+  else if (dur <= 3.2) shots = [{ ...base, at: 0 }];
+  else {
+    const main = (rt.actors.find(a => a.segs.length) || rt.actors[0])?.id, a0 = base.angle;
+    shots = [{ ...base, at: 0, sweep: base.sweep || 14 }];
+    if (main) shots.push({ ...base, at: dur > 5.5 ? 0.36 : 0.45, target: { ref: main }, dist: 5.2, dist2: 4.4, height: 1.9, height2: 1.7, side: a0 > 0 ? 'left' : 'right', sweep: -8, follow: true });
+    if (dur > 5.5) shots.push({ ...base, at: 0.7, angle: -a0 * 0.6 + 18, sweep: 18, dist: base.dist ? base.dist * 0.85 : undefined });
+  }
+  shotCache.set(d, shots); return shots;
+}
+const TOOL = { chop: 'knife', stir: 'spoon', swing: 'sword', eat: 'bread' };
+
 export function world(c, d, t, dur, sc) {
   const { w, h, s, portrait } = c;
   const env = getEnv(d.env), cam0 = env.cam, aspectK = portrait ? 1.55 : 1;
@@ -66,6 +86,8 @@ export function world(c, d, t, dur, sc) {
     if (act === 'talk' || act === 'cheer' || act === 'celebrate' || (act === 'idle' && false)) pose.mouth = act === 'talk' ? talkMouth : Math.sin(t * 12) > 0;
     const r = ra.spec.kind === 'animal' ? buildQuadruped(ra.spec, { x: st.x, z: st.z, yaw: st.yaw, pose, t, moving: st.moving, run: st.speed > 2.8 }) : buildHumanoid(ra.spec, { x: st.x, z: st.z, yaw: st.yaw, pose });
     parts.push(...r.parts); shadows.push(r.shadow); hands.set(ra.id, r.hands);
+    const tool = TOOL[act];
+    if (tool && r.hands.r && !d.props.some(p => p.hold.some(h => h.actor === ra.id && t >= h.from * dur && t <= h.to * dur))) { const hp = r.hands.r; parts.push(...PROPS[tool](place(hp[0], hp[1] - 0.02, hp[2], st.yaw), null, 1, {})); }
   });
   for (const p of d.props) {
     const st = propState(p, t, dur, stateMap, propPos);
@@ -83,22 +105,33 @@ export function world(c, d, t, dur, sc) {
     if (SHADOW_PROPS.has(p.type) || p.type === 'ball') shadows.push({ x: pos[0], z: pos[2], rx: p.type === 'ball' ? 0.14 : 0.9 * p.scale, rz: p.type === 'ball' ? 0.14 : 0.8 * p.scale, op: 0.2 });
   }
   for (const e of d.custom) parts.push(customPrim(e));
-  // 3) الكاميرا
-  const prog = clamp(t / Math.max(0.5, dur), 0, 1), e = smooth(prog);
-  let target;
-  const lagT = Math.max(0, t - 0.25);
+  // 3) الكاميرا: لقطات متعددة بقطع مباشر + تأطير تلقائي حسب الأكشن (الشخصيات لازم تملا الكادر مش تبقى نقط صغيرة)
+  const shots = shotsFor(d, rt, dur, cam0);
+  let si = 0; shots.forEach((q, k) => { if (t >= q.at * dur) si = k; });
+  const shot = shots[si], s0 = shot.at * dur, s1 = (shots[si + 1]?.at ?? 1) * dur;
+  const prog = clamp((t - s0) / Math.max(0.4, s1 - s0), 0, 1), e = smooth(prog);
   const entAt = (ref, tt) => { const ra = rt.actors.find(x => x.id === ref); if (ra) { const st = actorAt(ra, tt, null); return [st.x, st.z]; } const p = d.props.find(x => x.id === ref); if (p) { const st = propState(p, tt, dur, new Map(rt.actors.map(x => [x.id, actorAt(x, tt, null)])), () => null); return [st.pos[0], st.pos[2]]; } return null; };
-  if (camDef.target?.ref) target = entAt(camDef.target.ref, camDef.follow === false ? 0 : lagT);
-  else if (camDef.target?.pt) target = camDef.target.pt;
-  if (!target) { const ps = rt.actors.map(a => { const st = stateMap.get(a.id); return [st.x, st.z]; }); if (!ps.length) ps.push([0, 0]); target = [ps.reduce((q, p) => q + p[0], 0) / ps.length, ps.reduce((q, p) => q + p[1], 0) / ps.length]; }
-  const spread = Math.max(0, ...rt.actors.map(a => { const st = stateMap.get(a.id); return Math.hypot(st.x - target[0], st.z - target[1]); }));
-  const auto = Math.max(cam0.dist * 0.55, spread * 1.5 + 5);
-  const dist = lerp(camDef.dist ?? auto, camDef.dist2 ?? camDef.dist ?? auto, e) * aspectK, height = lerp(camDef.height ?? cam0.height, camDef.height2 ?? camDef.height ?? cam0.height, e) * (portrait ? 1.1 : 1);
-  const ang = ((camDef.angle ?? cam0.angle) + (camDef.sweep || 0) * prog) * Math.PI / 180;
-  let sh = 0; if (camDef.shake) sh = camDef.shake * 0.08 * Math.sin(t * 40) * Math.max(0, 1 - ((t * 3) % 1));
+  const centroid = (tt) => { const ps = rt.actors.map(a => { const st = actorAt(a, tt, null); return [st.x, st.z]; }); if (!ps.length) return [0, 0]; return [ps.reduce((q, p) => q + p[0], 0) / ps.length, ps.reduce((q, p) => q + p[1], 0) / ps.length]; };
+  const targetAt = (tt) => { if (shot.target?.ref) return entAt(shot.target.ref, shot.follow === false ? s0 : Math.max(0, tt - 0.25)) || centroid(tt); if (shot.target?.pt) return shot.target.pt; return centroid(tt); };
+  const target = targetAt(t);
+  const fovV = shot.fov ?? 42, tanV = Math.tan(fovV * Math.PI / 360), thf = tanV * (w / h);
+  const close = !!shot.target?.ref && (shot.dist ?? 99) <= 6.5;
+  let R = close ? 0.9 : 1.2;
+  if (!close) for (let k = 0; k <= 4; k++) { const tt = s0 + (s1 - s0) * k / 4, ctr = targetAt(tt); for (const a of rt.actors) { const st = actorAt(a, tt, null); R = Math.max(R, Math.hypot(st.x - ctr[0], st.z - ctr[1])); } }
+  const needed = Math.max((2 * R + 1.3) / (0.85 * 2 * thf), 1.9 / (0.62 * 2 * tanV), 3.0);
+  const wanted = shot.dist != null ? lerp(shot.dist, shot.dist2 ?? shot.dist, e) * (portrait ? 1.2 : 1) : needed * 1.0;
+  const dist = clamp(wanted, needed * 0.88, needed * 1.55);
+  const height = clamp(shot.height != null ? lerp(shot.height, shot.height2 ?? shot.height, e) : dist * 0.27, 1.3, Math.max(2.2, dist * 0.8));
+  let ang = ((shot.angle ?? cam0.angle) + (shot.sweep || 0) * prog) * Math.PI / 180;
+  if (shot.side && shot.target?.ref) { // زاوية نسبة لاتجاه الممثل: جنب (بروفايل) أو من قدّام — أوضح بكتير لأي شغل على كاونتر
+    const ra = rt.actors.find(x => x.id === shot.target.ref);
+    if (ra) { const yawA = actorAt(ra, s0, null).yaw, th = (shot.side === 'right' ? 68 : shot.side === 'left' ? -68 : 14) * Math.PI / 180; ang = Math.PI - yawA - th + (shot.sweep || 0) * prog * Math.PI / 180; }
+  }
+  let sh = 0; if (shot.shake) sh = shot.shake * 0.08 * Math.sin(t * 40) * Math.max(0, 1 - ((t * 3) % 1));
   let cx = target[0] + Math.sin(ang) * dist + sh, cz = target[1] - Math.cos(ang) * dist;
   if (cam0.bounds) { cx = clamp(cx, cam0.bounds[0], cam0.bounds[1]); cz = clamp(cz, cam0.bounds[2], cam0.bounds[3]); }
-  const camera = makeCamera({ pos: [cx, height + sh * 0.5, cz], target: [target[0], 0.95, target[1]], fov: camDef.fov ?? 42, w, h });
+  const lookY = dist < 5.5 ? 1.05 : 1.0;
+  const camera = makeCamera({ pos: [cx, height + sh * 0.5, cz], target: [target[0], lookY, target[1]], fov: fovV, w, h });
   // 4) الإضاءة والسما
   const sky = skyFor(env, d.time || 'day'), night = sky.key === 'night', dusk = sky.key === 'dusk';
   const light = { ...(env.light || {}), ...(night ? { ambient: 0.4, cool: [0.7, 0.8, 1.1], warm: [0.9, 0.95, 1.1], gain: 1.0 } : dusk ? { ambient: 0.5, warm: [1.15, 0.95, 0.8], cool: [0.8, 0.82, 1.05] } : {}) };
