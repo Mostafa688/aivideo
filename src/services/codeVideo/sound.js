@@ -88,27 +88,26 @@ export const SCENE_SFX = {
   },
   // عالم 3D: مؤثرات من حركات الشخصيات والأغراض
   world: (d, sc) => {
-    const dur = (sc.end - sc.start) || 4, ev = [E(0.02, 'whoosh_s', 0.4)];
+    const dur = (sc.end - sc.start) || 4, ev = [];
     for (const a of d.actors || []) for (const t of a.tracks) {
       const s = t.at * dur, len = t.dur * dur;
       switch (t.act) {
-        case 'kick': ev.push(E(s + 0.55 * len, 'hit', 0.85)); break;
-        case 'pass': ev.push(E(s + 0.55 * len, 'hit', 0.5)); break;
-        case 'throw': ev.push(E(s + 0.55 * len, 'whoosh_s', 0.5)); break;
-        case 'dive': ev.push(E(s + 0.1 * len, 'whoosh_s', 0.5), E(s + 0.85 * len, 'slam', 0.7)); break;
-        case 'fall': ev.push(E(s + 0.7 * len, 'slam', 0.7)); break;
-        case 'celebrate': case 'cheer': ev.push(E(s, 'cheer', 0.7)); break;
-        case 'jump': ev.push(E(s + 0.1 * len, 'pop', 0.5)); break;
-        case 'chop': for (let k = 0; k < 6 && k * 0.35 < len; k++) ev.push(E(s + k * 0.35, 'tick', 0.55)); break;
-        case 'stir': ev.push(E(s, 'sizzle', 0.45)); break;
-        case 'swing': ev.push(E(s + 0.4 * len, 'whoosh_s', 0.55), E(s + 0.65 * len, 'hit', 0.7)); break;
-        case 'clap': for (let k = 0; k < 6 && k * 0.4 < len; k++) ev.push(E(s + k * 0.4, 'tick', 0.45)); break;
-        case 'dance': ev.push(E(s, 'shimmer', 0.3)); break;
+        case 'kick': ev.push(E(s + 0.55 * len, 'hit', 0.8)); break;
+        case 'pass': ev.push(E(s + 0.55 * len, 'hit', 0.45)); break;
+        case 'throw': ev.push(E(s + 0.55 * len, 'whoosh_s', 0.4)); break;
+        case 'dive': ev.push(E(s + 0.85 * len, 'slam', 0.55)); break;
+        case 'fall': ev.push(E(s + 0.7 * len, 'slam', 0.55)); break;
+        case 'celebrate': case 'cheer': ev.push(E(s, 'cheer', 0.4)); break;
+        case 'jump': ev.push(E(s + 0.1 * len, 'pop', 0.4)); break;
+        case 'chop': ev.push(E(s + 0.1, 'tick', 0.4), E(s + 0.65, 'tick', 0.4)); break;
+        case 'stir': ev.push(E(s, 'sizzle', 0.22)); break;
+        case 'swing': ev.push(E(s + 0.65 * len, 'hit', 0.6)); break;
+        case 'clap': ev.push(E(s + 0.1, 'tick', 0.4), E(s + 0.6, 'tick', 0.4)); break;
         default: break;
       }
     }
-    for (const p of d.props || []) for (const m of p.moves || []) { if (m.arc > 0) ev.push(E(m.at * dur, 'whoosh_s', 0.35), E(Math.min(dur - 0.05, (m.at + m.dur) * dur), 'hit', 0.45)); }
-    for (const x of d.sfx || []) ev.push(E(x.at * dur, x.type, 0.8));
+    for (const p of d.props || []) for (const m of p.moves || []) { if (m.arc > 0) ev.push(E(Math.min(dur - 0.05, (m.at + m.dur) * dur), 'hit', 0.4)); }
+    for (const x of (d.sfx || []).slice(0, 3)) ev.push(E(x.at * dur, x.type, 0.6));
     return ev;
   },
   // Vox
@@ -119,9 +118,25 @@ export const SCENE_SFX = {
 };
 // صوت الانتقالات (عند حدّ المشهد)
 export const TRANSITION_SFX = {
-  slide: [['whoosh_s', 0.85]], slideup: [['whoosh_s', 0.85]], zoom: [['whoosh_l', 0.9], ['hit', 0.35]], wipe: [['sweep_up', 0.7]],
-  iris: [['sweep_down', 0.65], ['pop', 0.4]], flash: [['boom', 0.85], ['whoosh_s', 0.4]], glitch: [['glitch', 0.8], ['zap', 0.45]], cut: [['tick', 0.2]],
+  slide: [['whoosh_s', 0.7]], slideup: [['whoosh_s', 0.7]], zoom: [['whoosh_l', 0.7]], wipe: [['sweep_up', 0.55]],
+  iris: [['sweep_down', 0.5]], flash: [['boom', 0.8]], glitch: [['glitch', 0.7]], cut: [],
 };
+// أولوية الصوت: لما المؤثرات تتزاحم بنسيب الأهم ونشيل الباقي (من غير ما يبقى فيه صوت بيتكرر بشكل غريب)
+const PRI = { impact_big: 9, slam: 9, boom: 9, hit: 8, cheer: 8, splash: 7, ding: 6, zap: 6, glitch: 6, shimmer: 5, riser_l: 5, rumble: 4, sweep_up: 4, sweep_down: 4, whoosh_l: 4, whoosh_s: 3, swish: 3, pop: 3, click: 3, sizzle: 2, tick: 1 };
+const SAME_GAP = { tick: 0.55, pop: 0.7, click: 0.6, whoosh_s: 1.6, whoosh_l: 3, sweep_up: 2.5, sweep_down: 2.5, sizzle: 4, cheer: 3, shimmer: 2.5, ding: 2, default: 1.0 };
+/** حاكم كثافة المؤثرات: فجوة دنيا بين أي صوتين، فجوة أكبر لنفس النوع، وحد أقصى لكل نافذة 10 ثواني */
+export function governSfx(events, { minGap = 0.34, window = 10, maxPerWindow = 7 } = {}) {
+  const order = events.map((e, i) => ({ ...e, i })).sort((a, b) => (PRI[b.type] || 2) - (PRI[a.type] || 2) || a.t - b.t);
+  const kept = [];
+  for (const e of order) {
+    const same = SAME_GAP[e.type] ?? SAME_GAP.default;
+    if (kept.some(k => Math.abs(k.t - e.t) < minGap && !((PRI[k.type] || 2) >= 8 && (PRI[e.type] || 2) <= 5 && Math.abs(k.t - e.t) < 0.1))) continue; // نفس اللحظة: الأهم بس (إلا طبقة خفيفة تحت ضربة قوية)
+    if (kept.some(k => k.type === e.type && Math.abs(k.t - e.t) < same)) continue;
+    if (kept.filter(k => Math.abs(k.t - e.t) < window / 2).length >= maxPerWindow) continue;
+    kept.push(e);
+  }
+  return kept.sort((a, b) => a.t - b.t).map(({ i, ...rest }) => rest);
+}
 
 export function collectSfx(scenes) {
   const ev = [];
@@ -130,7 +145,7 @@ export function collectSfx(scenes) {
     for (const e of fn(sc.data || {}, sc)) ev.push({ t: sc.start + e.t, type: e.type, vol: e.vol });
     if (i > 0) for (const [type, vol] of TRANSITION_SFX[sc.trKind] || []) ev.push({ t: Math.max(0, sc.start - (type.startsWith('whoosh') || type.startsWith('sweep') ? 0.18 : 0.02)), type, vol });
   });
-  return ev.filter(e => e.t >= 0).sort((a, b) => a.t - b.t);
+  return governSfx(ev.filter(e => e.t >= 0));
 }
 
 export async function mixCodeVideoAudio({ narrationFile, musicFile, scenes, duration, workDir, outFile, musicVolume = 0.2, sfxGain = 1 }) {
