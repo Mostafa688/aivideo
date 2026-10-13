@@ -24,6 +24,7 @@ import {
   getModel5Usage, MODEL5_PLANS, getModel5Credits, addModel5Credits,
   resetModel3Usage, resetModel4Usage, resetModel5Usage,
   EGP_PER_CREDIT, CREDITS_PACKAGES, getCreditsBalance, approveCreditsPayment, egpPriceForCredits, getActivePromo, getLastEndedPromo,
+  setSignupSource, sanitizeUtm,
   generateApiKey, listApiKeys, revokeApiKey, setUserRegion,
   createPasswordResetToken, resetPasswordWithToken,
   getNotificationPrefs, updateNotificationPrefs,
@@ -56,6 +57,8 @@ export function authMiddleware(req, res, next) {
     .catch(() => next()); // on DB error, allow through
 }
 
+const sourceRow = (u) => u ? `<tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Source</td><td style="color:#22c55e;font-weight:600;font-size:13px">${u.source}${u.campaign ? ' / ' + u.campaign : ''}</td></tr>` : '';
+
 router.post('/signup', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -75,6 +78,7 @@ router.post('/verify', async (req, res) => {
     const result = await verifyCode(email, code);
     // ── Affiliate tracking: لما حد يكمّل التسجيل ─────────────────────────
     if (result?.userId) {
+      await setSignupSource(result.userId, req.body.utm);
       const refCode = req.body.ref_code || null;
       if (refCode) {
         trackAffiliateSignup(result.userId, email, refCode).catch(() => {});
@@ -93,7 +97,7 @@ router.post('/verify', async (req, res) => {
           from: 'Erivion Visitors <noreply@erivion.net>',
           to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
           subject: `🆕 New user registered — ${email}`,
-          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#22c55e;margin:0 0 16px">🆕 New User Registered</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${result.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Email & Password</td></tr></table></div>`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:#22c55e;margin:0 0 16px">🆕 New User Registered</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${result.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Email & Password</td></tr>${sourceRow(sanitizeUtm(req.body.utm))}</table></div>`,
         }),
       })
         // ✅ FIX (طلب العميل: "الإيميل مش بيوصل مش عارف ليه"): .catch(()=>{}) كان بيبلع أي
@@ -192,7 +196,9 @@ router.get('/google', (req, res) => {
   const scope = 'openid email profile';
   // ✅ FIX: state موقّع وقصير العمر (15 دقيقة) — بيثبت إن رد الـcallback ده فعلاً جاي من
   // طلب بدأناه إحنا، مش code مهاجم مزروع في رابط
-  const state = jwt.sign({}, GOOGLE_LOGIN_STATE_SECRET, { expiresIn: '15m' });
+  // مصدر الحملة بيتحط جوه الـstate الموقّع عشان يرجع مع الـcallback (جوجل بيعمل redirect فمفيش localStorage هناك)
+  const utm = sanitizeUtm({ source: req.query.utm_source, medium: req.query.utm_medium, campaign: req.query.utm_campaign });
+  const state = jwt.sign(utm ? { utm } : {}, GOOGLE_LOGIN_STATE_SECRET, { expiresIn: '15m' });
   const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=select_account&state=${encodeURIComponent(state)}`;
   res.redirect(url);
 });
@@ -202,8 +208,9 @@ router.get('/google/callback', async (req, res) => {
   const frontendUrl = process.env.FRONTEND_URL || 'https://aivideo-production-557f.up.railway.app';
   if (error || !code) return res.redirect(`${frontendUrl}?auth_error=google_cancelled`);
   // ✅ FIX: لازم state يتحقق منه قبل أي حاجة تانية — code من غير state صالح مرفوض فورًا
+  let stateUtm = null;
   try {
-    jwt.verify(state, GOOGLE_LOGIN_STATE_SECRET);
+    stateUtm = jwt.verify(state, GOOGLE_LOGIN_STATE_SECRET)?.utm || null;
   } catch {
     return res.redirect(`${frontendUrl}?auth_error=invalid_state`);
   }
@@ -224,6 +231,7 @@ router.get('/google/callback', async (req, res) => {
     const googleUser = await userRes.json();
     if (!googleUser.email) throw new Error('Could not get user email from Google');
     const authData = await loginOrCreateGoogleUser({ googleId: googleUser.id, email: googleUser.email, name: googleUser.name, avatar: googleUser.picture });
+    if (authData.isNewUser) await setSignupSource(authData.userId, stateUtm);
     // ── Affiliate tracking للـ Google signup ─────────────────────────────
     // ✅ FIX (باج حقيقي كان موجود هنا قبل كده: authData?.isNew بدل authData?.isNewUser —
     // بيتصلح دلوقتي، بس السطر ده كان أصلاً ميت من الأول لسبب تاني منفصل: "state" هنا كان بيتقرأ
@@ -244,7 +252,7 @@ router.get('/google/callback', async (req, res) => {
         from: 'Erivion Visitors <noreply@erivion.net>',
         subject: authData.isNewUser ? `🆕 New user registered — ${authData.email}` : `🔐 User Login — ${authData.email}`,
         to: process.env.ADMIN_EMAIL || 'digidelight33@gmail.com',
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:${authData.isNewUser ? '#22c55e' : '#7c6af7'};margin:0 0 16px">${authData.isNewUser ? '🆕 New User Registered' : '🔐 User Logged In'}</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${authData.email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Name</td><td style="color:#d1d5db;font-size:13px">${authData.name || '—'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${authData.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Google OAuth</td></tr></table></div>`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:28px;background:#0f0f1a;color:#fff;border-radius:12px"><h3 style="color:${authData.isNewUser ? '#22c55e' : '#7c6af7'};margin:0 0 16px">${authData.isNewUser ? '🆕 New User Registered' : '🔐 User Logged In'}</h3><table style="width:100%;border-collapse:collapse"><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Email</td><td style="color:#fff;font-weight:700;font-size:14px">${authData.email}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Name</td><td style="color:#d1d5db;font-size:13px">${authData.name || '—'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Plan</td><td style="color:#7c6af7;font-weight:600;font-size:13px">${authData.plan || 'free'}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Time (Cairo)</td><td style="color:#9ca3af;font-size:13px">${now}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">IP</td><td style="color:#9ca3af;font-size:13px">${ip}</td></tr><tr><td style="color:#6b7280;padding:7px 0;font-size:13px">Method</td><td style="color:#9ca3af;font-size:13px">Google OAuth</td></tr>${authData.isNewUser ? sourceRow(sanitizeUtm(stateUtm)) : ''}</table></div>`,
       }),
     })
       .then(async r => { if (!r.ok) console.error('[Google Notify] Resend failed:', r.status, await r.text().catch(() => '')); })

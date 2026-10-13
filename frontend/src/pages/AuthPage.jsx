@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TERMS_EN, PRIVACY_EN, TERMS_VERSION } from '../data/legalContent.js';
 import LegalNotice from '../components/LegalNotice.jsx';
+import { readAttribution, clearAttribution, googleAuthUrl } from '../utils/attribution.js';
 import { SHOWCASE_VIDEOS as NEW_SHOWCASE } from '../../../src/services/showcaseVideos.js';
 
 // التنبيه الأحمر مخفي مؤقتًا في صفحة تسجيل الدخول (شاشة الموافقة ونوافذ الشروط/الخصوصية) لحد ما الموقع يتسجّل — غيّرها لـtrue لإظهاره
@@ -464,6 +465,7 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, r
 
     if (googleToken && googleEmail) {
       localStorage.setItem('token', googleToken);
+      clearAttribution();
       localStorage.setItem('email', googleEmail);
       localStorage.setItem('plan', googlePlan || 'free');
       window.history.replaceState({}, '', '/');
@@ -504,11 +506,12 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, r
   const handleVerify = async () => {
     setError(''); setLoading(true);
     try {
-      const res  = await fetch('/api/auth/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code, ref_code: localStorage.getItem('erivion_ref') || null }) });
+      const res  = await fetch('/api/auth/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code, ref_code: localStorage.getItem('erivion_ref') || null, utm: readAttribution() }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       localStorage.setItem('token', data.token);
       localStorage.setItem('email', data.email);
+      clearAttribution();
       // ✅ NEW (طلب العميل: رسالة ترحيبية توديه لصفحة الكورسات لأي حد يسجل جديد) — بتتقرا
       // في ProjectsDashboardPage.jsx أول ما المستخدم يوصل لصفحة المشاريع بعد التسجيل
       localStorage.setItem('erivion_show_courses_welcome', '1');
@@ -716,7 +719,7 @@ export default function AuthPage({ onAuth, googlePendingData, onBrowseCourses, r
                   </p>
                 </div>
 
-                <button className="social-btn" onClick={() => window.location.href = '/api/auth/google'}
+                <button className="social-btn" onClick={() => window.location.href = googleAuthUrl()}
                   style={{ width: '100%', padding: '12px 16px', borderRadius: 11, border: '1px solid #e2e2e2', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#3c4043', marginBottom: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
                   <svg width="18" height="18" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
