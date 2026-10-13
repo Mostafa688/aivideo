@@ -197,6 +197,7 @@ router.get('/users', adminAuth, async (req, res) => {
   try {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS banned INTEGER DEFAULT 0').catch(() => {});
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS region TEXT DEFAULT NULL').catch(() => {});
+    for (const c of ['signup_source', 'signup_campaign']) await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${c} TEXT DEFAULT NULL`).catch(() => {});
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ DEFAULT NULL').catch(() => {});
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT DEFAULT NULL').catch(() => {});
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_ip TEXT DEFAULT NULL').catch(() => {});
@@ -213,6 +214,7 @@ router.get('/users', adminAuth, async (req, res) => {
              u.plan_expires_at,
              COALESCE(u.banned, 0) as banned,
              COALESCE(u.region, 'unknown') as region,
+             u.signup_source, u.signup_campaign,
              u.terms_accepted_at, u.terms_version, u.terms_accepted_ip,
              COALESCE(uu.credits_used, 0) as credits_used,
              COALESCE(uu.videos_this_week, 0) as videos_this_week,
@@ -251,6 +253,45 @@ router.get('/terms-agreements', adminAuth, async (req, res) => {
     res.json({ users: rows, total: counts.total, agreed: counts.agreed, missing: counts.total - counts.agreed });
   } catch (err) {
     console.error('[Admin Terms]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+// ✅ مصدر العملاء: كل عميل جه منين (utm_source / utm_campaign من لينك الحملة) + ملخص لكل مصدر وحملة (تسجيلات، مدفوعين)
+router.get('/sources', adminAuth, async (req, res) => {
+  try {
+    for (const c of ['signup_source', 'signup_medium', 'signup_campaign']) {
+      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${c} TEXT DEFAULT NULL`).catch(() => {});
+    }
+    const days = Math.min(3650, Math.max(0, parseInt(req.query.days, 10) || 0)); // 0 = كل الوقت
+    const since = days ? `AND u.created_at::timestamptz >= NOW() - INTERVAL '${days} days'` : '';
+    const paidExpr = `(COALESCE(u.plan, 'free') <> 'free' OR EXISTS (SELECT 1 FROM payment_requests p WHERE p.user_id = u.id AND p.status = 'approved'))`;
+    const { rows: summary } = await pool.query(`
+      SELECT COALESCE(u.signup_source, '') AS source, COALESCE(u.signup_campaign, '') AS campaign,
+             COUNT(*)::int AS signups, COUNT(*) FILTER (WHERE ${paidExpr})::int AS paid
+      FROM users u WHERE TRUE ${since}
+      GROUP BY 1, 2 ORDER BY signups DESC LIMIT 300`);
+    const { rows: bySource } = await pool.query(`
+      SELECT COALESCE(u.signup_source, '') AS source, COUNT(*)::int AS signups, COUNT(*) FILTER (WHERE ${paidExpr})::int AS paid
+      FROM users u WHERE TRUE ${since} GROUP BY 1 ORDER BY signups DESC LIMIT 100`);
+    const search = String(req.query.search || '').slice(0, 80);
+    const source = req.query.source != null ? String(req.query.source).slice(0, 60) : null;
+    const campaign = req.query.campaign != null ? String(req.query.campaign).slice(0, 60) : null;
+    const where = [], params = [];
+    if (source !== null && source !== '') { params.push(source === '__none__' ? '' : source); where.push(source === '__none__' ? 'COALESCE(u.signup_source, \'\') = $' + params.length : 'u.signup_source = $' + params.length); }
+    if (campaign) { params.push(campaign); where.push(`u.signup_campaign = $${params.length}`); }
+    if (search) { params.push(`%${search}%`); where.push(`(u.email ILIKE $${params.length} OR u.name ILIKE $${params.length})`); }
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 300));
+    const { rows: users } = await pool.query(`
+      SELECT u.id, u.email, u.name, u.plan, u.created_at, u.signup_source, u.signup_medium, u.signup_campaign,
+             ${paidExpr} AS paid, o.source AS survey_source
+      FROM users u LEFT JOIN user_onboarding o ON o.user_id = u.id
+      WHERE TRUE ${since} ${where.length ? 'AND ' + where.join(' AND ') : ''}
+      ORDER BY u.id DESC LIMIT ${limit}`, params);
+    const total = bySource.reduce((a, r) => a + r.signups, 0);
+    const tracked = bySource.filter(r => r.source).reduce((a, r) => a + r.signups, 0);
+    res.json({ summary, bySource, users, total, tracked });
+  } catch (err) {
+    console.error('[Admin Sources]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

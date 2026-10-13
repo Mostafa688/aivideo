@@ -40,6 +40,7 @@ import ChannelsPage from './pages/ChannelsPage.jsx';
 import CharactersPage from './pages/CharactersPage.jsx';
 import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
 import DocumentaryPage from './pages/DocumentaryPage.jsx';
+import { clearAttribution } from './utils/attribution.js';
 
 const LOGO = '/logo.png';
 const APP_VERSION = 'v4.0'; // build:1780005744
@@ -434,6 +435,7 @@ export default function App() {
     if (authError) { setShowAuth(true); setAuthChecked(true); return; }
     if (googleToken && googleEmail) {
       localStorage.setItem('token', googleToken);
+      clearAttribution();
       localStorage.setItem('email', googleEmail);
       localStorage.setItem('plan', googlePlan || 'free');
       if (googleAvatar) localStorage.setItem('avatar', googleAvatar);

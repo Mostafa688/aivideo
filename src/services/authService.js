@@ -240,6 +240,8 @@ async function initDB() {
         UPDATE users SET terms_accepted_at = NOW(), terms_version = 'legacy' WHERE terms_accepted_at IS NULL;
       END $$;`).catch(e => console.warn('[Terms] legacy backfill skipped:', e.message));
   }
+  // ✅ مصدر العميل (من لينك الحملة: utm_source / utm_medium / utm_campaign) — بيتسجل مرة واحدة وقت إنشاء الحساب
+  for (const c of ['signup_source', 'signup_medium', 'signup_campaign']) await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${c} TEXT DEFAULT NULL`);
   // ✅ عروض/خصومات مؤقتة على باقات مصر (بتتحكم فيها قاعدة البيانات: وقت بداية ونهاية فعليين، مش بتتمدد مع إعادة التشغيل)
   await pool.query(`CREATE TABLE IF NOT EXISTS site_promos (id SERIAL PRIMARY KEY, kind TEXT NOT NULL DEFAULT 'eg_credits', percent INT NOT NULL, starts_at TIMESTAMPTZ NOT NULL, ends_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW())`);
   // أول عرض: خصم 30% على باقات مصر لمدة 24 ساعة من أول تشغيل بالنسخة دي (مرة واحدة بس)
@@ -1233,6 +1235,24 @@ export async function loginOrCreateGoogleUser({ googleId, email, name, avatar })
   }
   logLoginEvent(user.id, user.email, 'google').catch(() => {});
   return { token, email: user.email, name: user.name, avatar: user.avatar, plan: user.plan || 'free', isNewUser: isNew, userId: user.id };
+}
+
+/** تنضيف بيانات مصدر الحملة (جاية من المتصفح — مش موثوقة): حروف صغيرة وأرقام و _ . - فقط، حد أقصى 60 */
+const cleanUtm = (v) => String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9_.\- ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+export function sanitizeUtm(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = cleanUtm(raw.source ?? raw.utm_source);
+  if (!source) return null;
+  return { source, medium: cleanUtm(raw.medium ?? raw.utm_medium), campaign: cleanUtm(raw.campaign ?? raw.utm_campaign) };
+}
+/** بيحفظ مصدر العميل مرة واحدة بس (أول مصدر هو اللي بيفضل) — مبيرميش أي error عشان التسجيل ميتأثرش */
+export async function setSignupSource(userId, raw) {
+  const u = sanitizeUtm(raw);
+  if (!u || !userId) return null;
+  try {
+    await pool.query('UPDATE users SET signup_source = $1, signup_medium = $2, signup_campaign = $3 WHERE id = $4 AND signup_source IS NULL', [u.source, u.medium || null, u.campaign || null, userId]);
+  } catch (e) { console.warn('[Attribution] save failed:', e.message); }
+  return u;
 }
 
 export function verifyToken(token) {

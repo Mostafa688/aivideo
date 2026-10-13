@@ -2931,6 +2931,124 @@ function TermsTab({ s }) {
   );
 }
 
+function SourcesTab({ s }) {
+  const [data, setData] = useState({ summary: [], bySource: [], users: [], total: 0, tracked: 0 });
+  const [days, setDays] = useState(0);
+  const [source, setSource] = useState('');
+  const [campaign, setCampaign] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams({ days: String(days), search, limit: '500' });
+      if (source) qs.set('source', source);
+      if (campaign) qs.set('campaign', campaign);
+      const r = await fetch(`/api/admin/sources?${qs}`, { headers });
+      const d = await r.json();
+      if (r.ok) setData(d);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, [days, source, campaign, search]);
+  useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
+  const label = (v) => v || 'غير معروف';
+  const max = Math.max(...data.bySource.map(r => r.signups), 1);
+  const rate = (r) => (r.signups ? Math.round((r.paid / r.signups) * 100) : 0);
+  const pick = (src, camp = '') => { setSource(src === '' ? '__none__' : src); setCampaign(camp); };
+  const exportCsv = () => {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [['id', 'email', 'name', 'source', 'medium', 'campaign', 'plan', 'paid', 'joined', 'survey_source'], ...data.users.map(u => [u.id, u.email, u.name || '', u.signup_source || '', u.signup_medium || '', u.signup_campaign || '', u.plan || '', u.paid ? 'yes' : 'no', u.created_at || '', u.survey_source || ''])];
+    const blob = new Blob(['\ufeff' + rows.map(r => r.map(esc).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `erivion-sources-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+  };
+  const chip = (d, text) => (
+    <button key={d} onClick={() => setDays(d)} style={{ ...s.btn(days === d ? '#4f46e5' : '#1f2937'), border: `1px solid ${days === d ? '#6366f1' : '#374151'}` }}>{text}</button>
+  );
+  return (
+    <div>
+      <div style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 6 }}>📣 مصدر العملاء</div>
+      <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 14, lineHeight: 1.8 }}>
+        كل عميل بيتسجّل من لينك فيه <code style={{ color: '#fbbf24' }}>utm_source</code> و<code style={{ color: '#fbbf24' }}>utm_campaign</code> بيتسجل مصدره هنا، مثال:{' '}
+        <code style={{ color: '#a5b4fc', direction: 'ltr', display: 'inline-block' }}>erivion.net/?utm_source=tiktok&amp;utm_campaign=haram</code>.
+        المصدر الأول هو اللي بيفضل للعميل. العملاء اللي سجّلوا قبل تفعيل الخاصية (أو دخلوا بدون لينك حملة) بيظهروا "غير معروف".
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ ...s.card, padding: '10px 16px', marginBottom: 0 }}><div style={{ fontSize: 11, color: '#9ca3af' }}>إجمالي التسجيلات</div><div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{data.total}</div></div>
+        <div style={{ ...s.card, padding: '10px 16px', marginBottom: 0 }}><div style={{ fontSize: 11, color: '#9ca3af' }}>معروف مصدرهم</div><div style={{ fontSize: 20, fontWeight: 700, color: '#22c55e' }}>{data.tracked}</div></div>
+        <div style={{ ...s.card, padding: '10px 16px', marginBottom: 0 }}><div style={{ fontSize: 11, color: '#9ca3af' }}>غير معروف</div><div style={{ fontSize: 20, fontWeight: 700, color: '#6b7280' }}>{data.total - data.tracked}</div></div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        {chip(0, 'كل الوقت')}{chip(1, 'آخر 24 ساعة')}{chip(7, 'آخر 7 أيام')}{chip(30, 'آخر 30 يوم')}
+        {(source || campaign) && <button onClick={() => { setSource(''); setCampaign(''); }} style={s.btn('#7f1d1d')}>✕ إلغاء الفلتر ({source === '__none__' ? 'غير معروف' : source}{campaign ? ` / ${campaign}` : ''})</button>}
+        {loading && <span style={{ fontSize: 12, color: '#9ca3af' }}>Loading…</span>}
+      </div>
+
+      <div style={{ ...s.card, marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>حسب المنصة</div>
+        {data.bySource.length === 0 && <div style={{ color: '#6b7280', fontSize: 12 }}>مفيش تسجيلات في الفترة دي.</div>}
+        {data.bySource.map(r => (
+          <div key={r.source || '_none'} style={{ marginBottom: 10, cursor: 'pointer' }} onClick={() => pick(r.source)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: '#d1d5db', marginBottom: 4 }}>
+              <span style={{ textTransform: 'capitalize' }}>{label(r.source)}</span>
+              <span><b style={{ color: '#a99bff' }}>{r.signups}</b> <span style={{ color: '#6b7280' }}>تسجيل</span> · <b style={{ color: '#22c55e' }}>{r.paid}</b> <span style={{ color: '#6b7280' }}>دفعوا ({rate(r)}%)</span></span>
+            </div>
+            <div style={{ height: 6, borderRadius: 4, background: '#1a1a2e', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${(r.signups / max) * 100}%`, background: r.source ? 'linear-gradient(90deg,#7c6af7,#a99bff)' : '#374151' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ ...s.card, marginBottom: 14, overflowX: 'auto' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 10 }}>حسب الحملة</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr><th style={s.th}>المنصة</th><th style={s.th}>الحملة</th><th style={s.th}>تسجيلات</th><th style={s.th}>دفعوا</th><th style={s.th}>نسبة التحويل</th></tr></thead>
+          <tbody>
+            {data.summary.map(r => (
+              <tr key={`${r.source}|${r.campaign}`} onClick={() => pick(r.source, r.campaign)} style={{ cursor: 'pointer' }}>
+                <td style={{ ...s.td, color: r.source ? '#fbbf24' : '#6b7280', fontWeight: 700 }}>{label(r.source)}</td>
+                <td style={s.td}>{r.campaign || '–'}</td>
+                <td style={{ ...s.td, fontVariantNumeric: 'tabular-nums' }}>{r.signups}</td>
+                <td style={{ ...s.td, fontVariantNumeric: 'tabular-nums', color: '#22c55e' }}>{r.paid}</td>
+                <td style={{ ...s.td, fontVariantNumeric: 'tabular-nums' }}>{rate(r)}%</td>
+              </tr>
+            ))}
+            {data.summary.length === 0 && <tr><td colSpan={5} style={{ ...s.td, textAlign: 'center', color: '#6b7280' }}>{loading ? 'Loading…' : 'مفيش بيانات.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="ابحث بالإيميل أو الاسم…" style={{ ...s.input, minWidth: 220 }} />
+        <button onClick={exportCsv} style={s.btn('#065f46')}>⬇ Export CSV</button>
+        <span style={{ fontSize: 12, color: '#9ca3af' }}>{data.users.length} عميل</span>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr>
+            <th style={s.th}>ID</th><th style={s.th}>Email</th><th style={s.th}>المصدر</th><th style={s.th}>الحملة</th><th style={s.th}>Plan</th><th style={s.th}>دفع؟</th><th style={s.th}>سجّل في</th><th style={s.th}>قال في الاستبيان</th>
+          </tr></thead>
+          <tbody>
+            {data.users.map(u => (
+              <tr key={u.id}>
+                <td style={{ ...s.td, color: '#a5b4fc', fontVariantNumeric: 'tabular-nums' }}>{u.id}</td>
+                <td style={s.td}>{u.email}</td>
+                <td style={{ ...s.td, color: u.signup_source ? '#fbbf24' : '#6b7280', fontWeight: 700 }}>{label(u.signup_source)}{u.signup_medium ? <span style={{ color: '#6b7280', fontWeight: 400 }}> · {u.signup_medium}</span> : null}</td>
+                <td style={s.td}>{u.signup_campaign || '–'}</td>
+                <td style={s.td}>{u.plan}</td>
+                <td style={s.td}>{u.paid ? <span style={{ color: '#22c55e', fontWeight: 800 }}>✓</span> : <span style={{ color: '#4b5563' }}>–</span>}</td>
+                <td style={{ ...s.td, color: '#9ca3af' }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '–'}</td>
+                <td style={{ ...s.td, color: '#9ca3af', textTransform: 'capitalize' }}>{u.survey_source || '–'}</td>
+              </tr>
+            ))}
+            {data.users.length === 0 && <tr><td colSpan={8} style={{ ...s.td, textAlign: 'center', color: '#6b7280' }}>{loading ? 'Loading…' : 'مفيش عملاء.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Finance Tab ───────────────────────────────────────────────────────────────
 // ✅ NEW (طلب العميل: "عايز اعمل نظام يحدد المصروفات والمدخولات... عشان لما اسجل الموقع
 // تجاري" — دفتر حسابات يدوي بحت، أدمن بس مفيش صفحة عامة): كل حركة (مصروف زي Replicate، أو
@@ -3884,6 +4002,7 @@ export default function AdminPage() {
     { key: 'templates',  label: '🎬 Templates'   },
     { key: 'courses',    label: '🎓 Courses'     },
     { key: 'characterStudio', label: '🎭 Character Studio' },
+    { key: 'sources',    label: '📣 المصدر'       },
     { key: 'terms',      label: '✅ Terms'        },
     { key: 'finance',    label: '🧾 Finance'     },
     { key: 'changelog',  label: '📰 Changelog'   },
@@ -4041,6 +4160,7 @@ export default function AdminPage() {
                   <th style={s.th}>Plan</th>
                   <th style={s.th}>Legacy Models</th>
                   <th style={s.th}>Region</th>
+                  <th style={s.th}>المصدر</th>
                   <th style={s.th}>Credits Balance</th>
                   <th style={s.th}>Videos</th>
                   <th style={s.th}>Status</th>
@@ -4075,6 +4195,11 @@ export default function AdminPage() {
                           <span style={{ fontSize:12, padding:'2px 8px', borderRadius:6, background: u.region==='eg'?'rgba(34,197,94,0.1)':'rgba(6,182,212,0.1)', color: u.region==='eg'?'#22c55e':'#06b6d4', border:`1px solid ${u.region==='eg'?'rgba(34,197,94,0.3)':'rgba(6,182,212,0.3)'}`, fontWeight:700 }}>
                             {u.region==='eg' ? '🇪🇬 EG' : u.region==='intl' ? '🌐 Intl' : '–'}
                           </span>
+                        </td>
+                        <td style={s.td}>
+                          {u.signup_source
+                            ? <div><span style={{ fontSize:12, fontWeight:700, color:'#fbbf24' }}>{u.signup_source}</span>{u.signup_campaign && <div style={{ fontSize:10, color:'#9ca3af' }}>{u.signup_campaign}</div>}</div>
+                            : <span style={{ fontSize:11, color:'#4b5563' }}>–</span>}
                         </td>
                         <td style={s.td}>
                           <span style={{ fontSize:13, fontWeight:700, color: (u.credits_balance||0)===0 ? '#ef4444' : '#a99bff' }}>💎 {u.credits_balance || 0}</span>
@@ -4399,6 +4524,7 @@ export default function AdminPage() {
         {tab === 'templates' && <TemplatesTab s={s} />}
         {tab === 'courses' && <CoursesTab s={s} />}
         {tab === 'characterStudio' && <CharacterStudioTab s={s} />}
+        {tab === 'sources' && <SourcesTab s={s} />}
         {tab === 'terms' && <TermsTab s={s} />}
         {tab === 'finance' && <FinanceTab s={s} />}
         {tab === 'changelog' && <ChangelogTab s={s} />}
