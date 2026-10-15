@@ -3,7 +3,7 @@
 // الكلام وكابشن بنفس محرك الأفلام الوثائقية (تحت للفيديو الطويل، في النص بحركة للقصير).
 import fs from 'fs';
 import path from 'path';
-import { ffmpeg, probeDuration, hasAudio, rmQuiet, run } from '../documentary/ff.js';
+import { ffmpeg, ffmpegGraph, probeDuration, hasAudio, rmQuiet, run } from '../documentary/ff.js';
 import { buildCaptionsAss, measureCaptionWords } from '../documentary/captions.js';
 import { ensureSfx } from '../documentary/sfx.js';
 import { mixAudio } from '../documentary/audioMix.js';
@@ -86,7 +86,7 @@ async function joinClips(clips, workDir, plan) {
     prev = label;
   }
   parts.push(`${clips.map((_, i) => `[${i}:a]`).join('')}concat=n=${n}:v=0:a=1[aout]`);
-  await ffmpeg([...inputs, '-filter_complex', parts.join(';'), '-map', '[vout]', '-map', '[aout]', ...ENC, '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
+  await ffmpegGraph(inputs, parts.join(';'), ['-map', '[vout]', '-map', '[aout]', ...ENC, '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
   let c2 = 0;
   return { file: out, cuts: clips.slice(0, -1).map(c => (c2 += c.dur)) };
 }
