@@ -3,6 +3,8 @@
 // مسارات/نصوص عربية، وبنرجّع stderr كاملاً في رسالة الخطأ عشان أي فشل يتشخّص.
 import { execFile } from 'child_process';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const MAX_BUFFER = 64 * 1024 * 1024;
 
@@ -19,6 +21,21 @@ export function run(bin, args, { timeoutMs = 20 * 60 * 1000 } = {}) {
 }
 
 export const ffmpeg = (args, opts) => run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], opts);
+
+// ffmpeg بـfilter_complex كبير (فيلم فيه مئات المشاهد = مئات المؤثرات): لينكس بيرفض أي argument أكبر من 128KB
+// (spawn E2BIG)، فالـgraph الكبير بيتكتب في ملف مؤقت وffmpeg بيقراه منه. -filter_complex_script موجود لحد ffmpeg 6 ومتشال/مستبدل بـ-/filter_complex في 7+
+const GRAPH_INLINE_MAX = 30000;
+export async function ffmpegGraph(inputs, graph, outArgs, opts) {
+  if (graph.length <= GRAPH_INLINE_MAX) return ffmpeg([...inputs, '-filter_complex', graph, ...outArgs], opts);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ffgraph-'));
+  const file = path.join(dir, 'graph.txt');
+  fs.writeFileSync(file, graph);
+  try {
+    try { return await ffmpeg([...inputs, '-filter_complex_script', file, ...outArgs], opts); }
+    catch (e) { if (!/Unrecognized option|Option not found/i.test(e.message)) throw e; }
+    return await ffmpeg([...inputs, '-/filter_complex', file, ...outArgs], opts);
+  } finally { rmQuiet(dir); }
+}
 
 export async function probeDuration(file) {
   const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file]);
