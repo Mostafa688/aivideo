@@ -70,7 +70,47 @@ export async function toStoryImage(file) {
 }
 
 /**
- * slots: [{ key, text, query, named, caption? }] — key فريد لكل صورة
+ * قصّ الخلفية بالكود (من غير AI): صور المنتجات/التماثيل "على خلفية بيضا/سادة" — بنملا الخلفية من حواف الصورة
+ * (flood fill بسماحية لون) ونخلّيها شفافة، وبنقص على قد الجسم. لو الخلفية مش سادة → null (والمشهد بيعرض الصورة في كارت)
+ * @returns {Promise<{ uriCut, cw, ch } | null>}
+ */
+export async function toCutout(file) {
+  const { data, info } = await sharp(file, { failOn: 'none', limitInputPixels: 200e6 }).rotate().resize({ width: 760, height: 760, fit: 'inside', withoutEnlargement: true }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const W = info.width, H = info.height, N = W * H;
+  const alpha = new Uint8Array(N);
+  let transparent = 0; for (let i = 0; i < N; i++) { alpha[i] = data[i * 4 + 3]; if (alpha[i] < 20) transparent++; }
+  if (transparent < N * 0.05) {
+    // لون الخلفية = متوسط حواف الصورة، ولازم أغلب الحواف تبقى قريبة منه (خلفية سادة)
+    const border = []; for (let x = 0; x < W; x++) border.push(x, (H - 1) * W + x); for (let y = 0; y < H; y++) border.push(y * W, y * W + W - 1);
+    const med = [0, 1, 2].map(k => { const v = border.map(i => data[i * 4 + k]).sort((a, b) => a - b); return v[v.length >> 1]; });
+    const dist = (i) => Math.abs(data[i * 4] - med[0]) + Math.abs(data[i * 4 + 1] - med[1]) + Math.abs(data[i * 4 + 2] - med[2]);
+    const TOL = 54;
+    if (border.filter(i => dist(i) < TOL).length < border.length * 0.82) return null;
+    const bg = new Uint8Array(N), stack = [];
+    for (const i of border) if (!bg[i] && dist(i) < TOL) { bg[i] = 1; stack.push(i); }
+    while (stack.length) {
+      const i = stack.pop(), x = i % W, y = (i / W) | 0;
+      const nb = [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1];
+      for (const j of nb) if (j >= 0 && !bg[j] && dist(j) < TOL) { bg[j] = 1; stack.push(j); }
+    }
+    let fg = 0; for (let i = 0; i < N; i++) { alpha[i] = bg[i] ? 0 : 255; if (!bg[i]) fg++; }
+    if (fg < N * 0.06 || fg > N * 0.9) return null;
+    // حافة ناعمة: البكسلات اللي جنب الخلفية بتاخد نص شفافية
+    const soft = Uint8Array.from(alpha);
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; if (!alpha[i]) continue; const n = (alpha[i - 1] ? 0 : 1) + (alpha[i + 1] ? 0 : 1) + (alpha[i - W] ? 0 : 1) + (alpha[i + W] ? 0 : 1); if (n) soft[i] = 255 - n * 48; }
+    alpha.set(soft);
+  }
+  // قص على قد الجسم
+  let x0 = W, y0 = H, x1 = 0, y1 = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (alpha[y * W + x] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 - x0 < 40 || y1 - y0 < 40) return null;
+  const out = Buffer.from(data); for (let i = 0; i < N; i++) out[i * 4 + 3] = alpha[i];
+  const png = await sharp(out, { raw: { width: W, height: H, channels: 4 } }).extract({ left: x0, top: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 }).png({ compressionLevel: 6 }).toBuffer({ resolveWithObject: true });
+  return { uriCut: `data:image/png;base64,${png.data.toString('base64')}`, cw: png.info.width, ch: png.info.height };
+}
+
+/**
+ * slots: [{ key, text, query, named, caption?, cutout? }] — key فريد لكل صورة
  * named = شخص/مكان/حدث بعينه → مسار اللوحة الصارم (لازم الصورة تحمل الاسم + تحقق LLM) وإلا الخانة بتتشال | غير كده ستوك عام بالترتيب العادي
  * @returns {{ images: Record<string,{uri,uriBw,w,h}>, credits: string[], missing: Set<string> }}
  */
@@ -86,7 +126,7 @@ export async function resolveVoxImages({ slots, ratio = '16:9', assetsDir, onPro
   for (let i = 0; i < slots.length; i++) {
     const a = slots[i].named ? res.boards?.[i]?.[0] : res.assets?.[i];
     if (!a || a.kind === 'video' || !a.file || !fs.existsSync(a.file)) { missing.add(slots[i].key); continue; }
-    try { images[slots[i].key] = await toStoryImage(a.file); } catch (e) { console.warn(`[CodeVideo/images] ${slots[i].key}: ${e.message}`); missing.add(slots[i].key); }
+    try { images[slots[i].key] = await toStoryImage(a.file); if (slots[i].cutout) Object.assign(images[slots[i].key], await toCutout(a.file).catch(() => null) || {}); } catch (e) { console.warn(`[CodeVideo/images] ${slots[i].key}: ${e.message}`); missing.add(slots[i].key); }
   }
   try { fs.rmSync(assetsDir, { recursive: true, force: true }); } catch { /* temp */ }
   return { images, credits, missing };
