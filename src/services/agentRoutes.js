@@ -781,7 +781,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
       const promo = await getActivePromo();
       if (promo) {
         const lines = [600, 1400, 3000].map(c => `${c} credits: ${egpPriceForCredits(c, promo.percent)} EGP instead of ${egpPriceForCredits(c)} EGP`).join('; ');
-        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `LIMITED-TIME OFFER (Egypt only, InstaPay): ${promo.percent}% off the Egypt credit packages until ${new Date(promo.endsAt).toISOString()} — ${lines}. When quoting Egypt prices use these discounted prices and mention the offer is limited-time; the payment screen shows the discounted amount automatically. International (Gumroad) prices are NOT discounted.`;
+        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `LIMITED-TIME OFFER (Egypt only, InstaPay): ${promo.percent}% off the Egypt credit packages — ${lines}. When quoting Egypt prices use these discounted prices and say the offer is for a limited time (never give an end time or a countdown); the payment screen shows the discounted amount automatically. International (Gumroad) prices are NOT discounted.`;
+      } else {
+        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `EGYPT PRICES (InstaPay): ${[600, 1400, 3000].map(c => `${c} credits = ${egpPriceForCredits(c)} EGP`).join('; ')}. The pricing page shows these as a 30% limited-time discount. Always quote exactly these prices (the payment screen charges them); you may say they include a 30% limited-time discount, but never give an end time or a countdown.`;
       }
     } catch { /* ignore */ }
 

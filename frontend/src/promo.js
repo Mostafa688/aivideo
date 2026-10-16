@@ -32,6 +32,12 @@ export function egPrice(credits, promo = null) {
   return Math.max(10, Math.floor((base * (100 - promo.percent)) / 100 / 10) * 10);
 }
 
+/** خصم العرض في صفحة الأسعار: السعر الحقيقي هو اللي بيتدفع، وفوقه "السعر قبل الخصم" مشطوب (420 ← 600، 980 ← 1400، 2100 ← 3000) */
+export const DISPLAY_DISCOUNT = 30;
+export function wasPrice(egp, percent = DISPLAY_DISCOUNT) {
+  return Math.round(Number(egp) / (1 - percent / 100) / 10) * 10;
+}
+
 /** hook: { promo, remainingMs } بيتحدّث كل ثانية، ولما العرض يخلص بيرجع null */
 export function usePromo() {
   const [, force] = useState(0);
