@@ -30,7 +30,7 @@ export default function VoicePickerCard({ voices = [], lang = 'ar', picked = nul
     const a = audioRef.current; if (!a) return;
     if (playing === key) { a.pause(); setPlaying(null); return; }
     a.pause(); setLoading(key);
-    a.src = `/api/agent/voice-preview/${encodeURIComponent(key)}?lang=${ar ? 'ar' : 'en'}`;
+    a.src = `/api/agent/voice-preview/${encodeURIComponent(key)}?lang=${ar ? 'ar' : 'en'}&v=2`;
     a.play().then(() => { setPlaying(key); setLoading(null); }).catch(() => { setLoading(null); setError(ar ? 'العينة مش متاحة دلوقتي — جرّب تاني بعد شوية.' : 'Preview unavailable right now — try again shortly.'); });
   };
 

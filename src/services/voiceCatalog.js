@@ -21,12 +21,16 @@ const SAMPLE = {
   en: (n) => `Hi, I'm ${n}. This is how I sound in your Erivion videos — ready to tell your story.`,
 };
 const DIR = path.join(process.cwd(), 'outputs', 'voice-previews');
+// عينات جاهزة متسجلة مع الكود (بتتقدّم فورًا من غير توليد) — اسم الملف: {Key}_{ar|en}.mp3
+const BUNDLED = path.join(process.cwd(), 'assets', 'voice-previews');
 const inflight = new Map();
 
 /** مسار ملف عينة الصوت (بيتولد أول مرة بس) */
 export async function voicePreviewFile(key, lang = 'en') {
   const v = VOICE_CATALOG.find(x => x.key === key); if (!v) return null;
   const L = lang === 'ar' ? 'ar' : 'en';
+  const ready = path.join(BUNDLED, `${v.key}_${L}.mp3`);
+  if (fs.existsSync(ready)) return ready;
   const file = path.join(DIR, `${v.key}_${L}.mp3`);
   if (fs.existsSync(file)) return file;
   const id = `${v.key}_${L}`;
