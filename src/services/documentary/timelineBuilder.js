@@ -18,6 +18,7 @@ export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio
     const imgMotion = () => (zoomNow ? MOTIONS[imgCount++ % 2] : MOTIONS[2 + (panCount++ % 2)]); // in/out لما الزوم مسموح، وإلا panning هادي
     const markZoom = (on) => { if (on) lastZoom = b.start; };
     const wantTemplate = motionGraphics !== false;
+    let textFallback = false; // المشهد بقى جملة متحركة (مفيش لقطة) → مفيش جرافيكس نصي تاني فوقها (كان بيتراكب على الكلام)
 
     const board = plan.visual === 'text' && plan.template?.name === 'photo_board' ? (boards[i] || []) : null;
     if (board && wantTemplate && board.length >= 2) {
@@ -31,6 +32,7 @@ export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio
         const phrase = shortPhrase(b);
         beat.visual = { kind: 'background' };
         if (phrase && wantTemplate) beat.overlays.push({ template: 'kinetic_text', data: { text: phrase, emphasis: plan.emphasis || [] }, at: 0.1, dur: Math.max(1.2, b.dur - 0.1) });
+        textFallback = true;
       }
     } else if (plan.visual === 'text' && plan.template && wantTemplate) {
       beat.visual = { kind: 'background' };
@@ -48,8 +50,9 @@ export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio
       const phrase = shortPhrase(b);
       beat.visual = { kind: 'background' };
       if (phrase && wantTemplate) beat.overlays.push({ template: 'kinetic_text', data: { text: phrase, emphasis: plan.emphasis || [] }, at: 0.1, dur: Math.max(1.2, b.dur - 0.1) });
+      textFallback = true;
     }
-    if (plan.visual !== 'text' && wantTemplate) for (const ov of plan.overlays || []) beat.overlays.push({ ...ov, at: ov.at ?? Math.min(0.6, b.dur * 0.15), dur: ov.dur ?? Math.max(1.5, Math.min(b.dur - 0.7, 4.5)) });
+    if (plan.visual !== 'text' && wantTemplate && !textFallback) for (const ov of plan.overlays || []) beat.overlays.push({ ...ov, at: ov.at ?? Math.min(0.6, b.dur * 0.15), dur: ov.dur ?? Math.max(1.5, Math.min(b.dur - 0.7, 4.5)) });
     return beat;
   });
   const words = tokens.map(t => ({ w: t.w, start: t.start, end: t.end }));

@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
-import { searchPexels } from './pexels.js';
+import { searchPexels, pexelsAvailable } from './pexels.js';
 import { searchPixabay } from './pixabay.js';
 import { searchNasa, materializeNasa } from './nasa.js';
 import { searchWikimedia } from './wikimedia.js';
@@ -27,12 +27,14 @@ const SEARCHERS = {
 };
 
 export const sourceAvailability = () => ({
-  pexels: !!process.env.PEXELS_API_KEY, pixabay: !!process.env.PIXABAY_API_KEY, nasa: true, wikimedia: true, archive: true,
+  pexels: pexelsAvailable(), pixabay: !!process.env.PIXABAY_API_KEY, nasa: true, wikimedia: true, archive: true,
 });
 
 /** يبحث في مجموعة مصادر بالتوازي ويرجّع مرشحين مرخّصين فقط (license.ok) من غير تكرار */
 export async function searchCandidates(query, { group = 'stock', kinds = ['video', 'image'], orientation = 'landscape', limit = 8 } = {}, deps = {}) {
-  const names = (SOURCE_GROUPS[group] || SOURCE_GROUPS.stock).filter(n => sourceAvailability()[n]);
+  let names = (SOURCE_GROUPS[group] || SOURCE_GROUPS.stock).filter(n => sourceAvailability()[n]);
+  // Pexels واقف (حد الطلبات) → الستوك بيكمل من مصادر مجانية تانية بدل ما المشاهد تفضى
+  if ((SOURCE_GROUPS[group] || []).includes('pexels') && !sourceAvailability().pexels) names = [...new Set([...names, 'wikimedia', 'archive'])];
   const lists = await Promise.all(names.map(async n => {
     try { return await SEARCHERS[n](query, { kinds, orientation, limit }, deps); } catch (e) { console.warn(`[Documentary/sources] ${n} search failed: ${e.message}`); return []; }
   }));
