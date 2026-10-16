@@ -16,7 +16,8 @@ export async function fetchJson(url, { headers = {}, timeoutMs = 15000, retries 
   for (let i = 0; i <= retries; i++) {
     try {
       const res = await withTimeout(url, { headers: { 'User-Agent': UA, Accept: 'application/json', ...headers } }, timeoutMs);
-      if (res.status === 429 || res.status >= 500) throw new Error(`HTTP ${res.status}`);
+      if (res.status === 429) { lastErr = new Error('HTTP 429'); break; } // حد الطلبات: إعادة المحاولة بتستهلك أكتر
+      if (res.status >= 500) throw new Error(`HTTP ${res.status}`);
       if (!res.ok) return null;
       return await res.json();
     } catch (e) {

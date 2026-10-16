@@ -158,6 +158,19 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
     onProgress({ stage: 'assets', done: ++done, total: need.length });
   });
 
+  // C2) مشهد مالقيناش له لقطة (مصدر واقع/حد طلبات/بحث فاضي): بنعيد استخدام لقطة اتجابت لمشهد تاني بعيد عنه (بنفس نوع المحتوى لو أمكن)
+  // بدل ما يتحول لشاشة نص — كل لقطة بتتكرر 3 مرات بالكتير، ومش في مشاهد قريبة من بعض (الرندر بيبدأها من نقطة مختلفة)
+  const reuse = new Map();
+  const near = (i, j) => Math.abs(i - j) <= 4;
+  for (const { i, plan } of need) {
+    if (assets[i]) continue;
+    const pool0 = assets.map((a, j) => ({ a, j })).filter(({ a, j }) => a && !a.reused && !near(i, j) && (reuse.get(j) || 0) < 3);
+    const sameKind = pool0.filter(({ j }) => plans[j]?.visual === plan.visual);
+    const pick = (sameKind.length ? sameKind : pool0).sort((x, y) => Math.abs(x.j - i) - Math.abs(y.j - i))[0];
+    if (pick) { assets[i] = { ...pick.a, reused: true }; reuse.set(pick.j, (reuse.get(pick.j) || 0) + 1); }
+  }
+  if (reuse.size) console.log(`[Documentary/resolver] reused footage for ${[...reuse.values()].reduce((x, y) => x + y, 0)} beats with no own asset`);
+
   // D) لوحات الصور (photo_board): كل beat ليه 2-4 صور أرشيفية، لكل صورة بحث مستقل (صور بس، أرشيف ثم ستوك)
   const boards = {};
   const boardJobs = [];

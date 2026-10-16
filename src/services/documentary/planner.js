@@ -209,12 +209,18 @@ const VISUALS = new Set(['stock', 'archive', 'nasa', 'text']);
 const MOODS = ['epic', 'documentary', 'tension', 'emotional', 'chill', 'upbeat'];
 
 // ── 4) خطة احتياطية لو الـLLM فشل ───────────────────────────────────────────────────────────────
-export function fallbackBeatPlan(beat) {
+// ✅ FIX (فيلم 24 دقيقة: نص المشاهد بعد الدقيقة 10 بقت نص): لما التخطيط بيفشل، كنا بنبحث بكلمات الجملة نفسها — ولو الكلام عربي
+// مصادر الفيديو (إنجليزي) مبترجعش حاجة فالمشهد بيتحول لنص. دلوقتي: لو الجملة مش لاتيني بنبحث بكلمات موضوع الفيلم بالإنجليزي (brief)
+export function fallbackBeatPlan(beat, brief = null) {
   const words = beat.text.replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 3).sort((a, b) => b.length - a.length).slice(0, 3);
-  return { visual: 'stock', kind: 'either', queries: [words.join(' ') || 'abstract background'], overlays: [], grade: 'none', emphasis: [], transition: 'cut' };
+  const latin = /[a-z]/i.test(words.join(' '));
+  const terms = [...(brief?.searchTerms || []), brief?.subject].filter(x => x && /[a-z]/i.test(x));
+  const k = Number.isInteger(beat.i) ? beat.i : 0;
+  const queries = latin ? [words.join(' ')] : terms.length ? [terms[k % terms.length], terms[(k + 1) % terms.length]] : ['documentary archive footage'];
+  return { visual: 'stock', kind: 'either', queries: [...new Set(queries.filter(Boolean))], overlays: [], grade: 'none', emphasis: [], transition: 'cut' };
 }
 
-export function sanitizeBeatPlan(raw, beat) {
+export function sanitizeBeatPlan(raw, beat, brief = null) {
   const p = raw && typeof raw === 'object' ? raw : {};
   const visual = VISUALS.has(p.visual) ? p.visual : 'stock';
   const queries = (Array.isArray(p.queries) ? p.queries : []).map(q => clip(q, 80)).filter(Boolean).slice(0, 3);
@@ -230,7 +236,7 @@ export function sanitizeBeatPlan(raw, beat) {
     else plan.overlays.push({ template: name, data: tpl });
   }
   if (visual === 'text' && !plan.template) { plan.visual = 'stock'; }
-  if (plan.visual !== 'text' && !plan.queries.length) plan.queries = fallbackBeatPlan(beat).queries;
+  if (plan.visual !== 'text' && !plan.queries.length) plan.queries = fallbackBeatPlan(beat, brief).queries;
   return plan;
 }
 
@@ -292,13 +298,19 @@ export async function planBeats({ beats, language = 'en', topic = '', brief: giv
     const chunk = beats.slice(from, from + CH);
     const user = `Language of the narration: ${language}. ${topic ? `Topic: ${topic}.` : ''}${briefLine ? `\n${briefLine}` : ''}\n${from > 0 ? `(Continuing; earlier beats already planned. Do not repeat the title.)\n` : ''}Beats:\n` + chunk.map(b => `[${b.i}] (${b.dur.toFixed(1)}s) ${b.text}`).join('\n');
     try {
-      const r = await ask({ system: SYSTEM, user, maxTokens: 5000 });
+      // حد Groq في الدقيقة: فيلم طويل = 18+ طلب ورا بعض — بنستنى ونعيد بدل ما نستسلم بسرعة لخطة احتياطية
+      let r = null, lastErr = null;
+      for (let attempt = 0; attempt < 4 && !r; attempt++) {
+        try { r = await ask({ system: SYSTEM, user, maxTokens: 5000 }); }
+        catch (err) { lastErr = err; if (attempt < 3) await new Promise(res => setTimeout(res, (deps.retryDelayMs ?? 12000) * (attempt + 1))); }
+      }
+      if (!r) throw lastErr || new Error('planning failed');
       if (from === 0) { title = clip(r.title, 90) || title; if (MOODS.includes(r.mood)) mood = r.mood; }
       const byI = new Map((Array.isArray(r.beats) ? r.beats : []).map(x => [Number(x.i), x]));
-      for (const b of chunk) plans[b.i] = sanitizeBeatPlan(byI.get(b.i), b);
+      for (const b of chunk) plans[b.i] = sanitizeBeatPlan(byI.get(b.i), b, brief);
     } catch (e) {
       console.warn(`[Documentary/planner] chunk ${from} failed (${e.message}) — using fallback plans`);
-      for (const b of chunk) plans[b.i] = fallbackBeatPlan(b);
+      for (const b of chunk) plans[b.i] = fallbackBeatPlan(b, brief);
     }
     onProgress({ stage: 'planning', done: Math.min(beats.length, from + CH), total: beats.length });
   }
