@@ -11,11 +11,11 @@ import { runEditTask, sweepExpiredEditors } from './editorService.js';
 import { autoEditVideo } from '../montage/autoEdit.js';
 import { smartMontage } from '../montage/smartMontage.js';
 import { resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, sweepOldAssets, withAnalysis, MAX_TOTAL_MINUTES, MAX_ASSETS_PER_USER } from '../montage/assets.js';
-import { chargeCredits, addCreditsBalance, getCreditsBalance, getUserById } from '../authService.js';
+import { chargeCredits, addCreditsBalance, getCreditsBalance, getUserById, animationMaxSeconds } from '../authService.js';
 import { watermarkVideo } from '../watermark.js';
 import { getDocumentaryCreditCost, getAutoEditCreditCost, getVideoReadCreditCost, getAnimationCreditCost } from '../creditPricingEngine.js';
 import { produceAnimation } from '../codeVideo/produce.js';
-import { MAX_SECONDS as ANIMATION_MAX_SECONDS, estimateSeconds as estimateAnimationSeconds } from '../codeVideo/narration.js';
+import { ABS_MAX_SECONDS as ANIMATION_ABS_MAX_SECONDS, estimateSeconds as estimateAnimationSeconds } from '../codeVideo/narration.js';
 import { ALL_PALETTE_NAMES as ANIMATION_PALETTES } from '../codeVideo/design.js';
 import { LOOKS as ANIMATION_LOOKS } from '../codeVideo/director.js';
 import { videoUnderstand, videoReaderAvailable } from '../visionService.js';
@@ -223,10 +223,10 @@ function normalizeAnimationInput(raw = {}) {
   const bool = (v, d) => (v === undefined ? d : v === true || v === 'true' || v === '1');
   return {
     mode: 'animation', source,
-    script: String(raw.script || '').replace(/\r/g, '').trim().slice(0, 4200),
+    script: String(raw.script || '').replace(/\r/g, '').trim().slice(0, 9000),
     topic: String(raw.topic || '').replace(/<[^>]*>/g, '').trim().slice(0, 300),
     brief: String(raw.brief || '').replace(/<[^>]*>/g, '').trim().slice(0, 400),
-    seconds: Math.min(ANIMATION_MAX_SECONDS - 6, Math.max(10, Number(raw.seconds) || 60)),
+    seconds: Math.min(ANIMATION_ABS_MAX_SECONDS - 6, Math.max(10, Number(raw.seconds) || 60)),
     language: LANGUAGES[raw.language] ? raw.language : 'en',
     voiceKey: typeof raw.voiceKey === 'string' && /^[\w-]{1,40}$/.test(raw.voiceKey) ? raw.voiceKey : 'male_wise',
     ratio: raw.ratio === '9:16' ? '9:16' : '16:9',
@@ -263,13 +263,18 @@ export async function startAnimationJob(userId, raw = {}) {
   const input = normalizeAnimationInput(raw);
   const fail = (status, error, message) => { if (input.audioFile) rmQuiet(path.dirname(input.audioFile)); return { ok: false, status, error, message }; };
   const secTrial = ANIMATION_TRIAL_SECONDS;
+  // الحد حسب الباقة: دقيقتين (عادي)، 3 دقايق (Creator)، 5 دقايق (Studio فأكبر)
+  const maxSec = await animationMaxSeconds(userId).catch(() => 120);
+  input.maxSeconds = maxSec;
+  const planHint = maxSec < 300 ? (maxSec < 180 ? ' (Creator: 3 minutes, Studio: 5 minutes)' : ' (Studio: 5 minutes)') : '';
+  if (input.source === 'topic') input.seconds = Math.min(maxSec - 6, input.seconds);
   if (input.source === 'voiceover') {
     if (!input.audioFile || !fs.existsSync(input.audioFile)) return fail(400, 'audio_required', 'Please upload your voice-over first.');
     if (!(input.audioDurationSec >= 5)) return fail(400, 'too_short', 'The voice-over is too short (minimum 5 seconds).');
-    if (input.audioDurationSec > ANIMATION_MAX_SECONDS + 0.5) return fail(400, 'too_long', `The voice-over can be up to ${ANIMATION_MAX_SECONDS / 60} minutes (${Math.round(input.audioDurationSec)}s uploaded). Please trim it.`);
+    if (input.audioDurationSec > maxSec + 0.5) return fail(400, 'too_long', `On your plan the voice-over can be up to ${maxSec / 60} minutes${planHint} — ${Math.round(input.audioDurationSec)}s uploaded. Please trim it.`);
   } else if (input.source === 'script') {
     if (input.script.length < 40) return fail(400, 'script_too_short', 'The script is too short (minimum 40 characters).');
-    if (estimateAnimationSeconds(input.script, input.language) > ANIMATION_MAX_SECONDS + 4 && !input.wantTrial) return fail(400, 'too_long', `This script would run longer than ${ANIMATION_MAX_SECONDS / 60} minutes. Please shorten it.`);
+    if (estimateAnimationSeconds(input.script, input.language) > maxSec + 4 && !input.wantTrial) return fail(400, 'too_long', `This script would run longer than ${maxSec / 60} minutes, the limit on your plan${planHint}. Please shorten it.`);
   } else if (input.topic.length < 3) return fail(400, 'topic_required', 'Please tell me what the video is about.');
   const safety = await checkContentSafety([input.title, input.topic, input.brief, input.script.slice(0, 6000)].filter(Boolean).join('\n'));
   if (safety.unsafe) return fail(400, 'content_policy_violation', 'This content cannot be generated.');

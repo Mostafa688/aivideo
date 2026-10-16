@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
 import { visionDiagnostics } from './visionService.js';
 import { composeProductAdPrompt, agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
-import { listCharacterReferencesForUser, getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits } from './authService.js';
+import { listCharacterReferencesForUser, getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits, animationMaxSeconds } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { startJob as startDocumentaryJob, startAnimationJob, animationTrialAvailable, ANIMATION_TRIAL_SECONDS, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
 import { trialAvailable as docTrialAvailable } from './documentary/store.js';
@@ -730,7 +730,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     if (voiceBase64) {
       try {
-        const result = await transcribeVoiceForAgent(voiceBase64);
+        const result = await transcribeVoiceForAgent(voiceBase64, 'webm', await animationMaxSeconds(req.user.userId));
         transcript = result.text;
         uploadedVoiceUrl = result.audioUrl;
         attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `User uploaded a voice recording (${Math.round(result.duration)}s). Transcript of what they said: "${transcript.slice(0, 500)}". ROUTING FIRST: if the customer wants a code-made video from this recording — vox/فوكس, animation/أنيميشن, motion graphics/موشن جرافيك, cartoon, 3D, an explainer, kinetic text (rule 13f) — use ###ANIMATION### with "source":"voiceover" (their REAL voice is used as-is, no AI video model, and it is far cheaper); for a documentary use the documentary studio; for a whiteboard video use the WHITEBOARD mode. NEVER route those requests to GENERATE_VIDEO (Seedance/Veo/Kling…). Only when they want a realistic AI-generated video clip, use this transcript's content directly as the video's "narrationScript" in GENERATE_VIDEO/MERGE_VIDEOS — note the narration will be freshly synthesized (TTS) reading their words, not their literal recorded voice, so if they specifically expect their own voice to be reused as-is, say so honestly rather than implying it will sound identical. Do NOT ask the user to type a separate script — you already have it from their recording.`;
@@ -775,6 +775,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
       attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + (avail
         ? `ANIMATION FREE TRIAL: this account still has its ONE free animated video of up to ${ANIMATION_TRIAL_SECONDS / 60} minute (any look, 0 credits, small Erivion watermark) — ONLY with the customer's OWN uploaded voice recording (source "voiceover"); the AI voice is NOT part of the trial.`
         : `ANIMATION FREE TRIAL: this account already used its free ${ANIMATION_TRIAL_SECONDS / 60}-minute animated video — further animated videos are paid.`) + (planNow === 'free' ? ' THIS CUSTOMER IS ON THE FREE PLAN: the AI voice (source script/topic) is not available to them — they must upload or record their own voice; offer the paid plans if they want the AI voice.' : ' This customer is on a paid plan: the AI voice is available — when they want it, show the voice picker with the marker ###VOICE_PICKER### (alone on its line at the end) instead of listing voice names in text, unless they already chose a voice.');
+    } catch { /* مش حرج */ }
+    try {
+      const mx = await animationMaxSeconds(req.user.userId);
+      attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `ANIMATION MAX LENGTH for this customer: ${mx / 60} minutes per animated/vox video (${mx >= 300 ? 'Studio-level buyer' : mx >= 180 ? 'Creator buyer; Studio buyers get 5 minutes' : 'normal limit; Creator buyers get 3 minutes, Studio buyers 5 minutes'}). Never promise longer; for longer content suggest parts${mx < 300 ? ' or a bigger package' : ''}. "seconds" in the marker must not exceed ${mx - 6}.`;
     } catch { /* مش حرج */ }
     // عرض مؤقت على باقات مصر: الايجنت لازم يعرف السعر الحقيقي الحالي (اللي هيتحاسب بيه العميل) ووقت الانتهاء
     try {
@@ -1704,7 +1708,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           const a = animationPayload;
           const src = ['voiceover', 'script', 'topic'].includes(a.source) ? a.source : (a.script ? 'script' : 'topic');
           const raw = {
-            source: src, topic: String(a.topic || '').slice(0, 300), script: String(a.script || '').slice(0, 4200), brief: String(a.brief || '').slice(0, 400),
+            source: src, topic: String(a.topic || '').slice(0, 300), script: String(a.script || '').slice(0, 9000), brief: String(a.brief || '').slice(0, 400),
             seconds: Number(a.seconds) || undefined, language: a.language, ratio: a.ratio, palette: a.palette, style: a.style,
             voiceKey: a.voice, music: a.music !== false, captions: a.captions, look: a.look, trial: a.trial === true || userPlan === 'free',
           };
@@ -1738,7 +1742,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
             else if (r.error === 'trial_used') reply += (reply ? '\n\n' : '') + `الدقيقة المجانية اتستخدمت قبل كده على الحساب ده — الفيديو هيتحاسب بالسعر العادي، قولّي لو عايز أبدأه.`;
             else if (r.error === 'ai_voice_paid') reply += (reply ? '\n\n' : '') + `توليد الصوت بالذكاء الاصطناعي متاح في الباقات المدفوعة. تقدر تعمل الفيديو مجانًا (أول دقيقة) لو رفعت أو سجلت صوتك من زرار + ← "ارفع ملف"، أو اشترك عشان أعمل لك الصوت.`;
             else if (r.error === 'trial_needs_voice') reply += (reply ? '\n\n' : '') + `الدقيقة المجانية بتشتغل بصوتك انت — ارفع أو سجّل صوتك من زرار + ← "ارفع ملف" وقولّي "ابدأ".`;
-            else if (r.error === 'too_long') reply += (reply ? '\n\n' : '') + 'أقصى طول لفيديو الأنيميشن دقيقتين — قصّر الصوت/السكريبت وقولّي.';
+            else if (r.error === 'too_long') { const mx = await animationMaxSeconds(req.user.userId); reply += (reply ? '\n\n' : '') + `أقصى طول لفيديو الأنيميشن على باقتك ${mx >= 300 ? '5 دقايق' : mx >= 180 ? '3 دقايق' : 'دقيقتين'}${mx < 300 ? ' (باقة Creator لحد 3 دقايق، وStudio لحد 5 دقايق)' : ''} — قصّر الصوت/السكريبت وقولّي.`; }
             else if (r.error === 'too_short') reply += (reply ? '\n\n' : '') + 'الصوت قصير أوي (أقل حاجة 5 ثواني).';
             else reply += (reply ? '\n\n' : '') + 'معلش، مقدرتش أبدأ فيديو الأنيميشن ده' + (r.error === 'content_policy_violation' ? ' (المحتوى مش مسموح).' : '.');
           }
@@ -1862,8 +1866,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('/limits', authMiddleware, (req, res) => {
-  res.json(AGENT_LIMITS);
+router.get('/limits', authMiddleware, async (req, res) => {
+  // طول الصوت المسموح على قد باقة العميل (دقيقتين / Creator 3 / Studio 5)
+  res.json({ ...AGENT_LIMITS, MAX_AUDIO_SEC: await animationMaxSeconds(req.user.userId).catch(() => AGENT_LIMITS.MAX_AUDIO_SEC) });
 });
 
 // ✅ NEW (باج حقيقي: مربع "AI edit this image/video" في نافذة تفاصيل الميديا كان بيبعت كلام
