@@ -23,6 +23,12 @@ import { YOUTUBE_PUBLISH_ENABLED } from './featureFlags.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS, measureVideoDurationSec } from './newVideoModelsService.js';
 import { buildCharacterPrompt } from './characterPrompt.js';
+import fs from 'fs';
+import path from 'path';
+import { startAnimationJob, startJob as startDocumentaryJob, ANIMATION_TRIAL_SECONDS } from './documentary/documentaryService.js';
+import { probeDuration } from './documentary/ff.js';
+import { VOICE_CATALOG, VOICE_KEYS } from './voiceCatalog.js';
+import { getAnimationCreditCost, getDocumentaryCreditCost } from './creditPricingEngine.js';
 
 // ✅ FIX: كانت بتتحسب من جديد جوه buildMcpServer() في كل طلب MCP رغم إنها ثابتة طول عمر
 // الـprocess — بنحسبها مرة واحدة هنا بدل ما نعيد بناء enum الـzod في كل نداء
@@ -464,6 +470,143 @@ function buildMcpServer(userId, email) {
         };
       } catch (e) {
         return { content: [{ type: 'text', text: `Error checking status: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  ✅ NEW: الفيديوهات المعمولة بالكود (Vox كولاج ورقي، موشن جرافيك، كارتون، عالم 3D) + الأفلام الوثائقية من MCP
+  //  مفيش أي موديل صور/فيديو AI: صور أرشيف حقيقية، لوجوهات البراندات مرسومة بالكود، خرايط ورق، أسهم وأختام بتترسم مع الكلام
+  // ══════════════════════════════════════════════════════════════════════════
+  // تحميل تسجيل صوت العميل من رابط عام (MCP مفيهوش رفع ملفات) → ملف مؤقت + مدته الحقيقية
+  const downloadAudio = async (url, prefix) => {
+    if (!/^https:\/\//i.test(String(url || ''))) throw new Error('voiceoverUrl must be a public https URL');
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) throw new Error(`could not download the voice-over (HTTP ${res.status})`);
+    const len = Number(res.headers.get('content-length') || 0);
+    if (len > 60 * 1024 * 1024) throw new Error('the voice-over file is larger than 60MB');
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > 60 * 1024 * 1024) throw new Error('the voice-over file is larger than 60MB');
+    const dir = path.join('/tmp/aivideo', `${prefix}_${userId}_${Date.now()}`); fs.mkdirSync(dir, { recursive: true });
+    const ext = (path.extname(new URL(url).pathname).replace(/[^.\w]/g, '') || '.mp3').slice(0, 6);
+    const file = path.join(dir, `voiceover${ext}`); fs.writeFileSync(file, buf);
+    const dur = await probeDuration(file).catch(() => 0);
+    if (!(dur > 0)) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error('the voice-over file has no readable audio'); }
+    return { file, dur };
+  };
+  const jobText = (r, kind) => r.ok
+    ? `✅ ${kind} started — jobId: ${r.job.id}${r.trial ? ' (FREE trial, small Erivion watermark)' : ` — ${r.cost} credits reserved (billed on the real final length; refunded automatically on failure)`}. It usually takes a few minutes. Call check_video_job with jobId ${r.job.id} every ~30 seconds until it is done.`
+    : `❌ ${r.message || r.error}${r.cost != null ? ` (needs ${r.cost} credits, you have ${r.remaining})` : ''}`;
+
+  server.registerTool(
+    'list_voices',
+    {
+      title: 'List AI narrator voices',
+      description: 'The AI narrator voices for create_animated_video / create_documentary (paid plans). Each has a key, gender, style and a sample URL you can share with the user to listen. Pass the key as "voice".',
+      inputSchema: { language: z.enum(['ar', 'en']).optional().describe('Language of the voice names/descriptions and sample (default en).') },
+    },
+    async ({ language = 'en' }) => {
+      const voices = VOICE_CATALOG.map(v => ({ key: v.key, gender: v.gender, name: v[language]?.name || v.en.name, style: v[language]?.tone || v.en.tone, sampleUrl: `${SITE_URL}/api/agent/voice-preview/${v.key}?lang=${language}` }));
+      return { content: [{ type: 'text', text: voices.map(v => `• ${v.key} — ${v.name} (${v.gender}): ${v.style} — sample: ${v.sampleUrl}`).join('\n') }], structuredContent: { voices } };
+    }
+  );
+
+  server.registerTool(
+    'create_animated_video',
+    {
+      title: 'Create an animated video made by code (Vox paper-collage, motion graphics, cartoon, 3D)',
+      description: `Makes a professional animated video entirely by CODE — no AI image/video model. Looks: "vox" = Vox-style paper-collage documentary explainer (real archive photos printed in halftone/ink on torn paper with tape, brand LOGOS drawn by code as paper stickers with ranks for top-N lists, vintage paper MAPS with pins and routes, hand-drawn arrows/circles/stamps synced to the words, paper transitions and sounds); "motion" = kinetic typography & motion graphics (charts, counters, lists, timelines); "cartoon"/"cartoon3d" = invented cartoon characters talking with lip-sync; "world3d" = low-poly 3D world with characters acting the story. Any topic, any brand/company/place (not limited to AI). Up to 2 minutes, 16:9 or 9:16. Voice: the user's OWN recording (voiceoverUrl) or the AI voice (paid plans; see list_voices). FREE: the first ${ANIMATION_TRIAL_SECONDS / 60} minute per account with the user's own voice (useFreeTrial). Price per minute: own voice about ${getAnimationCreditCost(1, { userVoiceover: true, look: 'vox' })} credits (vox) / ${getAnimationCreditCost(1, { userVoiceover: true })} (motion); AI voice about ${getAnimationCreditCost(1, { look: 'vox' })} (vox) / ${getAnimationCreditCost(1)} (motion). Returns a jobId — poll check_video_job.`,
+      inputSchema: {
+        look: z.enum(['vox', 'motion', 'cartoon', 'cartoon3d', 'world3d']).describe('Visual style.'),
+        source: z.enum(['voiceover', 'script', 'topic']).describe('voiceover = the user\'s own recording (voiceoverUrl); script = narration text you provide (AI voice); topic = Erivion writes the narration (AI voice).'),
+        voiceoverUrl: z.string().optional().describe('Public https URL of the user\'s voice recording (mp3/m4a/wav, max 2 minutes) — required for source "voiceover".'),
+        script: z.string().max(4200).optional().describe('Full narration text — for source "script".'),
+        topic: z.string().max(300).optional().describe('What the video is about — for source "topic" (also helps the director for other sources).'),
+        seconds: z.number().int().min(15).max(120).optional().describe('Target length for source "topic" (default 60).'),
+        language: z.enum(['ar', 'en', 'es', 'fr', 'de']).optional().describe('Narration language (default en).'),
+        ratio: z.enum(['16:9', '9:16']).optional().describe('16:9 for YouTube, 9:16 for Shorts/Reels/TikTok (default 16:9).'),
+        voice: z.string().optional().describe('AI voice key from list_voices (AI voice only).'),
+        captions: z.enum(['none', 'karaoke', 'box', 'pop']).optional().describe('Burned-in captions (default none — the video already shows the words).'),
+        music: z.boolean().optional().describe('Background music (default true).'),
+        useFreeTrial: z.boolean().optional().describe(`Use the account's one free ${ANIMATION_TRIAL_SECONDS / 60}-minute video (own voice only; a longer recording is cut to its first minute).`),
+        brief: z.string().max(400).optional().describe('Extra direction (mood, focus, what to show).'),
+      },
+    },
+    async (a) => {
+      try {
+        const raw = { source: a.source, look: a.look, topic: a.topic || '', script: a.script || '', seconds: a.seconds, language: a.language || 'en', ratio: a.ratio || '16:9', voiceKey: a.voice && VOICE_KEYS.has(a.voice) ? a.voice : undefined, captions: a.captions || 'none', music: a.music !== false, brief: a.brief || '', trial: a.useFreeTrial === true };
+        if (a.source === 'voiceover') {
+          if (!a.voiceoverUrl) return { content: [{ type: 'text', text: 'source "voiceover" needs voiceoverUrl (a public https link to the recording).' }], isError: true };
+          const { file, dur } = await downloadAudio(a.voiceoverUrl, 'mcp_anim');
+          raw.audioFile = file; raw.audioDurationSec = dur;
+        }
+        const r = await startAnimationJob(userId, raw);
+        return { content: [{ type: 'text', text: jobText(r, 'Animated video') }], structuredContent: r.ok ? { jobId: r.job.id, cost: r.cost, trial: !!r.trial } : { error: r.error }, ...(r.ok ? {} : { isError: true }) };
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
+    'create_documentary',
+    {
+      title: 'Create a documentary film from real archive footage',
+      description: `Makes a documentary of up to 30 minutes (16:9) or 3 minutes (9:16) from REAL archive footage and photos (Pexels, Wikimedia, NASA, Internet Archive) cut to the narration, with maps, photo boards, motion graphics, music and captions — no AI video model. Narration: the user's own recording (voiceoverUrl), a script (AI voice), or a topic (Erivion writes the script). About ${getDocumentaryCreditCost(1, { userVoiceover: true })} credits per minute with the user's own voice, ${getDocumentaryCreditCost(1)} with the AI voice. Returns a jobId — poll check_video_job.`,
+      inputSchema: {
+        mode: z.enum(['voiceover', 'script', 'topic']).describe('Where the narration comes from.'),
+        voiceoverUrl: z.string().optional().describe('Public https URL of the user\'s narration recording — for mode "voiceover".'),
+        script: z.string().optional().describe('Full narration text — for mode "script".'),
+        topic: z.string().max(300).optional().describe('Subject — for mode "topic".'),
+        minutes: z.number().int().min(1).max(30).optional().describe('Target length for mode "topic" (default 5).'),
+        language: z.enum(['ar', 'en', 'es', 'fr', 'de']).optional(),
+        ratio: z.enum(['16:9', '9:16']).optional(),
+        voice: z.string().optional().describe('AI voice key from list_voices.'),
+        captions: z.enum(['none', 'karaoke', 'box', 'pop', 'word']).optional(),
+        music: z.boolean().optional(),
+        title: z.string().max(120).optional(),
+      },
+    },
+    async (a) => {
+      let dir = null;
+      try {
+        const raw = { mode: a.mode, script: a.script || '', topic: a.topic || '', minutes: a.minutes, language: a.language || 'en', ratio: a.ratio || '16:9', voiceKey: a.voice && VOICE_KEYS.has(a.voice) ? a.voice : undefined, captions: a.captions, music: a.music !== false, title: a.title || '' };
+        if (a.mode === 'voiceover') {
+          if (!a.voiceoverUrl) return { content: [{ type: 'text', text: 'mode "voiceover" needs voiceoverUrl (a public https link to the recording).' }], isError: true };
+          const { file, dur } = await downloadAudio(a.voiceoverUrl, 'mcp_doc');
+          dir = path.dirname(file); raw.audioFile = file; raw.audioDurationSec = dur;
+        }
+        const r = await startDocumentaryJob(userId, raw);
+        if (!r.ok && dir) fs.rmSync(dir, { recursive: true, force: true });
+        return { content: [{ type: 'text', text: jobText(r, 'Documentary') }], structuredContent: r.ok ? { jobId: r.job.id, cost: r.cost } : { error: r.error }, ...(r.ok ? {} : { isError: true }) };
+      } catch (e) {
+        if (dir) fs.rmSync(dir, { recursive: true, force: true });
+        return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };
+      }
+    }
+  );
+
+  safeRegisterAppTool(
+    'check_video_job',
+    {
+      title: 'Check an animated video / documentary job',
+      description: 'Status of a job started with create_animated_video or create_documentary (numeric jobId). When done it returns the video URL.',
+      inputSchema: { jobId: z.number().int().describe('The jobId returned by create_animated_video or create_documentary.') },
+      _meta: { ui: { resourceUri: videoPlayerResourceUri } },
+    },
+    async ({ jobId }) => {
+      try {
+        const res = await fetch(`${INTERNAL_BASE}/api/documentary/jobs/${encodeURIComponent(jobId)}`, { headers: authHeaders() });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || 'status check failed');
+        if (j.status === 'done' && j.videoUrl) {
+          const videoUrl = resolveUrl(j.videoUrl);
+          return { content: [{ type: 'text', text: `✅ Video ready (${Math.round(j.durationSec || 0)}s, ${j.creditsCharged || 0} credits): ${videoUrl}` }, videoResourceLink(videoUrl)], structuredContent: { status: 'done', videoUrl } };
+        }
+        if (j.status === 'failed') return { content: [{ type: 'text', text: `❌ Failed: ${j.error || 'unknown error'} — credits were refunded.` }], isError: true };
+        return { content: [{ type: 'text', text: `⏳ ${j.status}${j.stage ? ` · ${j.stage}` : ''}${j.progress != null ? ` · ${Math.round(j.progress * (j.progress <= 1 ? 100 : 1))}%` : ''}${j.queuePosition ? ` · position ${j.queuePosition} in queue` : ''}. Check again in ~30 seconds.` }], structuredContent: { status: j.status, progress: j.progress } };
+      } catch (e) {
+        return { content: [{ type: 'text', text: `Error checking job: ${e.message}` }], isError: true };
       }
     }
   );
