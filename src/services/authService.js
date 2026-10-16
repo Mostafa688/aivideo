@@ -1052,6 +1052,18 @@ export async function deductCreditsBalance(userId, amount) {
   return { success: false, balance: await getCreditsBalance(billingUserId) };
 }
 
+// ── أقصى مدة لفيديو الأنيميشن/الفوكس حسب أكبر باقة اشتراها العميل (أو صاحب الفريق):
+// Studio فأكبر (3000+ كريديت في عملية واحدة) = 5 دقايق، Creator (1400+) = 3 دقايق، غير كده دقيقتين
+export const ANIMATION_PLAN_SECONDS = { base: 120, creator: 180, studio: 300 };
+export async function animationMaxSeconds(userId) {
+  try {
+    const billingUserId = await resolveBillingUserId(userId);
+    const { rows } = await pool.query("SELECT COALESCE(MAX(p.credits_purchased), 0) AS top FROM payment_requests p WHERE p.status = 'approved' AND (p.user_id = $1 OR p.user_email = (SELECT email FROM users WHERE id = $1))", [billingUserId]);
+    const top = Number(rows[0]?.top) || 0;
+    return top >= CREDITS_PACKAGES.credits_studio.credits ? ANIMATION_PLAN_SECONDS.studio : top >= CREDITS_PACKAGES.credits_creator.credits ? ANIMATION_PLAN_SECONDS.creator : ANIMATION_PLAN_SECONDS.base;
+  } catch (e) { console.warn('[animationMaxSeconds]', e.message); return ANIMATION_PLAN_SECONDS.base; }
+}
+
 // ── اعتماد عملية شراء كريديت (مصري بالسلايدر أو دولي بباقة ثابتة) ─────────
 // بيدور على أحدث طلب pending لنفس الإيميل والخطة، يضيف الكريديت المسجلة فيه، ويعتمد الطلب
 export async function approveCreditsPayment(email, plan) {

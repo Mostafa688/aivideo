@@ -6,7 +6,8 @@ import { ffmpeg, probeDuration, rmQuiet } from '../documentary/ff.js';
 import { transcribeWords, tokenizeScript, alignScriptToWords, tokensFromAsr } from '../documentary/align.js';
 import { llmText } from '../documentary/llm.js';
 
-export const MAX_SECONDS = 120;
+export const MAX_SECONDS = 120;          // الحد العادي (Starter/مجاني)
+export const ABS_MAX_SECONDS = 300;      // أقصى حد لأي باقة (Studio) — الحد الفعلي لكل عميل بييجي في input.maxSeconds
 export const WORDS_PER_SEC = { en: 2.5, ar: 2.0, default: 2.3 };
 const wps = (lang) => WORDS_PER_SEC[String(lang).split(/[-_]/)[0]] || WORDS_PER_SEC.default;
 export const estimateSeconds = (script, lang) => String(script || '').trim().split(/\s+/).filter(Boolean).length / wps(lang);
@@ -30,8 +31,8 @@ export function splitForTts(script, maxChars = 700) {
 }
 
 /** سكريبت سرد قصير لفيديو شرح متحرك من موضوع (بيتكتب بنبرة سريعة وواضحة، بدون أرقام مخترعة) */
-export async function writeAnimationScript({ topic, seconds = 60, language = 'en', brief = '' }) {
-  const words = Math.round(Math.min(MAX_SECONDS - 4, Math.max(20, seconds)) * wps(language));
+export async function writeAnimationScript({ topic, seconds = 60, language = 'en', brief = '', maxSeconds = MAX_SECONDS }) {
+  const words = Math.round(Math.min(maxSeconds - 4, Math.max(20, seconds)) * wps(language));
   const langName = String(language).startsWith('ar') ? 'Egyptian-friendly Modern Standard Arabic (simple, spoken, clear)' : language === 'en' ? 'English' : language;
   const text = await llmText({
     system: `You write the voice-over for a short animated explainer video, in ${langName}. About ${words} words (never more than ${Math.round(words * 1.1)}). Structure: a punchy hook in the first sentence, 3-6 clear points or steps with concrete examples, and a short memorable conclusion. Short sentences (max ~18 words), spoken style, no stage directions, no headings, no emojis, no markdown. Only well-established facts; never invent statistics, quotes or sources — if you give a number it must be a well-known fact. Output ONLY the narration text.`,

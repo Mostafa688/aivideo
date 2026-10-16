@@ -1,7 +1,7 @@
 // ── produce.js ── فيديو أنيميشن بالكود من صوت: (سكريبت أو صوت مرفوع) → سرد + توقيت → مخرج (JSON) → رندر → صوت (مؤثرات + موسيقى)
 import fs from 'fs';
 import path from 'path';
-import { buildNarration, writeAnimationScript, MAX_SECONDS } from './narration.js';
+import { buildNarration, writeAnimationScript, MAX_SECONDS, ABS_MAX_SECONDS } from './narration.js';
 import { segmentScenes, directVideo, trDuration, LOOKS, isCartoon, LOOK_PALETTES, isGrounded } from './director.js';
 import { pickPalette } from './design.js';
 import { resolveVoxImages } from './images.js';
@@ -38,17 +38,18 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   // 1) سكريبت (وضع الموضوع)
   if (input.source === 'topic') {
     await prog('script', 0.2);
-    script = await (deps.writeAnimationScript || writeAnimationScript)({ topic: input.topic, seconds: input.seconds || 60, language: lang, brief: input.brief || '' });
+    script = await (deps.writeAnimationScript || writeAnimationScript)({ topic: input.topic, seconds: input.seconds || 60, language: lang, brief: input.brief || '', maxSeconds: input.maxSeconds || MAX_SECONDS });
     await prog('script', 1, { script });
   }
 
   // 2) السرد + توقيت الكلمات
   const nar = await (deps.buildNarration || buildNarration)({ mode: input.source === 'voiceover' ? 'voiceover' : 'script', script, audioFile: input.audioFile, lang, voiceKey: input.voiceKey, workDir, prog });
-  if (nar.total > MAX_SECONDS + 3) { const e = new Error(`narration is ${Math.round(nar.total)}s, over the ${MAX_SECONDS}s limit`); e.code = 'too_long'; throw e; }
+  const maxSec = Math.min(ABS_MAX_SECONDS, input.maxSeconds || MAX_SECONDS);
+  if (nar.total > maxSec + 3) { const e = new Error(`narration is ${Math.round(nar.total)}s, over the ${maxSec}s limit`); e.code = 'too_long'; throw e; }
   script = nar.script || script;
 
   // 3) المخرج
-  const spoken = segmentScenes(nar.tokens, nar.total, look === 'world3d' ? { minLen: 2.2, softMax: 4.2, maxLen: 5.5, maxScenes: 40 } : undefined); // الـ3D: لقطات أقصر وقطع أكتر
+  const spoken = segmentScenes(nar.tokens, nar.total, look === 'world3d' ? { minLen: 2.2, softMax: 4.2, maxLen: 5.5, maxScenes: Math.max(40, Math.ceil(nar.total / 3)) } : { maxScenes: Math.max(36, Math.ceil(nar.total / 3.4)) }); // فيديو أطول (3-5 دقايق) = مشاهد أكتر // الـ3D: لقطات أقصر وقطع أكتر
   if (!spoken.length) throw new Error('no scenes');
   // كاست الكارتون: الـLLM بيبتكر شخصيات/مخلوقات على مقاس القصة (لو فشل بنستخدم الشخصيات الجاهزة)
   let castMap = makeCastMap([]);
