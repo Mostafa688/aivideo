@@ -9,7 +9,7 @@ import {
   CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
   ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
   MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2, Maximize2,
-  ChevronLeft, ChevronRight, Scissors, Drama,
+  ChevronLeft, ChevronRight, Scissors, Drama, Paperclip,
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 import { downloadRemoteFile, fetchRemoteBlob } from '../utils/download.js';
@@ -915,6 +915,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const [imageModelOptions, setImageModelOptions] = useState([]);
   const [videoModelOptions, setVideoModelOptions] = useState([]);
   const [forcedModel, setForcedModel] = useState(null); // { type: 'image'|'video', key, label } | null
+  const [docs, setDocs] = useState([]); // مستندات مرفقة (PDF/Word/نص) — النص بيتطلع في السيرفر وبيتبعت مع الرسالة
+  const anyInputRef = useRef(null);
   const [myCharacters, setMyCharacters] = useState([]); // شخصياتي المحفوظة (استوديو الشخصيات)
   const [forcedCharacter, setForcedCharacter] = useState(null); // { id, label, imageUrl } الشخصية المختارة للرسايل الجاية
   // ✅ NEW: عرض تفاصيل/تعديل صورة أو فيديو بملء الشاشة — { jobUid, kind, imgIndex } | null
@@ -1197,6 +1199,45 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     video.src = URL.createObjectURL(file);
   };
 
+  // ✅ NEW (طلب العميل: "مفيش زرار رفع أي مستند أو أي حاجة"): مستند → السيرفر بيطلّع النص (PDF/Word/TXT/SRT…) والنص بيتبعت مع الرسالة
+  const DOC_RE = /\.(pdf|docx|txt|md|srt|vtt|csv|json|rtf)$/i;
+  const uploadDocument = async (file) => {
+    const key = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    if (file.size > 15 * 1024 * 1024) { setError(lang === 'ar' ? `${file.name}: أكبر من 15MB` : `${file.name}: larger than 15MB`); return; }
+    setDocs(d => [...d.slice(-2), { key, name: file.name, status: 'reading' }]);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await fetch('/api/agent/extract-document', { method: 'POST', headers: { Authorization: 'Bearer ' + localStorage.getItem('token') }, body: fd });
+      const data = await safeJson(res, lang);
+      if (!res.ok) throw new Error(data.message || data.error || 'Failed');
+      setDocs(d => d.map(x => (x.key === key ? { ...x, status: 'ready', text: data.text, chars: data.chars, truncated: data.truncated } : x)));
+    } catch (e) {
+      setDocs(d => d.filter(x => x.key !== key));
+      setError(lang === 'ar' ? `مقدرتش أقرا "${file.name}": ${e.message}` : `Could not read "${file.name}": ${e.message}`);
+    }
+  };
+  /** زرار "ارفع ملف" الواحد: كل ملف بيروح للمكان الصح حسب نوعه (صورة / فيديو / صوت / مستند) */
+  const routeAnyFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    const kind = (f) => { const ty = f.type || '', n = f.name || ''; if (ty.startsWith('image/')) return 'image'; if (ty.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi|m4v)$/i.test(n)) return 'video'; if (ty.startsWith('audio/') || /\.(mp3|m4a|wav|aac|ogg|opus|flac)$/i.test(n)) return 'audio'; if (DOC_RE.test(n)) return 'doc'; return 'other'; };
+    const by = { image: [], video: [], audio: [], doc: [], other: [] };
+    files.forEach(f => by[kind(f)].push(f));
+    setError('');
+    if (by.image.length) handleImageFile({ target: { files: by.image } });
+    if (by.audio.length) handleVoiceFile({ target: { files: [by.audio[0]] } });
+    by.doc.slice(0, 3).forEach(uploadDocument);
+    if (by.video.length > 1) uploadMontageFiles(by.video);
+    else if (by.video.length === 1) {
+      // فيديو قصير → فيديو للتعديل/نقل الأداء، أطول من كده → أصل مونتاج (الايجنت بيشوفه ويقدر يعمل بيه أي حاجة)
+      const f = by.video[0], v = document.createElement('video');
+      v.preload = 'metadata';
+      v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); if (v.duration <= MAX_VIDEO_UPLOAD_SEC + 0.5) handleVideoFile({ target: { files: [f] } }); else uploadMontageFiles([f]); };
+      v.onerror = () => uploadMontageFiles([f]);
+      v.src = URL.createObjectURL(f);
+    }
+    if (by.other.length) setError(lang === 'ar' ? `نوع الملف ده مش مدعوم: ${by.other.map(f => f.name).join('، ')} — الأنواع المدعومة: صور، فيديو، صوت، PDF، Word، TXT، SRT` : `Unsupported file type: ${by.other.map(f => f.name).join(', ')} — supported: images, video, audio, PDF, Word, TXT, SRT`);
+  };
+
   // ✅ NEW: رفع عدة فيديوهات للمونتاج الذكي — كل ملف بيترفع لوحده (XHR عشان نسبة التقدّم) والسيرفر بيحلله (وصف + كلام)
   const uploadMontageFiles = (fileList) => {
     const files = Array.from(fileList || []);
@@ -1265,7 +1306,8 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         ? ` [Uploaded photo URL${m.uploadedPhotoUrls.length > 1 ? 's' : ''}: ${m.uploadedPhotoUrls.length > 1 ? m.uploadedPhotoUrls.map((u, i) => `Photo ${i + 1}: ${u}${ratioTag(i)}`).join(', ') : `${m.uploadedPhotoUrls[0]}${ratioTag(0)}`}]`
         : '';
       const charNote = m.characterChip ? ` [using saved character "${m.characterChip.label || 'unnamed'}" (id ${m.characterChip.id})]` : '';
-      return m.content + uploadNote + charNote;
+      const docNote = Array.isArray(m.docItems) && m.docItems.length ? m.docItems.map(d => ` [Attached document "${d.name}" — content: ${d.text}${d.chars > d.text.length ? ' …(truncated)' : ''}]`).join('') : '';
+      return m.content + uploadNote + charNote + docNote;
     }
     if (m.type === 'render') {
       // ✅ FIX (طلب العميل: "جمع الفيديوهات اللي عملناها في فيديو واحد" — الايجنت مش عارف
@@ -1426,7 +1468,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     const textToSend = overrideText !== undefined ? overrideText : input;
     let readyMontage = montageAssets.filter(x => x.status === 'ready' && x.id);
     if (montageAssets.some(x => x.status === 'uploading')) { setError(lang === 'ar' ? 'استنى لحد ما الفيديوهات تخلص رفع' : 'Wait until the videos finish uploading'); return; }
-    if (!textToSend.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile && !readyMontage.length) return;
+    if (docs.some(x => x.status === 'reading')) { setError(lang === 'ar' ? 'استنى لحد ما المستند يتقري' : 'Wait until the document is read'); return; }
+    const readyDocs = docs.filter(x => x.status === 'ready' && x.text);
+    if (!textToSend.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile && !readyMontage.length && !readyDocs.length) return;
     if (loading || activeJobRef.current) return; // ✅ FIX: منع إرسال رسالة تانية لحد ما الحالية تخلص، عشان محدش يبعت "ابدأ" مرتين ويعمل تضارب رندر
     setError('');
     // العميل رفع الفيديو بزرار "رفع فيديو" العادي (مش زرار المونتاج) وطلب مونتاج/موشن جرافيكس: بنسجّل الفيديو (والصور المرفقة كمراجع ستايل) كأصول مونتاج
@@ -1460,15 +1504,17 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       ? (lang === 'ar' ? (imageFiles.length > 1 ? 'صور مرفوعة' : 'صورة مرفوعة') : (imageFiles.length > 1 ? 'Uploaded photos' : 'Uploaded photo'))
       : uploadedVideoFile
       ? (lang === 'ar' ? 'فيديو مرفوع للتعديل' : 'Uploaded video to edit')
+      : readyDocs.length
+      ? (lang === 'ar' ? 'مستند مرفق' : 'Attached document')
       : '';
     // ✅ NEW: uid ثابت للرسالة دي — لازم عشان نقدر نلحقها بعدين برابط R2 الدائم لأي صورة
     // اترفعت فيها (uploadedPhotoUrls من رد السيرفر)، حتى لو المستخدم بعت رسايل تانية قبل ما الرد يرجع
     const msgUid = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid, videoItem: newVideoThisMsg ? { name: uploadedVideoFile.name || 'video.mp4', durationSec: uploadedVideoDurationSec, previewUrl: URL.createObjectURL(uploadedVideoFile) } : undefined, characterChip: forcedCharacter ? { id: forcedCharacter.id, label: forcedCharacter.label, imageUrl: forcedCharacter.imageUrl } : undefined, montageItems: readyMontage.length ? readyMontage.map(x => ({ name: x.name, kind: x.kind || (/^style_/.test(x.name || '') ? 'image' : 'video'), durationSec: x.durationSec })) : undefined };
+    const userMsg = { role: 'user', content: textToSend.trim() || attachmentLabel, hasVoice: !!voiceFile, imagePreview: imageFiles[0], imagePreviews: imageFiles, uid: msgUid, videoItem: newVideoThisMsg ? { name: uploadedVideoFile.name || 'video.mp4', durationSec: uploadedVideoDurationSec, previewUrl: URL.createObjectURL(uploadedVideoFile) } : undefined, characterChip: forcedCharacter ? { id: forcedCharacter.id, label: forcedCharacter.label, imageUrl: forcedCharacter.imageUrl } : undefined, montageItems: readyMontage.length ? readyMontage.map(x => ({ name: x.name, kind: x.kind || (/^style_/.test(x.name || '') ? 'image' : 'video'), durationSec: x.durationSec })) : undefined, docItems: readyDocs.length ? readyDocs.map(x => ({ name: x.name, chars: x.chars, text: x.text.slice(0, 4000) })) : undefined };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
     const currentVoice = voiceFile, currentImages = styleRegistered ? [] : imageFiles; // صور الستايل اتسجّلت كمراجع مونتاج — مش بتتبعت كصور عادية كمان
-    setInput(''); setVoiceFile(null); setImageFiles([]);
+    setInput(''); setVoiceFile(null); setImageFiles([]); if (readyDocs.length) setDocs([]);
     if (forcedCharacter) setForcedCharacter(null); // الشخصية اتبعتت جوه الرسالة (بتظهر في الشات) — الايجنت بيفتكرها من الـhistory
     if (readyMontage.length) setMontageAssets([]); // الفيديوهات اتبعتت جوه الرسالة (بتظهر في الشات) — السيرفر محتفظ بيها 3 ساعات والايجنت بيشوفها في كل رسالة
     if (videoRegistered) { setUploadedVideoFile(null); setUploadedVideoDurationSec(null); setVideoSentOnce(false); }
@@ -1477,8 +1523,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
 
     try {
       const body = {
-        message: textToSend.trim() || (readyMontage.length ? (lang === 'ar' ? 'رفعت فيديوهات وعايز أعملها مونتاج' : 'I uploaded videos and want a montage') : (lang === 'ar' ? 'من الصوت/الصورة المرفوعة' : 'from the attached voice/image')),
+        message: textToSend.trim() || (readyDocs.length && !readyMontage.length && !voiceFile && !currentImages.length ? (lang === 'ar' ? 'رفعت مستند' : 'I attached a document') : null) || (readyMontage.length ? (lang === 'ar' ? 'رفعت فيديوهات وعايز أعملها مونتاج' : 'I uploaded videos and want a montage') : (lang === 'ar' ? 'من الصوت/الصورة المرفوعة' : 'from the attached voice/image')),
         montageAssetIds: readyMontage.length ? readyMontage.map(x => x.id) : undefined,
+        documents: readyDocs.length ? readyDocs.map(x => ({ name: x.name, text: x.text })) : undefined,
         // ✅ FIX: كانت -6 (3 تبادلات بس) وده كان بيخلي الايجنت ينسى تفاصيل قديمة في المحادثة — رفعناها لـ 16 لتغطي محادثة كاملة
         history: nextMessages.slice(0, -1).slice(-16).map(m => ({ role: m.role, content: historyContentFor(m) })),
         // ✅ NEW: دفتر كامل بكل صور/فيديوهات المشروع من الأول للآخر — منفصل عن نافذة الـ16
@@ -2551,6 +2598,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
   const [plusMenuView, setPlusMenuView] = useState('main'); // 'main' | 'createImage' | 'createVideo' | 'style'
   const closePlusMenu = () => { setPlusMenuOpen(false); setPlusMenuView('main'); };
   const plusItemStyle = { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', width: '100%' };
+  const plusHeadStyle = { padding: '6px 12px 2px', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'rgba(255,255,255,0.38)' };
   const plusItemHover = (e, on) => { e.currentTarget.style.background = on ? 'rgba(255,255,255,0.06)' : 'none'; };
 
   const PlusMenu = () => (
@@ -2559,6 +2607,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       <input ref={voiceCloneInputRef} type="file" accept="audio/*" onChange={(e) => { handleVoiceCloneFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
       <input ref={imageInputRef} type="file" accept="image/*" multiple onChange={(e) => { handleImageFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
       <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => { handleVideoFile(e); closePlusMenu(); }} style={{ display: 'none' }} />
+      <input ref={anyInputRef} type="file" multiple accept="image/*,video/*,audio/*,.pdf,.docx,.txt,.md,.srt,.vtt,.csv,.json,.rtf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={(e) => { routeAnyFiles(e.target.files); e.target.value = ''; closePlusMenu(); }} style={{ display: 'none' }} />
       <input ref={montageInputRef} type="file" accept="video/*,audio/*,image/png,image/jpeg,image/webp" multiple onChange={(e) => { uploadMontageFiles(e.target.files); e.target.value = ''; closePlusMenu(); }} style={{ display: 'none' }} />
       <button onClick={() => (plusMenuOpen ? closePlusMenu() : setPlusMenuOpen(true))} title="Attach, create, or set a style"
         style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (plusMenuOpen || forcedModel || selectedStyle) ? 'rgba(124,106,247,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${(plusMenuOpen || forcedModel || selectedStyle) ? 'rgba(124,106,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: (plusMenuOpen || forcedModel || selectedStyle) ? 'var(--accent2)' : 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 18, fontWeight: 700, flexShrink: 0, transition: 'all 0.15s', transform: plusMenuOpen ? 'rotate(45deg)' : 'none' }}>+</button>
@@ -2566,32 +2615,32 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       {plusMenuOpen && (
         <>
           <div onClick={closePlusMenu} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 230, maxHeight: 360, overflowY: 'auto', boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ position: 'absolute', bottom: 46, left: 0, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 12, padding: 6, minWidth: 250, maxWidth: 'min(92vw, 320px)', maxHeight: 'min(72vh, 480px)', overflowY: 'auto', boxShadow: '0 8px 28px rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 2 }}>
 
             {plusMenuView === 'main' && (
               <>
-                <button onClick={() => imageInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
-                  <ImageIcon size={16} strokeWidth={2} /> Upload photo
-                </button>
-                <button onClick={() => videoInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={`Upload a video to edit (max ${MAX_VIDEO_UPLOAD_SEC}s)`}>
-                  <Film size={16} strokeWidth={2} /> Upload video to edit
+                <div style={plusHeadStyle}>{lang === 'ar' ? 'إرفاق' : 'Attach'}</div>
+                <button onClick={() => anyInputRef.current?.click()} style={{ ...plusItemStyle, background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.28)', alignItems: 'flex-start' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,106,247,0.2)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,106,247,0.12)'; }}>
+                  <Paperclip size={16} strokeWidth={2} style={{ marginTop: 2, color: 'var(--accent2)' }} />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span>{lang === 'ar' ? 'ارفع ملف' : 'Upload a file'}</span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>{lang === 'ar' ? 'صورة • فيديو • صوت • مستند (PDF، Word، TXT)' : 'Photo • video • audio • document (PDF, Word, TXT)'}</span>
+                  </span>
                 </button>
                 <button onClick={() => montageInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={lang === 'ar' ? 'ارفع فيديو أو أكتر (لحد 20) + تعليق صوتي اختياري + صورة موشن جرافيك مرجعية (مثلاً من Pinterest)، والايجنت يعمل لها مونتاج' : 'Upload one or more videos (up to 20) + an optional voiceover + a motion-graphics reference image (e.g. from Pinterest), and the agent edits them into one'}>
-                  <Scissors size={16} strokeWidth={2} /> {lang === 'ar' ? 'ارفع فيديوهات (وصوت) للمونتاج' : 'Upload videos (+ voiceover) for montage'}
-                </button>
-                <button onClick={() => voiceInputRef.current?.click()} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)} title={t.voiceTitle(limits.MAX_AUDIO_SEC / 60)}>
-                  <Mic size={16} strokeWidth={2} /> Record voice message
+                  <Scissors size={16} strokeWidth={2} /> {lang === 'ar' ? 'فيديوهات للمونتاج (+ تعليق صوتي)' : 'Videos for a montage (+ voiceover)'}
                 </button>
                 <button onClick={() => voiceCloneInputRef.current?.click()} disabled={savingVoice} style={{ ...plusItemStyle, cursor: savingVoice ? 'wait' : 'pointer' }} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}
-                  title="Save your voice once (10s recommended, max 1 minute) and use it in any future video">
-                  <Volume2 size={16} strokeWidth={2} /> {savingVoice ? 'Saving...' : (myClonedVoice ? 'Update my saved voice' : 'Save my voice')}
+                  title={lang === 'ar' ? 'احفظ صوتك مرة واحدة (10 ثواني كفاية، أقصى دقيقة)' : 'Save your voice once (10s recommended, max 1 minute) and use it in any future video'}>
+                  <Volume2 size={16} strokeWidth={2} /> {savingVoice ? (lang === 'ar' ? 'بيتحفظ…' : 'Saving...') : (myClonedVoice ? (lang === 'ar' ? 'تحديث صوتي المحفوظ' : 'Update my saved voice') : (lang === 'ar' ? 'احفظ صوتي' : 'Save my voice'))}
                 </button>
                 <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 2px' }} />
+                <div style={plusHeadStyle}>{lang === 'ar' ? 'إنشاء واختيار' : 'Create & choose'}</div>
                 <button onClick={() => setPlusMenuView('createImage')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
-                  <ImageIcon size={16} strokeWidth={2} /> Create image <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
+                  <ImageIcon size={16} strokeWidth={2} /> {lang === 'ar' ? 'إنشاء صورة (اختيار الموديل)' : 'Create image'} <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
                 </button>
                 <button onClick={() => setPlusMenuView('createVideo')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
-                  <Film size={16} strokeWidth={2} /> Create video <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
+                  <Film size={16} strokeWidth={2} /> {lang === 'ar' ? 'إنشاء فيديو (اختيار الموديل)' : 'Create video'} <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
                 </button>
                 <button onClick={() => setPlusMenuView('characters')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
                   <Drama size={16} strokeWidth={2} /> {lang === 'ar' ? 'شخصياتي' : 'My characters'}{forcedCharacter ? `: ${forcedCharacter.label || '#' + forcedCharacter.id}` : ''}
@@ -2600,7 +2649,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 2px' }} />
                 <button onClick={() => setPlusMenuView('style')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
                   {(() => { const SelIcon = STYLE_OPTIONS.find(s => s.key === selectedStyle)?.icon || Sparkles; return <SelIcon size={16} strokeWidth={2} />; })()}
-                  Visual style{selectedStyle ? `: ${STYLE_OPTIONS.find(s => s.key === selectedStyle)?.label}` : ''}
+                  {lang === 'ar' ? 'الستايل' : 'Visual style'}{selectedStyle ? `: ${STYLE_OPTIONS.find(s => s.key === selectedStyle)?.label}` : ''}
                   <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
                 </button>
                 {(forcedModel || selectedStyle) && (
@@ -2926,6 +2975,11 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                         ))}
                       </div>
                     )}
+                    {m.docItems?.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                        {m.docItems.map((d, idx) => <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.14)', fontSize: 12 }}><FileText size={12} strokeWidth={2} /> {String(d.name || '').slice(0, 26)}</div>)}
+                      </div>
+                    )}
                     {m.hasVoice && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, opacity: 0.8, marginBottom: 6 }}><Mic size={12} strokeWidth={2} /> {t.voiceAttached}</div>}
                     {m.content}
                     {m.showcase?.length > 0 && (
@@ -2975,7 +3029,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
         <div style={{ padding: '10px 14px 14px', flexShrink: 0, position: 'relative' }}>
           {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
-          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce) || forcedModel || forcedCharacter || montageAssets.length > 0) && (
+          {(voiceFile || imageFiles.length > 0 || (uploadedVideoFile && !videoSentOnce) || forcedModel || forcedCharacter || montageAssets.length > 0 || docs.length > 0) && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
               {forcedCharacter && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 4px', borderRadius: 10, background: 'rgba(236,72,153,0.1)', border: '1px solid rgba(236,72,153,0.35)', fontSize: 12, color: '#f9a8d4' }}>
@@ -2988,6 +3042,12 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
               {voiceFile && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><Mic size={13} strokeWidth={2} /> {voiceFile.name.slice(0, 20)} <button onClick={() => setVoiceFile(null)} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>}
               {imageFiles.map((_, idx) => (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}><ImageIcon size={13} strokeWidth={2} /> {t.imageAttached}{imageFiles.length > 1 ? ` ${idx + 1}` : ''} <button onClick={() => setImageFiles(prev => prev.filter((_, i) => i !== idx))} style={{ display: 'flex', background: 'none', border: 'none', color: 'var(--accent2)', cursor: 'pointer', fontWeight: 700 }}><X size={13} strokeWidth={2.5} /></button></div>
+              ))}
+              {docs.map((d) => (
+                <div key={d.key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}>
+                  <FileText size={13} strokeWidth={2} /> {d.name.slice(0, 22)}{d.status === 'reading' ? (lang === 'ar' ? ' · بيتقري…' : ' · reading…') : (d.truncated ? (lang === 'ar' ? ' · (أول جزء)' : ' · (first part)') : '')}
+                  <button onClick={() => setDocs(x => x.filter(y => y.key !== d.key))} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>✕</button>
+                </div>
               ))}
               {montageAssets.map((it) => (
                 <div key={it.key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(124,106,247,0.3)', fontSize: 12, color: 'var(--accent2)' }}>
@@ -3024,10 +3084,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}
                 style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s ease' }}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
             ) : (
-              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile && !montageAssets.length}
+              <button onClick={() => sendMessage()} disabled={!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile && !montageAssets.length && !docs.length}
                 onMouseEnter={e => { if (input.trim() || voiceFile || imageFiles.length || uploadedVideoFile) e.currentTarget.style.filter = 'brightness(1.12)'; }}
                 onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
-                style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}><Send size={15} strokeWidth={2.25} /></button>
+                style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile && !docs.length) ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', color: '#fff', cursor: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'default' : 'pointer', flexShrink: 0, transition: 'filter 0.15s ease', boxShadow: (!input.trim() && !voiceFile && !imageFiles.length && !uploadedVideoFile) ? 'none' : '0 3px 10px rgba(124,106,247,0.3)' }}><Send size={15} strokeWidth={2.25} /></button>
             )}
           </div>
           <p style={{ textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>{t.onlyVideo}</p>
