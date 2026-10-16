@@ -6,6 +6,7 @@ import { segmentScenes, directVideo, trDuration, LOOKS, isCartoon, LOOK_PALETTES
 import { pickPalette } from './design.js';
 import { resolveVoxImages } from './images.js';
 import { findLogo } from './logos.js';
+import { measureNonLatin } from './typeset.js';
 import { designCast, makeCastMap } from './cast.js';
 import { designArt } from './art.js';
 import { choreograph, designWorldCast, FALLBACK_CAST } from './w3d/choreo.js';
@@ -117,7 +118,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   }
   // نمط Vox: صور أرشيفية حقيقية (اللي مالقيناش ليه صورة بنحوّله لقصاصة جريدة أو نص متحرك)
   let images = null, imageCredits = [];
-  if (look === 'vox') {
+  if (look === 'vox' || scenes.some(sc => sc.type === 'poster' && sc.data.query)) {
     const slots = [];
     // لوجوهات: من مكتبة اللوجوهات الرسمية بالكود، واللي مش موجود بندوّر على صورة لوجو بتاعته في الأرشيف
     for (const [i, sc] of scenes.entries()) {
@@ -129,6 +130,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     scenes.forEach((sc, i) => {
       if (sc.type === 'photo' || sc.type === 'fullphoto') slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: sc.data.query, named: sc.data.named, caption: sc.data.caption });
       else if (sc.type === 'collage') sc.data.slots.forEach((q, k) => slots.push({ key: `s${i}_${k}`, scene: i, text: spoken[i].text, query: q.query, named: q.named }));
+      else if (sc.type === 'poster' && sc.data.query) slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: `${sc.data.query} isolated on white background`, named: false, cutout: true }); // صورة متقصوصة (الخلفية بتتشال بالكود)
     });
     await prog('assets', 0);
     const res = slots.length ? await (deps.resolveVoxImages || resolveVoxImages)({ slots, ratio, assetsDir: path.join(workDir, 'images'), onProgress: (f) => prog('assets', f) }) : { images: {}, credits: [], missing: new Set() };
@@ -139,6 +141,8 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
         else { const txt = spoken[i].text; sc.type = txt.split(/\s+/).length >= 4 ? 'headline' : 'kinetic'; sc.data = sc.type === 'headline' ? { headline: txt.split(/\s+/).slice(0, 8).join(' '), emphasis: [] } : { emphasis: [] }; }
       } else if (sc.type === 'logo') {
         if (!sc.data.logo && images[`s${i}`]) sc.data = { ...sc.data, img: `s${i}` }; // ولو مفيش: شارة بأول حروف الاسم
+      } else if (sc.type === 'poster') {
+        if (sc.data.query && images[`s${i}`]) sc.data = { ...sc.data, img: `s${i}` };
       } else if (sc.type === 'collage') {
         const ids = sc.data.slots.map((_, k) => `s${i}_${k}`).filter(id => images[id]);
         if (ids.length >= 2) sc.data = { imgs: ids, headline: sc.data.headline };
@@ -148,6 +152,8 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     });
     await prog('assets', 1);
   }
+  // البوستر التحريري: قياس العربي الحقيقي بخطوطه (اللاتيني بيتقاس من الخط نفسه)
+  for (const sc of scenes) if (sc.type === 'poster') { try { sc.data._w = await measureNonLatin([sc.data.kicker, sc.data.hero, sc.data.bar, sc.data.tail]); } catch { /* تقدير */ } }
   const rtl = ['ar', 'he', 'fa', 'ur'].includes(String(lang).split(/[-_]/)[0]);
   const mm = await makeMeasurer(nar.tokens.map(t => t.w), { rtl });
   const story = { w, h, palette: pal, lang, scenes, mm, duration: nar.total, look, cast: isCartoon(look) ? { host: plan.host, map: castMap } : { host: null, map: castMap }, images };

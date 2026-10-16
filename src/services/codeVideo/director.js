@@ -10,6 +10,8 @@ import { SCENE_TYPES } from './scenes.js';
 import { CAST, CAST_IDS, EMOTIONS, POSES } from './characters.js';
 import { genderOf } from './cast.js';
 import { ENV_NAMES } from './w3d/envs.js';
+import { POSTER_LAYOUTS } from './scenesEd.js';
+import { OBJECT_NAMES, resolveObject } from './objects3d.js';
 
 // أنماط الفيديو: motion = موشن جرافيك/إنفوجرافيك | vox = فيديو شرح بصور أرشيفية (على طريقة Vox) | cartoon = شخصيات كارتون 2D | cartoon3d = شخصيات كارتون 3D
 export const LOOKS = ['motion', 'vox', 'cartoon', 'cartoon3d', 'world3d'];
@@ -17,8 +19,9 @@ export const isWorld3d = (look) => look === 'world3d';
 export const isCartoon = (look) => look === 'cartoon' || look === 'cartoon3d';
 const CARTOON_TYPES = ['char_say', 'char_prop', 'char_duo'];
 const VOX_TYPES = ['photo', 'fullphoto', 'collage', 'headline', 'logo', 'papermap'];
-const BASE_TYPES = SCENE_TYPES.filter(t => !CARTOON_TYPES.includes(t) && !VOX_TYPES.includes(t) && t !== 'world');
-export const allowedTypes = (look) => (look === 'world3d' ? new Set([...BASE_TYPES.filter(t => t !== 'art' && t !== 'bigword'), 'world']) : new Set([...BASE_TYPES, ...(isCartoon(look) ? CARTOON_TYPES : look === 'vox' ? VOX_TYPES : [])]));
+const ED_TYPES = ['poster']; // بوستر تحريري: Vox والموشن بس
+const BASE_TYPES = SCENE_TYPES.filter(t => !CARTOON_TYPES.includes(t) && !VOX_TYPES.includes(t) && !ED_TYPES.includes(t) && t !== 'world');
+export const allowedTypes = (look) => (look === 'world3d' ? new Set([...BASE_TYPES.filter(t => t !== 'art' && t !== 'bigword'), 'world']) : new Set([...BASE_TYPES, ...(isCartoon(look) ? CARTOON_TYPES : look === 'vox' ? [...VOX_TYPES, ...ED_TYPES] : ED_TYPES)]));
 export const LOOK_PALETTES = { motion: MOTION_PALETTES, vox: VOX_PALETTES, cartoon: TOON_PALETTES, cartoon3d: TOON_PALETTES, world3d: ['daylight'] };
 const FEMALE_CAST = new Set(['lina', 'noor', 'maya']), MALE_CAST = new Set(['sam', 'omar', 'prof']);
 export function defaultHost(voiceGender = 'unknown') { return voiceGender === 'female' ? 'lina' : voiceGender === 'male' ? 'sam' : 'robo'; }
@@ -216,6 +219,13 @@ export function sanitizeScene(raw, spoken, { first = false, last = false, look =
       const idea = clean(d.idea, 260); if (idea.length < 8) return null;
       return { type: 'art', data: { idea, layout: d.layout === 'full' ? 'full' : 'side', emphasis: strs(d.emphasis, 2, 24) } };
     }
+    case 'poster': {
+      // كل كلمة على الشاشة لازم تكون اتقالت؛ البطل كلمة-3 كلمات
+      const hero = clean(d.hero, 28); if (!hero || hero.split(/\s+/).length > 3 || !grounded(hero, said, 0.6)) return null;
+      const opt = (v, words, len) => { const x = clean(v, len); return x && x.split(/\s+/).length <= words && grounded(x, said, 0.6) && norm(x) !== norm(hero) ? x : undefined; };
+      const query = clean(d.query, 70);
+      return { type: 'poster', data: { hero, kicker: opt(d.kicker, 8, 60), bar: opt(d.bar, 3, 28), tail: opt(d.tail, 3, 28), layout: POSTER_LAYOUTS.includes(d.layout) ? d.layout : undefined, object: resolveObject(d.object) || undefined, query: query.length >= 3 ? query : undefined, chart: d.chart === true || undefined } };
+    }
     case 'headline': {
       const headline = clean(d.headline, 90); if (!headline || !grounded(headline, said, 0.6)) return null;
       return { type: 'headline', data: { headline, emphasis: strs(d.emphasis, 2, 24) } };
@@ -283,6 +293,9 @@ const VOX_DOC = `Photo scenes (archive photos are fetched automatically from "qu
 - papermap {"places":[{"name":"place as said","lat":number,"lon":number}],"regions":["ISO-2 country codes, e.g. EG, US, SA"],"route":true|false,"emphasis":[]} — a vintage paper map like in documentaries: the camera zooms to the place, brass pins drop, a red string connects places when route=true, names on tape (max 4 places, 3 regions). Use it whenever a country, city or journey is said. Coordinates must be real (approximate is fine).
 named=true when the photo must show a specific real person, place, event or object (it is strictly verified and dropped if not found); named=false for generic imagery (e.g. 'stock exchange floor', 'crowded street').
 `;
+const POSTER_DOC = `Editorial poster scenes (modern short-form typography, like premium Instagram/TikTok explainers — the spoken words are typeset like a magazine poster and appear in sync with the voice):
+- poster {"hero":"the 1-3 KEY words of the scene, exactly as spoken (shown HUGE)","kicker?":"a short lead-in phrase said just before/around the hero (max 8 words, shown small above it)","bar?":"1-3 words said right after, shown white on a coloured highlight bar","tail?":"1-3 words said after the hero, they blur in under it","layout?":"stack|blur|round|echo","object?":"${OBJECT_NAMES.join('|')}","query?":"2-5 English words for a REAL photo of ONE concrete object/person/statue to show cut out with a soft shadow (e.g. 'smartphone on tripod', 'stack of coins', 'greek statue thinking') — the background is removed automatically","chart?":true} — layouts: stack = small spaced capitals + huge serif word + torn paper strip with a highlight bar (+ a stock-chart line drawing itself; great for money/risk/business); blur = italic serif lead-in + tall condensed word whose letters slide in with motion blur (+ sparkle; great for learning/ideas); round = small italic line + huge bold rounded italic word in red (great for hooks, secrets, warnings); echo = huge serif word with grey echo copies + a highlight bar (great for "the biggest mistake", contrasts). "object" = a glossy 3D shape (puzzle=problem solving, sparkle=magic/new, warning=risk/danger, bolt=speed/energy, heart, star, arrow=growth, coin=money, check=yes/right, cross=wrong, target=goal, bulb=idea, question=why, flame=hot/trend). Give either an object OR a query (a photo is best when the scene names a concrete thing). Use posters for hooks, punchlines, key claims and lessons — they replace plain kinetic text.
+`;
 const CARTOON_DOC = `Cartoon scenes (the video is a cartoon with characters):
 - char_say {"character":"cast id","emotion":"neutral|happy|excited|surprised|sad|angry|think","pose":"rest|wave|point|up|shrug|hold|cheer","emphasis":["1-2 words said"]} — a cartoon character says the scene's words in a speech bubble, mouth moving with the voice. The workhorse: 50-60% of all scenes.
 - char_prop {"character","icon":"icon name","label":"2-4 words said in the scene","emotion","pose"} — a character beside a big icon/object that illustrates the point.
@@ -308,8 +321,8 @@ export function buildSystem(look = 'motion') {
   const icons = `\nIcon names: ${ICON_NAMES.join(', ')}.\n\n`;
   if (look === 'vox') {
     return COMMON_HEAD('The style is a Vox-like paper-collage documentary explainer: real archival photos printed in black-and-white halftone/ink on torn paper cards with tape, hand-drawn arrows and marker circles that draw themselves when a word is said, rubber stamps, newspaper clippings, charts and highlighted words on kraft, graph and coloured paper.').replace('PALETTES', 'vox|voxdark').replace('"PLUS_META",', '').replace('BGS', 'paper')
-      + VOX_DOC + CATALOG + icons + COMMON_RULES
-      + '\n- For Vox style the video must be VISUAL, not text: at least 70% of scenes are photo / fullphoto / collage / logo / papermap / charts. A brand/company/app/AI model => logo (with "rank" in a ranked list); a country/city/route => papermap; a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Text-only scenes (kinetic/headline/quote) at most 20% — and give every kinetic an "icon" that fits. Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is chosen by the system (any value is fine). Transitions: mostly paper (a new torn paper sheet slides over), some cut/slide.';
+      + VOX_DOC + POSTER_DOC + CATALOG + icons + COMMON_RULES
+      + '\n- Use poster for about 20-30% of the scenes (hooks, punchlines, key lessons, short statements) instead of kinetic; vary the poster layouts and never use the same layout twice in a row.\n- For Vox style the video must be VISUAL, not text: at least 70% of scenes are photo / fullphoto / collage / logo / papermap / poster / charts. A brand/company/app/AI model => logo (with "rank" in a ranked list); a country/city/route => papermap; a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Text-only scenes (kinetic/headline/quote) at most 20% — and give every kinetic an "icon" that fits. Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is chosen by the system (any value is fine). Transitions: mostly paper (a new torn paper sheet slides over), some cut/slide.';
   }
   if (look === 'world3d') {
     return COMMON_HEAD('The style is a 3D animated video (low-poly stylised 3D world with characters, like a modern mobile game) that tells or explains the story visually.').replace('PALETTES', 'daylight').replace('"PLUS_META",', '').replace('BGS', 'aurora')
@@ -321,7 +334,7 @@ export function buildSystem(look = 'motion') {
       + CARTOON_DOC + CATALOG + icons + COMMON_RULES
       + '\n- For cartoon style: char_say 50-60%, char_prop 10-20%, char_duo up to 3, infographic scenes (stat/bars/list/compare/steps/timeline/icons...) only when the voice states numbers/lists. Vary characters and emotions; the host narrates most scenes. "bg" is sky|room|studio|city (for chart/list scenes use sky or studio).';
   }
-  return SYSTEM_MOTION;
+  return SYSTEM_MOTION.replace('Icon names:', POSTER_DOC + '- In this style use poster for about 20-30% of the scenes (hooks, punchlines, key claims) and vary its layouts.\nIcon names:');
 }
 
 const fmtScene = (sc, i) => `[${i}] (${(sc.end - sc.start).toFixed(1)}s, ${sc.tokens.length} words) ${sc.text}`;
@@ -375,6 +388,7 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
     if (clean0?.type === 'title' && (++titles > 2 || (i !== 0 && sc.end - sc.start < 3))) clean0 = null;
     if (clean0?.type === 'art' && (++arts > 8 || arts > Math.max(2, Math.ceil(n * 0.4)))) clean0 = null;
     if (clean0?.type === 'collage' && ++collages > 3) clean0 = null;
+    if (clean0?.type === 'poster' && out[out.length - 1]?.type === 'poster' && out[out.length - 1].data.layout && out[out.length - 1].data.layout === clean0.data.layout) clean0.data.layout = undefined; // نفس الشكل مرتين ورا بعض → يتبدّل تلقائي
     if (clean0?.type === 'headline' && ++headlines > (vox ? 2 : 3)) clean0 = null;
     if (clean0?.type === 'char_duo' && (++duos > 3 || (sc.end - sc.start) < 3.5)) clean0 = { type: 'char_say', data: { character: host, emotion: 'neutral', emphasis: [] } };
     if (cartoon && clean0?.type === 'kinetic') clean0 = null;
@@ -387,7 +401,7 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
     out.push({ type: pick.type, data: pick.data, raw });
   });
   // المشهد الأول: عنوان (أو كلمة/نص قوي)
-  const firstOk = w3 ? ['world', 'title'] : cartoon ? ['title', 'char_say', 'bigword'] : vox ? ['title', 'bigword', 'kinetic', 'fullphoto', 'photo'] : ['title', 'bigword', 'kinetic'];
+  const firstOk = w3 ? ['world', 'title'] : cartoon ? ['title', 'char_say', 'bigword'] : vox ? ['title', 'bigword', 'kinetic', 'fullphoto', 'photo', 'poster'] : ['title', 'bigword', 'kinetic', 'poster'];
   if (out.length && !firstOk.includes(out[0].type)) out[0] = { type: 'title', data: { title: meta.title || scenes[0].text.split(/\s+/).slice(0, 7).join(' ') }, raw: null };
   if (out.length && ['kinetic', 'char_say'].includes(out[0].type) && meta.title && scenes.length >= 4 && (scenes[0].end - scenes[0].start) >= 3) out[0] = { type: 'title', data: { title: meta.title }, raw: null };
   if (cartoon && out.length) { const lt = out[out.length - 1]; if (lt.type === 'char_say' && n >= 5 && !lt.raw?.data) lt.data = { ...lt.data, emotion: 'excited', pose: 'cheer' }; }

@@ -5,6 +5,7 @@ import { ffmpeg } from '../documentary/ff.js';
 import { ensureSfx } from '../documentary/sfx.js';
 import { mixAudio } from '../documentary/audioMix.js';
 import { appearTimes } from './art.js';
+import { phraseTime } from './scenesEd.js';
 
 // كل مؤثر = وسائط ffmpeg كاملة (lavfi) → wav ستيريو 44.1k
 const noise = (d, color = 'pink') => ['-f', 'lavfi', '-i', `anoisesrc=d=${d}:c=${color}:r=44100`];
@@ -127,6 +128,13 @@ export const SCENE_SFX = {
   collage: () => [E(0.1, 'paper', 0.6), E(0.5, 'paper', 0.6), E(0.9, 'paper', 0.6), E(0.75, 'scribble', 0.4), E(1.6, 'scribble', 0.4)],
   logo: (d, sc) => { const te = emphAt(sc, d); return [E(0.05, 'paper', 0.7), E(0.5, 'paper', 0.45), ...(d.rank ? [E(0.4, 'stamp', 0.8)] : []), ...(te != null ? [E(te, 'scribble', 0.5)] : [])]; },
   papermap: (d) => [E(0.0, 'paper', 0.55), E(0.2, 'whoosh_l', 0.45), ...(d.places || []).slice(0, 4).map((_, i) => E(1.3 + i * 0.55 + 0.3, 'click', 0.75)), ...(d.route ? [E(1.9, 'scribble', 0.4)] : [])],
+  poster: (d, sc) => {
+    const tk = sc.tokens || [], tH = phraseTime(tk, d.hero, 0.5), ev = [E(0.02, 'whoosh_s', 0.5), E(Math.max(0, tH - 0.03), 'hit', 0.75), E(tH + 0.05, 'swish', 0.35)];
+    if (d.bar) ev.push(E(Math.max(tH + 0.35, phraseTime(tk, d.bar, tH + 0.6)), 'paper', 0.6));
+    if (d.tail) ev.push(E(Math.max(tH + 0.3, phraseTime(tk, d.tail, tH + 0.7)), 'whoosh_s', 0.35));
+    if (d.object || d.img) ev.push(E(tH + 0.3, 'pop', 0.55));
+    return ev;
+  },
   headline: (d) => [E(0.05, 'paper', 0.65), E(0.45, 'click', 0.4), ...(d.emphasis?.length ? [E(1.0, 'scribble', 0.45)] : [])],
 };
 // صوت الانتقالات (عند حدّ المشهد)
