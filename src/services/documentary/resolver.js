@@ -1,6 +1,7 @@
 // ── resolver.js ── لكل beat: بحث في المصادر → ترتيب بالـLLM (مع بديل heuristic) → تنزيل أول مرشح شغّال
 import path from 'path';
 import { searchCandidates, materialize, fetchAsset } from './sources/index.js';
+import { pexelsFilmBudget } from './sources/pexels.js';
 import { llmJson } from './llm.js';
 import { fallbackBeatPlan } from './planner.js';
 
@@ -100,6 +101,8 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
   const mat = deps.materialize || materialize;
   const fetchOne = deps.fetchAsset || fetchAsset;
   const used = new Set();
+  // نصيب الفيلم ده من طلبات Pexels (المشاهد بتتبحث بالترتيب، فأول الفيلم بياخد Pexels والباقي Pixabay والأرشيف)
+  if (!deps.searchDeps?.fetchJson) deps = { ...deps, searchDeps: { ...(deps.searchDeps || {}), budget: { pexels: pexelsFilmBudget() } } };
   const need = beats.map((b, i) => ({ b, i, plan: plans[i] })).filter(x => x.plan.visual !== 'text');
   let done = 0;
 

@@ -34,7 +34,8 @@ export const sourceAvailability = () => ({
 export async function searchCandidates(query, { group = 'stock', kinds = ['video', 'image'], orientation = 'landscape', limit = 8 } = {}, deps = {}) {
   let names = (SOURCE_GROUPS[group] || SOURCE_GROUPS.stock).filter(n => sourceAvailability()[n]);
   // Pexels واقف (حد الطلبات) → الستوك بيكمل من مصادر مجانية تانية بدل ما المشاهد تفضى
-  if ((SOURCE_GROUPS[group] || []).includes('pexels') && !sourceAvailability().pexels) names = [...new Set([...names, 'wikimedia', 'archive'])];
+  const pexelsOut = !sourceAvailability().pexels || (deps.budget && deps.budget.pexels <= 0); // واقف أو الفيلم خلّص نصيبه
+  if ((SOURCE_GROUPS[group] || []).includes('pexels') && pexelsOut) names = [...new Set([...names.filter(n => n !== 'pexels'), 'wikimedia', 'archive'])];
   const lists = await Promise.all(names.map(async n => {
     try { return await SEARCHERS[n](query, { kinds, orientation, limit }, deps); } catch (e) { console.warn(`[Documentary/sources] ${n} search failed: ${e.message}`); return []; }
   }));
