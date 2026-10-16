@@ -1505,6 +1505,20 @@ router.post('/chat', authMiddleware, async (req, res) => {
       reply = 'الخطة المجانية معندهاش رصيد كريديت حقيقي، فمش هينفع نبدأ التوليد قبل ما تشترك. تحب أوريك باقات الاشتراك، ولا أوريك أمثلة فيديوهات حقيقية عملناها الأول؟';
     }
 
+    // ✅ حاجز في الكود (شكوى حقيقية: طلب فيديو Vox اتعمل له صور بالذكاء الاصطناعي واتكلف فلوس): فيديو Vox / الأنيميشن بالكود
+    // بيجيب صور الأرشيف ويرسم اللوجوهات بالكود — مفيش أي صورة أو فيديو AI. لو المحادثة عن كده والايجنت طلّع ماركر توليد صور/فيديو
+    // بالذكاء الاصطناعي، بنشيله ونرجّعه للمسار الصح، إلا لو العميل طلب صراحةً صورة/فيديو بالذكاء الاصطناعي في الرسالة دي
+    if ((generateImage || generateVideo || ready || mergeVideosPayload) && !String(reply || '').includes('###ANIMATION###')) {
+      const recentUser = [message, ...(Array.isArray(history) ? history.filter(h => h?.role === 'user').slice(-4).map(h => h.content) : [])].map(x => String(x || '')).join(' \n ');
+      const codeVideoIntent = /\bvox\b|فوكس|فوكس|أنيميشن|انيميشن|انيمشن|أنيمشن|موشن ?جرافيك|motion ?graphics?|كارتون|cartoon|explainer|kinetic|كولاج ورق/i.test(recentUser);
+      const explicitAi = /(بالذكاء الاصطناعي|بال ?ai\b|ai image|ai video|generate (an? )?(image|picture|video)|ولّد|ولد لي|اعمل(لي)? صور(ة|ه)? (بال|AI))/i.test(String(message || ''));
+      if (codeVideoIntent && !explicitAi) {
+        console.warn('[Agent] blocked an AI image/video marker in a vox/animation conversation');
+        ready = null; generateImage = null; generateVideo = null; mergeVideosPayload = null;
+        reply = 'فيديو Vox والأنيميشن بيتعملوا بالكود كله: صور أرشيف حقيقية مطبوعة على ورق، ولوجوهات مرسومة بالكود، وخرايط ورقية — من غير أي صور أو فيديو بالذكاء الاصطناعي. قولّي "ابدأ" وأعمله لك بنفس الطريقة دي.';
+      }
+    }
+
     // ── ماركرز ثانوية (مش بتوقف التوليد العادي فوق) — منطقة، اشتراك، أو إجراء على الحساب.
     // بتيجي في آخر الرد البشري نفسه (مش بديلة له زي READY/EDIT_SCENE) ────────────────────
     let showcaseVideos = false;
