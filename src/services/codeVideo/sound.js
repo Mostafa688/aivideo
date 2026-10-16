@@ -27,6 +27,10 @@ const SPECS = {
   cheer: [...noise(2.4, 'pink'), '-af', "bandpass=f=1500:width_type=h:w=2200,tremolo=f=7:d=0.6,volume='min(1,t/0.25)*exp(-0.9*t)*2.4':eval=frame,alimiter=limit=0.95"],
   splash: [...noise(1.0, 'white'), '-af', "highpass=f=900,lowpass=f=9000,volume='1.7*exp(-4*t)':eval=frame,alimiter=limit=0.95"],
   sizzle: [...noise(1.4, 'white'), '-af', "highpass=f=3500,tremolo=f=28:d=0.7,volume='0.9*min(1,t/0.1)*exp(-1.2*t)':eval=frame"],
+  // ورق: حفيف ورقة بتترمي/بتتسحب، شخبطة قلم، ختم مطاطي
+  paper: [...noise(0.55, 'white'), '-af', "highpass=f=1800,lowpass=f=9000,tremolo=f=34:d=0.8,volume='1.5*sin(PI*min(1,t/0.55))':eval=frame,alimiter=limit=0.95"],
+  scribble: [...noise(0.6, 'pink'), '-af', "bandpass=f=3200:width_type=h:w=2600,tremolo=f=11:d=0.9,volume='0.9*min(1,t/0.05)*exp(-1.6*t)':eval=frame"],
+  stamp: [...expr('0.95*sin(2*PI*(70+90*exp(-30*t))*t)*exp(-14*t)+0.45*(random(0)-0.5)*exp(-40*t)', 0.45), '-af', 'lowpass=f=2600,volume=1.0'],
   rumble: [...noise(2.0, 'brown'), '-af', "lowpass=f=140,volume='1.6*sin(PI*min(1,t/2.0))':eval=frame"],
 };
 export const CV_SFX_TYPES = Object.keys(SPECS);
@@ -43,6 +47,13 @@ export async function ensureCvSfx(dir) {
 
 // ── أحداث الصوت لكل نوع مشهد (t نسبة لبداية المشهد) ──
 const E = (t, type, vol) => ({ t, type, vol });
+// وقت أول كلمة مهمة في المشهد (عشان صوت الختم/الشخبطة ييجي مع رسمها بالظبط — نفس منطق scenesV)
+const cleanW = (x) => String(x || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+function emphAt(sc, d) {
+  const want = new Set((d.emphasis || []).map(cleanW).filter(Boolean));
+  const hit = (sc?.tokens || []).find(x => want.has(cleanW(x.w)));
+  return hit ? hit.start : null;
+}
 export const SCENE_SFX = {
   title: (d) => [E(0.02, 'whoosh_l', 0.7), E(0.28, 'impact_big', 0.75), E(0.95, 'shimmer', 0.45)],
   kinetic: (d, sc) => {
@@ -111,19 +122,19 @@ export const SCENE_SFX = {
     return ev;
   },
   // Vox
-  photo: () => [E(0.04, 'whoosh_s', 0.55), E(0.16, 'click', 0.75), E(0.9, 'pop', 0.3)],
-  fullphoto: () => [E(0.0, 'whoosh_l', 0.5), E(0.22, 'hit', 0.6), E(0.5, 'shimmer', 0.3)],
-  collage: () => [E(0.1, 'whoosh_s', 0.5), E(0.2, 'click', 0.7), E(0.55, 'click', 0.7), E(0.9, 'click', 0.7), E(1.5, 'hit', 0.65)],
-  headline: () => [E(0.04, 'whoosh_s', 0.5), E(0.3, 'hit', 0.75), E(0.45, 'tick', 0.5), E(0.67, 'tick', 0.5), E(0.89, 'tick', 0.5), E(1.1, 'ding', 0.35)],
+  photo: (d, sc) => { const te = emphAt(sc, d); return [E(0.05, 'paper', 0.7), E(0.5, 'click', 0.45), ...(d.caption ? [E(0.95, 'scribble', 0.45)] : []), ...(te != null ? [E(te, 'scribble', 0.5)] : [])]; },
+  fullphoto: (d, sc) => [E(0.0, 'paper', 0.5), E(0.2, 'click', 0.4), E(emphAt(sc, d) ?? Math.min((sc.end - sc.start) * 0.4, 1.4), 'stamp', 0.75)],
+  collage: () => [E(0.1, 'paper', 0.6), E(0.5, 'paper', 0.6), E(0.9, 'paper', 0.6), E(0.75, 'scribble', 0.4), E(1.6, 'scribble', 0.4)],
+  headline: (d) => [E(0.05, 'paper', 0.65), E(0.45, 'click', 0.4), ...(d.emphasis?.length ? [E(1.0, 'scribble', 0.45)] : [])],
 };
 // صوت الانتقالات (عند حدّ المشهد)
 export const TRANSITION_SFX = {
   slide: [['whoosh_s', 0.7]], slideup: [['whoosh_s', 0.7]], zoom: [['whoosh_l', 0.7]], wipe: [['sweep_up', 0.55]],
-  iris: [['sweep_down', 0.5]], flash: [['boom', 0.8]], glitch: [['glitch', 0.7]], cut: [],
+  iris: [['sweep_down', 0.5]], paper: [['paper', 0.75]], flash: [['boom', 0.8]], glitch: [['glitch', 0.7]], cut: [],
 };
 // أولوية الصوت: لما المؤثرات تتزاحم بنسيب الأهم ونشيل الباقي (من غير ما يبقى فيه صوت بيتكرر بشكل غريب)
-const PRI = { impact_big: 9, slam: 9, boom: 9, hit: 8, cheer: 8, splash: 7, ding: 6, zap: 6, glitch: 6, shimmer: 5, riser_l: 5, rumble: 4, sweep_up: 4, sweep_down: 4, whoosh_l: 4, whoosh_s: 3, swish: 3, pop: 3, click: 3, sizzle: 2, tick: 1 };
-const SAME_GAP = { tick: 0.55, pop: 0.7, click: 0.6, whoosh_s: 1.6, whoosh_l: 3, sweep_up: 2.5, sweep_down: 2.5, sizzle: 4, cheer: 3, shimmer: 2.5, ding: 2, default: 1.0 };
+const PRI = { stamp: 8, paper: 3, scribble: 2, impact_big: 9, slam: 9, boom: 9, hit: 8, cheer: 8, splash: 7, ding: 6, zap: 6, glitch: 6, shimmer: 5, riser_l: 5, rumble: 4, sweep_up: 4, sweep_down: 4, whoosh_l: 4, whoosh_s: 3, swish: 3, pop: 3, click: 3, sizzle: 2, tick: 1 };
+const SAME_GAP = { paper: 0.35, scribble: 0.6, tick: 0.55, pop: 0.7, click: 0.6, whoosh_s: 1.6, whoosh_l: 3, sweep_up: 2.5, sweep_down: 2.5, sizzle: 4, cheer: 3, shimmer: 2.5, ding: 2, default: 1.0 };
 /** حاكم كثافة المؤثرات: فجوة دنيا بين أي صوتين، فجوة أكبر لنفس النوع، وحد أقصى لكل نافذة 10 ثواني */
 export function governSfx(events, { minGap = 0.34, window = 10, maxPerWindow = 7 } = {}) {
   const order = events.map((e, i) => ({ ...e, i })).sort((a, b) => (PRI[b.type] || 2) - (PRI[a.type] || 2) || a.t - b.t);
