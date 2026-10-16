@@ -15,7 +15,7 @@ import { chargeCredits, addCreditsBalance, getCreditsBalance, getUserById, anima
 import { watermarkVideo } from '../watermark.js';
 import { getDocumentaryCreditCost, getAutoEditCreditCost, getVideoReadCreditCost, getAnimationCreditCost } from '../creditPricingEngine.js';
 import { produceAnimation } from '../codeVideo/produce.js';
-import { ABS_MAX_SECONDS as ANIMATION_ABS_MAX_SECONDS, estimateSeconds as estimateAnimationSeconds } from '../codeVideo/narration.js';
+import { ABS_MAX_SECONDS as ANIMATION_ABS_MAX_SECONDS, estimateSeconds as estimateAnimationSeconds, detectLang } from '../codeVideo/narration.js';
 import { ALL_PALETTE_NAMES as ANIMATION_PALETTES } from '../codeVideo/design.js';
 import { LOOKS as ANIMATION_LOOKS } from '../codeVideo/director.js';
 import { videoUnderstand, videoReaderAvailable } from '../visionService.js';
@@ -227,7 +227,8 @@ function normalizeAnimationInput(raw = {}) {
     topic: String(raw.topic || '').replace(/<[^>]*>/g, '').trim().slice(0, 300),
     brief: String(raw.brief || '').replace(/<[^>]*>/g, '').trim().slice(0, 400),
     seconds: Math.min(ANIMATION_ABS_MAX_SECONDS - 6, Math.max(10, Number(raw.seconds) || 60)),
-    language: LANGUAGES[raw.language] ? raw.language : 'en',
+    // السكريبت هو الحَكَم في اللغة؛ الموضوع من غير لغة → لغة كتابته
+    language: (() => { const L = LANGUAGES[raw.language] ? raw.language : null; const txt = source === 'script' ? raw.script : source === 'topic' && !L ? raw.topic : ''; const d = txt ? detectLang(txt, L || 'en') : null; return d && LANGUAGES[d] ? d : (L || 'en'); })(),
     voiceKey: typeof raw.voiceKey === 'string' && /^[\w-]{1,40}$/.test(raw.voiceKey) ? raw.voiceKey : 'male_wise',
     ratio: raw.ratio === '9:16' ? '9:16' : '16:9',
     look: ANIMATION_LOOKS.includes(raw.look) ? raw.look : 'motion',
