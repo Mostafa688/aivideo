@@ -251,6 +251,12 @@ async function initDB() {
   await pool.query(`CREATE TABLE IF NOT EXISTS site_promo_evergreen (kind TEXT PRIMARY KEY, enabled BOOLEAN NOT NULL DEFAULT TRUE, percent INT NOT NULL, hours NUMERIC NOT NULL DEFAULT 24)`);
   const evFlag = await pool.query(`INSERT INTO schema_flags (name) VALUES ('promo_eg_evergreen_30_2026_10') ON CONFLICT DO NOTHING RETURNING name`);
   if (evFlag.rowCount === 1) await pool.query(`INSERT INTO site_promo_evergreen (kind, enabled, percent, hours) VALUES ('eg_credits', TRUE, 30, 24) ON CONFLICT (kind) DO NOTHING`);
+  // ✅ رجوع الأسعار الأصلية (420/980/2100): وقف العرض الحقيقي المستمر وأي عرض شغال — الخصم 30% بقى للعرض بس في صفحة الأسعار (سعر قبل الخصم مشطوب)، والأدمن لسه يقدر يشغّل عرض حقيقي
+  const listFlag = await pool.query(`INSERT INTO schema_flags (name) VALUES ('promo_eg_list_prices_back_2026_10') ON CONFLICT DO NOTHING RETURNING name`);
+  if (listFlag.rowCount === 1) {
+    await pool.query(`UPDATE site_promo_evergreen SET enabled = FALSE WHERE kind = 'eg_credits'`);
+    await pool.query(`UPDATE site_promos SET ends_at = NOW() WHERE kind = 'eg_credits' AND ends_at > NOW()`);
+  }
   // ✅ FIX: كان endpoint /api/auth/onboarding-answers بيعمل INSERT في الجدول ده من غير ما
   // يكون معمول له CREATE أصلاً — ده كان هيفشل (relation does not exist) على أي قاعدة بيانات جديدة
   await pool.query(`
