@@ -2,6 +2,7 @@
 // نوع التصوير المناسب (نص متحرك/رقم/رسم بياني/قايمة/مقارنة...) من JSON محدّد. أي مشهد يطلع غلط/مش مبني على الكلام الفعلي
 // بيرجع تلقائي لنص متحرك. الأرقام لازم تكون اتقالت في الكلام (مفيش اختراع إحصائيات).
 import { llmJson } from '../documentary/llm.js';
+import { MAP_CODES } from './scenesMap.js';
 import { PALETTE_NAMES, MOTION_PALETTES, TOON_PALETTES, VOX_PALETTES, ICON_NAMES, resolveIcon } from './design.js';
 import { BACKDROPS } from './fx.js';
 import { CARTOON_BACKDROPS, VOX_BACKDROPS } from './fxLooks.js';
@@ -15,7 +16,7 @@ export const LOOKS = ['motion', 'vox', 'cartoon', 'cartoon3d', 'world3d'];
 export const isWorld3d = (look) => look === 'world3d';
 export const isCartoon = (look) => look === 'cartoon' || look === 'cartoon3d';
 const CARTOON_TYPES = ['char_say', 'char_prop', 'char_duo'];
-const VOX_TYPES = ['photo', 'fullphoto', 'collage', 'headline'];
+const VOX_TYPES = ['photo', 'fullphoto', 'collage', 'headline', 'logo', 'papermap'];
 const BASE_TYPES = SCENE_TYPES.filter(t => !CARTOON_TYPES.includes(t) && !VOX_TYPES.includes(t) && t !== 'world');
 export const allowedTypes = (look) => (look === 'world3d' ? new Set([...BASE_TYPES.filter(t => t !== 'art' && t !== 'bigword'), 'world']) : new Set([...BASE_TYPES, ...(isCartoon(look) ? CARTOON_TYPES : look === 'vox' ? VOX_TYPES : [])]));
 export const LOOK_PALETTES = { motion: MOTION_PALETTES, vox: VOX_PALETTES, cartoon: TOON_PALETTES, cartoon3d: TOON_PALETTES, world3d: ['daylight'] };
@@ -99,13 +100,32 @@ export function segmentScenes(tokens, total, { minLen = 3.0, maxLen = 8.5, softM
 }
 
 // ── تنضيف بيانات مشهد (نوع + بيانات + تأريض في الكلام) ──
+// "(en)"/"(ar)" اللي بتتسرّب أحيانًا في العنوان من اسم الطلب
+const stripLang = (s) => String(s || '').replace(/\s*[([](?:en|ar|english|arabic|عربي|انجليزي|إنجليزي)[)\]]\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+const ORDINAL = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, 'الأول': 1, 'الاول': 1, 'الثاني': 2, 'التاني': 2, 'الثالث': 3, 'التالت': 3, 'الرابع': 4, 'الخامس': 5, 'السادس': 6, 'السابع': 7, 'الثامن': 8, 'التامن': 8, 'التاسع': 9, 'العاشر': 10, 'الأولى': 1, 'الثانية': 2, 'الثالثة': 3, 'الرابعة': 4, 'الخامسة': 5 };
+const rankSaid = (rank, spoken, nums) => numberSaid(rank, nums) || String(spoken).split(/\s+/).some(w => ORDINAL[w.toLowerCase().replace(/[^\p{L}]/gu, '')] === rank);
 const strs = (arr, n, len) => (Array.isArray(arr) ? arr : []).map(x => clean(typeof x === 'string' ? x : x?.text ?? x?.label, len)).filter(Boolean).slice(0, n);
 export function sanitizeScene(raw, spoken, { first = false, last = false, look = 'motion', host = 'sam', castMap = CAST } = {}) {
   if (!raw || !allowedTypes(look).has(raw.type)) return null;
   const said = new Set(toks(spoken)); const nums = spokenNumbers(spoken); const d = raw.data || {};
   switch (raw.type) {
-    case 'kinetic': return { type: 'kinetic', data: { emphasis: strs(d.emphasis, 3, 24) } };
-    case 'title': { const title = clean(d.title, 70); if (!title || title.split(/\s+/).length > 10) return null; return { type: 'title', data: { title, subtitle: clean(d.subtitle, 70) || undefined, kicker: clean(d.kicker, 22) || undefined } }; }
+    case 'kinetic': { const ic = String(d.icon || '').toLowerCase().trim(); return { type: 'kinetic', data: { emphasis: strs(d.emphasis, 3, 24), icon: ICON_NAMES.includes(ic) ? ic : undefined } }; }
+    case 'logo': {
+      // brand = الاسم الرسمي باللاتيني (عشان نلاقي اللوجو)، said = الاسم زي ما اتقال (عربي مثلاً) — لازم واحد منهم يكون اتقال فعلاً
+      const brand = clean(d.brand, 40), heard = clean(d.said, 40);
+      if (brand.length < 2 || !(grounded(brand, said, 0.5) || (heard && grounded(heard, said, 0.5)))) return null;
+      const rank = Number.isInteger(Number(d.rank)) && Number(d.rank) >= 1 && Number(d.rank) <= 20 && rankSaid(Number(d.rank), spoken, nums) ? Number(d.rank) : undefined;
+      const name = clean(d.name, 30);
+      return { type: 'logo', data: { brand, rank, name: name && grounded(name, said, 0.5) ? name : (heard && grounded(heard, said, 0.5) ? heard : undefined), emphasis: strs(d.emphasis, 2, 24) } };
+    }
+    case 'papermap': {
+      const places = (Array.isArray(d.places) ? d.places : []).map(p => ({ name: clean(p?.name, 30), lat: Number(p?.lat), lon: Number(p?.lon) }))
+        .filter(p => p.name && grounded(p.name, said, 0.5) && Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 85 && Math.abs(p.lon) <= 180).slice(0, 4);
+      const regions = (Array.isArray(d.regions) ? d.regions : []).map(x => String(x || '').toUpperCase().trim()).filter(x => MAP_CODES.has(x)).slice(0, 3);
+      if (!places.length && !regions.length) return null;
+      return { type: 'papermap', data: { places, regions, route: d.route === true && places.length >= 2, emphasis: strs(d.emphasis, 2, 24) } };
+    }
+    case 'title': { const title = stripLang(clean(d.title, 70)); if (!title || title.split(/\s+/).length > 10) return null; return { type: 'title', data: { title, subtitle: clean(d.subtitle, 70) || undefined, kicker: clean(d.kicker, 22) || undefined } }; }
     case 'bigword': { const word = clean(d.word, 22); if (!word || word.split(/\s+/).length > 2 || !grounded(word, said, 0.5)) return null; return { type: 'bigword', data: { word, sub: clean(d.sub, 46) || undefined } }; }
     case 'quote': { const text = clean(d.text, 150); if (!text || !grounded(text, said, 0.7)) return null; return { type: 'quote', data: { text, author: clean(d.author, 40) || undefined } }; }
     case 'outro': { const headline = clean(d.headline, 60); if (!headline) return null; return { type: 'outro', data: { headline, sub: clean(d.sub, 60) || undefined, cta: clean(d.cta, 26) || undefined } }; }
@@ -259,6 +279,8 @@ const VOX_DOC = `Photo scenes (archive photos are fetched automatically from "qu
 - fullphoto {same fields as photo} — the photo full-screen as an ink etching with camera corners; the first emphasis word slams in big on a paper label and the words run on a paper strip: for dramatic or emotional moments.
 - collage {"queries":[{"query":"...","named":true|false},{...}],"headline":"3-6 words said in the scene"} — 2-3 printed photos tossed onto coloured torn paper, linked by hand-drawn arrows, with a headline on a paper strip (max 3 in the video).
 - headline {"headline":"a newspaper-style headline made ONLY of words said in the scene","emphasis?":["words"]} — a newspaper clipping or a torn note card with the key line underlined by hand (max 3 in the video).
+- logo {"brand":"the OFFICIAL name in Latin letters even when the narration is Arabic (e.g. 'Claude', 'Google Gemini', 'Meta AI', 'OpenAI', 'DeepSeek', 'Netflix')","said":"the name exactly as spoken in the narration (e.g. 'كلود', 'جيميناي') when it differs from brand","rank?":number ONLY when the narration gives it a place in a ranking ("number five" → 5),"name?":"display name as said","emphasis":["1-2 words said"]} — the brand's real logo drawn as a paper sticker (rank stamped beside it), its name on tape, words on a paper card. USE IT EVERY TIME a brand, company, app, platform or AI model is the subject — logos make the video; for "top 5/best N" videos use one logo scene per item with its rank.
+- papermap {"places":[{"name":"place as said","lat":number,"lon":number}],"regions":["ISO-2 country codes, e.g. EG, US, SA"],"route":true|false,"emphasis":[]} — a vintage paper map like in documentaries: the camera zooms to the place, brass pins drop, a red string connects places when route=true, names on tape (max 4 places, 3 regions). Use it whenever a country, city or journey is said. Coordinates must be real (approximate is fine).
 named=true when the photo must show a specific real person, place, event or object (it is strictly verified and dropped if not found); named=false for generic imagery (e.g. 'stock exchange floor', 'crowded street').
 `;
 const CARTOON_DOC = `Cartoon scenes (the video is a cartoon with characters):
@@ -287,7 +309,7 @@ export function buildSystem(look = 'motion') {
   if (look === 'vox') {
     return COMMON_HEAD('The style is a Vox-like paper-collage documentary explainer: real archival photos printed in black-and-white halftone/ink on torn paper cards with tape, hand-drawn arrows and marker circles that draw themselves when a word is said, rubber stamps, newspaper clippings, charts and highlighted words on kraft, graph and coloured paper.').replace('PALETTES', 'vox|voxdark').replace('"PLUS_META",', '').replace('BGS', 'paper')
       + VOX_DOC + CATALOG + icons + COMMON_RULES
-      + '\n- For Vox style: at least 45% of scenes should be photo / fullphoto / collage — a mention of a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is chosen by the system (any value is fine). Transitions: mostly paper (a new torn paper sheet slides over), some cut/slide.';
+      + '\n- For Vox style the video must be VISUAL, not text: at least 70% of scenes are photo / fullphoto / collage / logo / papermap / charts. A brand/company/app/AI model => logo (with "rank" in a ranked list); a country/city/route => papermap; a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Text-only scenes (kinetic/headline/quote) at most 20% — and give every kinetic an "icon" that fits. Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is chosen by the system (any value is fine). Transitions: mostly paper (a new torn paper sheet slides over), some cut/slide.';
   }
   if (look === 'world3d') {
     return COMMON_HEAD('The style is a 3D animated video (low-poly stylised 3D world with characters, like a modern mobile game) that tells or explains the story visually.').replace('PALETTES', 'daylight').replace('"PLUS_META",', '').replace('BGS', 'aurora')
@@ -319,7 +341,7 @@ export async function directVideo({ spoken, language = 'en', ratio = '16:9', top
       const r = await ask({ system, user, maxTokens: 6000, temperature: 0.4 });
       if (from === 0) {
         const pals = LOOK_PALETTES[look] || MOTION_PALETTES;
-        meta = { title: clean(r.title, 70) || meta.title, mood: MOODS.includes(r.mood) ? r.mood : 'tech', palette: pals.includes(r.palette) ? r.palette : null, host: castMap[r.host] ? r.host : null, cast: (Array.isArray(r.cast) ? r.cast : []).filter(x => castMap[x]).slice(0, 4) };
+        meta = { title: stripLang(clean(r.title, 70)) || meta.title, mood: MOODS.includes(r.mood) ? r.mood : 'tech', palette: pals.includes(r.palette) ? r.palette : null, host: castMap[r.host] ? r.host : null, cast: (Array.isArray(r.cast) ? r.cast : []).filter(x => castMap[x]).slice(0, 4) };
       }
       const byI = new Map((Array.isArray(r.scenes) ? r.scenes : []).map(x => [Number(x.i), x]));
       chunk.forEach((sc, k) => { plans[from + k] = byI.get(from + k) || null; });
@@ -353,14 +375,14 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
     if (clean0?.type === 'title' && (++titles > 2 || (i !== 0 && sc.end - sc.start < 3))) clean0 = null;
     if (clean0?.type === 'art' && (++arts > 8 || arts > Math.max(2, Math.ceil(n * 0.4)))) clean0 = null;
     if (clean0?.type === 'collage' && ++collages > 3) clean0 = null;
-    if (clean0?.type === 'headline' && ++headlines > 3) clean0 = null;
+    if (clean0?.type === 'headline' && ++headlines > (vox ? 2 : 3)) clean0 = null;
     if (clean0?.type === 'char_duo' && (++duos > 3 || (sc.end - sc.start) < 3.5)) clean0 = { type: 'char_say', data: { character: host, emotion: 'neutral', emphasis: [] } };
     if (cartoon && clean0?.type === 'kinetic') clean0 = null;
     if (w3 && (clean0?.type === 'kinetic' || clean0?.type === 'quote')) clean0 = null;
     const kin = w3 ? { type: 'world', data: { idea: sc.text, env: null, time: null, emphasis: [] } } : cartoon ? { type: 'char_say', data: { character: host, emotion: EMO_CYCLE[i % 4], emphasis: [] } } : { type: 'kinetic', data: { emphasis: [] } };
     let pick = clean0 || kin;
-    if (vox && pick.type === 'kinetic' && ++kinetics > Math.ceil(n * 0.3) && sc.text.split(/\s+/).length >= 4) pick = { type: 'headline', data: { headline: sc.text.split(/\s+/).slice(0, 8).join(' '), emphasis: [] } };
-    if (out.length >= 2 && out[out.length - 1].type === pick.type && out[out.length - 2].type === pick.type && pick.type !== 'kinetic' && pick.type !== 'char_say' && pick.type !== 'world') pick = kin;
+    if (vox && pick.type === 'kinetic' && ++kinetics > Math.ceil(n * 0.25) && sc.text.split(/\s+/).length >= 4 && headlines < 2 && ++headlines) pick = { type: 'headline', data: { headline: sc.text.split(/\s+/).slice(0, 8).join(' '), emphasis: [] } };
+    if (out.length >= 2 && out[out.length - 1].type === pick.type && out[out.length - 2].type === pick.type && pick.type !== 'kinetic' && pick.type !== 'char_say' && pick.type !== 'world' && pick.type !== 'logo') pick = kin; // لوجوهات ورا بعض طبيعي في "أفضل 5"
     if (pick.type === 'char_say' && !pick.data.pose) pick = { ...pick, data: { ...pick.data, pose: POSE_CYCLE[i % POSE_CYCLE.length] } };
     out.push({ type: pick.type, data: pick.data, raw });
   });
@@ -381,7 +403,7 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
       const isData = DATA_TYPES.has(o.type);
       let bg;
       if (vox) {
-        const list = o.type === 'photo' ? VOX_BG.photo : o.type === 'collage' ? VOX_BG.collage : (palette === 'voxdark' ? ['ink'] : VOX_BG.light);
+        const list = (o.type === 'photo' || o.type === 'logo') ? VOX_BG.photo : o.type === 'collage' ? VOX_BG.collage : (palette === 'voxdark' ? ['ink'] : VOX_BG.light);
         bg = list[i % list.length];
         if (i > 0 && bg === out[i - 1]._bg && list.length > 1) bg = list[(i + 1) % list.length];
       }

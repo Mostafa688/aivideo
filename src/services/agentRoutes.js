@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { extractDocumentText, DOC_MAX_BYTES, DOC_EXTS } from './documentText.js';
+import { VOICE_CATALOG, VOICE_KEYS, voicePreviewFile } from './voiceCatalog.js';
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
@@ -554,6 +555,21 @@ const montageUpload = multer({
 });
 const publicAsset = (m) => ({ id: m.id, kind: m.kind || 'video', name: m.name, durationSec: Math.round(m.duration), hasAudio: m.hasAudio, width: m.width, height: m.height });
 
+// ── أصوات الذكاء الاصطناعي: عينة صوت لكل متكلم (بتتولد مرة واحدة وتتخزن) — مفتوحة عشان عنصر <audio> مبيبعتش توكن،
+// والمفاتيح ثابتة (8 أصوات × لغتين) فمفيش طريقة تكلّفنا أكتر من 16 عينة ──
+router.get('/voice-preview/:key', async (req, res) => {
+  try {
+    if (!VOICE_KEYS.has(req.params.key)) return res.status(404).end();
+    const file = await voicePreviewFile(req.params.key, req.query.lang === 'ar' ? 'ar' : 'en');
+    if (!file) return res.status(404).end();
+    res.set('Cache-Control', 'public, max-age=604800');
+    res.sendFile(file);
+  } catch (e) {
+    console.warn('[Agent] voice preview failed:', e.message);
+    res.status(503).json({ error: 'preview_unavailable' });
+  }
+});
+
 // ── مستند العميل (PDF/Word/نص/ترجمة): بنطلّع النص بس ونرجّعه للشات (الملف مش بيتخزن) ──
 const docUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: DOC_MAX_BYTES } });
 router.post('/extract-document', authMiddleware, (req, res, next) => docUpload.single('file')(req, res, (err) => {
@@ -755,9 +771,10 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote + voiceMissingNote + freeNote;
     try {
       const avail = await animationTrialAvailable(req.user.userId);
+      const planNow = (await getUserById(req.user.userId).catch(() => null))?.plan || 'free';
       attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + (avail
-        ? `ANIMATION FREE TRIAL: this account still has its ONE free ${ANIMATION_TRIAL_SECONDS}-second animated video (any look, AI voice included, 0 credits, small Erivion watermark).`
-        : `ANIMATION FREE TRIAL: this account already used its free ${ANIMATION_TRIAL_SECONDS}-second animated video — further animated videos are paid.`);
+        ? `ANIMATION FREE TRIAL: this account still has its ONE free animated video of up to ${ANIMATION_TRIAL_SECONDS / 60} minute (any look, 0 credits, small Erivion watermark) — ONLY with the customer's OWN uploaded voice recording (source "voiceover"); the AI voice is NOT part of the trial.`
+        : `ANIMATION FREE TRIAL: this account already used its free ${ANIMATION_TRIAL_SECONDS / 60}-minute animated video — further animated videos are paid.`) + (planNow === 'free' ? ' THIS CUSTOMER IS ON THE FREE PLAN: the AI voice (source script/topic) is not available to them — they must upload or record their own voice; offer the paid plans if they want the AI voice.' : ' This customer is on a paid plan: the AI voice is available — when they want it, show the voice picker with the marker ###VOICE_PICKER### (alone on its line at the end) instead of listing voice names in text, unless they already chose a voice.');
     } catch { /* مش حرج */ }
     // عرض مؤقت على باقات مصر: الايجنت لازم يعرف السعر الحقيقي الحالي (اللي هيتحاسب بيه العميل) ووقت الانتهاء
     try {
@@ -1504,6 +1521,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
     ({ text: reply, payload: channelResumePayload } = extractTrailingMarker(reply, '###CHANNEL_RESUME###'));
     ({ text: reply, payload: documentaryPayload } = extractTrailingMarker(reply, '###DOCUMENTARY###'));
     ({ text: reply, payload: animationPayload } = extractTrailingMarker(reply, '###ANIMATION###'));
+    // كارت اختيار صوت الذكاء الاصطناعي (للحسابات المدفوعة بس — المجاني بيرفع صوته)
+    let voicePicker;
+    if (reply.includes('###VOICE_PICKER###')) {
+      reply = reply.replace(/###VOICE_PICKER###(\s*\{[^}]*\})?/g, '').trim();
+      if (userPlan !== 'free') voicePicker = { voices: VOICE_CATALOG };
+    }
     ({ text: reply, payload: autoEditPayload } = extractTrailingMarker(reply, '###AUTOEDIT###'));
     {
       const rawBeforeMontage = reply;
@@ -1658,7 +1681,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     if (animationPayload && typeof animationPayload === 'object') {
       const trialLeft = await animationTrialAvailable(userId);
       if (userPlan === 'free' && !trialLeft) {
-        reply += (reply ? '\n\n' : '') + `الخطة المجانية معندهاش رصيد كريديت حقيقي، وانت استخدمت أول ${ANIMATION_TRIAL_SECONDS} ثانية المجانية قبل كده — اشترك أو اشحن كريديت عشان نعمل فيديو أنيميشن.`;
+        reply += (reply ? '\n\n' : '') + `انت استخدمت الدقيقة المجانية قبل كده — اشترك أو اشحن كريديت عشان نعمل فيديو أنيميشن تاني.`;
       } else {
         let tmpDir = null;
         try {
@@ -1693,10 +1716,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
             if (r.ok) {
               docJob = { jobId: r.job.id, kind: 'animation', title: r.job.title, ratio: raw.ratio === '9:16' ? '9:16' : '16:9', trial: !!r.trial };
               reply += (reply ? '\n\n' : '') + (r.trial
-                ? `تمام، بدأت فيديو الأنيميشن المجاني (أول ${ANIMATION_TRIAL_SECONDS} ثانية على الحساب — من غير أي كريديت، وعليه علامة Erivion المائية). هيظهر هنا في المحادثة أول ما يخلص.`
+                ? `تمام، بدأت فيديو الأنيميشن المجاني بصوتك (أول دقيقة على الحساب — من غير أي كريديت، وعليه علامة Erivion المائية). هيظهر هنا في المحادثة أول ما يخلص.`
                 : `تمام، بدأت فيديو الأنيميشن (${r.cost} كريديت لمدة حوالي ${Math.max(1, Math.round(r.seconds || r.minutes * 60))} ثانية). هيظهر هنا في المحادثة أول ما يخلص (بياخد كام دقيقة).`);
-            } else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: الفيديو محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ"` + (trialLeft ? ` — أو أعمله لك مجانًا في أول ${ANIMATION_TRIAL_SECONDS} ثانية بس.` : '.');
-            else if (r.error === 'trial_used') reply += (reply ? '\n\n' : '') + `أول ${ANIMATION_TRIAL_SECONDS} ثانية المجانية اتستخدمت قبل كده على الحساب ده — الفيديو هيتحاسب بالسعر العادي، قولّي لو عايز أبدأه.`;
+            } else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `الرصيد مش كفاية: الفيديو محتاج ${r.cost} كريديت ورصيدك ${r.remaining}. اشحن الأول وقولّي "ابدأ"` + (trialLeft ? ` — أو ارفع تسجيل بصوتك وأعمل لك أول دقيقة منه مجانًا.` : '.');
+            else if (r.error === 'trial_used') reply += (reply ? '\n\n' : '') + `الدقيقة المجانية اتستخدمت قبل كده على الحساب ده — الفيديو هيتحاسب بالسعر العادي، قولّي لو عايز أبدأه.`;
+            else if (r.error === 'ai_voice_paid') reply += (reply ? '\n\n' : '') + `توليد الصوت بالذكاء الاصطناعي متاح في الباقات المدفوعة. تقدر تعمل الفيديو مجانًا (أول دقيقة) لو رفعت أو سجلت صوتك من زرار + ← "ارفع ملف"، أو اشترك عشان أعمل لك الصوت.`;
+            else if (r.error === 'trial_needs_voice') reply += (reply ? '\n\n' : '') + `الدقيقة المجانية بتشتغل بصوتك انت — ارفع أو سجّل صوتك من زرار + ← "ارفع ملف" وقولّي "ابدأ".`;
             else if (r.error === 'too_long') reply += (reply ? '\n\n' : '') + 'أقصى طول لفيديو الأنيميشن دقيقتين — قصّر الصوت/السكريبت وقولّي.';
             else if (r.error === 'too_short') reply += (reply ? '\n\n' : '') + 'الصوت قصير أوي (أقل حاجة 5 ثواني).';
             else reply += (reply ? '\n\n' : '') + 'معلش، مقدرتش أبدأ فيديو الأنيميشن ده' + (r.error === 'content_policy_violation' ? ' (المحتوى مش مسموح).' : '.');
@@ -1795,7 +1820,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       analyzeVideo: analyzeVideoPayload,
       awaitingConfirmation,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
-      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate, docJob, docSetup,
+      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate, docJob, docSetup, voicePicker,
       // ✅ NEW: الروابط الدائمة (R2) لأي صورة العميل رفعها في الرسالة دي — الفرونت إند بيحفظها
       // مع رسالة العميل نفسها عشان تفضل قابلة للاستشهاد بيها في أي رسالة جاية (راجع
       // uploadUserPhotoToR2 فوق)

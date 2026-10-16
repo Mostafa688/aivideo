@@ -1,4 +1,5 @@
 import DocSetupCard from '../components/DocSetupCard.jsx';
+import VoicePickerCard from '../components/VoicePickerCard.jsx';
 import React, { useState, useRef, useEffect } from 'react';
 import RatingPrompt from './RatingPrompt.jsx';
 import { EgPaymentModal, IntlPaymentModal, EG_PACKAGES, ALL_GUMROAD_PACKAGES } from './PricingPage.jsx';
@@ -349,7 +350,7 @@ function DocJobCard({ job: initial, lang, onNavigate }) {
         <video src={job.videoUrl} controls playsInline style={{ width: '100%', borderRadius: 14, display: 'block', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }} />
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ fontSize: 12.5, color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={13} color="#22c55e" /> {tt.done}</div>
-          {initial.trial && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>{ar ? 'التجربة المجانية (أول 15 ثانية على الحساب) — عليها علامة Erivion المائية' : 'Free trial (first 15 seconds on your account) — includes a small Erivion watermark'}</div>}
+          {initial.trial && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>{ar ? 'التجربة المجانية (أول دقيقة بصوتك على الحساب) — عليها علامة Erivion المائية' : 'Free trial (first minute with your own voice on your account) — includes a small Erivion watermark'}</div>}
           <button onClick={() => downloadRemoteFile(job.videoUrl, `erivion-${job.kind || 'video'}-${initial.jobId}.mp4`)} style={{ fontSize: 11.5, color: '#fff', background: 'linear-gradient(135deg,#7c6af7,#9d4edd)', border: 'none', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}><Download size={12} /> {ar ? 'تنزيل' : 'Download'}</button>
           {job.kind !== 'animation' && <button onClick={() => onNavigate?.('documentary')} style={{ fontSize: 11.5, color: '#a78bfa', background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}>{tt.studio}</button>}
         </div>
@@ -1324,6 +1325,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     if (m.type === 'whiteboard') {
       return `[${lang === 'ar' ? 'تم إنشاء فيديو whiteboard' : 'A whiteboard video was generated'}]`;
     }
+    if (m.type === 'voicePicker') return `[${lang === 'ar' ? 'كارت اختيار صوت الراوي ظهر للعميل' : 'The narrator voice picker card was shown to the customer'}${m.picked ? ` — ${lang === 'ar' ? 'اختار' : 'they picked'} voice: ${m.picked}` : ''}]`;
     if (m.type === 'docSetup') return `[${lang === 'ar' ? (m.started ? 'بطاقة إعدادات الفيلم الوثائقي ظهرت للعميل في الشات وهو ملأها وبدأ الفيلم' : 'بطاقة إعدادات الفيلم الوثائقي ظاهرة للعميل في الشات (بيختار منها المقاس والصوت والمدة والستايل والكابشن والموسيقى بنفسه)') : (m.started ? 'The documentary settings card was shown in the chat and the customer filled it in and started the film' : 'The documentary settings card is shown in the chat (the customer picks ratio, voice, length, style, captions and music there)')}]`;
     if (m.type === 'docJob') return `[${lang === 'ar' ? 'مهمة فيديو (مونتاج/وثائقي) اتبدأت وبتظهر في المحادثة' : 'A video job (montage/documentary) was started and is shown in the chat'}]`;
     if (m.type === 'channelRun') {
@@ -1634,6 +1636,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // فكرة كارت الـwhiteboard فوق بالظبط — بيعمل poll لحالة تشغيلة القناة الحقيقية اللي
       // بدأت في الخلفية (channelSchedulerService.js's triggerChannelRunNow) لحد ما تخلص
       if (data.docSetup) setMessages(m => [...m, { role: 'assistant', type: 'docSetup', setup: data.docSetup, started: false }]);
+      if (data.voicePicker?.voices?.length) setMessages(m => [...m, { role: 'assistant', type: 'voicePicker', voices: data.voicePicker.voices, picked: null }]);
       if (data.docJob?.jobId) {
         setMessages(m => [...m, { role: 'assistant', type: 'docJob', job: data.docJob }]);
         setMontageAssets([]); // الفيديوهات اتستهلكت في المهمة
@@ -2919,6 +2922,17 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
               if (MEDIA_TYPES.includes(m.type)) {
                 // الموبايل: الميديا جوه الشات نفسه زي أي محادثة (مفيش كانفاس منفصل)
                 return isMobile ? <div key={i} className="agent-bubble" style={{ alignSelf: 'stretch', width: '100%' }}>{renderMediaCard(m)}</div> : null;
+              }
+              if (m.type === 'voicePicker') {
+                return (
+                  <div key={i} className="agent-bubble" style={{ alignSelf: 'stretch' }}>
+                    <VoicePickerCard voices={m.voices} lang={lang} picked={m.picked}
+                      onPick={(v, meta) => {
+                        setMessages(ms => ms.map((x, idx) => (idx === i ? { ...x, picked: v.key } : x)));
+                        sendMessage(lang === 'ar' ? `اخترت صوت ${meta.name} (voice: ${v.key})` : `I picked the voice ${meta.name} (voice: ${v.key})`);
+                      }} />
+                  </div>
+                );
               }
               if (m.type === 'docSetup') {
                 return (

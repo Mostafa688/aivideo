@@ -4,6 +4,7 @@ import { makeCtx, f1, f2, clamp01, easeInOutCubic, easeOutCubic } from './design
 import { backdropSoftSvg, backdropCrisp, camera, finish } from './fx.js';
 import { SCENES } from './scenes.js';
 import { hostOverlay, HOST_TYPES } from './scenesC.js';
+import { PAPER_TEXT } from './scenesPaper.js';
 
 // الخلفية الناعمة بتترندر مرة كل 1/PLATE_FPS ثانية بدقة PLATE_K من الأصل وبتتكبّر داخل الإطار (أرخص بكتير)
 export const PLATE_FPS = 15;
@@ -51,7 +52,7 @@ export function sceneGroup(base, sc, tLocal, plates) {
   const c = { ...base, id: `s${sc.index}` };
   const dur = sc.end - sc.start;
   const cam = camera(c, sc.cam || 'push', tLocal, dur);
-  const fn = SCENES[sc.type] || SCENES.kinetic;
+  const fn = (c.look === 'vox' && PAPER_TEXT[sc.type]) || SCENES[sc.type] || SCENES.kinetic; // Vox: مشاهد الكلام بنسختها الورقية
   let inner = fn(c, sc.data || {}, Math.max(0, tLocal), dur, { tokens: sc.tokens || [], mm: base.mm, index: sc.index });
   if ((c.look === 'cartoon' || c.look === 'cartoon3d') && c.cast?.host && HOST_TYPES.has(sc.type) && sc.host !== false) inner += hostOverlay(c, sc, Math.max(0, tLocal));
   const uri = plates?.get(plateKey(sc, tLocal));
