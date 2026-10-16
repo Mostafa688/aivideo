@@ -1707,9 +1707,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
         try {
           const a = animationPayload;
           const src = ['voiceover', 'script', 'topic'].includes(a.source) ? a.source : (a.script ? 'script' : 'topic');
+          // لغة الفيديو: العميل اللي بيكتب عربي من غير ما يطلب لغة تانية → عربي (حتى لو الماركر قال en)
+          const userTxt = [message, ...(Array.isArray(history) ? history.filter(m => m?.role === 'user').slice(-4).map(m => m.content) : [])].filter(t => typeof t === 'string').join(' ');
+          const askedOther = /(انجليز|إنجليز|english|in english|بالانجلش|انجلش|فرنس|french|اسبان|spanish|الماني|german)/i.test(userTxt);
+          const userAr = (userTxt.match(/[\u0600-\u06FF]/g) || []).length > (userTxt.match(/[A-Za-z]/g) || []).length;
+          const animLang = (m, source) => (source !== 'voiceover' && userAr && !askedOther && (!m.language || m.language === 'en') ? 'ar' : m.language);
           const raw = {
             source: src, topic: String(a.topic || '').slice(0, 300), script: String(a.script || '').slice(0, 9000), brief: String(a.brief || '').slice(0, 400),
-            seconds: Number(a.seconds) || undefined, language: a.language, ratio: a.ratio, palette: a.palette, style: a.style,
+            seconds: Number(a.seconds) || undefined, language: animLang(a, src), ratio: a.ratio, palette: a.palette, style: a.style,
             voiceKey: a.voice, music: a.music !== false, captions: a.captions, look: a.look, trial: a.trial === true || userPlan === 'free',
           };
           let blocked = null;

@@ -12,6 +12,15 @@ export const WORDS_PER_SEC = { en: 2.5, ar: 2.0, default: 2.3 };
 const wps = (lang) => WORDS_PER_SEC[String(lang).split(/[-_]/)[0]] || WORDS_PER_SEC.default;
 export const estimateSeconds = (script, lang) => String(script || '').trim().split(/\s+/).filter(Boolean).length / wps(lang);
 
+/** لغة النص الفعلية (عربي/لاتيني) — null لو مش واضحة. اللاتيني بيحافظ على اللغة المطلوبة لو هي لاتينية (en/es/fr/de) */
+export function detectLang(text, fallback = 'en') {
+  const s = String(text || '');
+  const ar = (s.match(/[\u0600-\u06FF]/g) || []).length, la = (s.match(/[A-Za-z\u00C0-\u024F]/g) || []).length;
+  if (ar >= 8 && ar > la * 1.5) return 'ar';
+  if (la >= 15 && la > ar * 3) return String(fallback).startsWith('ar') ? 'en' : fallback;
+  return null;
+}
+
 async function toWav(src, dest) { await ffmpeg(['-i', src, '-ar', '44100', '-ac', '2', dest]); return dest; }
 
 // قطع ≤ maxChars على حدود الجمل (نفس منطق الوثائقي)
@@ -47,14 +56,16 @@ export async function writeAnimationScript({ topic, seconds = 60, language = 'en
  * mode 'voiceover': audioFile مرفوع. غير كده: script → TTS.
  */
 export async function buildNarration({ mode, script = '', audioFile = null, lang = 'en', voiceKey = 'male_wise', workDir, prog = async () => {} }) {
-  let tokens, narrationFile = path.join(workDir, 'narration.wav'), outScript = script;
+  let tokens, narrationFile = path.join(workDir, 'narration.wav'), outScript = script, detected = null;
   if (mode === 'voiceover') {
     await prog('narration', 0.1);
     const mp3 = path.join(workDir, 'asr.mp3');
     await ffmpeg(['-i', audioFile, '-ac', '1', '-ar', '16000', '-b:a', '48k', mp3]);
-    const asr = await transcribeWords(mp3, { language: lang });
+    // اللغة بتتعرف من الصوت نفسه (لو اتفرضت لغة غلط Whisper بيترجم/يبوّظ الكلام)
+    const asr = await transcribeWords(mp3, {});
     rmQuiet(mp3);
     tokens = tokensFromAsr(asr);
+    detected = detectLang(asr.text, lang);
     await toWav(audioFile, narrationFile);
     outScript = asr.text || tokens.map(t => t.w).join(' ');
   } else {
@@ -89,5 +100,5 @@ export async function buildNarration({ mode, script = '', audioFile = null, lang
   }
   const total = await probeDuration(narrationFile);
   await prog('narration', 1);
-  return { tokens, narrationFile, total, script: outScript };
+  return { tokens, narrationFile, total, script: outScript, lang: detected || lang };
 }

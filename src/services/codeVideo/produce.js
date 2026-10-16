@@ -1,7 +1,7 @@
 // ── produce.js ── فيديو أنيميشن بالكود من صوت: (سكريبت أو صوت مرفوع) → سرد + توقيت → مخرج (JSON) → رندر → صوت (مؤثرات + موسيقى)
 import fs from 'fs';
 import path from 'path';
-import { buildNarration, writeAnimationScript, MAX_SECONDS, ABS_MAX_SECONDS } from './narration.js';
+import { buildNarration, writeAnimationScript, detectLang, MAX_SECONDS, ABS_MAX_SECONDS } from './narration.js';
 import { segmentScenes, directVideo, trDuration, LOOKS, isCartoon, LOOK_PALETTES, isGrounded } from './director.js';
 import { pickPalette } from './design.js';
 import { resolveVoxImages } from './images.js';
@@ -30,7 +30,7 @@ const LOOK_MUSIC = { cartoon: 'upbeat', cartoon3d: 'upbeat', world3d: 'upbeat', 
 const MUSIC_MOOD = { epic: 'epic', tech: 'upbeat', business: 'chill', nature: 'chill', energetic: 'upbeat', serious: 'tension', clean: 'chill', minimal: 'chill' };
 
 export async function produceAnimation({ id, userId, input, workDir, prog }, deps = {}) {
-  const lang = input.language || 'en', ratio = input.ratio === '9:16' ? '9:16' : '16:9';
+  let lang = input.language || 'en'; const ratio = input.ratio === '9:16' ? '9:16' : '16:9';
   const look = LOOKS.includes(input.look) ? input.look : 'motion';
   const { w, h } = RATIO_SIZE[ratio];
   let title = input.title || '', script = input.script || '';
@@ -42,11 +42,14 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     await prog('script', 1, { script });
   }
 
+  // لغة الفيديو = لغة السكريبت الفعلية (لو العميل كتب عربي واللغة جت en غلط، الصوت والكلام يبقوا عربي)
+  if (input.source !== 'voiceover') lang = detectLang(script, lang) || lang;
   // 2) السرد + توقيت الكلمات
   const nar = await (deps.buildNarration || buildNarration)({ mode: input.source === 'voiceover' ? 'voiceover' : 'script', script, audioFile: input.audioFile, lang, voiceKey: input.voiceKey, workDir, prog });
   const maxSec = Math.min(ABS_MAX_SECONDS, input.maxSeconds || MAX_SECONDS);
   if (nar.total > maxSec + 3) { const e = new Error(`narration is ${Math.round(nar.total)}s, over the ${maxSec}s limit`); e.code = 'too_long'; throw e; }
   script = nar.script || script;
+  if (nar.lang) lang = nar.lang;
 
   // 3) المخرج
   const spoken = segmentScenes(nar.tokens, nar.total, look === 'world3d' ? { minLen: 2.2, softMax: 4.2, maxLen: 5.5, maxScenes: Math.max(40, Math.ceil(nar.total / 3)) } : { maxScenes: Math.max(36, Math.ceil(nar.total / 3.4)) }); // فيديو أطول (3-5 دقايق) = مشاهد أكتر // الـ3D: لقطات أقصر وقطع أكتر
