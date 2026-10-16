@@ -3,6 +3,7 @@ import * as A from './scenesA.js';
 import * as B from './scenesB.js';
 import { SCENES_C } from './scenesC.js';
 import { SCENES_V } from './scenesV.js';
+import { SCENES_MAP } from './scenesMap.js';
 import { art } from './art.js';
 import { world } from './w3d/scene.js';
 
@@ -11,6 +12,7 @@ export const SCENES = {
   ...B.SCENES_B,
   ...SCENES_C,
   ...SCENES_V,
+  ...SCENES_MAP,
   art,
   world,
 };

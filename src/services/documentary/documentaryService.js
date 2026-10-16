@@ -242,8 +242,8 @@ function normalizeAnimationInput(raw = {}) {
   };
 }
 
-// أول 15 ثانية مجانية لكل حساب (مرة واحدة بس) — بتشمل صوت الذكاء الاصطناعي، وعليها علامة Erivion المائية
-export const ANIMATION_TRIAL_SECONDS = 15;
+// التجربة المجانية: أول دقيقة لكل حساب (مرة واحدة) — بصوت العميل اللي بيرفعه بس. توليد الصوت بالذكاء الاصطناعي للحسابات المدفوعة
+export const ANIMATION_TRIAL_SECONDS = 60;
 export const animationTrialAvailable = (userId) => store.trialAvailable(userId, 'animation').catch(() => false);
 const sentenceTrim = (text, lang, maxSec) => {
   const parts = String(text).split(/(?<=[.!?؟…])\s+/); let out = '';
@@ -274,14 +274,19 @@ export async function startAnimationJob(userId, raw = {}) {
   const safety = await checkContentSafety([input.title, input.topic, input.brief, input.script.slice(0, 6000)].filter(Boolean).join('\n'));
   if (safety.unsafe) return fail(400, 'content_policy_violation', 'This content cannot be generated.');
 
-  // التجربة المجانية: لو الفيديو ≤ 15 ثانية (أو العميل طلبها صراحةً فبنقصّه لـ15 ثانية) والتجربة لسه متاحة
+  // صوت الذكاء الاصطناعي (سكريبت/موضوع) للحسابات المدفوعة بس — المجاني لازم يرفع صوته
+  const user = await getUserById(userId).catch(() => null);
+  const freePlan = !user || (user.plan || 'free') === 'free';
+  if (input.source !== 'voiceover' && freePlan) return fail(403, 'ai_voice_paid', 'The AI voice is for paid plans. Upload your own voice recording to use your free minute.');
+  // التجربة المجانية: بصوت العميل بس — لو التسجيل ≤ دقيقة (أو العميل طلبها صراحةً فبنقصّه لأول دقيقة) والتجربة لسه متاحة
+  if (input.wantTrial && input.source !== 'voiceover') return fail(403, 'trial_needs_voice', 'The free minute works with your own uploaded voice recording.');
   const natural = input.source === 'voiceover' ? input.audioDurationSec : input.source === 'script' ? estimateAnimationSeconds(input.script, input.language) : input.seconds;
   let trial = false;
-  if (input.wantTrial || natural <= secTrial + 0.6) {
+  if (input.source === 'voiceover' && (input.wantTrial || natural <= secTrial + 0.6)) {
     let ok = false;
     try { ok = await store.claimTrial(userId, 'animation'); } catch (e) { console.warn('[Animation] trial check failed:', e.message); }
     if (ok) trial = true;
-    else if (input.wantTrial) return fail(403, 'trial_used', 'The free 15-second trial was already used on this account.');
+    else if (input.wantTrial) return fail(403, 'trial_used', 'The free minute was already used on this account.');
   }
   if (trial) {
     try {

@@ -125,6 +125,8 @@ export const SCENE_SFX = {
   photo: (d, sc) => { const te = emphAt(sc, d); return [E(0.05, 'paper', 0.7), E(0.5, 'click', 0.45), ...(d.caption ? [E(0.95, 'scribble', 0.45)] : []), ...(te != null ? [E(te, 'scribble', 0.5)] : [])]; },
   fullphoto: (d, sc) => [E(0.0, 'paper', 0.5), E(0.2, 'click', 0.4), E(emphAt(sc, d) ?? Math.min((sc.end - sc.start) * 0.4, 1.4), 'stamp', 0.75)],
   collage: () => [E(0.1, 'paper', 0.6), E(0.5, 'paper', 0.6), E(0.9, 'paper', 0.6), E(0.75, 'scribble', 0.4), E(1.6, 'scribble', 0.4)],
+  logo: (d, sc) => { const te = emphAt(sc, d); return [E(0.05, 'paper', 0.7), E(0.5, 'paper', 0.45), ...(d.rank ? [E(0.4, 'stamp', 0.8)] : []), ...(te != null ? [E(te, 'scribble', 0.5)] : [])]; },
+  papermap: (d) => [E(0.0, 'paper', 0.55), E(0.2, 'whoosh_l', 0.45), ...(d.places || []).slice(0, 4).map((_, i) => E(1.3 + i * 0.55 + 0.3, 'click', 0.75)), ...(d.route ? [E(1.9, 'scribble', 0.4)] : [])],
   headline: (d) => [E(0.05, 'paper', 0.65), E(0.45, 'click', 0.4), ...(d.emphasis?.length ? [E(1.0, 'scribble', 0.45)] : [])],
 };
 // صوت الانتقالات (عند حدّ المشهد)

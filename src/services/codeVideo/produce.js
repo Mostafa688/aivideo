@@ -5,6 +5,7 @@ import { buildNarration, writeAnimationScript, MAX_SECONDS } from './narration.j
 import { segmentScenes, directVideo, trDuration, LOOKS, isCartoon, LOOK_PALETTES, isGrounded } from './director.js';
 import { pickPalette } from './design.js';
 import { resolveVoxImages } from './images.js';
+import { findLogo } from './logos.js';
 import { designCast, makeCastMap } from './cast.js';
 import { designArt } from './art.js';
 import { choreograph, designWorldCast, FALLBACK_CAST } from './w3d/choreo.js';
@@ -118,6 +119,13 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   let images = null, imageCredits = [];
   if (look === 'vox') {
     const slots = [];
+    // لوجوهات: من مكتبة اللوجوهات الرسمية بالكود، واللي مش موجود بندوّر على صورة لوجو بتاعته في الأرشيف
+    for (const [i, sc] of scenes.entries()) {
+      if (sc.type !== 'logo') continue;
+      const L = await findLogo(sc.data.brand).catch(() => null);
+      if (L) sc.data = { ...sc.data, logo: L };
+      else slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: `${sc.data.brand} logo`, named: true });
+    }
     scenes.forEach((sc, i) => {
       if (sc.type === 'photo' || sc.type === 'fullphoto') slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: sc.data.query, named: sc.data.named, caption: sc.data.caption });
       else if (sc.type === 'collage') sc.data.slots.forEach((q, k) => slots.push({ key: `s${i}_${k}`, scene: i, text: spoken[i].text, query: q.query, named: q.named }));
@@ -129,6 +137,8 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
       if (sc.type === 'photo' || sc.type === 'fullphoto') {
         if (images[`s${i}`]) sc.data = { ...sc.data, img: `s${i}` };
         else { const txt = spoken[i].text; sc.type = txt.split(/\s+/).length >= 4 ? 'headline' : 'kinetic'; sc.data = sc.type === 'headline' ? { headline: txt.split(/\s+/).slice(0, 8).join(' '), emphasis: [] } : { emphasis: [] }; }
+      } else if (sc.type === 'logo') {
+        if (!sc.data.logo && images[`s${i}`]) sc.data = { ...sc.data, img: `s${i}` }; // ولو مفيش: شارة بأول حروف الاسم
       } else if (sc.type === 'collage') {
         const ids = sc.data.slots.map((_, k) => `s${i}_${k}`).filter(id => images[id]);
         if (ids.length >= 2) sc.data = { imgs: ids, headline: sc.data.headline };

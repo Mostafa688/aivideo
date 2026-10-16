@@ -4,6 +4,7 @@
 import { f1, f2, clamp01, easeOutCubic, easeInOutCubic, seg, spring, rgba, darken, txt, uid, wrapText, fitText, lerp, esc } from './design.js';
 import { ent, layoutWords } from './common.js';
 import { kinetic } from './scenesA.js';
+import { monoColor } from './logos.js';
 import { boil, paperCard, tape, handArrow, markerCircle, scribbleLine, starburst, corners, stamp, dashedLoop, toss, paperStrip, INK, DISPLAY, PAPER_WHITE } from './paper.js';
 
 const imgOf = (c, id) => (c.images && id ? c.images[id] : null);
@@ -231,4 +232,77 @@ export function headline(c, d, t, dur, sc) {
   return o;
 }
 
-export const SCENES_V = { photo, fullphoto, collage, headline };
+
+/** كارت ورق عليه الكلام المتزامن (مشترك بين مشاهد الصورة واللوجو والخريطة) */
+function wordsCard(c, sc, t, box, { side = 'left', seed = 1, emphasis = [], at = 0.18, size = 80 } = {}) {
+  const { s } = c;
+  const ce = toss(t, at, { from: side === 'left' ? 'right' : 'left', dist: 420, s, dur: 0.5 }), cb = boil(t, seed + 1, 1.1 * s);
+  if (!ce.o) return '';
+  const pad = 34 * s, hh = inkHeight(c, sc.tokens, box, { startSize: size });
+  const bx = { ...box, y: box.y + (box.h - hh) / 2, h: hh };
+  return `<g transform="translate(${f1(ce.dx + cb.dx)} ${f1(ce.dy + cb.dy)}) rotate(${f1((side === 'left' ? 1.4 : -1.4) + ce.rot * 0.3)} ${f1(bx.x + bx.w / 2)} ${f1(bx.y + bx.h / 2)})">`
+    + paperCard(c, { x: bx.x - pad, y: bx.y - pad, w: bx.w + pad * 2, h: bx.h + pad * 2, seed: seed + 8, fill: '#f3eee1', jag: 6 })
+    + inkWords(c, sc.tokens, t, bx, { emphasis, startSize: size, color: INK }) + '</g>';
+}
+
+const lum = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return 0.5; const n = parseInt(m[1], 16); return (0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255; };
+const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => [...w][0]).join('').toUpperCase();
+
+/** ستيكر لوجو مقصوص من ورق: حافة بيضا عريضة + ظل + اللوجو (مسار SVG رسمي) أو صورة اللوجو من الأرشيف أو شارة بأول الحروف */
+function logoSticker(c, d, img, { cx, cy, r, t, at, seed, from = 'left' }) {
+  const { s } = c; let o = '';
+  const tz = toss(t, at, { from, dist: 560, s, dur: 0.55 });
+  if (!tz.o) return '';
+  const bo = boil(t, seed, 1.5 * s), b = 22 * s;
+  o += `<g transform="translate(${f1(cx + tz.dx + bo.dx)} ${f1(cy + tz.dy + bo.dy)}) rotate(${f1(-4 + tz.rot + bo.rot)})">`;
+  const L = d.logo;
+  if (L?.path) {
+    const bg = L.hex, light = lum(bg) > 0.78, glyph = light ? INK : '#ffffff';
+    o += `<circle r="${f1(r + b)}" fill="#000" opacity="0.28" transform="translate(${f1(10 * s)} ${f1(16 * s)})"/><circle r="${f1(r + b)}" fill="#fbf8f0"/>`;
+    o += `<circle r="${f1(r)}" fill="${bg}"/>`;
+    const k = (r * 1.12) / 24;
+    o += `<g transform="translate(${f1(-12 * k)} ${f1(-12 * k)}) scale(${f2(k)})"><path d="${L.path}" fill="${glyph}"/></g>`;
+    o += `<circle r="${f1(r)}" fill="none" stroke="#000" stroke-opacity="0.12" stroke-width="${f1(3 * s)}"/>`;
+  } else if (img) {
+    const fw = r * 2.1, fh = Math.min(r * 2.1, fw / Math.max(0.6, img.w / img.h)), id = uid(c, `lg${seed}`);
+    o += paperCard(c, { x: -fw / 2 - b, y: -fh / 2 - b, w: fw + b * 2, h: fh + b * 2, seed, jag: 6 });
+    o += `<defs><clipPath id="${id}"><rect x="${f1(-fw / 2)}" y="${f1(-fh / 2)}" width="${f1(fw)}" height="${f1(fh)}" rx="${f1(8 * s)}"/></clipPath></defs><image href="${img.uri}" x="${f1(-fw / 2)}" y="${f1(-fh / 2)}" width="${f1(fw)}" height="${f1(fh)}" preserveAspectRatio="xMidYMid meet" clip-path="url(#${id})"/>`;
+  } else {
+    const col = monoColor(d.brand);
+    o += `<circle r="${f1(r + b)}" fill="#000" opacity="0.28" transform="translate(${f1(10 * s)} ${f1(16 * s)})"/><circle r="${f1(r + b)}" fill="#fbf8f0"/><circle r="${f1(r)}" fill="${col}"/>`;
+    o += `<text x="0" y="${f1(r * 0.3)}" font-family="${DISPLAY}" font-size="${f1(r * 0.9)}" font-weight="900" fill="#fff" text-anchor="middle">${esc(initials(d.brand))}</text>`;
+  }
+  o += tape(c, 0, -r - b + 4 * s, 150 * s, 3, seed + 2);
+  return o + '</g>';
+}
+
+// ── لوجو براند (ستيكر ورق) + ترتيبه في القايمة (#5) + اسمه على شريط لاصق + الكلام على كارت ──
+export function logo(c, d, t, dur, sc) {
+  const { w, h, s, portrait } = c; let o = '';
+  const img = imgOf(c, d.img), seed = sc.index * 6.1 + 4;
+  const side = sc.index % 2 ? 'right' : 'left';
+  const r = portrait ? Math.min(w * 0.27, h * 0.15) : Math.min(h * 0.26, w * 0.16);
+  const cx = portrait ? w / 2 : (side === 'left' ? w * 0.27 : w * 0.73), cy = portrait ? h * 0.27 : h * 0.44;
+  const box = portrait ? { x: w * 0.08, y: h * 0.6, w: w * 0.84, h: h * 0.3 } : { x: side === 'left' ? w * 0.52 : w * 0.05, y: h * 0.16, w: w * 0.43, h: h * 0.66 };
+  if (d.rank) {
+    const rt = 0.05, rx = cx + (side === 'left' || portrait ? -r * 1.05 : r * 1.05), ry = cy - r * 0.95;
+    o += starburst(c, { cx: rx, cy: ry, r: 110 * s, color: '#e85d5d', p: seg(t, rt + 0.3, rt + 0.6), rot: 0.3 });
+    o += stamp(c, { text: `#${d.rank}`, cx: rx, cy: ry, size: 92 * s, rot: -10, color: INK, p: seg(t, rt + 0.35, rt + 0.6) });
+  }
+  o += logoSticker(c, d, img, { cx, cy, r, t, at: 0.05, seed, from: side === 'left' ? 'left' : 'right' });
+  const name = d.name || d.logo?.title || d.brand;
+  if (name) {
+    const ne = toss(t, 0.45, { from: 'bottom', dist: 260, s, dur: 0.4 });
+    if (ne.o) {
+      const size = (portrait ? 64 : 58) * s, nw = Math.min(w * 0.8, [...name].length * size * 0.58 + size * 1.2), nh = size * 1.55, ny = cy + r + (portrait ? 70 : 64) * s;
+      o += `<g transform="translate(${f1(ne.dx)} ${f1(ne.dy)}) rotate(-2 ${f1(cx)} ${f1(ny)})">` + paperStrip(c, { x: cx - nw / 2, y: ny - nh / 2, w: nw, h: nh, seed: seed + 3, rot: 0 })
+        + txt(c, name, cx, ny + size * 0.35, size, { weight: 900, fill: INK }) + '</g>';
+    }
+  }
+  const te = emphTime(sc.tokens, d.emphasis, null);
+  if (te != null) o += markerCircle(c, { cx, cy, rx: r * 1.45, ry: r * 1.4, p: easeOutCubic(seg(t, te, te + 0.6)), seed });
+  o += wordsCard(c, sc, t, box, { side, seed, emphasis: d.emphasis, size: portrait ? 76 : 78 });
+  return o;
+}
+
+export const SCENES_V = { photo, fullphoto, collage, headline, logo };
