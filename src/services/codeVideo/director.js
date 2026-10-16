@@ -24,8 +24,8 @@ export function defaultHost(voiceGender = 'unknown') { return voiceGender === 'f
 
 export const MOODS = ['epic', 'tech', 'business', 'nature', 'energetic', 'serious', 'clean', 'minimal'];
 export const CAMS = ['push', 'pull', 'left', 'right', 'up', 'drift'];
-export const TRANSITIONS = ['cut', 'slide', 'slideup', 'zoom', 'wipe', 'iris', 'flash', 'glitch'];
-const TR_DUR = { cut: 0, slide: 0.55, slideup: 0.55, zoom: 0.6, wipe: 0.6, iris: 0.65, flash: 0.5, glitch: 0.5 };
+export const TRANSITIONS = ['cut', 'slide', 'slideup', 'zoom', 'wipe', 'iris', 'flash', 'glitch', 'paper'];
+const TR_DUR = { cut: 0, paper: 0.6, slide: 0.55, slideup: 0.55, zoom: 0.6, wipe: 0.6, iris: 0.65, flash: 0.5, glitch: 0.5 };
 const CALM_BG = ['aurora', 'bokeh', 'stripes', 'particles'];
 const DATA_TYPES = new Set(['art', 'stat', 'bars', 'donut', 'line', 'list', 'compare', 'timeline', 'icons', 'steps', 'gridstats', 'network', 'globe']);
 
@@ -255,10 +255,10 @@ Icon names: ${ICON_NAMES.join(', ')}.
 `;
 
 const VOX_DOC = `Photo scenes (archive photos are fetched automatically from "query"):
-- photo {"query":"2-5 English words to find a REAL archival/stock photo of what is being discussed (e.g. 'Suez Canal 1956', 'Gamal Abdel Nasser', 'busy market')","named":true|false,"caption?":"short label said in the scene (place/name/year)","emphasis":["1-2 words said"],"side?":"left|right"} — a photo in a taped paper frame beside the spoken words.
-- fullphoto {same fields as photo} — full-screen warm black-and-white photo with big words on top: for dramatic or emotional moments.
-- collage {"queries":[{"query":"...","named":true|false},{...}],"headline":"3-6 words said in the scene"} — 2-3 photos scattered with a headline (max 3 in the video).
-- headline {"headline":"a newspaper-style headline made ONLY of words said in the scene","emphasis?":["words"]} — a newspaper clipping (max 3 in the video).
+- photo {"query":"2-5 English words to find a REAL archival/stock photo of what is being discussed (e.g. 'Suez Canal 1956', 'Gamal Abdel Nasser', 'busy market')","named":true|false,"caption?":"short label said in the scene (place/name/year) — shown on a paper tag with a hand-drawn arrow pointing at the photo","emphasis":["1-2 words said — a marker circle is drawn around the photo when the first one is spoken"],"side?":"left|right"} — the photo printed as a grey halftone/ink picture on a torn, taped paper card, beside the spoken words on a paper card. Best for people (they look drawn).
+- fullphoto {same fields as photo} — the photo full-screen as an ink etching with camera corners; the first emphasis word slams in big on a paper label and the words run on a paper strip: for dramatic or emotional moments.
+- collage {"queries":[{"query":"...","named":true|false},{...}],"headline":"3-6 words said in the scene"} — 2-3 printed photos tossed onto coloured torn paper, linked by hand-drawn arrows, with a headline on a paper strip (max 3 in the video).
+- headline {"headline":"a newspaper-style headline made ONLY of words said in the scene","emphasis?":["words"]} — a newspaper clipping or a torn note card with the key line underlined by hand (max 3 in the video).
 named=true when the photo must show a specific real person, place, event or object (it is strictly verified and dropped if not found); named=false for generic imagery (e.g. 'stock exchange floor', 'crowded street').
 `;
 const CARTOON_DOC = `Cartoon scenes (the video is a cartoon with characters):
@@ -285,9 +285,9 @@ Output every scene index given, in order.`;
 export function buildSystem(look = 'motion') {
   const icons = `\nIcon names: ${ICON_NAMES.join(', ')}.\n\n`;
   if (look === 'vox') {
-    return COMMON_HEAD('The style is a Vox-like documentary explainer: real archival and stock photos in taped paper frames, newspaper headlines, maps, charts and highlighted words on warm paper.').replace('PALETTES', 'vox|voxdark').replace('"PLUS_META",', '').replace('BGS', 'paper')
+    return COMMON_HEAD('The style is a Vox-like paper-collage documentary explainer: real archival photos printed in black-and-white halftone/ink on torn paper cards with tape, hand-drawn arrows and marker circles that draw themselves when a word is said, rubber stamps, newspaper clippings, charts and highlighted words on kraft, graph and coloured paper.').replace('PALETTES', 'vox|voxdark').replace('"PLUS_META",', '').replace('BGS', 'paper')
       + VOX_DOC + CATALOG + icons + COMMON_RULES
-      + '\n- For Vox style: at least 45% of scenes should be photo / fullphoto / collage — a mention of a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is always paper.';
+      + '\n- For Vox style: at least 45% of scenes should be photo / fullphoto / collage — a mention of a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is chosen by the system (any value is fine). Transitions: mostly paper (a new torn paper sheet slides over), some cut/slide.';
   }
   if (look === 'world3d') {
     return COMMON_HEAD('The style is a 3D animated video (low-poly stylised 3D world with characters, like a modern mobile game) that tells or explains the story visually.').replace('PALETTES', 'daylight').replace('"PLUS_META",', '').replace('BGS', 'aurora')
@@ -331,7 +331,9 @@ export async function directVideo({ spoken, language = 'en', ratio = '16:9', top
 
 const POSE_CYCLE = ['point', 'up', 'hold', 'shrug', 'point', 'cheer'];
 const EMO_CYCLE = ['happy', 'neutral', 'excited', 'think'];
-const TOON_TR = ['slide', 'zoom', 'wipe', 'slideup', 'iris'], VOX_TR = ['slide', 'wipe', 'zoom', 'slideup', 'cut'];
+const TOON_TR = ['slide', 'zoom', 'wipe', 'slideup', 'iris'], VOX_TR = ['paper', 'slide', 'paper', 'cut', 'paper', 'wipe'];
+// خلفيات الكولاج الورقي حسب نوع المشهد (الصور على ورق ملوّن، والكلام والأرقام على ورق فاتح)
+const VOX_BG = { photo: ['kraft', 'blocks', 'graph', 'kraft', 'parchment'], collage: ['blocks', 'kraft'], light: ['graph', 'parchment', 'paper'] };
 
 /** يطبّق قواعد التنويع بالكود وبيطلّع قايمة المشاهد النهائية (type/data/bg/cam/transition) */
 export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'motion', voiceGender = 'unknown', castMap = CAST, worldMeta = null }) {
@@ -378,7 +380,11 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
       const raw = o.raw || {};
       const isData = DATA_TYPES.has(o.type);
       let bg;
-      if (vox) bg = 'paper';
+      if (vox) {
+        const list = o.type === 'photo' ? VOX_BG.photo : o.type === 'collage' ? VOX_BG.collage : (palette === 'voxdark' ? ['ink'] : VOX_BG.light);
+        bg = list[i % list.length];
+        if (i > 0 && bg === out[i - 1]._bg && list.length > 1) bg = list[(i + 1) % list.length];
+      }
       else if (w3) bg = isData ? CALM_BG[(i * 3 + 1) % CALM_BG.length] : 'aurora';
       else if (cartoon) { bg = CARTOON_BACKDROPS.includes(raw.bg) ? raw.bg : bgList[i % bgList.length]; if (isData && !['sky', 'studio'].includes(bg)) bg = i % 2 ? 'sky' : 'studio'; if (i > 0 && bg === out[i - 1]._bg) bg = bgList[(bgList.indexOf(bg) + 1) % bgList.length]; if (isData && !['sky', 'studio'].includes(bg)) bg = 'studio'; }
       else {
@@ -391,6 +397,8 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
       const cam = o.type === 'world' ? 'none' : CAMS.includes(raw.cam) ? raw.cam : CAMS[i % CAMS.length];
       let tr = TRANSITIONS.includes(raw.transition) ? raw.transition : trPool[i % trPool.length];
       if ((cartoon || vox || w3) && (tr === 'glitch' || tr === 'flash')) tr = trPool[i % trPool.length];
+      if (tr === 'paper' && !vox) tr = 'slide';
+      if (vox && (tr === 'zoom' || tr === 'iris' || tr === 'slideup')) tr = 'paper';
       if (w3 && o.type === 'world' && out[i - 1]?.type === 'world') tr = i % 4 === 0 ? 'wipe' : 'cut';
       if (i === 0) tr = 'cut';
       if ((tr === 'flash' || tr === 'glitch') && ++flashGlitch > 5) tr = 'zoom';

@@ -2,7 +2,7 @@
 import { f1, f2, rand, rgba, mix, lighten, darken, uid } from './design.js';
 
 export const CARTOON_BACKDROPS = ['sky', 'room', 'studio', 'city'];
-export const VOX_BACKDROPS = ['paper', 'ink'];
+export const VOX_BACKDROPS = ['paper', 'ink', 'kraft', 'graph', 'parchment', 'blocks'];
 
 const circ = (cx, cy, r) => `M${f1(cx - r)} ${f1(cy)}a${f1(r)} ${f1(r)} 0 1 0 ${f1(2 * r)} 0a${f1(r)} ${f1(r)} 0 1 0 ${f1(-2 * r)} 0z`;
 const cloud = (x, y, r, op = 0.95) => `<g opacity="${op}" fill="#fff"><circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(r)}"/><circle cx="${f1(x + r * 0.9)}" cy="${f1(y + r * 0.15)}" r="${f1(r * 0.78)}"/><circle cx="${f1(x - r * 0.95)}" cy="${f1(y + r * 0.2)}" r="${f1(r * 0.7)}"/><rect x="${f1(x - r * 1.5)}" y="${f1(y + r * 0.2)}" width="${f1(r * 3)}" height="${f1(r * 0.75)}" rx="${f1(r * 0.37)}"/></g>`;
@@ -85,4 +85,49 @@ function ink(c, t, seed) {
   return { soft: '', crisp: `<path d="${dots}" fill="${pal.a1}" opacity="0.18"/><path d="${lines}" stroke="#fff" stroke-width="${f1(1.2 * s)}" opacity="0.05" fill="none"/>` };
 }
 
-export const LOOK_BACKDROPS = { sky, room, studio, city, paper, ink };
+// ── خلفيات الكولاج الورقي (ثابتة: مفيش حركة غير اهتزاز الورق فوقها) ──
+const fiberPath = (w, h, s, seed, n) => { let d = ''; for (let i = 0; i < n; i++) { const x = rand(i, seed) * w, y = rand(i, seed + 2) * h, l = (5 + rand(i, seed + 4) * 26) * s, a = rand(i, seed + 6) * Math.PI; d += `M${f1(x)} ${f1(y)}l${f1(Math.cos(a) * l)} ${f1(Math.sin(a) * l)}`; } return d; };
+const speckPath = (w, h, s, seed, n, rmax = 2.2) => { let d = ''; for (let i = 0; i < n; i++) d += circ(rand(i, seed + 11) * w, rand(i, seed + 13) * h, (0.6 + rand(i, seed + 15) * rmax) * s); return d; };
+const torn = (x, y, w, h, seed, jag) => { const pts = []; const side = (ax, ay, bx, by, nx, ny, k0) => { const n = Math.max(2, Math.round(Math.hypot(bx - ax, by - ay) / (18 * jag / 9))); for (let i = 0; i < n; i++) { const u = i / n, j = (rand(k0 + i, seed) * 0.85 + 0.15) * jag * (i % 2 ? 1 : 0.4); pts.push(`${f1(ax + (bx - ax) * u + nx * j)} ${f1(ay + (by - ay) * u + ny * j)}`); } }; side(x, y, x + w, y, 0, 1, 0); side(x + w, y, x + w, y + h, -1, 0, 100); side(x + w, y + h, x, y + h, 0, -1, 200); side(x, y + h, x, y, 1, 0, 300); return `M${pts.join('L')}Z`; };
+const edgeShade = (w, h, s) => `<rect x="${f1(-20 * s)}" y="${f1(-20 * s)}" width="${f1(w + 40 * s)}" height="${f1(h + 40 * s)}" fill="none" stroke="#000" stroke-width="${f1(70 * s)}" opacity="0.08"/>`;
+
+function kraft(c, t, seed) {
+  const { w, h, s } = c;
+  const base = c.pal.paper || '#a8322d';
+  let o = `<rect width="${w}" height="${h}" fill="${base}"/>`;
+  o += `<path d="M0 ${f1(h * 0.42)}L${w} ${f1(h * 0.45)}M${f1(w * 0.52)} 0L${f1(w * 0.49)} ${h}" stroke="#000" stroke-width="${f1(3 * s)}" opacity="0.12"/><path d="M0 ${f1(h * 0.42 + 4 * s)}L${w} ${f1(h * 0.45 + 4 * s)}" stroke="#fff" stroke-width="${f1(2 * s)}" opacity="0.08"/>`;
+  o += `<path d="${fiberPath(w, h, s, seed, 160)}" stroke="#000" stroke-width="${f1(1.2 * s)}" opacity="0.1" fill="none"/><path d="${fiberPath(w, h, s, seed + 40, 90)}" stroke="#fff" stroke-width="${f1(1 * s)}" opacity="0.08" fill="none"/>`;
+  return { soft: '', crisp: o + edgeShade(w, h, s) };
+}
+
+function graph(c, t, seed) {
+  const { w, h, s } = c; let lines = '';
+  const gap = 46 * s;
+  for (let x = gap; x < w; x += gap) lines += `M${f1(x)} 0V${h}`;
+  for (let y = gap; y < h; y += gap) lines += `M0 ${f1(y)}H${w}`;
+  return { soft: '', crisp: `<rect width="${w}" height="${h}" fill="${c.pal.paperLight || '#e9e4d6'}"/><path d="${lines}" stroke="#6d6450" stroke-width="${f1(1.3 * s)}" opacity="0.28" fill="none"/><path d="${speckPath(w, h, s, seed, 70)}" fill="#3b3426" opacity="0.1"/>` + edgeShade(w, h, s) };
+}
+
+function parchment(c, t, seed) {
+  const { w, h, s } = c; let stains = '';
+  for (let i = 0; i < 7; i++) stains += `<ellipse cx="${f1(rand(i, seed) * w)}" cy="${f1(rand(i, seed + 1) * h)}" rx="${f1((120 + rand(i, seed + 2) * 260) * s)}" ry="${f1((90 + rand(i, seed + 3) * 200) * s)}" fill="#8a6a3a" opacity="${f2(0.04 + rand(i, seed + 4) * 0.05)}"/>`;
+  let gridd = ''; const gap = 40 * s, gx = w * 0.0, gy = h * 0.62, gw = w * 0.28, gh = h * 0.38;
+  for (let x = gx; x <= gx + gw; x += gap) gridd += `M${f1(x)} ${f1(gy)}V${f1(gy + gh)}`;
+  for (let y = gy; y <= gy + gh; y += gap) gridd += `M${f1(gx)} ${f1(y)}H${f1(gx + gw)}`;
+  return { soft: '', crisp: `<rect width="${w}" height="${h}" fill="${c.pal.paperLight || '#e4d8bd'}"/>${stains}<path d="${gridd}" stroke="#5b4a2f" stroke-width="${f1(1.4 * s)}" opacity="0.22" fill="none"/><path d="${speckPath(w, h, s, seed, 140, 2.8)}" fill="#3b2f1c" opacity="0.13"/><path d="${fiberPath(w, h, s, seed + 9, 70)}" stroke="#5b4a2f" stroke-width="${f1(1 * s)}" opacity="0.1" fill="none"/>` + edgeShade(w, h, s) };
+}
+
+function blocks(c, t, seed) {
+  const { w, h, s, pal } = c;
+  const cols = [pal.block1 || '#2f5ea8', pal.block2 || '#e5762c', pal.block3 || '#f0b43c'];
+  let o = `<rect width="${w}" height="${h}" fill="${pal.block3 || '#f0b43c'}"/>`;
+  for (let i = 0; i < 7; i++) {
+    const bw = w * (0.18 + rand(i, seed) * 0.32), bh = h * (0.25 + rand(i, seed + 1) * 0.5), x = rand(i, seed + 2) * w - bw * 0.3, y = rand(i, seed + 3) * h - bh * 0.3;
+    o += `<path d="${torn(x, y, bw, bh, seed + i, 10 * s)}" fill="${cols[i % 3]}" transform="rotate(${f1((rand(i, seed + 5) - 0.5) * 8)} ${f1(x + bw / 2)} ${f1(y + bh / 2)})"/>`;
+  }
+  for (let i = 0; i < 3; i++) { const x = rand(i, seed + 20) * w, y = rand(i, seed + 21) * h; o += `<path d="${torn(x, y, 160 * s, 110 * s, seed + 30 + i, 8 * s)}" fill="#f6f1e4" opacity="0.9" transform="rotate(${f1((rand(i, seed + 22) - 0.5) * 20)} ${f1(x)} ${f1(y)})"/>`; }
+  o += `<path d="${fiberPath(w, h, s, seed, 120)}" stroke="#000" stroke-width="${f1(1.1 * s)}" opacity="0.07" fill="none"/>`;
+  return { soft: '', crisp: o + edgeShade(w, h, s) };
+}
+
+export const LOOK_BACKDROPS = { sky, room, studio, city, paper, ink, kraft, graph, parchment, blocks };

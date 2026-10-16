@@ -98,6 +98,14 @@ function transition(base, out, inn, T, p, kind, plates) {
       const r = Math.hypot(w, h) * 0.55 * e;
       return `${A}<defs><clipPath id="${cid}"><circle cx="${w / 2}" cy="${h / 2}" r="${f1(r)}"/></clipPath></defs><g clip-path="url(#${cid})">${B}</g><circle cx="${w / 2}" cy="${h / 2}" r="${f1(r)}" fill="none" stroke="${base.pal.a1}" stroke-width="${f1(8 * base.s)}" opacity="${f2(1 - e)}"/>`;
     }
+    case 'paper': {
+      // الورقة الجديدة بتتسحب فوق القديمة بحافة متقطعة وظل (زي كولاج بيتلزق ورقة فوق ورقة)
+      const x = (w * 1.12) * (1 - e), jag = 22 * base.s, n = 26;
+      let pts = `${f1(x)},0`;
+      for (let k = 1; k <= n; k++) pts += ` ${f1(x + (Math.sin(k * 12.9898) * 43758.5453 % 1 + 1) % 1 * jag)},${f1((h * k) / n)}`;
+      pts += ` ${w * 2},${h} ${w * 2},0`;
+      return `${A}<defs><clipPath id="${cid}"><polygon points="${pts}"/></clipPath></defs><polygon points="${pts}" fill="#000" opacity="0.28" transform="translate(${f1(-16 * base.s)} 0)"/><g clip-path="url(#${cid})"><g transform="rotate(${f1(-2 * (1 - e))} ${f1(w / 2)} ${f1(h / 2)})">${B}</g></g>`;
+    }
     case 'flash': {
       const up = p < 0.5 ? p * 2 : (1 - p) * 2;
       return `${p < 0.5 ? A : B}<rect width="${w}" height="${h}" fill="#fff" opacity="${f2(Math.min(1, up * 1.15))}"/>`;
