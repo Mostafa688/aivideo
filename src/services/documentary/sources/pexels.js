@@ -1,22 +1,27 @@
 // ── sources/pexels.js ── لقطات وصور ستوك (ترخيص Pexels: استخدام تجاري حر، النسب مش مطلوب)
 import fetch from 'node-fetch';
 import { UA } from './common.js';
+import { cacheGet, cacheSet } from './cache.js';
 
-// ✅ حد Pexels (200 طلب في الساعة): فيلم طويل (300+ مشهد) كان بيستهلكه في أول ~10 دقايق من الفيلم وبعدها كل البحث بيرجع
-// 429 والمشاهد تتحول لنص. دلوقتي: كاش للاستعلامات المتكررة، بنقرا هيدرز الحد ونوقف Pexels لحد ما يتجدد (والباقي بيروح لمصادر تانية)،
-// ومفيش إعادة محاولة على 429، والصور بتتطلب بس لو الفيديوهات مكفّتش
-const cache = new Map(); const TTL = 12 * 3600e3;
-let blockedUntil = 0;
+// ✅ حد Pexels (200 طلب في الساعة، 20 ألف في الشهر — زيادته متوقفة من عندهم): فيلم طويل كان بيستهلكه في أول ~10 دقايق.
+// دلوقتي: كاش 24 ساعة على الديسك، بنقرا هيدرز الحد ونوقف Pexels لحد ما يتجدد، ولكل فيلم "ميزانية" من الطلبات (أول المشاهد ليها الأولوية)
+// عشان فيلم واحد ميخلّصش الحد على باقي العملاء — والباقي بيكمّل من Pixabay والأرشيف. مفيش إعادة محاولة على 429
+let blockedUntil = 0, lastRemaining = null;
 export const pexelsAvailable = () => !!process.env.PEXELS_API_KEY && Date.now() >= blockedUntil;
-async function pexelsGet(url, headers) {
-  const hit = cache.get(url);
-  if (hit && Date.now() - hit.at < TTL) return hit.data;
+/** ميزانية فيلم واحد من طلبات Pexels: نص اللي فاضل في الساعة (بين 12 و80) — كذا فيلم في نفس الوقت بيتقاسموا الحد */
+export const pexelsFilmBudget = () => (pexelsAvailable() ? Math.max(12, Math.min(80, Math.floor((lastRemaining ?? 160) * 0.5))) : 0);
+async function pexelsGet(url, headers, budget) {
+  const hit = cacheGet(url);
+  if (hit !== undefined) return hit;
   if (Date.now() < blockedUntil) return null;
+  if (budget && budget.pexels <= 0) return null; // الفيلم ده خلّص نصيبه — الباقي من مصادر تانية
+  if (budget) budget.pexels--;
   const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 15000);
   try {
     const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json', ...headers }, signal: ctrl.signal });
     const remaining = Number(res.headers.get('x-ratelimit-remaining'));
     const reset = Number(res.headers.get('x-ratelimit-reset')); // epoch بالثواني
+    if (Number.isFinite(remaining)) lastRemaining = remaining;
     const until = reset > 1e9 ? reset * 1000 : Date.now() + 30 * 60e3;
     if (res.status === 429 || (Number.isFinite(remaining) && remaining <= 1)) {
       blockedUntil = Math.max(blockedUntil, until);
@@ -25,8 +30,7 @@ async function pexelsGet(url, headers) {
     }
     if (!res.ok) return null;
     const data = await res.json();
-    cache.set(url, { at: Date.now(), data });
-    if (cache.size > 3000) for (const k of [...cache.keys()].slice(0, 1000)) cache.delete(k);
+    cacheSet(url, data);
     return data;
   } catch (e) { console.warn(`[Documentary/pexels] ${e.message}`); return null; } finally { clearTimeout(t); }
 }
@@ -45,7 +49,7 @@ function bestVideoFile(files = [], orientation) {
 export async function searchPexels(query, { kinds = ['video', 'image'], orientation = 'landscape', limit = 8 } = {}, deps = {}) {
   const key = process.env.PEXELS_API_KEY;
   if (!key) return [];
-  const get = deps.fetchJson || ((url, o) => pexelsGet(url, o.headers));
+  const get = deps.fetchJson || ((url, o) => pexelsGet(url, o.headers, deps.budget));
   const headers = { Authorization: key };
   const out = [];
   const q = encodeURIComponent(query);
