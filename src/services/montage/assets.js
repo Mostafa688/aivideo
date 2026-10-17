@@ -395,3 +395,24 @@ export async function buildMontageNote(userId) {
   const priceSec = voice ? Math.max(voice.duration, 30) : totalSec;
   return `MONTAGE UPLOADS currently stored for this customer (kept 3 hours; the list is in the order the montage will use — numbered file names are the intended story order): ${vids.length ? lines.join(' | ') : 'no videos yet'}.${imgs.length ? ` ${imgLines.join(' | ')} — these images are used automatically as the look of the montage's motion graphics (same colours and the closest graphic style); mention it in one line.` : ''}${voice ? ` VOICEOVER [id ${voice.id}] "${voice.name}" ${Math.round(voice.duration)}s — transcript excerpt: "${voice.analysis?.gist || ''}" — with a voiceover the final video is exactly as long as the voiceover, all clip sounds are muted and the scenes are laid over the narration.` : ''} Footage total ${Math.round(totalSec)}s; the montage price would be about ${getAutoEditCreditCost(priceSec / 60)} credits (say "about" — a style-reference video is not charged as footage and the exact amount is confirmed when it starts). These ids are valid — never ask the customer for URLs or ids. See rule 13e.`;
 }
+
+/**
+ * تكملة فيديو العميل (مش مونتاج): رابط عام للفيديو نفسه + آخر فريم منه كصورة — عشان موديل فيديو يكمّل من آخر لقطة
+ * بالظبط (صورة → فيديو) وبعدين ندمج الأصلي + التكملة. بيتحسب مرة واحدة لكل فيديو ويتحفظ في الـmeta.
+ * @returns {Promise<{ id, name, duration, videoUrl, lastFrameUrl } | null>}
+ */
+export async function continuationInputs(userId, assetId = null) {
+  const vids = listAssets(userId).filter(isVideoAsset);
+  const a = assetId ? vids.find(x => x.id === assetId) : vids[vids.length - 1];
+  if (!a || !fs.existsSync(a.file)) return null;
+  if (a.publicUrl && a.lastFrameUrl) return { id: a.id, name: a.name, duration: a.duration, videoUrl: a.publicUrl, lastFrameUrl: a.lastFrameUrl };
+  const { uploadUserSourceVideoToR2, uploadReferenceImageToR2 } = await import('../audioVideoService.js');
+  const frame = path.join(dirOf(userId, a.id), 'last_frame.jpg');
+  await ffmpeg(['-sseof', '-0.15', '-i', a.file, '-frames:v', '1', '-q:v', '2', frame]).catch(() => ffmpeg(['-i', a.file, '-vf', 'reverse', '-frames:v', '1', '-q:v', '2', frame]));
+  const [videoUrl, lastFrameUrl] = await Promise.all([
+    a.publicUrl || uploadUserSourceVideoToR2(fs.readFileSync(a.file)),
+    uploadReferenceImageToR2(fs.readFileSync(frame), 'jpg', 'lastframe'),
+  ]);
+  const meta = readMeta(userId, a.id); if (meta) writeMeta(userId, a.id, { ...meta, publicUrl: videoUrl, lastFrameUrl });
+  return { id: a.id, name: a.name, duration: a.duration, videoUrl, lastFrameUrl };
+}

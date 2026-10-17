@@ -1985,6 +1985,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
           narrationScript: merge.narrationScript || undefined, voiceKey: merge.voiceKey || undefined,
           narrationLanguage: merge.narrationLanguage || undefined, addCaptions: merge.addCaptions || undefined,
           musicStyle: merge.musicStyle || undefined, musicMood: merge.musicMood || undefined,
+          endCard: merge.endCard || undefined,
         }),
       });
       const data = await safeJson(res, lang);
