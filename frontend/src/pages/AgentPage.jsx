@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 import { downloadRemoteFile, fetchRemoteBlob } from '../utils/download.js';
+import { useMarqueeSelect, MarqueeBox, SelectCheck, SelectionBar, selectedRing, MARQUEE_CSS } from '../components/MarqueeSelect.jsx';
+import { downloadZip, mediaFilesOfMessage } from '../utils/zipDownload.js';
+import { confirmDialog } from '../components/confirmDialog.jsx';
 
 const LOGO = '/logo.png';
 
@@ -2785,6 +2788,34 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     : rightTab === 'favorites' ? mediaItems.filter(isMediaFavorited)
     : mediaItems;
 
+  // ── تحديد أكتر من صورة/فيديو بالسحب (مربع التحديد) → تنزيل ZIP أو حذف ──
+  const mediaKey = (m) => String(m.job?.uid || m.job?.jobId || m.job?.runId || m.job?.id || `i${m._i}`);
+  const canvasRef = useRef(null);
+  const mediaSel = useMarqueeSelect({ containerRef: canvasRef, scrollRef: canvasRef, enabled: !isMobile && visibleMedia.length > 0 });
+  const [mediaBusy, setMediaBusy] = useState(null);
+  useEffect(() => { mediaSel.prune(visibleMedia.map(mediaKey)); }, [messages, rightTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosenMedia = visibleMedia.filter(m => mediaSel.selected.has(mediaKey(m)));
+  const deleteSelectedMedia = async () => {
+    const n = chosenMedia.length; if (!n) return;
+    const ok = await confirmDialog({ title: lang === 'ar' ? `تحذف ${n} من المشروع؟` : `Remove ${n} item${n > 1 ? 's' : ''} from the project?`, message: lang === 'ar' ? 'هيتشالوا من المشروع ده ومش هينفع ترجّعهم.' : 'They will be removed from this project. This cannot be undone.', confirmText: lang === 'ar' ? 'أيوه احذف' : 'Delete', cancelText: lang === 'ar' ? 'إلغاء' : 'Cancel', tone: 'danger', dir: lang === 'ar' ? 'rtl' : 'ltr' });
+    if (!ok) return;
+    const idx = new Set(chosenMedia.map(m => m._i));
+    setMessages(ms => ms.filter((_, i) => !idx.has(i)));
+    mediaSel.clear();
+  };
+  const downloadSelectedMedia = async () => {
+    if (!chosenMedia.length) return;
+    const ar = lang === 'ar';
+    try {
+      setMediaBusy(ar ? 'بيجهّز الملفات...' : 'Preparing files...');
+      const files = [];
+      for (const m of chosenMedia) files.push(...await mediaFilesOfMessage(m, tokenHeader()));
+      if (!files.length) { showToast(ar ? 'مفيش ملفات جاهزة للتنزيل في اللي اخترته' : 'Nothing ready to download in your selection'); return; }
+      const r = await downloadZip(files, `${activeProject?.name || 'erivion'}-${files.length}`, (d, tot) => setMediaBusy(ar ? `بينزّل ${d}/${tot}...` : `Downloading ${d}/${tot}...`));
+      showToast(r.failed ? (ar ? `اتنزّل ${r.ok} ملف — ${r.failed} مقدرناش نجيبهم` : `${r.ok} downloaded — ${r.failed} skipped`) : (ar ? `اتنزّل ${r.ok} ملف في ZIP` : `${r.ok} files downloaded as ZIP`));
+    } finally { setMediaBusy(null); }
+  };
+
   const RIGHT_TABS = [
     { key: 'all', label: t.allMedia, icon: LayoutGrid },
     { key: 'images', label: t.imagesTab, icon: Images },
@@ -3134,7 +3165,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             </button>
           ))}
         </div>
-        <div className="agent-canvas-scroll" style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        <div ref={canvasRef} className="agent-canvas-scroll" style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+          <style>{MARQUEE_CSS}</style>
+          <MarqueeBox box={mediaSel.box} />
+          {!isMobile && <SelectionBar count={chosenMedia.length} lang={lang} busy={mediaBusy} onDownload={downloadSelectedMedia} onDelete={deleteSelectedMedia} onClear={mediaSel.clear} onSelectAll={chosenMedia.length < visibleMedia.length ? mediaSel.selectAll : null} />}
           {visibleMedia.length === 0 ? (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
               <div style={{ width: 64, height: 64, borderRadius: 18, background: 'var(--bg2)', border: '1px solid var(--border2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
@@ -3151,11 +3185,15 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
-              {visibleMedia.map(m => (
-                <div key={m._i} className="agent-bubble">
-                  {renderMediaCard(m)}
-                </div>
-              ))}
+              {visibleMedia.map(m => {
+                const k = mediaKey(m), on = mediaSel.selected.has(k);
+                return (
+                  <div key={m._i} className="agent-bubble mq-item" data-select-id={k} style={{ position: 'relative', borderRadius: 14, ...selectedRing(on) }}>
+                    {!isMobile && <SelectCheck id={k} selected={on} anySelected={mediaSel.selected.size > 0} onToggle={mediaSel.toggle} lang={lang} />}
+                    {renderMediaCard(m)}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
