@@ -40,6 +40,7 @@ import { generateNewModelVideo, NEW_VIDEO_MODELS, getSuggestedDuration, measureV
 import { uploadUserSourceVideoToR2 } from './services/audioVideoService.js';
 import { mergeVideos } from './services/videoMergeService.js';
 import { finishVideos } from './services/montage/postProduction.js';
+import { makeEndCardUrl } from './services/montage/endCard.js';
 import { analyzeActiveSpeaker, estimateAnalysisCreditCost } from './services/videoAnalysisService.js';
 import { synthesizeNarration, transcribeWithTimestamps, burnCaptions, getBackgroundMusicBuffer, composeVideoAudio } from './services/videoAudioService.js';
 import { getImageCreditCost, getPerSecondCreditCost, getMaxClipSeconds, getMinClipSeconds, getFlatCreditCost, getQualityTiers, buildFullPricingTable, REPLICATE_MODEL_COSTS } from './services/creditPricingEngine.js';
@@ -3344,7 +3345,10 @@ const MERGE_CREDIT_PER_VIDEO = getFlatCreditCost('merge_videos');
 // نفس حقول narrationScript/voiceKey/narrationLanguage/addCaptions/musicStyle/musicMood
 app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) => {
   const { videoUrls, narrationScript, voiceKey, narrationLanguage, addCaptions, musicStyle, musicMood } = req.body;
-  if (!Array.isArray(videoUrls) || videoUrls.length < 2) return res.status(400).json({ error: 'at least 2 videoUrls are required' });
+  // شاشة نهاية بنص (مثلاً "عمل الطالبة: … — الصف ٣/٦") بتتضاف في الآخر — ومعاها فيديو واحد يكفي
+  const endCard = req.body.endCard && typeof req.body.endCard.text === 'string' && req.body.endCard.text.trim() ? { text: req.body.endCard.text.trim().slice(0, 160), seconds: Math.min(6, Math.max(2, Number(req.body.endCard.seconds) || 3)) } : null;
+  if (!Array.isArray(videoUrls) || videoUrls.length < (endCard ? 1 : 2)) return res.status(400).json({ error: endCard ? 'at least 1 videoUrl is required' : 'at least 2 videoUrls are required' });
+  if (endCard && (await checkContentSafety(endCard.text)).unsafe) return res.status(400).json({ error: 'content_policy_violation', message: MODERATION_REJECTION_MESSAGE.en, message_ar: MODERATION_REJECTION_MESSAGE.ar });
   if (videoUrls.length > 10) return res.status(400).json({ error: 'max 10 videos per merge' });
   if (addCaptions && !narrationScript?.trim()) return res.status(400).json({ error: 'addCaptions requires narrationScript (captions are burned from the real narration audio)' });
   const mergeUser = await getUserById(req.user.userId);
@@ -3373,7 +3377,7 @@ app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) =>
   // مبني في التوكن نفسه فمينفعش أي عميل عادي يزوّره) — الكابشن لسه بكريديت لأن له تكلفة حقيقية
   // منفصلة (Whisper/transcription)، وتوليد الفيديو نفسه (قبل الدمج) لسه بيتحاسب زي أي حد تاني
   const isFreeChannelRun = !!req.user.channelRun;
-  let mergeCreditCost = isFreeChannelRun ? 0 : MERGE_CREDIT_PER_VIDEO * videoUrls.length;
+  let mergeCreditCost = isFreeChannelRun ? 0 : MERGE_CREDIT_PER_VIDEO * (videoUrls.length + (endCard ? 1 : 0));
   if (narration && !isFreeChannelRun) mergeCreditCost += getPerSecondCreditCost('gemini_flash_tts', Math.ceil(narration.durationSec));
   if (addCaptions) mergeCreditCost += CAPTION_CREDIT_FLAT;
   if (musicStyle && !isFreeChannelRun) mergeCreditCost += MUSIC_CREDIT_FLAT;
@@ -3398,6 +3402,7 @@ app.post('/api/videos/merge', authMiddleware, renderLimiter, async (req, res) =>
       // ✅ مونتاج ffmpeg كامل: انتقالات متنوعة + مؤثرات عند القطعات + موسيقى بتهدّى تحت الكلام + كابشن محرك الأفلام
       // الوثائقية (تحت للفيديو الطويل، في النص بحركة للقصير). لو فشل: الدمج القديم البسيط (من غير كابشن) ونرجّع تكلفته
       let videoUrl;
+      if (endCard) videoUrls.push(await makeEndCardUrl({ text: endCard.text, seconds: endCard.seconds, refVideoUrl: videoUrls[0] }));
       const musicBuffer = musicStyle ? await getBackgroundMusicBuffer(musicStyle, musicMood || null).catch(() => null) : null;
       try {
         videoUrl = await finishVideos({

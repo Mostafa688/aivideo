@@ -13,6 +13,7 @@ import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { startJob as startDocumentaryJob, startAnimationJob, animationTrialAvailable, ANIMATION_TRIAL_SECONDS, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
 import { trialAvailable as docTrialAvailable } from './documentary/store.js';
 import { probeDuration as ffProbeDuration, hasAudio as ffHasAudio, rmQuiet as ffRmQuiet } from './documentary/ff.js';
+import { continuationInputs } from './montage/assets.js';
 import { registerAsset, registerVoiceFile, buildMontageNote, listAssets, resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, withAnalysis as montageWithAnalysis, MAX_ASSETS_PER_USER } from './montage/assets.js';
 import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, startResumeChannelRun } from './channelSchedulerService.js';
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
@@ -261,6 +262,8 @@ function extractKnownUrls(history, extraText = null) {
 // تاني كان بيفضل موجود حرفيًا (JSON خام وكله) جوه "reply" النهائي اللي بيوصل للعميل زي ما هو.
 // الدالة دي بتشيل أي بقايا ماركر+JSON تاني (بنفس منطق عدّ الأقواس/الاقتباسات اللي بيفصل
 // JSON عن نص عادي) قبل ما الرد يوصل للعميل خالص — حماية إضافية بصرف النظر عن التزام الموديل
+// العميل بيقول صراحةً إنه برّه مصر ("انا سعوديه مو مصريه قلي بالريال") → أسعار دولية بالدولار
+const saysOutsideEgypt = (msg) => { const m = String(msg || ''); return /((انا|أنا)\s*(من\s*)?(ال)?(سعودي|سعوديه|سعودية|اماراتي|إماراتي|كويتي|قطري|عماني|بحريني|اردني|أردني|عراقي|مغربي|جزائري|تونسي|ليبي)|مو مصري|مش مصري|مب مصري|برا مصر|بره مصر|خارج مصر|(قلي|قولي|قل لي|بالريال|بالدرهم|بالدينار)\s*(بالريال|بالدرهم|بالدينار)?|i'?m (from|in) (saudi|the uae|uae|kuwait|qatar|oman|bahrain|jordan|morocco|usa|uk))/i.test(m) && /(ريال|درهم|دينار|سعودي|اماراتي|إماراتي|كويتي|قطري|عماني|بحريني|مصري|مصر|saudi|uae|kuwait|qatar|oman|bahrain|jordan|morocco|usa|uk)/i.test(m); };
 const ALL_MARKER_NAMES = ['###READY###', '###EDIT_SCENE###', '###VIDEO_EDIT###', '###GENERATE_IMAGE###', '###GENERATE_VIDEO###', '###MERGE_VIDEOS###'];
 function stripStrayMarkers(text) {
   let out = text;
@@ -460,8 +463,10 @@ function parseAgentMarkers(rawReply) {
           console.warn('[Agent] GENERATE_VIDEO marker parsed but failed validation (missing/invalid model, or no usable prompt):', JSON.stringify(parsed).slice(0, 800));
         }
       } else if (isMergeVideosMarker) {
-        if (Array.isArray(parsed.videoUrls) && parsed.videoUrls.length >= 2 && parsed.videoUrls.every(u => typeof u === 'string' && u.trim())) {
+        const endCard = parsed.endCard && typeof parsed.endCard.text === 'string' && parsed.endCard.text.trim() ? { text: parsed.endCard.text.trim().slice(0, 160), seconds: Math.min(6, Math.max(2, Number(parsed.endCard.seconds) || 3)) } : null;
+        if (Array.isArray(parsed.videoUrls) && parsed.videoUrls.length >= (endCard ? 1 : 2) && parsed.videoUrls.every(u => typeof u === 'string' && u.trim())) {
           mergeVideosPayload = {
+            endCard: endCard || undefined,
             videoUrls: parsed.videoUrls.slice(0, 10),
             narrationScript: parsed.narrationScript, voiceKey: parsed.voiceKey, narrationLanguage: parsed.narrationLanguage,
             addCaptions: parsed.addCaptions, musicStyle: parsed.musicStyle, musicMood: parsed.musicMood,
@@ -742,6 +747,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // الفويس-أوفر للمونتاج: تسجيل الصوت اللي العميل بعته (في الرسالة دي، أو قبل كده في نفس المحادثة) بيتسجّل كأصل صوت لما يبقى عنده
     // فيديوهات مونتاج متخزّنة. الرابط القديم بيتقبل بس لو هو فعلًا اللي السيرفر ده سجّله للعميل ده (مفيش استخدام لصوت حد تاني)
     let voiceMissingNote = '';
+    const extraKnownUrls = []; // روابط جهّزها السيرفر في الدور ده (تكملة فيديو) — الايجنت مسموحله ينسخها في الماركرز
     {
       const uid = req.user.userId;
       if (uploadedVoiceUrl) { if (!voiceOwners.has(uid)) voiceOwners.set(uid, new Set()); voiceOwners.get(uid).add(uploadedVoiceUrl); }
@@ -769,6 +775,21 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
     if (montageNote) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + montageNote + voiceMissingNote + freeNote;
+    // تكملة فيديو العميل ("كمّل الفيديو"/"زوّد عليه"/"continue the scene") ≠ مونتاج: بنجهّز رابط الفيديو + آخر فريم منه
+    // عشان الايجنت يولّد مقطع جديد يبدأ من آخر لقطة بالظبط، وبعدين يدمجهم (+ شاشة نهاية لو طلبها)
+    {
+      const recentTxt = [message, ...(Array.isArray(history) ? history.filter(m => m?.role === 'user').slice(-3).map(m => m.content) : [])].filter(t => typeof t === 'string').join(' ');
+      const EXTEND = /(كمل|كمّل|تكمل|تكمّل|كملي|يكمل|زود على|زوّد على|تزيد على|ازيد على|ابغاك تزيد|زيادة على الفيديو|طوّل الفيديو|طول الفيديو|مد الفيديو|continue (the |this |my )?(scene|video|clip)|extend (the |this |my )?(video|clip|scene)|make (it|the video) longer)/i;
+      if (montageNote && EXTEND.test(recentTxt)) {
+        try {
+          const ci = await continuationInputs(req.user.userId);
+          if (ci) {
+            extraKnownUrls.push(ci.videoUrl, ci.lastFrameUrl);
+            attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `VIDEO TO CONTINUE (prepared by the platform for the CONTINUE/EXTEND rule): the customer's uploaded video "${ci.name || ci.id}" (${Math.round(ci.duration || 0)}s) — public video URL: ${ci.videoUrl} — its LAST FRAME as an image: ${ci.lastFrameUrl}. Follow rule "CONTINUE / EXTEND AN EXISTING VIDEO" exactly (this is NOT a montage and NOT a code-made animation).`;
+          }
+        } catch (e) { console.warn('[Agent] continuation prep failed:', e.message); }
+      }
+    }
     try {
       const avail = await animationTrialAvailable(req.user.userId);
       const planNow = (await getUserById(req.user.userId).catch(() => null))?.plan || 'free';
@@ -783,12 +804,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // عرض مؤقت على باقات مصر: الايجنت لازم يعرف السعر الحقيقي الحالي (اللي هيتحاسب بيه العميل) ووقت الانتهاء
     try {
       const promo = await getActivePromo();
-      if (promo) {
+      const userRegionNow = saysOutsideEgypt(message) ? 'intl' : ((await getUserById(req.user.userId).catch(() => null))?.region || null);
+      if (promo && userRegionNow !== 'intl') {
         const lines = [600, 1400, 3000].map(c => `${c} credits: ${egpPriceForCredits(c, promo.percent)} EGP instead of ${egpPriceForCredits(c)} EGP`).join('; ');
         attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `LIMITED-TIME OFFER (Egypt only, InstaPay): ${promo.percent}% off the Egypt credit packages — ${lines}. When quoting Egypt prices use these discounted prices and say the offer is for a limited time (never give an end time or a countdown); the payment screen shows the discounted amount automatically. International (Gumroad) prices are NOT discounted.`;
-      } else {
-        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `EGYPT PRICES (InstaPay): ${[600, 1400, 3000].map(c => `${c} credits = ${egpPriceForCredits(c)} EGP`).join('; ')}. Always quote exactly these prices (the payment screen charges them). There is NO discount or offer right now — never mention a discount, a "limited time" offer, a crossed-out price or a countdown.`;
+      } else if (userRegionNow !== 'intl') {
+        attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `EGYPT PRICES (InstaPay, ONLY for customers in Egypt — never for anyone outside Egypt and never relabel these numbers as another currency): ${[600, 1400, 3000].map(c => `${c} credits = ${egpPriceForCredits(c)} EGP`).join('; ')}. There is NO discount or offer right now — never mention a discount, a "limited time" offer, a crossed-out price or a countdown.`;
       }
+      if (userRegionNow === 'intl') attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + 'THIS CUSTOMER IS INTERNATIONAL (outside Egypt): quote ONLY the USD packages (Gumroad); for their local currency convert from USD (see CURRENCY rule). Never show EGP prices.';
     } catch { /* ignore */ }
 
     let uploadedPhotoUrls = [];
@@ -870,7 +893,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     const user = await getUserById(userId).catch(() => null);
     const userPlan = user?.plan || 'free';
-    const userRegion = user?.region || null;
+    let userRegion = user?.region || null;
+    // العميل قال صراحةً إنه برّه مصر ("انا سعوديه مو مصريه"، "قلي بالريال") → دولي فورًا (أسعار الدولار)، من غير ما نستنى الايجنت
+    if (userRegion !== 'intl' && saysOutsideEgypt(message)) {
+      userRegion = 'intl';
+      setUserRegion(userId, 'intl').catch(() => {});
+    }
     // ✅ FIX (باج حقيقي: عميل سأل الايجنت "أنا على أي خطة؟" ورد "معنديش وصول لتفاصيل حسابك،
     // روح صفحة الإعدادات" — بينما الايجنت أصلاً بيعرف الخطة، بس مكانش عنده رصيد الكريديت
     // خالص عشان يجاوب بثقة على سؤال زي ده). بنجيب الرصيد الحقيقي هنا ونبعته للـ system prompt
@@ -1135,7 +1163,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // (+ روابط الصور اللي اترفعت في نفس الرسالة دي — الايجنت بينسخها من ملاحظة الرفع في نفس الدور)
     // الوش للعرض بس: لو الشخصية ليها صور زوايا مخفية، هي اللي بتتبعت للموديلات
     if (applyCharacterRefs(generateImage, savedCharacters) | applyCharacterRefs(generateVideo, savedCharacters)) console.log('[Agent] saved character face swapped for its hidden reference images');
-    const knownUrls = extractKnownUrls(history, [typeof mediaLedger === 'string' ? mediaLedger : '', ...uploadedPhotoUrls, ...savedCharacterUrls].filter(Boolean).join(' '));
+    const knownUrls = extractKnownUrls(history, [typeof mediaLedger === 'string' ? mediaLedger : '', ...uploadedPhotoUrls, ...savedCharacterUrls, ...extraKnownUrls].filter(Boolean).join(' '));
     const isKnownUrl = (u) => typeof u === 'string' && knownUrls.has(u.trim());
 
     // ✅ NEW: توليد صور مستقل بيستخدم صور مرفقة في نفس الرسالة كمرجع بصري لو موجودة — لو
@@ -1466,7 +1494,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
     if (mergeVideosPayload) {
       const validUrls = mergeVideosPayload.videoUrls.filter(isKnownUrl);
-      if (validUrls.length >= 2) mergeVideosPayload.videoUrls = validUrls;
+      if (validUrls.length >= (mergeVideosPayload.endCard ? 1 : 2)) mergeVideosPayload.videoUrls = validUrls;
       else {
         console.warn('[Agent] Rejected MERGE_VIDEOS marker — fewer than 2 valid known video URLs after validation');
         mergeVideosPayload = null;
