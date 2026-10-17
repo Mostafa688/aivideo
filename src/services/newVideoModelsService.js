@@ -331,6 +331,26 @@ export const NEW_VIDEO_MODELS = {
       ...(imageUrl ? { image: imageUrl } : {}),
     }),
   },
+  // ✅ NEW (طلب العميل — schema وأسعار من سكرين شوت صفحة الموديل): prunaai/p-video-2-pro — من أرخص الموديلات.
+  // mode = quality|speed|cost (بنستخدم speed = الافتراضي المتوازن)، resolution = 480p|768p، duration 5-15،
+  // image = أول فريم، last_frame_image = آخر فريم، prompt_upsampler بيوسّع البرومبت (turbo)
+  prunaai_p_video_2_pro: {
+    slug: 'prunaai/p-video-2-pro',
+    supportsImageInput: true,
+    minDurationSec: 5,
+    maxDurationSec: 15,
+    refCaps: { images: 0, videos: 0, audios: 0, lastFrame: true },
+    buildInput: ({ prompt, imageUrl, lastFrameUrl, aspectRatio, durationSec, tier }) => ({
+      prompt,
+      mode: 'speed',
+      resolution: tier === '480p' ? '480p' : '768p',
+      duration: Math.min(Math.max(Math.round(durationSec || 5), 5), 15),
+      ...(imageUrl ? {} : { aspect_ratio: aspectRatio || '16:9' }), // مع صورة البداية، الصورة هي اللي بتحدد الأبعاد
+      prompt_upsampler: 'turbo',
+      ...(imageUrl ? { image: imageUrl } : {}),
+      ...(lastFrameUrl ? { last_frame_image: lastFrameUrl } : {}),
+    }),
+  },
   // ✅ NEW (طلب العميل — schema الحقيقي من سكرين شوت صفحة الموديل): prunaai/p-video-animate = "نقل أداء".
   // بياخد فيديو مصدر ("video": الحركة + الصوت) + صورة شخصية ("image": الموضوع اللي هيتحرك)، والناتج
   // نفس حركات وكلام الفيديو الأصلي بالشخصية والمكان اللي في الصورة. الحقول: image، video، resolution

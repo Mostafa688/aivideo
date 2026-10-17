@@ -143,6 +143,10 @@ export const REPLICATE_MODEL_COSTS = {
   // فيها حوار/كلام حقيقي على الشاشة
   prunaai_p_video_2: { label: 'PrunaAI P-Video 2',  unit: 'second', usdCost: 0.03, maxClipSec: 10,
                        tiers: { '720p': 0.03, '1080p': 0.06 } },
+  // ✅ NEW (طلب العميل، أسعار مؤكدة من صفحة الموديل): prunaai/p-video-2-pro بوضع speed —
+  // 480p = $0.02/ثانية، 768p = $0.035/ثانية (وضع cost أرخص: 0.01/0.025، ووضع quality: 0.04/0.075)
+  prunaai_p_video_2_pro: { label: 'PrunaAI P-Video 2 Pro', unit: 'second', usdCost: 0.035, maxClipSec: 15,
+                       tiers: { '480p': 0.02, '768p': 0.035 } },
   // ✅ CONFIRMED (طلب العميل: تعديل فيديوهات أطول من 10 ثواني): الـschema اتأكد من سكرين شوت
   // العميل — مفيش حد زمني صريح في Replicate نفسها (الحد الحقيقي حجم ملف 200MB بس)، بس منصة
   // Decart المباشرة بتعلن دعم لحد 30 دقيقة، وده سقف عملي معقول (مؤكد عبر بحث ويب، راجع
