@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useMarqueeSelect, MarqueeBox, SelectCheck, SelectionBar, selectedRing, MARQUEE_CSS } from '../components/MarqueeSelect.jsx';
+import { downloadZip, mediaFilesOfMessage } from '../utils/zipDownload.js';
+import { confirmDialog } from '../components/confirmDialog.jsx';
 import { FolderKanban, Plus, MoreVertical, Pencil, Trash2, Check, X } from 'lucide-react';
 
 const LOGO = '/logo.png';
@@ -77,7 +80,7 @@ function timeAgo(iso, lang) {
   return lang === 'ar' ? `من ${days} يوم` : `${days}d ago`;
 }
 
-function ProjectCard({ project, lang, onOpen, onRename, onDelete, index = 0, animate = true }) {
+function ProjectCard({ project, lang, onOpen, onRename, onDelete, index = 0, animate = true, isSelected = false, anySelected = false, onToggleSelect }) {
   const t = T[lang];
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -92,8 +95,10 @@ function ProjectCard({ project, lang, onOpen, onRename, onDelete, index = 0, ani
 
   return (
     <div
+      data-select-id={project.id} className="mq-item"
       onClick={() => !renaming && !confirmingDelete && onOpen(project)}
       style={{
+        ...selectedRing(isSelected),
         position: 'relative', cursor: renaming || confirmingDelete ? 'default' : 'pointer',
         background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)',
         padding: 18, transition: 'border-color 0.15s ease, transform 0.15s ease',
@@ -102,6 +107,7 @@ function ProjectCard({ project, lang, onOpen, onRename, onDelete, index = 0, ani
       onMouseEnter={e => { if (!renaming && !confirmingDelete) { e.currentTarget.style.borderColor = 'var(--border3)'; e.currentTarget.style.transform = 'translateY(-2px)'; } }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; }}
     >
+      {onToggleSelect && <SelectCheck id={project.id} selected={isSelected} anySelected={anySelected} onToggle={onToggleSelect} lang={lang} />}
       <div style={{
         width: '100%', aspectRatio: '16/10', borderRadius: 'var(--r-lg)', marginBottom: 14,
         background: project.cover_url ? '#000' : 'linear-gradient(135deg, var(--bg3), var(--bg4))',
@@ -271,8 +277,46 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNa
   const loading = projects === null;
   const list = projects || [];
 
+  // ── تحديد أكتر من مشروع بالسحب (مربع التحديد) → حذف أو تنزيلهم ZIP ──
+  const pageRef = useRef(null);
+  const sel = useMarqueeSelect({ containerRef: pageRef, enabled: list.length > 0 });
+  const [busy, setBusy] = useState(null);
+  useEffect(() => { sel.prune(list.map(p => String(p.id))); }, [projects]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen = list.filter(p => sel.selected.has(String(p.id)));
+  const deleteSelected = async () => {
+    const n = chosen.length; if (!n) return;
+    const ok = await confirmDialog({ title: lang === 'ar' ? `تحذف ${n} مشروع؟` : `Delete ${n} project${n > 1 ? 's' : ''}?`, message: lang === 'ar' ? 'كل الصور والفيديوهات اللي جوّاهم هتتشال من المشاريع، ومش هينفع ترجعهم.' : 'All images and videos inside them will be removed from your projects. This cannot be undone.', confirmText: lang === 'ar' ? 'أيوه احذف' : 'Delete', cancelText: t.cancel, tone: 'danger', dir: lang === 'ar' ? 'rtl' : 'ltr' });
+    if (!ok) return;
+    const ids = new Set(chosen.map(p => p.id));
+    setProjects(p => { const nn = p.filter(pr => !ids.has(pr.id)); projectsCache = { token: localStorage.getItem('token'), list: nn }; return nn; });
+    sel.clear();
+    await Promise.all([...ids].map(id => fetch(`/api/projects/${id}`, { method: 'DELETE', headers: authHeaders() }).catch(() => {})));
+  };
+  const downloadSelected = async () => {
+    if (!chosen.length) return;
+    const ar = lang === 'ar';
+    try {
+      setBusy(ar ? 'بيجهّز الملفات...' : 'Preparing files...');
+      const files = [];
+      for (const p of chosen) {
+        try {
+          const r = await fetch(`/api/projects/${p.id}/messages`, { headers: authHeaders() });
+          const msgs = r.ok ? (await r.json()).messages || [] : [];
+          for (const m of msgs) for (const f of await mediaFilesOfMessage(m, { Authorization: 'Bearer ' + localStorage.getItem('token') })) files.push({ ...f, folder: p.name });
+        } catch { /* مشروع واحد فشل — نكمّل الباقي */ }
+      }
+      if (!files.length) { setBusy(null); await confirmDialog({ title: ar ? 'مفيش ملفات' : 'Nothing to download', message: ar ? 'المشاريع دي لسه مفيهاش صور أو فيديوهات جاهزة.' : 'These projects have no finished images or videos yet.', confirmText: ar ? 'تمام' : 'OK', dir: ar ? 'rtl' : 'ltr' }); return; }
+      const name = chosen.length === 1 ? chosen[0].name : `erivion-${chosen.length}-projects`;
+      const r = await downloadZip(files, name, (d, tot) => setBusy(ar ? `بينزّل ${d}/${tot}...` : `Downloading ${d}/${tot}...`));
+      if (r.failed) await confirmDialog({ title: ar ? 'اتنزّل جزء من الملفات' : 'Some files were skipped', message: ar ? `${r.ok} ملف اتنزّل، و${r.failed} مقدرناش نجيبهم (ممكن الرابط انتهى).` : `${r.ok} files downloaded, ${r.failed} could not be fetched (the link may have expired).`, confirmText: ar ? 'تمام' : 'OK', dir: ar ? 'rtl' : 'ltr' });
+    } finally { setBusy(null); }
+  };
+
   return (
-    <div style={{ minHeight: 'calc(100vh - 74px)', padding: '32px 24px 60px', maxWidth: 1100, margin: '0 auto' }}>
+    <div ref={pageRef} style={{ minHeight: 'calc(100vh - 74px)', padding: '32px 24px 60px', maxWidth: 1100, margin: '0 auto' }}>
+      <MarqueeBox box={sel.box} />
+      <SelectionBar count={chosen.length} lang={lang} busy={busy} onDownload={downloadSelected} onDelete={deleteSelected} onClear={sel.clear} onSelectAll={chosen.length < list.length ? sel.selectAll : null} />
+      <style>{MARQUEE_CSS}</style>
       <style>{`
         @keyframes pdCardIn{from{opacity:0;transform:translateY(14px) scale(.975)}to{opacity:1;transform:none}}
         @keyframes pdFade{from{opacity:0}to{opacity:1}}
@@ -312,7 +356,8 @@ export default function ProjectsDashboardPage({ lang = 'ar', onOpenProject, onNa
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
           {list.map((p, i) => (
-            <ProjectCard key={p.id} project={p} lang={lang} index={i} animate={!fromCache} onOpen={onOpenProject} onRename={renameProject} onDelete={deleteProject} />
+            <ProjectCard key={p.id} project={p} lang={lang} index={i} animate={!fromCache} onOpen={onOpenProject} onRename={renameProject} onDelete={deleteProject}
+              isSelected={sel.selected.has(String(p.id))} anySelected={sel.selected.size > 0} onToggleSelect={(id) => sel.toggle(String(id))} />
           ))}
         </div>
       )}
