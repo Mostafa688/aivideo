@@ -92,7 +92,9 @@ export async function renderDocumentary({ timeline, workDir, onProgress = () => 
   // 3) الصوت
   const sfxFiles = timeline.sfx === false ? {} : await ensureSfx(path.join(workDir, 'sfx'));
   let t0 = 0; const sfxEvents = [];
-  beats.forEach(b => { sfxEvents.push(...sfxForBeat(b, t0)); t0 += b.dur; });
+  // مؤثرات النصوص والجرافيك أهدى (شكاوى عملاء إنها عالية): نص الصوت تقريبًا (‎-6dB) — قابل للتعديل بـ DOC_SFX_GAIN
+  const sfxGain = Math.min(1, Math.max(0, Number(process.env.DOC_SFX_GAIN ?? 0.5)));
+  beats.forEach(b => { sfxEvents.push(...sfxForBeat(b, t0).map(e => ({ ...e, vol: (e.vol ?? 0.5) * sfxGain }))); t0 += b.dur; });
   const audioFile = path.join(workDir, 'mix.m4a');
   await mixAudio({ narrationFile: timeline.narrationFile, musicFile: timeline.musicFile || null, musicVolume: timeline.musicVolume ?? 0.15, sfxEvents, sfxFiles, duration: total, outFile: audioFile });
   onProgress({ stage: 'audio' });
