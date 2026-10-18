@@ -151,11 +151,12 @@ export async function produceAnimationEdit({ id, userId, input, workDir, prog },
     else if (sc.type === 'photo' || sc.type === 'fullphoto') slots.push({ key, scene: k, text: (sc.tokens || []).map(t => t.w).join(' '), query: sc.data.query, named: sc.data.named, caption: sc.data.caption });
     else if (sc.type === 'collage') sc.data.slots.forEach((q, j) => slots.push({ key: `${key}_${j}`, scene: k, text: '', query: q.query, named: q.named }));
     else if (sc.type === 'poster' && sc.data.query) slots.push({ key, scene: k, text: '', query: `${sc.data.query} isolated on white background`, named: false, cutout: true });
+    else if (sc.type === 'portrait') slots.push({ key, scene: k, text: '', query: sc.data.query, named: sc.data.named, cutout: sc.data.layout === 'year' ? false : 'model' });
     else if (sc.type === 'art') {
       const r = await (deps.designArt || designArt)({ idea: sc.data.idea, text: (sc.tokens || []).map(t => t.w).join(' '), language: bundle.lang, palette: pickPalette(palette), castMap: isCartoon(bundle.look) ? castMap : null, look: bundle.look, textOk: () => true }).catch(() => null);
       if (r) sc.data = { ...sc.data, bg: r.bg, elements: r.elements }; else { sc.type = 'kinetic'; sc.data = { emphasis: [] }; }
     }
-    if (sc.type === 'poster') { try { sc.data._w = await measureNonLatin([sc.data.kicker, sc.data.hero, sc.data.bar, sc.data.tail]); } catch { /* تقدير */ } }
+    if (sc.type === 'poster' || sc.type === 'portrait') { try { sc.data._w = await measureNonLatin([sc.data.kicker, sc.data.hero, sc.data.bar, sc.data.tail, sc.data.title, sc.data.sub, sc.data.year]); } catch { /* تقدير */ } }
   }
   if (slots.length) {
     const res = await (deps.resolveVoxImages || resolveVoxImages)({ slots, ratio, assetsDir: path.join(workDir, 'images'), onProgress: (f) => prog('assets', f) });
@@ -165,6 +166,7 @@ export async function produceAnimationEdit({ id, userId, input, workDir, prog },
       if (sc.type === 'photo' || sc.type === 'fullphoto') { if (images[key]) sc.data = { ...sc.data, img: key }; else { sc.type = 'kinetic'; sc.data = { emphasis: [] }; } }
       else if (sc.type === 'logo' && !sc.data.logo && images[key]) sc.data = { ...sc.data, img: key };
       else if (sc.type === 'poster' && sc.data.query && images[key]) sc.data = { ...sc.data, img: key };
+      else if (sc.type === 'portrait') { const im = images[key]; if (im && (sc.data.layout === 'year' || im.uriCut)) sc.data = { ...sc.data, img: key }; else if (im) { sc.type = 'photo'; sc.data = { img: key, caption: sc.data.title, emphasis: [] }; } else { sc.type = 'kinetic'; sc.data = { emphasis: [] }; } }
       else if (sc.type === 'collage' && sc.data.slots) { const ids = sc.data.slots.map((_, j) => `${key}_${j}`).filter(x => images[x]); if (ids.length >= 2) sc.data = { imgs: ids, headline: sc.data.headline }; else if (ids.length === 1) { sc.type = 'photo'; sc.data = { img: ids[0], emphasis: [] }; } else { sc.type = 'kinetic'; sc.data = { emphasis: [] }; } }
     }
   }

@@ -11,6 +11,7 @@ import { CAST, CAST_IDS, EMOTIONS, POSES } from './characters.js';
 import { genderOf } from './cast.js';
 import { ENV_NAMES } from './w3d/envs.js';
 import { POSTER_LAYOUTS } from './scenesEd.js';
+import { COLLAGE_LAYOUTS } from './scenesCollage.js';
 import { OBJECT_NAMES, resolveObject } from './objects3d.js';
 
 // أنماط الفيديو: motion = موشن جرافيك/إنفوجرافيك | vox = فيديو شرح بصور أرشيفية (على طريقة Vox) | cartoon = شخصيات كارتون 2D | cartoon3d = شخصيات كارتون 3D
@@ -18,7 +19,7 @@ export const LOOKS = ['motion', 'vox', 'cartoon', 'cartoon3d', 'world3d'];
 export const isWorld3d = (look) => look === 'world3d';
 export const isCartoon = (look) => look === 'cartoon' || look === 'cartoon3d';
 const CARTOON_TYPES = ['char_say', 'char_prop', 'char_duo'];
-const VOX_TYPES = ['photo', 'fullphoto', 'collage', 'headline', 'logo', 'papermap'];
+const VOX_TYPES = ['photo', 'fullphoto', 'collage', 'headline', 'logo', 'papermap', 'portrait'];
 const ED_TYPES = ['poster']; // بوستر تحريري: Vox والموشن بس
 const BASE_TYPES = SCENE_TYPES.filter(t => !CARTOON_TYPES.includes(t) && !VOX_TYPES.includes(t) && !ED_TYPES.includes(t) && t !== 'world');
 export const allowedTypes = (look) => (look === 'world3d' ? new Set([...BASE_TYPES.filter(t => t !== 'art' && t !== 'bigword'), 'world']) : new Set([...BASE_TYPES, ...(isCartoon(look) ? CARTOON_TYPES : look === 'vox' ? [...VOX_TYPES, ...ED_TYPES] : ED_TYPES)]));
@@ -219,6 +220,17 @@ export function sanitizeScene(raw, spoken, { first = false, last = false, look =
       const idea = clean(d.idea, 260); if (idea.length < 8) return null;
       return { type: 'art', data: { idea, layout: d.layout === 'full' ? 'full' : 'side', emphasis: strs(d.emphasis, 2, 24) } };
     }
+    case 'portrait': {
+      const query = clean(d.query, 80); if (query.length < 3) return null;
+      const layout = COLLAGE_LAYOUTS.includes(d.layout) ? d.layout : undefined;
+      const opt = (v, words, len) => { const x = clean(v, len); return x && x.split(/\s+/).length <= words && grounded(x, said, 0.6) ? x : undefined; };
+      const yr = Number(String(d.year || '').replace(/[^\d]/g, ''));
+      const year = Number.isInteger(yr) && yr >= 1000 && yr <= 2100 && numberSaid(yr, nums) ? String(yr) : undefined;
+      const title = opt(d.title, 5, 40), sub = opt(d.sub, 9, 70);
+      const mark = sub && d.mark && String(sub).includes(String(d.mark)) ? clean(d.mark, 20) : undefined;
+      if (layout === 'year' && !year) return { type: 'portrait', data: { query, named: d.named === true, layout: 'halo', title, sub, mark, accent: d.accent } };
+      return { type: 'portrait', data: { query, named: d.named === true, layout, title, sub, year, mark, accent: ['orange', 'lime', 'red', 'blue', 'mustard', 'yellow'].includes(d.accent) ? d.accent : undefined } };
+    }
     case 'poster': {
       // كل كلمة على الشاشة لازم تكون اتقالت؛ البطل كلمة-3 كلمات
       const hero = clean(d.hero, 28); if (!hero || hero.split(/\s+/).length > 3 || !grounded(hero, said, 0.6)) return null;
@@ -291,6 +303,7 @@ const VOX_DOC = `Photo scenes (archive photos are fetched automatically from "qu
 - headline {"headline":"a newspaper-style headline made ONLY of words said in the scene","emphasis?":["words"]} — a newspaper clipping or a torn note card with the key line underlined by hand (max 3 in the video).
 - logo {"brand":"the OFFICIAL name in Latin letters even when the narration is Arabic (e.g. 'Claude', 'Google Gemini', 'Meta AI', 'OpenAI', 'DeepSeek', 'Netflix')","said":"the name exactly as spoken in the narration (e.g. 'كلود', 'جيميناي') when it differs from brand","rank?":number ONLY when the narration gives it a place in a ranking ("number five" → 5),"name?":"display name as said","emphasis":["1-2 words said"]} — the brand's real logo drawn as a paper sticker (rank stamped beside it), its name on tape, words on a paper card. USE IT EVERY TIME a brand, company, app, platform or AI model is the subject — logos make the video; for "top 5/best N" videos use one logo scene per item with its rank.
 - papermap {"places":[{"name":"place as said","lat":number,"lon":number}],"regions":["ISO-2 country codes, e.g. EG, US, SA"],"route":true|false,"emphasis":[]} — a vintage paper map like in documentaries: the camera zooms to the place, brass pins drop, a red string connects places when route=true, names on tape (max 4 places, 3 regions). Use it whenever a country, city or journey is said. Coordinates must be real (approximate is fine).
+- portrait {"query":"2-5 English words for a REAL photo of ONE person, statue, building or object (e.g. 'Muhammad Yunus portrait', 'US Capitol building', 'Greek philosopher statue')","named":true|false,"layout":"blocks|sticker|halo|year","title?":"1-5 words said (big title)","sub?":"a short phrase said (typewriter line / stamp)","mark?":"one word of sub to highlight","year?":number said (only for layout year),"accent?":"orange|lime|red|blue|mustard|yellow"} — a modern documentary COLLAGE: the subject cut out of its background in black-and-white. blocks = bold flat colour blocks behind/under it with a halftone glitch strip (buildings, institutions); sticker = cut-out with a coloured sticker outline, the title on a torn mustard tape label, a stamp and a red brush stroke (people, power, history); halo = huge black condensed title + typewriter line with a highlighted word and the subject in front of a big colour circle (lessons, philosophers, statues); year = a huge year number over a faded photo with blueprint lines (dates, eras). Use it often for the key people/places/objects of the story (20-30% of scenes), varying layouts.
 named=true when the photo must show a specific real person, place, event or object (it is strictly verified and dropped if not found); named=false for generic imagery (e.g. 'stock exchange floor', 'crowded street').
 `;
 const POSTER_DOC = `Editorial poster scenes (modern short-form typography, like premium Instagram/TikTok explainers — the spoken words are typeset like a magazine poster and appear in sync with the voice):
@@ -322,7 +335,7 @@ export function buildSystem(look = 'motion') {
   if (look === 'vox') {
     return COMMON_HEAD('The style is a Vox-like paper-collage documentary explainer: real archival photos printed in black-and-white halftone/ink on torn paper cards with tape, hand-drawn arrows and marker circles that draw themselves when a word is said, rubber stamps, newspaper clippings, charts and highlighted words on kraft, graph and coloured paper.').replace('PALETTES', 'vox|voxdark').replace('"PLUS_META",', '').replace('BGS', 'paper')
       + VOX_DOC + POSTER_DOC + CATALOG + icons + COMMON_RULES
-      + '\n- Use poster for about 20-30% of the scenes (hooks, punchlines, key lessons, short statements) instead of kinetic; vary the poster layouts and never use the same layout twice in a row.\n- For Vox style the video must be VISUAL, not text: at least 70% of scenes are photo / fullphoto / collage / logo / papermap / poster / charts. A brand/company/app/AI model => logo (with "rank" in a ranked list); a country/city/route => papermap; a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Text-only scenes (kinetic/headline/quote) at most 20% — and give every kinetic an "icon" that fits. Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is chosen by the system (any value is fine). Transitions: mostly paper (a new torn paper sheet slides over), some cut/slide.';
+      + '\n- Use portrait (cut-out collage) for about 20-30% of the scenes — the main people, buildings, statues and objects of the story — and vary its layouts; use it with layout year when a year/era is said.\n- Use poster for about 15-25% of the scenes (hooks, punchlines, key lessons, short statements) instead of kinetic; vary the poster layouts and never use the same layout twice in a row.\n- For Vox style the video must be VISUAL, not text: at least 70% of scenes are photo / fullphoto / collage / logo / papermap / poster / charts. A brand/company/app/AI model => logo (with "rank" in a ranked list); a country/city/route => papermap; a real person, place, event, object or era => a NAMED photo with a precise English query (name + year/place). Text-only scenes (kinetic/headline/quote) at most 20% — and give every kinetic an "icon" that fits. Use stat/bars/line/timeline/globe when numbers or geography are said, headline for a claim or news moment, kinetic only for short abstract statements (max 25%). Never reuse a query. "bg" is chosen by the system (any value is fine). Transitions: mostly paper (a new torn paper sheet slides over), some cut/slide.';
   }
   if (look === 'world3d') {
     return COMMON_HEAD('The style is a 3D animated video (low-poly stylised 3D world with characters, like a modern mobile game) that tells or explains the story visually.').replace('PALETTES', 'daylight').replace('"PLUS_META",', '').replace('BGS', 'aurora')

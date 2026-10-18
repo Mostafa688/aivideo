@@ -135,6 +135,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     scenes.forEach((sc, i) => {
       if (sc.type === 'photo' || sc.type === 'fullphoto') slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: sc.data.query, named: sc.data.named, caption: sc.data.caption });
       else if (sc.type === 'collage') sc.data.slots.forEach((q, k) => slots.push({ key: `s${i}_${k}`, scene: i, text: spoken[i].text, query: q.query, named: q.named }));
+      else if (sc.type === 'portrait') slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: sc.data.query, named: sc.data.named, cutout: sc.data.layout === 'year' ? false : 'model' }); // قص الخلفية (بالكود، وموديل رخيص لو الخلفية مش سادة)
       else if (sc.type === 'poster' && sc.data.query) slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: `${sc.data.query} isolated on white background`, named: false, cutout: true }); // صورة متقصوصة (الخلفية بتتشال بالكود)
     });
     await prog('assets', 0);
@@ -146,6 +147,11 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
         else { const txt = spoken[i].text; sc.type = txt.split(/\s+/).length >= 4 ? 'headline' : 'kinetic'; sc.data = sc.type === 'headline' ? { headline: txt.split(/\s+/).slice(0, 8).join(' '), emphasis: [] } : { emphasis: [] }; }
       } else if (sc.type === 'logo') {
         if (!sc.data.logo && images[`s${i}`]) sc.data = { ...sc.data, img: `s${i}` }; // ولو مفيش: شارة بأول حروف الاسم
+      } else if (sc.type === 'portrait') {
+        const im = images[`s${i}`];
+        if (im && (sc.data.layout === 'year' || im.uriCut)) sc.data = { ...sc.data, img: `s${i}` };
+        else if (im) { sc.type = 'photo'; sc.data = { img: `s${i}`, caption: sc.data.title, emphasis: [] }; } // الخلفية متقصتش → صورة مطبوعة عادية
+        else { const hero = sc.data.title || sc.data.year; sc.type = hero ? 'poster' : 'kinetic'; sc.data = hero ? { hero, kicker: sc.data.sub } : { emphasis: [] }; }
       } else if (sc.type === 'poster') {
         if (sc.data.query && images[`s${i}`]) sc.data = { ...sc.data, img: `s${i}` };
       } else if (sc.type === 'collage') {
@@ -158,7 +164,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     await prog('assets', 1);
   }
   // البوستر التحريري: قياس العربي الحقيقي بخطوطه (اللاتيني بيتقاس من الخط نفسه)
-  for (const sc of scenes) if (sc.type === 'poster') { try { sc.data._w = await measureNonLatin([sc.data.kicker, sc.data.hero, sc.data.bar, sc.data.tail]); } catch { /* تقدير */ } }
+  for (const sc of scenes) if (sc.type === 'poster' || sc.type === 'portrait') { try { sc.data._w = await measureNonLatin([sc.data.kicker, sc.data.hero, sc.data.bar, sc.data.tail, sc.data.title, sc.data.sub, sc.data.year]); } catch { /* تقدير */ } }
   const rtl = ['ar', 'he', 'fa', 'ur'].includes(String(lang).split(/[-_]/)[0]);
   const mm = await makeMeasurer(nar.tokens.map(t => t.w), { rtl });
   const story = { w, h, palette: pal, lang, scenes, mm, duration: nar.total, look, cast: isCartoon(look) ? { host: plan.host, map: castMap } : { host: null, map: castMap }, images };

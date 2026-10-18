@@ -128,6 +128,7 @@ export const SCENE_SFX = {
   collage: () => [E(0.1, 'paper', 0.6), E(0.5, 'paper', 0.6), E(0.9, 'paper', 0.6), E(0.75, 'scribble', 0.4), E(1.6, 'scribble', 0.4)],
   logo: (d, sc) => { const te = emphAt(sc, d); return [E(0.05, 'paper', 0.7), E(0.5, 'paper', 0.45), ...(d.rank ? [E(0.4, 'stamp', 0.8)] : []), ...(te != null ? [E(te, 'scribble', 0.5)] : [])]; },
   papermap: (d) => [E(0.0, 'paper', 0.55), E(0.2, 'whoosh_l', 0.45), ...(d.places || []).slice(0, 4).map((_, i) => E(1.3 + i * 0.55 + 0.3, 'click', 0.75)), ...(d.route ? [E(1.9, 'scribble', 0.4)] : [])],
+  portrait: (d, sc) => { const tk = sc.tokens || [], tT = phraseTime(tk, d.title, 0.35); return [E(0.05, 'paper', 0.6), E(0.3, 'whoosh_s', 0.4), ...(d.title ? [E(Math.max(0, tT - 0.02), d.layout === 'sticker' ? 'stamp' : 'hit', 0.6)] : []), ...(d.layout === 'blocks' ? [E(0.2, 'swish', 0.4), E(0.5, 'swish', 0.35)] : []), ...(d.sub ? [E(tT + 0.6, d.layout === 'sticker' ? 'paper' : 'click', 0.4)] : [])]; },
   poster: (d, sc) => {
     const tk = sc.tokens || [], tH = phraseTime(tk, d.hero, 0.5), ev = [E(0.02, 'whoosh_s', 0.5), E(Math.max(0, tH - 0.03), 'hit', 0.75), E(tH + 0.05, 'swish', 0.35)];
     if (d.bar) ev.push(E(Math.max(tH + 0.35, phraseTime(tk, d.bar, tH + 0.6)), 'paper', 0.6));
