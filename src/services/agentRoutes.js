@@ -10,6 +10,7 @@ import { visionDiagnostics } from './visionService.js';
 import { composeProductAdPrompt, agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
 import { listCharacterReferencesForUser, getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits, animationMaxSeconds } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
+import { startAnimationEdit, editableAnimations } from './documentary/documentaryService.js';
 import { startJob as startDocumentaryJob, startAnimationJob, animationTrialAvailable, ANIMATION_TRIAL_SECONDS, startAutoEditFromUrl, startMontageJob, MONTAGE_TRIAL_MAX_SECONDS, MONTAGE_TRIAL_MAX_VIDEOS } from './documentary/documentaryService.js';
 import { trialAvailable as docTrialAvailable } from './documentary/store.js';
 import { probeDuration as ffProbeDuration, hasAudio as ffHasAudio, rmQuiet as ffRmQuiet } from './documentary/ff.js';
@@ -351,9 +352,9 @@ function stripMarkdownFormatting(text) {
       return cells.join(' — ');
     })
     .join('\n');
-  out = out.replace(/\*\*(.+?)\*\*/g, '$1'); // **bold**
-  out = out.replace(/^#{1,6}\s+/gm, ''); // # headings
-  out = out.replace(/^[*-]\s+/gm, ''); // - bullets / * bullets في أول السطر
+  // الشات بقى بيعرض تنسيق بسيط (RichText): **عريض** وقوايم "- " بتفضل زي ما هي؛ العناوين "#" بتتحول لسطر عادي
+  out = out.replace(/^#{1,6}\s+/gm, '');
+  out = out.replace(/^\*\s+/gm, '- '); // "* بند" → "- بند"
   return out;
 }
 
@@ -800,6 +801,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
     try {
       const mx = await animationMaxSeconds(req.user.userId);
       attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `ANIMATION MAX LENGTH for this customer: ${mx / 60} minutes per animated/vox video (${mx >= 300 ? 'Studio-level buyer' : mx >= 180 ? 'Creator buyer; Studio buyers get 5 minutes' : 'normal limit; Creator buyers get 3 minutes, Studio buyers 5 minutes'}). Never promise longer; for longer content suggest parts${mx < 300 ? ' or a bigger package' : ''}. "seconds" in the marker must not exceed ${mx - 6}.`;
+    } catch { /* مش حرج */ }
+    // فيديوهات أنيميشن/فوكس جاهزة قابلة للتعديل — بتتبعت للايجنت لما العميل يطلب تعديل ("عدّل"، "غيّر المشهد"، "احذف الجزء ده")
+    try {
+      const EDIT_INTENT = /(عدل|عدّل|تعديل|غير|غيّر|بدل|بدّل|احذف|شيل|امسح|خلي|خلّي|ضيف|زود|كبر|صغر|edit|change|replace|remove|delete|swap|make (it|the))/i;
+      if (EDIT_INTENT.test(String(message || ''))) {
+        const eds = await editableAnimations(req.user.userId, 4);
+        if (eds.length) attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `EDITABLE ANIMATED VIDEOS of this customer (newest first): ${eds.map(v => `jobId=${v.id} "${v.title || 'video'}" (${v.look}, ${v.durationSec}s, ${v.scenes} scenes)`).join('; ')}. If the customer wants to change something in one of these (a scene, an image, on-screen text, colours, music, captions, format, or delete a part), follow rule "EDIT AN EXISTING ANIMATED VIDEO" — never remake it from scratch.`;
+      }
     } catch { /* مش حرج */ }
     // عرض مؤقت على باقات مصر: الايجنت لازم يعرف السعر الحقيقي الحالي (اللي هيتحاسب بيه العميل) ووقت الانتهاء
     try {
@@ -1585,7 +1594,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       showcaseVideos = true;
       reply = reply.replace('###SHOWCASE_VIDEOS###', '').trim();
     }
-    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload, animationPayload, autoEditPayload, montagePayload;
+    let setRegionPayload, subscribePayload, accountActionPayload, whiteboardVideoPayload, analyzeVideoPayload, channelGeneratePayload, channelResumePayload, documentaryPayload, animationPayload, autoEditPayload, montagePayload, animationEditPayload;
     ({ text: reply, payload: setRegionPayload } = extractTrailingMarker(reply, '###SET_REGION###'));
     ({ text: reply, payload: subscribePayload } = extractTrailingMarker(reply, '###SUBSCRIBE###'));
     ({ text: reply, payload: accountActionPayload } = extractTrailingMarker(reply, '###ACCOUNT_ACTION###'));
@@ -1593,6 +1602,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     ({ text: reply, payload: channelGeneratePayload } = extractTrailingMarker(reply, '###CHANNEL_GENERATE###'));
     ({ text: reply, payload: channelResumePayload } = extractTrailingMarker(reply, '###CHANNEL_RESUME###'));
     ({ text: reply, payload: documentaryPayload } = extractTrailingMarker(reply, '###DOCUMENTARY###'));
+    ({ text: reply, payload: animationEditPayload } = extractTrailingMarker(reply, '###ANIMATION_EDIT###'));
     ({ text: reply, payload: animationPayload } = extractTrailingMarker(reply, '###ANIMATION###'));
     // كارت اختيار صوت الذكاء الاصطناعي (للحسابات المدفوعة بس — المجاني بيرفع صوته)
     let voicePicker;
@@ -1809,6 +1819,22 @@ router.post('/chat', authMiddleware, async (req, res) => {
           console.warn('[Agent] ANIMATION marker failed:', e.message);
           reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ فيديو الأنيميشن — جرب تاني بعد شوية.';
         }
+      }
+    }
+
+    // ✅ تعديل فيديو أنيميشن/فوكس جاهز (من غير ما يتعمل من الأول)
+    if (animationEditPayload && typeof animationEditPayload === 'object' && animationEditPayload.jobId) {
+      try {
+        const r = await startAnimationEdit(userId, { jobId: animationEditPayload.jobId, instruction: animationEditPayload.instruction || message });
+        if (r.ok) {
+          docJob = { jobId: r.job.id, kind: 'animation', title: r.job.title };
+          reply += (reply ? '\n\n' : '') + `تمام، بعدّل على نفس الفيديو (**${r.cost} كريديت**) — بنفس الصوت والمشاهد، والجزء اللي طلبته بس هو اللي بيتغيّر. هيظهر هنا أول ما يخلص.`;
+        } else if (r.error === 'quota_exceeded') reply += (reply ? '\n\n' : '') + `التعديل محتاج **${r.cost} كريديت** ورصيدك ${r.remaining}. اشحن وقولّي "عدّل".`;
+        else if (r.error === 'edit_unavailable') reply += (reply ? '\n\n' : '') + 'الفيديو ده مينفعش يتعدّل (التعديل متاح لفيديوهات الأنيميشن والفوكس اللي اتعملت خلال آخر 30 يوم). أقدر أعمله من جديد بالتعديل اللي عايزه.';
+        else reply += (reply ? '\n\n' : '') + (r.message || 'معلش، مقدرتش أبدأ التعديل ده.');
+      } catch (e) {
+        console.warn('[Agent] ANIMATION_EDIT failed:', e.message);
+        reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا ببدأ التعديل — جرب تاني بعد شوية.';
       }
     }
 

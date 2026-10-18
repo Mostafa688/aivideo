@@ -13,8 +13,9 @@ import { smartMontage } from '../montage/smartMontage.js';
 import { resolveAssets as resolveMontageAssets, removeAssets as removeMontageAssets, sweepOldAssets, withAnalysis, MAX_TOTAL_MINUTES, MAX_ASSETS_PER_USER } from '../montage/assets.js';
 import { chargeCredits, addCreditsBalance, getCreditsBalance, getUserById, animationMaxSeconds } from '../authService.js';
 import { watermarkVideo } from '../watermark.js';
-import { getDocumentaryCreditCost, getAutoEditCreditCost, getVideoReadCreditCost, getAnimationCreditCost } from '../creditPricingEngine.js';
+import { getDocumentaryCreditCost, getAutoEditCreditCost, getVideoReadCreditCost, getAnimationCreditCost, getAnimationEditCreditCost } from '../creditPricingEngine.js';
 import { produceAnimation } from '../codeVideo/produce.js';
+import { produceAnimationEdit, animEditorOf } from '../codeVideo/editAnimation.js';
 import { ABS_MAX_SECONDS as ANIMATION_ABS_MAX_SECONDS, estimateSeconds as estimateAnimationSeconds, detectLang } from '../codeVideo/narration.js';
 import { ALL_PALETTE_NAMES as ANIMATION_PALETTES } from '../codeVideo/design.js';
 import { LOOKS as ANIMATION_LOOKS } from '../codeVideo/director.js';
@@ -173,7 +174,7 @@ async function runTask(task) {
   fs.mkdirSync(workDir, { recursive: true });
   try {
     await store.updateJob(id, { status: 'processing', stage: 'script', progress: 1 });
-    const result = input.mode === 'animation' ? await produceAnimation({ id, userId, input, workDir, prog }) : input.mode === 'autoedit' ? await produceAutoEdit({ id, input, workDir, prog }) : input.mode === 'montage' ? await produceSmartMontage({ id, userId, input, workDir, prog }) : await produce({ id, userId, input, workDir, prog });
+    const result = input.mode === 'animation' ? await produceAnimation({ id, userId, input, workDir, prog }) : input.mode === 'animation_edit' ? await produceAnimationEdit({ id, userId, input, workDir, prog }) : input.mode === 'autoedit' ? await produceAutoEdit({ id, input, workDir, prog }) : input.mode === 'montage' ? await produceSmartMontage({ id, userId, input, workDir, prog }) : await produce({ id, userId, input, workDir, prog });
     // رفع
     await prog('upload', 0);
     const base = `documentaries/${userId}/${id}`;
@@ -188,7 +189,7 @@ async function runTask(task) {
     const actual = task.fixedCost ? task.charged - (result.refundCredits || 0) : input.mode === 'animation' ? getAnimationCreditCost(result.duration / 60, { userVoiceover: input.source === 'voiceover', look: input.look }) : getDocumentaryCreditCost(result.duration / 60, { userVoiceover: input.mode === 'voiceover' });
     const back = Math.max(0, task.charged - actual);
     if (back >= 2 || (task.fixedCost && back >= 1)) await refund(task, back);
-    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 || (task.fixedCost && back >= 1) ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio, ...(result.sceneStats ? { sceneStats: result.sceneStats } : {}), ...(result.editor ? { editor: result.editor } : {}) } });
+    await store.updateJob(id, { status: 'done', stage: 'done', progress: 100, result_url: videoUrl, thumbnail_url: thumbUrl, duration_sec: result.duration, credits_refunded: back >= 2 || (task.fixedCost && back >= 1) ? back : 0, credits_list: result.credits, script: result.script, title: result.title, meta: { chapters: result.chapters, srt: result.srt, language: input.language, ratio: input.ratio, ...(result.sceneStats ? { sceneStats: result.sceneStats } : {}), ...(result.editor ? { editor: result.editor } : {}), ...(result.animEditor ? { animEditor: result.animEditor } : {}), ...(result.editSummary ? { editSummary: result.editSummary, editUnsupported: result.editUnsupported || '' } : {}), ...(input.sourceJobId ? { sourceJobId: input.sourceJobId } : {}) } });
     task.hooks?.onDone?.({ videoUrl, thumbnailUrl: thumbUrl, durationSec: result.duration, title: result.title, credits: result.credits, creditsCharged: task.charged - (back >= 2 || (task.fixedCost && back >= 1) ? back : 0) });
   } catch (e) {
     console.error(`[Documentary] job ${id} failed:`, e.message);
@@ -209,7 +210,7 @@ const USER_ERRORS = {
   no_speech: 'No speech was detected in this video. Your credits were refunded.',
   content_policy: 'This video contains content we cannot edit. Your credits were refunded.',
 };
-function userFacingError(e) { return USER_ERRORS[e?.code] || 'The video could not be completed, your credits were refunded.'; }
+function userFacingError(e) { if (e?.code === 'nothing_to_change') return (e.userMessage || 'I could not tell what to change in the video') + ' — your credits were refunded.'; if (e?.code === 'edit_unavailable') return 'This video can no longer be edited (edits are kept for 30 days) — your credits were refunded.'; return USER_ERRORS[e?.code] || 'The video could not be completed, your credits were refunded.'; }
 
 // ── فيديو أنيميشن بالكود (حتى دقيقتين): صوت مرفوع أو سكريبت (صوت AI) أو موضوع → مخرج + رندر بالكود + مؤثرات صوتية ──
 export const ANIMATION_RATIOS = ['16:9', '9:16'];
@@ -682,4 +683,40 @@ export async function recoverInterruptedJobs() {
     }
     if (rows.length) console.warn(`[Documentary] recovered ${rows.length} interrupted job(s) and refunded their credits`);
   } catch (e) { console.warn('[Documentary] recovery skipped:', e.message); }
+}
+
+
+// ── تعديل فيديو أنيميشن/فوكس جاهز (من غير ما يتعمل من الأول): نفس الصوت، المشاهد اللي العميل طلبها بس بتتغيّر ──
+export async function startAnimationEdit(userId, { jobId, instruction }) {
+  const fail = (status, error, message) => ({ ok: false, status, error, message });
+  const text = String(instruction || '').replace(/<[^>]*>/g, '').trim().slice(0, 1500);
+  if (text.length < 3) return fail(400, 'instruction_required', 'Tell me what to change in the video.');
+  const src = await store.getJob(Number(jobId), userId).catch(() => null);
+  if (!src || src.status !== 'done') return fail(404, 'not_found', 'That video was not found in your account.');
+  const ed = animEditorOf(src);
+  if (!ed) return fail(409, 'edit_unavailable', 'This video cannot be edited (only animated/vox videos made in the last 30 days can be edited).');
+  if ((await checkContentSafety(text)).unsafe) return fail(400, 'content_policy_violation', 'This change cannot be made.');
+  const cost = getAnimationEditCreditCost((src.duration_sec || ed.duration || 60) / 60, { look: ed.look });
+  const charge = await chargeCredits(userId, cost);
+  if (!charge.success) return { ok: false, status: 403, error: 'quota_exceeded', message: `This edit needs ${cost} credits, you have ${charge.remaining}.`, cost, remaining: charge.remaining };
+  const input = { mode: 'animation_edit', sourceJobId: src.id, instruction: text, language: src.meta?.language, ratio: src.meta?.ratio, look: ed.look };
+  let job;
+  try { job = await store.createJob({ userId, input, title: `${src.title || 'Video'} (edited)`, creditsCharged: cost }); }
+  catch (e) { await addCreditsBalance(userId, cost).catch(() => {}); return fail(500, 'create_failed', 'Could not start the edit. Your credits were refunded.'); }
+  enqueue({ id: job.id, userId, input, charged: cost, fixedCost: true, hooks: {} });
+  return { ok: true, job, cost, remaining: charge.remaining };
+}
+
+/** آخر فيديوهات الأنيميشن القابلة للتعديل (للايجنت) */
+export async function editableAnimations(userId, limit = 5) {
+  const list = await store.listJobs(userId, 25).catch(() => []);
+  const out = [];
+  for (const j of list) {
+    if (j.status !== 'done') continue;
+    const full = await store.getJob(j.id, userId).catch(() => null);
+    const ed = animEditorOf(full);
+    if (ed) out.push({ id: j.id, title: j.title, durationSec: Math.round(j.duration_sec || ed.duration || 0), look: ed.look, scenes: ed.scenes, createdAt: j.created_at, url: j.result_url });
+    if (out.length >= limit) break;
+  }
+  return out;
 }

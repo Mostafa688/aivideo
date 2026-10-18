@@ -369,3 +369,10 @@ export function buildFullPricingTable() {
       : null,
   }));
 }
+
+// تعديل فيديو أنيميشن جاهز: رندر تاني بنفس الصوت (من غير صوت/مخرج جديد) + مخطط تعديل صغير — أرخص بكتير من فيديو جديد
+export function getAnimationEditCreditCost(minutes, { look = 'motion' } = {}) {
+  const d = ANIMATION_USD_PER_MINUTE;
+  const perMin = d.render * (ANIMATION_LOOK_RENDER_MULT[look] || 1) + 0.006;
+  return Math.max(3, usdToCredits(perMin * Math.max(0.25, Number(minutes) || 0)));
+}
