@@ -3908,7 +3908,8 @@ function renderBotHTML(pageData, path) {
     description: pageData.description,
     offers: { '@type': 'Offer', priceCurrency: 'USD', price: '0', description: 'Free trial credits on signup' },
   };
-  const schemas = [jsonLd];
+  // لوجو الموقع في نتايج جوجل: صفحة البوتات لازم يبقى فيها <link rel="icon"> + Organization logo (كانت ناقصة فجوجل بيعرض الكرة الأرضية)
+  const schemas = [jsonLd, { '@context': 'https://schema.org', '@type': 'Organization', name: 'Erivion', url: SITE_URL, logo: `${SITE_URL}/logo.png` }];
   if (pageData.faqItems?.length) {
     schemas.push({
       '@context': 'https://schema.org',
@@ -3935,6 +3936,12 @@ function renderBotHTML(pageData, path) {
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Erivion">
 <meta name="twitter:card" content="summary">
+<meta property="og:image" content="${SITE_URL}/logo.png">
+<link rel="icon" type="image/png" sizes="48x48" href="${SITE_URL}/favicon-48.png">
+<link rel="icon" type="image/png" sizes="96x96" href="${SITE_URL}/favicon-96.png">
+<link rel="icon" type="image/png" sizes="192x192" href="${SITE_URL}/favicon-192.png">
+<link rel="shortcut icon" href="${SITE_URL}/favicon.ico">
+<link rel="apple-touch-icon" href="${SITE_URL}/favicon-192.png">
 ${DOMAIN_VERIFICATION_METAS}
 ${schemas.map(s => `<script type="application/ld+json">${JSON.stringify(s)}</script>`).join('\n')}
 </head>
@@ -3995,7 +4002,7 @@ Sitemap: ${SITE_URL}/sitemap.xml`);
 
 // sitemap.xml — كل الصفحات الحقيقية + كل مقال مدونة لوحده، عشان جوجل يقدر يفهرسهم كلهم
 // تاريخ آخر تحديث جوهري للموقع — حدّثه مع كل ميزة جديدة عشان جوجل يعيد الزحف
-const SITE_LASTMOD = '2026-10-09';
+const SITE_LASTMOD = '2026-10-18';
 const SITEMAP_PRIORITY = { '/': '1.0', '/pricing': '0.9', '/documentary': '0.9', '/faq': '0.8', '/blog': '0.8', '/changelog': '0.7', '/api-docs': '0.7' };
 app.get('/sitemap.xml', (req, res) => {
   const entry = (loc, { priority = '0.6', freq = 'monthly' } = {}) => `  <url><loc>${loc}</loc><lastmod>${SITE_LASTMOD}</lastmod><changefreq>${freq}</changefreq><priority>${priority}</priority></url>`;
