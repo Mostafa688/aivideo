@@ -5,6 +5,7 @@ import { SCENES_C } from './scenesC.js';
 import { SCENES_V } from './scenesV.js';
 import { SCENES_MAP } from './scenesMap.js';
 import { SCENES_ED } from './scenesEd.js';
+import { SCENES_COLLAGE } from './scenesCollage.js';
 import { art } from './art.js';
 import { world } from './w3d/scene.js';
 
@@ -15,6 +16,7 @@ export const SCENES = {
   ...SCENES_V,
   ...SCENES_MAP,
   ...SCENES_ED,
+  ...SCENES_COLLAGE,
   art,
   world,
 };

@@ -74,7 +74,38 @@ export async function toStoryImage(file) {
  * (flood fill بسماحية لون) ونخلّيها شفافة، وبنقص على قد الجسم. لو الخلفية مش سادة → null (والمشهد بيعرض الصورة في كارت)
  * @returns {Promise<{ uriCut, cw, ch } | null>}
  */
-export async function toCutout(file) {
+/**
+ * إزالة خلفية بموديل (لما الخلفية مش سادة — صور البورتريه والأماكن): 851-labs/background-remover على Replicate
+ * (حوالي $0.0005 للصورة، مش توليد صور). بيرجّع مسار PNG شفاف أو null
+ */
+async function removeBgReplicate(file) {
+  const token = process.env.REPLICATE_API_TOKEN; if (!token) return null;
+  try {
+    const { uploadReferenceImageToR2 } = await import('../audioVideoService.js');
+    const jpg = await sharp(file, { failOn: 'none' }).rotate().resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true }).flatten({ background: '#fff' }).jpeg({ quality: 88 }).toBuffer();
+    const url = await uploadReferenceImageToR2(jpg, 'jpg', 'rembg');
+    const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    let d = await (await fetch('https://api.replicate.com/v1/models/851-labs/background-remover/predictions', { method: 'POST', headers: { ...H, Prefer: 'wait=30' }, body: JSON.stringify({ input: { image: url, format: 'png', background_type: 'rgba' } }) })).json();
+    const t0 = Date.now();
+    while (d && d.id && !['succeeded', 'failed', 'canceled'].includes(d.status) && Date.now() - t0 < 60e3) {
+      await new Promise(r => setTimeout(r, 1500));
+      d = await (await fetch(`https://api.replicate.com/v1/predictions/${d.id}`, { headers: H })).json();
+    }
+    const out = Array.isArray(d?.output) ? d.output[0] : d?.output;
+    if (d?.status !== 'succeeded' || typeof out !== 'string') return null;
+    const buf = Buffer.from(await (await fetch(out)).arrayBuffer());
+    const dest = `${file}.cut.png`; fs.writeFileSync(dest, buf); return dest;
+  } catch (e) { console.warn('[CodeVideo/images] background remover failed:', e.message); return null; }
+}
+
+export async function toCutout(file, { allowModel = false } = {}) {
+  const r = await cutoutFrom(file);
+  if (r || !allowModel) return r;
+  const png = await removeBgReplicate(file); // الخلفية مش سادة → موديل إزالة الخلفية
+  return png ? cutoutFrom(png) : null;
+}
+
+async function cutoutFrom(file) {
   const { data, info } = await sharp(file, { failOn: 'none', limitInputPixels: 200e6 }).rotate().resize({ width: 760, height: 760, fit: 'inside', withoutEnlargement: true }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const W = info.width, H = info.height, N = W * H;
   const alpha = new Uint8Array(N);
@@ -105,8 +136,22 @@ export async function toCutout(file) {
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (alpha[y * W + x] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 - x0 < 40 || y1 - y0 < 40) return null;
   const out = Buffer.from(data); for (let i = 0; i < N; i++) out[i * 4 + 3] = alpha[i];
-  const png = await sharp(out, { raw: { width: W, height: H, channels: 4 } }).extract({ left: x0, top: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 }).png({ compressionLevel: 6 }).toBuffer({ resolveWithObject: true });
-  return { uriCut: `data:image/png;base64,${png.data.toString('base64')}`, cw: png.info.width, ch: png.info.height };
+  // هامش حوالين الجسم عشان حد الستيكر (بيتحسب مرة واحدة هنا بدل فلتر غالي كل إطار)
+  const big = Math.round(Math.max(W, H) * 0.024), small = Math.round(big * 0.45), pad = big + 4;
+  const ex0 = Math.max(0, x0 - pad), ey0 = Math.max(0, y0 - pad), ex1 = Math.min(W - 1, x1 + pad), ey1 = Math.min(H - 1, y1 + pad);
+  const region = { left: ex0, top: ey0, width: ex1 - ex0 + 1, height: ey1 - ey0 + 1 };
+  const ring = async (r) => {
+    const m = await sharp(Buffer.from(alpha), { raw: { width: W, height: H, channels: 1 } }).blur(Math.max(0.5, r / 2)).extractChannel(0).raw().toBuffer();
+    const rgba = Buffer.alloc(N * 4, 255); for (let i = 0; i < N; i++) { const v = m[i]; rgba[i * 4 + 3] = v > 26 ? 255 : v > 10 ? (v - 10) * 16 : 0; } // حد ناعم بس واضح
+    return (await sharp(rgba, { raw: { width: W, height: H, channels: 4 } }).extract(region).png({ compressionLevel: 6 }).toBuffer()).toString('base64');
+  };
+  const [ringBig, ringSmall] = await Promise.all([ring(big), ring(small)]);
+  const png = await sharp(out, { raw: { width: W, height: H, channels: 4 } }).extract(region).png({ compressionLevel: 6 }).toBuffer({ resolveWithObject: true });
+  // نسخة أبيض وأسود عالية التباين (زي قصاصات الجرايد في الكولاج) بنفس الشفافية
+  const gray = Buffer.from(out);
+  for (let i = 0; i < N; i++) { const o = i * 4; const v = Math.max(0, Math.min(255, (0.3 * gray[o] + 0.59 * gray[o + 1] + 0.11 * gray[o + 2] - 128) * 1.25 + 132)); gray[o] = v; gray[o + 1] = v; gray[o + 2] = Math.min(255, v + 4); }
+  const bw = await sharp(gray, { raw: { width: W, height: H, channels: 4 } }).extract(region).png({ compressionLevel: 6 }).toBuffer();
+  return { uriCut: `data:image/png;base64,${png.data.toString('base64')}`, uriCutBw: `data:image/png;base64,${bw.toString('base64')}`, uriRingBig: `data:image/png;base64,${ringBig}`, uriRingSmall: `data:image/png;base64,${ringSmall}`, cw: png.info.width, ch: png.info.height };
 }
 
 /**
@@ -126,7 +171,7 @@ export async function resolveVoxImages({ slots, ratio = '16:9', assetsDir, onPro
   for (let i = 0; i < slots.length; i++) {
     const a = slots[i].named ? res.boards?.[i]?.[0] : res.assets?.[i];
     if (!a || a.kind === 'video' || !a.file || !fs.existsSync(a.file)) { missing.add(slots[i].key); continue; }
-    try { images[slots[i].key] = await toStoryImage(a.file); if (slots[i].cutout) Object.assign(images[slots[i].key], await toCutout(a.file).catch(() => null) || {}); } catch (e) { console.warn(`[CodeVideo/images] ${slots[i].key}: ${e.message}`); missing.add(slots[i].key); }
+    try { images[slots[i].key] = await toStoryImage(a.file); if (slots[i].cutout) Object.assign(images[slots[i].key], await toCutout(a.file, { allowModel: slots[i].cutout === 'model' }).catch(() => null) || {}); } catch (e) { console.warn(`[CodeVideo/images] ${slots[i].key}: ${e.message}`); missing.add(slots[i].key); }
   }
   try { fs.rmSync(assetsDir, { recursive: true, force: true }); } catch { /* temp */ }
   return { images, credits, missing };
