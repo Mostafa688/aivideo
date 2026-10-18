@@ -262,6 +262,7 @@ function MoreMenuModal({ onClose, onNavigate, onShowAffiliate, onShowHowTo, curr
     {
       label: 'FEATURED',
       items: [
+        { Icon: FileText, label: 'PDF to Video', sub: 'Turn any document into an animated explainer', key: 'pdfvideo', accent: '#38bdf8', badge: 'NEW' },
         { Icon: Clapperboard, label: 'Documentary Studio', sub: 'Real footage, motion graphics, full films', key: 'documentary', accent: '#f59e0b', badge: 'NEW' },
         { Icon: Tv, label: 'My Channels', sub: 'Daily auto-video via VidIQ', key: 'channels', accent: '#7c6af7', badge: 'BETA' },
         { Icon: Drama, label: 'Characters', sub: 'Reference images for story videos', key: 'characters', accent: '#ec4899' },

@@ -1064,6 +1064,12 @@ export async function animationMaxSeconds(userId) {
   } catch (e) { console.warn('[animationMaxSeconds]', e.message); return ANIMATION_PLAN_SECONDS.base; }
 }
 
+// فيديو من مستند/PDF: لحد 5 دقايق لأي باقة، و20 دقيقة لمشتري Studio فأكبر
+export async function docVideoMaxSeconds(userId) {
+  const a = await animationMaxSeconds(userId).catch(() => ANIMATION_PLAN_SECONDS.base);
+  return a >= ANIMATION_PLAN_SECONDS.studio ? 1200 : 300;
+}
+
 // ── اعتماد عملية شراء كريديت (مصري بالسلايدر أو دولي بباقة ثابتة) ─────────
 // بيدور على أحدث طلب pending لنفس الإيميل والخطة، يضيف الكريديت المسجلة فيه، ويعتمد الطلب
 export async function approveCreditsPayment(email, plan) {

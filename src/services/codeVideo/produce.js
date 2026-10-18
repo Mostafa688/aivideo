@@ -1,7 +1,8 @@
 // ── produce.js ── فيديو أنيميشن بالكود من صوت: (سكريبت أو صوت مرفوع) → سرد + توقيت → مخرج (JSON) → رندر → صوت (مؤثرات + موسيقى)
 import fs from 'fs';
 import path from 'path';
-import { buildNarration, writeAnimationScript, detectLang, MAX_SECONDS, ABS_MAX_SECONDS } from './narration.js';
+import { buildNarration, writeAnimationScript, detectLang, MAX_SECONDS, ABS_MAX_SECONDS, DOC_ABS_MAX_SECONDS } from './narration.js';
+import { writeDocumentScript } from './docScript.js';
 import { segmentScenes, directVideo, trDuration, LOOKS, isCartoon, LOOK_PALETTES, isGrounded } from './director.js';
 import { pickPalette } from './design.js';
 import { resolveVoxImages } from './images.js';
@@ -42,12 +43,19 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     script = await (deps.writeAnimationScript || writeAnimationScript)({ topic: input.topic, seconds: input.seconds || 60, language: lang, brief: input.brief || '', maxSeconds: input.maxSeconds || MAX_SECONDS });
     await prog('script', 1, { script });
   }
+  // 1ب) من مستند/PDF: سكريبت شرح من المحتوى المكتوب بس، على قد المدة المطلوبة
+  if (input.source === 'document') {
+    await prog('script', 0.05);
+    const ds = await (deps.writeDocumentScript || writeDocumentScript)({ text: input.documentText, seconds: input.seconds || 180, language: input.language || null, brief: input.brief || '', onProgress: (f) => prog('script', 0.05 + f * 0.9) });
+    script = ds.script; lang = ds.language || lang; title = title || ds.title || '';
+    await prog('script', 1, { script, ...(title ? { title } : {}) });
+  }
 
   // لغة الفيديو = لغة السكريبت الفعلية (لو العميل كتب عربي واللغة جت en غلط، الصوت والكلام يبقوا عربي)
   if (input.source !== 'voiceover') lang = detectLang(script, lang) || lang;
   // 2) السرد + توقيت الكلمات
   const nar = await (deps.buildNarration || buildNarration)({ mode: input.source === 'voiceover' ? 'voiceover' : 'script', script, audioFile: input.audioFile, lang, voiceKey: input.voiceKey, workDir, prog });
-  const maxSec = Math.min(ABS_MAX_SECONDS, input.maxSeconds || MAX_SECONDS);
+  const maxSec = Math.min(input.source === 'document' ? DOC_ABS_MAX_SECONDS : ABS_MAX_SECONDS, input.maxSeconds || MAX_SECONDS);
   if (nar.total > maxSec + 3) { const e = new Error(`narration is ${Math.round(nar.total)}s, over the ${maxSec}s limit`); e.code = 'too_long'; throw e; }
   script = nar.script || script;
   if (nar.lang) lang = nar.lang;
