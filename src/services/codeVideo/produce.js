@@ -17,6 +17,7 @@ import { getBackgroundMusicBuffer } from '../videoAudioService.js';
 import { buildCaptionsAss } from '../documentary/captions.js';
 import { buildSrt } from '../documentary/uploadPackage.js';
 import { watermarkVideo } from '../watermark.js';
+import { persistAnimationBundle } from './editAnimation.js';
 
 const FEMALE_VOICES = new Set(['Zephyr', 'Kore', 'Leda', 'Aoede', 'Callirrhoe', 'Autonoe', 'Despina', 'Erinome', 'Laomedeia', 'Achernar', 'Gacrux', 'Pulcherrima', 'Vindemiatrix', 'Sulafat']);
 export function voiceGenderOf(input) {
@@ -55,10 +56,10 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   const spoken = segmentScenes(nar.tokens, nar.total, look === 'world3d' ? { minLen: 2.2, softMax: 4.2, maxLen: 5.5, maxScenes: Math.max(40, Math.ceil(nar.total / 3)) } : { maxScenes: Math.max(36, Math.ceil(nar.total / 3.4)) }); // فيديو أطول (3-5 دقايق) = مشاهد أكتر // الـ3D: لقطات أقصر وقطع أكتر
   if (!spoken.length) throw new Error('no scenes');
   // كاست الكارتون: الـLLM بيبتكر شخصيات/مخلوقات على مقاس القصة (لو فشل بنستخدم الشخصيات الجاهزة)
-  let castMap = makeCastMap([]);
+  let castMap = makeCastMap([]), castChars = [];
   if (isCartoon(look)) {
     const cr = await (deps.designCast || designCast)({ text: spoken.map(x => x.text).join(' '), topic: input.topic || title, language: lang, look, voiceGender: voiceGenderOf(input) });
-    if (cr.characters.length) castMap = makeCastMap(cr.characters);
+    if (cr.characters.length) { castMap = makeCastMap(cr.characters); castChars = cr.characters; }
   }
   // عالم 3D: كاست (شخصيات/حيوانات بملابس وألوان) + بيئة افتراضية على مقاس القصة
   let worldMeta = null;
@@ -192,5 +193,9 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   if (input.watermark) r.file = await (deps.watermarkVideo || watermarkVideo)(r.file); // التجربة المجانية عليها علامة Erivion
   const sceneStats = { look, scenes: scenes.length, types: scenes.reduce((a, s) => { a[s.type] = (a[s.type] || 0) + 1; return a; }, {}), sfxEvents: r.sfxEvents, palette: pal.name };
   console.log(`[CodeVideo] job ${id}:`, JSON.stringify(sceneStats));
-  return { sceneStats, file: r.file, duration: r.duration, credits: imageCredits, script, title, chapters: [], srt: buildSrt(nar.tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
+  // وصفة الفيديو عشان العميل يقدر يعدّل عليه بعدين ("غيّر المشهد ده"/"احذف الجزء ده") من غير ما يتعمل من الأول
+  let editor = null;
+  try { editor = await (deps.persistAnimationBundle || persistAnimationBundle)({ jobId: id, userId, story, castChars, narrationFile: nar.narrationFile, musicFile, allTokens: nar.tokens.map(t => ({ w: t.w, start: t.start, end: t.end })), input, title, script, workDir }); }
+  catch (e) { console.warn('[CodeVideo] edit bundle not saved:', e.message); }
+  return { animEditor: editor, sceneStats, file: r.file, duration: r.duration, credits: imageCredits, script, title, chapters: [], srt: buildSrt(nar.tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
 }
