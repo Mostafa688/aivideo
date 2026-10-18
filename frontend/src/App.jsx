@@ -40,6 +40,7 @@ import ChannelsPage from './pages/ChannelsPage.jsx';
 import CharactersPage from './pages/CharactersPage.jsx';
 import WhiteboardVideoPage from './pages/WhiteboardVideoPage.jsx';
 import DocumentaryPage from './pages/DocumentaryPage.jsx';
+import PdfVideoPage from './pages/PdfVideoPage.jsx';
 import { clearAttribution } from './utils/attribution.js';
 
 const LOGO = '/logo.png';
@@ -393,12 +394,13 @@ export default function App() {
     if (window.location.pathname === '/affiliate') { setPage('affiliate'); setAuthChecked(true); return; }
     if (window.location.pathname === '/community') { setPage('community'); setAuthChecked(true); return; }
     // ✅ رابط مباشر لاستوديو الأفلام الوثائقية: مسجّل دخول → يفتح الاستوديو، غير كده → تسجيل الدخول وبعده الاستوديو
-    if (window.location.pathname === '/documentary') {
+    if (window.location.pathname === '/documentary' || window.location.pathname === '/pdf-video') {
+      const target = window.location.pathname === '/pdf-video' ? 'pdfvideo' : 'documentary';
       const token = localStorage.getItem('token');
       const email = localStorage.getItem('email');
       window.history.replaceState({}, '', '/');
-      if (token && email) { setUser({ token, email }); setUserPlan(localStorage.getItem('plan') || 'free'); setPlanSelected(true); setPage('documentary'); }
-      else { try { sessionStorage.setItem('erivion_after_login', 'documentary'); } catch { /* ignore */ } setShowAuth(true); }
+      if (token && email) { setUser({ token, email }); setUserPlan(localStorage.getItem('plan') || 'free'); setPlanSelected(true); setPage(target); }
+      else { try { sessionStorage.setItem('erivion_after_login', target); } catch { /* ignore */ } setShowAuth(true); }
       setAuthChecked(true); return;
     }
     if (window.location.pathname === '/pricing') {
@@ -427,7 +429,7 @@ export default function App() {
     }
     if (params.get('admin') === '1') { window.history.replaceState({}, '', '/'); setPage('admin'); setAuthChecked(true); return; }
     // ✅ أي رابط مش معروف خالص (مش من القايمة دي) → صفحة 404 بدل ما يترجع للصفحة الرئيسية بصمت
-    const KNOWN_PATHS = ['/', '/login', '/reset-password', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/changelog', '/roadmap', '/status', '/api-docs', '/blog', '/affiliate', '/community', '/documentary', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
+    const KNOWN_PATHS = ['/', '/login', '/reset-password', '/terms', '/privacy', '/refund', '/about', '/support', '/faq', '/templates', '/courses', '/changelog', '/roadmap', '/status', '/api-docs', '/blog', '/affiliate', '/community', '/documentary', '/pdf-video', '/pricing', '/model1', '/model2', '/model3', '/model4', '/model5', '/cinematic'];
     if (!KNOWN_PATHS.includes(window.location.pathname) && !googleToken && !authError && params.get('admin') !== '1') {
       setPage('notfound'); setAuthChecked(true); return;
     }
@@ -552,6 +554,7 @@ export default function App() {
       case 'characters': setPage('characters'); break;
       case 'whiteboard': setPage('whiteboard'); break;
       case 'documentary': setPage('documentary'); break;
+      case 'pdfvideo':   setPage('pdfvideo'); break;
       case 'home':       setPage('dashboard'); break;
       default:           setPage('input'); break;
     }
@@ -610,7 +613,7 @@ export default function App() {
     setUser({ token: data.token, email: data.email }); setUserPlan(data.plan || 'free'); setShowAuth(false);
     // ✅ FIX (نفس الفيكس فوق): يضمن إن أي جلسة تسجيل دخول تبدأ من صفحة المشاريع دايمًا
     setPage('dashboard');
-    try { if (sessionStorage.getItem('erivion_after_login') === 'documentary') { sessionStorage.removeItem('erivion_after_login'); setPage('documentary'); } } catch { /* ignore */ }
+    try { const after = sessionStorage.getItem('erivion_after_login'); if (after === 'documentary' || after === 'pdfvideo') { sessionStorage.removeItem('erivion_after_login'); setPage(after); } } catch { /* ignore */ }
     const planChosenBefore = localStorage.getItem('planSelected') === 'true';
     if (!planChosenBefore) setShowLogoTransition(true);
   }} />;
@@ -805,6 +808,7 @@ export default function App() {
         {page === 'stats' && <StatsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'team' && <TeamPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'documentary' && <DocumentaryPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}
+        {page === 'pdfvideo' && <PdfVideoPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} />}
         {page === 'channels' && <ChannelsPage onBack={() => setPage('dashboard')} userRegion={userRegion} />}
         {page === 'characters' && <CharactersPage onBack={() => setPage('dashboard')} onNavigate={handleNavigate} userRegion={userRegion} />}
         {['terms','privacy','about','refund','howto'].includes(page) && <SubPage page={page} onBack={() => setPage('dashboard')} />}

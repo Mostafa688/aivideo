@@ -1330,6 +1330,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       return `[${lang === 'ar' ? 'تم إنشاء فيديو whiteboard' : 'A whiteboard video was generated'}]`;
     }
     if (m.type === 'voicePicker') return `[${lang === 'ar' ? 'كارت اختيار صوت الراوي ظهر للعميل' : 'The narrator voice picker card was shown to the customer'}${m.picked ? ` — ${lang === 'ar' ? 'اختار' : 'they picked'} voice: ${m.picked}` : ''}]`;
+    if (m.type === 'pdfVideo') return `[${lang === 'ar' ? 'ظهر للعميل زرار يفتح صفحة "من PDF لفيديو"' : 'A button opening the "PDF to Video" page was shown to the customer'}]`;
     if (m.type === 'docSetup') return `[${lang === 'ar' ? (m.started ? 'بطاقة إعدادات الفيلم الوثائقي ظهرت للعميل في الشات وهو ملأها وبدأ الفيلم' : 'بطاقة إعدادات الفيلم الوثائقي ظاهرة للعميل في الشات (بيختار منها المقاس والصوت والمدة والستايل والكابشن والموسيقى بنفسه)') : (m.started ? 'The documentary settings card was shown in the chat and the customer filled it in and started the film' : 'The documentary settings card is shown in the chat (the customer picks ratio, voice, length, style, captions and music there)')}]`;
     if (m.type === 'docJob') return `[${lang === 'ar' ? 'مهمة فيديو (مونتاج/وثائقي) اتبدأت وبتظهر في المحادثة' : 'A video job (montage/documentary) was started and is shown in the chat'}]`;
     if (m.type === 'channelRun') {
@@ -1640,6 +1641,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // فكرة كارت الـwhiteboard فوق بالظبط — بيعمل poll لحالة تشغيلة القناة الحقيقية اللي
       // بدأت في الخلفية (channelSchedulerService.js's triggerChannelRunNow) لحد ما تخلص
       if (data.docSetup) setMessages(m => [...m, { role: 'assistant', type: 'docSetup', setup: data.docSetup, started: false }]);
+      if (data.pdfVideo) setMessages(m => [...m, { role: 'assistant', type: 'pdfVideo', info: data.pdfVideo }]);
       if (data.voicePicker?.voices?.length) setMessages(m => [...m, { role: 'assistant', type: 'voicePicker', voices: data.voicePicker.voices, picked: null }]);
       if (data.docJob?.jobId) {
         setMessages(m => [...m, { role: 'assistant', type: 'docJob', job: data.docJob }]);
@@ -2964,6 +2966,21 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                         setMessages(ms => ms.map((x, idx) => (idx === i ? { ...x, picked: v.key } : x)));
                         sendMessage(lang === 'ar' ? `اخترت صوت ${meta.name} (voice: ${v.key})` : `I picked the voice ${meta.name} (voice: ${v.key})`);
                       }} />
+                  </div>
+                );
+              }
+              if (m.type === 'pdfVideo') {
+                const mins = Math.round((m.info?.maxSeconds || 300) / 60);
+                return (
+                  <div key={i} className="agent-bubble" style={{ alignSelf: 'flex-start', maxWidth: 420 }}>
+                    <div style={{ border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.07)', borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14.5 }}>{lang === 'ar' ? 'من PDF لفيديو شرح' : 'PDF to Video'}</div>
+                      <div style={{ fontSize: 12.5, opacity: 0.8, lineHeight: 1.6 }}>{lang === 'ar' ? `ارفع الملف واختار المدة (لحد ${mins} دقيقة على باقتك) والشكل والصوت — الفيديو بيشرح محتوى الملف نفسه بالموشن جرافيك والخرايط والصور.` : `Upload your file and choose the length (up to ${mins} min on your plan), look and voice — the video explains the document itself with motion graphics, maps and photos.`}</div>
+                      {m.info?.paid === false && <div style={{ fontSize: 12, color: '#f59e0b' }}>{lang === 'ar' ? 'الميزة دي للباقات المدفوعة.' : 'This feature needs a paid plan.'}</div>}
+                      <button onClick={() => onNavigate?.(m.info?.paid === false ? 'pricing' : 'pdfvideo')} style={{ alignSelf: 'flex-start', background: '#38bdf8', color: '#04121c', border: 'none', borderRadius: 10, padding: '9px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        {m.info?.paid === false ? (lang === 'ar' ? 'شوف الباقات' : 'See plans') : (lang === 'ar' ? 'افتح صفحة PDF لفيديو' : 'Open PDF to Video')}
+                      </button>
+                    </div>
                   </div>
                 );
               }

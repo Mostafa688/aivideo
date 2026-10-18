@@ -23,7 +23,7 @@ function fixReversedArabic(text) {
 const tidy = (s) => String(s || '').replace(/\r\n?/g, '\n').replace(/[ \t ]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
 /** @returns {Promise<{ text: string, chars: number, truncated: boolean, pages?: number }>} */
-export async function extractDocumentText(buffer, filename) {
+export async function extractDocumentText(buffer, filename, { maxChars = DOC_MAX_CHARS } = {}) {
   const ext = path.extname(String(filename || '')).toLowerCase();
   if (!DOC_EXTS.includes(ext)) { const e = new Error('unsupported_type'); e.code = 'unsupported_type'; throw e; }
   let text = '', pages;
@@ -43,6 +43,6 @@ export async function extractDocumentText(buffer, filename) {
   }
   text = tidy(text);
   if (!text) { const e = new Error('empty_document'); e.code = 'empty_document'; throw e; }
-  const truncated = text.length > DOC_MAX_CHARS;
-  return { text: truncated ? text.slice(0, DOC_MAX_CHARS) : text, chars: text.length, truncated, pages };
+  const truncated = text.length > maxChars;
+  return { text: truncated ? text.slice(0, maxChars) : text, chars: text.length, truncated, pages };
 }

@@ -8,6 +8,7 @@ import { llmText } from '../documentary/llm.js';
 
 export const MAX_SECONDS = 120;          // الحد العادي (Starter/مجاني)
 export const ABS_MAX_SECONDS = 300;      // أقصى حد لأي باقة (Studio) — الحد الفعلي لكل عميل بييجي في input.maxSeconds
+export const DOC_ABS_MAX_SECONDS = 1200; // فيديو من مستند/PDF: لحد 5 دقايق، و20 دقيقة لباقة Studio
 export const WORDS_PER_SEC = { en: 2.5, ar: 2.0, default: 2.3 };
 const wps = (lang) => WORDS_PER_SEC[String(lang).split(/[-_]/)[0]] || WORDS_PER_SEC.default;
 export const estimateSeconds = (script, lang) => String(script || '').trim().split(/\s+/).filter(Boolean).length / wps(lang);
