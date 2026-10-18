@@ -1091,6 +1091,30 @@ router.post('/chat', authMiddleware, async (req, res) => {
         break;
       }
     }
+    // ── ضد التكرار (طلب العميل: "مش عايزين ردود متكررة"): لو الرد شبه رد من آخر ردّين للايجنت (نفس الكلام/نفس الأسعار
+    // ونفس السؤال)، بنطلب ردّ تاني بيرد فعلًا على آخر رسالة ويحرّك المحادثة لقدّام — محاولة واحدة بس، والردود اللي فيها ماركر مش بتتلمس
+    {
+      const wordsOf = (t) => new Set(String(t || '').toLowerCase().replace(/###[A-Z_]+###[\s\S]*$/, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 2));
+      const sim = (a, b) => { if (!a.size || !b.size) return 0; let k = 0; for (const w of a) if (b.has(w)) k++; return k / Math.min(a.size, b.size); };
+      const prevAssist = (Array.isArray(history) ? history : []).filter(h => h?.role === 'assistant' && typeof h.content === 'string').slice(-2).map(h => wordsOf(h.content));
+      const mine = wordsOf(reply);
+      const hasMarker = /###[A-Z_]+###/.test(rawReply || '') || !!(ready || editScene || videoEdit || generateImage || generateVideo || mergeVideosPayload);
+      if (!hasMarker && mine.size >= 12 && prevAssist.some(p => sim(mine, p) >= 0.72)) {
+        console.warn('[Agent] reply repeats an earlier answer — asking for a fresh one');
+        try {
+          const again = await agentChat({
+            message: `(system reminder: your draft reply below repeats what you already told the customer in an earlier message. Do NOT repeat it. Read the customer's LAST message carefully and answer exactly what they asked now — move the conversation forward (a decision, the next step, or one new clarifying question). If you need to recall prices/options, refer to them in one short line instead of listing them again. The customer's last message: "${String(message || '').slice(0, 600)}". Draft to avoid: "${String(reply).slice(0, 900)}")`,
+            history: [...history, { role: 'user', content: message }], attachmentNote, userPlan, isAdminUser,
+            hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded, hasVideo: !!videoAlreadyUploaded,
+            videoDurationSec: videoDurationSec || null, hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits, mediaLedger,
+          });
+          if (again && again.trim()) {
+            const parsedAgain = parseAgentMarkers(again);
+            if (parsedAgain.reply && sim(wordsOf(parsedAgain.reply), mine) < 0.8) { rawReply = again; ({ reply, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideosPayload } = parsedAgain); }
+          }
+        } catch (e) { console.warn('[Agent] anti-repeat retry failed:', e.message); }
+      }
+    }
     // ✅ NEW (طلب العميل: "ممنوع الايجينت يقول رسالة الاعتذار تاني — لازم اجباري المشاهد
     // تتعمل"): لو كل الـMAX_NUDGE_RETRIES العادية فشلت ولسه مفيش أي ماركر، قبل ما نستسلم
     // خالص لرسالة الاعتذار، بنجرب محاولة إنقاذ أخيرة واحدة بمجهود تفكير أعلى (نفس مستوى
