@@ -17,6 +17,7 @@ import { downloadRemoteFile, fetchRemoteBlob } from '../utils/download.js';
 import { useMarqueeSelect, MarqueeBox, SelectCheck, SelectionBar, selectedRing, MARQUEE_CSS } from '../components/MarqueeSelect.jsx';
 import { downloadZip, mediaFilesOfMessage } from '../utils/zipDownload.js';
 import { confirmDialog } from '../components/confirmDialog.jsx';
+import RichText from '../components/RichText.jsx';
 
 const LOGO = '/logo.png';
 
@@ -3027,7 +3028,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                       </div>
                     )}
                     {m.hasVoice && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, opacity: 0.8, marginBottom: 6 }}><Mic size={12} strokeWidth={2} /> {t.voiceAttached}</div>}
-                    {m.content}
+                    {m.role === 'assistant' ? <RichText text={m.content} /> : m.content}
                     {m.showcase?.length > 0 && (
                       <div className="agent-showcase">
                         {m.showcase.map(v => (
