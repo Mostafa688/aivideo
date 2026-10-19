@@ -1,7 +1,10 @@
 // ── docVideoRoutes.js ── "من PDF لفيديو": رفع المستند (بيتطلّع النص بس — الملف مش بيتخزن)، تسعير، وبدء الفيديو.
 // متابعة الوظيفة نفسها من /api/documentary/jobs/:id (نفس طابور الأفلام والأنيميشن)
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import multer from 'multer';
+import { probeDuration, hasAudio, rmQuiet } from './documentary/ff.js';
 import { authMiddleware } from './authRoutes.js';
 import { extractDocumentText, DOC_EXTS, DOC_MAX_BYTES } from './documentText.js';
 import { DOC_TEXT_MAX_CHARS, suggestSeconds } from './codeVideo/docScript.js';
@@ -12,6 +15,9 @@ import { VOICE_CATALOG } from './voiceCatalog.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: DOC_MAX_BYTES } });
+// صوت العميل (تسجيله هو للشرح): لحد 20 دقيقة، والنص بييجي كحقل في نفس الطلب
+const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 120 * 1024 * 1024, fieldSize: 2 * 1024 * 1024 } });
+const TEMP_ROOT = process.platform === 'win32' ? 'temp' : '/tmp/aivideo';
 
 router.post('/extract', authMiddleware, (req, res, next) => upload.single('file')(req, res, (err) => {
   if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'too_large' : 'upload_failed', message: err.code === 'LIMIT_FILE_SIZE' ? `The file is too large (max ${Math.round(DOC_MAX_BYTES / 1048576)}MB).` : 'Upload failed.' });
@@ -44,15 +50,32 @@ router.get('/voices', authMiddleware, (req, res) => res.json({ voices: VOICE_CAT
 
 router.post('/estimate', authMiddleware, express.json({ limit: '10kb' }), (req, res) => {
   const look = DOC_VIDEO_LOOKS.includes(req.body?.look) ? req.body.look : 'vox';
-  res.json(quoteDocVideo({ seconds: Number(req.body?.seconds) || 180, look }));
+  res.json(quoteDocVideo({ seconds: Number(req.body?.seconds) || 180, look, userVoiceover: !!req.body?.userVoiceover }));
 });
 
-router.post('/start', authMiddleware, express.json({ limit: '1mb' }), async (req, res) => {
+router.post('/start', authMiddleware, (req, res, next) => (req.is('multipart/form-data')
+  ? audioUpload.single('audio')(req, res, (err) => (err ? res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'too_large' : 'upload_failed', message: err.code === 'LIMIT_FILE_SIZE' ? 'The voice file is too large (max 120MB).' : 'Upload failed.' }) : next()))
+  : express.json({ limit: '1mb' })(req, res, next)), async (req, res) => {
+  let tmpDir = null;
   try {
-    const r = await startDocumentVideo(req.user.userId, req.body || {});
-    if (!r.ok) return res.status(r.status).json({ error: r.error, message: r.message, cost: r.cost, remaining: r.remaining, maxSeconds: r.maxSeconds });
+    const body = { ...(req.body || {}) };
+    if (req.file) {
+      tmpDir = path.join(TEMP_ROOT, `docvoice_${req.user.userId}_${Date.now()}`);
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const ext = (path.extname(req.file.originalname || '').replace(/[^.\w]/g, '') || '.mp3').slice(0, 6);
+      const file = path.join(tmpDir, `voiceover${ext}`);
+      fs.writeFileSync(file, req.file.buffer);
+      if (!(await hasAudio(file))) { rmQuiet(tmpDir); return res.status(400).json({ error: 'bad_audio', message: 'This file has no audio.' }); }
+      const dur = await probeDuration(file);
+      if (!dur || dur < 10) { rmQuiet(tmpDir); return res.status(400).json({ error: 'bad_audio', message: 'The voice recording is too short (at least 10 seconds).' }); }
+      body.audioFile = file; body.audioDurationSec = dur;
+      if (typeof body.music === 'string') body.music = body.music !== 'false';
+    }
+    const r = await startDocumentVideo(req.user.userId, body);
+    if (!r.ok) { if (tmpDir) rmQuiet(tmpDir); return res.status(r.status).json({ error: r.error, message: r.message, cost: r.cost, remaining: r.remaining, maxSeconds: r.maxSeconds }); }
     res.status(202).json({ jobId: r.job.id, cost: r.cost, seconds: r.seconds, remaining: r.remaining });
   } catch (e) {
+    if (tmpDir) rmQuiet(tmpDir);
     console.error('[DocVideo] start failed:', e.message);
     res.status(500).json({ error: 'failed', message: 'Could not start the video.' });
   }

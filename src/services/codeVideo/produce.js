@@ -55,7 +55,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   if (input.source !== 'voiceover') lang = detectLang(script, lang) || lang;
   // 2) السرد + توقيت الكلمات
   const nar = await (deps.buildNarration || buildNarration)({ mode: input.source === 'voiceover' ? 'voiceover' : 'script', script, audioFile: input.audioFile, lang, voiceKey: input.voiceKey, workDir, prog });
-  const maxSec = Math.min(input.source === 'document' ? DOC_ABS_MAX_SECONDS : ABS_MAX_SECONDS, input.maxSeconds || MAX_SECONDS);
+  const maxSec = Math.min((input.source === 'document' || input.docVideo) ? DOC_ABS_MAX_SECONDS : ABS_MAX_SECONDS, input.maxSeconds || MAX_SECONDS);
   if (nar.total > maxSec + 3) { const e = new Error(`narration is ${Math.round(nar.total)}s, over the ${maxSec}s limit`); e.code = 'too_long'; throw e; }
   script = nar.script || script;
   if (nar.lang) lang = nar.lang;
