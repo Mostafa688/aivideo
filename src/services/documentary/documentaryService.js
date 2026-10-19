@@ -725,9 +725,9 @@ export async function editableAnimations(userId, limit = 5) {
 // ── فيديو شرح من مستند/PDF: المحتوى المكتوب → سكريبت شرح (بلغة المستند) → فيديو أنيميشن/فوكس بموشن جرافيك، خرايط، صور ──
 // لحد 5 دقايق لأي باقة، و20 دقيقة لباقة Studio. صوت الراوي بالذكاء الاصطناعي (للباقات المدفوعة)
 export const DOC_VIDEO_LOOKS = ['vox', 'motion', 'cartoon', 'cartoon3d'];
-export function quoteDocVideo({ seconds, look = 'vox' }) {
-  const sec = Math.max(30, Number(seconds) || 180);
-  return { seconds: Math.round(sec), minutes: Math.round((sec / 60) * 100) / 100, cost: getAnimationCreditCost(sec / 60, { look }) };
+export function quoteDocVideo({ seconds, look = 'vox', userVoiceover = false }) {
+  const sec = Math.max(userVoiceover ? 10 : 30, Number(seconds) || 180);
+  return { seconds: Math.round(sec), minutes: Math.round((sec / 60) * 100) / 100, cost: getAnimationCreditCost(sec / 60, { look, userVoiceover: !!userVoiceover }) };
 }
 export async function startDocumentVideo(userId, raw = {}) {
   const fail = (status, error, message, extra = {}) => ({ ok: false, status, error, message, ...extra });
@@ -738,23 +738,31 @@ export async function startDocumentVideo(userId, raw = {}) {
   if (!user || (user.plan || 'free') === 'free') return fail(403, 'paid_only', 'Turning documents into videos is available on paid plans.');
   const maxSec = await docVideoMaxSeconds(userId);
   const lang = LANGUAGES[raw.language] ? raw.language : (detectLang(text, 'en') || 'en');
-  let seconds = Number(raw.seconds) || suggestSeconds(text, maxSec, lang);
+  // صوت العميل المرفوع: الفيديو بيمشي على تسجيله هو (المدة = مدة التسجيل) والمستند مرجع للمخرج (أسماء/أماكن/أرقام)
+  const own = !!raw.audioFile;
+  if (own && !fs.existsSync(raw.audioFile)) return fail(400, 'audio_required', 'Please upload your voice recording again.');
+  let seconds = own ? Number(raw.audioDurationSec) || 0 : Number(raw.seconds) || suggestSeconds(text, maxSec, lang);
   if (seconds > maxSec + 1) return fail(400, 'too_long', `On your plan a document video can be up to ${maxSec / 60} minutes${maxSec < 1200 ? ' (Studio: 20 minutes)' : ''}.`, { maxSeconds: maxSec });
-  seconds = Math.max(30, Math.min(maxSec - 6, seconds));
+  seconds = own ? seconds : Math.max(30, Math.min(maxSec - 6, seconds));
   const safety = await checkContentSafety(text.slice(0, 8000));
   if (safety.unsafe) return fail(400, 'content_policy_violation', 'This document contains content we cannot turn into a video.');
   const look = DOC_VIDEO_LOOKS.includes(raw.look) ? raw.look : 'vox';
+  const docTitle = String(raw.title || raw.fileName || '').replace(/\.[a-z0-9]+$/i, '').slice(0, 120) || 'document';
   const input = {
-    ...normalizeAnimationInput({ ...raw, source: 'topic', topic: String(raw.title || '').slice(0, 300) || 'document', look, language: lang }),
-    source: 'document', documentText: text, seconds, maxSeconds: maxSec, language: lang, look,
+    ...normalizeAnimationInput({ ...raw, source: own ? 'voiceover' : 'topic', topic: docTitle, look, language: lang }),
+    ...(own
+      ? { source: 'voiceover', audioFile: raw.audioFile, audioDurationSec: seconds, topic: `${docTitle} — reference facts from the customer's document (use its names, places, numbers and dates for photos, maps and charts): ${text.slice(0, 1500).replace(/\s+/g, ' ')}` }
+      : { source: 'document', documentText: text }),
+    docVideo: true, seconds, maxSeconds: maxSec, language: lang, look,
     brief: String(raw.brief || '').replace(/<[^>]*>/g, '').trim().slice(0, 400),
     style: 'educational lesson made from a document: chapter title cards, lists, steps, timelines, charts for numbers, maps for places, real photos for people/places/objects',
   };
-  const q = quoteDocVideo({ seconds, look });
+  const q = quoteDocVideo({ seconds, look, userVoiceover: own });
   const charge = await chargeCredits(userId, q.cost);
   if (!charge.success) return fail(403, 'quota_exceeded', `This video needs ${q.cost} credits, you have ${charge.remaining}.`, { cost: q.cost, remaining: charge.remaining });
   let job;
-  try { job = await store.createJob({ userId, input, title: input.title || String(raw.fileName || '').replace(/\.[a-z0-9]+$/i, '').slice(0, 80) || null, creditsCharged: q.cost }); }
+  const stored = { ...input }; delete stored.audioFile;
+  try { job = await store.createJob({ userId, input: stored, title: input.title || String(raw.fileName || '').replace(/\.[a-z0-9]+$/i, '').slice(0, 80) || null, creditsCharged: q.cost }); }
   catch (e) { await addCreditsBalance(userId, q.cost).catch(() => {}); return fail(500, 'create_failed', 'Could not start the video. Your credits were refunded.'); }
   enqueue({ id: job.id, userId, input, charged: q.cost, minutes: q.minutes, hooks: {} });
   return { ok: true, job, cost: q.cost, seconds, minutes: q.minutes, remaining: charge.remaining, maxSeconds: maxSec };
