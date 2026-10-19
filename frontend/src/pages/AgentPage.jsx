@@ -2976,9 +2976,9 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                     <div style={{ border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.07)', borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                       <div style={{ fontWeight: 700, fontSize: 14.5 }}>{lang === 'ar' ? 'من PDF لفيديو شرح' : 'PDF to Video'}</div>
                       <div style={{ fontSize: 12.5, opacity: 0.8, lineHeight: 1.6 }}>{lang === 'ar' ? `ارفع الملف واختار المدة (لحد ${mins} دقيقة على باقتك) والشكل والصوت — الفيديو بيشرح محتوى الملف نفسه بالموشن جرافيك والخرايط والصور.` : `Upload your file and choose the length (up to ${mins} min on your plan), look and voice — the video explains the document itself with motion graphics, maps and photos.`}</div>
-                      {m.info?.paid === false && <div style={{ fontSize: 12, color: '#f59e0b' }}>{lang === 'ar' ? 'الميزة دي للباقات المدفوعة.' : 'This feature needs a paid plan.'}</div>}
-                      <button onClick={() => onNavigate?.(m.info?.paid === false ? 'pricing' : 'pdfvideo')} style={{ alignSelf: 'flex-start', background: '#38bdf8', color: '#04121c', border: 'none', borderRadius: 10, padding: '9px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-                        {m.info?.paid === false ? (lang === 'ar' ? 'شوف الباقات' : 'See plans') : (lang === 'ar' ? 'افتح صفحة PDF لفيديو' : 'Open PDF to Video')}
+                      {(m.info?.paid === false && !m.info?.trialAvailable) && <div style={{ fontSize: 12, color: '#f59e0b' }}>{lang === 'ar' ? 'الميزة دي للباقات المدفوعة.' : 'This feature needs a paid plan.'}</div>}
+                      <button onClick={() => onNavigate?.((m.info?.paid === false && !m.info?.trialAvailable) ? 'pricing' : 'pdfvideo')} style={{ alignSelf: 'flex-start', background: '#38bdf8', color: '#04121c', border: 'none', borderRadius: 10, padding: '9px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        {(m.info?.paid === false && !m.info?.trialAvailable) ? (lang === 'ar' ? 'شوف الباقات' : 'See plans') : (lang === 'ar' ? 'افتح صفحة PDF لفيديو' : 'Open PDF to Video')}
                       </button>
                     </div>
                   </div>

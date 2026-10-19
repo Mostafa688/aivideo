@@ -8,6 +8,17 @@ export const DOC_TEXT_MAX_CHARS = 150000;
 const WPS = { ar: 2.0, en: 2.5 };
 const wps = (lang) => WPS[String(lang).split(/[-_]/)[0]] || 2.3;
 const LANG_NAME = (l) => (String(l).startsWith('ar') ? 'Modern Standard Arabic that is simple, warm and spoken-friendly (فصحى مبسطة)' : l === 'en' ? 'English' : l);
+// لهجات سكريبت الفويس أوفر اللي العميل بيسجّله بنفسه (أو بأداة صوت زي ElevenLabs / Google AI Studio)
+export const SCRIPT_DIALECTS = {
+  msa: { lang: 'ar', name: 'Modern Standard Arabic that is simple, warm and spoken-friendly (فصحى مبسطة)' },
+  egyptian: { lang: 'ar', name: 'Egyptian Arabic (العامية المصرية) as people really speak in Cairo — natural, friendly, like a popular Egyptian YouTube explainer; keep names and technical terms correct' },
+  saudi: { lang: 'ar', name: 'Saudi Arabic (اللهجة السعودية/النجدية-الحجازية البيضاء) — natural and clear for all Saudis' },
+  gulf: { lang: 'ar', name: 'Gulf Arabic (اللهجة الخليجية البيضاء: كويتي/إماراتي/قطري مفهوم للكل)' },
+  levantine: { lang: 'ar', name: 'Levantine Arabic (اللهجة الشامية: سوري/لبناني/فلسطيني/أردني بيضاء)' },
+  maghrebi: { lang: 'ar', name: 'Moroccan/Maghrebi Arabic (الدارجة المغاربية) written so a Moroccan or Algerian viewer finds it natural' },
+  iraqi: { lang: 'ar', name: 'Iraqi Arabic (اللهجة العراقية)' },
+  en: { lang: 'en', name: 'English (translate the content faithfully if the document is in another language)' },
+};
 
 /** تقسيم المستند لأجزاء متماسكة (على العناوين/الفقرات) بحجم تقريبي */
 export function splitDocument(text, target = 5000) {
@@ -33,9 +44,12 @@ export function suggestSeconds(text, maxSeconds, lang = null) {
 /**
  * @returns {Promise<{ script: string, title: string, language: string, outline: string[] }>}
  */
-export async function writeDocumentScript({ text, seconds = 180, language = null, brief = '', onProgress = () => {} }, deps = {}) {
+export async function writeDocumentScript({ text, seconds = 180, language = null, brief = '', dialect = null, forVoice = false, onProgress = () => {} }, deps = {}) {
   const src = String(text || '').slice(0, DOC_TEXT_MAX_CHARS);
-  const lang = language || detectLang(src, 'en') || 'en';
+  const D = SCRIPT_DIALECTS[dialect] || null;
+  const lang = D ? D.lang : (language || detectLang(src, 'en') || 'en');
+  const LANG_NAME = (l) => (D ? D.name : (String(l).startsWith('ar') ? 'Modern Standard Arabic that is simple, warm and spoken-friendly (فصحى مبسطة)' : l === 'en' ? 'English' : l));
+  const voiceRule = forVoice ? ' This text will be READ ALOUD by a person or a text-to-speech tool: write every number, year, percentage and unit as words exactly as they are spoken in this dialect (e.g. 1869 → ألف وتمانمية تسعة وستين in Egyptian), no symbols, no abbreviations, no parentheses.' : '';
   const chunks = splitDocument(src, seconds > 600 ? 7000 : 5000);
   const totalWords = Math.round(seconds * wps(lang));
   const ask = deps.llmJson || llmJson, write = deps.llmText || llmText;
@@ -65,7 +79,7 @@ export async function writeDocumentScript({ text, seconds = 180, language = null
     const p = use[k], first = k === 0, last = k === use.length - 1;
     const words = Math.max(40, Math.round((totalWords * p.weight) / wsum));
     const piece = await write({
-      system: `You write the VOICE-OVER for one part of an educational explainer video made from a document, in ${LANG_NAME(lang)}. About ${words} words (never more than ${Math.round(words * 1.12)}). Rules: explain ONLY what this part of the document says — never invent facts, names, numbers, dates or examples that are not in it; keep the document's real numbers, names, places and terms (they become on-screen charts, maps and photos). Teach clearly like a great teacher: simple sentences, one idea per sentence, concrete examples taken from the text, smooth transitions. ${first ? 'Start the whole video with a strong one-sentence hook that makes the viewer curious, then a one-sentence overview of what they will learn.' : 'Continue naturally from the previous part (do not greet or re-introduce the video).'} ${last ? 'End the whole video with a short, memorable summary of the key takeaways (2-3 sentences).' : 'Do not summarise the whole video yet.'} No headings, no bullet points, no stage directions, no emojis — only the spoken words, in short paragraphs.`,
+      system: `You write the VOICE-OVER for one part of an educational explainer video made from a document, in ${LANG_NAME(lang)}. About ${words} words (never more than ${Math.round(words * 1.12)}). Rules: explain ONLY what this part of the document says — never invent facts, names, numbers, dates or examples that are not in it; keep the document's real numbers, names, places and terms (they become on-screen charts, maps and photos). Teach clearly like a great teacher: simple sentences, one idea per sentence, concrete examples taken from the text, smooth transitions. ${first ? 'Start the whole video with a strong one-sentence hook that makes the viewer curious, then a one-sentence overview of what they will learn.' : 'Continue naturally from the previous part (do not greet or re-introduce the video).'} ${last ? 'End the whole video with a short, memorable summary of the key takeaways (2-3 sentences).' : 'Do not summarise the whole video yet.'} No headings, no bullet points, no stage directions, no emojis — only the spoken words, in short paragraphs.${voiceRule}`,
       user: `${title ? `Video title: ${title}\n` : ''}${p.heading ? `This part: ${p.heading}\n` : ''}${prevTail ? `The previous part ended with: "${prevTail}"\n` : ''}${brief ? `Customer direction: ${brief}\n` : ''}Document part:\n${p.text}`,
       maxTokens: Math.max(700, words * 5), temperature: 0.45,
     });

@@ -7,10 +7,11 @@ import multer from 'multer';
 import { probeDuration, hasAudio, rmQuiet } from './documentary/ff.js';
 import { authMiddleware } from './authRoutes.js';
 import { extractDocumentText, DOC_EXTS, DOC_MAX_BYTES } from './documentText.js';
-import { DOC_TEXT_MAX_CHARS, suggestSeconds } from './codeVideo/docScript.js';
+import { DOC_TEXT_MAX_CHARS, suggestSeconds, writeDocumentScript, SCRIPT_DIALECTS } from './codeVideo/docScript.js';
+import { checkContentSafety } from './scriptService.js';
 import { detectLang } from './codeVideo/narration.js';
 import { docVideoMaxSeconds, getUserById, getCreditsBalance } from './authService.js';
-import { quoteDocVideo, startDocumentVideo, DOC_VIDEO_LOOKS } from './documentary/documentaryService.js';
+import { quoteDocVideo, startDocumentVideo, DOC_VIDEO_LOOKS, DOC_TRIAL_SECONDS, docVideoTrialAvailable } from './documentary/documentaryService.js';
 import { VOICE_CATALOG } from './voiceCatalog.js';
 
 const router = express.Router();
@@ -42,8 +43,32 @@ router.post('/extract', authMiddleware, (req, res, next) => upload.single('file'
 });
 
 router.get('/limits', authMiddleware, async (req, res) => {
-  const [maxSeconds, user, credits] = await Promise.all([docVideoMaxSeconds(req.user.userId), getUserById(req.user.userId).catch(() => null), getCreditsBalance(req.user.userId).catch(() => null)]);
-  res.json({ maxSeconds, paid: !!user && (user.plan || 'free') !== 'free', credits, looks: DOC_VIDEO_LOOKS });
+  const [maxSeconds, user, credits, trialAvailable] = await Promise.all([docVideoMaxSeconds(req.user.userId), getUserById(req.user.userId).catch(() => null), getCreditsBalance(req.user.userId).catch(() => null), docVideoTrialAvailable(req.user.userId)]);
+  res.json({ maxSeconds, paid: !!user && (user.plan || 'free') !== 'free', credits, looks: DOC_VIDEO_LOOKS, trialAvailable, trialSeconds: DOC_TRIAL_SECONDS, dialects: Object.keys(SCRIPT_DIALECTS) });
+});
+
+// "اكتبلي السكريبت": من المستند لنص فويس أوفر باللهجة اللي العميل يختارها، يسجّله بنفسه أو بأداة صوت (ElevenLabs / Google AI Studio)
+// مجاني (مكالمات LLM بس) بحد استخدام في الساعة
+const scriptCalls = new Map();
+router.post('/script', authMiddleware, express.json({ limit: '1mb' }), async (req, res) => {
+  const uid = req.user.userId, now = Date.now();
+  const recent = (scriptCalls.get(uid) || []).filter(x => now - x < 3600e3);
+  if (recent.length >= 8) return res.status(429).json({ error: 'rate_limited', message: 'Too many scripts this hour — try again a bit later.' });
+  const text = String(req.body?.text || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, DOC_TEXT_MAX_CHARS);
+  if (text.split(/\s+/).length < 40) return res.status(400).json({ error: 'document_too_short', message: 'The document has too little text.' });
+  const dialect = SCRIPT_DIALECTS[req.body?.dialect] ? req.body.dialect : 'msa';
+  const maxSeconds = await docVideoMaxSeconds(uid);
+  const seconds = Math.max(30, Math.min(maxSeconds - 6, Number(req.body?.seconds) || 60));
+  try {
+    const safety = await checkContentSafety(text.slice(0, 8000));
+    if (safety.unsafe) return res.status(400).json({ error: 'content_policy_violation', message: 'This document contains content we cannot write a script for.' });
+    scriptCalls.set(uid, [...recent, now]);
+    const r = await writeDocumentScript({ text, seconds, dialect, forVoice: true, brief: String(req.body?.brief || '').replace(/<[^>]*>/g, '').slice(0, 400) });
+    res.json({ script: r.script, title: r.title, dialect, seconds, words: r.script.split(/\s+/).filter(Boolean).length });
+  } catch (e) {
+    console.error('[DocVideo] script failed:', e.message);
+    res.status(502).json({ error: 'script_failed', message: 'Could not write the script right now. Please try again.' });
+  }
 });
 
 router.get('/voices', authMiddleware, (req, res) => res.json({ voices: VOICE_CATALOG }));
@@ -73,7 +98,7 @@ router.post('/start', authMiddleware, (req, res, next) => (req.is('multipart/for
     }
     const r = await startDocumentVideo(req.user.userId, body);
     if (!r.ok) { if (tmpDir) rmQuiet(tmpDir); return res.status(r.status).json({ error: r.error, message: r.message, cost: r.cost, remaining: r.remaining, maxSeconds: r.maxSeconds }); }
-    res.status(202).json({ jobId: r.job.id, cost: r.cost, seconds: r.seconds, remaining: r.remaining });
+    res.status(202).json({ jobId: r.job.id, cost: r.cost, trial: !!r.trial, seconds: r.seconds, remaining: r.remaining });
   } catch (e) {
     if (tmpDir) rmQuiet(tmpDir);
     console.error('[DocVideo] start failed:', e.message);

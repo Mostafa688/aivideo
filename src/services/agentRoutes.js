@@ -1,4 +1,5 @@
 import express from 'express';
+import { docVideoTrialAvailable } from './documentary/documentaryService.js';
 import multer from 'multer';
 import { extractDocumentText, DOC_MAX_BYTES, DOC_EXTS } from './documentText.js';
 import { VOICE_CATALOG, VOICE_KEYS, voicePreviewFile } from './voiceCatalog.js';
@@ -1614,7 +1615,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     let pdfVideo;
     if (reply.includes('###PDF_VIDEO###')) {
       reply = reply.replace(/###PDF_VIDEO###(\s*\{[^}]*\})?/g, '').trim();
-      pdfVideo = { maxSeconds: await docVideoMaxSeconds(req.user.userId).catch(() => 300), paid: userPlan !== 'free' };
+      pdfVideo = { maxSeconds: await docVideoMaxSeconds(req.user.userId).catch(() => 300), paid: userPlan !== 'free', trialAvailable: await docVideoTrialAvailable(req.user.userId) };
     }
     ({ text: reply, payload: autoEditPayload } = extractTrailingMarker(reply, '###AUTOEDIT###'));
     {
