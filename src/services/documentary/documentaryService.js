@@ -732,7 +732,7 @@ export function quoteDocVideo({ seconds, look = 'vox', userVoiceover = false }) 
 export async function startDocumentVideo(userId, raw = {}) {
   const fail = (status, error, message, extra = {}) => ({ ok: false, status, error, message, ...extra });
   const { DOC_TEXT_MAX_CHARS, suggestSeconds } = await import('../codeVideo/docScript.js');
-  const text = String(raw.text || '').replace(/\r/g, '').trim().slice(0, DOC_TEXT_MAX_CHARS);
+  const text = String(raw.text || '').replace(/\r/g, '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, DOC_TEXT_MAX_CHARS);
   if (text.split(/\s+/).length < 40) return fail(400, 'document_too_short', 'The document has too little text to make a video from.');
   const user = await getUserById(userId).catch(() => null);
   if (!user || (user.plan || 'free') === 'free') return fail(403, 'paid_only', 'Turning documents into videos is available on paid plans.');
@@ -763,7 +763,7 @@ export async function startDocumentVideo(userId, raw = {}) {
   let job;
   const stored = { ...input }; delete stored.audioFile;
   try { job = await store.createJob({ userId, input: stored, title: input.title || String(raw.fileName || '').replace(/\.[a-z0-9]+$/i, '').slice(0, 80) || null, creditsCharged: q.cost }); }
-  catch (e) { await addCreditsBalance(userId, q.cost).catch(() => {}); return fail(500, 'create_failed', 'Could not start the video. Your credits were refunded.'); }
+  catch (e) { console.error('[DocVideo] createJob failed:', e.message); await addCreditsBalance(userId, q.cost).catch(() => {}); return fail(500, 'create_failed', 'Could not start the video. Your credits were refunded.'); }
   enqueue({ id: job.id, userId, input, charged: q.cost, minutes: q.minutes, hooks: {} });
   return { ok: true, job, cost: q.cost, seconds, minutes: q.minutes, remaining: charge.remaining, maxSeconds: maxSec };
 }

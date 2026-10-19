@@ -39,7 +39,7 @@ export async function createJob({ userId, input, title, creditsCharged }) {
   await ready;
   const { rows } = await pool.query(
     'INSERT INTO documentary_jobs (user_id, input, title, credits_charged) VALUES ($1, $2, $3, $4) RETURNING *',
-    [userId, JSON.stringify(input), title || null, creditsCharged]
+    [userId, JSON.stringify(input).replace(/\\u0000/g, ''), title ? String(title).replace(/\u0000/g, '') : null, creditsCharged]
   );
   return rows[0];
 }
