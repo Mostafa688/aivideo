@@ -93,7 +93,8 @@ export async function renderPdfPageText(pageData) {
   return out.join('\n');
 }
 
-const tidy = (s) => String(s || '').replace(/\r\n?/g, '\n').replace(/[ \t ]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+// حروف تحكم (زي \u0000 اللي بتطلع من بعض ملفات PDF) بتبوّظ الحفظ في Postgres (JSONB/TEXT بيرفضها) — بنشيلها
+const tidy = (s) => String(s || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/g, '').replace(/\r\n?/g, '\n').replace(/[ \t ]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
 /** @returns {Promise<{ text: string, chars: number, truncated: boolean, pages?: number }>} */
 export async function extractDocumentText(buffer, filename, { maxChars = DOC_MAX_CHARS } = {}) {
