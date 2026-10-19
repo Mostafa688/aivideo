@@ -58,7 +58,7 @@ export async function writeDocumentScript({ text, seconds = 180, language = null
   let plan = null;
   try {
     plan = await ask({
-      system: `You plan an educational explainer video made from a customer's document. Return ONLY JSON: {"title":"a short catchy video title in ${LANG_NAME(lang)}","parts":[{"i":0,"heading":"short heading in ${LANG_NAME(lang)}","weight":1-5 (how important/explanation-worthy this part is; 0 = skip: references, indexes, copyright, tables of contents, page numbers, repeated headers)}]}. One entry per part, same order.`,
+      system: `You plan an educational explainer video made from a customer's document. Return ONLY JSON: {"title":"a short catchy video title in ${LANG_NAME(lang)}","parts":[{"i":0,"heading":"short heading in ${LANG_NAME(lang)}","weight":1-5 (how important/explanation-worthy this part is; 0 = skip: references, indexes, copyright, tables of contents, page numbers, repeated headers),"goal":"what the viewer must UNDERSTAND after this part (the idea, the cause/effect or the how/why — not just the facts), one short sentence","terms":["key terms/concepts in this part that a student must have explained"]}]}. One entry per part, same order. Think like a teacher planning a lesson: the goal is understanding, not a list of facts.`,
       user: `${brief ? `Customer direction: ${brief}\n` : ''}Parts of the document (first 900 characters of each):\n${chunks.map((c, i) => `[${i}] ${c.slice(0, 900).replace(/\s+/g, ' ')}`).join('\n')}`,
       maxTokens: 3000, temperature: 0.2,
     });
@@ -66,7 +66,7 @@ export async function writeDocumentScript({ text, seconds = 180, language = null
   const parts = chunks.map((c, i) => {
     const p = (plan?.parts || []).find(x => Number(x?.i) === i) || {};
     const wgt = Number.isFinite(Number(p.weight)) ? Math.max(0, Math.min(5, Number(p.weight))) : 3;
-    return { i, text: c, heading: String(p.heading || '').slice(0, 80), weight: wgt * Math.sqrt(Math.max(200, c.length) / 1000) };
+    return { i, text: c, heading: String(p.heading || '').slice(0, 80), goal: String(p.goal || '').slice(0, 240), terms: (Array.isArray(p.terms) ? p.terms : []).map(x => String(x).slice(0, 60)).slice(0, 6), weight: wgt * Math.sqrt(Math.max(200, c.length) / 1000) };
   }).filter(p => p.weight > 0);
   const use = parts.length ? parts : chunks.map((c, i) => ({ i, text: c, heading: '', weight: 1 }));
   const wsum = use.reduce((a, p) => a + p.weight, 0) || 1;
@@ -79,8 +79,17 @@ export async function writeDocumentScript({ text, seconds = 180, language = null
     const p = use[k], first = k === 0, last = k === use.length - 1;
     const words = Math.max(40, Math.round((totalWords * p.weight) / wsum));
     const piece = await write({
-      system: `You write the VOICE-OVER for one part of an educational explainer video made from a document, in ${LANG_NAME(lang)}. About ${words} words (never more than ${Math.round(words * 1.12)}). Rules: explain ONLY what this part of the document says — never invent facts, names, numbers, dates or examples that are not in it; keep the document's real numbers, names, places and terms (they become on-screen charts, maps and photos). Teach clearly like a great teacher: simple sentences, one idea per sentence, concrete examples taken from the text, smooth transitions. ${first ? 'Start the whole video with a strong one-sentence hook that makes the viewer curious, then a one-sentence overview of what they will learn.' : 'Continue naturally from the previous part (do not greet or re-introduce the video).'} ${last ? 'End the whole video with a short, memorable summary of the key takeaways (2-3 sentences).' : 'Do not summarise the whole video yet.'} No headings, no bullet points, no stage directions, no emojis — only the spoken words, in short paragraphs.${voiceRule}`,
-      user: `${title ? `Video title: ${title}\n` : ''}${p.heading ? `This part: ${p.heading}\n` : ''}${prevTail ? `The previous part ended with: "${prevTail}"\n` : ''}${brief ? `Customer direction: ${brief}\n` : ''}Document part:\n${p.text}`,
+      system: `You write the VOICE-OVER for one part of an educational explainer video made from a document, in ${LANG_NAME(lang)}. About ${words} words (never more than ${Math.round(words * 1.12)}). THIS IS A LESSON, NOT A NEWS READ-OUT OR A SUMMARY: the viewer must come out UNDERSTANDING the ideas, like after a class with an excellent, friendly teacher. How to teach:
+- Explain, don't list: for every important fact say WHY it matters, HOW it works or WHAT it led to (cause → effect), using only reasons and links that the document gives or that follow directly from it.
+- Define every key term the first time it appears, in plain words (e.g. "what does 'nationalisation' mean? it means the state took ownership of…").
+- Use a simple everyday comparison or picture to make an abstract idea or a big number feel real (e.g. "193 km — roughly the distance between two nearby cities"); comparisons are illustrations, never new facts, and must not change any fact.
+- Ask the viewer short questions and answer them ("why was this so important? because…"), and speak to them directly ("notice that…", "imagine…").
+- Build step by step from simple to detailed; one idea per sentence; signpost ("first…", "the second reason…", "so what happened next?").
+- After a dense idea, restate it in one simple sentence ("in short: …").
+- Never invent facts, names, numbers, dates or events that are not in the document; keep its real numbers, names, places and terms (they become on-screen charts, maps and photos).
+${first ? '- Open the whole lesson with a strong hook (a surprising fact or a question from the document), then say in one sentence what the viewer will understand by the end.' : '- Continue naturally from the previous part (do not greet or re-introduce the video); link the new idea to what was just explained.'}
+${last ? '- Close the whole lesson with a short recap of the 3 most important ideas in simple words, and one sentence on why they matter.' : '- Do not summarise the whole lesson yet.'} No headings, no bullet points, no stage directions, no emojis — only the spoken words, in short paragraphs.${voiceRule}`,
+      user: `${title ? `Video title: ${title}\n` : ''}${p.heading ? `This part: ${p.heading}\n` : ''}${p.goal ? `Teaching goal of this part: ${p.goal}\n` : ''}${p.terms?.length ? `Terms to explain: ${p.terms.join(', ')}\n` : ''}${prevTail ? `The previous part ended with: "${prevTail}"\n` : ''}${brief ? `Customer direction: ${brief}\n` : ''}Document part:\n${p.text}`,
       maxTokens: Math.max(700, words * 5), temperature: 0.45,
     });
     const clean = String(piece || '').replace(/\*\*|^#+\s*|^\s*[-•*]\s+/gm, '').replace(/\n{3,}/g, '\n\n').trim();
