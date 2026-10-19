@@ -725,6 +725,8 @@ export async function editableAnimations(userId, limit = 5) {
 // ── فيديو شرح من مستند/PDF: المحتوى المكتوب → سكريبت شرح (بلغة المستند) → فيديو أنيميشن/فوكس بموشن جرافيك، خرايط، صور ──
 // لحد 5 دقايق لأي باقة، و20 دقيقة لباقة Studio. صوت الراوي بالذكاء الاصطناعي (للباقات المدفوعة)
 export const DOC_VIDEO_LOOKS = ['vox', 'motion', 'cartoon', 'cartoon3d'];
+export const DOC_TRIAL_SECONDS = 60;
+export const docVideoTrialAvailable = (userId) => store.trialAvailable(userId, 'docvideo').catch(() => false);
 export function quoteDocVideo({ seconds, look = 'vox', userVoiceover = false }) {
   const sec = Math.max(userVoiceover ? 10 : 30, Number(seconds) || 180);
   return { seconds: Math.round(sec), minutes: Math.round((sec / 60) * 100) / 100, cost: getAnimationCreditCost(sec / 60, { look, userVoiceover: !!userVoiceover }) };
@@ -735,17 +737,31 @@ export async function startDocumentVideo(userId, raw = {}) {
   const text = String(raw.text || '').replace(/\r/g, '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, DOC_TEXT_MAX_CHARS);
   if (text.split(/\s+/).length < 40) return fail(400, 'document_too_short', 'The document has too little text to make a video from.');
   const user = await getUserById(userId).catch(() => null);
-  if (!user || (user.plan || 'free') === 'free') return fail(403, 'paid_only', 'Turning documents into videos is available on paid plans.');
+  const freePlan = !user || (user.plan || 'free') === 'free';
+  // الدقيقة المجانية (مرة لكل حساب): بصوت العميل المرفوع بس، بعلامة Erivion — حتى للباقة المجانية
+  const wantTrial = raw.trial === true || raw.trial === 'true';
+  if ((wantTrial || freePlan) && !raw.audioFile) return fail(403, freePlan ? 'paid_only' : 'trial_needs_voice', freePlan ? 'On the free plan you can make one free minute with your own uploaded voice. Upload your recording, or top up to use the AI narrator.' : 'The free minute works with your own uploaded voice recording.');
   const maxSec = await docVideoMaxSeconds(userId);
   const lang = LANGUAGES[raw.language] ? raw.language : (detectLang(text, 'en') || 'en');
   // صوت العميل المرفوع: الفيديو بيمشي على تسجيله هو (المدة = مدة التسجيل) والمستند مرجع للمخرج (أسماء/أماكن/أرقام)
   const own = !!raw.audioFile;
   if (own && !fs.existsSync(raw.audioFile)) return fail(400, 'audio_required', 'Please upload your voice recording again.');
   let seconds = own ? Number(raw.audioDurationSec) || 0 : Number(raw.seconds) || suggestSeconds(text, maxSec, lang);
-  if (seconds > maxSec + 1) return fail(400, 'too_long', `On your plan a document video can be up to ${maxSec / 60} minutes${maxSec < 1200 ? ' (Studio: 20 minutes)' : ''}.`, { maxSeconds: maxSec });
+  if (seconds > maxSec + 1 && !(wantTrial || freePlan)) return fail(400, 'too_long', `On your plan a document video can be up to ${maxSec / 60} minutes${maxSec < 1200 ? ' (Studio: 20 minutes)' : ''}.`, { maxSeconds: maxSec });
   seconds = own ? seconds : Math.max(30, Math.min(maxSec - 6, seconds));
+  let trial = false;
+  if (own && (wantTrial || freePlan || seconds <= DOC_TRIAL_SECONDS + 0.6)) {
+    let okTrial = false;
+    try { okTrial = await store.claimTrial(userId, 'docvideo'); } catch (e) { console.warn('[DocVideo] trial check failed:', e.message); }
+    if (okTrial) trial = true;
+    else if (wantTrial || freePlan) return fail(403, freePlan ? 'paid_only' : 'trial_used', freePlan ? 'Your free minute was already used. Top up credits to make more videos from documents.' : 'The free minute was already used on this account.');
+  }
+  if (trial && seconds > DOC_TRIAL_SECONDS + 0.3) {
+    try { raw.audioFile = await trimAudio(raw.audioFile, DOC_TRIAL_SECONDS); seconds = DOC_TRIAL_SECONDS; }
+    catch { await store.releaseTrial(userId, 'docvideo').catch(() => {}); return fail(500, 'trial_prepare_failed', 'Could not prepare the free minute. Please try again.'); }
+  }
   const safety = await checkContentSafety(text.slice(0, 8000));
-  if (safety.unsafe) return fail(400, 'content_policy_violation', 'This document contains content we cannot turn into a video.');
+  if (safety.unsafe) { if (trial) await store.releaseTrial(userId, 'docvideo').catch(() => {}); return fail(400, 'content_policy_violation', 'This document contains content we cannot turn into a video.'); }
   const look = DOC_VIDEO_LOOKS.includes(raw.look) ? raw.look : 'vox';
   const docTitle = String(raw.title || raw.fileName || '').replace(/\.[a-z0-9]+$/i, '').slice(0, 120) || 'document';
   const input = {
@@ -757,13 +773,21 @@ export async function startDocumentVideo(userId, raw = {}) {
     brief: String(raw.brief || '').replace(/<[^>]*>/g, '').trim().slice(0, 400),
     style: 'educational lesson made from a document: chapter title cards, lists, steps, timelines, charts for numbers, maps for places, real photos for people/places/objects',
   };
+  if (trial) { input.trialMax = DOC_TRIAL_SECONDS; input.watermark = true; input.maxSeconds = Math.max(input.maxSeconds, DOC_TRIAL_SECONDS + 6); }
   const q = quoteDocVideo({ seconds, look, userVoiceover: own });
-  const charge = await chargeCredits(userId, q.cost);
+  const cost = trial ? 0 : q.cost;
+  const charge = trial ? { success: true, remaining: await getCreditsBalance(userId).catch(() => null) } : await chargeCredits(userId, q.cost);
   if (!charge.success) return fail(403, 'quota_exceeded', `This video needs ${q.cost} credits, you have ${charge.remaining}.`, { cost: q.cost, remaining: charge.remaining });
   let job;
   const stored = { ...input }; delete stored.audioFile;
-  try { job = await store.createJob({ userId, input: stored, title: input.title || String(raw.fileName || '').replace(/\.[a-z0-9]+$/i, '').slice(0, 80) || null, creditsCharged: q.cost }); }
-  catch (e) { console.error('[DocVideo] createJob failed:', e.message); await addCreditsBalance(userId, q.cost).catch(() => {}); return fail(500, 'create_failed', 'Could not start the video. Your credits were refunded.'); }
-  enqueue({ id: job.id, userId, input, charged: q.cost, minutes: q.minutes, hooks: {} });
-  return { ok: true, job, cost: q.cost, seconds, minutes: q.minutes, remaining: charge.remaining, maxSeconds: maxSec };
+  try {
+    job = await store.createJob({ userId, input: stored, title: input.title || String(raw.fileName || '').replace(/\.[a-z0-9]+$/i, '').slice(0, 80) || null, creditsCharged: cost });
+    if (trial) await store.updateJob(job.id, { meta: { trial: true, trialKind: 'docvideo' } }).catch(() => {});
+  } catch (e) {
+    console.error('[DocVideo] createJob failed:', e.message);
+    if (trial) await store.releaseTrial(userId, 'docvideo').catch(() => {}); else await addCreditsBalance(userId, q.cost).catch(() => {});
+    return fail(500, 'create_failed', 'Could not start the video. Your credits were refunded.');
+  }
+  enqueue({ id: job.id, userId, input, charged: cost, minutes: q.minutes, hooks: {}, trial, trialKind: 'docvideo' });
+  return { ok: true, job, cost, trial, seconds, minutes: q.minutes, remaining: charge.remaining, maxSeconds: maxSec };
 }

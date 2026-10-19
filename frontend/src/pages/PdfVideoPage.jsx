@@ -3,7 +3,7 @@
 // الصوت: راوي جاهز (الذكاء الاصطناعي بيقرا الشرح) أو تسجيل العميل نفسه (الفيديو بيمشي على كلامه والمستند مرجع للصور والخرايط).
 // لحد 5 دقايق لأي باقة، و20 دقيقة لباقة Studio.
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, FileText, UploadCloud, Loader2, CheckCircle2, XCircle, Download, Play, Pause, Sparkles, Coins, Map as MapIcon, Image as ImageIcon, BarChart3, ListChecks, Mic, Bot, Music2, Captions, Clock3, X } from 'lucide-react';
+import { ArrowLeft, FileText, UploadCloud, Loader2, CheckCircle2, XCircle, Download, Play, Pause, Sparkles, Coins, Map as MapIcon, Image as ImageIcon, BarChart3, ListChecks, Mic, Bot, Music2, Captions, Clock3, X, Gift, PenLine, Copy, Check, ExternalLink, Smartphone, Lock } from 'lucide-react';
 import { downloadRemoteFile } from '../utils/download.js';
 
 const auth = (json = true) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), Authorization: 'Bearer ' + localStorage.getItem('token') });
@@ -31,6 +31,11 @@ const T = {
     ready: 'الفيديو جاهز', download: 'تنزيل', another: 'فيديو جديد', failed: 'حصلت مشكلة — الكريديت اترجّع', tryAgain: 'جرّب تاني',
     whatYouGet: 'هيتعمل في الفيديو', g1: 'عناوين وقوايم وخطوات من الملف', g2: 'رسوم بيانية وعدادات للأرقام', g3: 'خرايط للأماكن', g4: 'صور حقيقية للأشخاص والأماكن', g5: 'مؤثرات صوتية وموسيقى',
     editHint: 'بعد ما يخلص تقدر تعدّل عليه من الشات: "غيّر المشهد التالت" أو "شيل المزيكا".',
+    trialTitle: 'أول دقيقة مجانًا', trialDesc: 'بصوتك أنت: ارفع تسجيل (أو اكتبلك السكريبت تحت) وخد أول دقيقة فيديو ببلاش — مرة واحدة لكل حساب، وعليها علامة Erivion صغيرة.', useTrial: 'استخدم الدقيقة المجانية', free: 'مجاني', trialCut: 'التسجيل أطول من دقيقة — هنستخدم أول دقيقة بس في التجربة المجانية.', aiPaid: 'للباقات المدفوعة',
+    sw: 'مش عندك تسجيل؟ خلّي Erivion يكتبلك السكريبت', swD: 'من الملف نفسه، باللهجة اللي تحبها، وجاهز تسجّله بصوتك أو بأداة صوت.', dialect: 'اللهجة', scriptLen: 'طول السكريبت', writeScript: 'اكتب السكريبت', writing: 'بيكتب السكريبت...', copy: 'نسخ', copied: 'اتنسخ', dlTxt: 'تنزيل TXT', approx: 'تقريبًا',
+    dialects: { egyptian: 'مصري', saudi: 'سعودي', gulf: 'خليجي', levantine: 'شامي', maghrebi: 'مغربي', iraqi: 'عراقي', msa: 'فصحى مبسطة', en: 'English' },
+    toolsTitle: 'سجّل السكريبت بالطريقة اللي تناسبك', toolsNote: 'بعد ما تسجّل، نزّل الملف MP3 وارفعه فوق في "ارفع تسجيل صوتك".',
+    tEleven: 'أصوات طبيعية جدًا بالعربي واللهجات وتقدر تنسخ صوتك — فيها خطة مجانية محدودة.', tGoogle: 'Generate speech بموديلات Gemini — أصوات كتير وتقدر توصف الأسلوب (حماسي، هادي) — فيه استخدام مجاني محدود.', tPhone: 'موبايلك', tPhoneD: 'سجّل بنفسك في مكان هادي — صوتك الحقيقي بيدّي الفيديو روح.',
     yes: 'آه', no: 'لأ', voiceRow: 'الصوت', lookRow: 'الستايل', lenRow: 'المدة', fmtRow: 'الأبعاد',
   },
   en: {
@@ -53,6 +58,11 @@ const T = {
     ready: 'Your video is ready', download: 'Download', another: 'New video', failed: 'Something went wrong — your credits were refunded', tryAgain: 'Try again',
     whatYouGet: 'Your video will include', g1: 'Titles, lists and steps from the file', g2: 'Charts and counters for numbers', g3: 'Maps for places', g4: 'Real photos of people and places', g5: 'Sound effects and music',
     editHint: 'When it is done you can edit it from the chat: "change scene 3" or "remove the music".',
+    trialTitle: 'First minute free', trialDesc: 'With your own voice: upload a recording (or let us write the script below) and get your first video minute free — once per account, with a small Erivion watermark.', useTrial: 'Use my free minute', free: 'Free', trialCut: 'The recording is longer than a minute — the free trial uses the first minute only.', aiPaid: 'Paid plans',
+    sw: 'No recording yet? Let Erivion write the script', swD: 'From the document itself, in the dialect you like, ready to record yourself or with a voice tool.', dialect: 'Dialect', scriptLen: 'Script length', writeScript: 'Write the script', writing: 'Writing the script...', copy: 'Copy', copied: 'Copied', dlTxt: 'Download TXT', approx: 'about',
+    dialects: { en: 'English', msa: 'Arabic (MSA)', egyptian: 'Egyptian', saudi: 'Saudi', gulf: 'Gulf', levantine: 'Levantine', maghrebi: 'Moroccan', iraqi: 'Iraqi' },
+    toolsTitle: 'Record the script the way that suits you', toolsNote: 'When you are done, download the MP3 and upload it above in "Upload your voice recording".',
+    tEleven: 'Very natural voices in many languages and Arabic dialects, voice cloning — has a limited free plan.', tGoogle: 'Generate speech with Gemini models — many voices and you can describe the delivery (energetic, calm) — limited free use.', tPhone: 'Your phone', tPhoneD: 'Record yourself somewhere quiet — your real voice gives the video soul.',
     yes: 'Yes', no: 'No', voiceRow: 'Voice', lookRow: 'Style', lenRow: 'Length', fmtRow: 'Format',
   },
 };
@@ -157,10 +167,16 @@ export default function PdfVideoPage({ onBack, onNavigate }) {
   const [starting, setStarting] = useState(false);
   const [job, setJob] = useState(null);
   const [playing, setPlaying] = useState(null);
+  const [useTrial, setUseTrial] = useState(true);
+  const [dialect, setDialect] = useState(lang === 'ar' ? 'egyptian' : 'en');
+  const [scriptSecs, setScriptSecs] = useState(60);
+  const [scriptBusy, setScriptBusy] = useState(false);
+  const [script, setScript] = useState(null); // { script, words }
+  const [copied, setCopied] = useState(false);
   const fileRef = useRef(null), audioInRef = useRef(null), audioRef = useRef(null);
 
   useEffect(() => {
-    fetch('/api/doc-video/limits', { headers: auth(false) }).then(r => r.json()).then(setLimits).catch(() => {});
+    fetch('/api/doc-video/limits', { headers: auth(false) }).then(r => r.json()).then(d => { setLimits(d); if (d && !d.paid) setVoiceMode('own'); }).catch(() => {});
     fetch('/api/doc-video/voices', { headers: auth(false) }).then(r => r.json()).then(d => setVoices(d.voices || [])).catch(() => {});
   }, []);
   useEffect(() => () => { if (audio?.url) URL.revokeObjectURL(audio.url); }, [audio?.url]);
@@ -205,7 +221,23 @@ export default function PdfVideoPage({ onBack, onNavigate }) {
     el.onerror = () => setAudio({ file: f, url, duration: 0 });
     el.src = url;
   };
-  const audioTooLong = own && audio?.duration > maxSec + 1;
+  const trialOn = own && !!limits?.trialAvailable && (useTrial || !limits?.paid);
+  const trialSecs = limits?.trialSeconds || 60;
+  const audioTooLong = own && !trialOn && audio?.duration > maxSec + 1;
+  const writeScript = async () => {
+    if (!doc || scriptBusy) return; setErr(''); setScriptBusy(true); setCopied(false);
+    try {
+      const r = await fetch('/api/doc-video/script', { method: 'POST', headers: auth(), body: JSON.stringify({ text: doc.text, dialect, seconds: scriptSecs, brief }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || 'error');
+      setScript(d);
+    } catch (e) { setErr(e.message); } finally { setScriptBusy(false); }
+  };
+  const copyScript = () => { try { navigator.clipboard.writeText(script?.script || ''); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ } };
+  const downloadScript = () => {
+    const blob = new Blob([script?.script || ''], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${(doc?.name || 'script').replace(/\.[a-z0-9]+$/i, '')}-voiceover.txt`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
   const start = async () => {
     if (!doc || starting || (own && (!audio || audioTooLong))) return; setErr(''); setStarting(true);
     const fields = { text: doc.text, fileName: doc.name, title: doc.name.replace(/\.[a-z0-9]+$/i, ''), look, ratio, voiceKey, captions: captions ? 'karaoke' : 'none', music, brief, language: doc.language };
@@ -213,7 +245,7 @@ export default function PdfVideoPage({ onBack, onNavigate }) {
       let r;
       if (own) {
         const fd = new FormData();
-        Object.entries(fields).forEach(([k, v]) => fd.append(k, String(v)));
+        Object.entries({ ...fields, trial: trialOn }).forEach(([k, v]) => fd.append(k, String(v)));
         fd.append('audio', audio.file, audio.file.name || 'voice.mp3');
         r = await fetch('/api/doc-video/start', { method: 'POST', headers: auth(false), body: fd });
       } else {
@@ -233,7 +265,7 @@ export default function PdfVideoPage({ onBack, onNavigate }) {
 
   const looks = [['vox', t.lookVox, t.lookVoxD], ['motion', t.lookMotion, t.lookMotionD], ['cartoon', t.lookCartoon, t.lookCartoonD], ['cartoon3d', t.lookCartoon3d, t.lookCartoon3dD]];
   const lookName = Object.fromEntries(looks.map(([k, n]) => [k, n]));
-  const lowBal = quote && limits?.credits != null && limits.credits < quote.cost;
+  const lowBal = !trialOn && quote && limits?.credits != null && limits.credits < quote.cost;
   const pct = ((seconds - 45) / Math.max(1, sliderMax - 45)) * 100;
   const voiceName = own ? t.ownVoice : ((voices.find(v => v.key === voiceKey) || {})[lang]?.name || voiceKey);
   const blocker = !doc ? t.needDoc : own && !audio ? t.needAudio : null;
@@ -316,9 +348,24 @@ export default function PdfVideoPage({ onBack, onNavigate }) {
             {/* 2) الصوت */}
             <section className="pv-sec" style={{ opacity: doc ? 1 : 0.55, pointerEvents: doc ? 'auto' : 'none' }}>
               <div className="pv-h"><span className={`pv-n${doc && (!own || audio) ? ' on' : ''}`}>2</span><h2>{t.s2}</h2></div>
+              {limits?.trialAvailable && (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', borderRadius: 14, marginBottom: 12, background: 'linear-gradient(135deg,rgba(34,197,94,.12),rgba(56,189,248,.08))', border: '1px solid rgba(34,197,94,.35)' }}>
+                  <Gift size={20} color="#22c55e" style={{ flexShrink: 0, marginTop: 2 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>{t.trialTitle}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7, marginTop: 2 }}>{t.trialDesc}</div>
+                    {limits.paid && (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 13, fontWeight: 700, color: 'var(--text)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={useTrial} onChange={e => { setUseTrial(e.target.checked); if (e.target.checked) setVoiceMode('own'); }} /> {t.useTrial}
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(220px,100%),1fr))', gap: 10 }}>
                 {[['ai', Bot, t.aiVoice, t.aiVoiceD], ['own', Mic, t.ownVoice, t.ownVoiceD]].map(([k, Icon, n, dsc]) => (
-                  <button key={k} className={`pv-opt${voiceMode === k ? ' on' : ''}`} onClick={() => setVoiceMode(k)} style={{ display: 'flex', gap: 12, padding: 14, alignItems: 'flex-start' }}>
+                  <button key={k} className={`pv-opt${voiceMode === k ? ' on' : ''}`} disabled={k === 'ai' && limits && !limits.paid} onClick={() => setVoiceMode(k)} style={{ display: 'flex', gap: 12, padding: 14, alignItems: 'flex-start', position: 'relative', opacity: k === 'ai' && limits && !limits.paid ? 0.55 : 1, cursor: k === 'ai' && limits && !limits.paid ? 'not-allowed' : 'pointer' }}>
+                    {k === 'ai' && limits && !limits.paid && <span style={{ position: 'absolute', top: 10, insetInlineEnd: 10, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 700, color: 'var(--text3)' }}><Lock size={11} /> {t.aiPaid}</span>}
                     <span style={{ width: 36, height: 36, borderRadius: 10, background: voiceMode === k ? 'linear-gradient(135deg,#7c6af7,#38bdf8)' : 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={18} color={voiceMode === k ? '#fff' : 'var(--text2)'} /></span>
                     <span><span style={{ display: 'block', fontWeight: 800, fontSize: 14 }}>{n}</span><span style={{ display: 'block', fontSize: 12, color: 'var(--text3)', marginTop: 3, lineHeight: 1.6 }}>{dsc}</span></span>
                   </button>
@@ -375,6 +422,51 @@ export default function PdfVideoPage({ onBack, onNavigate }) {
                     </div>
                   )}
                   {audioTooLong && <div style={{ fontSize: 12.5, color: '#f87171', marginTop: 8 }}>{t.audioTooLong(fmt(maxSec))}</div>}
+                  {trialOn && audio?.duration > trialSecs + 0.5 && <div style={{ fontSize: 12.5, color: '#fbbf24', marginTop: 8 }}>{t.trialCut}</div>}
+
+                  {/* اكتبلي السكريبت + أدوات الصوت */}
+                  <div style={{ marginTop: 16, padding: 16, borderRadius: 14, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <PenLine size={18} color="#a78bfa" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <div><div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>{t.sw}</div><div style={{ fontSize: 12.5, color: 'var(--text3)', marginTop: 2, lineHeight: 1.6 }}>{t.swD}</div></div>
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text2)', margin: '14px 0 8px' }}>{t.dialect}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {Object.entries(t.dialects).map(([k, n]) => <button key={k} className={`pv-opt${dialect === k ? ' on' : ''}`} onClick={() => setDialect(k)} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, borderRadius: 99 }}>{n}</button>)}
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text2)', margin: '14px 0 8px' }}>{t.scriptLen}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {[30, 60, 120, 180, 300, 600, 1200].filter(x => x <= maxSec).map(x => <button key={x} className={`pv-opt${scriptSecs === x ? ' on' : ''}`} onClick={() => setScriptSecs(x)} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, borderRadius: 99, fontVariantNumeric: 'tabular-nums' }}>{fmt(x)}{x === trialSecs && limits?.trialAvailable ? ` · ${t.free}` : ''}</button>)}
+                    </div>
+                    <button className="pv-btn" disabled={scriptBusy} onClick={writeScript} style={{ marginTop: 14, padding: '10px 16px', background: 'linear-gradient(135deg,#7c6af7,#a78bfa)', color: '#fff', fontSize: 13.5 }}>{scriptBusy ? <Loader2 size={15} className="spin" /> : <PenLine size={15} />} {scriptBusy ? t.writing : t.writeScript}</button>
+
+                    {script && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>{script.words} {t.words} · {t.approx} {fmt(script.seconds)}</span>
+                          <span style={{ display: 'flex', gap: 6 }}>
+                            <button className="pv-btn" onClick={copyScript} style={{ padding: '6px 12px', background: 'var(--bg3)', color: 'var(--text)', fontSize: 12.5 }}>{copied ? <Check size={13} /> : <Copy size={13} />} {copied ? t.copied : t.copy}</button>
+                            <button className="pv-btn" onClick={downloadScript} style={{ padding: '6px 12px', background: 'var(--bg3)', color: 'var(--text)', fontSize: 12.5 }}><Download size={13} /> {t.dlTxt}</button>
+                          </span>
+                        </div>
+                        <textarea dir="auto" value={script.script} onChange={e => setScript(sc => ({ ...sc, script: e.target.value }))} rows={9} style={{ width: '100%', borderRadius: 12, padding: 12, background: 'var(--bg2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: 14, lineHeight: 1.9, resize: 'vertical' }} />
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', margin: '14px 0 8px' }}>{t.toolsTitle}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(190px,100%),1fr))', gap: 8 }}>
+                          {[['ElevenLabs', t.tEleven, 'https://elevenlabs.io/text-to-speech', '#e5e7eb'], ['Google AI Studio', t.tGoogle, 'https://aistudio.google.com/generate-speech', '#60a5fa']].map(([n, d, href, c]) => (
+                            <a key={n} href={href} target="_blank" rel="noopener noreferrer" className="pv-opt" style={{ display: 'block', padding: 12, textDecoration: 'none' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontWeight: 800, fontSize: 13.5, color: c }}>{n} <ExternalLink size={13} color="var(--text3)" /></span>
+                              <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text3)', marginTop: 4, lineHeight: 1.6 }}>{d}</span>
+                            </a>
+                          ))}
+                          <div className="pv-opt" style={{ padding: 12, cursor: 'default' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 13.5 }}><Smartphone size={14} /> {t.tPhone}</span>
+                            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text3)', marginTop: 4, lineHeight: 1.6 }}>{t.tPhoneD}</span>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }}>{t.toolsNote}</div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </section>
@@ -420,19 +512,19 @@ export default function PdfVideoPage({ onBack, onNavigate }) {
               <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--text)', marginBottom: 8 }}>{t.summary}</div>
               <div className="pv-row"><span>{t.s1}</span><b dir="auto" style={{ maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc?.name || '—'}</b></div>
               <div className="pv-row"><span>{t.voiceRow}</span><b>{voiceName}</b></div>
-              <div className="pv-row"><span>{t.lenRow}</span><b style={{ fontVariantNumeric: 'tabular-nums' }}>{own ? (audio?.duration ? fmt(audio.duration) : '—') : fmt(seconds)}</b></div>
+              <div className="pv-row"><span>{t.lenRow}</span><b style={{ fontVariantNumeric: 'tabular-nums' }}>{own ? (audio?.duration ? fmt(trialOn ? Math.min(trialSecs, audio.duration) : audio.duration) : '—') : fmt(seconds)}</b></div>
               <div className="pv-row"><span>{t.lookRow}</span><b>{lookName[look]}</b></div>
               <div className="pv-row" style={{ borderBottom: 'none' }}><span>{t.fmtRow}</span><b>{ratio}</b></div>
 
               <div style={{ marginTop: 12, padding: 14, borderRadius: 14, background: 'var(--bg)', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: 12.5, color: 'var(--text3)' }}>{t.cost}</span>
-                  <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Coins size={17} color="#fbbf24" /> {quote?.cost ?? '—'} <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>{t.credits}</span></span>
+                  <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{trialOn ? <span style={{ color: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Gift size={17} /> {t.free}</span> : <><Coins size={17} color="#fbbf24" /> {quote?.cost ?? '—'} <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>{t.credits}</span></>}</span>
                 </div>
                 {limits?.credits != null && <div style={{ fontSize: 12, color: lowBal ? '#f87171' : 'var(--text3)', marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{t.bal}: {limits.credits.toLocaleString()}</div>}
               </div>
 
-              {limits && !limits.paid ? (
+              {limits && !limits.paid && !limits.trialAvailable ? (
                 <>
                   <div style={{ fontSize: 12.5, color: '#fbbf24', margin: '12px 0 8px' }}>{t.paidOnly}</div>
                   <button className="btn-primary pv-btn" onClick={() => onNavigate?.('pricing')} style={{ width: '100%', padding: '13px 16px' }}>{t.topUp}</button>
