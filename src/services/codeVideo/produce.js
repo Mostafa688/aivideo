@@ -93,6 +93,12 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
       tokens: sc.tokens.map(t => ({ w: t.w, start: Math.max(0, t.start - sc.start), end: Math.max(0.05, t.end - sc.start) })),
     };
   });
+  // الموشن جرافيكس: أي مشهد كلام من غير عنصر بصري بناخد له شكل 3D من معنى الكلام (مفيش مشهد نص بس)
+  if (look === 'motion') {
+    let gen = 0;
+    scenes.forEach((sc, i) => { if (sc.type === 'kinetic' && !sc.data.icon && !sc.data.object) sc.data = { ...sc.data, object: objectForText(spoken[i].text) || (gen++ % 2 ? 'star' : 'sparkle') }; });
+    for (let i = 1; i < scenes.length; i++) if (scenes[i].type === 'kinetic' && scenes[i - 1].type === 'kinetic' && scenes[i].data.object && scenes[i].data.object === scenes[i - 1].data.object) scenes[i].data = { ...scenes[i].data, object: undefined, icon: scenes[i].data.icon || 'star' };
+  }
   // عالم 3D: "مخرج الحركة" بيحوّل كل مشهد world لعالم 3D (بيئة + شخصيات + مسارات + أغراض + كاميرا) — دايمًا بيرجّع عالم سليم (افتراضي لو فشل)
   const worldIdx = scenes.map((sc, i) => (sc.type === 'world' ? i : -1)).filter(i => i >= 0);
   if (worldIdx.length) {
@@ -212,4 +218,33 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   try { editor = await (deps.persistAnimationBundle || persistAnimationBundle)({ jobId: id, userId, story, castChars, narrationFile: nar.narrationFile, musicFile, allTokens: nar.tokens.map(t => ({ w: t.w, start: t.start, end: t.end })), input, title, script, workDir }); }
   catch (e) { console.warn('[CodeVideo] edit bundle not saved:', e.message); }
   return { animEditor: editor, sceneStats, file: r.file, duration: r.duration, credits: imageCredits, script, title, chapters: [], srt: buildSrt(nar.tokens.map(t => ({ w: t.w, start: t.start, end: t.end }))) };
+}
+
+// كلمة → شكل 3D مناسب (عربي/إنجليزي) — بنقارن ببداية الكلمة بعد شيل السوابق (و/ف/ب/ل/ال) عشان "مال" متطلعش من "أعمال"
+const OBJECT_HINTS = [
+  ['coin', ['فلوس', 'مال', 'ربح', 'أرباح', 'سعر', 'تمن', 'ثمن', 'دولار', 'جنيه', 'ريال', 'money', 'price', 'cash', 'profit', 'cost', 'salary']],
+  ['bulb', ['فكر', 'فكرة', 'أفكار', 'ابداع', 'إبداع', 'idea', 'ideas', 'creative', 'think']],
+  ['question', ['ليه', 'لماذا', 'ازاي', 'إزاي', 'كيف', 'سؤال', 'why', 'how', 'question']],
+  ['warning', ['خطر', 'خطورة', 'تحذير', 'احذر', 'مشكلة', 'مشاكل', 'risk', 'danger', 'warning', 'problem']],
+  ['bolt', ['سرعة', 'بسرعة', 'سريع', 'طاقة', 'speed', 'fast', 'energy', 'quick']],
+  ['target', ['هدف', 'أهداف', 'اهداف', 'نجاح', 'goal', 'goals', 'target', 'success']],
+  ['arrow', ['نمو', 'زيادة', 'يزيد', 'تكبر', 'growth', 'grow', 'increase']],
+  ['heart', ['حب', 'قلب', 'صحة', 'love', 'heart', 'health']],
+  ['check', ['صح', 'صحيح', 'أيوه', 'ايوه', 'yes', 'right', 'correct']],
+  ['cross', ['غلط', 'خطأ', 'ممنوع', 'no', 'wrong', 'never', 'mistake']],
+  ['flame', ['ترند', 'نار', 'hot', 'trend', 'fire', 'viral']],
+  ['puzzle', ['حل', 'حلول', 'لغز', 'solve', 'solution', 'puzzle']],
+  ['sparkle', ['جديد', 'سحر', 'مميز', 'new', 'magic', 'special']],
+];
+const AR_PREFIX = /^(وبال|وال|بال|فال|كال|لل|ال|و|ف|ب|ل|ك)(?=[\u0621-\u064A]{2,})/;
+function objectForText(text) {
+  const words = String(text || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const forms = words.flatMap(w => { const a = [w]; let x = w; for (let k = 0; k < 2; k++) { const y = x.replace(AR_PREFIX, ''); if (y === x) break; a.push(y); x = y; } return a; });
+  for (const [ob, list] of OBJECT_HINTS) {
+    for (const k of list) {
+      const ar = /[\u0600-\u06FF]/.test(k);
+      if (forms.some(f => (ar ? f.startsWith(k) && f.length <= k.length + 3 : f === k))) return ob;
+    }
+  }
+  return null;
 }

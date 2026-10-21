@@ -21,7 +21,7 @@ import { getFreshChannelIdea, triggerChannelRunNow, estimateChannelRunCost, star
 import { startWhiteboardVideoCreation } from './whiteboardVideoRoutes.js';
 import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
-import { getMaxClipSeconds, getAutoEditCreditCost } from './creditPricingEngine.js';
+import { getMaxClipSeconds, getAutoEditCreditCost, getAnimationCreditCost } from './creditPricingEngine.js';
 import { detectShowcaseIntent, buildShowcaseReply } from './showcaseIntent.js';
 import { orderSingleSubjectFirst } from './characterStudioRoutes.js';
 
@@ -548,6 +548,7 @@ const lastRequestAt = new Map(); // userId -> timestamp
 const photoDescriptions = new Map(); // userId -> [{ url, description, at }]
 const PHOTO_DESC_TTL_MS = 3 * 3600e3;
 const IMAGE_TALK = /صور|الصور|صورة|image|photo|picture|prompt|بروم|وصف|describe|الشخص|الراجل|المنتج|ده|دي|هذه|هذا|this|that|it\b/i;
+const voiceDurations = new Map(); // رابط التسجيل -> مدته بالثانية (عشان الايجنت يفضل عارف المدة في الرسايل اللي بعد الرفع)
 const voiceOwners = new Map(); // userId -> Set(روابط تسجيلات الصوت اللي السيرفر ده سجّلها للعميل ده)
 const consumedVoices = new Set(); // `${userId}:${url}` — تسجيلات اتستخدمت في مونتاج خلاص
 const MIN_INTERVAL_MS = 1500;
@@ -740,6 +741,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
         const result = await transcribeVoiceForAgent(voiceBase64, 'webm', await animationMaxSeconds(req.user.userId));
         transcript = result.text;
         uploadedVoiceUrl = result.audioUrl;
+        if (uploadedVoiceUrl && result.duration) { voiceDurations.set(uploadedVoiceUrl, result.duration); if (voiceDurations.size > 2000) voiceDurations.delete(voiceDurations.keys().next().value); }
         attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `User uploaded a voice recording (${Math.round(result.duration)}s). Transcript of what they said: "${transcript.slice(0, 500)}". ROUTING FIRST: if the customer wants a code-made video from this recording — vox/فوكس, animation/أنيميشن, motion graphics/موشن جرافيك, cartoon, 3D, an explainer, kinetic text (rule 13f) — use ###ANIMATION### with "source":"voiceover" (their REAL voice is used as-is, no AI video model, and it is far cheaper); for a documentary use the documentary studio; for a whiteboard video use the WHITEBOARD mode. NEVER route those requests to GENERATE_VIDEO (Seedance/Veo/Kling…). Only when they want a realistic AI-generated video clip, use this transcript's content directly as the video's "narrationScript" in GENERATE_VIDEO/MERGE_VIDEOS — note the narration will be freshly synthesized (TTS) reading their words, not their literal recorded voice, so if they specifically expect their own voice to be reused as-is, say so honestly rather than implying it will sound identical. Do NOT ask the user to type a separate script — you already have it from their recording.`;
       } catch (e) {
         return res.status(400).json({ error: e.message });
@@ -802,6 +804,20 @@ router.post('/chat', authMiddleware, async (req, res) => {
     try {
       const mx = await animationMaxSeconds(req.user.userId);
       attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `ANIMATION MAX LENGTH for this customer: ${mx / 60} minutes per animated/vox video (${mx >= 300 ? 'Studio-level buyer' : mx >= 180 ? 'Creator buyer; Studio buyers get 5 minutes' : 'normal limit; Creator buyers get 3 minutes, Studio buyers 5 minutes'}). Never promise longer; for longer content suggest parts${mx < 300 ? ' or a bigger package' : ''}. "seconds" in the marker must not exceed ${mx - 6}.`;
+    } catch { /* مش حرج */ }
+    // تسجيل صوت العميل: مدته معروفة = مدة الفيديو. بنفكّر الايجنت بيها في كل رسالة بعد الرفع (كان بيسأل "عايز الفيديو قد إيه؟"
+    // وبعدين يقول 30 ثانية بدل 17 — شكوى حقيقية) ومش يسأل عن المزيكا والكابشن (افتراضيات)
+    try {
+      const vUrl = uploadedVoiceUrl || (lastVoiceUrl && voiceOwners.get(req.user.userId)?.has(lastVoiceUrl) ? lastVoiceUrl : null);
+      if (vUrl || voiceAlreadyUploaded) {
+        let vSec = vUrl ? voiceDurations.get(vUrl) : null;
+        if (!vSec && vUrl) { vSec = await ffProbeDuration(vUrl).catch(() => null); if (vSec) voiceDurations.set(vUrl, vSec); }
+        if (vSec) {
+          const sec = Math.round(vSec), m = vSec / 60;
+          const price = (look) => getAnimationCreditCost(m, { userVoiceover: true, look });
+          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `CUSTOMER VOICE RECORDING (already uploaded, used as-is): it is ${sec} seconds long, so an animated/vox/motion video from it is EXACTLY ${sec} seconds — NEVER ask how long the video should be and never mention any other length. Price with their own voice: motion/cartoon ≈ ${price('motion')} credits, vox ≈ ${price('vox')}, cartoon3d ≈ ${price('cartoon3d')}, world3d ≈ ${price('world3d')} (or FREE if the free-trial note says the trial is still available and ${sec} ≤ ${ANIMATION_TRIAL_SECONDS}). Do NOT ask about music or captions: use the defaults (music on; captions "pop" for 9:16, none for 16:9) and say in a few words they can ask to change them. Ask ONLY what is truly missing (the look if they never said it; the format only if they gave no hint — default 16:9), in ONE message together with the length and price; as soon as the customer has given the look (and format if asked) or says "ابدأ/اهو/تمام/يلا", START with ###ANIMATION### "source":"voiceover","seconds":${sec}. If they re-send the recording it means "I already gave you the voice — start".`;
+        }
+      }
     } catch { /* مش حرج */ }
     // فيديوهات أنيميشن/فوكس جاهزة قابلة للتعديل — بتتبعت للايجنت لما العميل يطلب تعديل ("عدّل"، "غيّر المشهد"، "احذف الجزء ده")
     try {

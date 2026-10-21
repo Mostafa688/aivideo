@@ -113,7 +113,7 @@ export function sanitizeScene(raw, spoken, { first = false, last = false, look =
   if (!raw || !allowedTypes(look).has(raw.type)) return null;
   const said = new Set(toks(spoken)); const nums = spokenNumbers(spoken); const d = raw.data || {};
   switch (raw.type) {
-    case 'kinetic': { const ic = String(d.icon || '').toLowerCase().trim(); return { type: 'kinetic', data: { emphasis: strs(d.emphasis, 3, 24), icon: ICON_NAMES.includes(ic) ? ic : undefined } }; }
+    case 'kinetic': { const ic = String(d.icon || '').toLowerCase().trim(); const ob = resolveObject(d.object); return { type: 'kinetic', data: { emphasis: strs(d.emphasis, 3, 24), icon: ICON_NAMES.includes(ic) ? ic : undefined, object: ob || undefined } }; }
     case 'logo': {
       // brand = الاسم الرسمي باللاتيني (عشان نلاقي اللوجو)، said = الاسم زي ما اتقال (عربي مثلاً) — لازم واحد منهم يكون اتقال فعلاً
       const brand = clean(d.brand, 40), heard = clean(d.said, 40);
@@ -252,7 +252,7 @@ const SYSTEM_MOTION = `You are the director of professional animated explainer v
 Return ONLY JSON: {"title":"short video title (max 7 words, narration language)","mood":"epic|tech|business|nature|energetic|serious|clean|minimal","palette":"neon|sunset|emerald|royal|crimson|ocean|mono|daylight","scenes":[{"i":0,"type":"...","data":{},"bg":"aurora","cam":"push","transition":"slide"}]}
 
 Scene types and their "data":
-- kinetic {"emphasis":["1-3 key words exactly as spoken"]} — the spoken words appear in sync with the voice as huge animated type. The default for statements, emotions, claims. Needs NO other data.
+- kinetic {"emphasis":["1-3 key words exactly as spoken"],"object?":"${OBJECT_NAMES.join('|')}","icon?":"icon name"} — the spoken words appear in sync with the voice as big animated type NEXT TO an animated hero visual: a glossy 3D object (puzzle=problem, sparkle=new/magic, warning=risk, bolt=speed/energy, heart=love/health, star=quality/success, arrow=growth, coin=money/price, check=yes/right, cross=wrong/mistake, target=goal, bulb=idea, question=why/how, flame=hot/trend) or a big icon badge, with pulse rings and orbiting dots. ALWAYS give it an object or an icon that fits the words.
 - title {"title","subtitle?","kicker?"} — opening title card (first scene only, or a rare chapter opener).
 - bigword {"word":"1-2 words said in the scene","sub?"} — a punch moment slamming on screen (max 3 in the whole video).
 - quote {"text":"verbatim quote said","author?"}
@@ -265,13 +265,13 @@ Scene types and their "data":
 - steps {"title?","steps":[{"label"}]} 3-5 — a process in order.
 - globe {"title?","pins?":[{"lat","lon","label"}]} — worldwide/geography/countries.
 - network {"title?","center","nodes":[{"label","icon?"}]} 3-6 — an ecosystem/connected parts.
-- art {"idea":"a concrete description of the drawing that illustrates this scene: what objects/creatures/places there are and what they do (8-30 words, e.g. 'a whale diving past a submarine while bubbles rise', 'the water cycle: sun, cloud and rain over a hill', 'a factory conveyor belt carrying boxes')","layout":"side|full","emphasis":["1-2 words said"]} — a custom ANIMATED ILLUSTRATION drawn from scratch by an illustrator. Use it for anything the other scene types cannot show: an object, place, process, creature, situation or diagram. At most 35% of the scenes; mix with the other types.
+- art {"idea":"a concrete description of the drawing that illustrates this scene: what objects/creatures/places there are and what they do (8-30 words, e.g. 'a whale diving past a submarine while bubbles rise', 'the water cycle: sun, cloud and rain over a hill', 'a factory conveyor belt carrying boxes')","layout":"side|full","emphasis":["1-2 words said"]} — a custom ANIMATED ILLUSTRATION drawn from scratch by an illustrator. Use it for anything the other scene types cannot show: an object, place, process, creature, situation or diagram. Use it a lot (about 30-45% of the scenes): it is what makes each video unique instead of a template — describe a DIFFERENT, concrete, visual metaphor for every one (objects that move, a process that happens, a small scene, a diagram that builds itself, a phone screen, a road/path, a machine, money flowing...).
 - outro {"headline","sub?","cta?"} — closing card: ONLY for the very last scene when it is a conclusion / call to action.
 Icon names: ${ICON_NAMES.join(', ')}.
 
 Rules:
 - Every word on screen must come from the narration (same language, same wording or a short quote of it). NEVER invent numbers, facts, names or statistics: numbers in stat/bars/donut/line/gridstats/timeline must be said in the scene's own text.
-- Match the visual to the content: a number said → stat; a list → list; a comparison → compare; a process → steps; a statement → kinetic. Be varied: never the same type 3 times in a row; aim for roughly 35-45% kinetic scenes and visual variety in the rest.
+- THE VIDEO MUST BE MOTION GRAPHICS, NOT TEXT ON A BACKGROUND: think of every scene as a designed, moving picture. Match the visual to the content: a number said → stat/bars/gridstats; a list → list or icons; a comparison → compare; a process → steps or art; a place → globe; an ecosystem → network; anything concrete or any metaphor → art (a custom drawing); a hook/punchline → poster or bigword; only plain statements with nothing to draw → kinetic WITH an object/icon. Kinetic at most 20-25% of the scenes. Never the same type 3 times in a row, and vary layouts, objects and icons (never the same object/icon twice in a row).
 - The first scene is the hook: use title, bigword or a strong kinetic.
 - "bg": aurora|grid|particles|rays|waves|hex|bokeh|stripes|orbits — match the mood and vary it; for chart/list/compare/timeline scenes use only aurora, bokeh, stripes or particles.
 - "cam": push|pull|left|right|up|drift. "transition" (into this scene): cut|slide|slideup|zoom|wipe|iris|flash|glitch — mostly quick and varied; flash/glitch only for dramatic punches (max 3 each); the first scene uses cut.
@@ -290,7 +290,7 @@ const CATALOG = `Scene types and their "data":
 - steps {"title?","steps":[{"label"}]} 3-5 — a process in order.
 - globe {"title?","pins?":[{"lat","lon","label"}]} — worldwide/geography/countries.
 - network {"title?","center","nodes":[{"label","icon?"}]} 3-6 — an ecosystem/connected parts.
-- art {"idea":"a concrete description of the drawing that illustrates this scene: what objects/creatures/places there are and what they do (8-30 words, e.g. 'a whale diving past a submarine while bubbles rise', 'the water cycle: sun, cloud and rain over a hill', 'a factory conveyor belt carrying boxes')","layout":"side|full","emphasis":["1-2 words said"]} — a custom ANIMATED ILLUSTRATION drawn from scratch by an illustrator. Use it for anything the other scene types cannot show: an object, place, process, creature, situation or diagram. At most 35% of the scenes; mix with the other types.
+- art {"idea":"a concrete description of the drawing that illustrates this scene: what objects/creatures/places there are and what they do (8-30 words, e.g. 'a whale diving past a submarine while bubbles rise', 'the water cycle: sun, cloud and rain over a hill', 'a factory conveyor belt carrying boxes')","layout":"side|full","emphasis":["1-2 words said"]} — a custom ANIMATED ILLUSTRATION drawn from scratch by an illustrator. Use it for anything the other scene types cannot show: an object, place, process, creature, situation or diagram. Use it a lot (about 30-45% of the scenes): it is what makes each video unique instead of a template — describe a DIFFERENT, concrete, visual metaphor for every one (objects that move, a process that happens, a small scene, a diagram that builds itself, a phone screen, a road/path, a machine, money flowing...).
 - outro {"headline","sub?","cta?"} — closing card: ONLY for the very last scene when it is a conclusion / call to action.
 Icon names: ${ICON_NAMES.join(', ')}.
 
@@ -399,7 +399,7 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
     if (clean0?.type === 'outro' && i !== n - 1) clean0 = null;
     if (clean0?.type === 'bigword' && ++bigwords > (cartoon ? 2 : 3)) clean0 = null;
     if (clean0?.type === 'title' && (++titles > 2 || (i !== 0 && sc.end - sc.start < 3))) clean0 = null;
-    if (clean0?.type === 'art' && (++arts > 8 || arts > Math.max(2, Math.ceil(n * 0.4)))) clean0 = null;
+    if (clean0?.type === 'art' && (++arts > 14 || arts > Math.max(3, Math.ceil(n * 0.5)))) clean0 = null;
     if (clean0?.type === 'collage' && ++collages > 3) clean0 = null;
     if (clean0?.type === 'poster' && out[out.length - 1]?.type === 'poster' && out[out.length - 1].data.layout && out[out.length - 1].data.layout === clean0.data.layout) clean0.data.layout = undefined; // نفس الشكل مرتين ورا بعض → يتبدّل تلقائي
     if (clean0?.type === 'headline' && ++headlines > (vox ? 2 : 3)) clean0 = null;

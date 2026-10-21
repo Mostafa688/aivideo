@@ -69,6 +69,10 @@ export async function buildNarration({ mode, script = '', audioFile = null, lang
     detected = detectLang(asr.text, lang);
     await toWav(audioFile, narrationFile);
     outScript = asr.text || tokens.map(t => t.w).join(' ');
+    // تصحيح كلمات التفريغ الغلط (العربي بالذات: همزات، تاء مربوطة، كلمات اتسمعت غلط) — الكابشن والنص على الشاشة بييجوا من هنا
+    await prog('narration', 0.6);
+    const fixed = await correctTranscript(asr, detected || lang).catch(() => null);
+    if (fixed) { tokens = fixed.tokens; outScript = fixed.text; }
   } else {
     const chunks = splitForTts(script);
     if (!chunks.length) throw new Error('empty script');
@@ -103,3 +107,31 @@ export async function buildNarration({ mode, script = '', audioFile = null, lang
   await prog('narration', 1);
   return { tokens, narrationFile, total, script: outScript, lang: detected || lang };
 }
+
+// ── تصحيح تفريغ الصوت: الموديل بيصلّح أخطاء السمع بس (من غير ما يغيّر الكلام أو اللهجة أو الترتيب)، وبعدين بنركّب النص المصحَّح
+// على توقيتات Whisper نفسها. لو التصحيح غيّر الكلام أكتر من اللازم بنرجع للتفريغ الأصلي
+const normW = (w) => String(w || '').toLowerCase().replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[^\p{L}\p{N}]/gu, '');
+function overlap(a, b) {
+  const A = a.map(normW).filter(Boolean), B = b.map(normW).filter(Boolean);
+  if (!A.length || !B.length) return 0;
+  const prev = new Uint16Array(B.length + 1), cur = new Uint16Array(B.length + 1);
+  for (let i = 1; i <= A.length; i++) { for (let j = 1; j <= B.length; j++) cur[j] = A[i - 1] === B[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]); prev.set(cur); }
+  return prev[B.length] / Math.max(A.length, B.length);
+}
+export async function correctTranscript(asr, lang = 'en', deps = {}) {
+  const words = (asr?.words || []).map(w => w.w);
+  if (words.length < 4) return null;
+  const isAr = String(lang).startsWith('ar');
+  const raw = await (deps.llmText || llmText)({
+    system: `You fix automatic speech-recognition mistakes in the transcript of a recorded voice-over${isAr ? ' in Arabic (any dialect)' : ''}. Fix ONLY recognition errors: words that were clearly misheard and do not fit the context, broken spelling${isAr ? ' (hamza أ/إ/ا, taa marbuta ة/ه, alef maqsura ى/ي, wrongly split or merged words)' : ''}, misspelled names and brands, numbers written wrongly. Keep the speaker's exact words, dialect, word order and length — never rewrite, translate, summarise, formalise the dialect, add or remove content. Add natural punctuation (. ، ؟ ! ,). Return ONLY the corrected transcript text.`,
+    user: words.join(' '),
+    maxTokens: Math.min(4000, 200 + words.length * 6), temperature: 0,
+  });
+  const text = String(raw || '').replace(/^["'«]|["'»]$/g, '').replace(/\s+/g, ' ').trim();
+  const out = text.split(/\s+/).filter(Boolean);
+  if (!out.length || Math.abs(out.length - words.length) > Math.max(3, words.length * 0.15) || overlap(words, out) < 0.6) return null;
+  const tokens = alignScriptToWords(tokenizeScript(text), asr.words).map(t => ({ ...t, sentenceEnd: /[.!?؟…]$/.test(t.w) }));
+  if (tokens.some(t => !Number.isFinite(t.start) || !Number.isFinite(t.end))) return null;
+  return { text, tokens };
+}
+
