@@ -230,6 +230,13 @@ How to draw well:
 - Make it feel alive: 2-5 elements with a "loop" (clouds sway, sun spins slowly, bubbles float, wheels spin) and a staggered "in" for the main parts. Everything must stay inside the canvas.
 - Total at most 45 elements (a group counts as one plus its children). No overlapping text. Never draw logos, real people or text that is not said in the scene.
 
+Motion design — the drawing must TELL the idea over time, like a professional explainer animation, not sit still:
+- Build it in the order the words are spoken: give the main parts explicit "in.at" values spread across the scene (e.g. 0.05, 0.25, 0.45, 0.65) so the picture assembles step by step with the voice.
+- Show cause → effect with movement: things that travel use "move" (a coin flying into a wallet, a package moving along a conveyor, a rocket rising, a message going from one phone to another, an arrow growing from A to B).
+- Use visual metaphors instead of literal text: a growing plant for growth, a maze for confusion, a bridge for connection, a ladder/stairs for progress, a scale for balance, a funnel for selection, a magnet for attraction, gears for a system, a hourglass for time, a shield for protection, a road with milestones for a journey.
+- Diagrams are welcome: boxes/circles connected by lines or arrows that appear one after another, a simple chart drawn with rects, a phone/laptop screen with UI blocks.
+- Keep 2-5 continuous "loop" motions (spin, float, pulse, orbit) so the frame is never frozen.
+
 Example (a house with a sun): {"bg":"grad:#bfe6ff,#e8f7ff","elements":[{"shape":"circle","x":80,"y":20,"r":10,"fill":"#ffc833","loop":{"kind":"spin","amp":40,"speed":0.3},"in":{"kind":"pop"}},{"shape":"rect","x":0,"y":78,"w":100,"h":22,"fill":"#3bb273"},{"shape":"ellipse","x":50,"y":80,"rx":30,"ry":4,"fill":"#000","op":0.12},{"shape":"rect","x":28,"y":46,"w":44,"h":34,"rx":2,"fill":"#ffd9a8","in":{"kind":"grow"}},{"shape":"polygon","points":[[22,48],[50,22],[78,48]],"fill":"#e4572e","in":{"kind":"drop"}},{"shape":"rect","x":44,"y":60,"w":12,"h":20,"rx":2,"fill":"#7a4a2b"},{"shape":"rect","x":32,"y":54,"w":9,"h":9,"fill":"#9bd1ff"},{"shape":"circle","x":18,"y":30,"r":6,"fill":"#fff","loop":{"kind":"sway","amp":4,"speed":0.5}}]}`;
 
 export function artistSystem(castMap = null) {

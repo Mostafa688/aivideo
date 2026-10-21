@@ -1,6 +1,8 @@
 // ── scenesA.js ── مشاهد النص: عنوان، نص متحرّك متزامن مع الكلام، كلمة ضخمة، اقتباس، ختام
 import { f1, f2, esc, wrapText, textWidth, clamp01, lerp, easeOutCubic, easeOutBack, easeInOutCubic, easeOutExpo, seg, spring, fade, rgba, mix, lighten, darken, uid, txt, fitText, rand, icon } from './design.js';
 import { ent, card, pill, glowCircle, gradientDef, layoutWords } from './common.js';
+import { object3d, resolveObject } from './objects3d.js';
+import { resolveIcon } from './design.js';
 
 // ── عنوان ──
 export function title(c, d, t, dur) {
@@ -32,11 +34,15 @@ export function kinetic(c, d, t, dur, sc) {
   const toks = sc.tokens && sc.tokens.length ? sc.tokens : String(d.text || '').split(/\s+/).filter(Boolean).map((x, i, a) => ({ w: x, start: (i / a.length) * dur * 0.9, end: ((i + 1) / a.length) * dur * 0.9 }));
   const words = toks.map(x => ({ text: x.w, start: x.start, end: x.end }));
   const emph = new Set((d.emphasis || []).map(x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')));
-  const maxW = w * (portrait ? 0.86 : 0.8), maxH = h * (portrait ? 0.56 : 0.6);
+  // عنصر بصري متحرك جنب الكلام (شكل 3D أو أيقونة كبيرة بحلقات وحركة) — عشان المشهد ميبقاش نص بس
+  const vObj = c.look === 'motion' || c.look === undefined ? resolveObject(d.object) : null, vIcon = !vObj && d.icon ? resolveIcon(d.icon) : null, hasVis = !!(vObj || vIcon);
+  const maxW = w * (portrait ? 0.86 : hasVis ? 0.54 : 0.8), maxH = h * (portrait ? (hasVis ? 0.4 : 0.56) : 0.6);
   let size = (portrait ? 128 : 124) * s, lines = [];
-  for (; size > 40 * s; size -= 4 * s) { lines = layoutWords(words, size, maxW, sc.mm, rtl); if (lines.length * size * 1.3 <= maxH && lines.length <= (portrait ? 7 : 5)) break; }
-  const lh = size * 1.3, total = lines.length * lh, y0 = h * (portrait ? 0.48 : 0.5) - total / 2 + size * 0.95;
+  for (; size > 40 * s; size -= 4 * s) { lines = layoutWords(words, size, maxW, sc.mm, rtl); if (lines.length * size * 1.3 <= maxH && lines.length <= (portrait ? (hasVis ? 5 : 7) : 5)) break; }
+  const tcx = hasVis && !portrait ? (rtl ? w * 0.62 : w * 0.38) : w / 2;
+  const lh = size * 1.3, total = lines.length * lh, y0 = h * (portrait ? (hasVis ? 0.64 : 0.48) : 0.5) - total / 2 + size * 0.95;
   o += glowCircle(c, 'kg', w / 2, h * 0.5, Math.max(w, h) * 0.45, pal.a1, 0.14);
+  if (hasVis) o += kineticVisual(c, { obj: vObj, ico: vIcon, cx: portrait ? w / 2 : (rtl ? w * 0.2 : w * 0.8), cy: portrait ? h * 0.25 : h * 0.5, R: portrait ? w * 0.2 : h * 0.24 }, t, dur, sc);
   lines.forEach((ln, li) => {
     const y = y0 + li * lh;
     for (const it of ln.items) {
@@ -45,11 +51,15 @@ export function kinetic(c, d, t, dur, sc) {
       if (t < st - 0.01) continue;
       const active = t >= wd.start - 0.02 && t <= wd.end + 0.12, isE = emph.has(clean);
       const sc2 = 0.78 + 0.22 * Math.min(1.12, e.p) + (active ? 0.05 : 0), dy = (1 - Math.min(1, e.p)) * 38 * s;
-      const x = w / 2 + it.cx, yy = y + dy;
-      if (active) o += `<rect x="${f1(x - it.width / 2 - size * 0.12)}" y="${f1(yy - size * 0.86)}" width="${f1(it.width + size * 0.24)}" height="${f1(size * 1.12)}" rx="${f1(size * 0.2)}" fill="${pal.a1}" opacity="0.24"/>`;
+      const x = tcx + it.cx, yy = y + dy;
+      // الكلمة المهمة: شريط ماركر مصمت بيتمد ورا الكلمة ولون النص متباين معاه (كان لون الكلمة قريب من لون المربع فمكانتش بتتقري)
+      const hiCol = pal.emph || pal.a2, hiP = isE ? easeOutCubic(seg(t, st + 0.05, st + 0.4)) : 0;
+      if (isE && hiP > 0.01) {
+        const bw = (it.width + size * 0.3) * hiP, rtlW = c.rtl !== false && /[\u0600-\u06FF]/.test(wd.text);
+        o += `<rect x="${f1(rtlW ? x + it.width / 2 + size * 0.15 - bw : x - it.width / 2 - size * 0.15)}" y="${f1(yy - size * 0.84)}" width="${f1(bw)}" height="${f1(size * 1.08)}" rx="${f1(size * 0.18)}" fill="${hiCol}" opacity="${f2(0.95 * e.o)}" transform="rotate(-1.5 ${f1(x)} ${f1(yy)})"/>`;
+      } else if (active) o += `<rect x="${f1(x - it.width / 2 - size * 0.12)}" y="${f1(yy - size * 0.86)}" width="${f1(it.width + size * 0.24)}" height="${f1(size * 1.12)}" rx="${f1(size * 0.2)}" fill="${pal.a1}" opacity="0.24"/>`;
       o += `<g transform="translate(${f1(x)} ${f1(yy)}) scale(${f2(sc2)}) translate(${f1(-x)} ${f1(-yy)})">`
-        + txt(c, wd.text, x, yy, size, { weight: 900, fill: isE ? (pal.emph || pal.a2) : pal.text, opacity: e.o, glow: isE && pal.dark ? pal.a2 : null, glowW: 0.16 }) + '</g>';
-      if (isE) o += `<rect x="${f1(x - it.width / 2)}" y="${f1(yy + size * 0.12)}" width="${f1(it.width * easeOutCubic(seg(t, st + 0.1, st + 0.5)))}" height="${f1(size * 0.07)}" rx="${f1(size * 0.035)}" fill="${pal.emph || pal.a2}"/>`;
+        + txt(c, wd.text, x, yy, size, { weight: 900, fill: isE ? (hiP > 0.5 ? onColor(hiCol) : hiCol) : pal.text, opacity: e.o }) + '</g>';
     }
   });
   return o;
@@ -112,3 +122,37 @@ export function outro(c, d, t, dur) {
   }
   return o;
 }
+
+// لون نص مقروء فوق لون معيّن (أبيض أو كحلي غامق حسب سطوع اللون)
+function onColor(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '')); if (!m) return '#ffffff';
+  const n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#0f172a' : '#ffffff';
+}
+
+// البطل البصري للمشهد: دخول بنطّة، حلقات نبض بتتمدد، حلقة متقطعة بتلف ونقط بتدور حواليه
+function kineticVisual(c, { obj, ico, cx, cy, R }, t, dur, sc) {
+  const { pal, s } = c; let o = '';
+  const p = spring(clamp01((t - 0.05) / 0.7)), id = uid('kv');
+  o += glowCircle(c, id + 'g', cx, cy, R * 1.9, pal.a2, 0.22 * Math.min(1, p));
+  for (let k = 0; k < 2; k++) {
+    const ph = ((t * 0.7 + k * 0.5) % 1);
+    o += `<circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(R * (1 + ph * 0.75) * p)}" fill="none" stroke="${pal.a1}" stroke-width="${f1(3 * s)}" opacity="${f2((1 - ph) * 0.45 * Math.min(1, p))}"/>`;
+  }
+  const rot = (t * 28 + sc.index * 40) % 360;
+  o += `<circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(R * 1.22 * p)}" fill="none" stroke="${pal.a2}" stroke-width="${f1(3.5 * s)}" stroke-dasharray="${f1(18 * s)} ${f1(22 * s)}" opacity="${f2(0.55 * Math.min(1, p))}" transform="rotate(${f1(rot)} ${f1(cx)} ${f1(cy)})"/>`;
+  for (let k = 0; k < 3; k++) {
+    const a = (t * (0.9 + k * 0.25) + k * 2.1) % (Math.PI * 2), rr = R * (1.38 + k * 0.12) * p;
+    o += `<circle cx="${f1(cx + Math.cos(a) * rr)}" cy="${f1(cy + Math.sin(a) * rr)}" r="${f1((7 - k * 1.5) * s)}" fill="${[pal.a1, pal.a2, pal.a3 || pal.a1][k]}" opacity="${f2(0.9 * Math.min(1, p))}"/>`;
+  }
+  if (obj) {
+    o += object3d(c, obj, cx, cy, R * 1.55, { t, at: 0.05, rot: -6 });
+  } else {
+    const gid = uid('kvb'), bob = Math.sin(t * 2.2) * 6 * s;
+    o += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${pal.a1}"/><stop offset="1" stop-color="${pal.a2}"/></linearGradient></defs>`;
+    o += `<g transform="translate(${f1(cx)} ${f1(cy + bob)}) scale(${f2(p)}) translate(${f1(-cx)} ${f1(-cy)})"><circle cx="${f1(cx)}" cy="${f1(cy + R * 0.06)}" r="${f1(R)}" fill="#000" opacity="0.22"/><circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(R)}" fill="url(#${gid})"/><circle cx="${f1(cx - R * 0.3)}" cy="${f1(cy - R * 0.35)}" r="${f1(R * 0.32)}" fill="#fff" opacity="0.18"/>`
+      + icon(c, ico, cx, cy, R * 1.05, { color: '#ffffff', sw: 6 }) + '</g>';
+  }
+  return o;
+}
+
