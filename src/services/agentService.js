@@ -233,13 +233,26 @@ function buildSystemPrompt(userPlan, isAdminUser = false, userRegion = null, mem
 
 KEEP AGREED SETTINGS WHEN ONLY ONE THING CHANGES: if the customer changes just one setting (for example the model — "خليها wan 3.0" / "بقول wan" — or the quality), keep everything already agreed or stated (duration, aspect ratio, quality tier, their exact prompt) and only re-quote the price for the new combination in ONE short line; never silently reset the quality tier to a default (for example back to 720p when they had said 480p) and never ask again about things they already answered. When the customer pasted a complete prompt, use it as the video prompt exactly as written (without their Arabic instruction sentence around it) and do not ask for extra details they did not offer.
 
-LANGUAGE — CRITICAL, CHECK THIS BEFORE EVERY SINGLE REPLY, NO EXCEPTIONS: look at the language of the message the user JUST sent, right now, in isolation — not the language of earlier messages in this same conversation, not the platform's default UI language, not any region setting. If their current message is written in English, your ENTIRE reply must be in English. If it's Arabic (including Egyptian colloquial), reply in casual Egyptian Arabic (مصري). A conversation can and does switch languages mid-thread — a user who wrote Arabic earlier and English now gets an English reply now, full stop; never keep replying in whatever language you started the conversation in out of habit or momentum. Base this ONLY on the language of the user's own sentences/instructions — never on quoted or embedded text in a different script inside their message (a Quran verse, a song lyric, a proper noun, a pasted script/subtitle excerpt they want included in the video itself). This ALSO applies to any injected system note you're given about a channel or video idea (e.g. a note saying videoLanguage="ar_eg" for the video's own narration/content) — that describes what LANGUAGE THE GENERATED VIDEO WILL BE NARRATED IN, a completely separate thing from what language YOU reply to the user in. A user typing in English asking about an Arabic-narrated channel video still gets an English reply from you — never switch your reply language because of a channel's content language. A long PROMPT pasted for the video model (usually English) after an Arabic instruction such as "اعملي فيديو 10 ثواني بال prompt ده:" is embedded text — the user's own instruction is Arabic, so reply in Egyptian Arabic, never in English. Re-verify this on every turn — do not assume the language is "locked in" from a previous message.
+LANGUAGE — CRITICAL, CHECK THIS BEFORE EVERY SINGLE REPLY, NO EXCEPTIONS: look at the language of the message the user JUST sent, right now, in isolation — not the language of earlier messages in this same conversation, not the platform's default UI language, not any region setting. If their current message is written in English, your ENTIRE reply must be in English. If it's Arabic, reply in the customer's OWN dialect as given in the "REPLY LANGUAGE FOR THIS MESSAGE" note (Egyptian only for customers who write Egyptian; Saudi/Gulf customers get Saudi/Gulf Arabic; unclear → simple white Arabic, never Egyptian-only words). A conversation can and does switch languages mid-thread — a user who wrote Arabic earlier and English now gets an English reply now, full stop; never keep replying in whatever language you started the conversation in out of habit or momentum. Base this ONLY on the language of the user's own sentences/instructions — never on quoted or embedded text in a different script inside their message (a Quran verse, a song lyric, a proper noun, a pasted script/subtitle excerpt they want included in the video itself). This ALSO applies to any injected system note you're given about a channel or video idea (e.g. a note saying videoLanguage="ar_eg" for the video's own narration/content) — that describes what LANGUAGE THE GENERATED VIDEO WILL BE NARRATED IN, a completely separate thing from what language YOU reply to the user in. A user typing in English asking about an Arabic-narrated channel video still gets an English reply from you — never switch your reply language because of a channel's content language. A long PROMPT pasted for the video model (usually English) after an Arabic instruction such as "اعملي فيديو 10 ثواني بال prompt ده:" is embedded text — the user's own instruction is Arabic, so reply in Egyptian Arabic, never in English. Re-verify this on every turn — do not assume the language is "locked in" from a previous message.
 
 ${accountStatusLine}
 USER REGION: ${regionLine}
 CONNECTED CHANNELS: ${channelsLine}
 VOICE CLONE: ${voiceCloneLine}
 ${memoryNote ? `\nMEMORY (see rule 12 below on how to use this): ${memoryNote}\n` : ''}
+
+UNDERSTAND FIRST, THEN ACT — CRITICAL (a real failed chat that made the agent look like a bot reciting memorised lines: a Saudi school principal on the free plan wrote "I want a cinematic explainer video", then "اضيف اسمي سفيرة الثقافة المؤسسية فاديه الثبيتي ومديرة المدرسة زمها الحارثي واسم المدرسة مدرسة الامام شعبة للطفولة المبكرة", then "ضروري صوتي" (= is my voice required?), then "خلاص انشئ". The agent never asked what the video is ABOUT, answered "is my voice required?" with "are you in Egypt or outside Egypt?", repeated the same voice/packages paragraph three times, and replied in Egyptian to a Saudi customer). Before EVERY reply, silently work out:
+1. GOAL: what does the customer want to make — type of video, topic/content, audience, purpose (e.g. a school video for an early-childhood school)? Combine ALL their messages, not just the last one.
+2. GIVEN: what did they already give you (names and titles to show, text, files, photos, voice, length, style)? Keep it and USE it — never ask for it again.
+3. DIRECT QUESTION: did their last message ask something (even 2 words like "ضروري صوتي؟")? Answer it FIRST, plainly and honestly (e.g. "لا، مو ضروري — بس…"), then continue.
+4. BLOCKER: what is the ONE thing still missing to start? Ask only for that one thing — or, better, solve it for them.
+5. NEXT STEP: one clear action.
+Rules that follow from this:
+- If the topic/content of the video is still unknown, your first job is to ask about it (one friendly question with 2-3 example directions that fit what you know, e.g. for a school: welcome video for parents, the school's activities, a celebration) — BEFORE talking about voices, packages or prices.
+- Names/titles/text the customer wants on screen go INTO the video: say they will appear (title or end card) and put them in the marker ("brief": "show on screen: …").
+- FREE-PLAN customer who wants a video and has no recording yet: the free path is the free minute with their OWN voice. Make it effortless instead of repeating requirements: offer to WRITE a short ~1-minute script for them right now (built from their topic, including the names/details they gave) that they simply read aloud and record with the microphone / + button in this chat — then you start it for free. Mention the paid AI voice only once, in one short line, as the alternative.
+- "خلاص انشئ / ابدأ / go / سوّه" while something required is missing: never paste the same explanation again. Say in ONE line exactly what is missing and the fastest way, and do the part you can do now (e.g. write the script immediately).
+- Never answer with a question that ignores what they just said, and never ask the region question unless they want to pay now.
 
 REPLY STYLE — how every reply must LOOK and THINK (the customer reads it on a phone; the chat renders simple formatting):
 - Think first: what EXACTLY is the customer asking in their LAST message, what do they already know from earlier, and what is the ONE next step? Answer that — don't recite everything you know.
@@ -297,7 +310,7 @@ A CUSTOMER-SUPPLIED PROMPT THAT'S ALREADY COMPLETE GOES THROUGH VERBATIM — CRI
 Steps 9-14 below (subscription, account actions, research, memory, channels, voice clone) apply to every conversation:
 
 9. SUBSCRIPTION FLOW — this platform has NO free plan anymore (fully cancelled), so guide any user who wants to subscribe/top-up/pay through this exact flow:
-   a. If you don't already know the user's region (see "USER REGION" below — could be "eg", "intl", or unknown), ask ONE short friendly question first: "انت في مصر ولا برة مصر؟ عشان أوريك طريقة الدفع المناسبة" / "Are you in Egypt or outside Egypt? So I can show you the right payment method." Never guess from language alone (an Arabic speaker could be anywhere) — always ask if unknown. IMPORTANT: check your own immediately-previous reply in the conversation history first — if you already asked this exact question there and the user's next message didn't actually answer it (e.g. they said something else, like confirming a detail or asking a different question), do NOT paste the identical sentence again. Briefly acknowledge what they DID say, answer/address it, and only then re-ask the region question in different wording (or just proceed with general info and ask again once it's actually needed, e.g. right before showing packages) — repeating the exact same question back-to-back reads as a broken bot that isn't tracking the conversation.
+   a. ONLY when the customer actually wants to BUY / subscribe / see how to pay right now (not when they ask any other question — e.g. "is my voice required?" must be answered directly, never with the region question): if you don't already know the user's region (see "USER REGION" below — could be "eg", "intl", or unknown), ask ONE short friendly question first: "انت في مصر ولا برة مصر؟ عشان أوريك طريقة الدفع المناسبة" / "Are you in Egypt or outside Egypt? So I can show you the right payment method." Never guess from language alone (an Arabic speaker could be anywhere) — always ask if unknown. IMPORTANT: check your own immediately-previous reply in the conversation history first — if you already asked this exact question there and the user's next message didn't actually answer it (e.g. they said something else, like confirming a detail or asking a different question), do NOT paste the identical sentence again. Briefly acknowledge what they DID say, answer/address it, and only then re-ask the region question in different wording (or just proceed with general info and ask again once it's actually needed, e.g. right before showing packages) — repeating the exact same question back-to-back reads as a broken bot that isn't tracking the conversation.
    b. Once you know the region, end your reply with ###SET_REGION###{"region":"eg"} (or "intl") ONCE, right after they answer, so the platform remembers it for next time and never has to ask again — this marker produces no visible side effect to the user, just silently remembers it, so keep your visible reply focused on step (c).
    c. Present the actual credit packages for their region conversationally (don't just dump a bare price list) — pick 1-2 that best fit what they described needing, mention the others exist too:
 ${Object.entries(EG_CREDIT_PACKAGES).map(([k, p]) => `      - Egypt "${k}": ${p.name} — ${p.credits.toLocaleString()} credits for ${p.egp.toLocaleString()} EGP (InstaPay)`).join('\n')}
@@ -416,13 +429,74 @@ async function callClaudeDirectAPI(systemPrompt, historyMessages, userContent) {
 // ممكن تلخبط الموديل. الحل: توجيه صريح مبني على فحص حروف حقيقي لرسالة العميل نفسها (مش تخمين
 // نصي من الموديل)، بيتحط في آخر الرسالة المبعوتة فعليًا (أقرب حاجة لتوليد الرد، أعلى تأثير
 // من قاعدة مدفونة في نص طويل)
-function detectReplyLanguageDirective(message) {
+// لهجة العميل من كلامه هو (الرسالة الحالية + آخر رسايله): السعودي/الخليجي ميتردش عليه بالمصري
+const DIALECT_MARKERS = {
+  gulf: /(^|\s)(ابغى|ابغي|أبغى|ابغاك|ابغا|تبغى|يبغى|وش|ايش|إيش|وشو|مو|مب|حق|زين|سوي|سويلي|يسوي|الحين|ذحين|دحين|ودي|تكفى|تكفين|مرة حلو|مره حلو|عشانك|ياخي|يا خوي|ابي|أبي|ابيك|نبي|وايد|شلون|هالحين|اللحين|يعطيك العافية)(?=$|\s|[.,!?؟،:])/,
+  levant: /(^|\s)(شو|هلق|هلأ|بدي|بدك|كتير|منيح|هيك|ليش|شي|عنجد|تمام هيك|لسا|مشان|كرمال)(?=$|\s|[.,!?؟،:])/,
+  maghreb: /(^|\s)(بغيت|واش|ديال|ديالي|بزاف|دابا|كيفاش|علاش|غادي|ماشي مشكل|صافي|راه)(?=$|\s|[.,!?؟،:])/,
+  iraq: /(^|\s)(شكو|ماكو|اكو|هواية|شلونك|گول|اريد|أريد|ديروح|هسه)(?=$|\s|[.,!?؟،:])/,
+  egypt: /(^|\s)(عايز|عاوز|عايزة|عاوزة|ازاي|إزاي|ده|دي|كده|كدا|اوي|أوي|بتاع|بتاعي|عشان كده|ليه|امتى|فين|مش|دلوقتي|خلاص كده|ماشي|يا باشا)(?=$|\s|[.,!?؟،:])/,
+};
+export function detectArabicDialect(texts = []) {
+  const t = ` ${texts.filter(Boolean).join(' ')} `;
+  const score = Object.fromEntries(Object.entries(DIALECT_MARKERS).map(([k, re]) => [k, (t.match(new RegExp(re.source, 'g')) || []).length]));
+  const best = Object.entries(score).sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] > 0 ? best[0] : null;
+}
+const DIALECT_REPLY = {
+  egypt: 'reply in casual Egyptian Arabic (مصري) like they write',
+  gulf: 'the customer writes Saudi/Gulf Arabic — reply in natural, polite Saudi/Gulf Arabic (لهجة خليجية بيضاء: أبغى، وش، الحين، زين، ودّك، أبشر) and NEVER use Egyptian-only words (عايز، ده، دي، كده، إزاي، دلوقتي، بتاع، هتقولي)',
+  levant: 'the customer writes Levantine Arabic — reply in natural, friendly Levantine Arabic (شامي) and NEVER use Egyptian-only words',
+  maghreb: 'the customer writes Maghrebi Arabic — reply in simple, clear Arabic close to Modern Standard Arabic with a friendly tone (avoid Egyptian-only words), a few common Maghrebi words are welcome',
+  iraq: 'the customer writes Iraqi Arabic — reply in simple, friendly Arabic close to Iraqi/white dialect and NEVER use Egyptian-only words',
+};
+function detectReplyLanguageDirective(message, recentUserTexts = []) {
   const text = String(message || '');
   const arabicChars = (text.match(/[؀-ۿ]/g) || []).length;
   const latinChars = (text.match(/[A-Za-z]/g) || []).length;
   if (arabicChars === 0 && latinChars === 0) return '';
-  if (arabicChars > latinChars) return 'REPLY LANGUAGE FOR THIS MESSAGE: the user just wrote in Arabic — reply in casual Egyptian Arabic.';
+  if (arabicChars > latinChars) {
+    const d = detectArabicDialect([text, ...recentUserTexts]);
+    return `REPLY LANGUAGE FOR THIS MESSAGE: the user just wrote in Arabic — ${d ? DIALECT_REPLY[d] : 'their dialect is not clear yet: reply in simple, clear, friendly Arabic understood everywhere (لهجة بيضاء قريبة من الفصحى المبسطة) and do NOT use Egyptian-only words (عايز، ده، دي، كده، إزاي، دلوقتي، بتاع) — the customer may be from Saudi Arabia, the Gulf or anywhere'}.`;
+  }
   return 'REPLY LANGUAGE FOR THIS MESSAGE: the user just wrote in English — reply in English, regardless of any channel/video content language mentioned elsewhere in this prompt.';
+}
+
+// ── خطوة "افهم الأول": موديل سريع ورخيص بيقرا آخر المحادثة ويطلع ملخص فهم قصير (الهدف، اللي العميل اداه، سؤاله المباشر،
+// الناقص، الخطوة الجاية) — بيتحط للايجنت كملاحظة خاصة قبل ما يرد، عشان ميردش من "الذاكرة" ويكرر نفس الفقرة
+const UNDERSTAND_MODEL = 'openai/gpt-oss-20b';
+const UNDERSTAND_CACHE = new Map();
+export async function understandConversation({ message, history = [], userPlan = 'free' }, { timeoutMs = 6000, fetchImpl = fetch } = {}) {
+  if (!GROQ_API_KEY || !String(message || '').trim()) return null;
+  const convo = [...history.slice(-8), { role: 'user', content: message }]
+    .map(m => `${m.role === 'assistant' ? 'AGENT' : 'CUSTOMER'}: ${String(m.content || '').replace(/###[A-Z_]+###\s*\{[\s\S]*?\}\s*$/m, '[action marker]').slice(0, 600)}`).join('\n');
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST', headers: authHeaders(), signal: ctrl.signal,
+      body: JSON.stringify({
+        model: UNDERSTAND_MODEL, temperature: 0.1, max_tokens: 700, reasoning_effort: 'low', response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: `You read a chat between a customer and the assistant of Erivion (an AI video platform: AI videos, code-made animated/vox/motion-graphics videos, documentaries, montage, PDF-to-video). The customer is on the ${userPlan === 'free' ? 'FREE plan (free path = one free animated minute with their OWN recorded voice; AI voice and other videos need credits)' : 'paid plan'}. Understand what the customer really wants. Return ONLY JSON: {"goal":"what they want to make, with topic/audience/purpose if known, else 'unknown'","given":["concrete details they already gave: names/titles to show, text, files, voice, length, style..."],"direct_question":"the question in their LAST message, rephrased, or ''","missing":"the one thing still needed to start, or ''","agent_mistakes":"anything the agent already did wrong or repeated (ignored a question, repeated the same paragraph, wrong dialect, asked something irrelevant), or ''","next_step":"the single best next move for the agent in one sentence","dialect":"customer's language/dialect (e.g. Saudi Arabic, Egyptian Arabic, English, unclear Arabic)"}. Be concrete and short. Never invent details.` },
+          { role: 'user', content: convo },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    const j = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+    const parts = [
+      j.goal && `goal: ${j.goal}`,
+      Array.isArray(j.given) && j.given.length && `already given (use it, never ask again): ${j.given.slice(0, 8).join('; ')}`,
+      j.direct_question && `their direct question — answer it FIRST: ${j.direct_question}`,
+      j.missing && `still missing: ${j.missing}`,
+      j.agent_mistakes && `avoid repeating these earlier mistakes: ${j.agent_mistakes}`,
+      j.next_step && `best next step: ${j.next_step}`,
+      j.dialect && `customer language: ${j.dialect}`,
+    ].filter(Boolean).map(x => String(x).slice(0, 400));
+    return parts.length ? parts.join(' | ') : null;
+  } catch { return null; } finally { clearTimeout(timer); }
 }
 
 export async function agentChat({ message, history = [], attachmentNote = null, userPlan = 'free', isAdminUser = false, hasPhoto = false, hasVoice = false, hasVideo = false, videoDurationSec = null, hasStructuredScript = false, hasAdsScenePlan = false, userRegion = null, memoryNote = null, userChannels = [], hasClonedVoice = false, userCredits = null, mediaLedger = null, forceStrongerModel = false }) {
@@ -460,10 +534,18 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
     persistentNote += ` FULL PROJECT MEDIA LEDGER — every image/video URL ever generated in this project from the very start, independent of the ${MAX_HISTORY_MESSAGES}-message rolling history above (some of these may no longer appear in the recent messages shown above, but they are 100% real and still valid): ${mediaLedger.trim().slice(0, 8000)}. Use this whenever the customer asks to reuse/reference/animate something generated earlier in the project, even if it scrolled out of the recent chat history — never say you cannot find it or refuse to act if it's listed here.`;
   }
 
-  const langDirective = detectReplyLanguageDirective(message);
-  const userContent = [message, attachmentNote ? `[${attachmentNote}]` : '', persistentNote ? `[${persistentNote.trim()}]` : '', langDirective ? `[${langDirective}]` : '']
+  const recentUserTexts = history.filter(m => m.role !== 'assistant').slice(-4).map(m => String(m.content || '').slice(0, 400));
+  const langDirective = detectReplyLanguageDirective(message, recentUserTexts);
+  // بنخزّن الفهم دقيقتين بنفس الرسالة والمحادثة (إعادة التوليد بعد حارس التكرار مش محتاجة نداء جديد)
+  const uKey = `${userPlan}|${trimmedHistory.length}|${String(trimmedHistory[trimmedHistory.length - 1]?.content || '').slice(0, 80)}|${String(message || '').slice(0, 300)}`;
+  const cachedU = UNDERSTAND_CACHE.get(uKey);
+  const understanding = cachedU && Date.now() - cachedU.t < 120000 ? cachedU.v : await understandConversation({ message, history: trimmedHistory, userPlan }).catch(() => null);
+  if (!cachedU) { UNDERSTAND_CACHE.set(uKey, { v: understanding, t: Date.now() }); if (UNDERSTAND_CACHE.size > 500) UNDERSTAND_CACHE.delete(UNDERSTAND_CACHE.keys().next().value); }
+  const understandNote = understanding ? `PRIVATE UNDERSTANDING NOTES (an analysis of this conversation made just now — use it to answer smartly; never quote it): ${understanding}` : '';
+  // ملاحظات الفهم واللغة قبل المرفقات الطويلة عشان القص (حد الطول تحت) ميشيلهاش
+  const userContent = [message, understandNote ? `[${understandNote}]` : '', langDirective ? `[${langDirective}]` : '', attachmentNote ? `[${attachmentNote}]` : '', persistentNote ? `[${persistentNote.trim()}]` : '']
     .filter(Boolean).join('\n\n');
-  const trimmedUserContent = String(userContent || '').slice(0, 6000); // ✅ FIX: كانت 1200 (وقبلها 800) — كانت بتقطع أي سكريبت كامل أو تقسيم مشاهد طويل العميل بيلزقه في الشات نص الطريق قبل ما الايجنت حتى يشوفه
+  const trimmedUserContent = String(userContent || '').slice(0, 9000); // ✅ FIX: كانت 1200 (وقبلها 800) — كانت بتقطع أي سكريبت كامل أو تقسيم مشاهد طويل العميل بيلزقه في الشات نص الطريق قبل ما الايجنت حتى يشوفه
   const systemPrompt = buildSystemPrompt(userPlan, isAdminUser, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits);
 
   // ✅ NEW: المشتركين المدفوعين (أي حاجة غير "free") بيتكلموا مع Claude Sonnet 5 مباشرة.
@@ -502,7 +584,8 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
       temperature: 0.4,
       // ✅ "reasoning_effort" خاص بـ gpt-oss — الموديلين دلوقتي نفس العائلة، فبيتبعت في
       // الحالتين، بس بمستوى مختلف
-      reasoning_effort: useStrongerModel ? 'medium' : 'low',
+      // كانت 'low' للمجاني — كان بيرد من "الذاكرة" ومش بيفهم الطلب (شكوى حقيقية)؛ الفرق في التكلفة صغير جدًا مع gpt-oss
+      reasoning_effort: 'medium',
     }),
   });
 
