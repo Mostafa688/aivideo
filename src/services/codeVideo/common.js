@@ -1,4 +1,5 @@
 // ── common.js ── مكوّنات رسم مشتركة بين المشاهد
+import { styleCard, STYLE_OF } from './fxStyles.js';
 import { f1, f2, esc, wrapText, textWidth, clamp01, lerp, easeOutCubic, easeOutBack, easeInOutCubic, easeOutExpo, seg, spring, fade, rgba, mix, lighten, darken, uid, txt } from './design.js';
 
 export const ent = (t, at, dur = 0.6) => {
@@ -11,6 +12,7 @@ export const cardStroke = (c) => (c.pal.dark ? 'rgba(255,255,255,0.2)' : 'rgba(1
 
 /** لوحة/كارت بزوايا مدوّرة + ظل سفلي + خط إضاءة علوي */
 export function card(c, x, y, w, h, { r = 30, fill = null, stroke = null, accent = null, opacity = 1, shadow = true } = {}) {
+  if (STYLE_OF(c.pal) !== 'glow') return styleCard(c, x, y, w, h, { r, fill, stroke, accent, opacity, shadow }); // أنظمة التصميم التانية ليها كروتها
   const s = c.s; const R = r * s;
   let o = `<g opacity="${f2(opacity)}">`;
   if (shadow) o += `<rect x="${f1(x + 6 * s)}" y="${f1(y + 14 * s)}" width="${f1(w)}" height="${f1(h)}" rx="${f1(R)}" fill="#000" opacity="${c.pal.dark ? 0.32 : 0.12}"/>`;

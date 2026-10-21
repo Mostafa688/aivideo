@@ -133,7 +133,7 @@ function onColor(hex) {
 // البطل البصري للمشهد: دخول بنطّة، حلقات نبض بتتمدد، حلقة متقطعة بتلف ونقط بتدور حواليه
 function kineticVisual(c, { obj, ico, cx, cy, R }, t, dur, sc) {
   const { pal, s } = c; let o = '';
-  const p = spring(clamp01((t - 0.05) / 0.7)), id = uid('kv');
+  const p = spring(clamp01((t - 0.05) / 0.7)), id = uid(c, 'kv' + sc.index);
   o += glowCircle(c, id + 'g', cx, cy, R * 1.9, pal.a2, 0.22 * Math.min(1, p));
   for (let k = 0; k < 2; k++) {
     const ph = ((t * 0.7 + k * 0.5) % 1);
@@ -148,7 +148,7 @@ function kineticVisual(c, { obj, ico, cx, cy, R }, t, dur, sc) {
   if (obj) {
     o += object3d(c, obj, cx, cy, R * 1.55, { t, at: 0.05, rot: -6 });
   } else {
-    const gid = uid('kvb'), bob = Math.sin(t * 2.2) * 6 * s;
+    const gid = uid(c, 'kvb' + sc.index), bob = Math.sin(t * 2.2) * 6 * s;
     o += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${pal.a1}"/><stop offset="1" stop-color="${pal.a2}"/></linearGradient></defs>`;
     o += `<g transform="translate(${f1(cx)} ${f1(cy + bob)}) scale(${f2(p)}) translate(${f1(-cx)} ${f1(-cy)})"><circle cx="${f1(cx)}" cy="${f1(cy + R * 0.06)}" r="${f1(R)}" fill="#000" opacity="0.22"/><circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(R)}" fill="url(#${gid})"/><circle cx="${f1(cx - R * 0.3)}" cy="${f1(cy - R * 0.35)}" r="${f1(R * 0.32)}" fill="#fff" opacity="0.18"/>`
       + icon(c, ico, cx, cy, R * 1.05, { color: '#ffffff', sw: 6 }) + '</g>';

@@ -249,7 +249,9 @@ export function sanitizeScene(raw, spoken, { first = false, last = false, look =
 // ── الـprompt ──
 const SYSTEM_MOTION = `You are the director of professional animated explainer videos made entirely with code (motion graphics, kinetic typography, charts). You receive a voice-over split into scenes (with durations). For EACH scene choose the on-screen visual that best illustrates what is being said at that moment.
 
-Return ONLY JSON: {"title":"short video title (max 7 words, narration language)","mood":"epic|tech|business|nature|energetic|serious|clean|minimal","palette":"neon|sunset|emerald|royal|crimson|ocean|mono|daylight","scenes":[{"i":0,"type":"...","data":{},"bg":"aurora","cam":"push","transition":"slide"}]}
+Return ONLY JSON: {"title":"short video title (max 7 words, narration language)","mood":"epic|tech|business|nature|energetic|serious|clean|minimal","design":"glow|flat|swiss|blueprint|pop|pastel","palette":"neon|sunset|emerald|royal|crimson|ocean|mono|daylight","scenes":[{"i":0,"type":"...","data":{},"bg":"aurora","cam":"push","transition":"slide"}]}
+
+"design" = the whole visual identity of THIS video — pick the one that fits the topic and audience, so different videos look different: glow = dark, neon glow, cinematic (tech hype, gaming, crypto, dramatic stories); flat = bright solid colours, thick black outlines, hard shadows, playful shapes (tips, lifestyle, marketing, kids, social media); swiss = clean white editorial grid, black type, one red/blue accent (business, finance, news, serious explainers, corporate); blueprint = blue technical blueprint with white line drawings and grid (engineering, science, how things work, architecture, programming); pop = retro comic, halftone dots, star bursts, bold colours (fun facts, history curiosities, food, entertainment); pastel = soft dreamy pastel gradients and glossy spheres (health, wellness, beauty, education for kids, self-improvement). "palette" only matters for glow.
 
 Scene types and their "data":
 - kinetic {"emphasis":["1-3 key words exactly as spoken"],"object?":"${OBJECT_NAMES.join('|')}","icon?":"icon name"} — the spoken words appear in sync with the voice as big animated type NEXT TO an animated hero visual: a glossy 3D object (puzzle=problem, sparkle=new/magic, warning=risk, bolt=speed/energy, heart=love/health, star=quality/success, arrow=growth, coin=money/price, check=yes/right, cross=wrong/mistake, target=goal, bulb=idea, question=why/how, flame=hot/trend) or a big icon badge, with pulse rings and orbiting dots. ALWAYS give it an object or an icon that fits the words.
@@ -355,7 +357,7 @@ const fmtScene = (sc, i) => `[${i}] (${(sc.end - sc.start).toFixed(1)}s, ${sc.to
 export async function directVideo({ spoken, language = 'en', ratio = '16:9', topic = '', style = null, look = 'motion', voiceGender = 'unknown', castMap = CAST, worldMeta = null, onProgress = () => {} }, deps = {}) {
   const ask = deps.llmJson || llmJson;
   const scenes = spoken;
-  const plans = new Array(scenes.length).fill(null); let meta = { title: topic || '', mood: 'tech', palette: null, host: null, cast: [] };
+  const plans = new Array(scenes.length).fill(null); let meta = { title: topic || '', mood: 'tech', palette: null, design: null, host: null, cast: [] };
   const CH = 14, system = buildSystem(look);
   const castIds = Object.keys(castMap), customIds = castIds.filter(id => castMap[id].custom);
   const wcast = worldMeta?.castSpecs ? Object.keys(worldMeta.castSpecs) : [];
@@ -367,7 +369,7 @@ export async function directVideo({ spoken, language = 'en', ratio = '16:9', top
       const r = await ask({ system, user, maxTokens: 6000, temperature: 0.4 });
       if (from === 0) {
         const pals = LOOK_PALETTES[look] || MOTION_PALETTES;
-        meta = { title: stripLang(clean(r.title, 70)) || meta.title, mood: MOODS.includes(r.mood) ? r.mood : 'tech', palette: pals.includes(r.palette) ? r.palette : null, host: castMap[r.host] ? r.host : null, cast: (Array.isArray(r.cast) ? r.cast : []).filter(x => castMap[x]).slice(0, 4) };
+        meta = { title: stripLang(clean(r.title, 70)) || meta.title, mood: MOODS.includes(r.mood) ? r.mood : 'tech', palette: pals.includes(r.palette) ? r.palette : null, design: ['glow', 'flat', 'swiss', 'blueprint', 'pop', 'pastel'].includes(r.design) ? r.design : null, host: castMap[r.host] ? r.host : null, cast: (Array.isArray(r.cast) ? r.cast : []).filter(x => castMap[x]).slice(0, 4) };
       }
       const byI = new Map((Array.isArray(r.scenes) ? r.scenes : []).map(x => [Number(x.i), x]));
       chunk.forEach((sc, k) => { plans[from + k] = byI.get(from + k) || null; });
@@ -424,7 +426,7 @@ export function finalizePlan({ scenes, plans, meta, ratio = '16:9', look = 'moti
   const bgList = w3 ? ['aurora'] : cartoon ? CARTOON_BACKDROPS : vox ? ['paper'] : BACKDROPS;
   const trPool = w3 ? ['cut', 'cut', 'wipe', 'cut', 'slide'] : cartoon ? TOON_TR : vox ? VOX_TR : ['slide', 'zoom', 'wipe', 'slideup', 'iris'];
   return {
-    title: meta.title, mood: meta.mood, palette, host: w3 ? (worldMeta?.host || null) : host, look,
+    title: meta.title, mood: meta.mood, palette, design: meta.design, host: w3 ? (worldMeta?.host || null) : host, look,
     scenes: out.map((o, i) => {
       const raw = o.raw || {};
       const isData = DATA_TYPES.has(o.type);

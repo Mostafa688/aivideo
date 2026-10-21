@@ -1,4 +1,5 @@
 // ── compose.js ── تركيب إطار كامل: خلفية + كاميرا + مشهد (أو مشهدين في الانتقال) + طبقة نهائية
+import { styleDecor } from './fxStyles.js';
 import sharp from 'sharp';
 import { makeCtx, f1, f2, clamp01, easeInOutCubic, easeOutCubic } from './design.js';
 import { backdropSoftSvg, backdropCrisp, camera, finish } from './fx.js';
@@ -58,7 +59,9 @@ export function sceneGroup(base, sc, tLocal, plates) {
   const uri = plates?.get(plateKey(sc, tLocal));
   const bg = uri ? `<image href="${uri}" x="0" y="0" width="${c.w}" height="${c.h}" preserveAspectRatio="none"/>` : '';
   if (sc.type === 'world') return inner; // عالم 3D بيرسم سماه وأرضه بنفسه
-  return bg + backdropCrisp(c, tLocal, sc.bg || 'aurora', sc.seed || sc.index * 1.7, cam) + `<g transform="${cam.tf}">${inner}</g>`;
+  // الموشن: عناصر ديكور متحركة في أطراف الكادر (بتختلف حسب نظام التصميم) — المشهد ميبقاش فاضي حوالين المحتوى
+  const decor = c.look === 'motion' ? styleDecor(c, Math.max(0, tLocal), sc.index) : '';
+  return bg + backdropCrisp(c, tLocal, sc.bg || 'aurora', sc.seed || sc.index * 1.7, cam) + decor + `<g transform="${cam.tf}">${inner}</g>`;
 }
 
 export function frameSvg(story, T, plates = null) {

@@ -1,6 +1,7 @@
 // ── fx.js ── خلفيات متحركة (من غير فلاتر تقيلة: تدرّجات شعاعية بس) + كاميرا + طبقات نهائية
 import { f1, f2, rand, clamp01, lerp, easeInOutCubic, rgba, mix, lighten, darken, uid } from './design.js';
 import { LOOK_BACKDROPS } from './fxLooks.js';
+import { styleBackdrop, STYLE_OF } from './fxStyles.js';
 
 export const BACKDROPS = ['aurora', 'grid', 'particles', 'rays', 'waves', 'hex', 'bokeh', 'stripes', 'orbits'];
 
@@ -154,6 +155,11 @@ const parallax = (c, cam, inner) => (cam ? `<g transform="translate(${f1(cam.x *
 
 /** الطبقة الناعمة (تدرّج أساسي + توهّجات + vignette) — بتتحوّل لصورة منخفضة الدقة (plate) وبتتكبّر: أرخص بكتير من رسمها كاملة كل إطار */
 export function backdropSoftSvg(c, t, variant = 'aurora', seed = 0, cam = null) {
+  const st = STYLE_OF(c.pal);
+  if (st !== 'glow') { // نظام تصميم: خلفيته بتاعته (مصمتة/شبكة/مخطط/هافتون/باستيل) من غير التوهّج الداكن
+    const L = styleBackdrop(c, t, seed);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${c.w}" height="${c.h}" viewBox="0 0 ${c.w} ${c.h}">${parallax(c, cam, L.soft)}${st === 'blueprint' || st === 'pastel' ? finish(c) : ''}</svg>`;
+  }
   const fn = FNS[variant] || aurora; const layers = fn(c, t, seed);
   const gid = uid(c, 'cg');
   const glow = `<defs><radialGradient id="${gid}"><stop offset="0" stop-color="${c.pal.a1}" stop-opacity="${c.pal.dark ? 0.17 : 0.12}"/><stop offset="1" stop-color="${c.pal.a1}" stop-opacity="0"/></radialGradient></defs><circle cx="${f1(c.w / 2)}" cy="${f1(c.h * 0.46)}" r="${f1(Math.max(c.w, c.h) * 0.46)}" fill="url(#${gid})"/>`;
@@ -161,6 +167,7 @@ export function backdropSoftSvg(c, t, variant = 'aurora', seed = 0, cam = null) 
 }
 /** الطبقة الحادة (خطوط/نقط/سداسيات) — بتتحط فوق الـplate بدقة كاملة */
 export function backdropCrisp(c, t, variant = 'aurora', seed = 0, cam = null) {
+  if (STYLE_OF(c.pal) !== 'glow') return parallax(c, cam, styleBackdrop(c, t, seed).crisp);
   const fn = FNS[variant] || aurora; const layers = fn(c, t, seed);
   return parallax(c, cam, layers.crisp);
 }
