@@ -19,6 +19,7 @@ import { buildCaptionsAss } from '../documentary/captions.js';
 import { buildSrt } from '../documentary/uploadPackage.js';
 import { watermarkVideo } from '../watermark.js';
 import { persistAnimationBundle } from './editAnimation.js';
+import { DESIGN_STYLES, paletteForStyle, pickDesignStyle } from './fxStyles.js';
 
 const FEMALE_VOICES = new Set(['Zephyr', 'Kore', 'Leda', 'Aoede', 'Callirrhoe', 'Autonoe', 'Despina', 'Erinome', 'Laomedeia', 'Achernar', 'Gacrux', 'Pulcherrima', 'Vindemiatrix', 'Sulafat']);
 export function voiceGenderOf(input) {
@@ -81,7 +82,16 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   await prog('plan', 1, { title });
 
   // 4) تجميع القصة (storyboard)
-  const pal = pickPalette((LOOK_PALETTES[look] || []).includes(input.palette) ? input.palette : plan.palette || (look === 'cartoon' ? 'toon' : look === 'cartoon3d' ? 'candy' : look === 'vox' ? 'vox' : look === 'world3d' ? 'daylight' : null), plan.mood);
+  let pal = pickPalette((LOOK_PALETTES[look] || []).includes(input.palette) ? input.palette : plan.palette || (look === 'cartoon' ? 'toon' : look === 'cartoon3d' ? 'candy' : look === 'vox' ? 'vox' : look === 'world3d' ? 'daylight' : null), plan.mood);
+  // الموشن: نظام تصميم كامل لكل فيديو (glow/flat/swiss/blueprint/pop/pastel) — المخرج بيختاره حسب الموضوع، ولو مختارش بنختار حسب المود
+  // مع تنويع (كل فيديو شكل). لو العميل طلب لون من ألوان الموشن صراحةً بنفضل على glow بنفس اللون
+  if (look === 'motion') {
+    const seedN = [...String(id || title || script)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
+    const design = input.design && DESIGN_STYLES.includes(input.design) ? input.design
+      : (LOOK_PALETTES.motion || []).includes(input.palette) ? 'glow'
+      : DESIGN_STYLES.includes(plan.design) ? plan.design : pickDesignStyle(plan.mood, seedN);
+    if (design !== 'glow') pal = paletteForStyle(design, seedN) || pal;
+  }
   const scenes = spoken.map((sc, i) => {
     const p = plan.scenes[i], dur = sc.end - sc.start;
     const prevDur = i > 0 ? spoken[i - 1].end - spoken[i - 1].start : dur;

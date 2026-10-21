@@ -29,6 +29,20 @@ export const PALETTES = {
   vox: { dark: false, bg: ['#f3eee2', '#ece5d3', '#e1d7bd'], a1: '#e63946', a2: '#f2a900', a3: '#1d3557', text: '#16161a', muted: '#5f594b', mark: '#ffd23f', emph: '#e63946' },
   voxdark: { dark: true, bg: ['#0d0d10', '#17171b', '#222227'], a1: '#ffd23f', a2: '#e63946', a3: '#8ecae6', text: '#ffffff', muted: '#a9a9b3', mark: '#ffd23f' },
 };
+// باليتات كل نظام (أكتر من واحدة عشان فيديوهين بنفس النظام ميطلعوش متطابقين)
+export const STYLE_PALETTES = {
+  flatSun: { style: 'flat', dark: false, bg: ['#ffd23f', '#ffc21a', '#ffe48a'], a1: '#ff4d6d', a2: '#2b59c3', a3: '#06d6a0', text: '#111111', muted: '#3d3d3d', ink: '#111111', card: '#ffffff', emph: '#ff4d6d' },
+  flatMint: { style: 'flat', dark: false, bg: ['#2ec4b6', '#25b3a6', '#7fe0d6'], a1: '#ff9f1c', a2: '#e71d36', a3: '#ffffff', text: '#0b1f1d', muted: '#163d39', ink: '#0b1f1d', card: '#fdfffc', emph: '#e71d36' },
+  flatCoral: { style: 'flat', dark: false, bg: ['#ff6b6b', '#f25c5c', '#ffa3a3'], a1: '#ffe66d', a2: '#1a535c', a3: '#4ecdc4', text: '#16161a', muted: '#3b2a2a', ink: '#16161a', card: '#ffffff', emph: '#1a535c' },
+  swiss: { style: 'swiss', dark: false, bg: ['#f7f7f2', '#f2f2ec', '#ebebe3'], a1: '#e4002b', a2: '#111111', a3: '#0057b8', text: '#111111', muted: '#55554f', ink: '#111111', card: '#ffffff', emph: '#e4002b' },
+  swissBlue: { style: 'swiss', dark: false, bg: ['#f5f7fa', '#eef2f7', '#e6ebf2'], a1: '#0047ff', a2: '#111111', a3: '#ff5a1f', text: '#0d1117', muted: '#4b5563', ink: '#0d1117', card: '#ffffff', emph: '#0047ff' },
+  blueprint: { style: 'blueprint', dark: true, bg: ['#0a2a66', '#0d3a8c', '#1150b8'], a1: '#ffffff', a2: '#ffd166', a3: '#7fd1ff', text: '#ffffff', muted: '#b9d3ff', ink: '#ffffff', card: 'rgba(255,255,255,0.06)', emph: '#ffd166' },
+  pop: { style: 'pop', dark: false, bg: ['#fff1d6', '#ffe8bf', '#ffd9a0'], a1: '#e63946', a2: '#1d4ed8', a3: '#ffb703', text: '#14110f', muted: '#4a3f35', ink: '#14110f', card: '#ffffff', emph: '#e63946' },
+  popPink: { style: 'pop', dark: false, bg: ['#ffd6e8', '#ffc4dd', '#ffadd0'], a1: '#7b2cbf', a2: '#ff006e', a3: '#3a86ff', text: '#1a0b14', muted: '#4d2a3d', ink: '#1a0b14', card: '#ffffff', emph: '#ff006e' },
+  pastel: { style: 'pastel', dark: false, bg: ['#e9e4ff', '#fde2f3', '#d9f2ff'], a1: '#7c5cff', a2: '#ff7ab6', a3: '#3cc6ff', text: '#1e1b3a', muted: '#5b577e', ink: '#1e1b3a', card: 'rgba(255,255,255,0.78)', emph: '#7c5cff' },
+  pastelMint: { style: 'pastel', dark: false, bg: ['#d8fff1', '#e8f7ff', '#fff3d9'], a1: '#00b894', a2: '#6c5ce7', a3: '#fd9644', text: '#13312a', muted: '#4f6f66', ink: '#13312a', card: 'rgba(255,255,255,0.8)', emph: '#6c5ce7' },
+};
+Object.assign(PALETTES, STYLE_PALETTES);
 export const MOTION_PALETTES = ['neon', 'sunset', 'emerald', 'royal', 'crimson', 'ocean', 'mono', 'daylight'];
 export const TOON_PALETTES = ['toon', 'candy', 'mint', 'sunny'];
 export const VOX_PALETTES = ['vox', 'voxdark'];
