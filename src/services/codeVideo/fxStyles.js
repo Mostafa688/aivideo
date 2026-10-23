@@ -3,10 +3,10 @@
 // بشبكة وخطوط رفيعة)، blueprint (مخطط هندسي أزرق بخطوط بيضاء)، pop (ريترو: نقط هافتون ونجوم وألوان جريئة)، pastel (ناعم بكور لامعة)
 import { f1, f2, rand, rgba, uid, STYLE_PALETTES } from './design.js';
 
-export const DESIGN_STYLES = ['glow', 'flat', 'swiss', 'blueprint', 'pop', 'pastel'];
+export const DESIGN_STYLES = ['glow', 'flat', 'swiss', 'blueprint', 'pop', 'pastel', 'reel'];
 
 export const STYLE_OF = (pal) => (pal && DESIGN_STYLES.includes(pal.style) ? pal.style : 'glow');
-const STYLE_KEYS = { flat: ['flatSun', 'flatMint', 'flatCoral'], swiss: ['swiss', 'swissBlue'], blueprint: ['blueprint'], pop: ['pop', 'popPink'], pastel: ['pastel', 'pastelMint'] };
+const STYLE_KEYS = { flat: ['flatSun', 'flatMint', 'flatCoral'], swiss: ['swiss', 'swissBlue'], blueprint: ['blueprint'], pop: ['pop', 'popPink'], pastel: ['pastel', 'pastelMint'], reel: ['reel'] };
 /** باليتة لنظام معيّن (seed بيختار نسخة منها) — glow بيرجّع null (بيستخدم باليتات الموشن العادية) */
 export function paletteForStyle(style, seed = 0) {
   const keys = STYLE_KEYS[style]; if (!keys) return null;
@@ -14,9 +14,15 @@ export function paletteForStyle(style, seed = 0) {
   return { name: k, ...STYLE_PALETTES[k] };
 }
 /** اختيار نظام لو المخرج مختارش: حسب المود + تنويع بالـseed (عشان كل فيديو يطلع مختلف) */
+// ريلز: كل مشهد بياخد نسخة فاتحة أو سودا بالتبادل (نمط مش منتظم عشان الإيقاع ميبقاش متوقع)
+const REEL_DARK = [0, 1, 1, 0, 1, 0, 0, 1];
+export function scenePalette(pal, index = 0) {
+  if (!pal || pal.style !== 'reel' || pal.dark) return pal;
+  return REEL_DARK[index % REEL_DARK.length] ? { name: 'reelDark', ...STYLE_PALETTES.reelDark } : pal;
+}
 export function pickDesignStyle(mood, seed = 0) {
-  const byMood = { tech: ['blueprint', 'glow', 'swiss'], business: ['swiss', 'flat', 'pastel'], epic: ['glow', 'pop'], energetic: ['pop', 'flat', 'glow'], nature: ['pastel', 'flat'], serious: ['swiss', 'glow'], clean: ['swiss', 'pastel'], minimal: ['swiss'] };
-  const opts = byMood[mood] || ['flat', 'pop', 'swiss', 'pastel', 'glow', 'blueprint'];
+  const byMood = { tech: ['blueprint', 'glow', 'reel'], business: ['reel', 'swiss', 'flat', 'pastel'], epic: ['glow', 'reel', 'pop'], energetic: ['reel', 'pop', 'flat', 'glow'], nature: ['pastel', 'flat'], serious: ['swiss', 'glow'], clean: ['swiss', 'pastel'], minimal: ['swiss'] };
+  const opts = byMood[mood] || ['reel', 'flat', 'pop', 'swiss', 'pastel', 'glow', 'blueprint'];
   return opts[Math.abs(Math.floor(seed)) % opts.length];
 }
 
@@ -28,8 +34,13 @@ export function styleCard(c, x, y, w, h, { r = 30, fill = null, stroke = null, a
     if (shadow) o += `<rect x="${f1(x + 12 * s)}" y="${f1(y + 12 * s)}" width="${f1(w)}" height="${f1(h)}" rx="${f1(R)}" fill="${ink}"/>`;
     o += `<rect x="${f1(x)}" y="${f1(y)}" width="${f1(w)}" height="${f1(h)}" rx="${f1(R)}" fill="${fill && !/^rgba/.test(fill) ? fill : pal.card}" stroke="${ink}" stroke-width="${f1(5 * s)}"/>`;
     if (accent) o += `<rect x="${f1(x)}" y="${f1(y)}" width="${f1(w)}" height="${f1(16 * s)}" rx="${f1(R * 0.5)}" fill="${accent}" stroke="${ink}" stroke-width="${f1(5 * s)}"/>`;
+  } else if (st === 'reel') {
+    const R = 14 * s;
+    if (shadow) o += `<rect x="${f1(x + 4 * s)}" y="${f1(y + 18 * s)}" width="${f1(w)}" height="${f1(h)}" rx="${f1(R)}" fill="#000" opacity="${pal.dark ? 0.6 : 0.16}"/>`;
+    o += `<rect x="${f1(x)}" y="${f1(y)}" width="${f1(w)}" height="${f1(h)}" rx="${f1(R)}" fill="${pal.card}" stroke="${pal.dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)'}" stroke-width="${f1(2 * s)}"/>`;
+    if (accent) o += `<circle cx="${f1(x + w / 2)}" cy="${f1(y + 4 * s)}" r="${f1(14 * s)}" fill="${pal.a1}"/><circle cx="${f1(x + w / 2 - 4 * s)}" cy="${f1(y)}" r="${f1(4 * s)}" fill="#fff" opacity="0.6"/>`; // دبوس أحمر زي الكارت المتثبت
   } else if (st === 'swiss') {
-    o += `<rect x="${f1(x)}" y="${f1(y)}" width="${f1(w)}" height="${f1(h)}" fill="${pal.card}" stroke="${pal.ink}" stroke-width="${f1(2.5 * s)}"/>`;
+    o += `<rect x=""${f1(x)}" y="${f1(y)}" width="${f1(w)}" height="${f1(h)}" fill="${pal.card}" stroke="${pal.ink}" stroke-width="${f1(2.5 * s)}"/>`;
     o += `<rect x="${f1(x)}" y="${f1(y)}" width="${f1(14 * s)}" height="${f1(h)}" fill="${accent || pal.a1}"/>`;
   } else if (st === 'blueprint') {
     const R = 10 * s;
@@ -73,6 +84,17 @@ export function styleBackdrop(c, t, seed = 0) {
     crisp = `<path d="${dMin}" stroke="#fff" stroke-width="${f1(0.8 * s)}" opacity="0.07"/><path d="${dMaj}" stroke="#fff" stroke-width="${f1(1.4 * s)}" opacity="0.13"/>`;
     const cx = w * 0.12, cy = h * 0.88, r = m * 0.16;
     crisp += `<g opacity="0.35" transform="rotate(${f1(t * 14)} ${f1(cx)} ${f1(cy)})"><circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r)}" fill="none" stroke="#fff" stroke-width="${f1(2 * s)}"/><path d="M${f1(cx - r)} ${f1(cy)}H${f1(cx + r)}M${f1(cx)} ${f1(cy - r)}V${f1(cy + r)}" stroke="#fff" stroke-width="${f1(1.5 * s)}"/></g>`;
+  } else if (st === 'reel') {
+    if (pal.dark) {
+      // أسود بسبوت لايت ناعم في النص
+      const gid = uid(c, 'rsp');
+      soft = `<rect width="${w}" height="${h}" fill="${pal.bg[0]}"/><defs><radialGradient id="${gid}" cx="0.5" cy="0.42" r="0.55"><stop offset="0" stop-color="#ffffff" stop-opacity="0.11"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0.03"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient></defs><rect width="${w}" height="${h}" fill="url(#${gid})"/>`;
+    } else {
+      // كريمي بقوس رمادي سميك بيلف ببطء (زي الريلز التحريرية)
+      soft = `<rect width="${w}" height="${h}" fill="${pal.bg[0]}"/>`;
+      const R = m * 0.62, cx = w * (seed % 2 ? 1.02 : -0.02), cy = h * 0.5, rot = (seed % 2 ? -1 : 1) * (t * 4 + seed * 25);
+      crisp = `<circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(R)}" fill="none" stroke="${pal.arc || '#c9c5bd'}" stroke-width="${f1(74 * s)}" stroke-dasharray="${f1(R * 2.2)} ${f1(R * 4.1)}" transform="rotate(${f1(rot)} ${f1(cx)} ${f1(cy)})" opacity="0.9"/>`;
+    }
   } else if (st === 'pop') {
     const pid = uid(c, 'hd'), rid = uid(c, 'hdr');
     soft = `<rect width="${w}" height="${h}" fill="${pal.bg[0]}"/>`;
@@ -128,6 +150,7 @@ const DECOR = {
   blueprint: { kinds: ['plus', 'dim', 'ring', 'cross'], n: 8, ink: false, op: 0.7 },
   pop: { kinds: ['star', 'circle', 'tri', 'squig', 'plus'], n: 9, ink: true, op: 1 },
   pastel: { kinds: ['sphere', 'ring', 'circle', 'plus'], n: 8, ink: false, op: 0.85 },
+  reel: { kinds: ['plus'], n: 0, ink: false, op: 0 }, // الريلز نضيفة: مفيش ديكور متناثر
 };
 export function styleDecor(c, t, sceneIndex = 0) {
   const st = STYLE_OF(c.pal), D = DECOR[st], { pal, s } = c; let o = '';

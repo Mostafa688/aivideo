@@ -45,8 +45,8 @@ export function paperCard(c, { x, y, w, h, seed = 1, fill = PAPER_WHITE, shadow 
 }
 
 /** شريط لاصق شبه شفاف بأطراف مقطوعة */
-export function tape(c, cx, cy, len, rot = -6, seed = 1, color = '#e9dcb4') {
-  const { s } = c, hh = 20 * s, l = len / 2;
+export function tape(c, cx, cy, len, rot = -6, seed = 1, color = null) {
+  const { s } = c, hh = 20 * s, l = len / 2; color = color || c.pal?.tape || '#e9dcb4'; // الكولاج الناعم: شريط زيتوني
   let d = `M${f1(-l)} ${f1(-hh)}`;
   for (let i = 0; i <= 4; i++) d += `L${f1(l + (i % 2 ? 4 : -2) * s * rand(i, seed))} ${f1(-hh + (2 * hh * i) / 4)}`;
   for (let i = 4; i >= 0; i--) d += `L${f1(-l - (i % 2 ? 4 : -2) * s * rand(i + 9, seed))} ${f1(-hh + (2 * hh * i) / 4)}`;

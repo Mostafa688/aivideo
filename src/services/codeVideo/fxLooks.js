@@ -2,7 +2,7 @@
 import { f1, f2, rand, rgba, mix, lighten, darken, uid } from './design.js';
 
 export const CARTOON_BACKDROPS = ['sky', 'room', 'studio', 'city'];
-export const VOX_BACKDROPS = ['paper', 'ink', 'kraft', 'graph', 'parchment', 'blocks'];
+export const VOX_BACKDROPS = ['paper', 'ink', 'kraft', 'graph', 'parchment', 'blocks', 'collage'];
 
 const circ = (cx, cy, r) => `M${f1(cx - r)} ${f1(cy)}a${f1(r)} ${f1(r)} 0 1 0 ${f1(2 * r)} 0a${f1(r)} ${f1(r)} 0 1 0 ${f1(-2 * r)} 0z`;
 const cloud = (x, y, r, op = 0.95) => `<g opacity="${op}" fill="#fff"><circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(r)}"/><circle cx="${f1(x + r * 0.9)}" cy="${f1(y + r * 0.15)}" r="${f1(r * 0.78)}"/><circle cx="${f1(x - r * 0.95)}" cy="${f1(y + r * 0.2)}" r="${f1(r * 0.7)}"/><rect x="${f1(x - r * 1.5)}" y="${f1(y + r * 0.2)}" width="${f1(r * 3)}" height="${f1(r * 0.75)}" rx="${f1(r * 0.37)}"/></g>`;
@@ -130,4 +130,32 @@ function blocks(c, t, seed) {
   return { soft: '', crisp: o + edgeShade(w, h, s) };
 }
 
-export const LOOK_BACKDROPS = { sky, room, studio, city, paper, ink, kraft, graph, parchment, blocks };
+// كولاج ناعم (زي فيديوهات الشرح الكولاج الحديثة): ورق رمادي فاتح مكرمش، شبكة في جزء، دايرتين كبار سلمون/أخضر بيتحركوا ببطء،
+// شرايط لزق زيتوني متناثرة وعلامات + و × صغيرة
+function collage(c, t, seed) {
+  const { w, h, s, pal } = c; const m = Math.max(w, h);
+  let o = `<rect width="${w}" height="${h}" fill="${pal.paperLight || '#eeeeea'}"/>`;
+  // ورق تاني فوقه بحافة مقطوعة (طبقات)
+  const px = w * (0.18 + rand(1, seed) * 0.3), pw = w * 0.62;
+  o += `<path d="M${f1(px)} 0H${f1(px + pw)}L${f1(px + pw - 14 * s)} ${f1(h * 0.5)}L${f1(px + pw + 8 * s)} ${f1(h)}H${f1(px - 10 * s)}L${f1(px + 12 * s)} ${f1(h * 0.55)}Z" fill="#f6f6f3"/>`;
+  let gd = ''; const g = 34 * s, gx = w * (rand(2, seed) > 0.5 ? 0.55 : 0.04), gy = h * 0.08, gw = w * 0.4, gh = h * 0.5;
+  for (let x = gx; x <= gx + gw; x += g) gd += `M${f1(x)} ${f1(gy)}V${f1(gy + gh)}`;
+  for (let y = gy; y <= gy + gh; y += g) gd += `M${f1(gx)} ${f1(y)}H${f1(gx + gw)}`;
+  o += `<path d="${gd}" stroke="#9c9a93" stroke-width="${f1(1.1 * s)}" opacity="0.35" fill="none"/>`;
+  // دواير ملوّنة كبيرة ورا العناصر
+  const c1x = w * (0.3 + 0.4 * rand(3, seed)) + Math.sin(t * 0.25 + seed) * 18 * s, c1y = h * (0.45 + 0.2 * rand(4, seed));
+  o += `<circle cx="${f1(c1x)}" cy="${f1(c1y)}" r="${f1(m * 0.17)}" fill="${pal.a2}" opacity="0.78"/>`;
+  const c2x = rand(5, seed) > 0.5 ? w * 0.92 : w * 0.06, c2y = h * (0.15 + 0.6 * rand(6, seed));
+  o += `<path d="M${f1(c2x - m * 0.16)} ${f1(c2y)}a${f1(m * 0.16)} ${f1(m * 0.16)} 0 0 1 ${f1(m * 0.32)} 0Z" fill="${pal.a3}" opacity="0.8" transform="rotate(${f1(rand(7, seed) * 360 + t * 3)} ${f1(c2x)} ${f1(c2y)})"/>`;
+  // شرايط لزق زيتوني
+  for (let i = 0; i < 7; i++) {
+    const x = rand(i, seed + 21) * w, y = rand(i, seed + 23) * h, l = (60 + rand(i, seed + 25) * 70) * s, a = -50 + rand(i, seed + 27) * 100;
+    o += `<rect x="${f1(-l / 2)}" y="${f1(-8 * s)}" width="${f1(l)}" height="${f1(16 * s)}" fill="${pal.tape || '#b3ad5f'}" opacity="0.85" transform="translate(${f1(x)} ${f1(y)}) rotate(${f1(a)})"/>`;
+  }
+  // علامات صغيرة
+  for (let i = 0; i < 4; i++) { const x = rand(i, seed + 31) * w, y = rand(i, seed + 33) * h, z = 9 * s; o += i % 2 ? `<path d="M${f1(x - z)} ${f1(y)}H${f1(x + z)}M${f1(x)} ${f1(y - z)}V${f1(y + z)}" stroke="#333" stroke-width="${f1(2 * s)}" opacity="0.55"/>` : `<path d="M${f1(x - z)} ${f1(y - z)}L${f1(x + z)} ${f1(y + z)}M${f1(x + z)} ${f1(y - z)}L${f1(x - z)} ${f1(y + z)}" stroke="#333" stroke-width="${f1(2 * s)}" opacity="0.5"/>`; }
+  o += `<path d="${fiberPath(w, h, s, seed, 120)}" stroke="#000" stroke-width="${f1(1 * s)}" opacity="0.06" fill="none"/><path d="${speckPath(w, h, s, seed, 90)}" fill="#3a3a36" opacity="0.08"/>`;
+  return { soft: '', crisp: o };
+}
+
+export const LOOK_BACKDROPS = { sky, room, studio, city, paper, ink, kraft, graph, parchment, blocks, collage };
