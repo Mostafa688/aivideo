@@ -201,7 +201,7 @@ export function art(c, d, t, dur, sc) {
   o += `<g opacity="${f2(pop)}" transform="translate(${f1(cx)} ${f1(cy)}) scale(${f2((0.92 + 0.08 * pop) * kb)}) translate(${f1(-cx)} ${f1(-cy)})">`;
   o += `<rect x="${f1(sx + S * 0.014)}" y="${f1(sy + S * 0.03)}" width="${f1(S)}" height="${f1(S)}" rx="${f1(S * R / 100)}" fill="#000" opacity="${pal.dark ? 0.35 : 0.14}"/>`;
   o += `<g transform="translate(${f1(sx)} ${f1(sy)}) scale(${f2(S / 100)})"><defs><clipPath id="${id}"><rect width="100" height="100" rx="${R}"/></clipPath>${rc.defs.join('')}</defs><rect width="100" height="100" rx="${R}" fill="${bgFill}"/><g clip-path="url(#${id})">${inner}</g><rect width="100" height="100" rx="${R}" fill="none" stroke="${pal.dark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.18)'}" stroke-width="0.8"/></g></g>`;
-  o += inkWords(c, sc.tokens, t, box, { emphasis: d.emphasis, startSize: full ? 62 : portrait ? 74 : 80, maxLines: full ? 2 : 6 });
+  o += inkWords(c, sc.tokens, t, box, { emphasis: d.emphasis, startSize: full ? 72 : portrait ? 84 : 112, maxLines: full ? 2 : 5 }); // كلام أكبر جنب الرسمة (كان صغير جدًا في 16:9)
   return o;
 }
 

@@ -56,21 +56,20 @@ function emphAt(sc, d) {
   return hit ? hit.start : null;
 }
 export const SCENE_SFX = {
-  title: (d) => [E(0.02, 'whoosh_l', 0.7), E(0.28, 'impact_big', 0.75), E(0.95, 'shimmer', 0.45)],
+  title: (d) => [E(0.02, 'whoosh_l', 0.5), E(0.28, 'impact_big', 0.55), E(0.95, 'shimmer', 0.35)],
   kinetic: (d, sc) => {
-    const ev = [E(0.02, 'whoosh_s', 0.45)];
+    // مؤثرات هادية: دخول خفيف + لمسة واحدة على الكلمة المهمة (كان فيه "تيك" كل 3 كلمات و"زاب" حاد = مزعج)
+    const ev = [E(0.02, 'whoosh_s', 0.32)];
+    if (d.object || d.icon) ev.push(E(0.12, 'pop', 0.35));
     const emph = new Set((d.emphasis || []).map(x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')));
-    (sc.tokens || []).forEach((tk, i) => {
-      const clean = String(tk.w).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-      if (emph.has(clean)) ev.push(E(Math.max(0, tk.start - 0.04), 'hit', 0.7), E(Math.max(0, tk.start - 0.04), 'zap', 0.4));
-      else if (i % 3 === 0 && i > 0) ev.push(E(Math.max(0, tk.start - 0.03), 'tick', 0.32));
-    });
+    const first = (sc.tokens || []).find(tk => emph.has(String(tk.w).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')));
+    if (first) ev.push(E(Math.max(0, first.start - 0.04), 'swish', 0.38));
     return ev;
   },
-  bigword: () => [E(0.0, 'sweep_up', 0.6), E(0.25, 'slam', 1.0), E(0.25, 'impact_big', 0.7), E(0.7, 'shimmer', 0.35)],
+  bigword: () => [E(0.0, 'sweep_up', 0.45), E(0.25, 'slam', 0.7), E(0.7, 'shimmer', 0.3)],
   quote: () => [E(0.05, 'whoosh_s', 0.45), E(0.45, 'ding', 0.4)],
-  outro: () => [E(0.0, 'riser_l', 0.5), E(0.9, 'impact_big', 0.7), E(1.15, 'shimmer', 0.6)],
-  stat: () => [E(0.15, 'riser_l', 0.55), E(1.9, 'impact_big', 0.75), E(2.0, 'ding', 0.5)],
+  outro: () => [E(0.0, 'riser_l', 0.35), E(0.9, 'impact_big', 0.45), E(1.15, 'shimmer', 0.4)],
+  stat: () => [E(0.15, 'riser_l', 0.4), E(1.9, 'impact_big', 0.5), E(2.0, 'ding', 0.4)],
   bars: (d) => [E(0.2, 'whoosh_s', 0.5), ...d.items.slice(0, 6).map((_, i) => E(0.4 + i * 0.18, 'pop', 0.55)), E(1.4 + d.items.length * 0.18, 'ding', 0.4)],
   donut: (d) => [E(0.2, 'sweep_up', 0.55), ...d.items.slice(0, 5).map((_, i) => E(0.7 + i * 0.16, 'pop', 0.5)), E(1.9, 'ding', 0.45)],
   line: (d) => [E(0.25, 'riser_l', 0.45), ...d.points.slice(0, 8).map((_, i, a) => E(0.3 + 1.7 * (i / Math.max(1, a.length - 1)), 'tick', 0.5)), E(2.1, 'impact_big', 0.55)],
@@ -140,8 +139,8 @@ export const SCENE_SFX = {
 };
 // صوت الانتقالات (عند حدّ المشهد)
 export const TRANSITION_SFX = {
-  slide: [['whoosh_s', 0.7]], slideup: [['whoosh_s', 0.7]], zoom: [['whoosh_l', 0.7]], wipe: [['sweep_up', 0.55]],
-  iris: [['sweep_down', 0.5]], paper: [['paper', 0.75]], flash: [['boom', 0.8]], glitch: [['glitch', 0.7]], cut: [],
+  slide: [['whoosh_s', 0.45]], slideup: [['whoosh_s', 0.45]], zoom: [['whoosh_l', 0.45]], wipe: [['sweep_up', 0.4]],
+  iris: [['sweep_down', 0.38]], paper: [['paper', 0.6]], flash: [['boom', 0.55]], glitch: [['glitch', 0.45]], cut: [],
 };
 // أولوية الصوت: لما المؤثرات تتزاحم بنسيب الأهم ونشيل الباقي (من غير ما يبقى فيه صوت بيتكرر بشكل غريب)
 const PRI = { stamp: 8, paper: 3, scribble: 2, impact_big: 9, slam: 9, boom: 9, hit: 8, cheer: 8, splash: 7, ding: 6, zap: 6, glitch: 6, shimmer: 5, riser_l: 5, rumble: 4, sweep_up: 4, sweep_down: 4, whoosh_l: 4, whoosh_s: 3, swish: 3, pop: 3, click: 3, sizzle: 2, tick: 1 };

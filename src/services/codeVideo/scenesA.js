@@ -36,11 +36,11 @@ export function kinetic(c, d, t, dur, sc) {
   const emph = new Set((d.emphasis || []).map(x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')));
   // عنصر بصري متحرك جنب الكلام (شكل 3D أو أيقونة كبيرة بحلقات وحركة) — عشان المشهد ميبقاش نص بس
   const vObj = c.look === 'motion' || c.look === undefined ? resolveObject(d.object) : null, vIcon = !vObj && d.icon ? resolveIcon(d.icon) : null, hasVis = !!(vObj || vIcon);
-  const maxW = w * (portrait ? 0.86 : hasVis ? 0.54 : 0.8), maxH = h * (portrait ? (hasVis ? 0.4 : 0.56) : 0.6);
-  let size = (portrait ? 128 : 124) * s, lines = [];
-  for (; size > 40 * s; size -= 4 * s) { lines = layoutWords(words, size, maxW, sc.mm, rtl); if (lines.length * size * 1.3 <= maxH && lines.length <= (portrait ? (hasVis ? 5 : 7) : 5)) break; }
+  const maxW = w * (portrait ? 0.88 : hasVis ? 0.6 : 0.82), maxH = h * (portrait ? (hasVis ? 0.44 : 0.58) : 0.66);
+  let size = (portrait ? 140 : 150) * s, lines = [];
+  for (; size > 40 * s; size -= 4 * s) { lines = layoutWords(words, size, maxW, sc.mm, rtl); if (lines.length * size * 1.25 <= maxH && lines.length <= (portrait ? (hasVis ? 5 : 7) : 5)) break; }
   const tcx = hasVis && !portrait ? (rtl ? w * 0.62 : w * 0.38) : w / 2;
-  const lh = size * 1.3, total = lines.length * lh, y0 = h * (portrait ? (hasVis ? 0.64 : 0.48) : 0.5) - total / 2 + size * 0.95;
+  const lh = size * 1.25, total = lines.length * lh, y0 = h * (portrait ? (hasVis ? 0.64 : 0.48) : 0.5) - total / 2 + size * 0.95;
   o += glowCircle(c, 'kg', w / 2, h * 0.5, Math.max(w, h) * 0.45, pal.a1, 0.14);
   if (hasVis) o += kineticVisual(c, { obj: vObj, ico: vIcon, cx: portrait ? w / 2 : (rtl ? w * 0.2 : w * 0.8), cy: portrait ? h * 0.25 : h * 0.5, R: portrait ? w * 0.2 : h * 0.24 }, t, dur, sc);
   lines.forEach((ln, li) => {
@@ -105,20 +105,22 @@ export function quote(c, d, t, dur) {
 }
 
 // ── ختام ──
-export function outro(c, d, t, dur) {
+export function outro(c, d, t, dur, sc = {}) {
   const { w, h, s, pal, portrait } = c; let o = '';
-  const cy = h * (portrait ? 0.42 : 0.44);
+  const vObj = resolveObject(d.object), vIcon = !vObj && d.icon ? resolveIcon(d.icon) : null, hasVis = !!(vObj || vIcon);
+  if (hasVis) o += kineticVisual(c, { obj: vObj, ico: vIcon, cx: w / 2, cy: h * (portrait ? 0.24 : 0.25), R: Math.min(w, h) * (portrait ? 0.16 : 0.13) }, t, dur, { index: sc.index ?? 99 });
+  const cy = h * (portrait ? (hasVis ? 0.52 : 0.42) : (hasVis ? 0.58 : 0.44));
   for (let i = 0; i < 4; i++) {
     const p = ((t * 0.55 + i / 4) % 1), r = (60 + p * Math.min(w, h) * 0.75) * 1;
     o += `<circle cx="${f1(w / 2)}" cy="${f1(cy)}" r="${f1(r)}" fill="none" stroke="${i % 2 ? pal.a2 : pal.a1}" stroke-width="${f1(5 * s)}" opacity="${f2((1 - p) * 0.5)}"/>`;
   }
-  const fit = fitText(d.headline, w * (portrait ? 0.86 : 0.76), h * 0.3, { max: (portrait ? 118 : 128) * s, min: 50 * s, maxLines: 3, lineGap: 1.15 });
+  const fit = fitText(d.headline, w * (portrait ? 0.88 : 0.8), h * (hasVis ? 0.26 : 0.32), { max: (portrait ? 140 : 160) * s, min: 56 * s, maxLines: 3, lineGap: 1.15 });
   const total = fit.lines.length * fit.size * 1.15, y0 = cy - total / 2 + fit.size * 0.88;
-  fit.lines.forEach((ln, i) => { const e = ent(t, 0.15 + i * 0.14, 0.7); o += txt(c, ln, w / 2, y0 + i * fit.size * 1.15 + (1 - Math.min(1, e.p)) * 70 * s, fit.size, { weight: 900, glow: pal.a1, opacity: e.o }); });
-  if (d.sub) { const e = ent(t, 0.7, 0.6); wrapText(d.sub, w * 0.84, 50 * s, { bold: false, maxLines: 2 }).forEach((ln, i) => { o += txt(c, ln, w / 2, y0 + total + 20 * s + i * 65 * s + (1 - e.p) * 20 * s, 50 * s, { weight: 600, fill: pal.muted, opacity: e.o }); }); }
+  fit.lines.forEach((ln, i) => { const e = ent(t, 0.02 + i * 0.1, 0.6); o += txt(c, ln, w / 2, y0 + i * fit.size * 1.15 + (1 - Math.min(1, e.p)) * 70 * s, fit.size, { weight: 900, glow: pal.dark ? pal.a1 : null, opacity: e.o }); });
+  if (d.sub) { const e = ent(t, 0.45, 0.6); wrapText(d.sub, w * 0.84, 62 * s, { bold: false, maxLines: 2 }).forEach((ln, i) => { o += txt(c, ln, w / 2, y0 + total + 30 * s + i * 80 * s + (1 - e.p) * 20 * s, 62 * s, { weight: 700, fill: pal.muted, opacity: e.o }); }); }
   if (d.cta) {
-    const e = ent(t, 1.1, 0.6), pulse = 1 + 0.035 * Math.sin(t * 5), py = y0 + total + 170 * s;
-    o += `<g transform="translate(${f1(w / 2)} ${f1(py)}) scale(${f2(e.p * pulse)}) translate(${f1(-w / 2)} ${f1(-py)})" opacity="${f2(e.o)}">` + pill(c, w / 2, py, d.cta, 40 * s, { fill: pal.a1, solid: true, padX: 1.2 }) + '</g>';
+    const e = ent(t, 0.75, 0.6), pulse = 1 + 0.05 * Math.sin(t * 5), py = y0 + total + (d.sub ? 210 : 130) * s;
+    o += `<g transform="translate(${f1(w / 2)} ${f1(py)}) scale(${f2(e.p * pulse)}) translate(${f1(-w / 2)} ${f1(-py)})" opacity="${f2(e.o)}">` + pill(c, w / 2, py, d.cta, 54 * s, { fill: pal.a1, solid: true, padX: 1.2 }) + '</g>';
   }
   return o;
 }

@@ -51,10 +51,12 @@ export async function ensurePlates(story, T, cache) {
 /** مشهد واحد بكل طبقاته (id فريد لكل مشهد عشان تدرّجات SVG متتعارضش) */
 export function sceneGroup(base, sc, tLocal, plates) {
   const c = { ...base, id: `s${sc.index}` };
+  // أول مشهد: بنقدّم الحركة لحد أول كلمة (لحد 0.9 ثانية) عشان الفيديو ميبدأش بخلفية فاضية لحد ما الصوت يتكلم
+  const tC = tLocal + (sc.index === 0 && base.look === 'motion' ? Math.min(0.9, Math.max(0, sc.tokens?.[0]?.start ?? 0)) : 0); // وقت المحتوى بس (الخلفية بوقتها)
   const dur = sc.end - sc.start;
   const cam = camera(c, sc.cam || 'push', tLocal, dur);
   const fn = (c.look === 'vox' && PAPER_TEXT[sc.type]) || SCENES[sc.type] || SCENES.kinetic; // Vox: مشاهد الكلام بنسختها الورقية
-  let inner = fn(c, sc.data || {}, Math.max(0, tLocal), dur, { tokens: sc.tokens || [], mm: base.mm, index: sc.index });
+  let inner = fn(c, sc.data || {}, Math.max(0, tC), dur, { tokens: sc.tokens || [], mm: base.mm, index: sc.index });
   if ((c.look === 'cartoon' || c.look === 'cartoon3d') && c.cast?.host && HOST_TYPES.has(sc.type) && sc.host !== false) inner += hostOverlay(c, sc, Math.max(0, tLocal));
   const uri = plates?.get(plateKey(sc, tLocal));
   const bg = uri ? `<image href="${uri}" x="0" y="0" width="${c.w}" height="${c.h}" preserveAspectRatio="none"/>` : '';
