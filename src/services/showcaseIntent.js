@@ -9,20 +9,22 @@ const STRONG_NOUN = /(امثله|examples?|samples?|نماذج|portfolio|demos?)
 const OWN = /(بتاعي|بتاعتي|عملته|عملتها|عملناه|my video|my own|my ad|my project|my last)/;
 const DOC = /(وثايقي|وثائقي|documentar)/;
 const AD = /(اعلان|اعلانات|\bads?\b|advert|commercial)/;
-const CINEMATIC = /(سينمايي|سينمائي|سينما|cinematic|cinema|\bfilm\b|\bmovie\b)/;
+const CINEMATIC = /(سينمايي|سينمائي|سينما|اكشن|اكشين|cinematic|cinema|action|\bfilm\b|\bmovie\b)/;
+// سؤال عن موديلات الذكاء الاصطناعي اللي بتعمل الصور/الفيديو ("نماذج عمل الصور والفيديو ايه؟") — "نماذج" هنا = models مش أمثلة
+// (شكوى حقيقية: الايجنت رد بفيديوهات نتائج بدل ما يقول الموديلات)
+const MODEL_Q = /(موديل|مودل|\bmodels?\b|\bai\b|الذكاء|ذكاء اصطناعي|محرك|محركات|engines?|نماذج (عمل|توليد|انتاج|صنع|تصميم)|(عمل|توليد|انتاج) (ال)?(صور|فيديو)|(اي|ايه|ايش|انهي|ما هي|ماهي|ما|كام) (هي )?(ال)?نماذج|نماذج\S*( \S+){0,4} (اي|ايه|ايش|انهي)\s*[?؟]?$|بتستخدم|بتستخدموا|تستخدم|شغالين ب|شغال ب)/;
 const COMEDY = /(كوميدي|كوميدى|كوميديا|comedy|funny|مضحك|ضحك)/;
 
 /** @returns {null | { kind: 'documentary' | 'ad' | 'cinematic' | 'comedy' | 'all' }} */
-export function detectShowcaseIntent(message) {
+export function detectShowcaseIntent(message, history = []) {
   const t = norm(message);
-  if (!t || t.length > 220 || OWN.test(t)) return null;
+  if (!t || t.length > 220 || OWN.test(t) || MODEL_Q.test(t)) return null;
   const asks = (SEE.test(t) && NOUN.test(t)) || (STRONG_NOUN.test(t) && t.length < 90 && /(\?|؟|عندكم|فيه|في |هل|do you|are there|any|have you)/.test(t));
   if (!asks) return null;
-  if (DOC.test(t)) return { kind: 'documentary' };
-  if (AD.test(t)) return { kind: 'ad' };
-  if (CINEMATIC.test(t)) return { kind: 'cinematic' };
-  if (COMEDY.test(t)) return { kind: 'comedy' };
-  return { kind: 'all' };
+  const kindOf = (x) => DOC.test(x) ? 'documentary' : AD.test(x) ? 'ad' : CINEMATIC.test(x) ? 'cinematic' : COMEDY.test(x) ? 'comedy' : null;
+  // الرسالة نفسها مقالتش النوع → نشوف العميل قال إيه قبل كده في المحادثة ("عايز فيديو أكشن سينمائي" ثم "وريني أمثلة")
+  const prev = (Array.isArray(history) ? history : []).filter(m => m?.role === 'user').slice(-4).reverse().map(m => kindOf(norm(m.content))).find(Boolean);
+  return { kind: kindOf(t) || prev || 'all' };
 }
 
 const hasArabic = (s) => /[؀-ۿ]/.test(String(s || ''));
