@@ -92,7 +92,7 @@ function chartLine(c, x, y, w, h, p, seed, accent) {
 }
 
 /** صورة متقصوصة (من غير خلفية) بظل ناعم */
-function cutoutImg(c, img, cx, cy, maxW, maxH, t, at, seed) {
+export function cutoutImg(c, img, cx, cy, maxW, maxH, t, at, seed) {
   if (!img?.uriCut) return '';
   const p = easeOutCubic(seg(t, at, at + 0.6)); if (p <= 0) return '';
   const ar = img.cw / img.ch; let iw = maxW, ih = maxW / ar; if (ih > maxH) { ih = maxH; iw = maxH * ar; }
@@ -106,7 +106,7 @@ function cutoutImg(c, img, cx, cy, maxW, maxH, t, at, seed) {
 }
 
 /** بديل لما الخلفية متتشالش: الصورة في كارت بزوايا مدوّرة وظل */
-function framedImg(c, img, cx, cy, maxW, maxH, t, at, seed) {
+export function framedImg(c, img, cx, cy, maxW, maxH, t, at, seed) {
   const p = easeOutCubic(seg(t, at, at + 0.55)); if (p <= 0) return '';
   const ar = img.w / img.h; let iw = maxW, ih = maxW / ar; if (ih > maxH) { ih = maxH; iw = maxH * ar; }
   const r = 26 * c.s, cid = uid(c, `fr${seed}`), y = cy + (1 - p) * 140 * c.s, rot = (seed % 2 ? 2.5 : -2.5) * p;

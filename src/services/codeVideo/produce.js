@@ -84,6 +84,11 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
 
   // 4) تجميع القصة (storyboard)
   let pal = pickPalette((LOOK_PALETTES[look] || []).includes(input.palette) ? input.palette : plan.palette || (look === 'cartoon' ? 'toon' : look === 'cartoon3d' ? 'candy' : look === 'vox' ? 'vox' : look === 'world3d' ? 'daylight' : null), plan.mood);
+  // Vox: الكولاج الناعم (ورق رمادي + دواير سلمون/أخضر + شرايط زيتوني) أو الورق الكلاسيكي — لو المخرج مختارش بنبدّل بين الاتنين
+  if (look === 'vox' && !(LOOK_PALETTES.vox || []).includes(input.palette) && !plan.palette) {
+    const seedV = [...String(id || title || script)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 3);
+    pal = pickPalette(seedV % 2 ? 'voxsoft' : 'vox', plan.mood);
+  }
   // الموشن: نظام تصميم كامل لكل فيديو (glow/flat/swiss/blueprint/pop/pastel) — المخرج بيختاره حسب الموضوع، ولو مختارش بنختار حسب المود
   // مع تنويع (كل فيديو شكل). لو العميل طلب لون من ألوان الموشن صراحةً بنفضل على glow بنفس اللون
   if (look === 'motion') {
@@ -107,7 +112,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   // الموشن جرافيكس: أي مشهد كلام من غير عنصر بصري بناخد له شكل 3D من معنى الكلام (مفيش مشهد نص بس)
   if (look === 'motion') {
     // مشهد البوستر التحريري بيرسم ورق كريمي بتاعه — بيكسر نظام التصميم (فيديو بينك وفجأة ورق) → كلام بعنصر بصري، إلا في swiss
-    if (pal.style !== 'swiss') scenes.forEach((sc) => { if (sc.type === 'poster') { const d = sc.data || {}; sc.type = 'kinetic'; sc.data = { emphasis: [d.hero, d.bar].filter(Boolean).flatMap(x => String(x).split(/\s+/)).slice(0, 3), object: d.object || undefined }; } });
+    if (pal.style !== 'swiss' && pal.style !== 'reel') scenes.forEach((sc) => { if (sc.type === 'poster') { const d = sc.data || {}; sc.type = 'kinetic'; sc.data = { emphasis: [d.hero, d.bar].filter(Boolean).flatMap(x => String(x).split(/\s+/)).slice(0, 3), object: d.object || undefined }; } });
     // رسومات حرة (مش قالب): لو المخرج حط أقل من ربع المشاهد رسومات، بنحوّل مشاهد كلام (مش الأولى ولا الأخيرة) لرسمة بفكرة من الكلام نفسه
     const nArt = scenes.filter(sc => sc.type === 'art').length, wantArt = scenes.length >= 4 ? Math.ceil(scenes.length * 0.28) : 0;
     if (nArt < wantArt) {
@@ -127,6 +132,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     };
     scenes.forEach((sc, i) => { if (sc.type === 'kinetic' || sc.type === 'outro') sc.data = { ...sc.data, ...pickVis(spoken[i].text, sc.data) }; });
   }
+  if (look === 'vox' && pal.collage) scenes.forEach(sc => { sc.bg = 'collage'; }); // الكولاج الناعم: نفس الورق في كل المشاهد
   // عالم 3D: "مخرج الحركة" بيحوّل كل مشهد world لعالم 3D (بيئة + شخصيات + مسارات + أغراض + كاميرا) — دايمًا بيرجّع عالم سليم (افتراضي لو فشل)
   const worldIdx = scenes.map((sc, i) => (sc.type === 'world' ? i : -1)).filter(i => i >= 0);
   if (worldIdx.length) {
@@ -165,7 +171,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   }
   // نمط Vox: صور أرشيفية حقيقية (اللي مالقيناش ليه صورة بنحوّله لقصاصة جريدة أو نص متحرك)
   let images = null, imageCredits = [];
-  if (look === 'vox' || scenes.some(sc => sc.type === 'poster' && sc.data.query)) {
+  if (look === 'vox' || scenes.some(sc => (sc.type === 'poster' || sc.type === 'kinetic') && sc.data.query)) {
     const slots = [];
     // لوجوهات: من مكتبة اللوجوهات الرسمية بالكود، واللي مش موجود بندوّر على صورة لوجو بتاعته في الأرشيف
     for (const [i, sc] of scenes.entries()) {
@@ -178,6 +184,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
       if (sc.type === 'photo' || sc.type === 'fullphoto') slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: sc.data.query, named: sc.data.named, caption: sc.data.caption });
       else if (sc.type === 'collage') sc.data.slots.forEach((q, k) => slots.push({ key: `s${i}_${k}`, scene: i, text: spoken[i].text, query: q.query, named: q.named }));
       else if (sc.type === 'portrait') slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: sc.data.query, named: sc.data.named, cutout: sc.data.layout === 'year' ? false : 'model' }); // قص الخلفية (بالكود، وموديل رخيص لو الخلفية مش سادة)
+      else if (sc.type === 'kinetic' && sc.data.query && look === 'motion') slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: `${sc.data.query} isolated on white background`, named: false, cutout: true }); // ريلز: صورة حقيقية متقصوصة جنب الكلام
       else if (sc.type === 'poster' && sc.data.query) slots.push({ key: `s${i}`, scene: i, text: spoken[i].text, query: `${sc.data.query} isolated on white background`, named: false, cutout: true }); // صورة متقصوصة (الخلفية بتتشال بالكود)
     });
     await prog('assets', 0);
@@ -194,7 +201,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
         if (im && (sc.data.layout === 'year' || im.uriCut)) sc.data = { ...sc.data, img: `s${i}` };
         else if (im) { sc.type = 'photo'; sc.data = { img: `s${i}`, caption: sc.data.title, emphasis: [] }; } // الخلفية متقصتش → صورة مطبوعة عادية
         else { const hero = sc.data.title || sc.data.year; sc.type = hero ? 'poster' : 'kinetic'; sc.data = hero ? { hero, kicker: sc.data.sub } : { emphasis: [] }; }
-      } else if (sc.type === 'poster') {
+      } else if (sc.type === 'poster' || sc.type === 'kinetic') {
         if (sc.data.query && images[`s${i}`]) sc.data = { ...sc.data, img: `s${i}` };
       } else if (sc.type === 'collage') {
         const ids = sc.data.slots.map((_, k) => `s${i}_${k}`).filter(id => images[id]);

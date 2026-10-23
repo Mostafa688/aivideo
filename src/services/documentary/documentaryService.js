@@ -235,7 +235,7 @@ function normalizeAnimationInput(raw = {}) {
     look: ANIMATION_LOOKS.includes(raw.look) ? raw.look : 'motion',
     wantTrial: raw.trial === true,
     palette: ANIMATION_PALETTES.includes(raw.palette) ? raw.palette : null,
-    design: ['glow', 'flat', 'swiss', 'blueprint', 'pop', 'pastel'].includes(raw.design) ? raw.design : null,
+    design: ['glow', 'flat', 'swiss', 'blueprint', 'pop', 'pastel', 'reel'].includes(raw.design) ? raw.design : null,
     style: String(raw.style || '').replace(/<[^>]*>/g, '').trim().slice(0, 80) || null,
     music: bool(raw.music, true), musicMood: MOODS.includes(raw.musicMood) ? raw.musicMood : null,
     musicTrack: typeof raw.musicTrack === 'string' ? raw.musicTrack.slice(0, 120) : null,

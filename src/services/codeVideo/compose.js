@@ -1,5 +1,5 @@
 // ── compose.js ── تركيب إطار كامل: خلفية + كاميرا + مشهد (أو مشهدين في الانتقال) + طبقة نهائية
-import { styleDecor } from './fxStyles.js';
+import { styleDecor, scenePalette } from './fxStyles.js';
 import sharp from 'sharp';
 import { makeCtx, f1, f2, clamp01, easeInOutCubic, easeOutCubic } from './design.js';
 import { backdropSoftSvg, backdropCrisp, camera, finish } from './fx.js';
@@ -28,7 +28,7 @@ export function visibleScenes(story, T) {
 
 export async function renderPlate(story, sc, tLocal) {
   const w = Math.round(story.w * PLATE_K), h = Math.round(story.h * PLATE_K);
-  const c = { ...makeCtx({ w, h, palette: story.palette, lang: story.lang, id: `p${sc.index}` }) };
+  const c = { ...makeCtx({ w, h, palette: scenePalette(story.palette, sc.index), lang: story.lang, id: `p${sc.index}` }) };
   const tq = Math.floor(Math.max(0, tLocal) * PLATE_FPS) / PLATE_FPS, dur = sc.end - sc.start;
   const cam = camera(c, sc.cam || 'push', tq, dur);
   const svg = backdropSoftSvg(c, tq, sc.bg || 'aurora', sc.seed || sc.index * 1.7, cam);
@@ -50,7 +50,7 @@ export async function ensurePlates(story, T, cache) {
 
 /** مشهد واحد بكل طبقاته (id فريد لكل مشهد عشان تدرّجات SVG متتعارضش) */
 export function sceneGroup(base, sc, tLocal, plates) {
-  const c = { ...base, id: `s${sc.index}` };
+  const c = { ...base, id: `s${sc.index}`, pal: scenePalette(base.pal, sc.index) }; // ريلز: مشهد فاتح/غامق بالتبادل
   // أول مشهد: بنقدّم الحركة لحد أول كلمة (لحد 0.9 ثانية) عشان الفيديو ميبدأش بخلفية فاضية لحد ما الصوت يتكلم
   const tC = tLocal + (sc.index === 0 && base.look === 'motion' ? Math.min(0.9, Math.max(0, sc.tokens?.[0]?.start ?? 0)) : 0); // وقت المحتوى بس (الخلفية بوقتها)
   const dur = sc.end - sc.start;

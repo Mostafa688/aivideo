@@ -27,10 +27,15 @@ export const PALETTES = {
   mint: { dark: false, bg: ['#c9f2e3', '#e3faf1', '#fff6d9'], a1: '#10b981', a2: '#f97316', a3: '#3b82f6', text: '#12332a', muted: '#456b5e' },
   sunny: { dark: false, bg: ['#ffe29a', '#ffedc0', '#ffd0a6'], a1: '#ef4444', a2: '#2563eb', a3: '#16a34a', text: '#3a2108', muted: '#7a5a34' },
   vox: { dark: false, bg: ['#f3eee2', '#ece5d3', '#e1d7bd'], a1: '#e63946', a2: '#f2a900', a3: '#1d3557', text: '#16161a', muted: '#5f594b', mark: '#ffd23f', emph: '#e63946' },
+  // كولاج ناعم: ورق رمادي فاتح بشبكة، دواير سلمون وأخضر هادي ورا العناصر، شرايط لزق زيتوني، ولون واحد برتقالي للعنصر المهم
+  voxsoft: { dark: false, bg: ['#efefec', '#e9e9e5', '#e2e2dc'], a1: '#ef5a2a', a2: '#f4a08a', a3: '#a8c79e', text: '#111111', muted: '#55524c', mark: '#ef5a2a', emph: '#ef5a2a', paperLight: '#eeeeea', tape: '#b3ad5f', collage: true },
   voxdark: { dark: true, bg: ['#0d0d10', '#17171b', '#222227'], a1: '#ffd23f', a2: '#e63946', a3: '#8ecae6', text: '#ffffff', muted: '#a9a9b3', mark: '#ffd23f' },
 };
 // باليتات كل نظام (أكتر من واحدة عشان فيديوهين بنفس النظام ميطلعوش متطابقين)
 export const STYLE_PALETTES = {
+  // ريلز تحريري: مشاهد كريمي ومشاهد سودا بسبوت لايت بالتبادل، والكلمة المهمة أحمر (زي ريلز إنستجرام الاحترافية)
+  reel: { style: 'reel', dark: false, bg: ['#f4f1ec', '#efebe4', '#e8e3da'], a1: '#e1121d', a2: '#111111', a3: '#9a958c', text: '#141414', muted: '#7a756d', ink: '#141414', card: '#ffffff', emph: '#e1121d', arc: '#c9c5bd' },
+  reelDark: { style: 'reel', dark: true, bg: ['#030303', '#070707', '#0e0e0e'], a1: '#ff2a2a', a2: '#ffffff', a3: '#8a8a8a', text: '#ffffff', muted: '#9b9b9b', ink: '#ffffff', card: '#161616', emph: '#ff2a2a' },
   flatSun: { style: 'flat', dark: false, bg: ['#ffd23f', '#ffc21a', '#ffe48a'], a1: '#ff4d6d', a2: '#2b59c3', a3: '#06d6a0', text: '#111111', muted: '#3d3d3d', ink: '#111111', card: '#ffffff', emph: '#ff4d6d' },
   flatMint: { style: 'flat', dark: false, bg: ['#2ec4b6', '#25b3a6', '#7fe0d6'], a1: '#ff9f1c', a2: '#e71d36', a3: '#ffffff', text: '#0b1f1d', muted: '#163d39', ink: '#0b1f1d', card: '#fdfffc', emph: '#e71d36' },
   flatCoral: { style: 'flat', dark: false, bg: ['#ff6b6b', '#f25c5c', '#ffa3a3'], a1: '#ffe66d', a2: '#1a535c', a3: '#4ecdc4', text: '#16161a', muted: '#3b2a2a', ink: '#16161a', card: '#ffffff', emph: '#1a535c' },
@@ -45,7 +50,7 @@ export const STYLE_PALETTES = {
 Object.assign(PALETTES, STYLE_PALETTES);
 export const MOTION_PALETTES = ['neon', 'sunset', 'emerald', 'royal', 'crimson', 'ocean', 'mono', 'daylight'];
 export const TOON_PALETTES = ['toon', 'candy', 'mint', 'sunny'];
-export const VOX_PALETTES = ['vox', 'voxdark'];
+export const VOX_PALETTES = ['vox', 'voxsoft', 'voxdark'];
 export const PALETTE_NAMES = MOTION_PALETTES;
 export const ALL_PALETTE_NAMES = Object.keys(PALETTES);
 const MOOD_PALETTE = { epic: 'royal', tech: 'neon', business: 'ocean', nature: 'emerald', energetic: 'sunset', serious: 'crimson', clean: 'daylight', minimal: 'mono' };

@@ -3,6 +3,8 @@ import { f1, f2, esc, wrapText, textWidth, clamp01, lerp, easeOutCubic, easeOutB
 import { ent, card, pill, glowCircle, gradientDef, layoutWords } from './common.js';
 import { object3d, resolveObject } from './objects3d.js';
 import { resolveIcon } from './design.js';
+import { cutoutImg, framedImg } from './scenesEd.js';
+import { STYLE_OF } from './fxStyles.js';
 
 // ── عنوان ──
 export function title(c, d, t, dur) {
@@ -35,14 +37,16 @@ export function kinetic(c, d, t, dur, sc) {
   const words = toks.map(x => ({ text: x.w, start: x.start, end: x.end }));
   const emph = new Set((d.emphasis || []).map(x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')));
   // عنصر بصري متحرك جنب الكلام (شكل 3D أو أيقونة كبيرة بحلقات وحركة) — عشان المشهد ميبقاش نص بس
-  const vObj = c.look === 'motion' || c.look === undefined ? resolveObject(d.object) : null, vIcon = !vObj && d.icon ? resolveIcon(d.icon) : null, hasVis = !!(vObj || vIcon);
+  const vImg = d.img && c.images ? c.images[d.img] : null; // صورة حقيقية متقصوصة (ريلز)
+  const vObj = !vImg && (c.look === 'motion' || c.look === undefined) ? resolveObject(d.object) : null, vIcon = !vImg && !vObj && d.icon ? resolveIcon(d.icon) : null, hasVis = !!(vImg || vObj || vIcon);
+  const reel = STYLE_OF(pal) === 'reel';
   const maxW = w * (portrait ? 0.88 : hasVis ? 0.6 : 0.82), maxH = h * (portrait ? (hasVis ? 0.44 : 0.58) : 0.66);
   let size = (portrait ? 140 : 150) * s, lines = [];
   for (; size > 40 * s; size -= 4 * s) { lines = layoutWords(words, size, maxW, sc.mm, rtl); if (lines.length * size * 1.25 <= maxH && lines.length <= (portrait ? (hasVis ? 5 : 7) : 5)) break; }
   const tcx = hasVis && !portrait ? (rtl ? w * 0.62 : w * 0.38) : w / 2;
   const lh = size * 1.25, total = lines.length * lh, y0 = h * (portrait ? (hasVis ? 0.64 : 0.48) : 0.5) - total / 2 + size * 0.95;
   o += glowCircle(c, 'kg', w / 2, h * 0.5, Math.max(w, h) * 0.45, pal.a1, 0.14);
-  if (hasVis) o += kineticVisual(c, { obj: vObj, ico: vIcon, cx: portrait ? w / 2 : (rtl ? w * 0.2 : w * 0.8), cy: portrait ? h * 0.25 : h * 0.5, R: portrait ? w * 0.2 : h * 0.24 }, t, dur, sc);
+  if (hasVis) o += kineticVisual(c, { img: vImg, obj: vObj, ico: vIcon, cx: portrait ? w / 2 : (rtl ? w * 0.2 : w * 0.8), cy: portrait ? h * 0.25 : h * 0.5, R: portrait ? w * 0.2 : h * 0.24 }, t, dur, sc);
   lines.forEach((ln, li) => {
     const y = y0 + li * lh;
     for (const it of ln.items) {
@@ -53,13 +57,13 @@ export function kinetic(c, d, t, dur, sc) {
       const sc2 = 0.78 + 0.22 * Math.min(1.12, e.p) + (active ? 0.05 : 0), dy = (1 - Math.min(1, e.p)) * 38 * s;
       const x = tcx + it.cx, yy = y + dy;
       // الكلمة المهمة: شريط ماركر مصمت بيتمد ورا الكلمة ولون النص متباين معاه (كان لون الكلمة قريب من لون المربع فمكانتش بتتقري)
-      const hiCol = pal.emph || pal.a2, hiP = isE ? easeOutCubic(seg(t, st + 0.05, st + 0.4)) : 0;
+      const hiCol = pal.emph || pal.a2, hiP = isE && !reel ? easeOutCubic(seg(t, st + 0.05, st + 0.4)) : 0;
       if (isE && hiP > 0.01) {
         const bw = (it.width + size * 0.3) * hiP, rtlW = c.rtl !== false && /[\u0600-\u06FF]/.test(wd.text);
         o += `<rect x="${f1(rtlW ? x + it.width / 2 + size * 0.15 - bw : x - it.width / 2 - size * 0.15)}" y="${f1(yy - size * 0.84)}" width="${f1(bw)}" height="${f1(size * 1.08)}" rx="${f1(size * 0.18)}" fill="${hiCol}" opacity="${f2(0.95 * e.o)}" transform="rotate(-1.5 ${f1(x)} ${f1(yy)})"/>`;
       } else if (active) o += `<rect x="${f1(x - it.width / 2 - size * 0.12)}" y="${f1(yy - size * 0.86)}" width="${f1(it.width + size * 0.24)}" height="${f1(size * 1.12)}" rx="${f1(size * 0.2)}" fill="${pal.a1}" opacity="0.24"/>`;
       o += `<g transform="translate(${f1(x)} ${f1(yy)}) scale(${f2(sc2)}) translate(${f1(-x)} ${f1(-yy)})">`
-        + txt(c, wd.text, x, yy, size, { weight: 900, fill: isE ? (hiP > 0.5 ? onColor(hiCol) : hiCol) : pal.text, opacity: e.o }) + '</g>';
+        + txt(c, wd.text, x, yy, size, reel ? { weight: isE ? 900 : 700, fill: isE ? pal.emph : pal.text, opacity: e.o, glow: isE && pal.dark ? pal.emph : null, glowW: 0.22 } : { weight: 900, fill: isE ? (hiP > 0.5 ? onColor(hiCol) : hiCol) : pal.text, opacity: e.o }) + '</g>'; // ريلز: الكلمة المهمة أحمر (بتوهّج على الأسود)
     }
   });
   return o;
@@ -133,8 +137,13 @@ function onColor(hex) {
 }
 
 // البطل البصري للمشهد: دخول بنطّة، حلقات نبض بتتمدد، حلقة متقطعة بتلف ونقط بتدور حواليه
-function kineticVisual(c, { obj, ico, cx, cy, R }, t, dur, sc) {
+function kineticVisual(c, { img = null, obj, ico, cx, cy, R }, t, dur, sc) {
   const { pal, s } = c; let o = '';
+  // صورة حقيقية متقصوصة كبيرة بظل (زي الريلز: لمبة، شنطة فلوس، كيبورد…) — من غير حلقات
+  const kL = c.portrait ? 1 : 0.78; // العرضي: الكلام جنبه فبنصغّر شوية عشان ميلمسش الكلام
+  if (img) return img.uriCut ? cutoutImg(c, img, cx, cy, R * 3.0 * kL, R * 2.6 * kL, t, 0.02, sc.index || 0) : framedImg(c, img, cx, cy, R * 2.6 * kL, R * 2.2 * kL, t, 0.02, sc.index || 0);
+  // ريلز: الشكل لوحده كبير ونضيف (من غير حلقات ونقط)
+  if (STYLE_OF(pal) === 'reel' && obj) return object3d(c, obj, cx, cy, R * 2.1 * kL, { t, at: 0.02, rot: -8 });
   const p = spring(clamp01((t - 0.05) / 0.7)), id = uid(c, 'kv' + sc.index);
   o += glowCircle(c, id + 'g', cx, cy, R * 1.9, pal.a2, 0.22 * Math.min(1, p));
   for (let k = 0; k < 2; k++) {
