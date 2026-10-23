@@ -557,6 +557,17 @@ const LOOK_RULES = [
   [/(موشن|motion|كينتك|kinetic|نص متحرك|نصوص متحركة|انفوجراف|infograph)/i, 'motion'],
 ];
 const lookIn = (t) => { for (const [re, k] of LOOK_RULES) if (re.test(String(t || ''))) return k; return null; };
+// تصميم الموشن اللي العميل طلبه بالاسم (شكوى حقيقية: كتب "موشن جرافيك reel" والفيديو طلع بستايل pop وردي)
+const DESIGN_RULES = [
+  [/(\breels?\b|ريلز|(^|\s)ريل(?=$|\s|[.,!?؟،])|انستجرام|انستا|instagram)/i, 'reel'],
+  [/(\bglow\b|نيون|neon|متوهج)/i, 'glow'],
+  [/(\bswiss\b|سويسري)/i, 'swiss'],
+  [/(\bblueprint\b|بلوبرنت|مخطط هندسي)/i, 'blueprint'],
+  [/(\bpastel\b|باستيل)/i, 'pastel'],
+  [/(\bflat\b|فلات)/i, 'flat'],
+  [/(\bpop\b|بوب)/i, 'pop'],
+];
+export const designIn = (t) => { for (const [re, k] of DESIGN_RULES) if (re.test(String(t || ''))) return k; return null; };
 export function detectVoiceAnimationGo({ message, history = [], voiceUrl }) {
   if (!voiceUrl) return null;
   const msg = String(message || '').trim();
@@ -574,7 +585,8 @@ export function detectVoiceAnimationGo({ message, history = [], voiceUrl }) {
   if (!lookIn(msg) && !go) return null;
   const all = [...userMsgs, msg].join(' ');
   const ratio = /(9:16|٩:١٦|شورت|shorts|ريلز|reels|تيك ?توك|tiktok|طولي|عمودي|vertical)/i.test(all) ? '9:16' : '16:9';
-  return { source: 'voiceover', look: look || 'motion', ratio, music: !/(من غير|بدون|بلاش)\s*(مزيكا|موسيقى|music)/i.test(all), captions: /(من غير|بدون|بلاش)\s*(كابشن|ترجمة|captions?)/i.test(all) ? 'none' : (ratio === '9:16' ? 'pop' : 'none') };
+  const design = (look || 'motion') === 'motion' ? (designIn(msg) || [...userMsgs].reverse().map(designIn).find(Boolean) || null) : null;
+  return { source: 'voiceover', look: look || 'motion', ...(design ? { design } : {}), ratio, music: !/(من غير|بدون|بلاش)\s*(مزيكا|موسيقى|music)/i.test(all), captions: /(من غير|بدون|بلاش)\s*(كابشن|ترجمة|captions?)/i.test(all) ? 'none' : (ratio === '9:16' ? 'pop' : 'none') };
 }
 const voiceDurations = new Map(); // رابط التسجيل -> مدته بالثانية (عشان الايجنت يفضل عارف المدة في الرسايل اللي بعد الرفع)
 const voiceOwners = new Map(); // userId -> Set(روابط تسجيلات الصوت اللي السيرفر ده سجّلها للعميل ده)
@@ -1838,7 +1850,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
           const raw = {
             source: src, topic: String(a.topic || '').slice(0, 300), script: String(a.script || '').slice(0, 9000), brief: String(a.brief || '').slice(0, 400),
             seconds: Number(a.seconds) || undefined, language: animLang(a, src), ratio: a.ratio, palette: a.palette, style: a.style,
-            voiceKey: a.voice, music: a.music !== false, captions: a.captions, look: a.look, trial: a.trial === true || userPlan === 'free',
+            voiceKey: a.voice, music: a.music !== false, captions: a.captions, look: a.look,
+            design: a.design || ((a.look || 'motion') === 'motion' ? designIn(userTxt) : null) || undefined, trial: a.trial === true || userPlan === 'free',
           };
           let blocked = null;
           if (src === 'voiceover') {
