@@ -693,7 +693,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     // العميل بيطلب يشوف أمثلة/نتائج شغل الموقع: بنعرض فيديوهات حقيقية (إعلان/سينمائي/كوميدي)؛ ولو طلب وثائقي نقوله يجرّب الدقيقة المجانية بصوته (بكود عادي من غير LLM)
     if (!voiceBase64 && !imageBase64 && !(Array.isArray(imagesBase64) && imagesBase64.length) && !videoAlreadyUploaded && !(Array.isArray(montageAssetIds) && montageAssetIds.length) && !(Array.isArray(documents) && documents.length)) {
-      const showcaseIntent = detectShowcaseIntent(message);
+      const showcaseIntent = detectShowcaseIntent(message, history);
       if (showcaseIntent) {
         const trialAvailable = showcaseIntent.kind === 'documentary' ? await docTrialAvailable(userId).catch(() => true) : true;
         return res.json(buildShowcaseReply(message, showcaseIntent, { trialAvailable }));
