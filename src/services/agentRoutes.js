@@ -548,6 +548,34 @@ const lastRequestAt = new Map(); // userId -> timestamp
 const photoDescriptions = new Map(); // userId -> [{ url, description, at }]
 const PHOTO_DESC_TTL_MS = 3 * 3600e3;
 const IMAGE_TALK = /صور|الصور|صورة|image|photo|picture|prompt|بروم|وصف|describe|الشخص|الراجل|المنتج|ده|دي|هذه|هذا|this|that|it\b/i;
+// هل العميل (اللي رافع صوته) بيطلب نبدأ فيديو الأنيميشن دلوقتي؟ بيرجّع ماركر جاهز أو null
+const LOOK_RULES = [
+  [/(كارتون\s*(3d|ثلاثي)|3d\s*cartoon|cartoon\s*3d)/i, 'cartoon3d'],
+  [/(عالم\s*3d|world\s*3d|3d\s*world|ثلاثي الأبعاد|ثلاثي الابعاد|زي الألعاب|زي الالعاب)/i, 'world3d'],
+  [/(فوكس|vox|كولاج)/i, 'vox'],
+  [/(كارتون|cartoon|2d)/i, 'cartoon'],
+  [/(موشن|motion|كينتك|kinetic|نص متحرك|نصوص متحركة|انفوجراف|infograph)/i, 'motion'],
+];
+const lookIn = (t) => { for (const [re, k] of LOOK_RULES) if (re.test(String(t || ''))) return k; return null; };
+export function detectVoiceAnimationGo({ message, history = [], voiceUrl }) {
+  if (!voiceUrl) return null;
+  const msg = String(message || '').trim();
+  if (!msg || msg.length > 160) return null; // رسالة طويلة = فيه كلام/تعديل محتاج الموديل يفهمه
+  const hist = Array.isArray(history) ? history : [];
+  const lastA = String([...hist].reverse().find(m => m?.role === 'assistant')?.content || '');
+  const userMsgs = hist.filter(m => m?.role === 'user').slice(-5).map(m => String(m.content || ''));
+  const ctx = [lastA, ...userMsgs, msg].join(' ');
+  if (!/(أنيميشن|انيميشن|موشن|فوكس|vox|motion|كارتون|cartoon|3d|ستايل|style)/i.test(ctx)) return null; // مش في سياق فيديو أنيميشن
+  if (!/(كريديت|credit|مجان|free|السعر|التكلفة)/i.test(lastA)) return null; // لازم السعر يكون اتعرض عليه الأول
+  if (/(^|\s)(لا|لأ|مش عايز|مش عاوز|بلاش|استنى|استني|غيّر|غير الستايل|عدّل|عدل|الغي|ألغي|no|wait|cancel)(?=$|\s|[.,!?؟،])/i.test(msg) && !lookIn(msg)) return null;
+  const look = lookIn(msg) || [...userMsgs].reverse().map(lookIn).find(Boolean) || null;
+  const go = /^(ابدأ|ابدا|يلا|يلّا|تمام|اوك|أوك|ok|okay|go|start|اهو|أهو|ماشي|موافق|اعمله|اعمل|سويه|سوّه|خلاص|انشئ|أنشئ|نفّذ|نفذ|yes|yep|ايوه|أيوه|اه|آه)/i.test(msg)
+    || /(الصوت|التسجيل|الفويس|صوتي).{0,15}(مرفوع|رفعت|رافع|موجود|عندك|بعت|اهو)/i.test(msg) || /(رافع|رفعت)\s*(لك|ليك)?\s*(الصوت|التسجيل|الفويس)/i.test(msg);
+  if (!lookIn(msg) && !go) return null;
+  const all = [...userMsgs, msg].join(' ');
+  const ratio = /(9:16|٩:١٦|شورت|shorts|ريلز|reels|تيك ?توك|tiktok|طولي|عمودي|vertical)/i.test(all) ? '9:16' : '16:9';
+  return { source: 'voiceover', look: look || 'motion', ratio, music: !/(من غير|بدون|بلاش)\s*(مزيكا|موسيقى|music)/i.test(all), captions: /(من غير|بدون|بلاش)\s*(كابشن|ترجمة|captions?)/i.test(all) ? 'none' : (ratio === '9:16' ? 'pop' : 'none') };
+}
 const voiceDurations = new Map(); // رابط التسجيل -> مدته بالثانية (عشان الايجنت يفضل عارف المدة في الرسايل اللي بعد الرفع)
 const voiceOwners = new Map(); // userId -> Set(روابط تسجيلات الصوت اللي السيرفر ده سجّلها للعميل ده)
 const consumedVoices = new Set(); // `${userId}:${url}` — تسجيلات اتستخدمت في مونتاج خلاص
@@ -815,7 +843,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
         if (vSec) {
           const sec = Math.round(vSec), m = vSec / 60;
           const price = (look) => getAnimationCreditCost(m, { userVoiceover: true, look });
-          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `CUSTOMER VOICE RECORDING (already uploaded, used as-is): it is ${sec} seconds long, so an animated/vox/motion video from it is EXACTLY ${sec} seconds — NEVER ask how long the video should be and never mention any other length. Price with their own voice: motion/cartoon ≈ ${price('motion')} credits, vox ≈ ${price('vox')}, cartoon3d ≈ ${price('cartoon3d')}, world3d ≈ ${price('world3d')} (or FREE if the free-trial note says the trial is still available and ${sec} ≤ ${ANIMATION_TRIAL_SECONDS}). Do NOT ask about music or captions: use the defaults (music on; captions "pop" for 9:16, none for 16:9) and say in a few words they can ask to change them. Ask ONLY what is truly missing (the look if they never said it; the format only if they gave no hint — default 16:9), in ONE message together with the length and price; as soon as the customer has given the look (and format if asked) or says "ابدأ/اهو/تمام/يلا", START with ###ANIMATION### "source":"voiceover","seconds":${sec}. If they re-send the recording it means "I already gave you the voice — start".`;
+          attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `CUSTOMER VOICE RECORDING (already uploaded, used as-is): THE RECORDING IS THE CONTENT AND THE SCRIPT of the video — the platform transcribes it itself, so NEVER ask for a text, script or topic. It is ${sec} seconds long, so an animated/vox/motion video from it is EXACTLY ${sec} seconds — NEVER ask how long the video should be and never mention any other length. Price with their own voice: motion/cartoon ≈ ${price('motion')} credits, vox ≈ ${price('vox')}, cartoon3d ≈ ${price('cartoon3d')}, world3d ≈ ${price('world3d')} (or FREE if the free-trial note says the trial is still available and ${sec} ≤ ${ANIMATION_TRIAL_SECONDS}). Do NOT ask about music or captions: use the defaults (music on; captions "pop" for 9:16, none for 16:9) and say in a few words they can ask to change them. Ask ONLY what is truly missing (the look if they never said it; the format only if they gave no hint — default 16:9), in ONE message together with the length and price; as soon as the customer has given the look (and format if asked) or says "ابدأ/اهو/تمام/يلا", START with ###ANIMATION### "source":"voiceover","seconds":${sec}. If they re-send the recording it means "I already gave you the voice — start".`;
         }
       }
     } catch { /* مش حرج */ }
@@ -1781,6 +1809,15 @@ router.post('/chat', authMiddleware, async (req, res) => {
           reply += (reply ? '\n\n' : '') + 'معلش، حصل خطأ وأنا بحاول أبدأ الفيلم الوثائقي — جرب تاني بعد شوية.';
         }
       }
+    }
+
+    // ✅ صوت مرفوع + العميل اختار الستايل أو قال "ابدأ/الصوت مرفوع" بعد ما شاف السعر، والموديل مبعتش ماركر (شكوى حقيقية: بعد ما
+    // اختار "موشن جرافيكس" الايجنت طلب منه "النص أو السكريبت" مع إن صوته مرفوع وهو المحتوى نفسه) → السيرفر بيبدأ الفيديو بنفسه
+    if (!animationPayload && !animationEditPayload && !documentaryPayload && !montagePayload && !autoEditPayload && !whiteboardVideoPayload) {
+      try {
+        const autoStart = detectVoiceAnimationGo({ message, history, voiceUrl: uploadedVoiceUrl || (lastVoiceUrl && voiceOwners.get(req.user.userId)?.has(lastVoiceUrl) ? lastVoiceUrl : null) });
+        if (autoStart) { animationPayload = autoStart; reply = ''; console.log('[Agent] auto-started voice animation:', JSON.stringify(autoStart)); }
+      } catch (e) { console.warn('[Agent] voice auto-start check failed:', e.message); }
     }
 
     // ✅ NEW: فيديو أنيميشن/موشن جرافيك بالكود (من صوت العميل المرفوع أو سكريبت أو موضوع) — نفس مسار الاستوديو (حجز كريديت ذري + رد كامل عند الفشل)
