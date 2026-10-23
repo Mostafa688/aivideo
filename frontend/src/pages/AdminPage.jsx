@@ -2616,6 +2616,68 @@ const CHANGELOG_TAGS = [
   { key: 'coming_soon', label: '🟠 Coming Soon', color: '#f59e0b' },
 ];
 
+// ── النسخ الاحتياطي لقاعدة البيانات (يومي على R2، مشفّر) ──
+function BackupsTab({ s }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const load = useCallback(async () => {
+    setErr('');
+    try { const r = await fetch('/api/admin/backups', { headers }); const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed'); setData(d); } catch (e) { setErr(e.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const runNow = async () => {
+    setBusy(true); setErr('');
+    try { const r = await fetch('/api/admin/backups/run', { method: 'POST', headers }); const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed'); await load(); } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  const download = async (id, raw) => {
+    try {
+      const r = await fetch(`/api/admin/backups/${id}/download${raw ? '?raw=1' : ''}`, { headers });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Download failed'); }
+      const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || `erivion-db-${id}${raw ? '.ervbk' : '.ndjson.gz'}`;
+      const url = URL.createObjectURL(await r.blob()); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 3000);
+    } catch (e) { alert('❌ ' + e.message); }
+  };
+  const mb = (b) => (b == null ? '—' : b > 1048576 ? `${(b / 1048576).toFixed(2)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+  const list = data?.backups || [];
+  const lastOk = list.find(b => b.status === 'done');
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20 }}>🛟 Database backups</h2>
+          <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>Automatic every night (~3 AM Cairo) to Cloudflare R2, encrypted. The last {data?.keep || 14} are kept.</div>
+        </div>
+        <button onClick={runNow} disabled={busy} style={{ padding: '10px 16px', borderRadius: 10, border: 'none', background: '#22c55e', color: '#04120a', fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Backing up…' : 'Back up now'}</button>
+      </div>
+      {err && <div style={{ color: '#f87171', marginBottom: 12, fontSize: 14 }}>❌ {err}</div>}
+      {data && (!data.r2 || !data.keySource) && <div style={{ padding: 12, borderRadius: 10, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.4)', color: '#fca5a5', marginBottom: 12, fontSize: 13.5 }}>{!data.r2 ? 'R2 storage is not configured — backups cannot run.' : 'No BACKUP_KEY or JWT_SECRET — backups cannot be encrypted.'}</div>}
+      {data?.keySource && <div style={{ padding: 12, borderRadius: 10, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.35)', color: '#fcd34d', marginBottom: 16, fontSize: 13.5, lineHeight: 1.7 }}>🔑 Backups are encrypted with the <b>{data.keySource}</b> variable on Railway. Copy its value and keep it somewhere safe outside Railway (password manager / notes) — without it the files stored on R2 cannot be opened. The plain download below is already decrypted.{data.keySource === 'JWT_SECRET' ? ' Tip: add a separate BACKUP_KEY variable so changing JWT_SECRET later never breaks old backups.' : ''}</div>}
+      <div style={{ fontSize: 13.5, marginBottom: 10, opacity: 0.85 }}>Last successful backup: <b>{lastOk ? new Date(lastOk.created_at).toLocaleString() : 'none yet'}</b></div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+          <thead><tr style={{ textAlign: 'left', opacity: 0.6 }}><th style={{ padding: 8 }}>#</th><th style={{ padding: 8 }}>Date</th><th style={{ padding: 8 }}>Status</th><th style={{ padding: 8 }}>Size</th><th style={{ padding: 8 }}>Tables / rows</th><th style={{ padding: 8 }}>Download</th></tr></thead>
+          <tbody>
+            {list.map(b => (
+              <tr key={b.id} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <td style={{ padding: 8 }}>{b.id}</td>
+                <td style={{ padding: 8, whiteSpace: 'nowrap' }}>{new Date(b.created_at).toLocaleString()}</td>
+                <td style={{ padding: 8, color: b.status === 'done' ? '#4ade80' : b.status === 'failed' ? '#f87171' : '#fbbf24' }} title={b.error || ''}>{b.status}{b.error ? ` — ${b.error.slice(0, 60)}` : ''}</td>
+                <td style={{ padding: 8, fontVariantNumeric: 'tabular-nums' }}>{mb(b.size_bytes)}</td>
+                <td style={{ padding: 8, fontVariantNumeric: 'tabular-nums' }}>{b.tables ?? '—'} / {b.rows != null ? Number(b.rows).toLocaleString() : '—'}</td>
+                <td style={{ padding: 8, whiteSpace: 'nowrap' }}>{b.status === 'done' && <><button onClick={() => download(b.id, false)} style={{ marginRight: 6, padding: '5px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'inherit', cursor: 'pointer' }}>Plain (.gz)</button><button onClick={() => download(b.id, true)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'inherit', cursor: 'pointer' }}>Encrypted</button></>}</td>
+              </tr>
+            ))}
+            {!list.length && <tr><td colSpan={6} style={{ padding: 16, opacity: 0.6 }}>No backups yet — the first one runs automatically a few minutes after the server starts, or press "Back up now".</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: 18, fontSize: 13, opacity: 0.75, lineHeight: 1.8 }}>Restore into any Postgres (from the project folder): <code>node scripts/restoreBackup.mjs FILE --db "postgresql://…" [--key "BACKUP_KEY value"]</code> — add <code>--check</code> to only verify the file.</div>
+    </div>
+  );
+}
+
 function DocumentaryTab({ s }) {
   const [data, setData] = useState(null);
   const [days, setDays] = useState(30);
@@ -4012,6 +4074,7 @@ export default function AdminPage() {
     { key: 'community',  label: '🌍 Community'   },
     { key: 'channels',   label: '📺 Channels'    },
     { key: 'documentary', label: '🎞️ Documentary' },
+    { key: 'backups',    label: '🛟 Backups'      },
     { key: 'voices',     label: '🗣️ Voices'      },
     { key: 'audiovideo', label: '🎬 Audio→Video' },
     { key: 'analytics',  label: '📈 Analytics'    },
@@ -4516,6 +4579,7 @@ export default function AdminPage() {
         {tab === 'notifications' && <NotificationsTab s={s} />}
         {tab === 'channels' && <ChannelsTab s={s} />}
         {tab === 'documentary' && <DocumentaryTab s={s} />}
+        {tab === 'backups' && <BackupsTab s={s} />}
         {tab === 'voices' && <VoicesTab s={s} />}
         {tab === 'audiovideo' && <AudioVideoTab s={s} />}
         {tab === 'analytics' && <AnalyticsTab s={s} />}
