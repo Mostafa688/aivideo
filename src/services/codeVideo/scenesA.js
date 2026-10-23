@@ -153,7 +153,7 @@ function kineticVisual(c, { obj, ico, cx, cy, R }, t, dur, sc) {
     const gid = uid(c, 'kvb' + sc.index), bob = Math.sin(t * 2.2) * 6 * s;
     o += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${pal.a1}"/><stop offset="1" stop-color="${pal.a2}"/></linearGradient></defs>`;
     o += `<g transform="translate(${f1(cx)} ${f1(cy + bob)}) scale(${f2(p)}) translate(${f1(-cx)} ${f1(-cy)})"><circle cx="${f1(cx)}" cy="${f1(cy + R * 0.06)}" r="${f1(R)}" fill="#000" opacity="0.22"/><circle cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(R)}" fill="url(#${gid})"/><circle cx="${f1(cx - R * 0.3)}" cy="${f1(cy - R * 0.35)}" r="${f1(R * 0.32)}" fill="#fff" opacity="0.18"/>`
-      + icon(c, ico, cx, cy, R * 1.05, { color: '#ffffff', sw: 6 }) + '</g>';
+      + icon(c, ico, cx, cy, R * 1.05, { color: onColor(pal.a1) === '#ffffff' ? '#ffffff' : (pal.bg?.[0] || '#0f172a'), sw: 6 }) + '</g>'; // أيقونة غامقة لو الشارة فاتحة (blueprint)
   }
   return o;
 }
