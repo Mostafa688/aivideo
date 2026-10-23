@@ -18,6 +18,7 @@ import { findLogo } from './logos.js';
 import { measureNonLatin } from './typeset.js';
 import { designArt } from './art.js';
 import { buildCaptionsAss } from '../documentary/captions.js';
+import { captionWords } from './compose.js';
 import { getBackgroundMusicBuffer } from '../videoAudioService.js';
 import { watermarkVideo } from '../watermark.js';
 import { buildSrt } from '../documentary/uploadPackage.js';
@@ -182,7 +183,7 @@ export async function produceAnimationEdit({ id, userId, input, workDir, prog },
   if (music === 'keep' && ed.musicUrl) musicFile = await downloadTo(ed.musicUrl, path.join(workDir, 'music.mp3')).catch(() => null);
   else if (music !== 'off' && music !== 'keep') { try { musicFile = path.join(workDir, 'music.mp3'); fs.writeFileSync(musicFile, await getBackgroundMusicBuffer('youtube', music)); } catch { musicFile = null; } }
   let assFile = null;
-  if (captions) { try { assFile = path.join(workDir, 'captions.ass'); fs.writeFileSync(assFile, buildCaptionsAss({ words: allTokens.map(t => ({ w: t.w, start: t.start, end: t.end })), style: ratio === '9:16' ? 'word' : captions, w, h, lang: bundle.lang, theme: 'blue' })); } catch { assFile = null; } }
+  if (captions) { try { assFile = path.join(workDir, 'captions.ass'); const capWords = captionWords(allTokens, scenes); if (capWords.length) fs.writeFileSync(assFile, buildCaptionsAss({ words: capWords, style: ratio === '9:16' ? 'word' : captions, w, h, lang: bundle.lang, theme: 'blue' })); else assFile = null; } catch { assFile = null; } }
   const r = await renderCodeVideo({ story, narrationFile, musicFile, assFile, workDir: path.join(workDir, 'render'), outFile: path.join(workDir, 'animation.mp4'), onProgress: (stage, f) => prog('render', stage === 'frames' ? f * 0.9 : 0.9 + f * 0.1) });
   if (bundle.watermark) r.file = await (deps.watermarkVideo || watermarkVideo)(r.file);
   let editor = null;

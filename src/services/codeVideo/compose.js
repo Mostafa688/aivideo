@@ -129,3 +129,12 @@ function transition(base, out, inn, T, p, kind, plates) {
       return p < 0.5 ? A : B;
   }
 }
+
+// مشاهد بتعرض كلام الراوي نفسه على الشاشة — الكابشن وقتها بيكرر نفس الكلمات تحت/فوق النص (شكوى حقيقية: "جعان؟ والساعة" + كابشن "والساعة")
+export const WORDS_ON_SCREEN = new Set(['kinetic', 'art', 'char_say', 'char_duo', 'quote', 'poster', 'headline', 'bigword', 'title', 'outro', 'portrait']);
+/** كلمات الكابشن بس في المشاهد اللي مش بتعرض الكلام (رسوم بيانية، قوايم، صور، خرايط، عالم 3D...) */
+export function captionWords(tokens, scenes) {
+  const hide = (scenes || []).filter(sc => WORDS_ON_SCREEN.has(sc.type)).map(sc => [sc.start, sc.end]);
+  return (tokens || []).filter(t => { const mid = (t.start + t.end) / 2; return !hide.some(([a, b]) => mid >= a && mid < b); }).map(t => ({ w: t.w, start: t.start, end: t.end }));
+}
+

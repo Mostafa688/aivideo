@@ -20,6 +20,7 @@ import { buildSrt } from '../documentary/uploadPackage.js';
 import { watermarkVideo } from '../watermark.js';
 import { persistAnimationBundle } from './editAnimation.js';
 import { DESIGN_STYLES, paletteForStyle, pickDesignStyle } from './fxStyles.js';
+import { captionWords } from './compose.js';
 
 const FEMALE_VOICES = new Set(['Zephyr', 'Kore', 'Leda', 'Aoede', 'Callirrhoe', 'Autonoe', 'Despina', 'Erinome', 'Laomedeia', 'Achernar', 'Gacrux', 'Pulcherrima', 'Vindemiatrix', 'Sulafat']);
 export function voiceGenderOf(input) {
@@ -227,7 +228,8 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
     try {
       assFile = path.join(workDir, 'captions.ass');
       const style = ratio === '9:16' ? 'word' : input.captions;
-      fs.writeFileSync(assFile, buildCaptionsAss({ words: nar.tokens.map(t => ({ w: t.w, start: t.start, end: t.end })), style, w, h, lang, theme: 'blue' }));
+      const capWords = captionWords(nar.tokens, scenes); // من غير المشاهد اللي الكلام نفسه ظاهر فيها (كان بيتكرر)
+      if (capWords.length) fs.writeFileSync(assFile, buildCaptionsAss({ words: capWords, style, w, h, lang, theme: 'blue' })); else assFile = null;
     } catch (e) { console.warn('[CodeVideo] captions skipped:', e.message); assFile = null; }
   }
 
