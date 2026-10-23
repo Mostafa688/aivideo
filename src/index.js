@@ -81,6 +81,7 @@ const MODEL8_RATE_VOICEOVER = 5; // فويس أوفر Gemini: 5 كريديت/ث�
 const MODEL8_RATE_CINEMATIC = 6; // صوت متولّد مع الفيديو نفسه: 6 كريديت/ثانية (5 ثواني = 30، 20 ثانية = 120)
 const MODEL8_EDIT_SCENE_COST = 15; // تعديل نصي لمشهد واحد (أرخص من موديل 4 لأن التوليد نفسه أرخص)
 import adminRouter from './services/adminRoutes.js';
+import { startBackupScheduler } from './services/dbBackup.js';
 import { adminAuth } from './services/adminAuthMiddleware.js';
 import supportRouter from './services/supportRoutes.js';
 import projectRouter from './services/projectRoutes.js';
@@ -260,6 +261,7 @@ app.use('/outputs/ads_img', express.static(join(process.cwd(), 'outputs', 'ads_i
 app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'templates')));
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
+startBackupScheduler(); // نسخة احتياطية يومية لقاعدة البيانات على R2 (بره Railway)
 // ✅ FIX: كانت 3 نسخ مكررة من sitemap.xml و robots.txt في الملف — Express بس بيستخدم
 // أول واحد مسجّل، يعني النسخة الشاملة بتاعتنا (تحت في آخر الملف) كانت أبدًا ما بتشتغل!
 // اتشالت النسخ القديمة المكررة دي، وهنسيب نسخة واحدة كاملة بس في الآخر.

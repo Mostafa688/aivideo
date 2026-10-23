@@ -7,6 +7,7 @@ import { getActivePromo, startPromo, stopPromo, setEvergreenPromo } from './auth
 import { estimatePaymentProfit, markPaymentPaidOut, unmarkPaymentPaidOut, approveCreditsPaymentById, rejectPaymentRequestById, deleteExpiredPendingPayments, getRecentAgentConversations, listManagedChannelsForAdmin, deleteManagedChannelAsAdmin, listRecentDailyRunsForAdmin, listClonedVoicesForAdmin } from './authService.js';
 import { isGA4Configured, getGA4Overview } from './googleAnalyticsService.js';
 import { adminAuth, verifyAdminCredentials, issueAdminToken, checkLoginRateLimit } from './adminAuthMiddleware.js';
+import { runBackup, listBackups, openBackupStream, backupKey, BACKUP_KEEP } from './dbBackup.js';
 import { generateNewModelVideo } from './newVideoModelsService.js';
 import { visionDiagnostics } from './visionService.js';
 const { Pool } = pkg;
@@ -43,6 +44,30 @@ function periodBucketFor(rangeDays) {
   if (rangeDays <= 120) return { bucket: 'week', fmt: 'IYYY-IW' };
   return { bucket: 'month', fmt: 'YYYY-MM' };
 }
+
+// ── النسخ الاحتياطي لقاعدة البيانات (على R2، مشفّرة) ──
+router.get('/backups', adminAuth, async (req, res) => {
+  try {
+    const k = backupKey();
+    res.json({ backups: await listBackups(), keep: BACKUP_KEEP, keySource: k ? k.source : null, r2: !!(process.env.S3_ENDPOINT_URL && process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/backups/run', adminAuth, async (req, res) => {
+  try { const r = await runBackup({ reason: 'admin' }); res.json({ ok: true, ...r }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// ?raw=1 → الملف المشفّر زي ما هو (.ervbk)، غير كده → gzip مفكوك التشفير (سطور JSON) — الاتنين بيرجعوا بسكريبت الاسترجاع
+router.get('/backups/:id/download', adminAuth, async (req, res) => {
+  try {
+    const raw = req.query.raw === '1';
+    const r = await openBackupStream(Number(req.params.id), { raw });
+    if (!r) return res.status(404).json({ error: 'Backup not found' });
+    const stamp = new Date(r.backup.created_at).toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="erivion-db-${stamp}${raw ? '.ervbk' : '.ndjson.gz'}"`);
+    res.end(r.buffer);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 router.get('/stats', adminAuth, async (req, res) => {
   try {
