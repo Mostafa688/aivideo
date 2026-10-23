@@ -139,6 +139,40 @@ const ICONS = {
   search: I('<circle cx="42" cy="42" r="28"/><path d="M62 62l28 28"/>'),
   mail: I('<rect x="8" y="22" width="84" height="58" rx="8"/><path d="M10 28l40 30 40-30"/>'),
   home: I('<path d="M10 48L50 14l40 34M20 42v44h60V42M40 86V60h20v26"/>'),
+  // ── مجالات تانية (طب، هندسة، تعليم، قصص، قانون، رياضة، فن...) عشان الفيديوهات متبقاش نمط واحد ──
+  stethoscope: I('<path d="M24 12v26a18 18 0 0 0 36 0V12M18 12h12M54 12h12M42 56v10a18 18 0 0 0 36 0v-8"/><circle cx="78" cy="50" r="8"/>'),
+  pill: I('<rect x="14" y="34" width="72" height="32" rx="16" transform="rotate(-35 50 50)"/><path d="M38 34l24 32"/>'),
+  syringe: I('<path d="M70 12l18 18M79 21L44 56 30 42l35-35M30 42l-8 8 14 14 8-8M22 64L8 78l14 14 14-14M48 32l6 6M40 40l6 6"/>'),
+  tooth: I('<path d="M30 14c-12 0-18 10-16 24 2 12 6 18 8 30 2 12 4 20 10 20s6-10 8-18c1-4 3-6 10-6s9 2 10 6c2 8 2 18 8 18s8-8 10-20c2-12 6-18 8-30 2-14-4-24-16-24-8 0-12 4-20 4s-12-4-20-4z"/>'),
+  pulse: I('<path d="M6 54h20l8-22 12 44 12-36 8 14h28"/>'),
+  hospital: I('<path d="M14 88V30h72v58M6 88h88M40 88V68h20v20M50 38v20M40 48h20"/>'),
+  medical: I('<rect x="12" y="12" width="76" height="76" rx="20"/><path d="M50 30v40M30 50h40"/>'),
+  dna: I('<path d="M30 8c0 22 40 22 40 42s-40 20-40 42M70 8c0 22-40 22-40 42s40 20 40 42M36 22h28M34 36h32M34 64h32M36 78h28"/>'),
+  microscope: I('<path d="M36 12l16 8-14 30-16-8zM45 47l9 4M52 26c18 4 26 18 22 38M18 88h64M40 88c0-10 8-16 18-16M60 72c8 0 14-4 16-10"/>'),
+  wrench: I('<path d="M60 12a20 20 0 0 0-18 28L12 70a8 8 0 0 0 0 12l6 6a8 8 0 0 0 12 0l30-30a20 20 0 0 0 28-18l-12 12-12-4-4-12z"/>'),
+  hammer: I('<path d="M44 44l40 40-8 8-40-40zM16 34l20-20 30 30-20 20zM36 14l8-8 10 10"/>'),
+  ruler: I('<path d="M10 90V14l76 76zM22 78h20L22 58zM10 30h8M10 46h8M10 62h8M26 90v-8M42 90v-8M58 90v-8"/>'),
+  helmet: I('<path d="M12 70h76M16 70c0-22 14-40 34-40s34 18 34 40M40 30v-8h20v8M50 30v40M88 70v8H12v-8"/>'),
+  crane: I('<path d="M28 90V14M20 90h44M28 14l60 10M28 22l40 8M28 30l12-16M76 24v30M68 54h16v14H68z"/>'),
+  bridge: I('<path d="M4 64h92M18 64V24M82 64V24M18 26Q50 72 82 26M4 40c8-6 12-12 14-16M96 40c-8-6-12-12-14-16M32 64V48M44 64V56M56 64V56M68 64V48M10 80h80"/>'),
+  graduation: I('<path d="M6 38L50 18l44 20-44 20zM24 46v20c0 8 52 8 52 0V46M88 40v26"/>'),
+  pencil: I('<path d="M66 12l22 22L36 86H14V64zM56 22l22 22M14 86l12-4-8-8z"/>'),
+  crown: I('<path d="M12 74L8 30l22 18 20-28 20 28 22-18-4 44zM12 86h76"/>'),
+  sword: I('<path d="M80 10l10 0 0 10L42 68 32 58zM30 56l14 14M24 62l14 14M22 78l-10 10M28 72l-6 6"/>'),
+  castle: I('<path d="M12 88V36h12v10h10V36h12v10h8V36h12v10h10V36h12v52zM42 88V66a8 8 0 0 1 16 0v22M24 36V22h12v14M64 36V22h12v14"/>'),
+  tree: I('<path d="M50 8c-18 0-28 14-24 28-12 4-14 22 0 26h48c14-4 12-22 0-26 4-14-6-28-24-28zM50 62v28M38 90h24M50 74l-10-8M50 70l10-8"/>'),
+  mountain: I('<path d="M4 86l32-50 16 24 12-18 32 44zM28 48l8 6 8-6M62 44l6 6 6-4"/>'),
+  ship: I('<path d="M10 64h80l-12 20H22zM50 64V12M50 16l26 40H50M50 24L28 56h22M6 92c8 0 8-4 16-4s8 4 16 4 8-4 16-4 8 4 16 4 8-4 16-4"/>'),
+  door: I('<path d="M24 90V12h52v78M12 90h76M62 52v6"/>'),
+  map: I('<path d="M8 22l26-10 32 10 26-10v66L66 88 34 78 8 88zM34 12v66M66 22v66"/>'),
+  hourglass: I('<path d="M24 10h52M24 90h52M30 10c0 22 40 26 40 40S30 68 30 90M70 10c0 22-40 26-40 40s40 18 40 40M40 80h20"/>'),
+  scale: I('<path d="M50 12v76M30 88h40M16 24h68M16 24l-12 28h24zM84 24l-12 28h24zM4 52a12 8 0 0 0 24 0M72 52a12 8 0 0 0 24 0"/>'),
+  ball: I('<circle cx="50" cy="50" r="40"/><path d="M50 32l16 12-6 20H40l-6-20zM50 32V12M66 44l20-6M60 64l12 16M40 64L28 80M34 44l-20-6"/>'),
+  robot: I('<rect x="20" y="30" width="60" height="46" rx="10"/><path d="M50 30V16M14 48v14M86 48v14M36 64h28"/><circle cx="50" cy="12" r="4"/><circle cx="38" cy="48" r="6"/><circle cx="62" cy="48" r="6"/>'),
+  palette: I('<path d="M50 8C26 8 8 26 8 48c0 22 18 34 34 34 8 0 8-8 4-12s0-12 8-12h12c14 0 26-8 26-24C92 20 74 8 50 8z"/><circle cx="30" cy="40" r="5"/><circle cx="46" cy="26" r="5"/><circle cx="66" cy="28" r="5"/>'),
+  music: I('<path d="M36 76V20l46-10v56"/><circle cx="26" cy="76" r="10"/><circle cx="72" cy="66" r="10"/><path d="M36 34l46-10"/>'),
+  calendar: I('<rect x="12" y="20" width="76" height="68" rx="8"/><path d="M12 40h76M32 10v20M68 10v20M30 56h10M46 56h10M62 56h10M30 72h10M46 72h10"/>'),
+  family: I('<circle cx="30" cy="22" r="10"/><circle cx="70" cy="22" r="10"/><circle cx="50" cy="52" r="8"/><path d="M14 88V52c0-10 8-16 16-16s16 6 16 16M54 52c0-10 8-16 16-16s16 6 16 16v36M38 88V74c0-6 6-10 12-10s12 4 12 10v14"/>'),
   food: I('<path d="M10 50h80c0 22-18 38-40 38S10 72 10 50zM30 40c0-8 6-10 6-18M50 40c0-8 6-10 6-18M70 40c0-8 6-10 6-18"/>'),
   truck: I('<path d="M6 26h52v44H6zM58 40h20l14 16v14H58z"/><circle cx="24" cy="76" r="8"/><circle cx="76" cy="76" r="8"/>'),
   cup: I('<path d="M18 30h56l-6 58H24zM74 42h8c8 0 8 22 0 22h-10M34 20c0-6 4-8 4-14M54 20c0-6 4-8 4-14"/>'),
@@ -165,7 +199,7 @@ const ICONS = {
   atom: I('<circle cx="50" cy="50" r="6"/><ellipse cx="50" cy="50" rx="40" ry="16"/><ellipse cx="50" cy="50" rx="40" ry="16" transform="rotate(60 50 50)"/><ellipse cx="50" cy="50" rx="40" ry="16" transform="rotate(120 50 50)"/>'),
 };
 export const ICON_NAMES = Object.keys(ICONS);
-const ICON_ALIAS = { growth: 'chart', money: 'coin', idea: 'bulb', speed: 'bolt', secure: 'shield', security: 'shield', time: 'clock', world: 'globe', team: 'users', person: 'user', goal: 'target', win: 'trophy', video: 'play', audio: 'mic', internet: 'wifi', ai: 'brain', data: 'database', app: 'phone', computer: 'laptop', energy: 'bolt', health: 'heart', email: 'mail', location: 'pin', science: 'atom', search: 'search', learn: 'book', education: 'book', shopping: 'cart', travel: 'plane', finance: 'coin', warning: 'warning', danger: 'warning', success: 'check', quality: 'medal', night: 'moon', day: 'sun' };
+const ICON_ALIAS = { doctor: 'stethoscope', medicine: 'pill', drug: 'pill', vaccine: 'syringe', injection: 'syringe', dentist: 'tooth', heartbeat: 'pulse', clinic: 'hospital', genetics: 'dna', lab: 'microscope', research: 'microscope', repair: 'wrench', tools: 'wrench', build: 'hammer', construction: 'crane', design: 'ruler', engineer: 'helmet', engineering: 'helmet', school: 'graduation', university: 'graduation', student: 'graduation', write: 'pencil', king: 'crown', queen: 'crown', war: 'sword', battle: 'sword', story: 'castle', history: 'castle', nature: 'tree', forest: 'tree', adventure: 'mountain', sea: 'ship', journey: 'map', law: 'scale', justice: 'scale', lawyer: 'scale', sport: 'ball', football: 'ball', soccer: 'ball', art: 'palette', song: 'music', date: 'calendar', schedule: 'calendar', parents: 'family', kids: 'family', growth: 'chart', money: 'coin', idea: 'bulb', speed: 'bolt', secure: 'shield', security: 'shield', time: 'clock', world: 'globe', team: 'users', person: 'user', goal: 'target', win: 'trophy', video: 'play', audio: 'mic', internet: 'wifi', ai: 'brain', data: 'database', app: 'phone', computer: 'laptop', energy: 'bolt', health: 'heart', email: 'mail', location: 'pin', science: 'atom', search: 'search', learn: 'book', education: 'book', shopping: 'cart', travel: 'plane', finance: 'coin', warning: 'warning', danger: 'warning', success: 'check', quality: 'medal', night: 'moon', day: 'sun' };
 export const resolveIcon = (name, fallbackIdx = 0) => {
   const k = String(name || '').toLowerCase().trim();
   if (ICONS[k]) return k;

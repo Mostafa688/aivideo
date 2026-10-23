@@ -265,6 +265,44 @@ const OBJECT_HINTS = [
 ];
 const AR_PREFIX = /^(وبال|وال|بال|فال|كال|لل|ال|و|ف|ب|ل|ك)(?=[\u0621-\u064A]{2,})/;
 const ICON_HINTS = [
+  // طب وصحة
+  ['stethoscope', ['دكتور', 'طبيب', 'دكاترة', 'أطباء', 'اطباء', 'كشف', 'تشخيص', 'عيادة', 'doctor', 'physician', 'diagnosis', 'checkup']],
+  ['pill', ['دواء', 'دوا', 'أدوية', 'ادوية', 'علاج', 'حبوب', 'برشام', 'medicine', 'pill', 'pills', 'treatment', 'drug']],
+  ['syringe', ['حقنة', 'حقن', 'تطعيم', 'لقاح', 'تحليل', 'vaccine', 'injection', 'shot']],
+  ['tooth', ['سنان', 'أسنان', 'اسنان', 'ضرس', 'تقويم', 'dentist', 'tooth', 'teeth', 'dental']],
+  ['pulse', ['نبض', 'ضغط', 'سكر', 'أعراض', 'اعراض', 'heartbeat', 'pulse', 'symptoms', 'pressure']],
+  ['hospital', ['مستشفى', 'مستشفي', 'طوارئ', 'عملية', 'جراحة', 'hospital', 'surgery', 'emergency']],
+  ['dna', ['جينات', 'وراثة', 'خلايا', 'خلية', 'genes', 'genetic', 'dna', 'cells']],
+  ['microscope', ['معمل', 'بحث', 'أبحاث', 'ابحاث', 'تجربة', 'علماء', 'lab', 'research', 'experiment', 'scientists']],
+  // هندسة وبناء وتقنية
+  ['helmet', ['مهندس', 'مهندسين', 'هندسة', 'هندسي', 'engineer', 'engineers', 'engineering']],
+  ['crane', ['بناء', 'تشييد', 'عمارة', 'عمارات', 'مبنى', 'إنشاء', 'انشاء', 'construction', 'building', 'build']],
+  ['bridge', ['جسر', 'كوبري', 'كباري', 'طريق', 'طرق', 'bridge', 'road', 'roads']],
+  ['ruler', ['تصميم', 'تخطيط', 'مقاس', 'قياس', 'رسم', 'design', 'plan', 'measure']],
+  ['wrench', ['صيانة', 'تصليح', 'إصلاح', 'اصلاح', 'عطل', 'أعطال', 'repair', 'fix', 'maintenance']],
+  ['hammer', ['نجار', 'نجارة', 'حرفة', 'carpenter', 'craft']],
+  ['robot', ['روبوت', 'ذكاء اصطناعي', 'اصطناعي', 'آلي', 'robot', 'automation', 'ai']],
+  // تعليم
+  ['graduation', ['طالب', 'طلاب', 'طلبة', 'مدرسة', 'جامعة', 'تعليم', 'امتحان', 'امتحانات', 'دراسة', 'student', 'students', 'school', 'university', 'exam', 'study']],
+  ['pencil', ['اكتب', 'كتابة', 'ملاحظات', 'واجب', 'write', 'writing', 'notes', 'homework']],
+  // قصص وتاريخ ومغامرة
+  ['crown', ['ملك', 'ملكة', 'أمير', 'امير', 'أميرة', 'اميرة', 'سلطان', 'king', 'queen', 'prince', 'princess']],
+  ['sword', ['حرب', 'معركة', 'جيش', 'فارس', 'سيف', 'war', 'battle', 'army', 'knight']],
+  ['castle', ['قصة', 'حكاية', 'زمان', 'قديم', 'قصر', 'مملكة', 'تاريخ', 'story', 'tale', 'history', 'kingdom', 'palace']],
+  ['tree', ['شجرة', 'غابة', 'طبيعة', 'زرع', 'زراعة', 'tree', 'forest', 'nature', 'farm']],
+  ['mountain', ['جبل', 'جبال', 'قمة', 'صحرا', 'صحراء', 'mountain', 'peak', 'desert']],
+  ['ship', ['بحر', 'سفينة', 'مركب', 'بحار', 'sea', 'ship', 'boat', 'ocean']],
+  ['map', ['خريطة', 'رحلة', 'سفر', 'مغامرة', 'map', 'trip', 'journey', 'adventure']],
+  ['door', ['باب', 'door', 'enter']],
+  ['hourglass', ['فجأة', 'متأخر', 'انتظار', 'مستني', 'suddenly', 'later', 'waiting']],
+  // مجالات تانية
+  ['scale', ['قانون', 'محامي', 'محكمة', 'عدالة', 'حق', 'حقوق', 'law', 'lawyer', 'court', 'justice', 'rights']],
+  ['ball', ['كورة', 'كرة', 'ماتش', 'رياضة', 'لاعب', 'football', 'soccer', 'match', 'sport', 'player']],
+  ['palette', ['فن', 'ألوان', 'الوان', 'رسام', 'art', 'colors', 'artist', 'paint']],
+  ['music', ['موسيقى', 'مزيكا', 'أغنية', 'اغنية', 'غنا', 'music', 'song', 'sing']],
+  ['calendar', ['موعد', 'ميعاد', 'يوم', 'أسبوع', 'اسبوع', 'شهر', 'date', 'week', 'month', 'appointment']],
+  ['family', ['أسرة', 'اسرة', 'عيلة', 'عائلة', 'أطفال', 'اطفال', 'ولاد', 'family', 'kids', 'children', 'parents']],
+  // تجارة وأكل وخدمات
   ['food', ['كشري', 'أكل', 'اكل', 'طبق', 'وجبة', 'مطعم', 'رز', 'معكرونة', 'مكرونة', 'فطار', 'غدا', 'عشا', 'جوعان', 'food', 'meal', 'dish', 'restaurant', 'eat']],
   ['truck', ['توصيل', 'التوصيل', 'دليفري', 'شحن', 'delivery', 'shipping', 'deliver']],
   ['clock', ['ساعة', 'ساعات', 'وقت', 'دقيقة', 'دقايق', 'الليل', 'بالليل', 'الصبح', 'مفتوح', 'time', 'hour', 'hours', 'minutes', 'open']],
@@ -281,7 +319,11 @@ const ICON_HINTS = [
 function visualForText(text, used = new Set()) {
   const words = String(text || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   const forms = words.flatMap(w => { const a = [w]; let x = w; for (let k = 0; k < 2; k++) { const y = x.replace(AR_PREFIX, ''); if (y === x) break; a.push(y); x = y; } return a; });
-  const hit = (list) => list.some(k => { const ar = /[\u0600-\u06FF]/.test(k); return forms.some(f => (ar ? f.startsWith(k) && f.length <= k.length + 3 : f === k)); });
+  // الكلمات العربي القصيرة (حق، فن، يوم…) لازم تطابق بالظبط أو بلاحقة معروفة — عشان "حق" متطلعش من "حقيقي"
+  const SUF = /^(ك|ي|ه|ها|نا|هم|كم|ات|ين|ون|ان|ة)$/;
+  const arHit = (f, k) => (k.length <= 3 ? f === k || (f.startsWith(k) && SUF.test(f.slice(k.length))) : f.startsWith(k) && f.length <= k.length + 3);
+  const multi = (k) => k.includes(' ') && String(text || '').includes(k);
+  const hit = (list) => list.some(k => { if (multi(k)) return true; const ar = /[\u0600-\u06FF]/.test(k); return forms.some(f => (ar ? arHit(f, k) : f === k)); });
   for (const [ic, list] of ICON_HINTS) if (!used.has(ic) && hit(list)) return { icon: ic };
   for (const [ob, list] of OBJECT_HINTS) if (!used.has(ob) && hit(list)) return { object: ob };
   return null;
