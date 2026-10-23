@@ -62,7 +62,7 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   if (nar.lang) lang = nar.lang;
 
   // 3) المخرج
-  const spoken = segmentScenes(nar.tokens, nar.total, look === 'world3d' ? { minLen: 2.2, softMax: 4.2, maxLen: 5.5, maxScenes: Math.max(40, Math.ceil(nar.total / 3)) } : { maxScenes: Math.max(36, Math.ceil(nar.total / 3.4)) }); // فيديو أطول (3-5 دقايق) = مشاهد أكتر // الـ3D: لقطات أقصر وقطع أكتر
+  const spoken = segmentScenes(nar.tokens, nar.total, look === 'world3d' ? { minLen: 2.2, softMax: 4.2, maxLen: 5.5, maxScenes: Math.max(40, Math.ceil(nar.total / 3)) } : look === 'motion' ? { minLen: 1.8, softMax: 3.4, maxLen: 4.6, maxScenes: Math.max(40, Math.ceil(nar.total / 2.2)) } : { maxScenes: Math.max(36, Math.ceil(nar.total / 3.4)) }); // الموشن: لقطات قصيرة (2-4.5 ثانية) — كانت 5-8 ثواني فالفيديو بيبان ثابت // فيديو أطول (3-5 دقايق) = مشاهد أكتر // الـ3D: لقطات أقصر وقطع أكتر
   if (!spoken.length) throw new Error('no scenes');
   // كاست الكارتون: الـLLM بيبتكر شخصيات/مخلوقات على مقاس القصة (لو فشل بنستخدم الشخصيات الجاهزة)
   let castMap = makeCastMap([]), castChars = [];
@@ -105,9 +105,26 @@ export async function produceAnimation({ id, userId, input, workDir, prog }, dep
   });
   // الموشن جرافيكس: أي مشهد كلام من غير عنصر بصري بناخد له شكل 3D من معنى الكلام (مفيش مشهد نص بس)
   if (look === 'motion') {
-    let gen = 0;
-    scenes.forEach((sc, i) => { if (sc.type === 'kinetic' && !sc.data.icon && !sc.data.object) sc.data = { ...sc.data, object: objectForText(spoken[i].text) || (gen++ % 2 ? 'star' : 'sparkle') }; });
-    for (let i = 1; i < scenes.length; i++) if (scenes[i].type === 'kinetic' && scenes[i - 1].type === 'kinetic' && scenes[i].data.object && scenes[i].data.object === scenes[i - 1].data.object) scenes[i].data = { ...scenes[i].data, object: undefined, icon: scenes[i].data.icon || 'star' };
+    // مشهد البوستر التحريري بيرسم ورق كريمي بتاعه — بيكسر نظام التصميم (فيديو بينك وفجأة ورق) → كلام بعنصر بصري، إلا في swiss
+    if (pal.style !== 'swiss') scenes.forEach((sc) => { if (sc.type === 'poster') { const d = sc.data || {}; sc.type = 'kinetic'; sc.data = { emphasis: [d.hero, d.bar].filter(Boolean).flatMap(x => String(x).split(/\s+/)).slice(0, 3), object: d.object || undefined }; } });
+    // رسومات حرة (مش قالب): لو المخرج حط أقل من ربع المشاهد رسومات، بنحوّل مشاهد كلام (مش الأولى ولا الأخيرة) لرسمة بفكرة من الكلام نفسه
+    const nArt = scenes.filter(sc => sc.type === 'art').length, wantArt = scenes.length >= 4 ? Math.ceil(scenes.length * 0.28) : 0;
+    if (nArt < wantArt) {
+      const cand = scenes.map((sc, i) => ({ sc, i })).filter(({ sc, i }) => sc.type === 'kinetic' && i > 0 && i < scenes.length - 1).sort((a, b) => (b.sc.end - b.sc.start) - (a.sc.end - a.sc.start));
+      for (const { sc, i } of cand.slice(0, wantArt - nArt)) sc.type = 'art', sc.data = { idea: `an animated motion-graphics illustration that shows what is said here, as a visual metaphor: "${spoken[i].text}"`, layout: 'side', emphasis: sc.data.emphasis || [] };
+    }
+    // كل مشهد كلام/ختام ليه عنصر بصري بمعنى كلامه، ومن غير ما نكرر نفس العنصر في الفيديو
+    const used = new Set(); let gen = 0;
+    const pickVis = (text, d) => {
+      const generic = ['sparkle', 'star'].includes(d.object) && !d.icon; // النجمة/اللمعة شكل عام — لو الكلام ليه عنصر بمعناه بنستبدله
+      if ((d.icon || d.object) && !generic) { used.add(d.icon || d.object); return {}; }
+      if (generic) { const v0 = visualForText(text, used); if (v0) { used.add(v0.icon || v0.object); return { object: undefined, ...v0 }; } used.add(d.object); return {}; }
+      const v = visualForText(text, used);
+      if (v) { used.add(v.icon || v.object); return v; }
+      const pool = ['sparkle', 'star', 'target', 'bolt', 'heart'].filter(x => !used.has(x)); const ob = pool[gen++ % Math.max(1, pool.length)] || 'star';
+      used.add(ob); return { object: ob };
+    };
+    scenes.forEach((sc, i) => { if (sc.type === 'kinetic' || sc.type === 'outro') sc.data = { ...sc.data, ...pickVis(spoken[i].text, sc.data) }; });
   }
   // عالم 3D: "مخرج الحركة" بيحوّل كل مشهد world لعالم 3D (بيئة + شخصيات + مسارات + أغراض + كاميرا) — دايمًا بيرجّع عالم سليم (افتراضي لو فشل)
   const worldIdx = scenes.map((sc, i) => (sc.type === 'world' ? i : -1)).filter(i => i >= 0);
@@ -247,6 +264,28 @@ const OBJECT_HINTS = [
   ['sparkle', ['جديد', 'سحر', 'مميز', 'new', 'magic', 'special']],
 ];
 const AR_PREFIX = /^(وبال|وال|بال|فال|كال|لل|ال|و|ف|ب|ل|ك)(?=[\u0621-\u064A]{2,})/;
+const ICON_HINTS = [
+  ['food', ['كشري', 'أكل', 'اكل', 'طبق', 'وجبة', 'مطعم', 'رز', 'معكرونة', 'مكرونة', 'فطار', 'غدا', 'عشا', 'جوعان', 'food', 'meal', 'dish', 'restaurant', 'eat']],
+  ['truck', ['توصيل', 'التوصيل', 'دليفري', 'شحن', 'delivery', 'shipping', 'deliver']],
+  ['clock', ['ساعة', 'ساعات', 'وقت', 'دقيقة', 'دقايق', 'الليل', 'بالليل', 'الصبح', 'مفتوح', 'time', 'hour', 'hours', 'minutes', 'open']],
+  ['home', ['البيت', 'بيت', 'منزل', 'بيتك', 'home', 'house']],
+  ['cart', ['اطلب', 'أطلب', 'طلب', 'شراء', 'اشتري', 'order', 'buy', 'shop']],
+  ['phone', ['اتصل', 'رقم', 'تليفون', 'موبايل', 'واتساب', 'call', 'phone', 'whatsapp']],
+  ['gift', ['عرض', 'هدية', 'خصم', 'مجانا', 'مجاني', 'offer', 'gift', 'discount', 'free']],
+  ['cup', ['عصير', 'قهوة', 'شاي', 'مشروب', 'juice', 'coffee', 'tea', 'drink']],
+  ['pin', ['مكان', 'عنوان', 'فرع', 'فروع', 'location', 'address', 'branch']],
+  ['users', ['ناس', 'الناس', 'عملاء', 'جمهور', 'people', 'customers']],
+  ['store', ['محل', 'متجر', 'شركة', 'store', 'shop', 'company']],
+];
+/** عنصر بصري بمعنى الكلام (شكل 3D أو أيقونة) — مش بيرجّع حاجة اتستخدمت قبل كده في الفيديو */
+function visualForText(text, used = new Set()) {
+  const words = String(text || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const forms = words.flatMap(w => { const a = [w]; let x = w; for (let k = 0; k < 2; k++) { const y = x.replace(AR_PREFIX, ''); if (y === x) break; a.push(y); x = y; } return a; });
+  const hit = (list) => list.some(k => { const ar = /[\u0600-\u06FF]/.test(k); return forms.some(f => (ar ? f.startsWith(k) && f.length <= k.length + 3 : f === k)); });
+  for (const [ic, list] of ICON_HINTS) if (!used.has(ic) && hit(list)) return { icon: ic };
+  for (const [ob, list] of OBJECT_HINTS) if (!used.has(ob) && hit(list)) return { object: ob };
+  return null;
+}
 function objectForText(text) {
   const words = String(text || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   const forms = words.flatMap(w => { const a = [w]; let x = w; for (let k = 0; k < 2; k++) { const y = x.replace(AR_PREFIX, ''); if (y === x) break; a.push(y); x = y; } return a; });

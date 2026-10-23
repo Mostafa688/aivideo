@@ -71,7 +71,7 @@ export async function renderCodeVideo({ story, narrationFile, musicFile = null, 
   await renderSilentVideo({ story, outFile: silent, assFile, onProgress: (f) => onProgress('frames', f) });
   onProgress('audio', 0);
   const mix = path.join(workDir, 'mix.m4a');
-  const info = await mixCodeVideoAudio({ narrationFile, musicFile, scenes: story.scenes, duration: story.duration, workDir, outFile: mix, musicVolume, sfxGain: story.look === 'world3d' ? 0.6 : 0.85 });
+  const info = await mixCodeVideoAudio({ narrationFile, musicFile, scenes: story.scenes, duration: story.duration, workDir, outFile: mix, musicVolume, sfxGain: story.look === 'world3d' ? 0.6 : story.look === 'motion' ? 0.55 : 0.85 }); // الموشن: مؤثرات أهدى تحت الصوت
   onProgress('audio', 1);
   await ffmpeg(['-i', silent, '-i', mix, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'copy', '-shortest', '-movflags', '+faststart', outFile]);
   return { file: outFile, duration: await probeDuration(outFile), sfxEvents: info.events };
