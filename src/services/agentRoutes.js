@@ -25,6 +25,7 @@ import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 import { getMaxClipSeconds, getAutoEditCreditCost, getAnimationCreditCost } from './creditPricingEngine.js';
 import { detectShowcaseIntent, buildShowcaseReply } from './showcaseIntent.js';
 import { AGENT_MODELS, estimateClaudeMessageCredits } from './agentService.js';
+import { sanitizePlan, estimateProduction, startProduction, getProductionJob, PRODUCTION_LIMITS } from './productionService.js';
 import { orderSingleSubjectFirst } from './characterStudioRoutes.js';
 
 // ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين على أكتر من موديل صور، مش موديل واحد بس): تأكد إن
@@ -590,6 +591,7 @@ export function detectVoiceAnimationGo({ message, history = [], voiceUrl }) {
   const design = (look || 'motion') === 'motion' ? (designIn(msg) || [...userMsgs].reverse().map(designIn).find(Boolean) || null) : null;
   return { source: 'voiceover', look: look || 'motion', ...(design ? { design } : {}), ratio, music: !/(من غير|بدون|بلاش)\s*(مزيكا|موسيقى|music)/i.test(all), captions: /(من غير|بدون|بلاش)\s*(كابشن|ترجمة|captions?)/i.test(all) ? 'none' : (ratio === '9:16' ? 'pop' : 'none') };
 }
+const pendingProductions = new Map(); // userId -> { raw plan, at } — خطة فيلم مستنية موافقة العميل
 const voiceDurations = new Map(); // رابط التسجيل -> مدته بالثانية (عشان الايجنت يفضل عارف المدة في الرسايل اللي بعد الرفع)
 const voiceOwners = new Map(); // userId -> Set(روابط تسجيلات الصوت اللي السيرفر ده سجّلها للعميل ده)
 const consumedVoices = new Set(); // `${userId}:${url}` — تسجيلات اتستخدمت في مونتاج خلاص
@@ -992,6 +994,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const claudeUsage = [];
     const siteBase = (process.env.PUBLIC_SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
     const claudeImageUrl = uploadedPhotoUrls[0] ? (String(uploadedPhotoUrls[0]).startsWith('/') ? siteBase + uploadedPhotoUrls[0] : uploadedPhotoUrls[0]) : null;
+    // خطة فيلم لسه بتتكتب على أجزاء: نفكّر Claude بيها (الرد المعروض مفيهوش الـJSON)
+    if (agentModel !== 'erivion' && pendingProductions.has(userId)) {
+      const pp = pendingProductions.get(userId).raw || {};
+      const sc = Array.isArray(pp.scenes) ? pp.scenes : [];
+      attachmentNote = (attachmentNote ? attachmentNote + ' ' : '') + `PENDING FILM PLAN (written so far, not started yet): title "${String(pp.title || '').slice(0, 80)}", ${sc.length} scenes, characters: ${(pp.characters || []).map(c => c.name).join(', ')}, style: ${String(pp.style || '').slice(0, 120)}, mode: ${pp.mode || 'motion'}. Last scenes: ${sc.slice(-3).map((x, i) => `#${sc.length - 2 + i}: ${String(x.text || '').slice(0, 140)}`).join(' | ')}. To continue it send ###PRODUCTION_PLAN### with "append":true and only the NEW scenes; to start it after approval send ###PRODUCTION_START###.`;
+    }
     const chatFn = (args) => agentChat({ ...args, agentModel, onUsage: (u) => claudeUsage.push(u), imageUrl: claudeImageUrl });
     if (agentModel !== 'erivion') {
       const need = estimateClaudeMessageCredits(agentModel, String(message || '').length + JSON.stringify(history || []).length);
@@ -1150,6 +1158,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const MAX_NUDGE_RETRIES = 3;
     let nudgeAttempts = 0;
     while (
+      !/###PRODUCTION_(PLAN|START)###/.test(String(rawReply || '')) &&
       !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload &&
       (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply)) && nudgeAttempts < MAX_NUDGE_RETRIES
     ) {
@@ -1209,7 +1218,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // بترفع الموديل لـqwen3.8-27b الغالي جدًا ($4/مليون توكن إخراج) — العميل أكّد إن الباج ده
     // بالظبط بيحصل على الخطة المدفوعة (اللي أصلاً بتستخدم qwen)، يعني رفع الموديل مش هيحل حاجة
     // ومكلف زيادة من غير أي فايدة حقيقية؛ دلوقتي بيرفع مجهود التفكير بس (نفس gpt-oss-120b)
-    if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply))) {
+    if (!/###PRODUCTION_(PLAN|START)###/.test(String(rawReply || '')) && !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply))) {
       console.warn('[Agent] All nudge retries exhausted with the normal model — attempting one final rescue with the stronger model');
       try {
         const rescueHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: reply }];
@@ -1233,7 +1242,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ FIX: لو بعد كل المحاولات لسه مفيش أي ماركر ناجح والرد لسه بيوعد بالتنفيذ — منسيبش
     // العميل يفتكر إن التوليد بدأ فعلاً وهو ما بدأش. رسالة صريحة بدل الوعد الكاذب، عشان
     // العميل يعرف يعيد صياغة الطلب بدل ما يستنى نتيجة مش هتيجي
-    if (!ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply))) {
+    if (!/###PRODUCTION_(PLAN|START)###/.test(String(rawReply || '')) && !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply))) {
       // ✅ NEW: بنسجل الرد الخام كامل هنا (مش بس تحذير عام) — عشان لو المشكلة رجعت تاني نقدر
       // نشوف بالظبط الموديل كان قاعد يقول ايه في Railway logs، بدل ما نخمّن السبب من غير أي
       // دليل حقيقي (زي ما حصل مع فيكس سابق اتضح إنه مش بيغطي كل الحالات)
@@ -2011,6 +2020,48 @@ router.post('/chat', authMiddleware, async (req, res) => {
       console.warn('[Agent] empty reply — sending a fallback message instead of an empty bubble');
       reply = 'معلش، الرد ماوصلش كامل. ممكن تبعتلي رسالتك تاني؟';
     }
+    // ── فيلم كامل من Claude: ###PRODUCTION_PLAN### (خطة/جزء من خطة → السيرفر يحسب السعر الحقيقي ويعرضه)
+    // و ###PRODUCTION_START### (بعد موافقة العميل → يبدأ الفيلم فعلًا ويظهر في الميديا) ──
+    let production = null, productionAwait = false;
+    if (agentModel !== 'erivion' && /###PRODUCTION_(PLAN|START)###/.test(String(reply || ''))) {
+      const arP = /[\u0600-\u06FF]/.test(String(message || ''));
+      const planM = /###PRODUCTION_PLAN###\s*(\{[\s\S]*\})/.exec(reply);
+      if (planM) {
+        reply = reply.slice(0, planM.index).trim();
+        try {
+          const raw = JSON.parse(planM[1]);
+          const prev = raw.append ? pendingProductions.get(userId) : null;
+          const merged = prev ? { ...prev.raw, ...raw, characters: [...(prev.raw.characters || []), ...(raw.characters || []).filter(c => !(prev.raw.characters || []).some(x => x.name === c.name))], scenes: [...(prev.raw.scenes || []), ...(raw.scenes || [])] } : raw;
+          const plan = sanitizePlan(merged); const est = estimateProduction(plan);
+          pendingProductions.set(userId, { raw: merged, at: Date.now() });
+          const bal = await getCreditsBalance(userId).catch(() => null);
+          reply += `\n\n${arP ? '**ملخص الفيلم (السعر الحقيقي محسوب من السيستم):**' : '**Film summary (real price computed by the system):**'}\n` +
+            (arP
+              ? `- ${plan.title} — ${est.scenes} مشهد، ${est.characters} شخصية، حوالي ${est.minutes} دقيقة (${plan.mode === 'motion' ? 'مشاهد متحركة بالذكاء الاصطناعي' : 'صور بحركة كاميرا'})\n- الصور: ${est.images} كريديت · التحريك: ${est.video} · الصوت: ${est.voice} · المونتاج: ${est.render}\n- **الإجمالي: ${est.total} كريديت** (رصيدك ${bal ?? '—'}). أي فرق في الآخر بيرجع لرصيدك.`
+              : `- ${plan.title} — ${est.scenes} scenes, ${est.characters} characters, about ${est.minutes} min (${plan.mode === 'motion' ? 'AI-animated scenes' : 'stills with camera motion'})\n- Images: ${est.images} credits · Animation: ${est.video} · Voice: ${est.voice} · Editing: ${est.render}\n- **Total: ${est.total} credits** (your balance ${bal ?? '—'}). Any difference is refunded at the end.`) +
+            ((bal ?? 0) < est.total ? (arP ? `\n\nرصيدك مش كفاية — اشحن ${est.total - (bal ?? 0)} كريديت أو اطلب نسخة أرخص (مثلًا صور بحركة كاميرا بدل التحريك).` : `\n\nYour balance is not enough — top up ${est.total - (bal ?? 0)} credits or ask for a cheaper version (e.g. stills with camera motion).`) : (arP ? '\n\nأبدأ؟' : '\n\nShall I start?'));
+          productionAwait = (bal ?? 0) >= est.total;
+        } catch (e) {
+          reply += `\n\n${arP ? 'معلش، خطة الفيلم مكتملتش صح' : 'The film plan was incomplete'} (${e.message}). ${arP ? 'اكتب "كمّل" وأنا أعيد كتابتها.' : 'Say "continue" and I will rewrite it.'}`;
+        }
+      } else if (/###PRODUCTION_START###/.test(reply)) {
+        reply = reply.replace(/###PRODUCTION_START###[\s\S]*$/, '').trim();
+        const pend = pendingProductions.get(userId);
+        if (!pend || Date.now() - pend.at > 6 * 3600e3) reply += arP ? '\n\nمش لاقي خطة فيلم جاهزة — قولّي فكرة الفيلم وأنا أكتب الخطة والسعر.' : '\n\nNo film plan is ready — tell me the idea and I will write the plan and the price.';
+        else {
+          try {
+            const r = await startProduction(userId, pend.raw);
+            pendingProductions.delete(userId);
+            production = { jobId: r.jobId, title: r.estimate ? pend.raw.title : '', estimate: r.estimate, status: 'running', progress: 0, stage: 'characters', aspectRatio: pend.raw.aspectRatio === '9:16' ? '9:16' : '16:9' };
+          } catch (e) {
+            reply += e.message === 'quota_exceeded'
+              ? (arP ? `\n\nالرصيد مش كفاية: الفيلم محتاج ${e.cost} كريديت ورصيدك ${e.remaining ?? 0}.` : `\n\nNot enough credits: the film needs ${e.cost} and you have ${e.remaining ?? 0}.`)
+              : e.message === 'content_policy_violation' ? (arP ? '\n\nالمحتوى ده مخالف لسياسة الموقع، فمش هقدر أعمله.' : '\n\nThis content is against the platform policy.') : (arP ? `\n\nمعلش، مقدرتش أبدأ الفيلم (${e.message}).` : `\n\nCould not start the film (${e.message}).`);
+          }
+        }
+      }
+    }
+
     // ── خصم رسالة Claude (مجموع التوكنز الفعلية لكل النداءات في الرسالة دي) — مرة واحدة ──
     let agentUsage;
     if (agentModel !== 'erivion' && claudeUsage.length) {
@@ -2026,9 +2077,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
       console.log(`[Agent] ${agentModel} message: ${agentUsage.inTok} in / ${agentUsage.outTok} out tokens → ${charged} credits${agentUsage.fallback ? ' (fell back to Groq, not charged)' : ''}`);
     }
     res.json({
-      reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl, agentUsage,
+      reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl, agentUsage, production,
       analyzeVideo: analyzeVideoPayload,
-      awaitingConfirmation,
+      awaitingConfirmation: awaitingConfirmation || productionAwait,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
       subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate, docJob, docSetup, voicePicker, pdfVideo,
       // ✅ NEW: الروابط الدائمة (R2) لأي صورة العميل رفعها في الرسالة دي — الفرونت إند بيحفظها
@@ -2054,6 +2105,14 @@ router.post('/chat', authMiddleware, async (req, res) => {
     console.error('[Agent Chat]', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// حالة فيلم كامل (للكارت في الشات والميديا)
+router.get('/production/:id', authMiddleware, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const j = await getProductionJob(req.params.id, req.user.userId).catch(() => null);
+  if (!j) return res.status(404).json({ error: 'not_found' });
+  res.json(j);
 });
 
 // موديلات الايجنت + التكلفة التقريبية للرسالة (لقايمة الاختيار تحت خانة الكتابة)

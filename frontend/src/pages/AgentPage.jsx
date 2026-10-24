@@ -753,6 +753,47 @@ function ImageBatchCard({ job, lang, onUpdateJob, onRemoveImage, onReusePrompt, 
 // ✅ NEW (new standalone video-generation models — Veo/Kling/Seedance/Luma): كارت واحد بيعرض
 // فيديو مولّد بموديل مستقل — نفس منطق ImageBatchCard فوق (مفيش poll، الطلب نفسه بيستنى
 // الفيديو جاهز لأن backend بيستخدم Prefer: wait + polling داخلي في newVideoModelsService.js)
+// ── فيلم كامل بيعمله Claude (شخصيات + مشاهد + صوت + تحريك + مونتاج) — تقدم حي ثم الفيديو ──
+const PROD_STAGES = {
+  ar: { queued: 'في الطابور', characters: 'رسم الشخصيات', scenes: 'رسم المشاهد بنفس الشخصيات', voice: 'تسجيل الأصوات', animate: 'تحريك المشاهد', montage: 'المونتاج والموسيقى', upload: 'رفع الفيلم', done: 'الفيلم جاهز!' },
+  en: { queued: 'Queued', characters: 'Designing characters', scenes: 'Drawing scenes with the same characters', voice: 'Recording voices', animate: 'Animating scenes', montage: 'Editing and music', upload: 'Uploading', done: 'Film ready!' },
+};
+function ProductionCard({ job, lang, onUpdateJob }) {
+  const ar = lang === 'ar'; const st = PROD_STAGES[ar ? 'ar' : 'en'];
+  useEffect(() => {
+    if (!job?.jobId || job.status === 'done' || job.status === 'failed') return undefined;
+    let stop = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/agent/production/${job.jobId}`, { headers: tokenHeader() });
+        if (r.ok) { const d = await r.json(); if (!stop) onUpdateJob?.({ status: d.status, stage: d.stage, progress: d.progress, videoUrl: d.videoUrl, thumbnailUrl: d.thumbnailUrl, error: d.error, spent: d.spent, charged: d.charged }); }
+      } catch { /* retry */ }
+    };
+    tick(); const h = setInterval(tick, 6000);
+    return () => { stop = true; clearInterval(h); };
+  }, [job?.jobId, job?.status]);
+  const pct = Math.max(2, Math.min(100, job?.progress || 0));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 14, background: 'rgba(124,106,247,0.07)', border: '1px solid rgba(124,106,247,0.25)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: '#fff' }}><Clapperboard size={15} strokeWidth={2} color="#a99bff" />{job?.title || (ar ? 'فيلم' : 'Film')}</div>
+      {job?.status === 'done' && job.videoUrl ? (<>
+        <video src={job.videoUrl} controls playsInline style={{ width: '100%', aspectRatio: (job.aspectRatio || '16:9').replace(':', ' / '), borderRadius: 10, background: '#000' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5 }}>
+          <span style={{ color: '#22c55e', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle2 size={13} /> {st.done}</span>
+          {job.spent != null && <span style={{ color: 'rgba(255,255,255,0.5)' }}>{job.spent} {ar ? 'كريديت' : 'credits'}{job.charged > job.spent ? (ar ? ` (رجعلك ${job.charged - job.spent})` : ` (${job.charged - job.spent} refunded)`) : ''}</span>}
+          <a href={job.videoUrl} download style={{ marginInlineStart: 'auto', color: '#a99bff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><Download size={13} /> {ar ? 'تحميل' : 'Download'}</a>
+        </div>
+      </>) : job?.status === 'failed' ? (
+        <div style={{ fontSize: 12.5, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {ar ? 'الفيلم وقف — اللي ماتعملش رجع لرصيدك.' : 'The film stopped — the unused credits were refunded.'} {job.error ? `(${String(job.error).slice(0, 80)})` : ''}</div>
+      ) : (<>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>{st[job?.stage] || st.queued} · {pct}%</div>
+        <div style={{ height: 7, borderRadius: 6, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}><div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#7c6af7,#c24dff)', transition: 'width .6s ease' }} /></div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{ar ? 'الأفلام الطويلة بتاخد وقت — تقدر تقفل الصفحة وترجع، الشغل مكمل.' : 'Long films take a while — you can close this page and come back, it keeps going.'}</div>
+      </>)}
+    </div>
+  );
+}
+
 function VideoModelCard({ job, lang, onUpdateJob, onRemove, onReusePrompt, onReport, onOpenDetail, onToast }) {
   const tt = lang === 'ar'
     ? { generating: 'بيولّد الفيديو...', done: 'تم! تم خصم', credits: 'كريديت', failed: 'حصلت مشكلة أثناء توليد الفيديو' }
@@ -1584,6 +1625,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // تأكيد قبل التوليد، بنعلّم الرسالة عشان نعرض أزرار سريعة تحتها
       if (data.agentUsage?.credits > 0) window.dispatchEvent(new Event('erivion:credits'));
       setMessages(m => [...m, { role: 'assistant', content: data.reply, agentUsage: data.agentUsage || undefined, awaitingConfirmation: !!data.awaitingConfirmation, showcase: Array.isArray(data.showcase) && data.showcase.length ? data.showcase : undefined, docCta: data.docCta || undefined }]);
+      if (data.production?.jobId) {
+        setMessages(m => [...m, { role: 'assistant', type: 'production', job: { uid: `prod_${data.production.jobId}`, ...data.production } }]);
+        window.dispatchEvent(new Event('erivion:credits'));
+      }
       if (data.uploadedVoiceUrl) setLastUploadedVoiceUrl(data.uploadedVoiceUrl);
       // ✅ NEW: بنحفظ الرابط الدائم (R2) لأي صورة اترفعت في الرسالة دي جوه الرسالة نفسها —
       // كده تفضل قابلة للاستشهاد بيها في history/mediaLedger في أي رسالة جاية، مش بس دلوقتي
@@ -2790,7 +2835,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     mq.addEventListener?.('change', on);
     return () => mq.removeEventListener?.('change', on);
   }, []);
-  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis', 'channelRun', 'channelReview', 'docJob'];
+  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis', 'channelRun', 'channelReview', 'docJob', 'production'];
   const mediaItems = messages
     .map((m, i) => ({ ...m, _i: i }))
     .filter(m => MEDIA_TYPES.includes(m.type));
@@ -2802,7 +2847,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     return !!m.job?.favorited;
   };
   const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
-    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun' || m.type === 'channelReview' || m.type === 'docJob')
+    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun' || m.type === 'channelReview' || m.type === 'docJob' || m.type === 'production')
     : rightTab === 'favorites' ? mediaItems.filter(isMediaFavorited)
     : mediaItems;
 
@@ -2861,6 +2906,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       onOpenDetail={(idx) => setDetailView({ jobUid: m.job.uid, kind: 'imageBatch', imgIndex: idx })}
       onToast={showToast}
     />}
+    {m.type === 'production' && <ProductionCard job={m.job} lang={lang} onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)} />}
     {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang}
       onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
       onRemove={() => removeMessageByJobUid(m.job.uid)}
