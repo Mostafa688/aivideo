@@ -49,13 +49,21 @@ const BULLET = /^\s*([-•*–])\s+(.*)$/;
 const NUM = /^\s*(\d{1,2})[.)]\s+(.*)$/;
 const HEAD = /^\s*#{1,4}\s+(.*)$/;
 
+// موقع HTML كامل مكتوب من غير ``` (رسايل قديمة/موديل مجاني) → بلوك html عشان يظهر Preview
+function fenceBareHtml(t) {
+  const m = /<!doctype\s+html|<html[\s>]/i.exec(t); if (!m) return t;
+  const before = t.slice(0, m.index); if ((before.match(/```/g) || []).length % 2 === 1) return t;
+  const endIdx = t.toLowerCase().indexOf('</html>', m.index); const end = endIdx === -1 ? t.length : endIdx + 7;
+  return `${before.replace(/\s+$/, '')}\n\n\`\`\`html\n${t.slice(m.index, end).trim()}\n\`\`\`\n\n${t.slice(end).trim()}`;
+}
+
 export default function RichText({ text }) {
-  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const lines = fenceBareHtml(String(text || '').replace(/\r/g, '')).split('\n');
   const blocks = []; let i = 0;
   while (i < lines.length) {
     const ln = lines[i];
     if (!ln.trim()) { i++; continue; }
-    const fence = /^\s*```\s*([\w+-]*)\s*$/.exec(ln);
+    const fence = /^\s*```\s*([\w+-]*)[^`]*$/.exec(ln);
     if (fence) {
       const code = []; i++;
       while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { code.push(lines[i]); i++; }
