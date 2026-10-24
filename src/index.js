@@ -88,6 +88,7 @@ const MODEL8_EDIT_SCENE_COST = 15; // تعديل نصي لمشهد واحد (أ�
 import adminRouter from './services/adminRoutes.js';
 import { startBackupScheduler } from './services/dbBackup.js';
 import { startFollowupScheduler, recordFollowupReason } from './services/followupEmail.js';
+import { resumeProductions } from './services/productionService.js';
 import { adminAuth } from './services/adminAuthMiddleware.js';
 import supportRouter from './services/supportRoutes.js';
 import projectRouter from './services/projectRoutes.js';
@@ -268,6 +269,7 @@ app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'tem
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
 startBackupScheduler(); // نسخة احتياطية يومية لقاعدة البيانات على R2 (بره Railway)
+setTimeout(() => resumeProductions().catch(() => {}), 20_000); // أفلام Claude الطويلة: تكمل بعد أي restart
 startFollowupScheduler(); // إيميل متابعة لمرة واحدة للمسجّل المجاني اللي كلّم الايجنت ومشتركش
 // زرار "ليه ما كملتش؟" في إيميل المتابعة: بيسجّل السبب وبيودّي العميل للصفحة المناسبة
 app.get('/api/followup/feedback', async (req, res) => {
