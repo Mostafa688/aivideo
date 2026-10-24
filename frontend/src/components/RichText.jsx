@@ -25,15 +25,22 @@ function CodeBlock({ lang, code }) {
   const preview = () => { const u = blob(); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 60000); };
   const download = () => { const u = blob(); const a = document.createElement('a'); a.href = u; a.download = isHtml ? 'erivion-site.html' : `erivion-code.${lang || 'txt'}`; a.click(); setTimeout(() => URL.revokeObjectURL(u), 5000); };
   const btn = { fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: '#e9e5ff', cursor: 'pointer' };
+  const [view, setView] = React.useState(isHtml ? 'preview' : 'code');
+  const tab = (k, label) => <button type="button" onClick={() => setView(k)} style={{ ...btn, background: view === k ? 'rgba(124,106,247,0.35)' : btn.background, borderColor: view === k ? 'rgba(169,155,255,0.6)' : 'rgba(255,255,255,0.15)' }}>{label}</button>;
   return (
-    <div dir="ltr" style={{ borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.35)', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontFamily: 'ui-monospace, monospace', flex: 1 }}>{lang || 'code'}</span>
-        {isHtml && <button type="button" onClick={preview} style={btn}>Preview</button>}
+    <div dir="ltr" style={{ borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.35)', overflow: 'hidden', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.08)', flexWrap: 'wrap' }}>
+        {isHtml ? <>{tab('preview', 'Preview')}{tab('code', 'Code')}</> : <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontFamily: 'ui-monospace, monospace' }}>{lang || 'code'}</span>}
+        <span style={{ flex: 1 }} />
+        {isHtml && <button type="button" onClick={preview} style={btn} title="Open in a new tab">↗ Full screen</button>}
         {isHtml && <button type="button" onClick={download} style={btn}>Download</button>}
         <button type="button" onClick={copy} style={btn}>{copied ? 'Copied ✓' : 'Copy'}</button>
       </div>
-      <pre style={{ margin: 0, padding: '10px 12px', maxHeight: 340, overflow: 'auto', fontSize: 12, lineHeight: 1.55, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre' }}><code>{code}</code></pre>
+      {isHtml && view === 'preview'
+        // معاينة حيّة للموقع جوه الشات — sandbox من غير same-origin فالكود مش بيوصل لحساب العميل ولا للصفحة
+        ? <iframe title="Website preview" srcDoc={code} sandbox="allow-scripts allow-popups allow-forms" loading="lazy"
+            style={{ display: 'block', width: '100%', height: 460, border: 'none', background: '#fff' }} />
+        : <pre style={{ margin: 0, padding: '10px 12px', maxHeight: 340, overflow: 'auto', fontSize: 12, lineHeight: 1.55, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre' }}><code>{code}</code></pre>}
     </div>
   );
 }
