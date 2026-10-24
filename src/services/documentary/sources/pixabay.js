@@ -46,7 +46,7 @@ export async function searchPixabay(query, { kinds = ['video', 'image'], orienta
     for (const v of d?.hits || []) {
       const f = v.videos?.large?.url ? v.videos.large : (v.videos?.medium?.url ? v.videos.medium : null);
       if (!f) continue;
-      out.push({ source: 'pixabay', id: `pixabay:v:${v.id}`, kind: 'video', title: v.tags || '', description: v.tags || '', url: f.url, thumb: v.userImageURL || null, width: f.width, height: f.height, duration: v.duration, license: LICENSE, credit: `Video by ${v.user} on Pixabay`, pageUrl: v.pageURL });
+      out.push({ source: 'pixabay', id: `pixabay:v:${v.id}`, kind: 'video', title: v.tags || '', description: v.tags || '', url: f.url, thumb: f.thumbnail || v.videos?.small?.thumbnail || v.videos?.tiny?.thumbnail || null, width: f.width, height: f.height, duration: v.duration, license: LICENSE, credit: `Video by ${v.user} on Pixabay`, pageUrl: v.pageURL });
     }
   }
   if (kinds.includes('image')) {

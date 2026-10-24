@@ -4,6 +4,7 @@ import { searchCandidates, materialize, fetchAsset } from './sources/index.js';
 import { pexelsFilmBudget } from './sources/pexels.js';
 import { llmJson } from './llm.js';
 import { fallbackBeatPlan } from './planner.js';
+import { visualPick, applyVisualPick } from './visualPick.js';
 
 async function pool(items, limit, fn) {
   let i = 0;
@@ -145,6 +146,14 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
     const cands = found.get(i) || [];
     const first = (picks.get(i) || []).map(id => cands.find(c => c.id === id)).filter(Boolean);
     ordered.set(i, [...first, ...cands.filter(c => !first.includes(c))].slice(0, 8));
+  }
+  // B2) الشورتس: عين الموديل على اللقطات نفسها مقصوصة 9:16 (العنوان والتاجات لوحدهم مش كفاية)
+  if (portrait && !deps.skipLlmRank && !deps.skipVisual && process.env.DOC_VISUAL_PICK !== '0') {
+    try {
+      const vp = await (deps.visualPick || visualPick)(need.map(({ b, i }) => ({ i, text: b.text, cands: ordered.get(i) || [] })), deps.visualDeps);
+      for (const [i, v] of vp) ordered.set(i, applyVisualPick(ordered.get(i) || [], v));
+      if (vp.size) console.log(`[Documentary/resolver] visual pick checked ${vp.size} beats (${[...vp.values()].filter(v => v.pick).length} picked, ${[...vp.values()].filter(v => !v.pick).length} all rejected)`);
+    } catch (e) { console.warn('[Documentary/resolver] visual pick skipped:', e.message); }
   }
 
   // C) تنزيل (أول مرشح شغّال)، بدون تكرار نفس الأصل

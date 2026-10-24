@@ -117,31 +117,45 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   if (wordMode) {
     // كلمة واحدة في كل لحظة: بتدخل بنبضة تكبير (pop) وبتتلوّن حسب طولها (الطويلة أصفر)، وبتتصغّر لو الكلمة طويلة عشان تفضل جوه الإطار
     const lim = w * 0.88;
-    words.forEach((x, k) => {
-      const text = cleanWord(x.w).replace(/[.,;:!?؟،؛…"“”()\[\]]+/g, '').trim();
-      if (!text) return;
+    // ✅ FIX (الكابشن بيركب على بعضه): كل كلمة كان ليها حد أدنى 0.2 ثانية حتى لو اللي بعدها بدأت قبلها → كلمتين في نفس المكان في نفس اللحظة.
+    // دلوقتي: الكلام السريع بيتجمّع (كلمتين في الوحدة) لحد ما الوحدة تاخد وقت يتقري، وكل وحدة بتختفي قبل اللي بعدها بالظبط
+    const clean = words.map(x => ({ ...x, t: cleanWord(x.w).replace(/[.,;:!?؟،؛…"“”()\[\]]+/g, '').trim() })).filter(x => x.t);
+    const units = [];
+    for (const x of clean) {
+      const u = units[units.length - 1];
+      const fast = u && x.start - u.start < 0.24;
+      if (u && fast && u.ws.length < 2 && (u.ws.map(y => y.t).join(' ').length + x.t.length) <= 16) { u.ws.push(x); continue; }
+      units.push({ start: x.start, ws: [x] });
+    }
+    units.forEach((u, k) => {
+      const last = u.ws[u.ws.length - 1];
+      const text = u.ws.map(y => y.t).join(' ');
       const shown = rtl ? text : text.toUpperCase();
-      const st = x.start, nxt = k < words.length - 1 ? words[k + 1].start : x.end + 0.4;
-      const en = Math.max(st + 0.2, Math.min(nxt, x.end + 0.3));
-      const est = shown.length * fs * (rtl ? 0.5 : 0.62); // تقدير عرض الكلمة بالبكسل
-      const k2 = est > lim ? Math.max(0.55, lim / est) : 1;
-      const color = shown.length >= 6 ? accent : white;
+      const st = u.start, nxt = k < units.length - 1 ? units[k + 1].start : last.end + 0.4;
+      const en = Math.min(nxt, Math.max(st + 0.2, last.end + 0.3));
+      if (en - st < 0.06) return;
+      const est = shown.length * fs * (rtl ? 0.55 : 0.62); // تقدير عرض الكلام بالبكسل
+      const k2 = est > lim ? Math.max(0.45, lim / est) : 1;
+      const color = u.ws.length === 1 && shown.length >= 6 ? accent : white;
       const size = Math.round(fs * k2);
-      events.push(`Dialogue: 0,${toAss(st)},${toAss(en)},Cap,,0,0,0,,{\\an5\\pos(${(w / 2).toFixed(0)},${(h / 2).toFixed(0)})\\fs${size}\\bord${Math.round(size * 0.075)}\\c${color}\\fad(40,50)\\fscx55\\fscy55\\t(0,120,\\fscx114\\fscy114)\\t(120,210,\\fscx100\\fscy100)}${shown}`);
+      events.push(`Dialogue: 0,${toAss(st)},${toAss(en)},Cap,,0,0,0,,{\\an5\\pos(${(w / 2).toFixed(0)},${(h / 2).toFixed(0)})\\q2\\fs${size}\\bord${Math.round(size * 0.075)}\\c${color}\\fad(40,0)\\fscx55\\fscy55\\t(0,120,\\fscx114\\fscy114)\\t(120,210,\\fscx100\\fscy100)}${shown}`);
     });
     return header + events.join('\n') + '\n';
   }
   const groups = groupWords(words, { maxChars, maxWords: center ? 3 : 6, maxDur: center ? 2.2 : 3.2 });
   const cw = (x) => (center && !rtl ? cleanWord(x).toUpperCase() : cleanWord(x));
   const popIn = center ? '{\\fad(60,40)\\fscx86\\fscy86\\t(0,110,\\fscx100\\fscy100)}' : '';
-  for (const g of groups) {
-    const gStart = g[0].start, gEnd = Math.max(g[g.length - 1].end, gStart + 0.3);
+  groups.forEach((g, gi) => {
+    // العبارة بتختفي قبل ما اللي بعدها تبدأ (كانت بتفضل 0.3 ثانية على الأقل فتركب على العبارة اللي بعدها)
+    const nextStart = gi < groups.length - 1 ? groups[gi + 1][0].start : Infinity;
+    const gStart = g[0].start, gEnd = Math.min(nextStart, Math.max(g[g.length - 1].end, gStart + 0.3));
+    if (gEnd - gStart < 0.06) return;
     if (rtl && style !== 'box') {
       // RTL: كل كلمة حدث لوحدها بموضع محسوب (run واحد = بيتعرض صح في أي إصدار libass)
       const texts = g.map(x => cleanWord(x.w));
       if (!widths || texts.some(t => !widths.has(t))) {
         events.push(`Dialogue: 0,${toAss(gStart)},${toAss(gEnd)},Cap,,0,0,0,,${texts.join(' ')}`);
-        continue;
+        return;
       }
       const gap = fs * 0.28;
       const total = texts.reduce((a, t) => a + widths.get(t), 0) + gap * (texts.length - 1);
@@ -180,7 +194,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         events.push(`Dialogue: 0,${toAss(st)},${toAss(Math.max(en, st + 0.12))},Cap,,0,0,0,,${shown}`);
       });
     }
-  }
+  });
   if (title?.text) {
     const ts = title.start ?? 0.15, te = title.end ?? 2.6;
     events.push(`Dialogue: 2,${toAss(ts)},${toAss(te)},Title,,0,0,0,,{\\fad(260,260)\\fscx82\\fscy82\\t(0,280,\\fscx100\\fscy100)}${String(title.text).replace(/[{}\\]/g, '').slice(0, 60)}`);
