@@ -31,11 +31,19 @@ const ENC = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt',
 /** تنضيف خطة التعديل اللي راجعة من الموديل (أرقام، حدود، أنواع) — أي حاجة مش مفهومة بتتشال */
 export function sanitizeEdl(edl, { duration, insertFiles = {} } = {}) {
   const D = num(duration, 0); const e = edl && typeof edl === 'object' ? edl : {};
+  let LIM = D; // حد الأوقات: زمن الفيديو الأصلي، أو زمن الإعلان الناتج لو فيه sequence
   const span = (x, minLen = 0.3) => {
-    const s = clamp(num(x.start, -1), 0, D); const en = clamp(num(x.end, -1), 0, D);
+    const s = clamp(num(x.start, -1), 0, LIM); const en = clamp(num(x.end, -1), 0, LIM);
     return en - s >= minLen ? { start: +s.toFixed(2), end: +en.toFixed(2) } : null;
   };
   const cuts = (Array.isArray(e.cuts) ? e.cuts : []).map((c) => span(c, 0.2)).filter(Boolean).slice(0, 6);
+  // إعادة بناء الإعلان من الفيديو الأساسي (fast-paced): مقاطع بأي ترتيب/تكرار + سرعة + كتم — لو موجودة بتلغي cuts
+  // وكل الأوقات التانية (موشن/لقطات/زووم) بتبقى على زمن الإعلان الناتج
+  const sequence = (Array.isArray(e.sequence) ? e.sequence : []).map((x) => {
+    const sp = span(x, 0.12); if (!sp) return null;
+    return { ...sp, speed: clamp(num(x.speed, 1), 0.25, 4), audio: x.audio === 'mute' ? 'mute' : 'keep' };
+  }).filter(Boolean).slice(0, 80);
+  if (sequence.length >= 2) LIM = sequence.reduce((a, x) => a + (x.end - x.start) / x.speed, 0);
   const inserts = (Array.isArray(e.inserts) ? e.inserts : []).map((x) => {
     const sp = span(x, 0.6); if (!sp) return null;
     const file = insertFiles[x.id] || x.file; if (!file || !fs.existsSync(file)) return null;
@@ -69,7 +77,7 @@ export function sanitizeEdl(edl, { duration, insertFiles = {} } = {}) {
   const grade = g ? { contrast: clamp(num(g.contrast, 1), 0.7, 1.5), saturation: clamp(num(g.saturation, 1), 0, 2), brightness: clamp(num(g.brightness, 0), -0.15, 0.15), warmth: clamp(num(g.warmth, 0), -1, 1), vignette: clamp(num(g.vignette, 0), 0, 1), grain: clamp(num(g.grain, 0), 0, 1), sharpen: clamp(num(g.sharpen, 0), 0, 1) } : null;
   const cap = e.captionStyle && typeof e.captionStyle === 'object' ? e.captionStyle : {};
   const captionStyle = { font: String(cap.font || ''), size: clamp(num(cap.size, 0.068), 0.035, 0.12), y: clamp(num(cap.y, 0), 0, 0.95) || null, color: /^#[0-9a-f]{6}$/i.test(cap.color || '') ? cap.color : null, highlight: /^#[0-9a-f]{6}$/i.test(cap.highlight || '') ? cap.highlight : null, style: ['box', 'color', 'none'].includes(cap.style) ? cap.style : 'box', maxWords: clamp(Math.round(num(cap.maxWords, 4)), 1, 7) };
-  return { cuts, inserts, punches, overlays, endCard, grade, captionStyle, captions: !!e.captions, music: e.music === false ? false : (e.music || 'auto'), musicVolume: clamp(num(e.musicVolume, NaN), 0, 1) };
+  return { cuts, sequence: sequence.length >= 2 ? sequence : null, inserts, punches, overlays, endCard, grade, captionStyle, captions: !!e.captions, music: e.music === false ? false : (e.music || 'auto'), musicVolume: clamp(num(e.musicVolume, NaN), 0, 1) };
 }
 
 // الأجزاء اللي فاضلة بعد القص + دالة تحويل الوقت من الفيديو الأصلي للفيديو بعد القص
@@ -103,10 +111,19 @@ function overlaySfx(o) {
  * baseVideo: الفيديو المولّد · edl: بعد sanitizeEdl · words: كلمات الكلام بتوقيت الفيديو الأصلي (للترجمة)
  * productPng: المنتج مقصوص (لشاشة النهاية) · musicFile: اختياري
  */
-export async function composeAd({ baseVideo, workDir, edl, W, H, accent = '#ff3d6e', words = [], productPng = null, musicFile = null, onStage = () => {} }) {
+const atempo = (sp) => { const f = []; let s = sp; while (s > 2) { f.push(2); s /= 2; } while (s < 0.5) { f.push(0.5); s /= 0.5; } f.push(s); return f.map((x) => `atempo=${x.toFixed(4)}`).join(','); };
+
+export async function composeAd({ baseVideo, workDir, edl, W, H, accent = '#ff3d6e', words = [], productPng = null, musicFile = null, musicFrom = 0, onStage = () => {} }) {
   fs.mkdirSync(workDir, { recursive: true });
   const D0 = await probeDuration(baseVideo); const withAudio = await hasAudio(baseVideo).catch(() => false);
-  const { keeps, map, total: D } = keepRanges(D0, edl.cuts || []);
+  const seq = edl.sequence ? edl.sequence.filter((x) => x.end <= D0 + 0.05) : null;
+  let keeps, map, D;
+  if (seq?.length) {
+    keeps = seq.map((x) => [x.start, Math.min(x.end, D0), x.speed, x.audio]);
+    D = keeps.reduce((a, [st, en, sp]) => a + (en - st) / sp, 0);
+    // الكلمات (زمن الأصل) → أول مكان ظهرت فيه في التسلسل الجديد (الكلام اللي اتسرّع/اتكتم مالوش ترجمة)
+    map = (x) => { let acc = 0; for (const [a, b, sp, au] of keeps) { if (x >= a && x <= b) return au === 'mute' || sp !== 1 ? null : acc + (x - a) / sp; acc += (b - a) / sp; } return null; };
+  } else ({ keeps, map, total: D } = keepRanges(D0, edl.cuts || []));
   const norm = `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=${FPS},format=yuv420p`;
   // صورة المنتج المقصوصة متاحة لتصميمات Opus (طبقة image src=product)
   const pctx = {};
@@ -128,9 +145,14 @@ export async function composeAd({ baseVideo, workDir, edl, W, H, accent = '#ff3d
   const cutFile = path.join(workDir, 'cut.mp4');
   {
     const g = []; const segs = [];
-    keeps.forEach(([a, b], i) => {
-      g.push(`[0:v]trim=${a.toFixed(3)}:${b.toFixed(3)},setpts=PTS-STARTPTS,${norm}[v${i}]`);
-      g.push(withAudio ? `[0:a]atrim=${a.toFixed(3)}:${b.toFixed(3)},asetpts=PTS-STARTPTS,aresample=44100,aformat=channel_layouts=stereo[a${i}]` : `anullsrc=r=44100:cl=stereo,atrim=0:${(b - a).toFixed(3)}[a${i}]`);
+    const nv = keeps.length;
+    g.push(`[0:v]split=${nv}${keeps.map((_, i) => `[sv${i}]`).join('')}`);
+    if (withAudio) g.push(`[0:a]asplit=${nv}${keeps.map((_, i) => `[sa${i}]`).join('')}`);
+    keeps.forEach(([a, b, sp = 1, au = 'keep'], i) => {
+      const outLen = (b - a) / sp;
+      g.push(`[sv${i}]trim=${a.toFixed(3)}:${b.toFixed(3)},setpts=(PTS-STARTPTS)/${sp.toFixed(4)},${norm}[v${i}]`);
+      if (withAudio && au !== 'mute') g.push(`[sa${i}]atrim=${a.toFixed(3)}:${b.toFixed(3)},asetpts=PTS-STARTPTS,${sp !== 1 ? `${atempo(sp)},` : ''}aresample=44100,aformat=channel_layouts=stereo,apad=whole_dur=${outLen.toFixed(3)},atrim=0:${outLen.toFixed(3)}[a${i}]`);
+      else { if (withAudio) g.push(`[sa${i}]anullsink`); g.push(`anullsrc=r=44100:cl=stereo,atrim=0:${outLen.toFixed(3)}[a${i}]`); }
       segs.push(`[v${i}][a${i}]`);
     });
     g.push(`${segs.join('')}concat=n=${keeps.length}:v=1:a=1[v][a]`);
@@ -138,7 +160,9 @@ export async function composeAd({ baseVideo, workDir, edl, W, H, accent = '#ff3d
   }
 
   // نحوّل كل الأوقات لزمن الفيديو بعد القص (واللي وقع جوه جزء مقصوص بيتشال)
-  const remap = (x) => { const s = map(x.start); const e = map(x.end); if (s == null) return null; const end = e == null ? Math.min(D, s + (x.end - x.start)) : e; return end - s >= 0.2 ? { ...x, start: s, end } : null; };
+  const remap = seq?.length
+    ? (x) => { const s = clamp(x.start, 0, D); const e = clamp(x.end, 0, D); return e - s >= 0.1 ? { ...x, start: s, end: e } : null; }
+    : (x) => { const s = map(x.start); const e = map(x.end); if (s == null) return null; const end = e == null ? Math.min(D, s + (x.end - x.start)) : e; return end - s >= 0.2 ? { ...x, start: s, end } : null; };
   const inserts = (edl.inserts || []).map(remap).filter(Boolean).sort((a, b) => a.start - b.start);
   const punches = (edl.punches || []).map(remap).filter(Boolean).sort((a, b) => a.start - b.start);
   const overlays = (edl.overlays || []).map(remap).filter(Boolean);
@@ -269,7 +293,7 @@ export async function composeAd({ baseVideo, workDir, edl, W, H, accent = '#ff3d
     g.push(`[${k}:a]aresample=44100,aformat=channel_layouts=stereo,volume=${e.vol.toFixed(2)},adelay=${ms}|${ms}[x${i}]`); aIn.push(`[x${i}]`);
   });
   if (musicFile && fs.existsSync(musicFile)) {
-    const k = idx++; inputs.push('-stream_loop', '-1', '-i', musicFile);
+    const k = idx++; inputs.push('-stream_loop', '-1', ...(musicFrom > 0 ? ['-ss', musicFrom.toFixed(3)] : []), '-i', musicFile);
     // لو الإعلان فيه كلام، الموسيقى بتوطى تحته (sidechain) وبتعلى في شاشة النهاية
     g.push(`[${k}:a]aresample=44100,aformat=channel_layouts=stereo,atrim=0:${total.toFixed(3)},volume=${Number.isFinite(edl.musicVolume) ? edl.musicVolume.toFixed(2) : withAudio ? 0.22 : 0.55},afade=t=in:d=0.6,afade=t=out:st=${Math.max(0, total - 1.2).toFixed(3)}:d=1.2[mus]`);
     if (withAudio) { g.push(`[a0]asplit=2[a0m][a0k]`); aIn[0] = '[a0m]'; g.push(`[mus][a0k]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=350[musd]`); aIn.push('[musd]'); }

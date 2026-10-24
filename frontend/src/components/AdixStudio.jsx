@@ -21,7 +21,7 @@ const T = {
     quote: 'السعر بالتكلفة', items: { video: 'توليد الفيديو', review: 'مراجعات Opus (أولى + نهائية + تصليح)', inserts: 'لقطات إضافية (حد أقصى)', render: 'مونتاج ورندر' },
     maxNote: 'ده حجز بالحد الأقصى — اللي مايتصرفش بيرجع لرصيدك تلقائي.', approve: 'وافق وابدأ', cancel: 'إلغاء', credits: 'كريديت', alt: 'بدائل', current: 'المختار',
     working: 'تقدر تقفل الصفحة وترجع — الشغل مكمل.', failed: 'الإعلان وقف — اللي ماتصرفش رجع لرصيدك.', canceled: 'اتلغى.',
-    spent: 'التكلفة الفعلية', refunded: 'رجعلك', download: 'تحميل', reviewNote: 'ملاحظات Opus', breakdown: 'تفاصيل التكلفة', noCredits: 'رصيدك مش كفاية', planning: 'Opus بيحلل…', audioTitle: 'الصوت والنص (قرار Opus)', speech: { none: 'من غير كلام — سينمائي', voiceover: 'تعليق صوتي', on_screen: 'حد بيتكلم في الإعلان' }, textS: { none: 'من غير نص على الشاشة', minimal: 'كلمات قليلة جدًا', key: 'نصوص في اللحظات المهمة' }, sent: 'الطلب اتبعت لـ Opus — الإعلان تحت', decisions: 'قرارات المونتاج (Opus)', kinds: { cut: 'قص', insert: 'لقطة إضافية', punch: 'زووم', motion: 'موشن' },
+    spent: 'التكلفة الفعلية', refunded: 'رجعلك', download: 'تحميل', reviewNote: 'ملاحظات Opus', breakdown: 'تفاصيل التكلفة', noCredits: 'رصيدك مش كفاية', planning: 'Opus بيحلل…', formatTitle: 'نوع الإعلان (قرار Opus)', formats: { fast_paced: 'Fast-paced سريع', cinematic: 'سينمائي', cgi: 'CGI ثلاثي الأبعاد', ugc: 'UGC (كأنه عميل بيصوّر)', demo: 'عرض/مشكلة وحل', lifestyle: 'لايف ستايل', food: 'أكل وشهية', asmr: 'ASMR', stop_motion: 'ستوب موشن', unboxing: 'فتح العلبة', comparison: 'مقارنة', trend: 'تريند' }, pacing: { slow: 'إيقاع هادي', medium: 'إيقاع متوسط', fast: 'إيقاع سريع', hyper: 'إيقاع سريع جدًا' }, audioTitle: 'الصوت والنص (قرار Opus)', speech: { none: 'من غير كلام — سينمائي', voiceover: 'تعليق صوتي', on_screen: 'حد بيتكلم في الإعلان' }, textS: { none: 'من غير نص على الشاشة', minimal: 'كلمات قليلة جدًا', key: 'نصوص في اللحظات المهمة' }, sent: 'الطلب اتبعت لـ Opus — الإعلان تحت', decisions: 'قرارات المونتاج (Opus)', kinds: { cut: 'قص', insert: 'لقطة إضافية', punch: 'زووم', motion: 'موشن' },
   },
   en: {
     title: 'Adix', sub: 'A premium ad for your product — Claude Opus 5.5 studies the product, picks the strongest video model, directs, edits and reviews',
@@ -36,7 +36,7 @@ const T = {
     quote: 'Price at cost', items: { video: 'Video generation', review: 'Opus reviews (first + final + fix)', inserts: 'Extra shots (max)', render: 'Editing & render' },
     maxNote: 'This is a maximum hold — anything unused is refunded automatically.', approve: 'Approve & start', cancel: 'Cancel', credits: 'credits', alt: 'Alternatives', current: 'Selected',
     working: 'You can close this page — it keeps going.', failed: 'The ad stopped — unused credits were refunded.', canceled: 'Canceled.',
-    spent: 'Actual cost', refunded: 'refunded', download: 'Download', reviewNote: "Opus's notes", breakdown: 'Cost breakdown', noCredits: 'Not enough credits', planning: 'Opus is analyzing…', audioTitle: "Sound & text (Opus's call)", speech: { none: 'No speech — pure cinema', voiceover: 'Voice-over', on_screen: 'Someone speaks on screen' }, textS: { none: 'No on-screen text', minimal: 'A word or two', key: 'Text on key moments' }, sent: 'Sent to Opus — your ad is below', decisions: "Opus's edit decisions", kinds: { cut: 'Cut', insert: 'Extra shot', punch: 'Zoom', motion: 'Motion' },
+    spent: 'Actual cost', refunded: 'refunded', download: 'Download', reviewNote: "Opus's notes", breakdown: 'Cost breakdown', noCredits: 'Not enough credits', planning: 'Opus is analyzing…', formatTitle: "Ad format (Opus's call)", formats: { fast_paced: 'Fast-paced', cinematic: 'Cinematic', cgi: 'CGI / 3D', ugc: 'UGC creator-style', demo: 'Demo / problem-solution', lifestyle: 'Lifestyle', food: 'Food & appetite', asmr: 'ASMR', stop_motion: 'Stop-motion', unboxing: 'Unboxing', comparison: 'Comparison', trend: 'Trend' }, pacing: { slow: 'Slow pace', medium: 'Medium pace', fast: 'Fast pace', hyper: 'Hyper pace' }, audioTitle: "Sound & text (Opus's call)", speech: { none: 'No speech — pure cinema', voiceover: 'Voice-over', on_screen: 'Someone speaks on screen' }, textS: { none: 'No on-screen text', minimal: 'A word or two', key: 'Text on key moments' }, sent: 'Sent to Opus — your ad is below', decisions: "Opus's edit decisions", kinds: { cut: 'Cut', insert: 'Extra shot', punch: 'Zoom', motion: 'Motion' },
   },
 };
 const LANG_NAMES = { egypt: 'مصري', gulf: 'خليجي', levant: 'شامي', msa: 'فصحى', maghreb: 'مغاربي', en: 'English' };
@@ -269,6 +269,13 @@ export function AdixCard({ job, lang, onUpdateJob }) {
             {p.product?.benefits?.length ? <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11.5 }}>{p.product.benefits.join(' · ')}</div> : null}
           </div>
         </div>
+        {p.format && <Section title={t.formatTitle}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: p.format.why ? 5 : 0 }}>
+            {[p.format.style, ...(p.format.blend || [])].filter(Boolean).map((f) => <span key={f} style={chip(true)}>{t.formats[f] || f}</span>)}
+            <span style={chip(false)}>{t.pacing[p.format.pacing] || p.format.pacing}</span>
+          </div>
+          {p.format.why && <div style={{ color: 'rgba(255,255,255,0.65)' }}>{p.format.why}</div>}
+        </Section>}
         <Section title={t.concept}>{p.concept?.story}{p.concept?.hook && <div style={{ marginTop: 4 }}><b style={{ color: ACC2 }}>{t.hook}:</b> {p.concept.hook}</div>}</Section>
         <Section title={`${t.shots} · ${p.seconds}s`}>
           <ol style={{ margin: 0, paddingInlineStart: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>{(p.shots || []).map((s, i) => {

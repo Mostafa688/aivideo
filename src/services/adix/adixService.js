@@ -23,6 +23,7 @@ import { chargeCredits, addCreditsBalance, getCreditsBalance } from '../authServ
 import { checkContentSafety } from '../scriptService.js';
 import { composeAd, sanitizeEdl, SFX_TYPES, MOTIONS, TRANSITIONS } from './compose.js';
 import { DESIGN_DOC, FONT_CHOICES } from './designKit.js';
+import { musicLibrary, musicPath } from './musicBeats.js';
 
 const { Pool } = pkg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false, max: 3 });
@@ -160,7 +161,7 @@ export function publicJob(j) {
   const ledger = Array.isArray(j.ledger) ? j.ledger : [];
   return {
     id: j.id, status: j.status, stage: j.stage, progress: j.progress, input: { idea: j.input?.idea, aspect: j.input?.aspect, photos: j.input?.photos || [], length: j.input?.length, model: j.input?.model },
-    plan: j.plan ? { product: j.plan.product, concept: j.plan.concept, model: j.plan.model, modelLabel: ADIX_VIDEO_MODELS[j.plan.model]?.label, tier: j.plan.tier, aspect: j.plan.aspect, seconds: j.plan.seconds, shots: (j.plan.shots || []).map((s) => ({ seconds: s.seconds, summary: s.summary, camera: s.camera || {}, lighting: s.lighting || '', beats: s.beats || [] })), dialogue: j.plan.dialogue, audio: j.plan.audio || null, reason: j.plan.reason, quoteBreakdown: j.plan.quoteBreakdown, alternatives: j.plan.alternatives } : null,
+    plan: j.plan ? { product: j.plan.product, concept: j.plan.concept, model: j.plan.model, modelLabel: ADIX_VIDEO_MODELS[j.plan.model]?.label, tier: j.plan.tier, aspect: j.plan.aspect, seconds: j.plan.seconds, shots: (j.plan.shots || []).map((s) => ({ seconds: s.seconds, summary: s.summary, camera: s.camera || {}, lighting: s.lighting || '', beats: s.beats || [] })), dialogue: j.plan.dialogue, audio: j.plan.audio || null, format: j.plan.format || null, reason: j.plan.reason, quoteBreakdown: j.plan.quoteBreakdown, alternatives: j.plan.alternatives } : null,
     quote: j.quote, reserved: j.reserved, spent: j.spent, videoUrl: j.video_url, thumbnailUrl: j.thumb_url, error: j.error,
     ledger: ledger.map((x) => ({ step: x.step, credits: toCredits(x.usd), usd: +Number(x.usd || 0).toFixed(4) })),
     review: j.state?.reviewNote || null, finalNote: j.state?.finalNote || null, decisions: j.state?.decisions || [], createdAt: j.created_at,
@@ -192,6 +193,16 @@ function modelCatalogText(aspect) {
 }
 
 const PLAN_SYSTEM = `You are Adix — the creative director of a top advertising studio, working inside Erivion. A customer uploaded photos of their product and an idea. You look at the product photos (a numbered contact sheet: #1, #2, …), understand the product deeply, and design the strongest possible short video ad.
+AD FORMATS — choose (or blend) the format that THIS product, THIS idea and THIS audience respond to best; nothing is fixed:
+- fast-paced / hype: many 0.3–1.2s micro-shots, beat-synced cuts, speed ramps, whip pans, punch-ins, kinetic type — energy, sport, fashion drops, gadgets, youth.
+- cinematic / luxury: few long elegant takes, slow motion, macro details, soft light and reflections, minimal or no words — perfume, jewellery, watches, premium cars, cosmetics.
+- CGI / 3D product: impossible physics and hyper-real renders — the product assembles from parts, floats in a stylised world, liquids/particles orbit it, x-ray or exploded views of ingredients/tech — drinks, tech, skincare, food.
+- UGC / creator-style: a real-looking person filming themselves on a phone (handheld, front camera, natural light, home/street), talking straight to camera, honest reaction, unboxing, "POV", testimonial, get-ready-with-me — beauty, fashion, food, apps, everyday products; native social look with bold captions.
+- demo / problem-solution / before-after: shows the product working and the result — cleaning, tools, fitness, skincare.
+- lifestyle / story: a mini story of people using it in their life — family, food, travel, home.
+- food & appetite: macro sizzle, pours, steam, cheese pulls, crunchy sound design.
+- ASMR / satisfying, stop-motion, unboxing, comparison, meme/trend formats — whenever they fit.
+Match pacing, camera language, lighting, sound, editing rhythm and on-screen text to the chosen format. For fast-paced ads, write each generated shot as several quick in-shot cuts with timecodes (e.g. "0–0.8s: extreme macro of …, CUT TO 0.8–1.6s: …") so the editor has many micro-shots to re-sequence on the music beat later. For UGC describe the person (age, look, outfit, setting), the phone-camera framing, natural speech in the chosen dialect and authentic imperfections. For CGI describe the stylised render world, materials and the impossible motion.
 Think like the best commercial directors: a scroll-stopping first 1.5 seconds, one clear selling idea, the product as the hero (perfectly recognisable — same shape, label, logo, colours), premium lighting, purposeful camera moves, and a confident ending on the product.
 You must choose the best AI video model for THIS product and THIS idea (fidelity of the label/packaging, physics like liquids, people talking, length needed, budget). Respect each model's real limits. The customer pays the exact provider cost, so don't waste money: pick the cheaper model when it gives the same result, but never sacrifice what makes the ad work.
 You DIRECT every shot like a director of photography: for each shot you decide the exact camera — movement and its path (dolly-in, push, pull-back, orbit/arc with degrees and direction, crane/jib up or down, tilt, pan, whip pan, tracking alongside, top-down, FPV/drone, handheld, locked-off), start and end framing (extreme close-up, macro, close-up, medium, wide, hero shot), lens (e.g. 24mm wide, 50mm, 85mm portrait, 100mm macro) and depth of field, camera angle and height, speed and its ramps (e.g. slow then whip, speed-ramp into slow motion), stabilisation, focus pulls (rack focus from X to Y), plus lighting (key/rim/back light, colour temperature, practicals, reflections on the product) and a beat-by-beat timeline inside the shot with timecodes. Nothing generic: every move must have a reason (reveal, emphasis, energy, luxury, appetite…).
@@ -213,6 +224,7 @@ ${modelCatalogText(input.aspect)}
 Return JSON:
 {
  "product": { "name": "...", "category": "...", "what_i_see": "precise visual description of the product from the photos (shape, colours, label text, materials)", "key_benefits": ["..."], "audience": "...", "accent_color": "#RRGGBB (brand colour taken from the product)" },
+ "format": { "style": "fast_paced|cinematic|cgi|ugc|demo|lifestyle|food|asmr|stop_motion|unboxing|comparison|trend|other", "blend": ["optional second style"], "pacing": "slow|medium|fast|hyper", "why": "short, customer's language: why this format grabs this product's audience" },
  "concept": { "title": "short name of the idea", "hook": "what happens in the first 1.5s", "story": "the ad beat by beat", "look": "visual style", "music_mood": "one of ${MUSIC_MOODS.join('|')}" },
  "model": "model key", "tier": "resolution", "reason": "why this model + tier fits this product (1–2 sentences, customer-friendly, in the customer's language)",
  "alternatives": [ { "model": "key", "tier": "...", "why": "short, customer's language" } ],
@@ -271,6 +283,7 @@ export function sanitizeAdixPlan(raw, input, nPhotos) {
   return {
     model, tier, aspect: input.aspect, seconds: total,
     product: { name: clip(prod.name, 80), category: clip(prod.category, 60), whatISee: clip(prod.what_i_see, 900), benefits: (Array.isArray(prod.key_benefits) ? prod.key_benefits : []).map((x) => clip(x, 80)).slice(0, 6), audience: clip(prod.audience, 160), accent: hex(prod.accent_color) },
+    format: { style: clip(p.format?.style, 30) || 'cinematic', blend: (Array.isArray(p.format?.blend) ? p.format.blend : []).map((x) => clip(x, 30)).slice(0, 2), pacing: ['slow', 'medium', 'fast', 'hyper'].includes(p.format?.pacing) ? p.format.pacing : 'medium', why: clip(p.format?.why, 300) },
     concept: { title: clip(con.title, 80), hook: clip(con.hook, 300), story: clip(con.story, 1200), look: clip(con.look, 300), music: MUSIC_MOODS.includes(con.music_mood) ? con.music_mood : 'upbeat' },
     reason: clip(p.reason, 400),
     alternatives: (Array.isArray(p.alternatives) ? p.alternatives : []).filter((a) => ADIX_VIDEO_MODELS[a?.model]).slice(0, 3).map((a) => ({ model: a.model, label: ADIX_VIDEO_MODELS[a.model].label, tier: ADIX_VIDEO_MODELS[a.model].tiers.includes(a.tier) ? a.tier : ADIX_VIDEO_MODELS[a.model].tiers[0], why: clip(a.why, 200) })),
@@ -390,9 +403,11 @@ First study it frame by frame like a picky creative director: Is the product cle
 Then design and write a precise EDIT DECISION LIST. Your motion design must match the product's world (luxury ≠ sport ≠ food ≠ tech): choose fonts, colours (from the product/brand), shapes, layout, timing curves, entrances/exits and effects yourself, and compose elements from layers. Times are in seconds of the base video (0 … duration). Premium and intentional — every element earns its place. Reply with ONLY JSON.`;
 
 function reviewPrompt(job, info) {
+  const fmt = job.plan.format;
   const p = job.plan; const words = info.words.map((w) => `${w.start.toFixed(2)}-${w.end.toFixed(2)} ${w.w}`).join('\n');
   return `PRODUCT: ${p.product.name} — ${p.product.whatISee}
 BENEFITS: ${p.product.benefits.join(' | ')}
+FORMAT: ${fmt ? `${fmt.style}${fmt.blend?.length ? ` + ${fmt.blend.join(' + ')}` : ''}, pacing ${fmt.pacing}` : 'n/a'} — edit with the rhythm, camera language and text style of this format.
 CONCEPT: ${p.concept.title}. Hook: ${p.concept.hook}. Story: ${p.concept.story}
 CUSTOMER IDEA: ${job.input.idea}
 ${job.input.price ? `PRICE/OFFER (exact): ${job.input.price}\n` : ''}BRAND: ${p.endCard.brand}. CTA: ${p.endCard.cta}
@@ -409,7 +424,10 @@ PUNCHES: {start,end,zoom 1.04–1.8,x,y focus 0..1,"style": snap (instant punch-
 GRADE: {"contrast" 0.7–1.5,"saturation" 0–2,"brightness" -0.15–0.15,"warmth" -1 (cool) … 1 (warm),"vignette" 0–1,"grain" 0–1,"sharpen" 0–1} — or omit to keep the original look.
 CAPTIONS: "captions": true|false, "captionStyle": {"font": ${Object.keys(FONT_CHOICES).join('|')},"size" 0.035–0.12,"y" 0..1,"color","highlight","style": box|color|none,"maxWords" 1–7}.
 END CARD: design it yourself: "end_card": {"seconds" 1.5–6,"background": blur|freeze|darken|color,"bgColor","transition": ${TRANSITIONS.join('|')},"sfx":[…],"layers":[ design layers — use {"shape":"image","src":"product"} for the product cut-out ], plus "brand","tagline","cta","price" as plain text for reference}.
-MUSIC: "music": ${MUSIC_MOODS.join('|')} or false, "musicVolume" 0–1 (0.15–0.3 under speech).
+RE-EDIT (fast-paced and rhythm edits): "sequence": [{"start","end" (base-video seconds),"speed" 0.25–4 (0.5 = slow motion, 2 = speed-up),"audio": keep|mute}, …] rebuilds the ad from pieces of the base video in ANY order (pieces may repeat) — use it to cut micro-shots on the music beat, build speed ramps, open with the strongest moment, etc. When you use "sequence", it REPLACES "cuts", and ALL other times (overlays, inserts, punches) are in the NEW timeline of the re-edited ad (0 … sum of piece lengths ÷ speed). Keep speech pieces at speed 1 with audio keep; mute pieces whose sound would be chopped.
+MUSIC: pick a track from the library (or false for none): "music": {"track": "exact track name", "from": seconds into the track to start, "volume": 0–1 (0.15–0.3 under speech, 0.6–0.9 for music-driven ads)}. Each track has its BPM and first beat: beats in the ad = firstBeat + k×(60/BPM) − from (for every k where that is ≥ 0). Cut, punch, flash and animate ON those beats when the format is rhythmic.
+MUSIC LIBRARY:
+${(info.music || []).map((t) => `- "${t.name}" — ${t.tags.join(', ')} — ${t.bpm} BPM, first beat ${t.firstBeat}s`).join('\n')}
 
 Return JSON:
 {
@@ -422,7 +440,8 @@ Return JSON:
  "captions": true|false, "captionStyle": {…},
  "end_card": {…},
  "accent": "#RRGGBB",
- "music": "…" or false, "musicVolume": number
+ "sequence": [ … ] (optional),
+ "music": {"track","from","volume"} or false
 }`;
 }
 
@@ -477,7 +496,7 @@ async function runAdix(id) {
     if (!edlRaw) {
       const fr = await framesSheet(base, work);
       const sheetUrl = await uploadBufferToR2(fr.sheet, `adix/${id}/review_${Date.now()}.jpg`, 'image/jpeg');
-      const { json, usd } = await opusJson({ system: REVIEW_SYSTEM, prompt: reviewPrompt({ ...job, plan }, { duration: fr.duration, words: st.words }), imageUrl: sheetUrl, maxTokens: 30000, effort: 'high' });
+      const { json, usd } = await opusJson({ system: REVIEW_SYSTEM, prompt: reviewPrompt({ ...job, plan }, { duration: fr.duration, words: st.words, music: await musicLibrary().catch(() => []) }), imageUrl: sheetUrl, maxTokens: 30000, effort: 'high' });
       ledger.push({ step: 'review', usd }); edlRaw = json; st.reviewNote = clip(json.assessment, 600);
       // قرارات Opus (إيه اتعمل وليه) — بتظهر للعميل مع الإعلان
       const dec = (kind, x) => (x?.why ? { kind, at: +num(x.start, 0).toFixed(1), why: clip(x.why, 220) } : null);
@@ -527,13 +546,20 @@ async function runAdix(id) {
       const cut = await toCutout(hp, { allowModel: true }); ledger.push({ step: 'cutout', usd: EST.cutout });
       if (cut?.uriCut) { productPng = path.join(work, 'hero.png'); fs.writeFileSync(productPng, Buffer.from(cut.uriCut.split(',')[1], 'base64')); }
     } catch (e) { console.warn(`[Adix] #${id} cutout failed:`, e.message); }
-    let musicFile = null;
-    const musicMood = edlRaw.music === false ? null : (MUSIC_MOODS.includes(edlRaw.music) ? edlRaw.music : plan.concept.music);
+    let musicFile = null; let musicFrom = 0;
+    // التراك اللي Opus اختاره بالاسم (عشان البيتس اللي حسب عليها القطعات تبقى نفسها) — أو بالمود كبديل
+    const mPick = edlRaw.music && typeof edlRaw.music === 'object' ? edlRaw.music : null;
+    if (mPick?.track) {
+      const lib = await musicLibrary().catch(() => []);
+      const tr = lib.find((t) => t.name.toLowerCase() === String(mPick.track).toLowerCase().replace(/\.mp3$/, '')) || lib.find((t) => t.name.toLowerCase().includes(String(mPick.track).toLowerCase().slice(0, 12)));
+      if (tr) { musicFile = musicPath(tr.file); musicFrom = Math.max(0, Math.min(120, Number(mPick.from) || 0)); if (Number.isFinite(Number(mPick.volume))) edl.musicVolume = Math.max(0, Math.min(1, Number(mPick.volume))); }
+    }
+    const musicMood = musicFile || edlRaw.music === false ? null : (MUSIC_MOODS.includes(edlRaw.music) ? edlRaw.music : plan.concept.music);
     if (musicMood) {
       const buf = await getBackgroundMusicBuffer('youtube', musicMood).catch(() => null);
       if (buf) { musicFile = path.join(work, 'music.mp3'); fs.writeFileSync(musicFile, buf); }
     }
-    const compose = async (e, tag) => composeAd({ baseVideo: base, workDir: path.join(work, `cmp_${tag}`), edl: e, W, H, accent, words: st.words || [], productPng, musicFile, onStage: (s) => persist('compose', s === 'mix' ? 82 : 74).catch(() => {}) });
+    const compose = async (e, tag) => composeAd({ baseVideo: base, workDir: path.join(work, `cmp_${tag}`), edl: e, W, H, accent, words: st.words || [], productPng, musicFile, musicFrom, onStage: (s) => persist('compose', s === 'mix' ? 82 : 74).catch(() => {}) });
     await persist('compose', 72);
     let out = await compose(edl, 'a');
     ledger.push({ step: 'render', usd: EST.renderPerMin * Math.max(1, Math.ceil(out.duration / 60)) });
@@ -543,13 +569,14 @@ async function runAdix(id) {
       await persist('final_review', 86);
       const fr = await framesSheet(out.file, work, { maxFrames: 18 });
       const url = await uploadBufferToR2(fr.sheet, `adix/${id}/final_${Date.now()}.jpg`, 'image/jpeg');
-      const prompt = `PRODUCT: ${plan.product.name} — ${plan.product.whatISee}\nBRAND (exact spelling): ${plan.endCard.brand}\nON-SCREEN LANGUAGE: ${DIALECTS[plan.audio?.lang] || DIALECTS.egypt}; text strategy: ${plan.audio?.text || 'key'}\nFINAL AD: ${out.duration.toFixed(2)}s (the last ${(out.duration - out.cutDuration).toFixed(1)}s are the end card). The edit list below uses BASE-video times (before cuts); the frames show FINAL times.\nEDIT LIST:\n${JSON.stringify({ ...edlRaw, inserts: (edlRaw.inserts || []).filter((x) => st.inserts[x.id]) }).slice(0, 40000)}\n\n${OVERLAY_DOC}`;
+      const prompt = `PRODUCT: ${plan.product.name} — ${plan.product.whatISee}\nBRAND (exact spelling): ${plan.endCard.brand}\nON-SCREEN LANGUAGE: ${DIALECTS[plan.audio?.lang] || DIALECTS.egypt}; text strategy: ${plan.audio?.text || 'key'}\nFINAL AD: ${out.duration.toFixed(2)}s (the last ${(out.duration - out.cutDuration).toFixed(1)}s are the end card). ${edlRaw.sequence?.length ? 'The edit list re-sequences the base video ("sequence" = base times); every other time in it is on the FINAL timeline, same as the frames.' : 'The edit list below uses BASE-video times (before cuts); the frames show FINAL times.'}\nEDIT LIST:\n${JSON.stringify({ ...edlRaw, inserts: (edlRaw.inserts || []).filter((x) => st.inserts[x.id]) }).slice(0, 40000)}\n\n${OVERLAY_DOC}`;
       try {
         const { json, usd } = await opusJson({ system: FINAL_SYSTEM, prompt, imageUrl: url, maxTokens: 30000, effort: 'high' });
         ledger.push({ step: 'final_review', usd }); st.finalNote = clip(json.note, 600); st.finalChecked = true;
         if (json.approve === false && json.edl && typeof json.edl === 'object') {
           await persist('fix', 90);
           const fixed = toEdl({ ...json.edl, inserts: (json.edl.inserts || edlRaw.inserts || []).filter((x) => st.inserts[x?.id]) });
+          if (!Number.isFinite(fixed.musicVolume)) fixed.musicVolume = edl.musicVolume;
           const out2 = await compose(fixed, 'b').catch((e) => { console.warn(`[Adix] #${id} fix round failed:`, e.message); return null; });
           if (out2) { out = out2; edl = fixed; ledger.push({ step: 'render_fix', usd: EST.renderPerMin }); }
         }
@@ -595,6 +622,7 @@ async function concatShots(files, out, W, H) {
 
 /** بعد restart: كمّل أي إعلان كان شغال (والتخطيط اللي اتقطع يتعاد) */
 export async function resumeAdixJobs() {
+  musicLibrary().catch(() => {}); // تحليل إيقاع مكتبة الموسيقى مرة واحدة في الخلفية
   if (!process.env.DATABASE_URL) return;
   await ready;
   const { rows } = await pool.query(`SELECT id, status FROM adix_jobs WHERE status IN ('running','planning') AND updated_at > NOW() - INTERVAL '1 day' ORDER BY id`).catch(() => ({ rows: [] }));
