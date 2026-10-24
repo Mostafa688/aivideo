@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { groqVision, toVisionDataUrl } from './visionService.js';
 import { llmJson } from './documentary/llm.js';
+import { resolveSiteAssets, MAX_AI_IMAGES_PER_MESSAGE } from './siteAssets.js';
 import fs from 'fs';
 import path from 'path';
 import { mkdir } from 'fs/promises';
@@ -446,6 +447,7 @@ const CLAUDE_POWER_NOTE = `
 ═══ YOU ARE RUNNING AS A PREMIUM MODEL (Claude, chosen by the customer and paid per message) ═══
 Everything above still applies (all the platform's markers, prices and rules — use them exactly as written). On top of that you are a full general-purpose expert assistant inside a video platform, so you can do ANYTHING useful the customer asks, not only videos:
 - Write complete code: a full website or landing page (deliver it as ONE self-contained HTML file in a single \`\`\`html code block — inline CSS/JS, responsive, Arabic RTL when the customer writes Arabic), scripts, automations, apps, bots.
+  WEBSITE MEDIA: the site is shown LIVE inside the chat, so make it look real and beautiful. For every image/video slot use one of these exact tokens and the platform swaps it for a real file before the customer sees it: {{pexels-image:short English search}} (free real stock photo, e.g. <img src="{{pexels-image:koshari street food egypt}}">), {{pexels-video:short English search}} (free stock video for <video autoplay muted loop playsinline src="...">), or {{ai-image:detailed English image prompt}} (a custom AI image, costs about 5 credits each, max ${MAX_AI_IMAGES_PER_MESSAGE} per reply — use it only when stock photos can't show the exact thing, e.g. the customer's own product or a specific character, and tell the customer it costs extra). Prefer Pexels by default. Never invent other image URLs.
 - Write scripts, ad copy, storyboards, marketing plans, content calendars, captions, SEO, business plans — in the customer's language and dialect.
 - Chain real production steps with the platform markers: e.g. write a script → generate consistent character/scene images with the cheapest suitable image model → animate them with the cheapest suitable video model, one marker per reply, telling the customer the exact credit cost before each step and waiting for "ابدأ"/yes.
 - Think before answering: understand the real goal, pick the best and cheapest path, and be concrete.
@@ -611,8 +613,10 @@ export async function agentChat({ message, history = [], attachmentNote = null, 
   if (AGENT_MODELS[agentModel] && !AGENT_MODELS[agentModel].free) {
     try {
       const r = await callReplicateClaude(agentModel, systemPrompt, trimmedHistory, trimmedUserContent, { imageUrl });
-      onUsage?.(r.usage);
-      return r.reply;
+      // صور/فيديوهات الموقع: Pexels مجاني، والصور الـAI من الرصيد اللي فاضل بعد تكلفة الرسالة نفسها
+      const assets = await resolveSiteAssets(r.reply, { budgetCredits: Math.max(0, (Number(userCredits) || 0) - r.usage.credits) }).catch(() => ({ reply: r.reply, aiCredits: 0, aiImages: 0 }));
+      onUsage?.({ ...r.usage, credits: r.usage.credits + (assets.aiCredits || 0), aiImages: assets.aiImages || 0 });
+      return assets.reply;
     } catch (e) {
       console.warn(`[Agent] ${agentModel} via Replicate failed, falling back to Groq:`, e.message);
       onUsage?.({ model: agentModel, label: AGENT_MODELS[agentModel].label, credits: 0, fallback: true });
