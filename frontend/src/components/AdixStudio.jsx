@@ -1,7 +1,7 @@
 // ── AdixStudio.jsx ── Adix: إعلان منتج بيعمله Claude Opus 5.5 — نافذة الطلب (صور المنتج + الفكرة) وكارت متابعة الطلب
 // (تحليل → خطة + سعر بالتكلفة → موافقة → توليد → مراجعة → مونتاج وموشن → مراجعة نهائية → الإعلان)
 import React, { useEffect, useRef, useState } from 'react';
-import { Megaphone, X, ImagePlus, CheckCircle2, AlertTriangle, Download, Sparkles, Eye, Wand2, Film, Clapperboard, ShieldCheck } from 'lucide-react';
+import { Megaphone, X, ImagePlus, CheckCircle2, AlertTriangle, Download, Sparkles, Eye, Wand2, Film, Clapperboard, ShieldCheck, Camera } from 'lucide-react';
 
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('token') });
 const MAX_PHOTOS = 10;
@@ -21,7 +21,7 @@ const T = {
     quote: 'السعر بالتكلفة', items: { video: 'توليد الفيديو', review: 'مراجعات Opus (أولى + نهائية + تصليح)', inserts: 'لقطات إضافية (حد أقصى)', render: 'مونتاج ورندر' },
     maxNote: 'ده حجز بالحد الأقصى — اللي مايتصرفش بيرجع لرصيدك تلقائي.', approve: 'وافق وابدأ', cancel: 'إلغاء', credits: 'كريديت', alt: 'بدائل', current: 'المختار',
     working: 'تقدر تقفل الصفحة وترجع — الشغل مكمل.', failed: 'الإعلان وقف — اللي ماتصرفش رجع لرصيدك.', canceled: 'اتلغى.',
-    spent: 'التكلفة الفعلية', refunded: 'رجعلك', download: 'تحميل', reviewNote: 'ملاحظات Opus', breakdown: 'تفاصيل التكلفة', noCredits: 'رصيدك مش كفاية', planning: 'Opus بيحلل…',
+    spent: 'التكلفة الفعلية', refunded: 'رجعلك', download: 'تحميل', reviewNote: 'ملاحظات Opus', breakdown: 'تفاصيل التكلفة', noCredits: 'رصيدك مش كفاية', planning: 'Opus بيحلل…', decisions: 'قرارات المونتاج (Opus)', kinds: { cut: 'قص', insert: 'لقطة إضافية', punch: 'زووم', motion: 'موشن' },
   },
   en: {
     title: 'Adix', sub: 'A premium ad for your product — Claude Opus 5.5 studies the product, picks the strongest video model, directs, edits and reviews',
@@ -36,7 +36,7 @@ const T = {
     quote: 'Price at cost', items: { video: 'Video generation', review: 'Opus reviews (first + final + fix)', inserts: 'Extra shots (max)', render: 'Editing & render' },
     maxNote: 'This is a maximum hold — anything unused is refunded automatically.', approve: 'Approve & start', cancel: 'Cancel', credits: 'credits', alt: 'Alternatives', current: 'Selected',
     working: 'You can close this page — it keeps going.', failed: 'The ad stopped — unused credits were refunded.', canceled: 'Canceled.',
-    spent: 'Actual cost', refunded: 'refunded', download: 'Download', reviewNote: "Opus's notes", breakdown: 'Cost breakdown', noCredits: 'Not enough credits', planning: 'Opus is analyzing…',
+    spent: 'Actual cost', refunded: 'refunded', download: 'Download', reviewNote: "Opus's notes", breakdown: 'Cost breakdown', noCredits: 'Not enough credits', planning: 'Opus is analyzing…', decisions: "Opus's edit decisions", kinds: { cut: 'Cut', insert: 'Extra shot', punch: 'Zoom', motion: 'Motion' },
   },
 };
 const DIALECTS = [['egypt', 'مصري'], ['gulf', 'خليجي'], ['levant', 'شامي'], ['msa', 'فصحى'], ['en', 'English']];
@@ -219,7 +219,14 @@ export function AdixCard({ job, lang, onUpdateJob }) {
         </div>
         <Section title={t.concept}>{p.concept?.story}{p.concept?.hook && <div style={{ marginTop: 4 }}><b style={{ color: ACC2 }}>{t.hook}:</b> {p.concept.hook}</div>}</Section>
         <Section title={`${t.shots} · ${p.seconds}s`}>
-          <ol style={{ margin: 0, paddingInlineStart: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>{(p.shots || []).map((s, i) => <li key={i}>{s.summary || '—'} <span style={{ color: 'rgba(255,255,255,0.4)' }}>({s.seconds}s)</span></li>)}</ol>
+          <ol style={{ margin: 0, paddingInlineStart: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>{(p.shots || []).map((s, i) => {
+            const c = s.camera || {}; const cam = [c.move, c.lens, c.angle].filter(Boolean).join(' · ');
+            return (
+              <li key={i}>{s.summary || '—'} <span style={{ color: 'rgba(255,255,255,0.4)' }}>({s.seconds}s)</span>
+                {cam && <div dir="ltr" style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2, display: 'flex', gap: 5, alignItems: 'flex-start' }}><Camera size={12} style={{ flexShrink: 0, marginTop: 2, color: ACC2 }} /><span>{cam}{c.start_framing && c.end_framing ? ` — ${c.start_framing} → ${c.end_framing}` : ''}</span></div>}
+              </li>
+            );
+          })}</ol>
         </Section>
         {p.dialogue && <Section title={t.dialogue}><span style={{ fontStyle: 'italic' }}>"{p.dialogue}"</span></Section>}
         <Section title={t.modelPick}>
@@ -262,6 +269,9 @@ export function AdixCard({ job, lang, onUpdateJob }) {
         </div>
         {showCost && <Section title={t.breakdown}>{(d.ledger || []).map((x, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>{x.step.replace(/_/g, ' ')}</span><span style={{ fontVariantNumeric: 'tabular-nums' }}>${x.usd.toFixed(3)}</span></div>)}</Section>}
         {(d.finalNote || d.review) && <Section title={t.reviewNote}>{d.finalNote || d.review}</Section>}
+        {d.decisions?.length > 0 && <Section title={t.decisions}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>{d.decisions.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: ACC2, fontWeight: 800, minWidth: 38 }}>{x.at}s</span><span><b style={{ color: '#fff' }}>{t.kinds[x.kind] || x.kind}</b> — {x.why}</span></div>)}</div>
+        </Section>}
       </div>
     );
   }

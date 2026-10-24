@@ -21,7 +21,8 @@ import { ffmpeg, probeDuration, hasAudio, rmQuiet } from '../documentary/ff.js';
 import { toCutout } from '../codeVideo/images.js';
 import { chargeCredits, addCreditsBalance, getCreditsBalance } from '../authService.js';
 import { checkContentSafety } from '../scriptService.js';
-import { composeAd, sanitizeEdl } from './compose.js';
+import { composeAd, sanitizeEdl, SFX_TYPES, MOTIONS, TRANSITIONS } from './compose.js';
+import { DESIGN_DOC, FONT_CHOICES } from './designKit.js';
 
 const { Pool } = pkg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false, max: 3 });
@@ -39,7 +40,7 @@ const ready = (async () => {
 export const ADIX_LIMITS = { maxPhotos: 10, minSec: 5, maxSec: 60, maxShots: 8, maxInserts: 4 };
 const OPUS = { slug: 'anthropic/claude-opus-5.5', inPerM: 4, outPerM: 20 };
 // تكاليف تقديرية (بالدولار) للخطوات اللي مالهاش سعر ثابت — بنحجزها مقدمًا، والفعلي بيتحسب من التوكنز الحقيقية
-const EST = { review: 0.16, finalReview: 0.12, fixRound: 0.1, asr: 0.003, renderPerMin: 0.03, cutout: 0.001 };
+const EST = { review: 0.34, finalReview: 0.2, fixRound: 0.24, asr: 0.003, renderPerMin: 0.03, cutout: 0.001 };
 const INSERT_IMAGE_MODEL = 'nano_banana_2';
 const INSERT_VIDEO_MODEL = 'wan_3'; const INSERT_VIDEO_TIER = '720p';
 const DIM = { '9:16': [1080, 1920], '16:9': [1920, 1080] };
@@ -159,10 +160,10 @@ export function publicJob(j) {
   const ledger = Array.isArray(j.ledger) ? j.ledger : [];
   return {
     id: j.id, status: j.status, stage: j.stage, progress: j.progress, input: { idea: j.input?.idea, aspect: j.input?.aspect, photos: j.input?.photos || [], length: j.input?.length, model: j.input?.model },
-    plan: j.plan ? { product: j.plan.product, concept: j.plan.concept, model: j.plan.model, modelLabel: ADIX_VIDEO_MODELS[j.plan.model]?.label, tier: j.plan.tier, aspect: j.plan.aspect, seconds: j.plan.seconds, shots: (j.plan.shots || []).map((s) => ({ seconds: s.seconds, summary: s.summary })), dialogue: j.plan.dialogue, reason: j.plan.reason, quoteBreakdown: j.plan.quoteBreakdown, alternatives: j.plan.alternatives } : null,
+    plan: j.plan ? { product: j.plan.product, concept: j.plan.concept, model: j.plan.model, modelLabel: ADIX_VIDEO_MODELS[j.plan.model]?.label, tier: j.plan.tier, aspect: j.plan.aspect, seconds: j.plan.seconds, shots: (j.plan.shots || []).map((s) => ({ seconds: s.seconds, summary: s.summary, camera: s.camera || {}, lighting: s.lighting || '', beats: s.beats || [] })), dialogue: j.plan.dialogue, reason: j.plan.reason, quoteBreakdown: j.plan.quoteBreakdown, alternatives: j.plan.alternatives } : null,
     quote: j.quote, reserved: j.reserved, spent: j.spent, videoUrl: j.video_url, thumbnailUrl: j.thumb_url, error: j.error,
     ledger: ledger.map((x) => ({ step: x.step, credits: toCredits(x.usd), usd: +Number(x.usd || 0).toFixed(4) })),
-    review: j.state?.reviewNote || null, finalNote: j.state?.finalNote || null, createdAt: j.created_at,
+    review: j.state?.reviewNote || null, finalNote: j.state?.finalNote || null, decisions: j.state?.decisions || [], createdAt: j.created_at,
   };
 }
 export async function getAdixJob(id, userId) {
@@ -191,7 +192,8 @@ function modelCatalogText(aspect) {
 const PLAN_SYSTEM = `You are Adix — the creative director of a top advertising studio, working inside Erivion. A customer uploaded photos of their product and an idea. You look at the product photos (a numbered contact sheet: #1, #2, …), understand the product deeply, and design the strongest possible short video ad.
 Think like the best commercial directors: a scroll-stopping first 1.5 seconds, one clear selling idea, the product as the hero (perfectly recognisable — same shape, label, logo, colours), premium lighting, purposeful camera moves, and a confident ending on the product.
 You must choose the best AI video model for THIS product and THIS idea (fidelity of the label/packaging, physics like liquids, people talking, length needed, budget). Respect each model's real limits. The customer pays the exact provider cost, so don't waste money: pick the cheaper model when it gives the same result, but never sacrifice what makes the ad work.
-Prompts for the video model must be in ENGLISH, concrete and visual (subject, action, camera, lighting, lens, mood, setting, pacing), and must describe the product exactly as in the photos. If the model has native audio, describe sounds and write any spoken line in quotes in the customer's language/dialect and say who speaks (voice-over or on-screen person). Never invent claims the customer did not give (no fake prices, certifications or medical claims).
+You DIRECT every shot like a director of photography: for each shot you decide the exact camera — movement and its path (dolly-in, push, pull-back, orbit/arc with degrees and direction, crane/jib up or down, tilt, pan, whip pan, tracking alongside, top-down, FPV/drone, handheld, locked-off), start and end framing (extreme close-up, macro, close-up, medium, wide, hero shot), lens (e.g. 24mm wide, 50mm, 85mm portrait, 100mm macro) and depth of field, camera angle and height, speed and its ramps (e.g. slow then whip, speed-ramp into slow motion), stabilisation, focus pulls (rack focus from X to Y), plus lighting (key/rim/back light, colour temperature, practicals, reflections on the product) and a beat-by-beat timeline inside the shot with timecodes. Nothing generic: every move must have a reason (reveal, emphasis, energy, luxury, appetite…).
+Prompts for the video model must be in ENGLISH, concrete and visual (subject, action, camera, lighting, lens, mood, setting, pacing), must contain that camera direction and timeline, and must describe the product exactly as in the photos. If the model has native audio, describe sounds and write any spoken line in quotes in the customer's language/dialect and say who speaks (voice-over or on-screen person). Never invent claims the customer did not give (no fake prices, certifications or medical claims).
 Shots: if the ad is longer than the model's max per shot, split into several shots that cut together naturally (each shot = one continuous take). For reference-capable models list the photo numbers to use as references; for first-frame models pick the ONE best photo as the opening frame (or null to generate from text — only if the photo doesn't fit the shot).
 Reply with ONLY a JSON object.`;
 
@@ -211,11 +213,32 @@ Return JSON:
  "concept": { "title": "short name of the idea", "hook": "what happens in the first 1.5s", "story": "the ad beat by beat", "look": "visual style", "music_mood": "one of ${MUSIC_MOODS.join('|')}" },
  "model": "model key", "tier": "resolution", "reason": "why this model + tier fits this product (1–2 sentences, customer-friendly, in the customer's language)",
  "alternatives": [ { "model": "key", "tier": "...", "why": "short, customer's language" } ],
- "shots": [ { "seconds": number, "prompt": "English video prompt", "reference_photos": [photo numbers], "first_frame_photo": number|null, "summary": "one line in the customer's language" } ],
+ "shots": [ {
+    "seconds": number,
+    "summary": "one line in the customer's language",
+    "camera": { "move": "exact movement + path (e.g. 'slow dolly-in then 40° orbit to the right')", "start_framing": "...", "end_framing": "...", "lens": "focal length + depth of field", "angle": "angle + height", "speed": "speed / ramps", "rig": "gimbal|dolly|crane|drone|handheld|locked-off|macro probe", "focus": "focus behaviour (rack focus …) or empty" },
+    "lighting": "lighting setup for this shot",
+    "beats": [ { "from": s, "to": s, "action": "what happens", "camera": "what the camera does in this beat" } ],
+    "sound": "sound design for this shot (if the model makes audio)",
+    "prompt": "the complete English prompt for the video model — includes the action, product description, camera direction, lighting and the timed beats",
+    "reference_photos": [photo numbers], "first_frame_photo": number|null } ],
  "dialogue": "all spoken lines in order (customer's language) or empty",
  "end_card": { "brand": "...", "tagline": "short, customer's language", "cta": "short button text, customer's language", "price": "only if the customer gave it" },
  "hero_photo": photo number that shows the whole product most clearly (used for the end card cut-out)
 }`;
+}
+
+const CAM_KEYS = ['move', 'start_framing', 'end_framing', 'lens', 'angle', 'speed', 'rig', 'focus'];
+function cleanCamera(c) { const o = {}; if (c && typeof c === 'object') for (const k of CAM_KEYS) if (c[k]) o[k] = clip(c[k], 200); return o; }
+/** البرومبت النهائي للموديل: نص Opus + الإخراج المنظم (كاميرا/إضاءة/توقيت) لو مش مكتوب جواه */
+export function shotPrompt(s) {
+  const c = s.camera || {}; const parts = [s.prompt];
+  const cam = [c.move && `movement: ${c.move}`, (c.start_framing || c.end_framing) && `framing: ${c.start_framing || '?'} → ${c.end_framing || '?'}`, c.lens && `lens: ${c.lens}`, c.angle && `angle: ${c.angle}`, c.speed && `speed: ${c.speed}`, c.rig && `rig: ${c.rig}`, c.focus && `focus: ${c.focus}`].filter(Boolean);
+  if (cam.length && !/camera:/i.test(s.prompt)) parts.push(`Camera — ${cam.join('; ')}.`);
+  if (s.lighting && !s.prompt.includes(s.lighting.slice(0, 30))) parts.push(`Lighting — ${s.lighting}.`);
+  if (s.beats?.length && !/\b\d+(\.\d+)?\s*[–-]\s*\d+(\.\d+)?\s*s/.test(s.prompt)) parts.push(`Timeline — ${s.beats.map((b) => `${b.from}–${b.to}s: ${b.action}${b.camera ? ` (camera: ${b.camera})` : ''}`).join(' | ')}.`);
+  if (s.sound && !s.prompt.includes(s.sound.slice(0, 30))) parts.push(`Sound — ${s.sound}.`);
+  return parts.join('\n').slice(0, 3800);
 }
 
 export function sanitizeAdixPlan(raw, input, nPhotos) {
@@ -232,6 +255,8 @@ export function sanitizeAdixPlan(raw, input, nPhotos) {
     refs: M.refs ? (Array.isArray(s?.reference_photos) ? s.reference_photos : []).filter(photoOk).map(Number).slice(0, M.refs) : [],
     first: photoOk(s?.first_frame_photo) ? Number(s.first_frame_photo) : null,
     summary: clip(s?.summary, 160),
+    camera: cleanCamera(s?.camera), lighting: clip(s?.lighting, 300), sound: clip(s?.sound, 300),
+    beats: (Array.isArray(s?.beats) ? s.beats : []).slice(0, 8).map((b) => ({ from: clamp(num(b?.from, 0), 0, 60), to: clamp(num(b?.to, 0), 0, 60), action: clip(b?.action, 240), camera: clip(b?.camera, 200) })).filter((b) => b.action || b.camera),
   })).filter((s) => s.prompt.length > 10);
   if (!shots.length) throw new Error('plan_has_no_shots');
   // ماينفعش يعدّي الحد الأقصى للإعلان
@@ -338,7 +363,8 @@ export async function cancelAdixJob(id, userId) {
 }
 
 // ── 3) مراجعة Opus للفيديو → خطة مونتاج ──
-const OVERLAY_DOC = `MOTION GRAPHICS you can place (each: "type", "start", "end" in seconds of THIS video; animated in/out automatically, premium design, brand accent colour):
+const PRESET_DOC = `QUICK PRESETS (optional shortcuts — use them only when a standard element is exactly right; for anything that defines the ad's look, design it yourself with "type":"design"). Each preset also accepts "accent":"#RRGGBB" and "sfx":
+
 - headline: { text (≤7 words), highlight (one word of text to colour), position: top|center|bottom, size: s|m|xl } — big kinetic title, word by word.
 - callout: { text (≤3 words), sub (≤5 words), x, y } — animated pointer line from the point (x,y = 0..1 of the frame, e.g. the cap, the label, a feature ON the product at that moment) to a label card. Only when that part is visible at that time.
 - badge: { text (e.g. "-25%", "جديد", "NEW"), sub (≤3 words), position: top-right|top-left|bottom-right|bottom-left|mid-right|mid-left } — rotating starburst for offers/prices/newness.
@@ -346,10 +372,17 @@ const OVERLAY_DOC = `MOTION GRAPHICS you can place (each: "type", "start", "end"
 - stat: { text (a number with unit, e.g. "500 مل", "24h", "0%"), sub (label), position: top|center|bottom } — number counts up.
 - checklist: { items: [2–4 short benefits], position: top|center|bottom } — benefits ticked one by one.
 - flash: { } (0.15–0.35s long) — light flash to punctuate a cut or a beat.
-Rules: never cover the product or a face; leave 0.2s+ gaps between overlays in the same area; on-screen text in the customer's dialect; spell the brand exactly; max ~1 text element on screen at a time (captions excluded); short ads (≤15s) usually need 3–5 elements, not more.`;
+`;
+const EDIT_RULES = `Design rules (your taste decides everything else): never cover the product's label or a face (look at where they are in the frames at that time); keep text inside the safe area; on-screen text in the customer's dialect with the brand spelled exactly; text must be readable on the footage behind it (contrast, shadow, plate); every element and every edit must have a reason ("why"); motion must feel timed to the action, the cuts and the voice — not random.
+SFX names: ${SFX_TYPES.join(', ')}. Each element/insert/punch/end card may carry "sfx":[{"at":s (relative to its start),"type":name,"vol":0..1}] or false; omit for a sensible default.`;
+const OVERLAY_DOC = `${DESIGN_DOC}
 
-const REVIEW_SYSTEM = `You are Adix's senior editor and motion designer. You get a generated product ad as a sheet of frames with timestamps (t=…s), the exact spoken words with timings, and the creative plan. Study it frame by frame like a picky creative director: Is the product clearly visible and correct (same label/shape/colours as described)? Where is the energy low? Which moments need a text, a pointer, a number, a benefit list, a price badge? Is there a broken/ugly moment (warped product, glitch, wrong text, frozen frame) that must be cut or covered by an extra shot? Would one extra product shot (e.g. a macro detail, a lifestyle moment) make the ad stronger?
-Then write a precise EDIT DECISION LIST. Times are in seconds of the base video (0 … duration). Be surgical and premium — fewer, better elements; everything timed to the action and the voice. Reply with ONLY JSON.`;
+${PRESET_DOC}
+${EDIT_RULES}`;
+
+const REVIEW_SYSTEM = `You are Adix's senior editor, colourist, sound designer and motion designer in one — there are NO templates here: you decide what this specific ad needs, why, and exactly how it looks, moves and sounds. You get the generated ad as a sheet of frames with timestamps (t=…s), the exact spoken words with timings, and the creative plan.
+First study it frame by frame like a picky creative director: Is the product clearly visible and correct (same label/shape/colours)? Where does the energy drop? Which moments need a message on screen, a pointer to a feature, a number, an offer, a benefit, a brand moment — and which moments must stay clean? Is anything broken (warped product, glitch, wrong text, frozen frame) that must be cut or covered? Would an extra shot (macro detail, lifestyle moment, texture, ingredient) make it stronger, and with what camera move? What colour grade, transitions, sound design and music level fit this brand?
+Then design and write a precise EDIT DECISION LIST. Your motion design must match the product's world (luxury ≠ sport ≠ food ≠ tech): choose fonts, colours (from the product/brand), shapes, layout, timing curves, entrances/exits and effects yourself, and compose elements from layers. Times are in seconds of the base video (0 … duration). Premium and intentional — every element earns its place. Reply with ONLY JSON.`;
 
 function reviewPrompt(job, info) {
   const p = job.plan; const words = info.words.map((w) => `${w.start.toFixed(2)}-${w.end.toFixed(2)} ${w.w}`).join('\n');
@@ -365,25 +398,30 @@ ${words || '(no speech)'}
 
 ${OVERLAY_DOC}
 
-EXTRA SHOTS ("inserts"): up to ${ADIX_LIMITS.maxInserts}. Each replaces the PICTURE for its time range (the original sound keeps playing). kind "image" = a still generated from the product photos with a slow camera move (cheap, great for detail/macro/lifestyle). kind "video" = a short generated clip (more expensive). Write the prompt in English describing the product exactly. Inserts last 0.8–4s. Use them to hide a broken moment or to add a strong beat — only if they really improve the ad.
-CUTS: remove broken/boring ranges (keep the ad flowing; never cut the middle of a spoken word).
-PUNCHES: quick punch-in zoom {start,end,zoom 1.1–1.35,x,y focus 0..1} on a beat (max 3).
+EXTRA SHOTS ("inserts"): up to ${ADIX_LIMITS.maxInserts}. Each replaces the PICTURE for its time range (the original sound keeps playing). kind "image" = a still generated from the product photos, animated with YOUR camera move: "motion": ${MOTIONS.join('|')}, "zoom" 1.0–1.6 (how far), "focusX"/"focusY" 0..1 (what the move centres on), "ease": linear|out|inOut. kind "video" = a short generated clip (more expensive) — put the full camera direction (movement, lens, framing, speed) inside its prompt. Prompts in English, product described exactly. Inserts last 0.8–4s. "transitionIn"/"transitionOut": ${TRANSITIONS.join('|')}. Only when they really improve the ad.
+CUTS: remove broken/boring ranges (keep the flow; never cut inside a spoken word).
+PUNCHES: {start,end,zoom 1.04–1.8,x,y focus 0..1,"style": snap (instant punch-in) | push (zoom grows over the range) | shake (impact shake)} on beats.
+GRADE: {"contrast" 0.7–1.5,"saturation" 0–2,"brightness" -0.15–0.15,"warmth" -1 (cool) … 1 (warm),"vignette" 0–1,"grain" 0–1,"sharpen" 0–1} — or omit to keep the original look.
+CAPTIONS: "captions": true|false, "captionStyle": {"font": ${Object.keys(FONT_CHOICES).join('|')},"size" 0.035–0.12,"y" 0..1,"color","highlight","style": box|color|none,"maxWords" 1–7}.
+END CARD: design it yourself: "end_card": {"seconds" 1.5–6,"background": blur|freeze|darken|color,"bgColor","transition": ${TRANSITIONS.join('|')},"sfx":[…],"layers":[ design layers — use {"shape":"image","src":"product"} for the product cut-out ], plus "brand","tagline","cta","price" as plain text for reference}.
+MUSIC: "music": ${MUSIC_MOODS.join('|')} or false, "musicVolume" 0–1 (0.15–0.3 under speech).
 
 Return JSON:
 {
  "assessment": "2–4 sentences: what works, what you fixed (customer's language)",
  "cuts": [{"start","end","why"}],
- "inserts": [{"id":"i1","kind":"image|video","prompt":"...","start","end","motion":"in|out|left|right","why"}],
- "punches": [{"start","end","zoom","x","y"}],
- "overlays": [ {...} ],
- "captions": true|false (word-by-word captions of the speech; true when there is speech and no text would clash),
- "end_card": {"brand","tagline","cta","price"},
+ "inserts": [{"id":"i1","kind":"image|video","prompt":"...","start","end","motion","zoom","focusX","focusY","ease","transitionIn","transitionOut","sfx","why"}],
+ "punches": [{"start","end","zoom","x","y","style","sfx","why"}],
+ "overlays": [ {"type":"design", …} or a preset — each with "why" ],
+ "grade": {…},
+ "captions": true|false, "captionStyle": {…},
+ "end_card": {…},
  "accent": "#RRGGBB",
- "music": "${MUSIC_MOODS.join('|')}" or false (false if the video already has strong music)
+ "music": "…" or false, "musicVolume": number
 }`;
 }
 
-const FINAL_SYSTEM = `You are Adix's final quality check before the customer sees their ad. You get the finished ad as frames with timestamps, the edit list that produced it, and the product info. Check strictly: product correct and clearly visible; every on-screen text readable, correctly spelled (brand exact), in the right dialect, not covering the product or faces, not overlapping another text; timing feels right; the ending sells. If everything is good, approve. If something is wrong, return a corrected FULL edit list (same JSON shape) that fixes it — you may move/remove/edit overlays, cuts and punches and drop inserts, but you cannot generate new shots. Reply with ONLY JSON: {"approve": true|false, "note": "1–3 sentences for the customer (their language)", "edl": {…only when approve is false…}}`;
+const FINAL_SYSTEM = `You are Adix's final quality check before the customer sees their ad — and still its designer. You get the finished ad as frames with timestamps, the edit list that produced it, and the product info. Check strictly: product correct and clearly visible; every on-screen text readable, correctly spelled (brand exact), in the right dialect, not covering the product or faces, not colliding with other elements; the design looks premium and fits the brand; timing feels right; the ending sells. If everything is good, approve. If anything can be clearly better, return a corrected FULL edit list (same JSON shape) — you may redesign, move, retime, add or remove motion elements, change the grade, transitions, punches, sound and the end card design, and drop inserts, but you cannot generate new shots. Reply with ONLY JSON: {"approve": true|false, "note": "1–3 sentences for the customer (their language)", "edl": {…only when approve is false…}}`;
 
 // ── 2..5) التنفيذ ──
 async function runAdix(id) {
@@ -404,7 +442,7 @@ async function runAdix(id) {
       const s = plan.shots[i];
       const refs = s.refs.map(photo).filter(Boolean);
       const url = await generateNewModelVideo({
-        modelKey: plan.model, prompt: s.prompt, aspectRatio: plan.aspect, durationSec: s.seconds, tier: plan.tier,
+        modelKey: plan.model, prompt: shotPrompt(s), aspectRatio: plan.aspect, durationSec: s.seconds, tier: plan.tier,
         ...(refs.length ? { referenceImageUrls: refs } : s.first ? { imageUrl: photo(s.first) } : {}),
       });
       st.shots[i].url = url; ledger.push({ step: `video_shot_${i + 1}`, usd: s.seconds * usdPerSec(plan.model, plan.tier) }); done++;
@@ -433,8 +471,11 @@ async function runAdix(id) {
     if (!edlRaw) {
       const fr = await framesSheet(base, work);
       const sheetUrl = await uploadBufferToR2(fr.sheet, `adix/${id}/review_${Date.now()}.jpg`, 'image/jpeg');
-      const { json, usd } = await opusJson({ system: REVIEW_SYSTEM, prompt: reviewPrompt({ ...job, plan }, { duration: fr.duration, words: st.words }), imageUrl: sheetUrl, maxTokens: 14000, effort: 'high' });
+      const { json, usd } = await opusJson({ system: REVIEW_SYSTEM, prompt: reviewPrompt({ ...job, plan }, { duration: fr.duration, words: st.words }), imageUrl: sheetUrl, maxTokens: 30000, effort: 'high' });
       ledger.push({ step: 'review', usd }); edlRaw = json; st.reviewNote = clip(json.assessment, 600);
+      // قرارات Opus (إيه اتعمل وليه) — بتظهر للعميل مع الإعلان
+      const dec = (kind, x) => (x?.why ? { kind, at: +num(x.start, 0).toFixed(1), why: clip(x.why, 220) } : null);
+      st.decisions = [...(json.cuts || []).map((x) => dec('cut', x)), ...(json.inserts || []).map((x) => dec('insert', x)), ...(json.punches || []).map((x) => dec('punch', x)), ...(json.overlays || []).map((x) => dec('motion', x))].filter(Boolean).sort((a, b) => a.at - b.at).slice(0, 24);
       await persist('review', 52, { edl: edlRaw });
     }
 
@@ -459,7 +500,7 @@ async function runAdix(id) {
         let url = imgUrl;
         if (isVideo) {
           const sec = fitShotSeconds(INSERT_VIDEO_MODEL, Math.ceil(len));
-          url = await generateNewModelVideo({ modelKey: INSERT_VIDEO_MODEL, prompt: `${clip(ins.prompt, 1200)}. Smooth cinematic camera move, the product stays exactly the same.`, imageUrl: imgUrl, aspectRatio: plan.aspect, durationSec: sec, tier: INSERT_VIDEO_TIER });
+          url = await generateNewModelVideo({ modelKey: INSERT_VIDEO_MODEL, prompt: `${clip(ins.prompt, 2400)}. The product stays exactly the same as in the first frame.`, imageUrl: imgUrl, aspectRatio: plan.aspect, durationSec: sec, tier: INSERT_VIDEO_TIER });
           ledger.push({ step: `insert_video_${key}`, usd: sec * usdPerSec(INSERT_VIDEO_MODEL, INSERT_VIDEO_TIER) }); insertUsd += sec * usdPerSec(INSERT_VIDEO_MODEL, INSERT_VIDEO_TIER);
         }
         st.inserts[key] = url;
@@ -496,9 +537,9 @@ async function runAdix(id) {
       await persist('final_review', 86);
       const fr = await framesSheet(out.file, work, { maxFrames: 18 });
       const url = await uploadBufferToR2(fr.sheet, `adix/${id}/final_${Date.now()}.jpg`, 'image/jpeg');
-      const prompt = `PRODUCT: ${plan.product.name} — ${plan.product.whatISee}\nBRAND (exact spelling): ${plan.endCard.brand}\nON-SCREEN LANGUAGE: ${DIALECTS[input.dialect] || DIALECTS.egypt}\nFINAL AD: ${out.duration.toFixed(2)}s (the last ${(out.duration - out.cutDuration).toFixed(1)}s are the end card). The edit list below uses BASE-video times (before cuts); the frames show FINAL times.\nEDIT LIST:\n${JSON.stringify({ ...edlRaw, inserts: (edlRaw.inserts || []).filter((x) => st.inserts[x.id]) }).slice(0, 12000)}\n\n${OVERLAY_DOC}`;
+      const prompt = `PRODUCT: ${plan.product.name} — ${plan.product.whatISee}\nBRAND (exact spelling): ${plan.endCard.brand}\nON-SCREEN LANGUAGE: ${DIALECTS[input.dialect] || DIALECTS.egypt}\nFINAL AD: ${out.duration.toFixed(2)}s (the last ${(out.duration - out.cutDuration).toFixed(1)}s are the end card). The edit list below uses BASE-video times (before cuts); the frames show FINAL times.\nEDIT LIST:\n${JSON.stringify({ ...edlRaw, inserts: (edlRaw.inserts || []).filter((x) => st.inserts[x.id]) }).slice(0, 40000)}\n\n${OVERLAY_DOC}`;
       try {
-        const { json, usd } = await opusJson({ system: FINAL_SYSTEM, prompt, imageUrl: url, maxTokens: 12000, effort: 'medium' });
+        const { json, usd } = await opusJson({ system: FINAL_SYSTEM, prompt, imageUrl: url, maxTokens: 30000, effort: 'high' });
         ledger.push({ step: 'final_review', usd }); st.finalNote = clip(json.note, 600); st.finalChecked = true;
         if (json.approve === false && json.edl && typeof json.edl === 'object') {
           await persist('fix', 90);
