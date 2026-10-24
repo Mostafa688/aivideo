@@ -116,7 +116,8 @@ export function AdixModal({ lang, onClose, onCreated, inline = false }) {
   useEffect(() => { fetch('/api/adix/models', { headers: auth() }).then((r) => r.json()).then((d) => setModels(d.models || [])).catch(() => {}); }, []);
   const previews = React.useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
   useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
-  const addFiles = (list) => setFiles((cur) => [...cur, ...[...list].filter((f) => /^image\//.test(f.type))].slice(0, MAX_PHOTOS));
+  // لازم ننسخ الملفات فورًا: الـFileList بيتفضّى لما نصفّر الـinput بعدها (قبل ما React ينفّذ الـupdater)
+  const addFiles = (list) => { const picked = [...(list || [])].filter((f) => /^image\//.test(f.type)); setFiles((cur) => [...cur, ...picked].slice(0, MAX_PHOTOS)); };
 
   const submit = async () => {
     if (!files.length || busy) return;
