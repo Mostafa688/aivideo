@@ -6,8 +6,9 @@
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { buildDesign, FONT_CHOICES } from './designKit.js';
 
-export const OVERLAY_TYPES = ['headline', 'callout', 'badge', 'lowerThird', 'stat', 'checklist', 'captions', 'flash'];
+export const OVERLAY_TYPES = ['design', 'headline', 'callout', 'badge', 'lowerThird', 'stat', 'checklist', 'captions', 'flash'];
 const FPS = 30;
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const P = (t, a, d) => clamp((t - a) / d);
@@ -22,26 +23,27 @@ const isAr = (s) => /[؀-ۿ]/.test(String(s || ''));
 const FONT_AR = "'Noto Kufi Arabic','Noto Sans Arabic',sans-serif";
 const FONT_LAT = "'Noto Sans','DejaVu Sans',sans-serif";
 const fam = (s) => (isAr(s) ? FONT_AR : FONT_LAT);
-// اتجاه النص: العربي (حتى لو فيه أرقام) لازم direction=rtl عشان "500 مل" تطلع صح
-const dirA = (s) => (isAr(s) ? ' direction="rtl" unicode-bidi="embed"' : '');
-// text-anchor بيتقلب مع direction=rtl (start = اليمين)، فبنحدد الحافة الفعلية اللي النص يتثبت عليها
-const anc = (s, edge) => (isAr(s) ? (edge === 'right' ? 'start' : 'end') : (edge === 'right' ? 'end' : 'start'));
+// اتجاه النص: محرّك librsvg بيرتّب العربي (والأرقام جواه) صح لوحده — direction="rtl" بيقلب "0 سكر" لـ"سكر 0"، فمش بنستخدمه
+const dirA = () => '';
+// الحافة الفعلية اللي النص يتثبت عليها (start = الشمال)
+const anc = (s, edge) => (edge === 'right' ? 'end' : 'start');
 
 // قياس العرض الحقيقي بنفس الخط اللي بيترسم بيه (Pango عن طريق sharp) — عند حجم 100px
 const MEASURE = new Map();
-async function measure100(str) {
-  const k = String(str); if (MEASURE.has(k)) return MEASURE.get(k);
+async function measure100(str, pango = null) {
+  const k = pango ? `${pango}|${str}` : String(str); if (MEASURE.has(k)) return MEASURE.get(k);
   let w = 0;
-  try { w = (await sharp({ text: { text: esc(k), font: `${isAr(k) ? 'Noto Kufi Arabic' : 'Noto Sans'} Bold 100`, rgba: true, dpi: 72 } }).metadata()).width || 0; } catch { w = 0; }
+  try { w = (await sharp({ text: { text: esc(String(str)), font: pango ? `${pango} 100` : `${isAr(str) ? 'Noto Kufi Arabic' : 'Noto Sans'} Bold 100`, rgba: true, dpi: 72 } }).metadata()).width || 0; } catch { w = 0; }
   if (!w) w = k.length * 58;
   MEASURE.set(k, w); return w;
 }
-async function makeMeasurer(words) {
+async function makeMeasurer(words, pango = null) {
   const uniq = [...new Set(words.map(String).filter(Boolean))];
-  await Promise.all(uniq.map(measure100));
+  await Promise.all(uniq.map((w) => measure100(w, pango)));
   const ar = uniq.some(isAr);
-  const sp = Math.max(18, (await measure100(ar ? 'م م' : 'n n')) - (await measure100(ar ? 'مم' : 'nn')));
-  return { word: (w, size) => ((MEASURE.get(String(w)) ?? String(w).length * 58) * size) / 100, space: (size) => (sp * size) / 100 };
+  const sp = Math.max(18, (await measure100(ar ? 'م م' : 'n n', pango)) - (await measure100(ar ? 'مم' : 'nn', pango)));
+  const key = (w) => (pango ? `${pango}|${w}` : String(w));
+  return { word: (w, size) => ((MEASURE.get(key(w)) ?? String(w).length * 58) * size) / 100, space: (size) => (sp * size) / 100 };
 }
 const hexOk = (c, d) => (/^#[0-9a-f]{6}$/i.test(String(c || '')) ? c : d);
 // لون مقروء فوق لون الخلفية
@@ -238,15 +240,18 @@ async function captions(o, W, H, accent, ctx) {
   const words = (ctx.words || []).filter((w) => w.end > o.start && w.start < o.end);
   if (!words.length) return () => '';
   const rtl = isAr(words.map((w) => w.w).join(' '));
-  const size = Math.round(Math.min(W, H) * 0.068); const mw = await makeMeasurer(words.map((w) => w.w));
+  const cs = o.style || {}; const F = FONT_CHOICES[cs.font] || null;
+  const family = F ? F.ar : null; const weight = F ? F.w : 700;
+  const size = Math.round(Math.min(W, H) * (cs.size || 0.068)); const mw = await makeMeasurer(words.map((w) => w.w), F ? F.pango : null);
+  const maxWords = cs.maxWords || 4; const hlColor = cs.highlight || accent; const baseColor = cs.color || '#fff'; const capStyle = cs.style || 'box';
   // مجموعات 2-4 كلمات على قد العرض
   const groups = []; let cur = [];
   for (const w of words) {
     // سكتة طويلة بين كلمتين = مجموعة جديدة (مايظهرش كلام جاي بعد ثواني قبل وقته)
     if (cur.length && w.start - cur[cur.length - 1].end > 0.5) { groups.push(cur); cur = []; }
-    cur.push(w); const width = cur.reduce((a, x) => a + mw.word(x.w, size), 0) + mw.space(size) * (cur.length - 1); if (cur.length >= 4 || width > W * 0.78 || /[.!?؟،,]$/.test(w.w)) { groups.push(cur); cur = []; } }
+    cur.push(w); const width = cur.reduce((a, x) => a + mw.word(x.w, size), 0) + mw.space(size) * (cur.length - 1); if (cur.length >= maxWords || width > W * 0.78 || /[.!?؟،,]$/.test(w.w)) { groups.push(cur); cur = []; } }
   if (cur.length) groups.push(cur);
-  const y = H * (H > W ? 0.7 : 0.84);
+  const y = H * (cs.y || (H > W ? 0.7 : 0.84));
   return (t) => {
     const at = o.start + t;
     if ((ctx.busy || []).some(([a, b]) => at >= a && at <= b)) return ''; // في عنصر تاني تحت (lowerThird…) — الترجمة تختفي ماتتخبطش فيه
@@ -256,8 +261,9 @@ async function captions(o, W, H, accent, ctx) {
     const kin = E.back(P(at, g[0].start - 0.05, 0.22));
     for (const w of g) {
       const ww = mw.word(w.w, size); const cx = rtl ? x - ww / 2 : x + ww / 2; const on = at >= w.start && at <= w.end + 0.08;
-      if (on) s += `<rect x="${(cx - ww / 2 - size * 0.18).toFixed(1)}" y="${(y - size * 0.95).toFixed(1)}" width="${(ww + size * 0.36).toFixed(1)}" height="${(size * 1.25).toFixed(1)}" rx="${(size * 0.2).toFixed(1)}" fill="${accent}"/>`;
-      s += `<text x="${cx.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-family="${fam(w.w)}"${dirA(w.w)} font-size="${size}" font-weight="700" fill="${on ? onColor(accent) : '#fff'}" stroke="#000" stroke-opacity="${on ? 0 : 0.55}" stroke-width="${(size * 0.07).toFixed(1)}" paint-order="stroke">${esc(w.w)}</text>`;
+      if (on && capStyle === 'box') s += `<rect x="${(cx - ww / 2 - size * 0.18).toFixed(1)}" y="${(y - size * 0.95).toFixed(1)}" width="${(ww + size * 0.36).toFixed(1)}" height="${(size * 1.25).toFixed(1)}" rx="${(size * 0.2).toFixed(1)}" fill="${hlColor}"/>`;
+      const fillC = on ? (capStyle === 'box' ? onColor(hlColor) : capStyle === 'color' ? hlColor : baseColor) : baseColor;
+      s += `<text x="${cx.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-family="${family || fam(w.w)}"${dirA(w.w)} font-size="${size}" font-weight="${weight}" fill="${fillC}" stroke="#000" stroke-opacity="${on && capStyle === 'box' ? 0 : 0.55}" stroke-width="${(size * 0.07).toFixed(1)}" paint-order="stroke">${esc(w.w)}</text>`;
       x += rtl ? -(ww + sp) : ww + sp;
     }
     return `<g transform="translate(${W / 2} ${y}) scale(${(0.85 + 0.15 * kin).toFixed(3)}) translate(${-W / 2} ${-y})">${s}</g>`;
@@ -272,7 +278,7 @@ async function flash(o, W, H) {
   };
 }
 
-const BUILDERS = { headline, callout, badge, lowerThird, stat, checklist, captions, flash };
+const BUILDERS = { design: buildDesign, headline, callout, badge, lowerThird, stat, checklist, captions, flash };
 
 /** بيرسم عنصر واحد لفريمات PNG شفافة في dir — بيرجّع { pattern, start, end } */
 export async function renderOverlay(o, { W, H, accent = '#ff3d6e', dir, ctx = {} }) {
