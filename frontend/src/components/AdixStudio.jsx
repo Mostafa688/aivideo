@@ -21,7 +21,7 @@ const T = {
     quote: 'السعر بالتكلفة', items: { video: 'توليد الفيديو', review: 'مراجعات Opus (أولى + نهائية + تصليح)', inserts: 'لقطات إضافية (حد أقصى)', render: 'مونتاج ورندر' },
     maxNote: 'ده حجز بالحد الأقصى — اللي مايتصرفش بيرجع لرصيدك تلقائي.', approve: 'وافق وابدأ', cancel: 'إلغاء', credits: 'كريديت', alt: 'بدائل', current: 'المختار',
     working: 'تقدر تقفل الصفحة وترجع — الشغل مكمل.', failed: 'الإعلان وقف — اللي ماتصرفش رجع لرصيدك.', canceled: 'اتلغى.',
-    spent: 'التكلفة الفعلية', refunded: 'رجعلك', download: 'تحميل', reviewNote: 'ملاحظات Opus', breakdown: 'تفاصيل التكلفة', noCredits: 'رصيدك مش كفاية', planning: 'Opus بيحلل…', decisions: 'قرارات المونتاج (Opus)', kinds: { cut: 'قص', insert: 'لقطة إضافية', punch: 'زووم', motion: 'موشن' },
+    spent: 'التكلفة الفعلية', refunded: 'رجعلك', download: 'تحميل', reviewNote: 'ملاحظات Opus', breakdown: 'تفاصيل التكلفة', noCredits: 'رصيدك مش كفاية', planning: 'Opus بيحلل…', sent: 'الطلب اتبعت لـ Opus — الإعلان تحت', decisions: 'قرارات المونتاج (Opus)', kinds: { cut: 'قص', insert: 'لقطة إضافية', punch: 'زووم', motion: 'موشن' },
   },
   en: {
     title: 'Adix', sub: 'A premium ad for your product — Claude Opus 5.5 studies the product, picks the strongest video model, directs, edits and reviews',
@@ -36,7 +36,7 @@ const T = {
     quote: 'Price at cost', items: { video: 'Video generation', review: 'Opus reviews (first + final + fix)', inserts: 'Extra shots (max)', render: 'Editing & render' },
     maxNote: 'This is a maximum hold — anything unused is refunded automatically.', approve: 'Approve & start', cancel: 'Cancel', credits: 'credits', alt: 'Alternatives', current: 'Selected',
     working: 'You can close this page — it keeps going.', failed: 'The ad stopped — unused credits were refunded.', canceled: 'Canceled.',
-    spent: 'Actual cost', refunded: 'refunded', download: 'Download', reviewNote: "Opus's notes", breakdown: 'Cost breakdown', noCredits: 'Not enough credits', planning: 'Opus is analyzing…', decisions: "Opus's edit decisions", kinds: { cut: 'Cut', insert: 'Extra shot', punch: 'Zoom', motion: 'Motion' },
+    spent: 'Actual cost', refunded: 'refunded', download: 'Download', reviewNote: "Opus's notes", breakdown: 'Cost breakdown', noCredits: 'Not enough credits', planning: 'Opus is analyzing…', sent: 'Sent to Opus — your ad is below', decisions: "Opus's edit decisions", kinds: { cut: 'Cut', insert: 'Extra shot', punch: 'Zoom', motion: 'Motion' },
   },
 };
 const DIALECTS = [['egypt', 'مصري'], ['gulf', 'خليجي'], ['levant', 'شامي'], ['msa', 'فصحى'], ['en', 'English']];
@@ -45,7 +45,22 @@ const field = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', bo
 const label = { fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.7)', display: 'flex', gap: 6, alignItems: 'baseline' };
 const chip = (on) => ({ padding: '7px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${on ? ACC : 'rgba(255,255,255,0.14)'}`, background: on ? 'rgba(255,77,141,0.16)' : 'transparent', color: on ? '#fff' : 'rgba(255,255,255,0.7)' });
 
-export function AdixModal({ lang, onClose, onCreated }) {
+// كارت الطلب جوه الشات نفسه (بدل نافذة منفصلة) — بعد الإرسال بيتقفل ويظهر كارت الإعلان تحته
+export function AdixSetupCard({ lang, started, onClose, onCreated }) {
+  const t = T[lang === 'ar' ? 'ar' : 'en'];
+  if (started) {
+    return (
+      <div dir={lang === 'ar' ? 'rtl' : 'ltr'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 14, border: '1px solid rgba(255,77,141,0.22)', background: 'rgba(255,77,141,0.06)' }}>
+        <div style={{ width: 26, height: 26, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg, ${ACC}, ${ACC2})` }}><Megaphone size={14} color="#1a0b12" strokeWidth={2.5} /></div>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Adix</span>
+        <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle2 size={14} color="#22c55e" /> {t.sent}</span>
+      </div>
+    );
+  }
+  return <AdixModal lang={lang} onClose={onClose} onCreated={onCreated} inline />;
+}
+
+export function AdixModal({ lang, onClose, onCreated, inline = false }) {
   const t = T[lang === 'ar' ? 'ar' : 'en'];
   const [files, setFiles] = useState([]);
   const [idea, setIdea] = useState('');
@@ -77,9 +92,11 @@ export function AdixModal({ lang, onClose, onCreated }) {
     } catch (e) { setErr(String(e.message || e)); } finally { setBusy(false); }
   };
 
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(5,4,10,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-      <div onClick={(e) => e.stopPropagation()} dir={lang === 'ar' ? 'rtl' : 'ltr'} style={{ width: 'min(620px, 100%)', maxHeight: '92vh', overflowY: 'auto', borderRadius: 18, background: 'linear-gradient(180deg,#17121f,#0e0b14)', border: '1px solid rgba(255,77,141,0.28)', boxShadow: '0 30px 80px rgba(0,0,0,0.6)', padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+  // نفس المحتوى: جوه الشات (inline) أو نافذة — من غير مكوّن wrapper عشان الحقول ماتتعملش remount مع كل حرف
+  const panel = (
+      <div onClick={(e) => e.stopPropagation()} dir={lang === 'ar' ? 'rtl' : 'ltr'} style={inline
+        ? { width: '100%', maxWidth: 620, boxSizing: 'border-box', borderRadius: 16, background: 'linear-gradient(180deg, rgba(255,77,141,0.07), rgba(255,181,71,0.02))', border: '1px solid rgba(255,77,141,0.28)', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }
+        : { width: 'min(620px, 100%)', maxHeight: '92vh', overflowY: 'auto', borderRadius: 18, background: 'linear-gradient(180deg,#17121f,#0e0b14)', border: '1px solid rgba(255,77,141,0.28)', boxShadow: '0 30px 80px rgba(0,0,0,0.6)', padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ width: 42, height: 42, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg, ${ACC}, ${ACC2})` }}><Megaphone size={21} color="#1a0b12" strokeWidth={2.4} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -155,8 +172,9 @@ export function AdixModal({ lang, onClose, onCreated }) {
           <Sparkles size={17} /> {busy ? t.sending : t.start}
         </button>
       </div>
-    </div>
   );
+  if (inline) return panel;
+  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(5,4,10,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>{panel}</div>;
 }
 
 const STAGE_ORDER = ['analyze', 'concept', 'generate', 'review', 'inserts', 'compose', 'final_review', 'upload'];
