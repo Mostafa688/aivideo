@@ -16,6 +16,28 @@ function inline(text, keyBase) {
   return out;
 }
 
+// بلوك كود (```lang ... ```): نسخ، وللـ HTML (موقع كامل من Claude) معاينة في تاب جديد وتنزيل كملف
+function CodeBlock({ lang, code }) {
+  const [copied, setCopied] = React.useState(false);
+  const isHtml = /^html?$/i.test(lang) || /^\s*<!doctype html|^\s*<html/i.test(code);
+  const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { /* ignore */ } };
+  const blob = () => URL.createObjectURL(new Blob([code], { type: isHtml ? 'text/html' : 'text/plain' }));
+  const preview = () => { const u = blob(); window.open(u, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(u), 60000); };
+  const download = () => { const u = blob(); const a = document.createElement('a'); a.href = u; a.download = isHtml ? 'erivion-site.html' : `erivion-code.${lang || 'txt'}`; a.click(); setTimeout(() => URL.revokeObjectURL(u), 5000); };
+  const btn = { fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: '#e9e5ff', cursor: 'pointer' };
+  return (
+    <div dir="ltr" style={{ borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontFamily: 'ui-monospace, monospace', flex: 1 }}>{lang || 'code'}</span>
+        {isHtml && <button type="button" onClick={preview} style={btn}>Preview</button>}
+        {isHtml && <button type="button" onClick={download} style={btn}>Download</button>}
+        <button type="button" onClick={copy} style={btn}>{copied ? 'Copied ✓' : 'Copy'}</button>
+      </div>
+      <pre style={{ margin: 0, padding: '10px 12px', maxHeight: 340, overflow: 'auto', fontSize: 12, lineHeight: 1.55, fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre' }}><code>{code}</code></pre>
+    </div>
+  );
+}
+
 const BULLET = /^\s*([-•*–])\s+(.*)$/;
 const NUM = /^\s*(\d{1,2})[.)]\s+(.*)$/;
 const HEAD = /^\s*#{1,4}\s+(.*)$/;
@@ -26,6 +48,14 @@ export default function RichText({ text }) {
   while (i < lines.length) {
     const ln = lines[i];
     if (!ln.trim()) { i++; continue; }
+    const fence = /^\s*```\s*([\w+-]*)\s*$/.exec(ln);
+    if (fence) {
+      const code = []; i++;
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { code.push(lines[i]); i++; }
+      i++; // قفلة البلوك
+      blocks.push(<CodeBlock key={`c${i}`} lang={fence[1]} code={code.join('\n')} />);
+      continue;
+    }
     if (BULLET.test(ln) || NUM.test(ln)) {
       const ordered = NUM.test(ln); const items = [];
       while (i < lines.length && (ordered ? NUM.test(lines[i]) : BULLET.test(lines[i]))) { items.push((ordered ? NUM : BULLET).exec(lines[i])[2]); i++; }
@@ -35,7 +65,7 @@ export default function RichText({ text }) {
     }
     if (HEAD.test(ln)) { blocks.push(<div key={`h${i}`} style={{ fontWeight: 800, fontSize: '1.02em', margin: '2px 0' }}>{inline(HEAD.exec(ln)[1], `h${i}`)}</div>); i++; continue; }
     const para = [];
-    while (i < lines.length && lines[i].trim() && !BULLET.test(lines[i]) && !NUM.test(lines[i]) && !HEAD.test(lines[i])) { para.push(lines[i]); i++; }
+    while (i < lines.length && lines[i].trim() && !BULLET.test(lines[i]) && !NUM.test(lines[i]) && !HEAD.test(lines[i]) && !/^\s*```/.test(lines[i])) { para.push(lines[i]); i++; }
     blocks.push(<p key={`p${i}`} style={{ margin: 0, lineHeight: 1.75 }}>{para.map((p, j) => <React.Fragment key={j}>{j > 0 && <br />}{inline(p, `p${i}_${j}`)}</React.Fragment>)}</p>);
   }
   return <div dir="auto" style={{ display: 'flex', flexDirection: 'column', gap: 8, whiteSpace: 'normal' }}>{blocks}</div>;

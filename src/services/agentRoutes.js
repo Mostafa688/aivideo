@@ -9,6 +9,7 @@ import sharp from 'sharp';
 import { authMiddleware } from './authRoutes.js';
 import { visionDiagnostics } from './visionService.js';
 import { composeProductAdPrompt, agentChat, transcribeVoiceForAgent, validateAgentImage, analyzeSceneImage, describeAttachedImage, refineEditInstruction, parseStructuredScript, parseAdsScenePlan, AGENT_LIMITS } from './agentService.js';
+import { chargeCredits } from './authService.js';
 import { listCharacterReferencesForUser, getUserById, logAgentConversation, setUserRegion, updateUserName, findSimilarAgentRequest, rememberAgentRequest, listManagedChannelsForUser, getManagedChannelById, getCreditsBalance, getActivePromo, egpPriceForCredits, animationMaxSeconds, docVideoMaxSeconds } from './authService.js';
 import { searchWeb, WEB_SEARCH_AVAILABLE } from './webSearchService.js';
 import { startAnimationEdit, editableAnimations } from './documentary/documentaryService.js';
@@ -23,6 +24,7 @@ import { NEW_IMAGE_MODELS } from './newImageModelsService.js';
 import { NEW_VIDEO_MODELS } from './newVideoModelsService.js';
 import { getMaxClipSeconds, getAutoEditCreditCost, getAnimationCreditCost } from './creditPricingEngine.js';
 import { detectShowcaseIntent, buildShowcaseReply } from './showcaseIntent.js';
+import { AGENT_MODELS, estimateClaudeMessageCredits } from './agentService.js';
 import { orderSingleSubjectFirst } from './characterStudioRoutes.js';
 
 // ✅ FIX (باج حقيقي حصل مع عملاء حقيقيين على أكتر من موديل صور، مش موديل واحد بس): تأكد إن
@@ -985,7 +987,24 @@ router.post('/chat', authMiddleware, async (req, res) => {
       }
     }
 
-    let rawReply = await agentChat({
+    // ── موديل الايجنت اللي العميل اختاره (Erivion Agent مجاني، أو Claude بالكريديت حسب التوكنز) ──
+    const agentModel = AGENT_MODELS[req.body.agentModel] ? req.body.agentModel : 'erivion';
+    const claudeUsage = [];
+    const siteBase = (process.env.PUBLIC_SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const claudeImageUrl = uploadedPhotoUrls[0] ? (String(uploadedPhotoUrls[0]).startsWith('/') ? siteBase + uploadedPhotoUrls[0] : uploadedPhotoUrls[0]) : null;
+    const chatFn = (args) => agentChat({ ...args, agentModel, onUsage: (u) => claudeUsage.push(u), imageUrl: claudeImageUrl });
+    if (agentModel !== 'erivion') {
+      const need = estimateClaudeMessageCredits(agentModel, String(message || '').length + JSON.stringify(history || []).length);
+      if ((userCredits ?? 0) < need) {
+        const ar = /[\u0600-\u06FF]/.test(String(message || ''));
+        return res.json({ reply: ar
+          ? `رسالة ${AGENT_MODELS[agentModel].label} بتكلّف حوالي ${need} كريديت، ورصيدك ${userCredits ?? 0}. اشحن رصيدك من صفحة الأسعار، أو ارجع لـ **Erivion Agent** (مجاني) من اختيار الموديل تحت خانة الكتابة.`
+          : `A ${AGENT_MODELS[agentModel].label} message costs about ${need} credits and your balance is ${userCredits ?? 0}. Top up from the Pricing page, or switch back to **Erivion Agent** (free) from the model picker under the message box.`,
+          agentUsage: { model: agentModel, label: AGENT_MODELS[agentModel].label, credits: 0, blocked: true, need } });
+      }
+    }
+
+    let rawReply = await chatFn({
       message, history, attachmentNote, userPlan, isAdminUser,
       hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
       hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
@@ -1014,7 +1033,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
           const researchNote = search.error
             ? `You asked to verify "${query}" but the web search failed (${search.error}) — proceed using your own knowledge, and be upfront with the user that live verification wasn't available this time if they ask about sources.`
             : `Web search results for "${query}":\n${search.results.map(r => `- ${r.title} — ${r.url}\n  ${r.content}`).join('\n')}\n${search.answer ? `Summary: ${search.answer}\n` : ''}Use this to write an accurate reply/script now, and remember these exact source URLs in case the user asks where the information came from.`;
-          rawReply = await agentChat({
+          rawReply = await chatFn({
             message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + researchNote, userPlan, isAdminUser,
             hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
             hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
@@ -1023,7 +1042,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
             hasStructuredScript, hasAdsScenePlan, userRegion, memoryNote, userChannels, hasClonedVoice, userCredits, mediaLedger,
           });
         } else if (query) {
-          rawReply = await agentChat({
+          rawReply = await chatFn({
             message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + 'You asked to research this but web search is not configured on this deployment — answer using your own knowledge and honestly tell the user you cannot verify it live right now.', userPlan, isAdminUser,
             hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
             hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
@@ -1055,7 +1074,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
             : `cost: depends on this channel's content style — you'll be told the exact amount once it's done, charged from their real balance like any other video`;
           channelNote = `Fresh idea sourced from VidIQ for channel "${channel.label || channel.channel_id}" (id ${channelId}): title="${idea.title}", brief="${idea.brief || ''}", videoLanguage="${idea.videoLanguage || 'en'}", format="${format}" (${format === 'short' ? 'short, punchy, ~30s' : 'long-form, several minutes'}), voice="${channel.uses_voice ? 'yes — include narration' : 'no — silent, no narration'}", ${costNote}. Present this idea warmly to the user (title, brief, and the cost note above), then per rule 13b step 2, wait for their explicit go-ahead before ending a reply with ###CHANNEL_GENERATE###{"channelId":${channelId}} — do not use the generic image/video pipeline for this, and do not ask the user for details you already have here.`;
         }
-        rawReply = await agentChat({
+        rawReply = await chatFn({
           message, history, attachmentNote: (attachmentNote ? attachmentNote + ' ' : '') + channelNote, userPlan, isAdminUser,
           hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
           hasVideo: !!videoAlreadyUploaded, videoDurationSec: videoDurationSec || null,
@@ -1139,7 +1158,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       try {
         const nudgedHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: reply }];
         const nudgeMessage = '(system reminder: the customer already confirmed (or your previous reply said you were about to start generating), but your last reply either repeated the same confirmation question again or promised to start without including the required technical marker — so nothing actually happened and the customer is still waiting with no result. In THIS reply you must either include the real marker now with everything needed to execute it, based on what has already been discussed and confirmed, or ask exactly one specific clarifying question if something is genuinely still missing — never repeat the same or another confirmation question again, and never repeat a vague "starting now" acknowledgement again. If the customer already fully described a multi-scene plan (e.g. several scenes with a consistent product/character/location) or already confirmed a merge/animation/generation plan, do NOT re-explain, re-confirm, or recap that plan back to them again — you already have everything needed and they already said yes, so just emit the marker right now, with at most one short sentence stating the cost so far. Re-asking or re-describing instead of acting on it is exactly the mistake that caused this retry.)';
-        const retryRawReply = await agentChat({
+        const retryRawReply = await chatFn({
           message: nudgeMessage, history: nudgedHistory, attachmentNote, userPlan, isAdminUser,
           hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
           hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
@@ -1168,7 +1187,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       if (!hasMarker && mine.size >= 12 && prevAssist.some(p => sim(mine, p) >= 0.72)) {
         console.warn('[Agent] reply repeats an earlier answer — asking for a fresh one');
         try {
-          const again = await agentChat({
+          const again = await chatFn({
             message: `(system reminder: your draft reply below repeats what you already told the customer in an earlier message. Do NOT repeat it. Read the customer's LAST message carefully and answer exactly what they asked now — move the conversation forward (a decision, the next step, or one new clarifying question). If you need to recall prices/options, refer to them in one short line instead of listing them again. The customer's last message: "${String(message || '').slice(0, 600)}". Draft to avoid: "${String(reply).slice(0, 900)}")`,
             history: [...history, { role: 'user', content: message }], attachmentNote, userPlan, isAdminUser,
             hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded, hasVideo: !!videoAlreadyUploaded,
@@ -1195,7 +1214,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       try {
         const rescueHistory = [...history, { role: 'user', content: message }, { role: 'assistant', content: reply }];
         const rescueMessage = '(system reminder: you have now failed multiple times in a row to include the required technical marker, even after being told explicitly to include it. The customer is frustrated and has been waiting with nothing happening. This is your absolute last chance in this exchange — you must emit the real marker right now with everything it needs to execute. If any creative detail is still genuinely missing (e.g. the exact subject/style of a scene), invent a specific, reasonable one yourself right now instead of asking — never ask another clarifying question and never repeat a "starting now" acknowledgement without the marker again. Output the marker now.)';
-        const rescueRawReply = await agentChat({
+        const rescueRawReply = await chatFn({
           message: rescueMessage, history: rescueHistory, attachmentNote, userPlan, isAdminUser,
           hasPhoto: images.length > 0 || !!photoAlreadyUploaded,
           hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded,
@@ -1681,7 +1700,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       // الموديل بعت ماركر المونتاج بس الـJSON بتاعه باظ → كان الرد بيطلع فاضي ومفيش حاجة بتبدأ: بنطلب منه يعيده صح مرة واحدة
       if (mm.unparsable) {
         try {
-          const retryRaw = await agentChat({
+          const retryRaw = await chatFn({
             message: '(system reminder: your last reply tried to start the montage but the ###SMART_MONTAGE### JSON was malformed, so NOTHING started. Reply again with ONE short human sentence followed by the corrected marker ###SMART_MONTAGE### and STRICTLY valid JSON: double quotes only, no comments, no "a"|"b" alternatives, no trailing commas, only fields from the instructions and ids from the note.)',
             history: [...history, { role: 'user', content: message }, { role: 'assistant', content: rawBeforeMontage.slice(0, 1500) }],
             attachmentNote, userPlan, isAdminUser, hasPhoto: images.length > 0 || !!photoAlreadyUploaded, hasVoice: !!voiceBase64 || !!voiceAlreadyUploaded, hasVideo: !!videoAlreadyUploaded,
@@ -1992,8 +2011,22 @@ router.post('/chat', authMiddleware, async (req, res) => {
       console.warn('[Agent] empty reply — sending a fallback message instead of an empty bubble');
       reply = 'معلش، الرد ماوصلش كامل. ممكن تبعتلي رسالتك تاني؟';
     }
+    // ── خصم رسالة Claude (مجموع التوكنز الفعلية لكل النداءات في الرسالة دي) — مرة واحدة ──
+    let agentUsage;
+    if (agentModel !== 'erivion' && claudeUsage.length) {
+      const real = claudeUsage.filter(u => !u.fallback);
+      const credits = real.reduce((a, u) => a + (u.credits || 0), 0);
+      let charged = 0;
+      if (credits > 0) {
+        const c = await chargeCredits(userId, credits).catch(() => null);
+        if (c?.success) charged = credits;
+        else if ((c?.remaining ?? 0) > 0) { const c2 = await chargeCredits(userId, c.remaining).catch(() => null); if (c2?.success) charged = c.remaining; }
+      }
+      agentUsage = { model: agentModel, label: AGENT_MODELS[agentModel].label, credits: charged, fallback: !real.length, inTok: real.reduce((a, u) => a + (u.inTok || 0), 0), outTok: real.reduce((a, u) => a + (u.outTok || 0), 0) };
+      console.log(`[Agent] ${agentModel} message: ${agentUsage.inTok} in / ${agentUsage.outTok} out tokens → ${charged} credits${agentUsage.fallback ? ' (fell back to Groq, not charged)' : ''}`);
+    }
     res.json({
-      reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl,
+      reply, transcript, ready, editScene, videoEdit, generateImage, generateVideo, mergeVideos: mergeVideosPayload, uploadedVoiceUrl, agentUsage,
       analyzeVideo: analyzeVideoPayload,
       awaitingConfirmation,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
@@ -2021,6 +2054,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
     console.error('[Agent Chat]', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// موديلات الايجنت + التكلفة التقريبية للرسالة (لقايمة الاختيار تحت خانة الكتابة)
+router.get('/models', authMiddleware, (req, res) => {
+  res.json({ models: Object.values(AGENT_MODELS).map(m => ({ key: m.key, label: m.label, free: !!m.free, approxCredits: m.free ? 0 : estimateClaudeMessageCredits(m.key) })) });
 });
 
 router.get('/limits', authMiddleware, async (req, res) => {
