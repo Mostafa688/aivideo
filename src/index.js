@@ -89,6 +89,8 @@ import adminRouter from './services/adminRoutes.js';
 import { startBackupScheduler } from './services/dbBackup.js';
 import { startFollowupScheduler, recordFollowupReason } from './services/followupEmail.js';
 import { resumeProductions } from './services/productionService.js';
+import adixRouter from './services/adix/adixRoutes.js';
+import { resumeAdixJobs } from './services/adix/adixService.js';
 import { adminAuth } from './services/adminAuthMiddleware.js';
 import supportRouter from './services/supportRoutes.js';
 import projectRouter from './services/projectRoutes.js';
@@ -270,6 +272,7 @@ app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
 startBackupScheduler(); // نسخة احتياطية يومية لقاعدة البيانات على R2 (بره Railway)
 setTimeout(() => resumeProductions().catch(() => {}), 20_000); // أفلام Claude الطويلة: تكمل بعد أي restart
+setTimeout(() => resumeAdixJobs().catch(() => {}), 25_000); // إعلانات Adix: تكمل بعد أي restart
 startFollowupScheduler(); // إيميل متابعة لمرة واحدة للمسجّل المجاني اللي كلّم الايجنت ومشتركش
 // زرار "ليه ما كملتش؟" في إيميل المتابعة: بيسجّل السبب وبيودّي العميل للصفحة المناسبة
 app.get('/api/followup/feedback', async (req, res) => {
@@ -295,6 +298,7 @@ app.use('/api/map-video', mapVideoRouter);
 app.use('/api/wan-video', wanVideoRouter);
 app.use('/api/ads', adsRouter);
 app.use('/api/agent', agentRouter);
+app.use('/api/adix', adixRouter);
 // ✅ NEW: استوديو الأفلام الوثائقية — إنشاء وظيفة بتتحدد بمعدل الرندر (20/ساعة) زي باقي مسارات التوليد
 app.use(['/api/documentary/jobs', '/api/documentary/autoedit'], (req, res, next) => (req.method === 'POST' ? renderLimiter(req, res, next) : next()));
 app.use('/api/documentary', documentaryRouter);
