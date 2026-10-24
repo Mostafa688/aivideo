@@ -1,4 +1,9 @@
 import 'dotenv/config';
+import sharp from 'sharp';
+// الذاكرة على Railway كانت قاعدة على ~1.15 جيجا من غير زيارات: sharp (libvips) بيحتفظ بكاش عمليات كبير، ومع glibc
+// الذاكرة بتتفتت ومش بترجع للسيستم. كاش أصغر + خيطين بس للرسم = ذاكرة أقل بكتير، والرندر نفسه مش هيبطأ تقريبًا
+sharp.cache({ memory: 48, files: 0, items: 60 });
+sharp.concurrency(2);
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import express from 'express';
@@ -262,6 +267,11 @@ app.use('/outputs/templates', express.static(join(process.cwd(), 'outputs', 'tem
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/admin', adminRouter);
 startBackupScheduler(); // نسخة احتياطية يومية لقاعدة البيانات على R2 (بره Railway)
+// سطر في اللوج كل 30 دقيقة باستهلاك الذاكرة الحقيقي — عشان نعرف لو فيه حاجة بتكبر مع الوقت (تسريب) ولا ثابتة
+setInterval(() => {
+  const m = process.memoryUsage(), mb = (x) => Math.round(x / 1048576);
+  console.log(`[Memory] rss=${mb(m.rss)}MB heap=${mb(m.heapUsed)}/${mb(m.heapTotal)}MB external=${mb(m.external)}MB buffers=${mb(m.arrayBuffers)}MB`);
+}, 30 * 60 * 1000).unref();
 // ✅ FIX: كانت 3 نسخ مكررة من sitemap.xml و robots.txt في الملف — Express بس بيستخدم
 // أول واحد مسجّل، يعني النسخة الشاملة بتاعتنا (تحت في آخر الملف) كانت أبدًا ما بتشتغل!
 // اتشالت النسخ القديمة المكررة دي، وهنسيب نسخة واحدة كاملة بس في الآخر.

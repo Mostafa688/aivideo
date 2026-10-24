@@ -6,3 +6,7 @@ cmds = ["npm ci", "pip install --break-system-packages edge-tts", "fc-cache -f -
 
 [phases.build]
 cmds = ["cd frontend && npm ci && npm run build && mkdir -p ../dist && cp -r dist/* ../dist/"]
+# glibc بيعمل "arena" لكل خيط ومش بيرجّع الذاكرة للسيستم — مع sharp/ffmpeg ده بيخلّي الذاكرة تقعد عالية من غير سبب.
+# arenas أقل = ذاكرة مستقرة وأقل (توصية sharp الرسمية لـ Linux/glibc)
+[variables]
+MALLOC_ARENA_MAX = "2"
