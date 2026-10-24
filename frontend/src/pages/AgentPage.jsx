@@ -10,8 +10,9 @@ import {
   CheckCircle2, Download, AlertTriangle, Plus, Box, Volume2, Square,
   ArrowLeft, LayoutGrid, Images, PanelRightClose, PanelRightOpen,
   MoreVertical, Heart, RotateCcw, Copy, Pencil, Share2, Flag, Trash2, Maximize2,
-  ChevronLeft, ChevronRight, Scissors, Drama, Paperclip,
+  ChevronLeft, ChevronRight, Scissors, Drama, Paperclip, Megaphone,
 } from 'lucide-react';
+import { AdixModal, AdixCard } from '../components/AdixStudio.jsx';
 import ShimmerLoader from '../components/ShimmerLoader.jsx';
 import { downloadRemoteFile, fetchRemoteBlob } from '../utils/download.js';
 import { useMarqueeSelect, MarqueeBox, SelectCheck, SelectionBar, selectedRing, MARQUEE_CSS } from '../components/MarqueeSelect.jsx';
@@ -2664,6 +2665,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     { key: 'map_video',  icon: MapIcon,      label: 'Map Video' },
   ];
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [adixOpen, setAdixOpen] = useState(false); // Adix: إعلان منتج بـ Opus 5.5
   const [plusMenuView, setPlusMenuView] = useState('main'); // 'main' | 'createImage' | 'createVideo' | 'style'
   const closePlusMenu = () => { setPlusMenuOpen(false); setPlusMenuView('main'); };
   const plusItemStyle = { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, background: 'none', border: 'none', color: '#e5e7eb', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', width: '100%' };
@@ -2705,6 +2707,13 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
                 </button>
                 <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 2px' }} />
                 <div style={plusHeadStyle}>{lang === 'ar' ? 'إنشاء واختيار' : 'Create & choose'}</div>
+                <button onClick={() => { closePlusMenu(); setAdixOpen(true); }} style={{ ...plusItemStyle, alignItems: 'flex-start', background: 'linear-gradient(90deg, rgba(255,77,141,0.14), rgba(255,181,71,0.08))', border: '1px solid rgba(255,77,141,0.3)' }}>
+                  <Megaphone size={16} strokeWidth={2.2} style={{ marginTop: 2, color: '#ff4d8d' }} />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span>Adix <span style={{ fontSize: 10, fontWeight: 800, color: '#ffb547' }}>OPUS 5.5</span></span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.5)' }}>{lang === 'ar' ? 'إعلان احترافي لمنتجك — ارفع صوره وفكرتك' : 'A premium ad for your product — upload photos + idea'}</span>
+                  </span>
+                </button>
                 <button onClick={() => setPlusMenuView('createImage')} style={plusItemStyle} onMouseEnter={e => plusItemHover(e, true)} onMouseLeave={e => plusItemHover(e, false)}>
                   <ImageIcon size={16} strokeWidth={2} /> {lang === 'ar' ? 'إنشاء صورة (اختيار الموديل)' : 'Create image'} <ChevronRight size={14} strokeWidth={2} style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)' }} />
                 </button>
@@ -2835,7 +2844,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     mq.addEventListener?.('change', on);
     return () => mq.removeEventListener?.('change', on);
   }, []);
-  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis', 'channelRun', 'channelReview', 'docJob', 'production'];
+  const MEDIA_TYPES = ['render', 'whiteboard', 'imageBatch', 'videoModel', 'videoAnalysis', 'channelRun', 'channelReview', 'docJob', 'production', 'adix'];
   const mediaItems = messages
     .map((m, i) => ({ ...m, _i: i }))
     .filter(m => MEDIA_TYPES.includes(m.type));
@@ -2847,7 +2856,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
     return !!m.job?.favorited;
   };
   const visibleMedia = rightTab === 'images' ? mediaItems.filter(m => m.type === 'imageBatch')
-    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun' || m.type === 'channelReview' || m.type === 'docJob' || m.type === 'production')
+    : rightTab === 'videos' ? mediaItems.filter(m => m.type === 'render' || m.type === 'whiteboard' || m.type === 'videoModel' || m.type === 'videoAnalysis' || m.type === 'channelRun' || m.type === 'channelReview' || m.type === 'docJob' || m.type === 'production' || m.type === 'adix')
     : rightTab === 'favorites' ? mediaItems.filter(isMediaFavorited)
     : mediaItems;
 
@@ -2906,6 +2915,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       onOpenDetail={(idx) => setDetailView({ jobUid: m.job.uid, kind: 'imageBatch', imgIndex: idx })}
       onToast={showToast}
     />}
+    {m.type === 'adix' && <AdixCard job={m.job} lang={lang} onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)} />}
     {m.type === 'production' && <ProductionCard job={m.job} lang={lang} onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)} />}
     {m.type === 'videoModel' && <VideoModelCard job={m.job} lang={lang}
       onUpdateJob={(patch) => updateJobByUid(m.job.uid, patch)}
@@ -3354,6 +3364,10 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
             setMessages(m => [...m, { role: 'assistant', content: lang === 'ar' ? 'تم إرسال طلب الاشتراك! هيتم مراجعته وإضافة الكريديت خلال 24 ساعة.' : 'Subscription request sent! It will be reviewed and credits added within 24 hours.' }]);
           }} />
       )}
+      {adixOpen && <AdixModal lang={lang} onClose={() => setAdixOpen(false)} onCreated={(jobId) => {
+        setAdixOpen(false);
+        setMessages(m => [...m, { role: 'assistant', type: 'adix', job: { uid: `adix_${jobId}`, jobId, status: 'planning' } }]);
+      }} />}
       {detailView && (() => {
         const msg = messages.find(x => x.job?.uid === detailView.jobUid);
         if (!msg) return null;
