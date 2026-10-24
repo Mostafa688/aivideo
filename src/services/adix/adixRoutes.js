@@ -4,7 +4,8 @@ import multer from 'multer';
 import sharp from 'sharp';
 import { authMiddleware } from '../authRoutes.js';
 import { uploadBufferToR2 } from '../audioVideoService.js';
-import { createAdixJob, approveAdixJob, cancelAdixJob, getAdixJob, listAdixJobs, ADIX_LIMITS, ADIX_VIDEO_MODELS } from './adixService.js';
+import { USD_PER_CREDIT } from '../creditPricingEngine.js';
+import { createAdixJob, approveAdixJob, cancelAdixJob, getAdixJob, listAdixJobs, ADIX_LIMITS, ADIX_VIDEO_MODELS, maxShotSec, usdPerSec } from './adixService.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: ADIX_LIMITS.maxPhotos } });
@@ -12,7 +13,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 
 const quotaError = (res, e) => res.status(402).json({ error: 'quota_exceeded', cost: e.cost, remaining: e.remaining, message: 'Not enough credits.', show_upgrade: true });
 
 router.get('/models', authMiddleware, (req, res) => {
-  res.json({ models: Object.entries(ADIX_VIDEO_MODELS).map(([key, m]) => ({ key, label: m.label, tiers: m.tiers })), limits: ADIX_LIMITS });
+  res.json({ models: Object.entries(ADIX_VIDEO_MODELS).map(([key, m]) => ({ key, label: m.label, tiers: m.tiers, ui: m.ui, audio: m.audio, refs: m.refs, maxSec: maxShotSec(key), usdPerSec: Object.fromEntries(m.tiers.map((t) => [t, usdPerSec(key, t)])), creditsPerSec: Object.fromEntries(m.tiers.map((t) => [t, +(usdPerSec(key, t) / USD_PER_CREDIT).toFixed(1)])) })), limits: ADIX_LIMITS });
 });
 
 router.post('/plan', authMiddleware, (req, res, next) => upload.array('photos', ADIX_LIMITS.maxPhotos)(req, res, (err) => {
@@ -29,7 +30,7 @@ router.post('/plan', authMiddleware, (req, res, next) => upload.array('photos', 
       return uploadBufferToR2(buf, `adix/u${req.user.userId}/${stamp}_${i}.jpg`, 'image/jpeg');
     }));
     const b = req.body || {};
-    const r = await createAdixJob(req.user.userId, { photos, idea: b.idea, aspect: b.aspect, length: b.length, dialect: b.dialect, model: b.model, brand: b.brand, price: b.price, cta: b.cta });
+    const r = await createAdixJob(req.user.userId, { photos, idea: b.idea, aspect: b.aspect, length: b.length, uiLang: b.uiLang, model: b.model, brand: b.brand, price: b.price, cta: b.cta });
     res.json(r);
   } catch (e) {
     if (e.message === 'quota_exceeded') return quotaError(res, e);

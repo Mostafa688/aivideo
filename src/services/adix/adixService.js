@@ -48,17 +48,17 @@ const MUSIC_MOODS = ['upbeat', 'epic', 'emotional', 'chill', 'tension', 'documen
 
 // الموديلات اللي Opus بيختار منها (أقوى الموجود حاليًا) — المدد والدقات من NEW_VIDEO_MODELS/REPLICATE_MODEL_COSTS نفسهم
 export const ADIX_VIDEO_MODELS = {
-  seedance_2_5: { label: 'Seedance 2.5', tiers: ['480p', '720p'], refs: 30, audio: true,
+  seedance_2_5: { ui: { ar: 'المنتج بيطلع مطابق للصور بالظبط (بياخد كل صورك كمرجع)، لقطة واحدة متصلة لحد 30 ثانية، وبيعمل صوت وكلام', en: 'Product looks exactly like your photos (uses all of them as references), one continuous take up to 30s, with sound and speech', tags_ar: ['مطابقة المنتج', 'صوت وكلام'], tags_en: ['Product fidelity', 'Sound & speech'] }, label: 'Seedance 2.5', tiers: ['480p', '720p'], refs: 30, audio: true,
     note: 'BEST product fidelity: takes ALL the product photos as references so the product looks exactly like them (logo, label, colors, shape). Up to 30s in ONE continuous take with several camera moves. Native sound effects, music and spoken lines (good for voice-over / a person talking).' },
-  kling_3_0_omni: { label: 'Kling 3.0 Omni', tiers: ['720p', '1080p'], refs: 0, audio: true,
+  kling_3_0_omni: { ui: { ar: 'أوقع حركة وفيزياء: سوائل ورشّ وإيدين بتستخدم المنتج وناس — بجودة 1080p', en: 'Most realistic motion & physics: liquids, splashes, hands using the product, people — 1080p', tags_ar: ['حركة واقعية', '1080p'], tags_en: ['Realistic motion', '1080p'] }, label: 'Kling 3.0 Omni', tiers: ['720p', '1080p'], refs: 0, audio: true,
     note: 'Most realistic motion and physics (liquids pouring, splashes, hands using the product, fabric, people). Premium 1080p look. Starts from ONE product photo as the first frame. 3–15s per shot.' },
-  veo3_standard: { label: 'Veo 3.1', tiers: ['720p', '1080p'], refs: 0, audio: true,
+  veo3_standard: { ui: { ar: 'أعلى واقعية سينمائية وأحسن ناس بتتكلم (حركة شفايف وصوت طبيعي)، لحد 8 ثواني للقطة', en: 'Top cinematic realism and the best talking people (lip-sync, natural voice), up to 8s per shot', tags_ar: ['سينمائي', 'ناس بتتكلم'], tags_en: ['Cinematic', 'Talking people'] }, label: 'Veo 3.1', tiers: ['720p', '1080p'], refs: 0, audio: true,
     note: 'Top cinematic realism and the best talking humans (lip-sync, natural voice, ambience). Starts from ONE photo. Max 8s per shot (4/6/8), so longer ads need several shots.' },
-  veo3_fast: { label: 'Veo 3.1 Fast', tiers: ['720p', '1080p'], refs: 0, audio: true,
+  veo3_fast: { ui: { ar: 'جودة Veo بسعر أقل، لحد 8 ثواني للقطة', en: 'Veo quality for less, up to 8s per shot', tags_ar: ['أوفر من Veo'], tags_en: ['Cheaper Veo'] }, label: 'Veo 3.1 Fast', tiers: ['720p', '1080p'], refs: 0, audio: true,
     note: 'Veo quality for less. Starts from ONE photo. Max 8s per shot (4/6/8).' },
-  omni_flash_1_1: { label: 'Gemini Omni 1.1 Flash', tiers: ['720p', '1080p'], refs: 10, audio: false,
+  omni_flash_1_1: { ui: { ar: 'ثبات كويس للمنتج بلحد 10 صور مرجعية وسعر أقل، لحد 10 ثواني — من غير كلام', en: 'Good product consistency with up to 10 reference photos, lower price, up to 10s — no speech', tags_ar: ['سعر أقل'], tags_en: ['Lower price'] }, label: 'Gemini Omni 1.1 Flash', tiers: ['720p', '1080p'], refs: 10, audio: false,
     note: 'Good product consistency with up to 10 reference photos, cheaper than Seedance. 3–10s per shot. No reliable voice.' },
-  wan_3: { label: 'Wan 3', tiers: ['720p', '1080p'], refs: 0, audio: false,
+  wan_3: { ui: { ar: 'الأرخص: حركة ناعمة 1080p لحد 30 ثانية من صورة واحدة — الإعلان بيعتمد على الموسيقى والنصوص', en: 'Cheapest: smooth 1080p up to 30s from one photo — the ad relies on music and on-screen text', tags_ar: ['الأرخص', '1080p'], tags_en: ['Cheapest', '1080p'] }, label: 'Wan 3', tiers: ['720p', '1080p'], refs: 0, audio: false,
     note: 'Budget option: smooth 1080p up to 30s from ONE photo. No voice — music + motion graphics carry the ad.' },
 };
 
@@ -67,7 +67,7 @@ const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const hex = (c, d = '#ff3d6e') => (/^#[0-9a-f]{6}$/i.test(String(c || '')) ? c : d);
 const toCredits = (usd) => (usd > 0 ? usdToCredits(usd, { multiplier: 1 }) : 0); // بالتكلفة — من غير هامش ربح
-const usdPerSec = (key, tier) => { const c = REPLICATE_MODEL_COSTS[key]; return Number(c?.tiers?.[tier] ?? c?.usdCost ?? 0); };
+export const usdPerSec = (key, tier) => { const c = REPLICATE_MODEL_COSTS[key]; return Number(c?.tiers?.[tier] ?? c?.usdCost ?? 0); };
 const imageUsd = (key) => Number(REPLICATE_MODEL_COSTS[key]?.usdCost ?? 0.07);
 
 /** أقرب مدة صالحة للموديل (Veo: 4/6/8 بس، الباقي من الأقل للأقصى) */
@@ -76,7 +76,7 @@ export function fitShotSeconds(key, sec) {
   if (m?.allowedDurations) return m.allowedDurations.find((d) => d >= s) || m.allowedDurations[m.allowedDurations.length - 1];
   return clamp(s, m?.minDurationSec || 3, m?.maxDurationSec || 10);
 }
-const maxShotSec = (key) => { const m = NEW_VIDEO_MODELS[key]; return m?.allowedDurations ? Math.max(...m.allowedDurations) : (m?.maxDurationSec || 10); };
+export const maxShotSec = (key) => { const m = NEW_VIDEO_MODELS[key]; return m?.allowedDurations ? Math.max(...m.allowedDurations) : (m?.maxDurationSec || 10); };
 
 // ── Opus على Replicate ──
 async function opusCall({ system, prompt, imageUrl = null, maxTokens = 12000, effort = 'medium', timeoutMs = 420000 }) {
@@ -160,7 +160,7 @@ export function publicJob(j) {
   const ledger = Array.isArray(j.ledger) ? j.ledger : [];
   return {
     id: j.id, status: j.status, stage: j.stage, progress: j.progress, input: { idea: j.input?.idea, aspect: j.input?.aspect, photos: j.input?.photos || [], length: j.input?.length, model: j.input?.model },
-    plan: j.plan ? { product: j.plan.product, concept: j.plan.concept, model: j.plan.model, modelLabel: ADIX_VIDEO_MODELS[j.plan.model]?.label, tier: j.plan.tier, aspect: j.plan.aspect, seconds: j.plan.seconds, shots: (j.plan.shots || []).map((s) => ({ seconds: s.seconds, summary: s.summary, camera: s.camera || {}, lighting: s.lighting || '', beats: s.beats || [] })), dialogue: j.plan.dialogue, reason: j.plan.reason, quoteBreakdown: j.plan.quoteBreakdown, alternatives: j.plan.alternatives } : null,
+    plan: j.plan ? { product: j.plan.product, concept: j.plan.concept, model: j.plan.model, modelLabel: ADIX_VIDEO_MODELS[j.plan.model]?.label, tier: j.plan.tier, aspect: j.plan.aspect, seconds: j.plan.seconds, shots: (j.plan.shots || []).map((s) => ({ seconds: s.seconds, summary: s.summary, camera: s.camera || {}, lighting: s.lighting || '', beats: s.beats || [] })), dialogue: j.plan.dialogue, audio: j.plan.audio || null, reason: j.plan.reason, quoteBreakdown: j.plan.quoteBreakdown, alternatives: j.plan.alternatives } : null,
     quote: j.quote, reserved: j.reserved, spent: j.spent, videoUrl: j.video_url, thumbnailUrl: j.thumb_url, error: j.error,
     ledger: ledger.map((x) => ({ step: x.step, credits: toCredits(x.usd), usd: +Number(x.usd || 0).toFixed(4) })),
     review: j.state?.reviewNote || null, finalNote: j.state?.finalNote || null, decisions: j.state?.decisions || [], createdAt: j.created_at,
@@ -179,6 +179,8 @@ export async function listAdixJobs(userId, limit = 30) {
 }
 
 // ── 1) التخطيط ──
+const AUDIO_SPEECH = ['none', 'voiceover', 'on_screen'];
+const AUDIO_TEXT = ['none', 'minimal', 'key'];
 const DIALECTS = { egypt: 'Egyptian Arabic (مصري)', gulf: 'Saudi/Gulf Arabic (خليجي)', levant: 'Levantine Arabic (شامي)', msa: 'Modern Standard Arabic (فصحى بسيطة)', maghreb: 'simple Maghrebi-friendly Arabic', en: 'English' };
 
 function modelCatalogText(aspect) {
@@ -201,7 +203,8 @@ function planPrompt(input, nPhotos) {
   const len = input.length === 'auto' ? 'choose the ideal length (usually 10–20s)' : `about ${input.length} seconds`;
   return `CUSTOMER IDEA: ${input.idea || '(no idea given — propose the best concept for this product)'}
 ${input.brand ? `BRAND NAME: ${input.brand}\n` : ''}${input.price ? `PRICE / OFFER (exactly as given): ${input.price}\n` : ''}${input.cta ? `CALL TO ACTION: ${input.cta}\n` : ''}LENGTH: ${len} (min ${ADIX_LIMITS.minSec}, max ${ADIX_LIMITS.maxSec}).
-ASPECT: ${input.aspect}. LANGUAGE/DIALECT for any spoken line and on-screen text: ${DIALECTS[input.dialect] || DIALECTS.egypt}.
+ASPECT: ${input.aspect}.
+AUDIO & LANGUAGE — YOU decide: does this product's best ad need spoken words at all (a voice-over, or an on-screen person talking), or is it strongest as pure cinema (visuals + music + sound design) with only a few words on screen — or no text at all? Base it on the product, the audience and what grabs them. If there are words (spoken or on screen), choose the language/dialect the target audience responds to, using the language and dialect the customer wrote the idea in, the brand and the packaging as signals. The customer uses the site in: ${input.uiLang === 'ar' ? 'Arabic' : 'English'}.
 PHOTOS: ${nPhotos} product photos in the attached contact sheet (#1..#${nPhotos}).
 ${input.model && input.model !== 'auto' ? `The customer CHOSE the video model "${input.model}" — use it (you still pick tier, shots and prompts).\n` : ''}
 AVAILABLE VIDEO MODELS:
@@ -222,7 +225,8 @@ Return JSON:
     "sound": "sound design for this shot (if the model makes audio)",
     "prompt": "the complete English prompt for the video model — includes the action, product description, camera direction, lighting and the timed beats",
     "reference_photos": [photo numbers], "first_frame_photo": number|null } ],
- "dialogue": "all spoken lines in order (customer's language) or empty",
+ "audio": { "speech": "${AUDIO_SPEECH.join('|')}", "onscreen_text": "${AUDIO_TEXT.join('|')}", "language": "one of ${Object.keys(DIALECTS).join('|')} (for any speech/text)", "why": "short, customer's language: why this audio/text approach grabs this audience" },
+ "dialogue": "all spoken lines in order (in the chosen language) or empty",
  "end_card": { "brand": "...", "tagline": "short, customer's language", "cta": "short button text, customer's language", "price": "only if the customer gave it" },
  "hero_photo": photo number that shows the whole product most clearly (used for the end card cut-out)
 }`;
@@ -271,6 +275,7 @@ export function sanitizeAdixPlan(raw, input, nPhotos) {
     reason: clip(p.reason, 400),
     alternatives: (Array.isArray(p.alternatives) ? p.alternatives : []).filter((a) => ADIX_VIDEO_MODELS[a?.model]).slice(0, 3).map((a) => ({ model: a.model, label: ADIX_VIDEO_MODELS[a.model].label, tier: ADIX_VIDEO_MODELS[a.model].tiers.includes(a.tier) ? a.tier : ADIX_VIDEO_MODELS[a.model].tiers[0], why: clip(a.why, 200) })),
     shots, dialogue: clip(p.dialogue, 1200),
+    audio: { speech: AUDIO_SPEECH.includes(p.audio?.speech) ? p.audio.speech : (p.dialogue ? 'voiceover' : 'none'), text: AUDIO_TEXT.includes(p.audio?.onscreen_text) ? p.audio.onscreen_text : 'key', lang: DIALECTS[p.audio?.language] ? p.audio.language : (input.uiLang === 'en' ? 'en' : 'egypt'), why: clip(p.audio?.why, 300) },
     endCard: { brand: clip(ec.brand || input.brand || prod.name, 30), tagline: clip(ec.tagline, 60), cta: clip(ec.cta || input.cta, 28), price: clip(input.price ? (ec.price || input.price) : '', 24) },
     heroPhoto: photoOk(p.hero_photo) ? Number(p.hero_photo) : 1,
   };
@@ -295,7 +300,7 @@ export async function createAdixJob(userId, rawInput) {
     photos: (Array.isArray(rawInput.photos) ? rawInput.photos : []).filter((u) => /^https?:\/\//.test(u)).slice(0, ADIX_LIMITS.maxPhotos),
     idea: clip(rawInput.idea, 1500), aspect: DIM[rawInput.aspect] ? rawInput.aspect : '9:16',
     length: rawInput.length === 'auto' || !rawInput.length ? 'auto' : clamp(Math.round(num(rawInput.length, 15)), ADIX_LIMITS.minSec, ADIX_LIMITS.maxSec),
-    dialect: DIALECTS[rawInput.dialect] ? rawInput.dialect : 'egypt', model: ADIX_VIDEO_MODELS[rawInput.model] ? rawInput.model : 'auto',
+    uiLang: rawInput.uiLang === 'en' ? 'en' : 'ar', model: ADIX_VIDEO_MODELS[rawInput.model] ? rawInput.model : 'auto',
     brand: clip(rawInput.brand, 40), price: clip(rawInput.price, 30), cta: clip(rawInput.cta, 30),
   };
   if (!input.photos.length) throw new Error('no_photos');
@@ -373,7 +378,7 @@ const PRESET_DOC = `QUICK PRESETS (optional shortcuts — use them only when a s
 - checklist: { items: [2–4 short benefits], position: top|center|bottom } — benefits ticked one by one.
 - flash: { } (0.15–0.35s long) — light flash to punctuate a cut or a beat.
 `;
-const EDIT_RULES = `Design rules (your taste decides everything else): never cover the product's label or a face (look at where they are in the frames at that time); keep text inside the safe area; on-screen text in the customer's dialect with the brand spelled exactly; text must be readable on the footage behind it (contrast, shadow, plate); every element and every edit must have a reason ("why"); motion must feel timed to the action, the cuts and the voice — not random.
+const EDIT_RULES = `Design rules (your taste decides everything else): never cover the product's label or a face (look at where they are in the frames at that time); keep text inside the safe area; on-screen text follows the planned text strategy and language, brand spelled exactly; text must be readable on the footage behind it (contrast, shadow, plate); every element and every edit must have a reason ("why"); motion must feel timed to the action, the cuts and the voice — not random.
 SFX names: ${SFX_TYPES.join(', ')}. Each element/insert/punch/end card may carry "sfx":[{"at":s (relative to its start),"type":name,"vol":0..1}] or false; omit for a sensible default.`;
 const OVERLAY_DOC = `${DESIGN_DOC}
 
@@ -391,7 +396,7 @@ BENEFITS: ${p.product.benefits.join(' | ')}
 CONCEPT: ${p.concept.title}. Hook: ${p.concept.hook}. Story: ${p.concept.story}
 CUSTOMER IDEA: ${job.input.idea}
 ${job.input.price ? `PRICE/OFFER (exact): ${job.input.price}\n` : ''}BRAND: ${p.endCard.brand}. CTA: ${p.endCard.cta}
-ON-SCREEN TEXT LANGUAGE: ${DIALECTS[job.input.dialect] || DIALECTS.egypt}
+AUDIO/TEXT STRATEGY (decided in planning — keep it unless the footage proves otherwise): speech=${p.audio?.speech || 'auto'}, on-screen text=${p.audio?.text || 'key'} (none = no words on screen except the end card; minimal = 1–2 short words at most), language: ${DIALECTS[p.audio?.lang] || DIALECTS.egypt}.
 BASE VIDEO: ${info.duration.toFixed(2)}s, aspect ${p.aspect}. Has speech: ${info.words.length ? 'yes' : 'no'}.
 SPOKEN WORDS (start-end word):
 ${words || '(no speech)'}
@@ -458,10 +463,11 @@ async function runAdix(id) {
     let words = st.words || null;
     if (!words) {
       words = [];
-      if (await hasAudio(base).catch(() => false)) {
+      // إعلان سينمائي من غير كلام (قرار Opus) → مفيش داعي لتفريغ الصوت
+      if (plan.audio?.speech !== 'none' && await hasAudio(base).catch(() => false)) {
         const wav = path.join(work, 'a.wav');
         await ffmpeg(['-i', base, '-vn', '-ac', '1', '-ar', '16000', wav]);
-        const lang = input.dialect === 'en' ? 'en' : 'ar';
+        const lang = plan.audio?.lang === 'en' ? 'en' : 'ar';
         words = (await transcribeWords(wav, { language: lang }).catch(() => ({ words: [] }))).words || [];
         ledger.push({ step: 'transcribe', usd: EST.asr });
       }
@@ -537,7 +543,7 @@ async function runAdix(id) {
       await persist('final_review', 86);
       const fr = await framesSheet(out.file, work, { maxFrames: 18 });
       const url = await uploadBufferToR2(fr.sheet, `adix/${id}/final_${Date.now()}.jpg`, 'image/jpeg');
-      const prompt = `PRODUCT: ${plan.product.name} — ${plan.product.whatISee}\nBRAND (exact spelling): ${plan.endCard.brand}\nON-SCREEN LANGUAGE: ${DIALECTS[input.dialect] || DIALECTS.egypt}\nFINAL AD: ${out.duration.toFixed(2)}s (the last ${(out.duration - out.cutDuration).toFixed(1)}s are the end card). The edit list below uses BASE-video times (before cuts); the frames show FINAL times.\nEDIT LIST:\n${JSON.stringify({ ...edlRaw, inserts: (edlRaw.inserts || []).filter((x) => st.inserts[x.id]) }).slice(0, 40000)}\n\n${OVERLAY_DOC}`;
+      const prompt = `PRODUCT: ${plan.product.name} — ${plan.product.whatISee}\nBRAND (exact spelling): ${plan.endCard.brand}\nON-SCREEN LANGUAGE: ${DIALECTS[plan.audio?.lang] || DIALECTS.egypt}; text strategy: ${plan.audio?.text || 'key'}\nFINAL AD: ${out.duration.toFixed(2)}s (the last ${(out.duration - out.cutDuration).toFixed(1)}s are the end card). The edit list below uses BASE-video times (before cuts); the frames show FINAL times.\nEDIT LIST:\n${JSON.stringify({ ...edlRaw, inserts: (edlRaw.inserts || []).filter((x) => st.inserts[x.id]) }).slice(0, 40000)}\n\n${OVERLAY_DOC}`;
       try {
         const { json, usd } = await opusJson({ system: FINAL_SYSTEM, prompt, imageUrl: url, maxTokens: 30000, effort: 'high' });
         ledger.push({ step: 'final_review', usd }); st.finalNote = clip(json.note, 600); st.finalChecked = true;

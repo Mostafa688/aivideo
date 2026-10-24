@@ -1,7 +1,7 @@
 // ── AdixStudio.jsx ── Adix: إعلان منتج بيعمله Claude Opus 5.5 — نافذة الطلب (صور المنتج + الفكرة) وكارت متابعة الطلب
 // (تحليل → خطة + سعر بالتكلفة → موافقة → توليد → مراجعة → مونتاج وموشن → مراجعة نهائية → الإعلان)
 import React, { useEffect, useRef, useState } from 'react';
-import { Megaphone, X, ImagePlus, CheckCircle2, AlertTriangle, Download, Sparkles, Eye, Wand2, Film, Clapperboard, ShieldCheck, Camera } from 'lucide-react';
+import { Megaphone, X, ImagePlus, CheckCircle2, AlertTriangle, Download, Sparkles, Eye, Wand2, Film, Clapperboard, ShieldCheck, Camera, ChevronDown, Volume2, Type } from 'lucide-react';
 
 const auth = () => ({ Authorization: 'Bearer ' + localStorage.getItem('token') });
 const MAX_PHOTOS = 10;
@@ -12,7 +12,7 @@ const T = {
     title: 'Adix', sub: 'إعلان احترافي لمنتجك — Claude Opus 5.5 بيحلل المنتج ويختار أقوى موديل فيديو ويخرج ويونتج ويراجع',
     photos: 'صور المنتج', photosHint: 'لحد 10 صور من زوايا مختلفة — كل ما الصور أوضح، المنتج يطلع مطابق أكتر',
     idea: 'فكرة الإعلان', ideaPh: 'مثلاً: إعلان سينمائي لمشروب طاقة، العلبة بتطلع من تلج وبتنفجر بطاقة زرقا… الجمهور شباب الجيم',
-    aspect: 'المقاس', length: 'المدة', auto: 'Opus يحدد', dialect: 'لغة الكلام والنصوص', model: 'موديل الفيديو', modelAuto: 'Opus يختار الأنسب',
+    aspect: 'المقاس', length: 'المدة', auto: 'Opus يحدد', model: 'موديل الفيديو', modelAuto: 'Opus يختار الأنسب',
     brand: 'اسم البراند', price: 'السعر / العرض', cta: 'جملة الطلب', optional: 'اختياري',
     start: 'حلّل المنتج واعمل الخطة', sending: 'بيرفع الصور…',
     noteCost: 'كل خطوة بتتخصم بالتكلفة الفعلية بالظبط من غير أي هامش ربح. التحليل والخطة بتتخصم أول (كريديتات قليلة)، والتنفيذ مش بيبدأ غير لما توافق على السعر.',
@@ -21,13 +21,13 @@ const T = {
     quote: 'السعر بالتكلفة', items: { video: 'توليد الفيديو', review: 'مراجعات Opus (أولى + نهائية + تصليح)', inserts: 'لقطات إضافية (حد أقصى)', render: 'مونتاج ورندر' },
     maxNote: 'ده حجز بالحد الأقصى — اللي مايتصرفش بيرجع لرصيدك تلقائي.', approve: 'وافق وابدأ', cancel: 'إلغاء', credits: 'كريديت', alt: 'بدائل', current: 'المختار',
     working: 'تقدر تقفل الصفحة وترجع — الشغل مكمل.', failed: 'الإعلان وقف — اللي ماتصرفش رجع لرصيدك.', canceled: 'اتلغى.',
-    spent: 'التكلفة الفعلية', refunded: 'رجعلك', download: 'تحميل', reviewNote: 'ملاحظات Opus', breakdown: 'تفاصيل التكلفة', noCredits: 'رصيدك مش كفاية', planning: 'Opus بيحلل…', sent: 'الطلب اتبعت لـ Opus — الإعلان تحت', decisions: 'قرارات المونتاج (Opus)', kinds: { cut: 'قص', insert: 'لقطة إضافية', punch: 'زووم', motion: 'موشن' },
+    spent: 'التكلفة الفعلية', refunded: 'رجعلك', download: 'تحميل', reviewNote: 'ملاحظات Opus', breakdown: 'تفاصيل التكلفة', noCredits: 'رصيدك مش كفاية', planning: 'Opus بيحلل…', audioTitle: 'الصوت والنص (قرار Opus)', speech: { none: 'من غير كلام — سينمائي', voiceover: 'تعليق صوتي', on_screen: 'حد بيتكلم في الإعلان' }, textS: { none: 'من غير نص على الشاشة', minimal: 'كلمات قليلة جدًا', key: 'نصوص في اللحظات المهمة' }, sent: 'الطلب اتبعت لـ Opus — الإعلان تحت', decisions: 'قرارات المونتاج (Opus)', kinds: { cut: 'قص', insert: 'لقطة إضافية', punch: 'زووم', motion: 'موشن' },
   },
   en: {
     title: 'Adix', sub: 'A premium ad for your product — Claude Opus 5.5 studies the product, picks the strongest video model, directs, edits and reviews',
     photos: 'Product photos', photosHint: 'Up to 10 photos from different angles — clearer photos = a more faithful product',
     idea: 'Ad idea', ideaPh: 'e.g. a cinematic energy-drink ad: the can bursts out of ice with blue energy… audience: gym-goers',
-    aspect: 'Format', length: 'Length', auto: 'Opus decides', dialect: 'Language of voice & text', model: 'Video model', modelAuto: 'Opus picks the best',
+    aspect: 'Format', length: 'Length', auto: 'Opus decides', model: 'Video model', modelAuto: 'Opus picks the best',
     brand: 'Brand name', price: 'Price / offer', cta: 'Call to action', optional: 'optional',
     start: 'Analyze & plan', sending: 'Uploading photos…',
     noteCost: 'Every step is charged at the exact provider cost — no profit margin. Analysis & plan are charged first (a few credits); production only starts after you approve the price.',
@@ -36,10 +36,52 @@ const T = {
     quote: 'Price at cost', items: { video: 'Video generation', review: 'Opus reviews (first + final + fix)', inserts: 'Extra shots (max)', render: 'Editing & render' },
     maxNote: 'This is a maximum hold — anything unused is refunded automatically.', approve: 'Approve & start', cancel: 'Cancel', credits: 'credits', alt: 'Alternatives', current: 'Selected',
     working: 'You can close this page — it keeps going.', failed: 'The ad stopped — unused credits were refunded.', canceled: 'Canceled.',
-    spent: 'Actual cost', refunded: 'refunded', download: 'Download', reviewNote: "Opus's notes", breakdown: 'Cost breakdown', noCredits: 'Not enough credits', planning: 'Opus is analyzing…', sent: 'Sent to Opus — your ad is below', decisions: "Opus's edit decisions", kinds: { cut: 'Cut', insert: 'Extra shot', punch: 'Zoom', motion: 'Motion' },
+    spent: 'Actual cost', refunded: 'refunded', download: 'Download', reviewNote: "Opus's notes", breakdown: 'Cost breakdown', noCredits: 'Not enough credits', planning: 'Opus is analyzing…', audioTitle: "Sound & text (Opus's call)", speech: { none: 'No speech — pure cinema', voiceover: 'Voice-over', on_screen: 'Someone speaks on screen' }, textS: { none: 'No on-screen text', minimal: 'A word or two', key: 'Text on key moments' }, sent: 'Sent to Opus — your ad is below', decisions: "Opus's edit decisions", kinds: { cut: 'Cut', insert: 'Extra shot', punch: 'Zoom', motion: 'Motion' },
   },
 };
-const DIALECTS = [['egypt', 'مصري'], ['gulf', 'خليجي'], ['levant', 'شامي'], ['msa', 'فصحى'], ['en', 'English']];
+const LANG_NAMES = { egypt: 'مصري', gulf: 'خليجي', levant: 'شامي', msa: 'فصحى', maghreb: 'مغاربي', en: 'English' };
+
+// اختيار موديل الفيديو: الكارت المختار ظاهر، ولما تفتحه تشوف كل الموديلات بمميزاتها ومدتها وسعرها
+function ModelPicker({ lang, models, value, onChange }) {
+  const ar = lang === 'ar'; const [open, setOpen] = useState(false);
+  const cards = [{ key: 'auto' }, ...models];
+  const minCps = (m) => Math.min(...Object.values(m.creditsPerSec || { x: 0 }));
+  const Card = ({ m, selected, onClick, compact }) => {
+    const auto = m.key === 'auto';
+    return (
+      <button type="button" onClick={onClick} style={{ textAlign: 'start', display: 'flex', gap: 10, alignItems: 'flex-start', padding: '11px 12px', borderRadius: 12, cursor: 'pointer', width: '100%', boxSizing: 'border-box',
+        border: `1px solid ${selected ? ACC : 'rgba(255,255,255,0.1)'}`, background: selected ? 'linear-gradient(90deg, rgba(255,77,141,0.14), rgba(255,181,71,0.06))' : 'rgba(255,255,255,0.03)', color: '#fff' }}>
+        <div style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: auto ? `linear-gradient(135deg, ${ACC}, ${ACC2})` : 'rgba(255,255,255,0.07)' }}>
+          {auto ? <Sparkles size={15} color="#1a0b12" /> : <Film size={15} color={selected ? ACC2 : 'rgba(255,255,255,0.7)'} />}
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13.5, fontWeight: 800 }}>{auto ? (ar ? 'Opus يختار الأنسب' : 'Opus picks the best') : m.label}</span>
+            {auto && <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 6, background: 'rgba(255,181,71,0.16)', color: ACC2 }}>{ar ? 'مُنصح به' : 'Recommended'}</span>}
+            {!auto && (m.ui?.[ar ? 'tags_ar' : 'tags_en'] || []).map((tg) => <span key={tg} style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.75)' }}>{tg}</span>)}
+          </div>
+          {!compact && <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.6)', lineHeight: 1.55 }}>{auto ? (ar ? 'بيحلل المنتج وفكرتك ويختار الموديل والدقة اللي تطلّع أحسن إعلان بأقل تكلفة' : 'Studies the product and your idea and picks the model and resolution that make the best ad for the lowest cost') : m.ui?.[ar ? 'ar' : 'en']}</div>}
+          {!auto && <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+            <span>{ar ? `لحد ${m.maxSec}ث للقطة` : `up to ${m.maxSec}s / shot`}</span>
+            <span>{ar ? `من ${minCps(m)} كريديت/ث` : `from ${minCps(m)} credits/s`}</span>
+            <span>{m.tiers?.join(' · ')}</span>
+            {m.audio && <span style={{ color: ACC2 }}>{ar ? '♪ صوت' : '♪ audio'}</span>}
+          </div>}
+        </div>
+        {compact && <ChevronDown size={16} style={{ alignSelf: 'center', color: 'rgba(255,255,255,0.5)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />}
+      </button>
+    );
+  };
+  const cur = cards.find((c) => c.key === value) || cards[0];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <Card m={cur} selected compact onClick={() => setOpen((v) => !v)} />
+      {open && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', alignItems: 'start', gap: 6, padding: 6, borderRadius: 14, background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        {cards.map((m) => <Card key={m.key} m={m} selected={m.key === value} onClick={() => { onChange(m.key); setOpen(false); }} />)}
+      </div>}
+    </div>
+  );
+}
 
 const field = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 13.5, outline: 'none', fontFamily: 'inherit' };
 const label = { fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.7)', display: 'flex', gap: 6, alignItems: 'baseline' };
@@ -66,7 +108,6 @@ export function AdixModal({ lang, onClose, onCreated, inline = false }) {
   const [idea, setIdea] = useState('');
   const [aspect, setAspect] = useState('9:16');
   const [length, setLength] = useState('auto');
-  const [dialect, setDialect] = useState(lang === 'ar' ? 'egypt' : 'en');
   const [model, setModel] = useState('auto');
   const [models, setModels] = useState([]);
   const [brand, setBrand] = useState(''); const [price, setPrice] = useState(''); const [cta, setCta] = useState('');
@@ -83,7 +124,7 @@ export function AdixModal({ lang, onClose, onCreated, inline = false }) {
     try {
       const fd = new FormData();
       files.forEach((f) => fd.append('photos', f));
-      Object.entries({ idea, aspect, length, dialect, model, brand, price, cta }).forEach(([k, v]) => fd.append(k, v));
+      Object.entries({ idea, aspect, length, uiLang: lang === 'ar' ? 'ar' : 'en', model, brand, price, cta }).forEach(([k, v]) => fd.append(k, v));
       const r = await fetch('/api/adix/plan', { method: 'POST', headers: auth(), body: fd });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setErr(d.error === 'quota_exceeded' ? t.noCredits : (d.message || d.error || 'Error')); return; }
@@ -143,17 +184,10 @@ export function AdixModal({ lang, onClose, onCreated, inline = false }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <div style={label}>{t.dialect}</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{DIALECTS.map(([k, l]) => <button key={k} onClick={() => setDialect(k)} style={chip(dialect === k)}>{l}</button>)}</div>
-        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           <div style={label}>{t.model}</div>
-          <select value={model} onChange={(e) => setModel(e.target.value)} style={{ ...field, appearance: 'auto' }}>
-            <option value="auto">{t.modelAuto}</option>
-            {models.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-          </select>
+          <ModelPicker lang={lang} models={models} value={model} onChange={setModel} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
@@ -246,6 +280,14 @@ export function AdixCard({ job, lang, onUpdateJob }) {
             );
           })}</ol>
         </Section>
+        {p.audio && <Section title={t.audioTitle}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 5 }}>
+            <span style={chip(true)}><Volume2 size={12} style={{ verticalAlign: -2 }} /> {t.speech[p.audio.speech] || p.audio.speech}</span>
+            <span style={chip(true)}><Type size={12} style={{ verticalAlign: -2 }} /> {t.textS[p.audio.text] || p.audio.text}</span>
+            {(p.audio.speech !== 'none' || p.audio.text !== 'none') && <span style={chip(false)}>{LANG_NAMES[p.audio.lang] || p.audio.lang}</span>}
+          </div>
+          {p.audio.why && <div style={{ color: 'rgba(255,255,255,0.65)' }}>{p.audio.why}</div>}
+        </Section>}
         {p.dialogue && <Section title={t.dialogue}><span style={{ fontStyle: 'italic' }}>"{p.dialogue}"</span></Section>}
         <Section title={t.modelPick}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
