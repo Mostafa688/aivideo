@@ -287,7 +287,15 @@ export function briefToPrompt(brief) {
 }
 
 
-export async function planBeats({ beats, language = 'en', topic = '', brief: givenBrief = undefined, onProgress = () => {} }, deps = {}) {
+// الفيديو الطولي (شورتس/ريلز/تيك توك): الشاشة طويلة والمشاهد بيقلّب بسرعة — لقطات بموضوع واحد واضح يملى الكادر
+const VERTICAL_NOTE = `FORMAT: this is a VERTICAL 9:16 SHORT (TikTok / Reels / YouTube Shorts) watched on a phone. Every frame is center-cropped to a tall screen, so:
+- choose footage with ONE clear subject that fills a tall frame: close-ups, faces, hands, a single object/animal/vehicle, a person walking, tall buildings, vertical motion (rising, falling, pouring). Write queries that ask for that ("close-up", "portrait of", "single", "vertical") instead of wide panoramas, aerial landscapes or group shots where the subject would be tiny or cut off.
+- every beat must show something new and concrete from its own sentence — no generic filler, no repeating the same idea twice.
+- the first beat must be the single most striking visual of the whole story.
+- prefer graphics that read big on a phone: counter, percent_ring, date_card, vs_card, stamp, kinetic_text/stack_text, map_reveal with 1-2 countries; avoid timeline, bar_chart/donut_chart with more than 3 items and long bullet lists.`;
+
+export async function planBeats({ beats, language = 'en', topic = '', ratio = '16:9', brief: givenBrief = undefined, onProgress = () => {} }, deps = {}) {
+  const vertical = ratio === '9:16';
   const ask = deps.llmJson || llmJson;
   const brief = givenBrief !== undefined ? givenBrief : await briefSubject({ beats, topic, language }, deps);
   const briefLine = briefToPrompt(brief);
@@ -296,7 +304,7 @@ export async function planBeats({ beats, language = 'en', topic = '', brief: giv
   const CH = 18;
   for (let from = 0; from < beats.length; from += CH) {
     const chunk = beats.slice(from, from + CH);
-    const user = `Language of the narration: ${language}. ${topic ? `Topic: ${topic}.` : ''}${briefLine ? `\n${briefLine}` : ''}\n${from > 0 ? `(Continuing; earlier beats already planned. Do not repeat the title.)\n` : ''}Beats:\n` + chunk.map(b => `[${b.i}] (${b.dur.toFixed(1)}s) ${b.text}`).join('\n');
+    const user = `Language of the narration: ${language}. ${topic ? `Topic: ${topic}.` : ''}${vertical ? `\n${VERTICAL_NOTE}` : ''}${briefLine ? `\n${briefLine}` : ''}\n${from > 0 ? `(Continuing; earlier beats already planned. Do not repeat the title.)\n` : ''}Beats:\n` + chunk.map(b => `[${b.i}] (${b.dur.toFixed(1)}s) ${b.text}`).join('\n');
     try {
       // حد Groq في الدقيقة: فيلم طويل = 18+ طلب ورا بعض — بنستنى ونعيد بدل ما نستسلم بسرعة لخطة احتياطية
       let r = null, lastErr = null;
@@ -320,7 +328,10 @@ export async function planBeats({ beats, language = 'en', topic = '', brief: giv
   try { await ensureRichScenes({ beats, plans, language, ask }); enforcePacing(plans, beats); } catch (e) { console.warn('[Documentary/planner] refill pass failed:', e.message); }
   try { await ensureArchiveShare({ beats, plans, topic: [topic || title, brief?.subject].filter(Boolean).join(' — '), language, ask }); } catch (e) { console.warn('[Documentary/planner] archive upgrade failed:', e.message); }
   try { injectMotion({ beats, plans }); } catch (e) { console.warn('[Documentary/planner] motion injection failed:', e.message); }
-  return { title, mood, plans, brief };
+  // الجرافيك يظهر مع نطق الكلمة: مشهد جرافيك رقمه بيتقال متأخر بيتقسم (لقطة فيديو → الجرافيك مع الكلمة)
+  let out = { beats, plans };
+  try { out = splitAtAnchors(beats, plans, brief, vertical ? { minHead: 1.0, minTail: 2.0 } : undefined); } catch (e) { console.warn('[Documentary/planner] anchor split failed:', e.message); }
+  return { title, mood, plans: out.plans, beats: out.beats, brief };
 }
 
 
@@ -415,7 +426,7 @@ export function injectMotion({ beats, plans }) {
     if (!free(i) || beats[i].dur < 2.8 || near(i, 14)) continue;
     const ys = yearsIn(beats[i].text); if (!ys.length) continue;
     const data = sanitizeTemplate('date_card', { year: ys[0] }, beats[i].text); if (!data) continue;
-    put(i, 'date_card', data, { at: 0.15, dur: Math.min(2.6, beats[i].dur - 0.3) }); years++;
+    put(i, 'date_card', data, { dur: 2.6 }); years++;
   }
   // نسب مئوية
   let pc = 0;
@@ -423,7 +434,7 @@ export function injectMotion({ beats, plans }) {
     if (!free(i) || beats[i].dur < 2.8 || near(i, 12)) continue;
     const ps = percentsIn(beats[i].text); if (!ps.length) continue;
     const data = sanitizeTemplate('percent_ring', { value: ps[0] }, beats[i].text); if (!data) continue;
-    put(i, 'percent_ring', data, { at: 0.2, dur: Math.min(2.8, beats[i].dur - 0.3) }); pc++;
+    put(i, 'percent_ring', data, { dur: 2.8 }); pc++;
   }
   // مسحة أشرطة عند بداية الفصول
   let wipes = 0;
@@ -506,6 +517,76 @@ export function enforcePacing(plans, beats) {
     }
   }
   plans.forEach((p, i) => { if (p.chapter && i > 0 && p.transition === 'cut') p.transition = 'dip'; });
+}
+
+// ── 7) توقيت الجرافيك على الكلام: الرقم/السنة/الاسم بيظهر لحظة ما الصوت بينطقه (مش أول اللقطة) ─────────────────
+// بيرجّع وقت أول كلمة (ثواني من بداية الـbeat) اللي القالب بيتكلم عنها، أو null لو مش لاقيها
+const anorm = (s) => String(s || '').toLowerCase().replace(/[ً-ٰٟـ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[^\p{L}\p{N}]+/gu, '');
+const astem = (s) => { let w = anorm(s); if (/^[؀-ۿ]/.test(w)) w = w.replace(/^(وال|بال|فال|كال|لل|ال|و|ب|ف|ل)(?=[؀-ۿ]{3})/, ''); return w.slice(0, 5); };
+function wordAnchor(tokens, phrases) {
+  const want = new Set();
+  for (const p of phrases) for (const w of String(p || '').split(/\s+/)) { const st = astem(w); if (st.length >= 3 && !STOP_ANCHOR.has(st)) want.add(st); }
+  if (!want.size) return -1;
+  return tokens.findIndex(t => { const st = astem(t.w); return st.length >= 3 && [...want].some(x => x === st || (x.length >= 4 && st.length >= 4 && (x.startsWith(st.slice(0, 4)) || st.startsWith(x.slice(0, 4))))); });
+}
+const STOP_ANCHOR = new Set(['the', 'and', 'from', 'with', 'that', 'this', 'في', 'من', 'علي', 'الي', 'عن', 'هذا', 'هذه', 'التي', 'الذي']);
+function numberAnchor(tokens, values) {
+  for (let k = 0; k < tokens.length; k++) {
+    if (!/[0-9٠-٩]/.test(tokens[k].w)) continue; // الكلمة نفسها لازم فيها الرقم (الكلمة اللي بعدها بس للمضاعف: "600 مليون")
+    const nums = numbersInText(`${tokens[k].w} ${tokens[k + 1]?.w || ''}`);
+    if (nums.length && values.some(v => grounded(v, nums) || grounded(v, nums.slice(0, 1)))) return k;
+  }
+  return -1;
+}
+export function anchorIndex(beat, name, data = {}) {
+  const tk = beat?.tokens || [];
+  if (!tk.length || !name) return -1;
+  switch (name) {
+    case 'counter': case 'percent_ring': return numberAnchor(tk, [Number(data.value)]);
+    case 'bar_chart': case 'donut_chart': return numberAnchor(tk, (data.items || []).map(i => Number(i.value)));
+    case 'date_card': return tk.findIndex(t => yearsIn(t.w).includes(Number(data.year)));
+    case 'timeline': { const d = String(data.events?.[0]?.date || '').replace(/[^\d]/g, ''); return d ? tk.findIndex(t => String(t.w).replace(/[٠-٩]/g, x => AR_DIGITS[x]).includes(d)) : -1; }
+    case 'lower_third': return wordAnchor(tk, [data.name]);
+    case 'vs_card': return wordAnchor(tk, [data.left?.label]);
+    case 'map_reveal': return wordAnchor(tk, [...(data.places || []).map(p => p.name), ...(data.regions || []).flatMap(r => { const n = countryNames(r.code); return [r.label, n.ar, n.en]; })]);
+    case 'photo_board': return wordAnchor(tk, (data.photos || []).map(p => p.caption));
+    case 'icon_pop': return wordAnchor(tk, (data.items || []).map(i => i.label));
+    case 'bottom_sheet': return wordAnchor(tk, [data.items?.[0]]);
+    case 'kinetic_text': case 'stack_text': case 'marker_text': case 'quote': return wordAnchor(tk, [String(data.text || '').split(/\s+/).slice(0, 2).join(' ')]);
+    case 'stamp': return wordAnchor(tk, [data.text]);
+    default: return -1;
+  }
+}
+/** وقت ظهور القالب (ثواني من بداية الـbeat): قبل نطق الكلمة بلحظة صغيرة، أو null */
+export function anchorAt(beat, name, data, lead = 0.12) {
+  const k = anchorIndex(beat, name, data);
+  if (k < 0) return null;
+  return Math.max(0.05, beat.tokens[k].start - beat.start - lead);
+}
+const ANCHOR_SPLIT = new Set(['counter', 'percent_ring', 'date_card', 'bar_chart', 'donut_chart', 'timeline', 'map_reveal', 'vs_card', 'photo_board', 'icon_pop']);
+
+/**
+ * مشهد جرافيك كامل (visual "text") والرقم/المكان بيتقال متأخر في الجملة: كان الجرافيك بيظهر من أول اللقطة قبل ما الصوت يقوله.
+ * بنقسم الـbeat عند الكلمة: الجزء الأول لقطة فيديو عادية، والجرافيك يبدأ مع الكلمة نفسها.
+ */
+export function splitAtAnchors(beats, plans, brief = null, { minHead = 1.2, minTail = 2.2 } = {}) {
+  const outB = [], outP = [];
+  beats.forEach((b, i) => {
+    const p = plans[i];
+    const name = p?.visual === 'text' ? p.template?.name : null;
+    const k = name && ANCHOR_SPLIT.has(name) ? anchorIndex(b, name, p.template.data) : -1;
+    const rel = k > 0 ? b.tokens[k].start - b.start : 0;
+    if (k <= 0 || rel < minHead || b.end - b.tokens[k].start < minTail) { outB.push(b); outP.push(p); return; }
+    const cut = (b.tokens[k - 1].end + b.tokens[k].start) / 2;
+    const head = { ...b, tokens: b.tokens.slice(0, k), text: b.tokens.slice(0, k).map(t => t.w).join(' '), end: cut, dur: cut - b.start };
+    const tail = { ...b, tokens: b.tokens.slice(k), text: b.tokens.slice(k).map(t => t.w).join(' '), start: cut, dur: b.end - cut, hook: false };
+    const fb = fallbackBeatPlan(head, brief);
+    outB.push(head, tail);
+    outP.push({ ...p, visual: [plans[i - 1]?.visual, plans[i + 1]?.visual].includes('archive') ? 'archive' : 'stock', kind: 'either', queries: p.queries?.length ? p.queries : fb.queries, template: null, overlays: [], keep: false },
+      { ...p, chapter: undefined, transition: 'cut' });
+  });
+  outB.forEach((b, i) => { b.i = i; });
+  return { beats: outB, plans: outP };
 }
 
 // وقت نبضات الزوم داخل اللقطة (ثواني من بداية اللقطة) من كلمات التأكيد
