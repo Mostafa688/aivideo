@@ -1703,6 +1703,7 @@ export default function AgentPage({ onNavigate, onSwitchToModels, activeProject 
       // فكرة كارت الـwhiteboard فوق بالظبط — بيعمل poll لحالة تشغيلة القناة الحقيقية اللي
       // بدأت في الخلفية (channelSchedulerService.js's triggerChannelRunNow) لحد ما تخلص
       if (data.docSetup) setMessages(m => [...m, { role: 'assistant', type: 'docSetup', setup: data.docSetup, started: false }]);
+      if (data.adixSetup) setMessages(m => [...m, { role: 'assistant', type: 'adixSetup', started: false }]);
       if (data.pdfVideo) setMessages(m => [...m, { role: 'assistant', type: 'pdfVideo', info: data.pdfVideo }]);
       if (data.voicePicker?.voices?.length) setMessages(m => [...m, { role: 'assistant', type: 'voicePicker', voices: data.voicePicker.voices, picked: null }]);
       if (data.docJob?.jobId) {

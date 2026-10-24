@@ -294,7 +294,7 @@ function stripStrayMarkers(text) {
 // بنشيله من الرد قبل ما يوصل للعميل (البرومبت بيتكتب للموديل في السيرفر مش للعميل)
 function stripLongPromptBlocks(text) {
   const t = String(text || '');
-  const isPromptish = (blk) => blk.length > 180 && /(Shot\s*\d|\d+-second\s+(vertical\s+|horizontal\s+|square\s+)?commercial)/i.test(blk);
+  const isPromptish = (blk) => !/^```html/i.test(blk) && blk.length > 180 && /(Shot\s*\d|\d+-second\s+(vertical\s+|horizontal\s+|square\s+)?commercial)/i.test(blk);
   let out = t.replace(/```[\s\S]*?```/g, (blk) => (isPromptish(blk) ? '' : blk));
   out = out.split(/\n\s*\n/).filter((para) => {
     const letters = para.replace(/[^\p{L}]/gu, '');
@@ -302,6 +302,23 @@ function stripLongPromptBlocks(text) {
     return !(isPromptish(para) && letters.length && latin.length / letters.length > 0.8);
   }).join('\n\n');
   return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// الكود (وخصوصًا موقع HTML كامل) لازم يوصل زي ما هو: الحراس اللي تحت بتشتغل على الكلام بس — بره بلوكات ```
+// (حارس الماركداون كان بيحوّل أي سطر فيه "|" — زي || في JavaScript — لـ" — " فبيبوّظ الموقع)
+function protectCode(text, fn) {
+  return String(text || '').split(/(```[\s\S]*?(?:```|$))/).map((part) => (part.startsWith('```') ? part : fn(part))).join('');
+}
+// موقع HTML كامل وصل من غير ``` (الموديل المجاني ساعات بيكتبه نص عادي) → نحطه في بلوك html عشان يظهر Preview
+function fenceBareHtml(text) {
+  const t = String(text || '');
+  const re = /<!doctype\s+html|<html[\s>]/i;
+  const m = re.exec(t); if (!m) return t;
+  const before = t.slice(0, m.index);
+  if ((before.match(/```/g) || []).length % 2 === 1) return t; // جوه بلوك أصلاً
+  const endIdx = t.toLowerCase().indexOf('</html>', m.index);
+  const end = endIdx === -1 ? t.length : endIdx + 7;
+  return `${before.replace(/\s+$/, '')}\n\n\`\`\`html\n${t.slice(m.index, end).trim()}\n\`\`\`\n\n${t.slice(end).trim()}`.trim();
 }
 
 function stripLegacyModelMentions(text) {
@@ -1159,6 +1176,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     let nudgeAttempts = 0;
     while (
       !/###PRODUCTION_(PLAN|START)###/.test(String(rawReply || '')) &&
+      !/```|<!doctype\s+html/i.test(String(reply || '')) && // رد فيه كود/موقع = اتنفذ فعلاً، مش وعد
       !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload &&
       (soundsLikeAnActionPromise(reply) || stuckReaskingConfirmation(reply) || saysStartingDeclaratively(reply)) && nudgeAttempts < MAX_NUDGE_RETRIES
     ) {
@@ -1192,7 +1210,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
       const sim = (a, b) => { if (!a.size || !b.size) return 0; let k = 0; for (const w of a) if (b.has(w)) k++; return k / Math.min(a.size, b.size); };
       const prevAssist = (Array.isArray(history) ? history : []).filter(h => h?.role === 'assistant' && typeof h.content === 'string').slice(-2).map(h => wordsOf(h.content));
       const mine = wordsOf(reply);
-      const hasMarker = /###[A-Z_]+###/.test(rawReply || '') || !!(ready || editScene || videoEdit || generateImage || generateVideo || mergeVideosPayload);
+      // تعديل موقع/كود بيطلع شبه النسخة اللي قبله طبيعي — مش تكرار
+      const hasMarker = /###[A-Z_]+###|```|<!doctype\s+html/i.test(rawReply || '') || !!(ready || editScene || videoEdit || generateImage || generateVideo || mergeVideosPayload);
       if (!hasMarker && mine.size >= 12 && prevAssist.some(p => sim(mine, p) >= 0.72)) {
         console.warn('[Agent] reply repeats an earlier answer — asking for a fresh one');
         try {
@@ -1720,6 +1739,9 @@ router.post('/chat', authMiddleware, async (req, res) => {
         if (!montagePayload && !reply.trim()) reply = 'معلش، حصلت مشكلة صغيرة وأنا بجهّز المونتاج ومفيش حاجة اتخصمت — اكتب "ابدأ" تاني وهبدأه.';
       }
     }
+    // Adix: الايجنت بيعرض كارت طلب الإعلان (صور المنتج + الفكرة) جوه الشات
+    let adixSetup = false;
+    if (/###ADIX###/.test(reply)) { adixSetup = true; reply = reply.replace(/###ADIX###\s*(\{[^{}]*\})?/g, '').trim(); }
     let docSetupPayload;
     ({ text: reply, payload: docSetupPayload } = extractTrailingMarker(reply, '###DOC_SETUP###'));
     // بطاقة إعدادات الفيلم الوثائقي اللي بتظهر في الشات: بنضبّط القيم (الفرونت بيستخدمها كقيم مبدئية بس والعميل هو اللي بيختار)
@@ -2008,7 +2030,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // ✅ حارس حتمي أخير قبل ما الرد يوصل للعميل خالص — راجع تعريف الدالتين فوق لسبب وجودهم.
     // الترتيب مهم: لازم نفك أي **نجمتين** الأول قبل ما نشيل اسم الموديل اللي جواهم، وإلا
     // بيفضل "****" يتيمة مكسورة (اتأكد فعليًا: لو عكسنا الترتيب، "**Model 8**" بترجع "****")
-    reply = stripLongPromptBlocks(stripLegacyModelMentions(stripMarkdownFormatting(reply)));
+    reply = stripLongPromptBlocks(protectCode(fenceBareHtml(reply), (t) => stripLegacyModelMentions(stripMarkdownFormatting(t))));
 
     // ✅ NEW (طلب العميل: أزرار سريعة "ابدأ/لأ" بدل ما يكتبهم يدويًا في كل مرة): لو الرد ده
     // مجرد سؤال تأكيد قبل التوليد (مفيش أي ماركر نفّذ فعليًا في الرد ده)، بنعلّم الفرونت إند
@@ -2016,7 +2038,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const awaitingConfirmation = !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !analyzeVideoPayload && !channelGeneratePayload &&
       looksLikeConfirmationQuestion(reply);
 
-    if (!String(reply || '').trim() && !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !analyzeVideoPayload && !showcaseVideos && !docJob && !docSetup && !pdfVideo && !channelGenerate) {
+    if (!String(reply || '').trim() && !ready && !editScene && !videoEdit && !generateImage && !generateVideo && !mergeVideosPayload && !whiteboardVideoPayload && !subscribePayload && !analyzeVideoPayload && !showcaseVideos && !docJob && !docSetup && !adixSetup && !pdfVideo && !channelGenerate) {
       console.warn('[Agent] empty reply — sending a fallback message instead of an empty bubble');
       reply = 'معلش، الرد ماوصلش كامل. ممكن تبعتلي رسالتك تاني؟';
     }
@@ -2081,7 +2103,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       analyzeVideo: analyzeVideoPayload,
       awaitingConfirmation: awaitingConfirmation || productionAwait,
       structuredScenes: structuredScenesResult, adsScenePlan: adsScenePlanResult,
-      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate, docJob, docSetup, voicePicker, pdfVideo,
+      subscribe: subscribePayload, showcaseVideos, whiteboardVideo, channelGenerate, docJob, docSetup, adixSetup, voicePicker, pdfVideo,
       // ✅ NEW: الروابط الدائمة (R2) لأي صورة العميل رفعها في الرسالة دي — الفرونت إند بيحفظها
       // مع رسالة العميل نفسها عشان تفضل قابلة للاستشهاد بيها في أي رسالة جاية (راجع
       // uploadUserPhotoToR2 فوق)
