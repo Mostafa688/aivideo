@@ -45,6 +45,12 @@ function CodeBlock({ lang, code }) {
   );
 }
 
+// اتجاه الفقرة حسب اللغة الغالبة فيها (مش أول حرف): رسالة عربي بتبدأ بكلمة إنجليزي زي "Adix هو…"
+// كانت بتتعرض شمال لليمين فالجملة تتلخبط
+const dirOf = (t) => {
+  const s = String(t || ''); const ar = (s.match(/[\u0600-\u06FF]/g) || []).length; const lat = (s.match(/[A-Za-z]/g) || []).length;
+  return ar && ar >= lat * 0.5 ? 'rtl' : lat ? 'ltr' : 'auto';
+};
 const BULLET = /^\s*([-•*–])\s+(.*)$/;
 const NUM = /^\s*(\d{1,2})[.)]\s+(.*)$/;
 const HEAD = /^\s*#{1,4}\s+(.*)$/;
@@ -75,13 +81,13 @@ export default function RichText({ text }) {
       const ordered = NUM.test(ln); const items = [];
       while (i < lines.length && (ordered ? NUM.test(lines[i]) : BULLET.test(lines[i]))) { items.push((ordered ? NUM : BULLET).exec(lines[i])[2]); i++; }
       const Tag = ordered ? 'ol' : 'ul';
-      blocks.push(<Tag key={`l${i}`} style={{ margin: '4px 0', paddingInlineStart: 20, display: 'flex', flexDirection: 'column', gap: 4, listStyle: ordered ? 'decimal' : 'disc' }}>{items.map((it, j) => <li key={j} style={{ lineHeight: 1.7 }}>{inline(it, `l${i}_${j}`)}</li>)}</Tag>);
+      blocks.push(<Tag key={`l${i}`} dir={dirOf(items.join(' '))} style={{ margin: '4px 0', paddingInlineStart: 20, display: 'flex', flexDirection: 'column', gap: 4, listStyle: ordered ? 'decimal' : 'disc' }}>{items.map((it, j) => <li key={j} dir={dirOf(it)} style={{ lineHeight: 1.7, textAlign: 'start' }}>{inline(it, `l${i}_${j}`)}</li>)}</Tag>);
       continue;
     }
-    if (HEAD.test(ln)) { blocks.push(<div key={`h${i}`} style={{ fontWeight: 800, fontSize: '1.02em', margin: '2px 0' }}>{inline(HEAD.exec(ln)[1], `h${i}`)}</div>); i++; continue; }
+    if (HEAD.test(ln)) { blocks.push(<div key={`h${i}`} dir={dirOf(ln)} style={{ textAlign: 'start', fontWeight: 800, fontSize: '1.02em', margin: '2px 0' }}>{inline(HEAD.exec(ln)[1], `h${i}`)}</div>); i++; continue; }
     const para = [];
     while (i < lines.length && lines[i].trim() && !BULLET.test(lines[i]) && !NUM.test(lines[i]) && !HEAD.test(lines[i]) && !/^\s*```/.test(lines[i])) { para.push(lines[i]); i++; }
-    blocks.push(<p key={`p${i}`} style={{ margin: 0, lineHeight: 1.75 }}>{para.map((p, j) => <React.Fragment key={j}>{j > 0 && <br />}{inline(p, `p${i}_${j}`)}</React.Fragment>)}</p>);
+    blocks.push(<p key={`p${i}`} dir={dirOf(para.join(' '))} style={{ margin: 0, lineHeight: 1.75, textAlign: 'start', unicodeBidi: 'isolate' }}>{para.map((p, j) => <React.Fragment key={j}>{j > 0 && <br />}{inline(p, `p${i}_${j}`)}</React.Fragment>)}</p>);
   }
-  return <div dir="auto" style={{ display: 'flex', flexDirection: 'column', gap: 8, whiteSpace: 'normal' }}>{blocks}</div>;
+  return <div dir={dirOf(text)} style={{ display: 'flex', flexDirection: 'column', gap: 8, whiteSpace: 'normal' }}>{blocks}</div>;
 }
