@@ -620,9 +620,11 @@ async function produce({ id, userId, input, workDir, prog }) {
   await prog('narration', 1);
 
   // 3) الخطة
-  const beats = buildBeats(tokens, { totalDur: total });
-  if (!beats.length) throw new Error('no beats');
-  const plan = await planBeats({ beats, language: lang, topic: input.topic || title, onProgress: ({ done, total: t }) => prog('plan', done / t) });
+  // الشورتس (9:16): لقطات أقصر وقطعات أسرع — المشاهد على الموبايل بيقلّب لو المشهد طوّل
+  const beats0 = buildBeats(tokens, { totalDur: total, ...(input.ratio === '9:16' ? { minDur: 1.8, maxDur: 5, hookUntil: 6, hookDur: 1.7 } : {}) });
+  if (!beats0.length) throw new Error('no beats');
+  const plan = await planBeats({ beats: beats0, language: lang, ratio: input.ratio, topic: input.topic || title, onProgress: ({ done, total: t }) => prog('plan', done / t) });
+  const beats = plan.beats || beats0;
   title = title || plan.title || 'Documentary';
   await prog('plan', 1, { title });
 

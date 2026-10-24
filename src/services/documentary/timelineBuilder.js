@@ -1,5 +1,5 @@
 // ── timelineBuilder.js ── خطة + أصول + توقيت كلمات → Timeline جاهز لمحرك الرندر
-import { punchTimes } from './planner.js';
+import { punchTimes, anchorAt } from './planner.js';
 
 const MOTIONS = ['in', 'out', 'pan_right', 'pan_left'];
 
@@ -36,7 +36,9 @@ export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio
       }
     } else if (plan.visual === 'text' && plan.template && wantTemplate) {
       beat.visual = { kind: 'background' };
-      beat.overlays.push({ template: plan.template.name, data: plan.template.data, at: 0.1, dur: Math.max(1.2, b.dur - 0.1) });
+      // الجرافيك يبدأ مع نطق الرقم/الاسم (لو اتقال بدري في الجملة؛ لو متأخر الـplanner قسم المشهد أصلًا)
+      const at = Math.min(anchorAt(b, plan.template.name, plan.template.data) ?? 0.1, 1.2, Math.max(0.1, b.dur - 1.6));
+      beat.overlays.push({ template: plan.template.name, data: plan.template.data, at, dur: Math.max(1.2, b.dur - at) });
     } else if (a?.kind === 'video') {
       const slack = Math.max(0, (a.duration || 0) - b.dur - 0.5);
       const push = zoomNow && (b.hook ? i === 0 : i % 3 === 0);
@@ -52,7 +54,13 @@ export function buildTimeline({ beats, plans, assets, boards = {}, tokens, ratio
       if (phrase && wantTemplate) beat.overlays.push({ template: 'kinetic_text', data: { text: phrase, emphasis: plan.emphasis || [] }, at: 0.1, dur: Math.max(1.2, b.dur - 0.1) });
       textFallback = true;
     }
-    if (plan.visual !== 'text' && wantTemplate && !textFallback) for (const ov of plan.overlays || []) beat.overlays.push({ ...ov, at: ov.at ?? Math.min(0.6, b.dur * 0.15), dur: ov.dur ?? Math.max(1.5, Math.min(b.dur - 0.7, 4.5)) });
+    if (plan.visual !== 'text' && wantTemplate && !textFallback) for (const ov of plan.overlays || []) {
+      // overlay فوق اللقطة: بيظهر لحظة نطق الكلمة اللي بيتكلم عنها (الرقم/السنة/الاسم)، مش أول اللقطة
+      const spoken = ov.at == null ? anchorAt(b, ov.template, ov.data) : null;
+      const at = ov.at ?? (spoken != null ? Math.min(spoken, Math.max(0.05, b.dur - 1.5)) : Math.min(0.6, b.dur * 0.15));
+      const dur = Math.min(ov.dur ?? Math.max(1.5, Math.min(b.dur - 0.7, 4.5)), Math.max(1.2, b.dur - at - 0.1));
+      beat.overlays.push({ ...ov, at, dur });
+    }
     return beat;
   });
   const words = tokens.map(t => ({ w: t.w, start: t.start, end: t.end }));

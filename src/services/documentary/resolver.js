@@ -13,7 +13,7 @@ async function pool(items, limit, fn) {
 const STOP = new Set('the a an and or of in on at to for with from by as is was were are be been it this that these those his her their its into over about after before than then them they he she we you i'.split(' '));
 const toks = (s) => String(s || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2 && !STOP.has(w));
 
-export function scoreCandidate(c, beatText, queries, { wantKind = 'either', used = new Set(), brief = null } = {}) {
+export function scoreCandidate(c, beatText, queries, { wantKind = 'either', used = new Set(), brief = null, portrait = false } = {}) {
   const hay = new Set(toks(`${c.title} ${c.description}`));
   const qTok = new Set(toks((queries || []).join(' ')));
   const bTok = new Set(toks(beatText));
@@ -21,8 +21,15 @@ export function scoreCandidate(c, beatText, queries, { wantKind = 'either', used
   qTok.forEach(t => { if (hay.has(t)) s += 3; });
   bTok.forEach(t => { if (hay.has(t)) s += 1; });
   if (wantKind !== 'either' && c.kind === wantKind) s += 2;
-  if (c.kind === 'video' && (c.width || 0) >= 1280) s += 1;
-  if (c.kind === 'image' && (c.width || 0) >= 1600) s += 1;
+  if (portrait) {
+    // الشورتس: الكادر بيتقص من النص لشاشة طويلة — اللقطة الطولية بتملى الشاشة، والعريضة جدًا موضوعها بيتقطع
+    const ar = (c.width || 0) && (c.height || 0) ? c.width / c.height : 1.6;
+    if (ar <= 0.8) s += 2.5; else if (ar <= 1.2) s += 1; else if (ar >= 2) s -= 2; else if (ar >= 1.7) s -= 0.5;
+    if (Math.max(c.width || 0, c.height || 0) >= 1600) s += 0.5;
+  } else {
+    if (c.kind === 'video' && (c.width || 0) >= 1280) s += 1;
+    if (c.kind === 'image' && (c.width || 0) >= 1600) s += 1;
+  }
   if (c.source === 'wikimedia' || c.source === 'archive' || c.source === 'nasa') s += 0.5;
   if (brief?.subject) { // موضوع الفيلم الحقيقي: مكافأة لو العنوان/الوصف فيه الموضوع، وخصم لو فيه حاجة قال الملخص "ما تعرضهاش"
     const subj = toks(brief.subject);
@@ -73,14 +80,16 @@ const kindsFor = (plan, group) => {
   return ['video', 'image'];
 };
 
-async function llmRank(items, deps, brief = null) {
+async function llmRank(items, deps, brief = null, portrait = false) {
   const ask = deps.llmJson || llmJson;
   const briefLine = brief?.subject ? `The whole documentary is about: ${brief.subject}${brief.aliases?.length ? ` (the narration may call it: ${brief.aliases.join(', ')})` : ''}.${brief.avoid?.length ? ` Never pick: ${brief.avoid.join(', ')}.` : ''} A sentence that only refers to it indirectly ("a huge creature", "this animal", "he") means THIS subject — pick footage of it, not of a literal reading of the vague wording.\n\n` : '';
+  const vertLine = portrait ? 'This is a VERTICAL 9:16 short for phones: every candidate is center-cropped to a tall frame. Strongly prefer candidates marked "tall" or "square" and ones with a single clear close subject (face, person, object, animal); avoid wide panoramas or group shots where the subject would be tiny or cut off. Pick something that matches THIS sentence concretely — not generic filler.\n\n' : '';
+  const shape = (c) => { const ar = c.width && c.height ? c.width / c.height : 0; return !ar ? '' : ar <= 0.8 ? ' | tall' : ar <= 1.2 ? ' | square' : ar >= 2 ? ' | very wide' : ' | wide'; };
   const picks = new Map();
   const CH = 8;
   for (let from = 0; from < items.length; from += CH) {
     const chunk = items.slice(from, from + CH);
-    const user = briefLine + chunk.map(it => `Beat [${it.i}]: "${it.text}"\nCandidates:\n` + it.cands.slice(0, 8).map(c => `- ${c.id} | ${c.kind} | ${String(c.title).slice(0, 80)} | ${String(c.description).slice(0, 110)}`).join('\n')).join('\n\n');
+    const user = vertLine + briefLine + chunk.map(it => `Beat [${it.i}]: "${it.text}"\nCandidates:\n` + it.cands.slice(0, 8).map(c => `- ${c.id} | ${c.kind}${portrait ? shape(c) : ''} | ${String(c.title).slice(0, 80)} | ${String(c.description).slice(0, 110)}`).join('\n')).join('\n\n');
     try {
       const r = await ask({
         system: 'You pick the best photo/video for each documentary narration beat. For each beat choose up to 3 candidate ids that visually match what the sentence says (right subject, place, era, mood), best first. Prefer concrete matches over generic ones; skip candidates that show something unrelated or contradictory. Return ONLY JSON: {"picks":[{"i":0,"ids":["id1","id2"]}]}. Use [] if nothing fits.',
@@ -97,6 +106,7 @@ async function llmRank(items, deps, brief = null) {
  */
 export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, onProgress = () => {}, concurrency = 4, brief = null }, deps = {}) {
   const orientation = ratio === '9:16' ? 'portrait' : 'landscape';
+  const portrait = ratio === '9:16';
   const search = deps.searchCandidates || searchCandidates;
   const mat = deps.materialize || materialize;
   const fetchOne = deps.fetchAsset || fetchAsset;
@@ -122,14 +132,14 @@ export async function resolveAssets({ beats, plans, ratio = '16:9', assetsDir, o
     }
     const seen = new Set();
     cands = cands.filter(c => (seen.has(c.id) ? false : seen.add(c.id)));
-    cands.sort((x, y) => scoreCandidate(y, b.text, plan.queries, { wantKind: plan.kind, used, brief }) - scoreCandidate(x, b.text, plan.queries, { wantKind: plan.kind, used, brief }));
+    cands.sort((x, y) => scoreCandidate(y, b.text, plan.queries, { wantKind: plan.kind, used, brief, portrait }) - scoreCandidate(x, b.text, plan.queries, { wantKind: plan.kind, used, brief, portrait }));
     found.set(i, cands);
     onProgress({ stage: 'search', done: ++done, total: need.length });
   });
 
   // B) ترتيب بالـLLM
   const rankInput = need.map(({ b, i }) => ({ i, text: b.text, cands: found.get(i) || [] })).filter(x => x.cands.length > 1);
-  const picks = deps.skipLlmRank ? new Map() : await llmRank(rankInput, deps, brief);
+  const picks = deps.skipLlmRank ? new Map() : await llmRank(rankInput, deps, brief, portrait);
   const ordered = new Map();
   for (const { i } of need) {
     const cands = found.get(i) || [];
