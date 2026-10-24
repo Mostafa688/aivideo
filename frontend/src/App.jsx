@@ -478,6 +478,12 @@ export default function App() {
     setAuthChecked(true);
   }, []);
 
+  // رسالة Claude في الايجنت خصمت كريديت → حدّث العداد فوق
+  useEffect(() => {
+    const h = () => fetchCredits();
+    window.addEventListener('erivion:credits', h);
+    return () => window.removeEventListener('erivion:credits', h);
+  });
   useEffect(() => {
     if (!user) return;
     prefetchProjects(); // المشاريع تبقى جاهزة قبل ما العميل يفتح الهوم

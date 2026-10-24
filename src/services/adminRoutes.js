@@ -10,6 +10,7 @@ import { adminAuth, verifyAdminCredentials, issueAdminToken, checkLoginRateLimit
 import { runBackup, listBackups, openBackupStream, backupKey, BACKUP_KEEP } from './dbBackup.js';
 import { generateNewModelVideo } from './newVideoModelsService.js';
 import { visionDiagnostics } from './visionService.js';
+import { followupStats } from './followupEmail.js';
 const { Pool } = pkg;
 const router = express.Router();
 const pool = new Pool({
@@ -46,6 +47,11 @@ function periodBucketFor(rangeDays) {
 }
 
 // ── النسخ الاحتياطي لقاعدة البيانات (على R2، مشفّرة) ──
+// نتايج إيميل المتابعة: اتبعت لكام واحد، وأسباب عدم الاشتراك اللي العملاء اختاروها
+router.get('/followups', adminAuth, async (req, res) => {
+  try { res.json({ stats: await followupStats() }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/backups', adminAuth, async (req, res) => {
   try {
     const k = backupKey();
